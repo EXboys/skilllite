@@ -50,10 +50,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/skilllite/skilllite"
-Documentation = "https://github.com/skilllite/skilllite#readme"
-Repository = "https://github.com/skilllite/skilllite"
-Issues = "https://github.com/skilllite/skilllite/issues"
+Homepage = "https://github.com/EXboys/skilllite"
+Documentation = "https://github.com/EXboys/skilllite#readme"
+Repository = "https://github.com/EXboys/skilllite"
+Issues = "https://github.com/EXboys/skilllite/issues"
 
 [project.scripts]
 skilllite = "skilllite.cli:main"

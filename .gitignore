@@ -3,6 +3,10 @@
 .env.local
 .env.*.local
 
+# Rust
+target/
+Cargo.lock
+
 # Python
 __pycache__/
 *.py[cod]
