@@ -2,6 +2,8 @@
 
 This guide explains how to install the `skillbox` sandbox binary for SkillLite.
 
+> **Note**: The first release build is currently in progress. Once the GitHub Actions workflow completes, the binaries will be available for download.
+
 ## Quick Install
 
 ### Using Python SDK (Recommended)
