@@ -22,7 +22,7 @@ from typing import Optional, Tuple
 BINARY_VERSION = "0.1.0"
 
 # GitHub repository for releases
-GITHUB_OWNER = "nickliu02"
+GITHUB_OWNER = "EXboys"
 GITHUB_REPO = "skilllite"
 
 # Base URL for downloading binaries
