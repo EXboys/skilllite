@@ -11,6 +11,7 @@ jobs:
     name: Build ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           # Linux x86_64
@@ -93,7 +94,7 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: always() && startsWith(github.ref, 'refs/tags/') && !cancelled()
 
     steps:
       - name: Checkout code
@@ -105,7 +106,7 @@ jobs:
           path: ./artifacts
 
       - name: Display structure of downloaded files
-        run: ls -R ./artifacts
+        run: ls -R ./artifacts || echo "No artifacts found"
 
       - name: Create Release
         id: create_release
@@ -114,6 +115,7 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             ./artifacts/skillbox-linux-x64/skillbox-linux-x64.tar.gz
             ./artifacts/skillbox-darwin-x64/skillbox-darwin-x64.tar.gz
@@ -126,7 +128,7 @@ jobs:
     name: Publish to PyPI
     needs: release
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: always() && startsWith(github.ref, 'refs/tags/') && needs.release.result == 'success'
 
     steps:
       - name: Checkout code
