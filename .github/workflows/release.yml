@@ -20,13 +20,13 @@ jobs:
             asset_name: skillbox-linux-x64
 
           # macOS x86_64 (Intel)
-          - os: macos-latest
+          - os: macos-13
             target: x86_64-apple-darwin
             artifact_name: skillbox
             asset_name: skillbox-darwin-x64
 
           # macOS ARM64 (Apple Silicon)
-          - os: macos-latest
+          - os: macos-14
             target: aarch64-apple-darwin
             artifact_name: skillbox
             asset_name: skillbox-darwin-arm64
