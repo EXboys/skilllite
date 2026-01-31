@@ -1,24 +1,36 @@
 #![cfg(target_os = "linux")]
 
-use crate::env::builder::{get_node_executable, get_node_modules_path, get_python_executable};
+use crate::env::builder::{get_node_executable, get_python_executable};
 use crate::sandbox::common::wait_with_timeout;
-use crate::sandbox::executor::ExecutionResult;
+use crate::sandbox::executor::{ExecutionResult, ResourceLimits};
 use crate::sandbox::network_proxy::{ProxyConfig, ProxyManager};
-use crate::sandbox::seccomp;
-use crate::sandbox::security::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
+use crate::sandbox::seatbelt::{get_mandatory_deny_rules, MANDATORY_DENY_DIRECTORIES};
 use crate::skill::metadata::{detect_language, SkillMetadata};
 use anyhow::{Context, Result};
 use nix::mount::{mount, MsFlags};
 use nix::sched::{unshare, CloneFlags};
-use nix::sys::wait::waitpid;
-use nix::unistd::{fork, ForkResult};
-use std::ffi::CString;
 use std::fs;
 use std::io::Write;
-use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use tempfile::TempDir;
+
+/// Generate blacklist arguments for firejail based on mandatory deny rules
+fn generate_firejail_blacklist_args() -> Vec<String> {
+    let mut args = Vec::new();
+
+    for rule in get_mandatory_deny_rules() {
+        let path = if rule.pattern.starts_with('/') {
+            rule.pattern.clone()
+        } else {
+            format!("~/{}", rule.pattern)
+        };
+
+        args.push(format!("--blacklist={}", path));
+    }
+
+    args
+}
 
 /// Execute a skill in a Linux sandbox
 /// Sandbox is enabled by default. Set SKILLBOX_NO_SANDBOX=1 to disable.
@@ -516,6 +528,7 @@ fn execute_with_firejail(
     program: &Path,
     entry_point: &Path,
     work_dir: &Path,
+    limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
     // Start network proxy if network is enabled with filtering
     let proxy_manager = if metadata.network.enabled {
@@ -720,7 +733,7 @@ fn execute_with_namespaces(
     }
 
     // Wait with timeout and memory monitoring
-    let (stdout, stderr, exit_code, _, _) = wait_with_timeout_linux(
+    let (stdout, stderr, exit_code, _, _) = wait_with_timeout(
         &mut child,
         limits.timeout_secs,
         limits.max_memory_bytes(),
