@@ -1,0 +1,13 @@
+{
+  "name": "skillbox-benchmark",
+  "version": "1.0.0",
+  "description": "SkillBox benchmark dependencies",
+  "private": true,
+  "dependencies": {
+    "pyodide": "^0.26.4"
+  },
+  "scripts": {
+    "setup": "npm install",
+    "benchmark": "python3 benchmark_runner.py"
+  }
+}

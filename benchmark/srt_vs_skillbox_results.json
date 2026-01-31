@@ -1,0 +1,164 @@
+{
+  "performance": {
+    "srt": {
+      "startup": {
+        "mean": 596.0014040996612,
+        "min": 591.7747909988975,
+        "max": 601.3950839987956,
+        "stdev": 3.6417856008186167,
+        "success": true
+      },
+      "simple_print": {
+        "mean": 717.3554457000137,
+        "min": 709.107333999782,
+        "max": 723.3326660007151,
+        "stdev": 4.839490250097303,
+        "success": true
+      },
+      "loop_10000": {
+        "mean": 713.0520959000933,
+        "min": 706.2925830014137,
+        "max": 721.1769169989566,
+        "stdev": 4.321749168409844,
+        "success": true
+      },
+      "fibonacci_25": {
+        "mean": 720.4797790996963,
+        "min": 709.5769999996264,
+        "max": 725.9458329990593,
+        "stdev": 5.134496837619868,
+        "success": true
+      },
+      "list_comprehension": {
+        "mean": 718.6920167001517,
+        "min": 716.5329170002224,
+        "max": 721.7350829996576,
+        "stdev": 1.4306834987163124,
+        "success": true
+      },
+      "dict_operations": {
+        "mean": 720.5167751000772,
+        "min": 714.2809169999964,
+        "max": 731.6937499999767,
+        "stdev": 4.9102957127631415,
+        "success": true
+      },
+      "security": {
+        "fs_read_etc_passwd": {
+          "blocked": false,
+          "output": "##\n# User Database\n# \n# Note that this file is consulted directly only when the system is running\n# in single-user mode.  At other times this information is provided by\n# Open Directory.\n#\n# See the o",
+          "error": ""
+        },
+        "network_access": {
+          "blocked": true,
+          "output": "Connection blocked by network allowlist",
+          "error": "  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current\n                                 Dload  Upload   Total   Spent    Left  Speed\n\r  0     0    0     0    0     0      0   "
+        },
+        "process_creation": {
+          "allowed": true,
+          "output": "subprocess_test\n",
+          "error": ""
+        },
+        "env_isolation": {
+          "home_visible": true,
+          "output": "/Users/luren\n",
+          "error": ""
+        },
+        "write_tmp": {
+          "allowed": false,
+          "output": "",
+          "error": "touch: /tmp/srt_security_test_file: Operation not permitted\n"
+        }
+      }
+    },
+    "skillbox": {
+      "startup": {
+        "mean": 119.91233739954623,
+        "min": 117.07920799926796,
+        "max": 124.08733300071617,
+        "stdev": 2.358831741579817,
+        "success": true
+      },
+      "simple_print": {
+        "mean": 121.49532499970519,
+        "min": 117.58033299884119,
+        "max": 124.33749999945576,
+        "stdev": 1.9865968865972832,
+        "success": true
+      },
+      "loop_10000": {
+        "mean": 119.9801249000302,
+        "min": 117.71633399985149,
+        "max": 123.27908299994306,
+        "stdev": 2.1287776506189995,
+        "success": true
+      },
+      "fibonacci_25": {
+        "mean": 120.78185830014263,
+        "min": 118.16983399876335,
+        "max": 123.06404100127111,
+        "stdev": 1.9108233763507045,
+        "success": true
+      },
+      "list_comprehension": {
+        "mean": 119.99170849976508,
+        "min": 117.57212500015157,
+        "max": 122.8493750004418,
+        "stdev": 2.142384717804956,
+        "success": true
+      },
+      "dict_operations": {
+        "mean": 120.63484999962384,
+        "min": 117.31300000064948,
+        "max": 123.11820899958548,
+        "stdev": 2.0185672601101907,
+        "success": true
+      },
+      "security": {
+        "fs_read_etc_passwd": {
+          "blocked": true,
+          "output": "{\"success\": false, \"error\": \"[Errno 1] Operation not permitted: '/etc/passwd'\"}\n",
+          "error": ""
+        },
+        "network_access": {
+          "blocked": true,
+          "output": "{\"success\": false, \"error\": \"<urlopen error [Errno 8] nodename nor servname provided, or not known>\"}\n",
+          "error": ""
+        },
+        "process_creation": {
+          "allowed": false,
+          "output": "{\"success\": false, \"error\": \"[Errno 35] Resource temporarily unavailable\"}\n",
+          "error": ""
+        },
+        "env_isolation": {
+          "home_visible": true,
+          "output": "{\"home\": \"/var/folders/gr/h057y1j11qx118m2q6dn2jh00000gn/T/.tmpi0By4Y\", \"path\": \"/Users/luren/.nvm/versions/node/v24.12.0/bin:/Users/luren/.dotnet:/Users/luren/.dotnet:/usr/local/sh\"}\n",
+          "error": ""
+        },
+        "write_tmp": {
+          "allowed": false,
+          "output": "{\"success\": false, \"error\": \"[Errno 1] Operation not permitted: '/tmp/skillbox_security_test'\"}\n",
+          "error": ""
+        }
+      }
+    }
+  },
+  "memory": {
+    "srt": {
+      "startup": 84416.0,
+      "simple_print": 84304.0,
+      "loop_10000": 83552.0,
+      "fibonacci_25": 82848.0,
+      "list_comprehension": 84320.0,
+      "dict_operations": 84480.0
+    },
+    "skillbox": {
+      "startup": 12208.0,
+      "simple_print": 12192.0,
+      "loop_10000": 12208.0,
+      "fibonacci_25": 12272.0,
+      "list_comprehension": 12240.0,
+      "dict_operations": 12336.0
+    }
+  }
+}

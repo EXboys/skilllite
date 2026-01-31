@@ -1,0 +1,39 @@
+[package]
+name = "skillbox"
+version = "0.1.0"
+edition = "2021"
+authors = ["EX <chenduan.cd@alibaba-inc.com>"]
+description = "A lightweight Skills secure execution engine"
+license = "MIT"
+repository = "https://github.com/nickliu02/skilllite"
+keywords = ["agent", "skills", "sandbox", "security"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1.0"
+tempfile = "3.10"
+sha2 = "0.10"
+thiserror = "1.0"
+anyhow = "1.0"
+hex = "0.4"
+regex = "1.10"
+dirs = "5.0"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.29", features = ["process", "mount", "sched", "signal"] }
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+nix = { version = "0.29", features = ["process", "signal"] }
+
+[[bin]]
+name = "skillbox"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"

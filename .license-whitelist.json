@@ -1,0 +1,13 @@
+{
+  "description": "License scanning whitelist - packages with verified licenses that may be incorrectly flagged",
+  "whitelist": [
+    {
+      "name": "option-ext",
+      "version": "0.2.0",
+      "declared_license": "MPL-2.0",
+      "verification": "https://crates.io/crates/option-ext",
+      "reason": "License correctly declared as MPL-2.0 in Cargo.toml and crates.io, but some scanners may not detect it properly",
+      "verified_date": "2026-01-26"
+    }
+  ]
+}

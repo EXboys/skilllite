@@ -1,0 +1,110 @@
+# Default Security Rules Configuration for Skillbox
+# 
+# This file documents the default security rules used by the scanner.
+# You can create a `.skillbox-rules.yaml` file in your skill directory
+# to customize these rules.
+#
+# Configuration Options:
+# - use_default_rules: Whether to include the built-in rules (default: true)
+# - disabled_rules: List of rule IDs to disable
+# - rules: List of custom rules to add
+#
+# Rule Structure:
+# - id: Unique identifier for the rule
+# - pattern: Regular expression pattern to match
+# - issue_type: One of: file_operation, network_request, code_injection,
+#               memory_bomb, process_execution, system_access, dangerous_module
+# - severity: One of: low, medium, high, critical
+# - description: Human-readable description
+# - languages: List of languages this rule applies to (e.g., ["python", "javascript"])
+# - enabled: Whether the rule is enabled (default: true)
+
+# Example custom configuration:
+# 
+# use_default_rules: true
+# 
+# disabled_rules:
+#   - py-file-open      # Disable open() detection (too many false positives)
+#   - py-sys-info       # Allow sys.path access
+# 
+# rules:
+#   - id: custom-dangerous-api
+#     pattern: "dangerous_api\\s*\\("
+#     issue_type: code_injection
+#     severity: critical
+#     description: "Custom dangerous API call detected"
+#     languages: ["python"]
+#     enabled: true
+
+# =============================================================================
+# Default Python Rules
+# =============================================================================
+
+# File Operations
+# - py-file-open: Detects built-in open() function
+# - py-file-delete: Detects file deletion (os.remove, shutil.rmtree)
+# - py-dir-list: Detects directory listing operations
+
+# Network Operations
+# - py-net-import: Detects network library imports
+# - py-net-request: Detects network request calls
+
+# Code Injection (Critical)
+# - py-eval: Detects eval() function
+# - py-exec: Detects exec() function
+# - py-compile: Detects compile() function
+# - py-unsafe-deserialize: Detects unsafe deserialization (pickle, yaml.load)
+# - py-dynamic-import: Detects dynamic imports (__import__, importlib)
+
+# Process Execution
+# - py-subprocess: Detects subprocess module usage
+# - py-os-system: Detects os.system() and similar
+
+# Memory Bombs
+# - py-large-array: Detects large array allocations
+# - py-large-range: Detects large range() calls
+# - py-large-bytes: Detects large byte allocations
+# - py-infinite-loop: Detects while True loops
+
+# System Access
+# - py-env-access: Detects environment variable access
+# - py-platform-info: Detects platform information access
+# - py-sys-info: Detects Python runtime information access
+# - py-user-info: Detects user/group information access
+# - py-psutil: Detects psutil library usage
+
+# Built-in Modification
+# - py-builtins: Detects __builtins__ access
+# - py-scope-access: Detects globals()/locals()/vars() calls
+# - py-builtins-modify: Detects modification of built-ins
+
+# Dangerous Modules
+# - py-ctypes-import: Detects ctypes import
+# - py-os-import: Detects os/subprocess/shutil imports
+
+# =============================================================================
+# Default JavaScript/Node.js Rules
+# =============================================================================
+
+# Code Injection
+# - js-eval: Detects eval() and Function constructor
+
+# Network Operations
+# - js-fetch: Detects fetch/axios/got calls
+# - js-xhr: Detects XMLHttpRequest and http.request
+
+# File Operations
+# - js-fs-sync: Detects synchronous fs operations
+# - js-fs-async: Detects asynchronous fs operations
+
+# Process Execution
+# - js-child-process: Detects child_process module usage
+
+# Memory Bombs
+# - js-large-array: Detects large array allocations
+# - js-infinite-loop: Detects while(true) loops
+
+# Module Imports
+# - js-require-child-process: Detects require('child_process')
+# - js-require-fs: Detects require('fs')
+# - js-import-fs: Detects ESM fs imports

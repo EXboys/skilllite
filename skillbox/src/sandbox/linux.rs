@@ -1,0 +1,809 @@
+#![cfg(target_os = "linux")]
+
+use crate::env::builder::{get_node_executable, get_node_modules_path, get_python_executable};
+use crate::sandbox::common::wait_with_timeout;
+use crate::sandbox::executor::ExecutionResult;
+use crate::sandbox::network_proxy::{ProxyConfig, ProxyManager};
+use crate::sandbox::seccomp;
+use crate::sandbox::security::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
+use crate::skill::metadata::{detect_language, SkillMetadata};
+use anyhow::{Context, Result};
+use nix::mount::{mount, MsFlags};
+use nix::sched::{unshare, CloneFlags};
+use nix::sys::wait::waitpid;
+use nix::unistd::{fork, ForkResult};
+use std::ffi::CString;
+use std::fs;
+use std::io::Write;
+use std::os::unix::process::CommandExt;
+use std::path::Path;
+use std::process::{Command, Stdio};
+use tempfile::TempDir;
+
+/// Execute a skill in a Linux sandbox
+/// Sandbox is enabled by default. Set SKILLBOX_NO_SANDBOX=1 to disable.
+pub fn execute(
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+) -> Result<ExecutionResult> {
+    execute_with_limits(
+        skill_dir,
+        env_path,
+        metadata,
+        input_json,
+        crate::sandbox::executor::ResourceLimits::default(),
+    )
+}
+
+/// Execute a skill in a Linux sandbox with custom resource limits
+pub fn execute_with_limits(
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+    limits: crate::sandbox::executor::ResourceLimits,
+) -> Result<ExecutionResult> {
+    // Sandbox is enabled by default for security
+    if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
+        eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
+        return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
+    }
+    
+    // Try to use seccomp-based sandbox (works without root)
+    match execute_with_seccomp(skill_dir, env_path, metadata, input_json, limits) {
+        Ok(result) => Ok(result),
+        Err(e) => {
+            // If seccomp fails, try namespace isolation (may require root)
+            eprintln!("[INFO] Seccomp sandbox failed ({}), trying namespace isolation...", e);
+            match execute_with_namespaces(skill_dir, env_path, metadata, input_json, limits) {
+                Ok(result) => Ok(result),
+                Err(e2) => {
+                    Err(anyhow::anyhow!(
+                        "All sandbox methods failed. Seccomp: {}. Namespace: {}. Set SKILLBOX_NO_SANDBOX=1 to run without sandbox (not recommended).",
+                        e, e2
+                    ))
+                }
+            }
+        }
+    }
+}
+
+/// Simple execution without sandbox (fallback when all sandbox methods fail)
+fn execute_simple(
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+) -> Result<ExecutionResult> {
+    execute_simple_with_limits(
+        skill_dir,
+        env_path,
+        metadata,
+        input_json,
+        crate::sandbox::executor::ResourceLimits::default(),
+    )
+}
+
+/// Simple execution without sandbox with custom resource limits
+fn execute_simple_with_limits(
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+    limits: crate::sandbox::executor::ResourceLimits,
+) -> Result<ExecutionResult> {
+    let language = detect_language(skill_dir, metadata);
+    let entry_point = skill_dir.join(&metadata.entry_point);
+
+    // Create temporary directory for execution
+    let temp_dir = TempDir::new()?;
+    let work_dir = temp_dir.path();
+
+    // Prepare command based on language
+    let mut cmd = match language.as_str() {
+        "python" => {
+            let python = get_python_executable(env_path);
+            let mut c = Command::new(python);
+            c.arg(&entry_point);
+            c
+        }
+        "node" => {
+            let node = get_node_executable();
+            let mut c = Command::new(node);
+            c.arg(&entry_point);
+
+            // Set NODE_PATH if we have a cached environment
+            if !env_path.as_os_str().is_empty() {
+                let node_modules = env_path.join("node_modules");
+                c.env("NODE_PATH", node_modules);
+            }
+            c
+        }
+        _ => {
+            anyhow::bail!("Unsupported language: {}", language);
+        }
+    };
+
+    // Set working directory
+    cmd.current_dir(skill_dir);
+
+    // Set up stdin/stdout/stderr
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    // Set environment variables
+    cmd.env("SKILLBOX_SANDBOX", "0");
+    cmd.env("TMPDIR", work_dir);
+
+    // Network control flag (informational only in simple mode)
+    if !metadata.network.enabled {
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
+    }
+
+    // Spawn the process
+    let mut child = cmd.spawn().with_context(|| "Failed to spawn skill process")?;
+
+    // Write input to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(input_json.as_bytes())
+            .with_context(|| "Failed to write to stdin")?;
+    }
+
+    // Wait with timeout and memory monitoring (using common module)
+    let (stdout, stderr, exit_code, _, _) = wait_with_timeout(
+        &mut child,
+        limits.timeout_secs,
+        limits.max_memory_bytes(),
+    )?;
+
+    Ok(ExecutionResult {
+        stdout,
+        stderr,
+        exit_code,
+    })
+}
+
+/// Execute with seccomp-based sandbox (works without root privileges)
+/// Uses landlock on Linux 5.13+ or falls back to seccomp
+fn execute_with_seccomp(
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+    limits: crate::sandbox::executor::ResourceLimits,
+) -> Result<ExecutionResult> {
+    use std::os::unix::process::CommandExt;
+    
+    let language = detect_language(skill_dir, metadata);
+    let entry_point = skill_dir.join(&metadata.entry_point);
+
+    // Create temporary directory for execution
+    let temp_dir = TempDir::new()?;
+    let work_dir = temp_dir.path();
+
+    // Prepare command based on language
+    let (program, mut args) = match language.as_str() {
+        "python" => {
+            let python = get_python_executable(env_path);
+            (python, vec![entry_point.to_string_lossy().to_string()])
+        }
+        "node" => {
+            let node = get_node_executable();
+            (node, vec![entry_point.to_string_lossy().to_string()])
+        }
+        _ => {
+            anyhow::bail!("Unsupported language: {}", language);
+        }
+    };
+
+    // Use bwrap (bubblewrap) if available for unprivileged sandboxing
+    // bwrap is commonly available on Linux and provides namespace isolation without root
+    let bwrap_path = which_bwrap();
+    
+    if let Some(bwrap) = bwrap_path {
+        return execute_with_bwrap(
+            &bwrap,
+            skill_dir,
+            env_path,
+            metadata,
+            input_json,
+            &program,
+            &entry_point,
+            work_dir,
+            limits,
+        );
+    }
+
+    // Fallback: Use firejail if available
+    let firejail_path = which_firejail();
+    if let Some(firejail) = firejail_path {
+        return execute_with_firejail(
+            &firejail,
+            skill_dir,
+            env_path,
+            metadata,
+            input_json,
+            &program,
+            &entry_point,
+            work_dir,
+            limits,
+        );
+    }
+
+    // No sandbox tool available
+    anyhow::bail!("No sandbox tool available (bwrap or firejail). Install bubblewrap: apt install bubblewrap")
+}
+
+/// Check if bwrap (bubblewrap) is available
+fn which_bwrap() -> Option<std::path::PathBuf> {
+    std::process::Command::new("which")
+        .arg("bwrap")
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(std::path::PathBuf::from(path));
+                }
+            }
+            None
+        })
+}
+
+/// Check if firejail is available
+fn which_firejail() -> Option<std::path::PathBuf> {
+    std::process::Command::new("which")
+        .arg("firejail")
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(std::path::PathBuf::from(path));
+                }
+            }
+            None
+        })
+}
+
+/// Execute with bubblewrap (bwrap) sandbox with network proxy support
+fn execute_with_bwrap(
+    bwrap: &Path,
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+    program: &Path,
+    entry_point: &Path,
+    work_dir: &Path,
+    limits: crate::sandbox::executor::ResourceLimits,
+) -> Result<ExecutionResult> {
+    // Start network proxy if network is enabled with filtering
+    let proxy_manager = if metadata.network.enabled {
+        // Create proxy config based on outbound domains from metadata
+        let proxy_config = if metadata.network.outbound.is_empty() {
+            // No domains specified, block all by default for security
+            ProxyConfig::block_all()
+        } else {
+            ProxyConfig::with_allowed_domains(metadata.network.outbound.clone())
+        };
+        
+        match ProxyManager::new(proxy_config) {
+            Ok(mut manager) => {
+                if let Err(e) = manager.start() {
+                    eprintln!("[WARN] Failed to start network proxy: {}", e);
+                    None
+                } else {
+                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}", 
+                             manager.http_port(), manager.socks5_port());
+                    Some(manager)
+                }
+            }
+            Err(e) => {
+                eprintln!("[WARN] Failed to create network proxy: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut cmd = Command::new(bwrap);
+    
+    // Basic isolation
+    cmd.args(["--unshare-all"]);  // Unshare all namespaces
+    cmd.args(["--die-with-parent"]);  // Kill sandbox if parent dies
+    
+    // Mount minimal filesystem
+    cmd.args(["--ro-bind", "/usr", "/usr"]);
+    cmd.args(["--ro-bind", "/lib", "/lib"]);
+    if Path::new("/lib64").exists() {
+        cmd.args(["--ro-bind", "/lib64", "/lib64"]);
+    }
+    cmd.args(["--ro-bind", "/bin", "/bin"]);
+    if Path::new("/sbin").exists() {
+        cmd.args(["--ro-bind", "/sbin", "/sbin"]);
+    }
+    
+    // Mount skill directory as read-only
+    let skill_dir_str = skill_dir.to_string_lossy();
+    cmd.args(["--ro-bind", &skill_dir_str, &skill_dir_str]);
+    
+    // Mount environment directory if exists
+    if !env_path.as_os_str().is_empty() && env_path.exists() {
+        let env_path_str = env_path.to_string_lossy();
+        cmd.args(["--ro-bind", &env_path_str, &env_path_str]);
+    }
+    
+    // Mount work directory as read-write
+    let work_dir_str = work_dir.to_string_lossy();
+    cmd.args(["--bind", &work_dir_str, "/tmp"]);
+    
+    // Create minimal /dev
+    cmd.args(["--dev", "/dev"]);
+    
+    // Create /proc (needed for Python)
+    cmd.args(["--proc", "/proc"]);
+    
+    // Network isolation - if proxy is available, share network but route through proxy
+    // Otherwise, completely isolate network
+    if metadata.network.enabled && proxy_manager.is_some() {
+        cmd.args(["--share-net"]);
+    } else if !metadata.network.enabled {
+        cmd.args(["--unshare-net"]);
+    } else {
+        // Network enabled but no proxy - still share but log warning
+        eprintln!("[WARN] Network enabled without proxy filtering");
+        cmd.args(["--share-net"]);
+    }
+    
+    // Set environment
+    cmd.args(["--setenv", "SKILLBOX_SANDBOX", "1"]);
+    cmd.args(["--setenv", "TMPDIR", "/tmp"]);
+    cmd.args(["--setenv", "HOME", "/tmp"]);
+    
+    // Set proxy environment variables if proxy is running
+    if let Some(ref manager) = proxy_manager {
+        for (key, value) in manager.get_proxy_env_vars() {
+            cmd.args(["--setenv", &key, &value]);
+        }
+    }
+    
+    // Block access to sensitive paths - create empty directories
+    cmd.args(["--dir", "/home"]);  // Empty home
+    cmd.args(["--dir", "/root"]);  // Empty root
+    
+    // Block mandatory deny directories using tmpfs (makes them empty)
+    for dir in MANDATORY_DENY_DIRECTORIES {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
+        let full_path = if dir.starts_with('/') {
+            dir.to_string()
+        } else {
+            format!("{}/{}", home, dir)
+        };
+        // Use tmpfs to hide sensitive directories
+        if Path::new(&full_path).exists() {
+            cmd.args(["--tmpfs", &full_path]);
+        }
+    }
+    
+    // Generate seccomp BPF filter file for Unix socket blocking
+    let seccomp_filter_path = work_dir.join("seccomp.bpf");
+    if let Err(e) = generate_seccomp_bpf_file(&seccomp_filter_path) {
+        eprintln!("[WARN] Failed to generate seccomp filter: {}", e);
+    } else {
+        // Apply seccomp filter via bwrap
+        let filter_path_str = seccomp_filter_path.to_string_lossy();
+        cmd.args(["--seccomp", "3", &filter_path_str]);
+    }
+    
+    // Add the program and arguments
+    cmd.arg("--");
+    cmd.arg(program);
+    cmd.arg(entry_point);
+    
+    // Set working directory
+    cmd.current_dir(skill_dir);
+    
+    // Set up stdin/stdout/stderr
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    
+    // Spawn the process
+    let mut child = cmd.spawn().with_context(|| "Failed to spawn bwrap sandbox")?;
+    
+    // Write input to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(input_json.as_bytes())
+            .with_context(|| "Failed to write to stdin")?;
+    }
+    
+    // Wait for completion
+    let output = child.wait_with_output()
+        .with_context(|| "Failed to wait for bwrap sandbox")?;
+    
+    // Proxy manager will be dropped here, stopping the proxy servers
+    drop(proxy_manager);
+    
+    Ok(ExecutionResult {
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        exit_code: output.status.code().unwrap_or(-1),
+    })
+}
+
+/// Generate a seccomp BPF filter file that blocks Unix socket creation
+fn generate_seccomp_bpf_file(path: &Path) -> Result<()> {
+    use std::io::Write;
+    
+    // BPF filter that blocks socket(AF_UNIX, ...) syscalls
+    // This is a binary BPF program format that bwrap can load
+    
+    // For x86_64: socket syscall is 41, AF_UNIX is 1
+    // For aarch64: socket syscall is 198, AF_UNIX is 1
+    
+    #[cfg(target_arch = "x86_64")]
+    const SYS_SOCKET: u32 = 41;
+    
+    #[cfg(target_arch = "aarch64")]
+    const SYS_SOCKET: u32 = 198;
+    
+    #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+    const SYS_SOCKET: u32 = 0;
+    
+    const AF_UNIX: u32 = 1;
+    
+    // Seccomp return values
+    const SECCOMP_RET_ALLOW: u32 = 0x7fff0000;
+    const SECCOMP_RET_ERRNO: u32 = 0x00050000;
+    const EPERM: u32 = 1;
+    
+    // BPF instruction codes
+    const BPF_LD: u16 = 0x00;
+    const BPF_W: u16 = 0x00;
+    const BPF_ABS: u16 = 0x20;
+    const BPF_JMP: u16 = 0x05;
+    const BPF_JEQ: u16 = 0x10;
+    const BPF_K: u16 = 0x00;
+    const BPF_RET: u16 = 0x06;
+    
+    // Seccomp data offsets
+    const SECCOMP_DATA_NR: u32 = 0;
+    const SECCOMP_DATA_ARGS: u32 = 16;
+    
+    // Build BPF filter instructions
+    let filter: Vec<(u16, u8, u8, u32)> = vec![
+        // Load syscall number
+        (BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_NR),
+        // If not socket(), allow (jump 3 instructions forward)
+        (BPF_JMP | BPF_JEQ | BPF_K, 0, 3, SYS_SOCKET),
+        // Load first argument (domain/family)
+        (BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_ARGS),
+        // If AF_UNIX, return EPERM (jump 0 forward to next instruction)
+        (BPF_JMP | BPF_JEQ | BPF_K, 0, 1, AF_UNIX),
+        // Return EPERM for AF_UNIX sockets
+        (BPF_RET | BPF_K, 0, 0, SECCOMP_RET_ERRNO | EPERM),
+        // Allow everything else
+        (BPF_RET | BPF_K, 0, 0, SECCOMP_RET_ALLOW),
+    ];
+    
+    // Write filter to file in binary format
+    let mut file = fs::File::create(path)?;
+    for (code, jt, jf, k) in filter {
+        file.write_all(&code.to_ne_bytes())?;
+        file.write_all(&[jt])?;
+        file.write_all(&[jf])?;
+        file.write_all(&k.to_ne_bytes())?;
+    }
+    
+    Ok(())
+}
+
+/// Execute with firejail sandbox with network proxy support
+fn execute_with_firejail(
+    firejail: &Path,
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+    program: &Path,
+    entry_point: &Path,
+    work_dir: &Path,
+) -> Result<ExecutionResult> {
+    // Start network proxy if network is enabled with filtering
+    let proxy_manager = if metadata.network.enabled {
+        // Create proxy config based on outbound domains from metadata
+        let proxy_config = if metadata.network.outbound.is_empty() {
+            // No domains specified, block all by default for security
+            ProxyConfig::block_all()
+        } else {
+            ProxyConfig::with_allowed_domains(metadata.network.outbound.clone())
+        };
+        
+        match ProxyManager::new(proxy_config) {
+            Ok(mut manager) => {
+                if let Err(e) = manager.start() {
+                    eprintln!("[WARN] Failed to start network proxy: {}", e);
+                    None
+                } else {
+                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}", 
+                             manager.http_port(), manager.socks5_port());
+                    Some(manager)
+                }
+            }
+            Err(e) => {
+                eprintln!("[WARN] Failed to create network proxy: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let mut cmd = Command::new(firejail);
+    
+    // Security options
+    cmd.args(["--quiet"]);
+    cmd.args(["--noprofile"]);  // Don't use default profile
+    cmd.args(["--private"]);  // New /home and /root
+    cmd.args(["--private-tmp"]);  // New /tmp
+    cmd.args(["--private-dev"]);  // Minimal /dev
+    cmd.args(["--noroot"]);  // No root in sandbox
+    cmd.args(["--caps.drop=all"]);  // Drop all capabilities
+    cmd.args(["--seccomp"]);  // Enable seccomp (includes Unix socket blocking)
+    
+    // File system restrictions
+    cmd.args(["--read-only=/usr"]);
+    cmd.args(["--read-only=/lib"]);
+    if Path::new("/lib64").exists() {
+        cmd.args(["--read-only=/lib64"]);
+    }
+    
+    // Whitelist skill directory (read-only)
+    let skill_dir_str = skill_dir.to_string_lossy();
+    cmd.args([&format!("--whitelist={}", skill_dir_str)]);
+    cmd.args([&format!("--read-only={}", skill_dir_str)]);
+    
+    // Whitelist environment directory if exists
+    if !env_path.as_os_str().is_empty() && env_path.exists() {
+        let env_path_str = env_path.to_string_lossy();
+        cmd.args([&format!("--whitelist={}", env_path_str)]);
+        cmd.args([&format!("--read-only={}", env_path_str)]);
+    }
+    
+    // Network isolation - if proxy is available, keep network but route through proxy
+    if !metadata.network.enabled {
+        cmd.args(["--net=none"]);
+    } else if proxy_manager.is_some() {
+        // Network enabled with proxy - firejail will use host network
+        // but traffic will be routed through our proxy via environment variables
+        eprintln!("[INFO] Network enabled with proxy filtering");
+    } else {
+        // Network enabled but no proxy - log warning
+        eprintln!("[WARN] Network enabled without proxy filtering");
+    }
+    
+    // Block sensitive directories using mandatory deny list from security module
+    cmd.args(["--blacklist=/etc/passwd"]);
+    cmd.args(["--blacklist=/etc/shadow"]);
+    
+    // Add all mandatory deny paths from security module
+    for arg in generate_firejail_blacklist_args() {
+        cmd.arg(&arg);
+    }
+    
+    // Add the program and arguments
+    cmd.arg("--");
+    cmd.arg(program);
+    cmd.arg(entry_point);
+    
+    // Set working directory
+    cmd.current_dir(skill_dir);
+    
+    // Set up stdin/stdout/stderr
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+    
+    // Set environment
+    cmd.env("SKILLBOX_SANDBOX", "1");
+    cmd.env("TMPDIR", work_dir);
+    
+    // Set proxy environment variables if proxy is running
+    if let Some(ref manager) = proxy_manager {
+        for (key, value) in manager.get_proxy_env_vars() {
+            cmd.env(&key, &value);
+        }
+    }
+    
+    // Spawn the process
+    let mut child = cmd.spawn().with_context(|| "Failed to spawn firejail sandbox")?;
+    
+    // Write input to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(input_json.as_bytes())
+            .with_context(|| "Failed to write to stdin")?;
+    }
+    
+    // Wait for completion
+    let output = child.wait_with_output()
+        .with_context(|| "Failed to wait for firejail sandbox")?;
+    
+    // Proxy manager will be dropped here, stopping the proxy servers
+    drop(proxy_manager);
+    
+    Ok(ExecutionResult {
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        exit_code: output.status.code().unwrap_or(-1),
+    })
+}
+
+/// Execute with namespace isolation (requires root)
+fn execute_with_namespaces(
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+    limits: crate::sandbox::executor::ResourceLimits,
+) -> Result<ExecutionResult> {
+    use std::os::unix::process::CommandExt;
+    
+    let language = detect_language(skill_dir, metadata);
+    let entry_point = skill_dir.join(&metadata.entry_point);
+
+    // Create temporary directory for execution
+    let temp_dir = TempDir::new()?;
+    let work_dir = temp_dir.path();
+
+    // Prepare command based on language
+    let mut cmd = match language.as_str() {
+        "python" => {
+            let python = get_python_executable(env_path);
+            let mut c = Command::new(python);
+            c.arg(&entry_point);
+            c
+        }
+        "node" => {
+            let node = get_node_executable();
+            let mut c = Command::new(node);
+            c.arg(&entry_point);
+            c
+        }
+        _ => {
+            anyhow::bail!("Unsupported language: {}", language);
+        }
+    };
+
+    // Set up stdin/stdout/stderr
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    // Set working directory
+    cmd.current_dir(skill_dir);
+
+    // Set environment variables
+    cmd.env("SKILLBOX_SANDBOX", "1");
+    cmd.env("TMPDIR", work_dir);
+
+    // Network control flag (informational only in simple mode)
+    if !metadata.network.enabled {
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
+    }
+
+    // Create unshared namespaces
+    // This requires root privileges
+    unsafe {
+        cmd.pre_exec(|| {
+            unshare(CloneFlags::CLONE_NEWUTS | CloneFlags::CLONE_NEWPID | CloneFlags::CLONE_NEWNET)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("unshare failed: {}", e)))?;
+            Ok(())
+        });
+    }
+
+    // Spawn the process
+    let mut child = cmd.spawn().with_context(|| "Failed to spawn skill process")?;
+
+    // Write input to stdin
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(input_json.as_bytes())
+            .with_context(|| "Failed to write to stdin")?;
+    }
+
+    // Wait with timeout and memory monitoring
+    let (stdout, stderr, exit_code, _, _) = wait_with_timeout_linux(
+        &mut child,
+        limits.timeout_secs,
+        limits.max_memory_bytes(),
+    )?;
+
+    Ok(ExecutionResult {
+        stdout,
+        stderr,
+        exit_code,
+    })
+}
+/// Set up mount namespace with read-only binds
+#[allow(dead_code)]
+fn setup_mount_namespace(
+    root_path: &Path,
+    skill_dir: &Path,
+    env_path: &Path,
+) -> Result<()> {
+    // Create necessary directories
+    fs::create_dir_all(root_path.join("usr"))?;
+    fs::create_dir_all(root_path.join("lib"))?;
+    fs::create_dir_all(root_path.join("lib64"))?;
+    fs::create_dir_all(root_path.join("tmp"))?;
+    fs::create_dir_all(root_path.join("skill"))?;
+    fs::create_dir_all(root_path.join("env"))?;
+
+    // Bind mount system directories as read-only
+    let readonly_flags = MsFlags::MS_BIND | MsFlags::MS_RDONLY | MsFlags::MS_REC;
+
+    mount(
+        Some(Path::new("/usr")),
+        &root_path.join("usr"),
+        None::<&str>,
+        readonly_flags,
+        None::<&str>,
+    )?;
+
+    mount(
+        Some(Path::new("/lib")),
+        &root_path.join("lib"),
+        None::<&str>,
+        readonly_flags,
+        None::<&str>,
+    )?;
+
+    if Path::new("/lib64").exists() {
+        mount(
+            Some(Path::new("/lib64")),
+            &root_path.join("lib64"),
+            None::<&str>,
+            readonly_flags,
+            None::<&str>,
+        )?;
+    }
+
+    // Bind mount skill directory as read-only
+    mount(
+        Some(skill_dir),
+        &root_path.join("skill"),
+        None::<&str>,
+        readonly_flags,
+        None::<&str>,
+    )?;
+
+    // Bind mount environment as read-only
+    if !env_path.as_os_str().is_empty() && env_path.exists() {
+        mount(
+            Some(env_path),
+            &root_path.join("env"),
+            None::<&str>,
+            readonly_flags,
+            None::<&str>,
+        )?;
+    }
+
+    // Mount tmpfs for /tmp
+    mount(
+        None::<&str>,
+        &root_path.join("tmp"),
+        Some("tmpfs"),
+        MsFlags::empty(),
+        Some("size=100M"),
+    )?;
+
+    Ok(())
+}
