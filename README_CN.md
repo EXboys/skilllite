@@ -253,4 +253,10 @@ entry_point: scripts/main.py
 
 MIT
 
-This project includes third-party dependencies with various licenses. See [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) for details.
+本项目包含各种许可证的第三方依赖项。详见 [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md)。
+
+## 📚 文档
+
+- [快速入门](./docs/zh/GETTING_STARTED.md) - 安装和快速入门指南
+- [项目架构](./docs/zh/ARCHITECTURE.md) - 项目架构和设计
+- [贡献指南](./docs/zh/CONTRIBUTING.md) - 如何贡献代码

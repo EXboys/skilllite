@@ -254,3 +254,9 @@ This is the detailed description of the Skill...
 MIT
 
 This project includes third-party dependencies with various licenses. See [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) for details.
+
+## 📚 Documentation
+
+- [Getting Started](./docs/en/GETTING_STARTED.md) - Installation and quick start guide
+- [Architecture](./docs/en/ARCHITECTURE.md) - Project architecture and design
+- [Contributing Guide](./docs/en/CONTRIBUTING.md) - How to contribute
