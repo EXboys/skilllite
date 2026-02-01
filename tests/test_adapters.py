@@ -565,10 +565,234 @@ class TestLlamaIndexAdapter:
     def test_skilllite_toolspec_to_tool_list(self, mock_manager):
         """Test SkillLiteToolSpec.to_tool_list()."""
         from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
-        
+
         tool_spec = SkillLiteToolSpec.from_manager(mock_manager)
         tools = tool_spec.to_tool_list()
-        
+
         assert len(tools) == 1
         # FunctionTool should have the skill name
         assert tools[0].metadata.name == "test_skill"
+
+
+# ==================== LlamaIndex Security Confirmation Tests ====================
+
+class TestLlamaIndexSecurityConfirmation:
+    """Tests for LlamaIndex adapter security confirmation mechanism."""
+
+    @pytest.mark.skipif(
+        not _has_llamaindex(),
+        reason="LlamaIndex not installed"
+    )
+    def test_toolspec_with_sandbox_level(self, mock_manager):
+        """Test SkillLiteToolSpec with sandbox_level parameter."""
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
+
+        tool_spec = SkillLiteToolSpec.from_manager(
+            mock_manager,
+            sandbox_level=2
+        )
+
+        assert tool_spec.sandbox_level == 2
+        assert tool_spec.confirmation_callback is None
+
+    @pytest.mark.skipif(
+        not _has_llamaindex(),
+        reason="LlamaIndex not installed"
+    )
+    def test_toolspec_with_confirmation_callback(self, mock_manager):
+        """Test SkillLiteToolSpec with confirmation_callback parameter."""
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
+
+        def my_callback(report: str, scan_id: str) -> bool:
+            return True
+
+        tool_spec = SkillLiteToolSpec.from_manager(
+            mock_manager,
+            sandbox_level=3,
+            confirmation_callback=my_callback
+        )
+
+        assert tool_spec.sandbox_level == 3
+        assert tool_spec.confirmation_callback is my_callback
+
+    @pytest.mark.skipif(
+        not _has_llamaindex(),
+        reason="LlamaIndex not installed"
+    )
+    def test_toolspec_run_with_sandbox_level_1_no_scan(self, mock_manager, mock_execution_result):
+        """Test that sandbox_level=1 skips security scan."""
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
+
+        mock_manager.execute.return_value = mock_execution_result
+
+        tool_spec = SkillLiteToolSpec.from_manager(
+            mock_manager,
+            sandbox_level=1
+        )
+
+        tools = tool_spec.to_tool_list()
+        assert len(tools) == 1
+
+        # Execute should work directly without scanning
+        result = tools[0](param1="value1")
+        # LlamaIndex returns ToolOutput, check raw_output
+        assert result.raw_output == "Test output"
+
+    @pytest.mark.skipif(
+        not _has_llamaindex(),
+        reason="LlamaIndex not installed"
+    )
+    def test_toolspec_run_no_callback_returns_security_report(self, mock_manager, mock_execution_result):
+        """Test that high severity issues without callback returns security report."""
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec, SecurityScanResult
+
+        mock_manager.execute.return_value = mock_execution_result
+
+        tool_spec = SkillLiteToolSpec.from_manager(
+            mock_manager,
+            sandbox_level=3
+            # No confirmation_callback
+        )
+
+        # Mock _perform_security_scan to return high severity issues
+        def mock_scan(skill_name, input_data):
+            return SecurityScanResult(
+                is_safe=False,
+                issues=[{"severity": "High", "issue_type": "DangerousOperation"}],
+                scan_id="mock-scan-123",
+                code_hash="hash123",
+                high_severity_count=1,
+            )
+
+        tool_spec._perform_security_scan = mock_scan
+        tools = tool_spec.to_tool_list()
+
+        result = tools[0](param1="value1")
+
+        # Should return security warning message (check raw_output for LlamaIndex)
+        assert "Security confirmation required" in result.raw_output
+        assert "no callback configured" in result.raw_output
+
+    @pytest.mark.skipif(
+        not _has_llamaindex(),
+        reason="LlamaIndex not installed"
+    )
+    def test_toolspec_run_callback_denies_execution(self, mock_manager, mock_execution_result):
+        """Test that callback returning False cancels execution."""
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec, SecurityScanResult
+
+        mock_manager.execute.return_value = mock_execution_result
+
+        callback_called = []
+        def deny_callback(report: str, scan_id: str) -> bool:
+            callback_called.append((report, scan_id))
+            return False  # Deny execution
+
+        tool_spec = SkillLiteToolSpec.from_manager(
+            mock_manager,
+            sandbox_level=3,
+            confirmation_callback=deny_callback
+        )
+
+        # Mock _perform_security_scan
+        def mock_scan(skill_name, input_data):
+            return SecurityScanResult(
+                is_safe=False,
+                issues=[{"severity": "High", "issue_type": "DangerousOperation"}],
+                scan_id="mock-scan-456",
+                code_hash="hash456",
+                high_severity_count=1,
+            )
+
+        tool_spec._perform_security_scan = mock_scan
+        tools = tool_spec.to_tool_list()
+
+        result = tools[0](param1="value1")
+
+        # Callback should be called
+        assert len(callback_called) == 1
+        # Execution should be cancelled (check raw_output for LlamaIndex)
+        assert "cancelled" in result.raw_output.lower()
+
+    @pytest.mark.skipif(
+        not _has_llamaindex(),
+        reason="LlamaIndex not installed"
+    )
+    def test_toolspec_run_callback_approves_execution(self, mock_manager, mock_execution_result):
+        """Test that callback returning True allows execution."""
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec, SecurityScanResult
+
+        mock_manager.execute.return_value = mock_execution_result
+
+        callback_called = []
+        def approve_callback(report: str, scan_id: str) -> bool:
+            callback_called.append((report, scan_id))
+            return True  # Approve execution
+
+        tool_spec = SkillLiteToolSpec.from_manager(
+            mock_manager,
+            sandbox_level=3,
+            confirmation_callback=approve_callback
+        )
+
+        # Mock _perform_security_scan
+        def mock_scan(skill_name, input_data):
+            return SecurityScanResult(
+                is_safe=False,
+                issues=[{"severity": "High", "issue_type": "DangerousOperation"}],
+                scan_id="mock-scan-789",
+                code_hash="hash789",
+                high_severity_count=1,
+            )
+
+        tool_spec._perform_security_scan = mock_scan
+        tools = tool_spec.to_tool_list()
+
+        result = tools[0](param1="value1")
+
+        # Callback should be called
+        assert len(callback_called) == 1
+        # Execution should proceed (check raw_output for LlamaIndex)
+        assert result.raw_output == "Test output"
+
+    @pytest.mark.skipif(
+        not _has_llamaindex(),
+        reason="LlamaIndex not installed"
+    )
+    def test_toolspec_run_safe_code_no_callback(self, mock_manager, mock_execution_result):
+        """Test that safe code (no high severity) executes without callback."""
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec, SecurityScanResult
+
+        mock_manager.execute.return_value = mock_execution_result
+
+        callback_called = []
+        def my_callback(report: str, scan_id: str) -> bool:
+            callback_called.append(True)
+            return True
+
+        tool_spec = SkillLiteToolSpec.from_manager(
+            mock_manager,
+            sandbox_level=3,
+            confirmation_callback=my_callback
+        )
+
+        # Mock _perform_security_scan to return NO high severity issues
+        def mock_scan(skill_name, input_data):
+            return SecurityScanResult(
+                is_safe=True,
+                issues=[{"severity": "Low", "issue_type": "MinorWarning"}],
+                scan_id="mock-scan",
+                code_hash="hash",
+                high_severity_count=0,  # No high severity
+                low_severity_count=1,
+            )
+
+        tool_spec._perform_security_scan = mock_scan
+        tools = tool_spec.to_tool_list()
+
+        result = tools[0](param1="value1")
+
+        # Callback should NOT be called for safe code
+        assert len(callback_called) == 0
+        # Execution should proceed (check raw_output for LlamaIndex)
+        assert result.raw_output == "Test output"

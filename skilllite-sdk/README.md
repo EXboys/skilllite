@@ -242,6 +242,73 @@ Enum for LLM provider formats:
 - `ToolFormat.CLAUDE`
 - `ToolFormat.OPENAI`
 
+## Framework Adapters
+
+SkillLite provides adapters for popular AI frameworks with security confirmation support.
+
+### LangChain Integration
+
+```python
+from skilllite import SkillManager
+from skilllite.core.adapters.langchain import SkillLiteToolkit
+
+manager = SkillManager(skills_dir="./skills")
+
+# Basic usage
+tools = SkillLiteToolkit.from_manager(manager).get_tools()
+
+# With security confirmation (sandbox_level=3)
+def confirm_execution(report: str, scan_id: str) -> bool:
+    print(report)
+    return input("Continue? [y/N]: ").lower() == 'y'
+
+tools = SkillLiteToolkit.from_manager(
+    manager,
+    sandbox_level=3,  # 1=no sandbox, 2=sandbox only, 3=sandbox+scan
+    confirmation_callback=confirm_execution
+).get_tools()
+
+# Use with LangChain agent
+from langchain.agents import AgentExecutor, create_openai_tools_agent
+agent = create_openai_tools_agent(llm, tools, prompt)
+```
+
+### LlamaIndex Integration
+
+```python
+from skilllite import SkillManager
+from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
+
+manager = SkillManager(skills_dir="./skills")
+
+# Basic usage
+tool_spec = SkillLiteToolSpec.from_manager(manager)
+tools = tool_spec.to_tool_list()
+
+# With security confirmation
+def confirm(report: str, scan_id: str) -> bool:
+    print(report)
+    return input("Continue? [y/N]: ").lower() == 'y'
+
+tool_spec = SkillLiteToolSpec.from_manager(
+    manager,
+    sandbox_level=3,
+    confirmation_callback=confirm
+)
+
+# Use with LlamaIndex agent
+from llama_index.core.agent import ReActAgent
+agent = ReActAgent.from_tools(tools, llm=llm)
+```
+
+### Security Levels
+
+| Level | Description |
+|-------|-------------|
+| 1 | No sandbox - direct execution |
+| 2 | Sandbox isolation only |
+| 3 | Sandbox + static security scan (requires confirmation for high-severity issues) |
+
 ## OpenCode Integration
 
 SkillLite can be integrated with [OpenCode](https://github.com/opencode-ai/opencode) as an MCP (Model Context Protocol) server, providing secure sandbox execution capabilities.
