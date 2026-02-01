@@ -1,14 +1,22 @@
 """
-LlamaIndex Practical Example: RAG + SkillLite Skill Execution
+LlamaIndex Practical Example: Using SkillLite with LlamaIndex Agents
 
 Prerequisites:
-  pip install llama-index
+  pip install skilllite[llamaindex] llama-index-llms-openai
 
-Workflow:
-  1. LlamaIndex performs Retrieval Augmented Generation (RAG)
-  2. Select appropriate skills based on context
-  3. SkillLite safely executes skills
-  4. Aggregate results and return to user
+Usage with SkillLiteToolSpec (Recommended):
+  from skilllite import SkillManager
+  from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
+  from llama_index.core.agent import ReActAgent
+  from llama_index.llms.openai import OpenAI
+
+  manager = SkillManager(skills_dir="./skills")
+  tool_spec = SkillLiteToolSpec.from_manager(manager)
+  tools = tool_spec.to_tool_list()
+
+  llm = OpenAI(model="gpt-4")
+  agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
+  response = agent.chat("Your query")
 """
 
 import sys
@@ -22,108 +30,116 @@ from skilllite import SkillManager
 skills_dir = Path(__file__).parent / "../../.skills"
 manager = SkillManager(skills_dir=str(skills_dir))
 
-# ========== Approach 1: Simple RAG + Skill Execution ==========
 
-def rag_with_skills(query: str, documents: list = None):
+# ========== Approach 1: Using SkillLiteToolSpec (Recommended) ==========
+
+def llamaindex_agent_with_toolspec(query: str):
     """
-    Basic RAG + skill execution workflow
-
-    Args:
-        query: User query
-        documents: List of documents
-
-    Returns:
-        Processing result
-    """
-    # 1. Get available skills
-    tools = manager.get_tools()
-
-    # 2. Add LlamaIndex RAG logic here
-    # from llama_index.core import VectorStoreIndex
-    # index = VectorStoreIndex.from_documents(documents)
-    # context = index.query(query)
-
-    # 3. Select appropriate skill based on query (simplified)
-    if any(keyword in query for keyword in ["analyze", "data"]):
-        # Use analysis skill
-        pass
-
-    return "Query processing complete"
-
-
-# ========== Approach 2: Complete LlamaIndex Agent ==========
-
-def llamaindex_agent(query: str):
-    """
-    Using LlamaIndex Agent (requires llama-index installation)
+    Using LlamaIndex Agent with SkillLiteToolSpec (recommended approach)
     """
     try:
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
         from llama_index.core.agent import ReActAgent
         from llama_index.llms.openai import OpenAI as LlamaOpenAI
 
-        # Prepare tools (OpenAI format)
-        tools = manager.get_tools()
+        # Create LlamaIndex tools using SkillLiteToolSpec
+        tool_spec = SkillLiteToolSpec.from_manager(manager)
+        tools = tool_spec.to_tool_list()
+
+        print(f"✅ Created {len(tools)} LlamaIndex tools")
+        for tool in tools:
+            print(f"   - {tool.metadata.name}: {tool.metadata.description}")
 
         # Initialize LLM
         llm = LlamaOpenAI(model="gpt-4")
 
         # Create Agent
-        agent = ReActAgent.from_tools(
-            tools=[t.to_openai_format() for t in tools],
-            llm=llm,
-            verbose=True
-        )
+        agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
 
         # Execute
         response = agent.chat(query)
         return str(response)
-    except ImportError:
-        print("❌ Please install LlamaIndex first: pip install llama-index")
+    except ImportError as e:
+        print(f"❌ Please install dependencies: pip install skilllite[llamaindex] llama-index-llms-openai")
+        print(f"   Error: {e}")
         return None
 
 
-# ========== Approach 3: RAG Pipeline ==========
+# ========== Approach 2: With Options ==========
 
-def rag_pipeline(documents: list, query: str):
+def llamaindex_agent_with_options(query: str):
     """
-    Complete RAG pipeline example
-
-    Args:
-        documents: List of documents
-        query: User query
+    Using SkillLiteToolSpec with custom options
     """
     try:
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
+        from llama_index.core.agent import ReActAgent
+        from llama_index.llms.openai import OpenAI as LlamaOpenAI
+
+        # Create tools with options
+        tool_spec = SkillLiteToolSpec.from_manager(
+            manager,
+            skill_names=["calculator"],  # Only specific skills
+            allow_network=True,           # Allow network access
+            timeout=60                    # Execution timeout
+        )
+        tools = tool_spec.to_tool_list()
+
+        llm = LlamaOpenAI(model="gpt-4")
+        agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
+
+        response = agent.chat(query)
+        return str(response)
+    except ImportError as e:
+        print(f"❌ Missing dependencies: {e}")
+        return None
+
+
+# ========== Approach 3: RAG + Skills Pipeline ==========
+
+def rag_with_skills(documents: list, query: str):
+    """
+    Complete RAG + skill execution pipeline
+    """
+    try:
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
         from llama_index.core import VectorStoreIndex
+        from llama_index.core.agent import ReActAgent
+        from llama_index.llms.openai import OpenAI as LlamaOpenAI
 
-        # 1. Build index
+        # 1. Build RAG index
         index = VectorStoreIndex.from_documents(documents)
+        query_engine = index.as_query_engine()
 
-        # 2. Execute query
-        retriever = index.as_retriever()
-        nodes = retriever.retrieve(query)
+        # 2. Create skill tools
+        tool_spec = SkillLiteToolSpec.from_manager(manager)
+        skill_tools = tool_spec.to_tool_list()
 
-        # 3. Select skills based on retrieval results
-        tools = manager.get_tools()
+        # 3. Create agent with both RAG and skills
+        llm = LlamaOpenAI(model="gpt-4")
+        agent = ReActAgent.from_tools(
+            skill_tools,  # Add skill tools
+            llm=llm,
+            verbose=True
+        )
 
-        # 4. Execute relevant skills
-        results = []
-        for node in nodes:
-            # Select skills based on node content here
-            pass
-
-        return results
-    except ImportError:
-        print("❌ Please install LlamaIndex first: pip install llama-index")
+        # 4. Execute query
+        response = agent.chat(query)
+        return str(response)
+    except ImportError as e:
+        print(f"❌ Missing dependencies: {e}")
         return None
 
 
 # ========== Test ==========
 
 if __name__ == "__main__":
-    # Simple RAG
-    # result = rag_with_skills("Analyze this data")
+    print("Available approaches:")
+    print("1. llamaindex_agent_with_toolspec() - SkillLiteToolSpec (recommended)")
+    print("2. llamaindex_agent_with_options() - With custom options")
+    print("3. rag_with_skills() - RAG + Skills pipeline")
+    print()
 
-    # LlamaIndex Agent
-    # result = llamaindex_agent("Help me with this task")
-
-    pass
+    # Uncomment to test:
+    # result = llamaindex_agent_with_toolspec("Calculate 15 * 23")
+    # print(result)

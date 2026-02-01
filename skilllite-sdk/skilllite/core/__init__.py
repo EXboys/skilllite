@@ -62,4 +62,6 @@ __all__ = [
     "ToolFormat",
     # Utilities
     "parse_skill_metadata",
+    # Adapters (lazy loaded)
+    "adapters",
 ]

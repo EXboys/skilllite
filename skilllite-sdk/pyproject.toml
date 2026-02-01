@@ -36,10 +36,14 @@ dependencies = [
 openai = ["openai>=1.0.0"]
 anthropic = ["anthropic>=0.18.0"]
 mcp = ["mcp>=1.0.0"]
+langchain = ["langchain-core>=0.1.0"]
+llamaindex = ["llama-index-core>=0.10.0"]
 all = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
     "mcp>=1.0.0",
+    "langchain-core>=0.1.0",
+    "llama-index-core>=0.10.0",
 ]
 dev = [
     "pytest>=7.0",

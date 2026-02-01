@@ -2,17 +2,21 @@
 LangChain Practical Example: Building an Agent with SkillLite
 
 Prerequisites:
-  pip install langchain langchain-openai
-  Configure .env file
+  pip install skilllite[langchain] langchain-openai
+  Configure OPENAI_API_KEY environment variable
 
-Usage:
+Usage with SkillLiteToolkit (Recommended):
+  from skilllite import SkillManager
+  from skilllite.core.adapters.langchain import SkillLiteToolkit
   from langchain.agents import create_openai_tools_agent, AgentExecutor
-  from langchain.prompts import ChatPromptTemplate
+  from langchain_openai import ChatOpenAI
 
-  # 1. Prepare tools
-  tools = manager.get_tools()
+  # 1. Create tools from SkillManager
+  manager = SkillManager(skills_dir="./skills")
+  tools = SkillLiteToolkit.from_manager(manager)
 
   # 2. Create agent
+  llm = ChatOpenAI(model="gpt-4")
   agent = create_openai_tools_agent(llm, tools, prompt)
 
   # 3. Execute
@@ -26,12 +30,10 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../skilllite-sdk'))
 
 from skilllite import SkillManager
-from openai import OpenAI
 
 # ========== Initialize ==========
 skills_dir = Path(__file__).parent / "../../.skills"
 manager = SkillManager(skills_dir=str(skills_dir))
-client = OpenAI()  # Automatically reads OPENAI_API_KEY
 
 # ========== Approach 1: Manual Agent Loop (No Dependencies) ==========
 
@@ -88,19 +90,20 @@ def simple_agent(user_request: str, max_iterations: int = 5):
     return "Maximum iterations reached"
 
 
-# ========== Approach 2: Using LangChain (Recommended for Production) ==========
+# ========== Approach 2: Using SkillLiteToolkit (Recommended) ==========
 
-def langchain_agent(user_request: str):
+def langchain_agent_with_toolkit(user_request: str):
     """
-    Using LangChain Agent (requires langchain installation)
+    Using LangChain Agent with SkillLiteToolkit (recommended approach)
     """
     try:
+        from skilllite.core.adapters.langchain import SkillLiteToolkit
         from langchain.agents import create_openai_tools_agent, AgentExecutor
         from langchain_openai import ChatOpenAI
         from langchain.prompts import ChatPromptTemplate
 
-        # Prepare tools
-        tools = manager.get_tools()
+        # Create LangChain tools using SkillLiteToolkit
+        tools = SkillLiteToolkit.from_manager(manager)
 
         # Initialize LLM
         llm = ChatOpenAI(model="gpt-4")
@@ -119,8 +122,37 @@ def langchain_agent(user_request: str):
         result = executor.invoke({"input": user_request})
 
         return result["output"]
+    except ImportError as e:
+        print(f"❌ Please install dependencies: pip install skilllite[langchain] langchain-openai")
+        print(f"   Error: {e}")
+        return None
+
+
+# ========== Approach 3: Using AgenticLoop (Built-in, No LangChain) ==========
+
+def agentic_loop_example(user_request: str):
+    """
+    Using SkillLite's built-in AgenticLoop (no LangChain dependency)
+    """
+    try:
+        from openai import OpenAI
+
+        client = OpenAI()  # Reads OPENAI_API_KEY from environment
+
+        # Create agentic loop
+        loop = manager.create_agentic_loop(
+            client=client,
+            model="gpt-4",
+            system_prompt="You are a helpful assistant.",
+            max_iterations=10,
+            api_format="openai"
+        )
+
+        # Run the loop
+        result = loop.run(user_request)
+        return result
     except ImportError:
-        print("❌ Please install LangChain first: pip install langchain langchain-openai")
+        print("❌ Please install openai: pip install openai")
         return None
 
 
@@ -129,12 +161,14 @@ def langchain_agent(user_request: str):
 if __name__ == "__main__":
     request = "Help me analyze today's weather"
 
-    # Using Approach 1 (no dependencies)
-    print("Using simple Agent loop...")
-    # result = simple_agent(request)
-    # print(result)
+    print("Available approaches:")
+    print("1. simple_agent() - Manual loop, no dependencies")
+    print("2. langchain_agent_with_toolkit() - LangChain with SkillLiteToolkit")
+    print("3. agentic_loop_example() - Built-in AgenticLoop")
+    print()
 
-    # Using Approach 2 (LangChain)
-    print("Using LangChain Agent...")
-    # result = langchain_agent(request)
+    # Uncomment to test:
+    # result = simple_agent(request)
+    # result = langchain_agent_with_toolkit(request)
+    # result = agentic_loop_example(request)
     # print(result)
