@@ -1,2 +1,0 @@
-"""SkillLite SDK Tests."""
-
