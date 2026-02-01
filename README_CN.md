@@ -249,6 +249,48 @@ entry_point: scripts/main.py
 - **ToolDefinition** - OpenAI 兼容的工具定义
 - **SchemaInferrer** - 智能参数 Schema 推断
 
+## 🔌 OpenCode 集成
+
+SkillLite 可以作为 MCP (Model Context Protocol) 服务器集成到 [OpenCode](https://github.com/opencode-ai/opencode)，为其提供安全沙箱执行能力。
+
+### 一键集成
+
+```bash
+# 安装 SkillLite（含 MCP 支持）
+pip install skilllite[mcp]
+
+# 一键初始化（自动检测最佳配置）
+skilllite init-opencode
+
+# 启动 OpenCode
+opencode
+```
+
+`init-opencode` 命令会自动：
+- 检测最佳启动方式（uvx、pipx、skilllite 或 python）
+- 创建 `opencode.json` 配置文件
+- 生成 `.opencode/skills/skilllite/SKILL.md` 使用说明
+- 发现项目中的预定义技能
+
+### 可用的 MCP 工具
+
+| 工具 | 描述 |
+|------|------|
+| `skilllite_list_skills` | 列出所有可用技能 |
+| `skilllite_get_skill_info` | 获取技能详情和参数 |
+| `skilllite_run_skill` | 执行预定义技能 |
+| `skilllite_scan_code` | 扫描代码安全性 |
+| `skilllite_execute_code` | 在安全沙箱中执行代码 |
+
+### 安全特性
+
+- **系统级沙箱**：macOS Seatbelt / Linux Namespace 隔离
+- **安全扫描**：执行前静态分析代码
+- **用户确认**：危险代码需要明确批准
+- **Scan ID 验证**：防止扫描和执行之间代码被篡改
+
+详细文档请参阅 [OpenCode 集成教程](./tutorials/07_opencode_integration/README.md)。
+
 ## 📄 License
 
 MIT

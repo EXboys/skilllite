@@ -70,7 +70,7 @@ EOF
 | [04. LangChain Integration](./tutorials/04_langchain_integration) | 15 min | Integration with LangChain framework |
 | [05. LlamaIndex Integration](./tutorials/05_llamaindex_integration) | 15 min | RAG + skill execution |
 | [06. MCP Server](./tutorials/06_mcp_server) | 10 min | Claude Desktop integration |
-| [07. OpenCode Integration](./tutorials/07_opencode_integration) | 10 min | OpenCode AI coding agent integration |
+| [07. OpenCode Integration](./tutorials/07_opencode_integration) | 5 min | One-command OpenCode integration |
 
 👉 **[View All Tutorials](./tutorials/README.md)**
 

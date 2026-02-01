@@ -242,6 +242,59 @@ Enum for LLM provider formats:
 - `ToolFormat.CLAUDE`
 - `ToolFormat.OPENAI`
 
+## OpenCode Integration
+
+SkillLite can be integrated with [OpenCode](https://github.com/opencode-ai/opencode) as an MCP (Model Context Protocol) server, providing secure sandbox execution capabilities.
+
+### Quick Setup
+
+```bash
+# Install with MCP support
+pip install skilllite[mcp]
+
+# One-command setup for OpenCode
+skilllite init-opencode
+
+# Start OpenCode
+opencode
+```
+
+The `init-opencode` command automatically:
+- Detects the best way to start the MCP server (uvx, pipx, skilllite, or python)
+- Creates `opencode.json` with optimal configuration
+- Generates `.opencode/skills/skilllite/SKILL.md` with usage instructions
+- Discovers your pre-defined skills
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `skilllite_list_skills` | List all available skills |
+| `skilllite_get_skill_info` | Get skill details and input schema |
+| `skilllite_run_skill` | Execute a pre-defined skill |
+| `skilllite_scan_code` | Scan code for security issues |
+| `skilllite_execute_code` | Execute code in secure sandbox |
+
+### Security Features
+
+- **System-level Sandbox**: macOS Seatbelt / Linux Namespace isolation
+- **Security Scanning**: Static analysis before execution
+- **User Confirmation**: Dangerous code requires explicit approval
+- **Scan ID Verification**: Prevents code modification between scan and execution
+
+For detailed documentation, see [OpenCode Integration Tutorial](../tutorials/07_opencode_integration/README.md).
+
+## CLI Commands
+
+```bash
+skilllite install        # Install skillbox sandbox binary
+skilllite uninstall      # Remove skillbox binary
+skilllite status         # Show installation status
+skilllite version        # Show version information
+skilllite mcp            # Start MCP server
+skilllite init-opencode  # Initialize OpenCode integration
+```
+
 ## License
 
 MIT License
