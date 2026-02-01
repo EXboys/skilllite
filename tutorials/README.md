@@ -12,6 +12,7 @@ Complete SkillLite usage examples to quickly get started with all core features 
 | [04. LangChain Integration](./04_langchain_integration) | 15 min | ⭐⭐⭐ | Integration with LangChain framework |
 | [05. LlamaIndex Integration](./05_llamaindex_integration) | 15 min | ⭐⭐⭐ | RAG + skill execution |
 | [06. MCP Server](./06_mcp_server) | 10 min | ⭐⭐ | Claude Desktop integration |
+| [07. OpenCode Integration](./07_opencode_integration) | 10 min | ⭐⭐ | OpenCode AI coding agent integration |
 
 ## 🚀 Quick Start
 
@@ -54,6 +55,10 @@ python hello_world.py
 #### Using Claude Desktop
 1. [01. Basic Usage](./01_basic/README.md)
 2. [06. MCP Server](./06_mcp_server/README.md)
+
+#### Using OpenCode
+1. [01. Basic Usage](./01_basic/README.md)
+2. [07. OpenCode Integration](./07_opencode_integration/README.md)
 
 ## 📖 Code Examples (Quick Reference)
 
@@ -126,6 +131,9 @@ response = agent.chat("Your query")
 
 ### 06_mcp_server (MCP Server)
 - `mcp_client_test.py` - MCP client test
+
+### 07_opencode_integration (OpenCode)
+- `verify_setup.py` - Verify OpenCode + SkillLite setup
 
 ## ⚙️ Environment Configuration
 

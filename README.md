@@ -185,60 +185,84 @@ SkillLite uses a **Rust-implemented native system-level sandbox**, not Docker or
 
 ## 🚀 Quick Start
 
-### 1. Install Rust Sandbox Executor
+### Installation (Recommended: pip)
 
-This project uses a Rust-written isolated sandbox to securely execute Skills scripts. You need to install Rust and compile the sandbox first.
+```bash
+# Install SkillLite SDK
+pip install skilllite
 
-> ⚠️ **Platform Support**: Currently only supports **macOS** and **Linux**. Windows is not supported yet.
+# Install the sandbox binary (auto-downloads pre-compiled binary)
+skilllite install
 
-#### Install Rust (if not already installed)
+# Verify installation
+skilllite status
+```
+
+That's it! No Rust, no Docker, no complex setup required.
+
+> ⚠️ **Platform Support**: macOS and Linux only. Windows is not supported yet.
+
+### Run Your First Example
+
+```python
+from skilllite import SkillRunner
+
+runner = SkillRunner()
+result = runner.run("Calculate 15 * 27")
+print(result)
+```
+
+### Environment Configuration
+
+```bash
+# Create .env file with your LLM API configuration
+cat > .env << EOF
+BASE_URL=https://api.deepseek.com/v1
+API_KEY=your_api_key_here
+MODEL=deepseek-chat
+EOF
+```
+
+## 📚 Tutorials
+
+| Tutorial | Time | Description |
+|----------|------|-------------|
+| [01. Basic Usage](./tutorials/01_basic) | 5 min | Simplest examples, one-line execution |
+| [02. Skill Management](./tutorials/02_skill_management) | 10 min | Create and manage skills |
+| [03. Agentic Loop](./tutorials/03_agentic_loop) | 15 min | Multi-turn conversations and tool calls |
+| [04. LangChain Integration](./tutorials/04_langchain_integration) | 15 min | Integration with LangChain framework |
+| [05. LlamaIndex Integration](./tutorials/05_llamaindex_integration) | 15 min | RAG + skill execution |
+| [06. MCP Server](./tutorials/06_mcp_server) | 10 min | Claude Desktop integration |
+| [07. OpenCode Integration](./tutorials/07_opencode_integration) | 10 min | OpenCode AI coding agent integration |
+
+👉 **[View All Tutorials](./tutorials/README.md)**
+
+## 🔧 Alternative: Build from Source
+
+<details>
+<summary>Click to expand (for contributors or custom builds)</summary>
+
+### Install Rust (if not already installed)
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Reload environment variables after installation
 source ~/.cargo/env
-
-# Verify installation
-rustc --version
-cargo --version
 ```
 
-#### Compile the Sandbox Executor
+### Compile the Sandbox Executor
 
 ```bash
-# Enter Rust project directory and compile
 cd skillbox
 cargo build --release
-
-# Optional: Install to system path (recommended)
 cargo install --path .
-
-# Verify installation
 skillbox --help
 ```
 
-After compilation, the `skillbox` binary will be located at:
-- If using `cargo install`: `~/.cargo/bin/skillbox`
-- If only `cargo build`: `skillbox/target/release/skillbox`
+After compilation, the binary will be at:
+- `cargo install`: `~/.cargo/bin/skillbox`
+- `cargo build`: `skillbox/target/release/skillbox`
 
-### 2. Environment Configuration
-
-```bash
-# Copy environment variable template
-cp .env.example .env
-
-# Edit .env with your API configuration
-# BASE_URL=https://api.deepseek.com/v1
-# API_KEY=your_api_key_here
-# MODEL=deepseek-chat
-```
-
-### 3. Run Example
-
-```bash
-python3 simple_demo.py
-```
+</details>
 
 ## 📁 Project Structure
 
