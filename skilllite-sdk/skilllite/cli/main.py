@@ -1,0 +1,142 @@
+"""
+Main entry point for skilllite CLI.
+
+Provides the argument parser and main function.
+"""
+
+import argparse
+import sys
+from typing import List, Optional
+
+from ..sandbox.skillbox import BINARY_VERSION
+from .binary import cmd_install, cmd_uninstall, cmd_status, cmd_version
+from .mcp import cmd_mcp_server
+from .integrations.opencode import cmd_init_opencode
+
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create the argument parser."""
+    parser = argparse.ArgumentParser(
+        prog="skilllite",
+        description="SkillLite - A lightweight Skills execution engine with LLM integration",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  skilllite install          Install the sandbox binary
+  skilllite install --force  Force reinstall
+  skilllite status           Check installation status
+  skilllite uninstall        Remove the binary
+  skilllite mcp              Start MCP server (requires pip install skilllite[mcp])
+  skilllite init-opencode    Initialize OpenCode integration
+
+For more information, visit: https://github.com/skilllite/skilllite
+        """
+    )
+
+    parser.add_argument(
+        "-V", "--version",
+        action="store_true",
+        help="Show version information"
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # install command
+    install_parser = subparsers.add_parser(
+        "install",
+        help="Download and install the skillbox sandbox binary"
+    )
+    install_parser.add_argument(
+        "--version",
+        dest="version",
+        default=None,
+        help=f"Version to install (default: {BINARY_VERSION})"
+    )
+    install_parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force reinstall even if already installed"
+    )
+    install_parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Suppress progress output"
+    )
+    install_parser.set_defaults(func=cmd_install)
+
+    # uninstall command
+    uninstall_parser = subparsers.add_parser(
+        "uninstall",
+        help="Remove the installed skillbox binary"
+    )
+    uninstall_parser.set_defaults(func=cmd_uninstall)
+
+    # status command
+    status_parser = subparsers.add_parser(
+        "status",
+        help="Show installation status"
+    )
+    status_parser.set_defaults(func=cmd_status)
+
+    # version command (alternative to -V)
+    version_parser = subparsers.add_parser(
+        "version",
+        help="Show version information"
+    )
+    version_parser.set_defaults(func=cmd_version)
+
+    # mcp command
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="Start MCP server for SkillLite"
+    )
+    mcp_parser.set_defaults(func=cmd_mcp_server)
+
+    # init-opencode command
+    init_opencode_parser = subparsers.add_parser(
+        "init-opencode",
+        help="Initialize SkillLite integration for OpenCode"
+    )
+    init_opencode_parser.add_argument(
+        "--project-dir", "-p",
+        dest="project_dir",
+        default=None,
+        help="Project directory (default: current directory)"
+    )
+    init_opencode_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default="./.skills",
+        help="Skills directory path (default: ./.skills)"
+    )
+    init_opencode_parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force overwrite existing opencode.json"
+    )
+    init_opencode_parser.set_defaults(func=cmd_init_opencode)
+
+    return parser
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    """Main entry point for the CLI."""
+    parser = create_parser()
+    args = parser.parse_args(argv)
+
+    # Handle -V/--version flag
+    if args.version:
+        return cmd_version(args)
+
+    # Handle no command
+    if not args.command:
+        parser.print_help()
+        return 0
+
+    # Execute the command
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
