@@ -55,7 +55,7 @@ pub fn get_process_memory(pid: u32) -> Option<u64> {
 #[cfg(target_os = "linux")]
 pub fn get_process_memory(pid: u32) -> Option<u64> {
     let status = std::fs::read_to_string(format!("/proc/{}/status", pid)).ok()?;
-    
+
     for line in status.lines() {
         if line.starts_with("VmRSS:") {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -67,7 +67,46 @@ pub fn get_process_memory(pid: u32) -> Option<u64> {
             break;
         }
     }
-    
+
+    None
+}
+
+/// Get memory usage of a process in bytes (Windows version)
+/// Uses tasklist command to get working set size
+#[cfg(target_os = "windows")]
+pub fn get_process_memory(pid: u32) -> Option<u64> {
+    use std::process::Command;
+
+    // Use tasklist to get memory info
+    // Format: tasklist /FI "PID eq <pid>" /FO CSV /NH
+    let output = Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        // CSV format: "Image Name","PID","Session Name","Session#","Mem Usage"
+        // Example: "python.exe","1234","Console","1","50,000 K"
+        for line in output_str.lines() {
+            if line.contains(&pid.to_string()) {
+                // Parse the memory field (last column)
+                let parts: Vec<&str> = line.split(',').collect();
+                if parts.len() >= 5 {
+                    // Remove quotes and "K" suffix, handle comma in numbers
+                    let mem_str = parts[4]
+                        .trim()
+                        .trim_matches('"')
+                        .replace(" K", "")
+                        .replace(",", "");
+                    if let Ok(mem_kb) = mem_str.parse::<u64>() {
+                        return Some(mem_kb * 1024);
+                    }
+                }
+            }
+        }
+    }
+
     None
 }
 

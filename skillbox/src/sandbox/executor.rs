@@ -339,17 +339,44 @@ fn execute_platform_sandbox_with_limits(
     super::macos::execute_with_limits(skill_dir, env_path, metadata, input_json, limits)
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(target_os = "windows")]
+fn execute_platform_sandbox(
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+) -> Result<ExecutionResult> {
+    execute_platform_sandbox_with_limits(
+        skill_dir,
+        env_path,
+        metadata,
+        input_json,
+        ResourceLimits::default(),
+    )
+}
+
+#[cfg(target_os = "windows")]
+fn execute_platform_sandbox_with_limits(
+    skill_dir: &Path,
+    env_path: &Path,
+    metadata: &SkillMetadata,
+    input_json: &str,
+    limits: ResourceLimits,
+) -> Result<ExecutionResult> {
+    super::windows::execute_with_limits(skill_dir, env_path, metadata, input_json, limits)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn execute_platform_sandbox(
     _skill_dir: &Path,
     _env_path: &Path,
     _metadata: &SkillMetadata,
     _input_json: &str,
 ) -> Result<ExecutionResult> {
-    anyhow::bail!("Unsupported platform. Only Linux and macOS are supported.")
+    anyhow::bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn execute_platform_sandbox_with_limits(
     _skill_dir: &Path,
     _env_path: &Path,
@@ -357,7 +384,7 @@ fn execute_platform_sandbox_with_limits(
     _input_json: &str,
     _limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    anyhow::bail!("Unsupported platform. Only Linux and macOS are supported.")
+    anyhow::bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
 }
 
 /// Execute without any sandbox (Level 1)
@@ -386,6 +413,15 @@ fn execute_simple_without_sandbox(
         limits,
     );
 
-    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-    anyhow::bail!("Unsupported platform. Only Linux and macOS are supported.")
+    #[cfg(target_os = "windows")]
+    return super::windows::execute_simple_with_limits(
+        skill_dir,
+        env_path,
+        metadata,
+        input_json,
+        limits,
+    );
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    anyhow::bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
 }
