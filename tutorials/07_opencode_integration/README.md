@@ -24,6 +24,8 @@ skilllite init-opencode
 opencode
 ```
 
+![OpenCode Init](../../docs/images/opencode-init.png)
+
 That's it! The `init-opencode` command automatically:
 - Installs the skillbox sandbox binary
 - Detects the best way to start the MCP server
@@ -131,6 +133,8 @@ OpenCode: Code executed successfully in sandbox.
 ## Usage Examples
 
 After setup, start OpenCode and try these commands:
+
+![OpenCode Work](../../docs/images/opencode-work.png)
 
 ### List Available Skills
 ```
