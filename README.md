@@ -104,8 +104,8 @@ python3 benchmark/security_vs.py --output security_results.json
 |------|----------|--------|---------|-----|
 | **Warm Start Latency** | 40 ms | 194 ms | 672 ms | 596 ms |
 | **Cold Start Latency** | 492 ms | 120s | ~5s | ~1s |
-| **Memory Usage** | ~10 MB | ~100 MB | ~50 MB | 84 MB |
-| **Security** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **Memory Usage** | 10 MB | ~100 MB | ~50 MB | 84 MB |
+| **Security** | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
 | **Deployment Complexity** | Single binary | Requires daemon | Requires Node.js | Requires installation |
 | **Platform Support** | macOS/Linux | All platforms | All platforms | macOS/Linux |
 
