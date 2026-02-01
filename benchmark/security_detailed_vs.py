@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-SkillLite 细化安全性基准测试
+SkillLite Detailed Security Benchmark
 
-这个脚本更精确地测试沙箱的安全行为，区分：
-1. 操作本身是否被阻止（函数调用抛出异常）
-2. 操作执行了但效果被限制（函数返回错误码或空结果）
-3. 操作完全成功
+This script more precisely tests sandbox security behavior, distinguishing:
+1. Whether the operation itself is blocked (function call throws exception)
+2. Operation executed but effect is limited (function returns error code or empty result)
+3. Operation completely succeeded
 
-测试维度：
-- os.listdir('/') - 区分：抛出异常 vs 返回空列表 vs 返回完整列表
-- os.system() - 区分：函数不可调用 vs 命令执行失败 vs 命令执行成功
-- subprocess - 区分：模块不可导入 vs 执行失败 vs 执行成功
-- 文件读写 - 区分：权限拒绝 vs 文件不存在 vs 成功
+Test dimensions:
+- os.listdir('/') - Distinguish: throws exception vs returns empty list vs returns full list
+- os.system() - Distinguish: function not callable vs command execution failed vs command execution succeeded
+- subprocess - Distinguish: module not importable vs execution failed vs execution succeeded
+- File read/write - Distinguish: permission denied vs file not found vs success
 """
 
 import subprocess
@@ -25,16 +25,16 @@ from enum import Enum
 from typing import Optional, Dict, List
 
 class DetailedResult(Enum):
-    """细化的安全测试结果"""
-    FUNCTION_BLOCKED = "🔒 函数被阻止"      # 函数本身不可调用（抛出异常）
-    EFFECT_LIMITED = "🛡️ 效果被限制"        # 函数可调用但效果被限制
-    FULLY_ALLOWED = "❌ 完全允许"           # 操作完全成功
-    ERROR = "⚙️ 测试错误"                   # 测试执行出错
-    SKIPPED = "⏭️ 跳过"                     # 测试被跳过
+    """Detailed security test result"""
+    FUNCTION_BLOCKED = "🔒 Function Blocked"   # Function itself not callable (throws exception)
+    EFFECT_LIMITED = "🛡️ Effect Limited"       # Function callable but effect is limited
+    FULLY_ALLOWED = "❌ Fully Allowed"          # Operation completely succeeded
+    ERROR = "⚙️ Test Error"                     # Test execution error
+    SKIPPED = "⏭️ Skipped"                      # Test was skipped
 
 @dataclass
 class DetailedSecurityTest:
-    """细化的安全测试用例"""
+    """Detailed security test case"""
     name: str
     category: str
     description: str
@@ -42,15 +42,15 @@ class DetailedSecurityTest:
     timeout: int = 10
 
 # ============================================================
-# 细化的安全测试用例
+# Detailed security test cases
 # ============================================================
 
 DETAILED_SECURITY_TESTS = [
-    # ========== os.listdir 测试 ==========
+    # ========== os.listdir Test ==========
     DetailedSecurityTest(
         name="listdir_root_detailed",
-        category="文件系统",
-        description="os.listdir('/') 细化测试",
+        category="File System",
+        description="os.listdir('/') Detailed Test",
         code='''
 import json
 import os
@@ -72,9 +72,9 @@ try:
     result["file_count"] = len(files)
     
     if len(files) == 0:
-        result["conclusion"] = "EFFECT_LIMITED"  # 函数可调用但返回空列表
+        result["conclusion"] = "EFFECT_LIMITED"  # Function callable but returns empty list
     else:
-        result["conclusion"] = "FULLY_ALLOWED"   # 完全成功
+        result["conclusion"] = "FULLY_ALLOWED"   # Fully succeeded
         
 except PermissionError as e:
     result["exception_type"] = "PermissionError"
@@ -95,11 +95,11 @@ print(json.dumps(result, indent=2))
 '''
     ),
     
-    # ========== os.system 测试 ==========
+    # ========== os.system Test ==========
     DetailedSecurityTest(
         name="os_system_detailed",
-        category="进程",
-        description="os.system() 细化测试",
+        category="Process",
+        description="os.system() Detailed Test",
         code='''
 import json
 import os
@@ -121,9 +121,9 @@ if not result["function_exists"]:
     print(json.dumps(result, indent=2))
     sys.exit(0)
 
-# 测试 1: 简单的 echo 命令（不依赖任何文件读取）
+# Test 1: Simple echo command (does not depend on any file reading)
 try:
-    # 使用 echo 命令，它不需要读取任何系统文件
+    # Use echo command, which doesn't need to read any system files
     ret = os.system("echo 'sandbox_test_marker_12345' > /dev/null 2>&1")
     result["function_callable"] = True
     result["return_code"] = ret
@@ -157,11 +157,11 @@ print(json.dumps(result, indent=2))
 '''
     ),
     
-    # ========== os.system 执行 shell 命令测试 ==========
+    # ========== os.system Execute shell command Test ==========
     DetailedSecurityTest(
         name="os_system_shell_detailed",
-        category="进程",
-        description="os.system() 执行 shell 命令细化测试",
+        category="Process",
+        description="os.system() Execute shell command Detailed Test",
         code='''
 import json
 import os
@@ -172,7 +172,7 @@ result = {
     "tests": []
 }
 
-# 测试 1: 创建临时文件（测试 shell 是否真的在执行）
+# Test 1: Create temporary file (test if shell is actually executing)
 test1 = {
     "command": "touch /tmp/sandbox_test_file",
     "success": False,
@@ -190,7 +190,7 @@ except Exception as e:
     test1["error"] = str(e)
 result["tests"].append(test1)
 
-# 测试 2: 执行 /bin/sh -c
+# Test 2: Execute /bin/sh -c
 test2 = {
     "command": "/bin/sh -c 'echo test'",
     "success": False,
@@ -204,7 +204,7 @@ except Exception as e:
     test2["error"] = str(e)
 result["tests"].append(test2)
 
-# 测试 3: 直接执行 Python（测试 process-exec）
+# Test 3: Execute Python directly (test process-exec)
 test3 = {
     "command": "python3 -c 'print(1)'",
     "success": False,
@@ -218,7 +218,7 @@ except Exception as e:
     test3["error"] = str(e)
 result["tests"].append(test3)
 
-# 总结
+# Summary
 all_blocked = all(not t.get("success", False) for t in result["tests"])
 all_allowed = all(t.get("success", False) for t in result["tests"])
 
@@ -233,11 +233,11 @@ print(json.dumps(result, indent=2))
 '''
     ),
     
-    # ========== subprocess 测试 ==========
+    # ========== subprocess Test ==========
     DetailedSecurityTest(
         name="subprocess_detailed",
-        category="进程",
-        description="subprocess 模块细化测试",
+        category="Process",
+        description="subprocess Module Detailed Test",
         code='''
 import json
 import sys
@@ -253,7 +253,7 @@ result = {
     "conclusion": None
 }
 
-# 测试 1: 模块是否可导入
+# Test 1: Check if module is importable
 try:
     import subprocess
     result["module_importable"] = True
@@ -264,7 +264,7 @@ except ImportError as e:
     print(json.dumps(result, indent=2))
     sys.exit(0)
 
-# 测试 2: subprocess.run 是否可调用
+# Test 2: Check if subprocess.run is callable
 test_run = {
     "function": "subprocess.run",
     "callable": False,
@@ -293,7 +293,7 @@ except Exception as e:
     test_run["error"] = f"{type(e).__name__}: {e}"
 result["tests"].append(test_run)
 
-# 测试 3: subprocess.Popen 是否可调用
+# Test 3: Check if subprocess.Popen is callable
 test_popen = {
     "function": "subprocess.Popen",
     "callable": False,
@@ -323,7 +323,7 @@ except Exception as e:
     test_popen["error"] = f"{type(e).__name__}: {e}"
 result["tests"].append(test_popen)
 
-# 总结
+# Summary
 if not result["module_importable"]:
     result["conclusion"] = "FUNCTION_BLOCKED"
 elif not result["run_callable"] and not result["popen_callable"]:
@@ -337,11 +337,11 @@ print(json.dumps(result, indent=2))
 '''
     ),
     
-    # ========== os.fork 测试 ==========
+    # ========== os.fork Test ==========
     DetailedSecurityTest(
         name="os_fork_detailed",
-        category="进程",
-        description="os.fork() 细化测试",
+        category="Process",
+        description="os.fork() Detailed Test",
         code='''
 import json
 import os
@@ -366,13 +366,13 @@ if not result["function_exists"]:
 try:
     pid = os.fork()
     if pid == 0:
-        # 子进程，立即退出
+        # Child process, exit immediately
         os._exit(0)
     else:
-        # 父进程
+        # Parent process
         result["function_callable"] = True
         result["child_pid"] = pid
-        os.waitpid(pid, 0)  # 等待子进程结束
+        os.waitpid(pid, 0)  # Wait for child process to finish
         result["conclusion"] = "FULLY_ALLOWED"
         
 except PermissionError as e:
@@ -394,11 +394,11 @@ print(json.dumps(result, indent=2))
 '''
     ),
     
-    # ========== 文件读取测试 ==========
+    # ========== File Read Test ==========
     DetailedSecurityTest(
         name="file_read_detailed",
-        category="文件系统",
-        description="敏感文件读取细化测试",
+        category="File System",
+        description="Sensitive File Read Detailed Test",
         code='''
 import json
 import os
@@ -446,7 +446,7 @@ for filepath in sensitive_files:
     
     result["tests"].append(test)
 
-# 总结
+# Summary
 readable_count = sum(1 for t in result["tests"] if t["readable"])
 total_existing = sum(1 for t in result["tests"] if t["exists"])
 
@@ -467,11 +467,11 @@ print(json.dumps(result, indent=2))
 '''
     ),
     
-    # ========== 文件写入测试 ==========
+    # ========== File Write Test ==========
     DetailedSecurityTest(
         name="file_write_detailed",
-        category="文件系统",
-        description="文件写入细化测试",
+        category="File System",
+        description="File Write Detailed Test",
         code='''
 import json
 import os
@@ -485,7 +485,7 @@ result = {
 write_targets = [
     "/tmp/sandbox_test_write.txt",
     "/private/tmp/sandbox_test_write.txt",  # macOS
-    "/etc/sandbox_test_write.txt",  # 应该被阻止
+    "/etc/sandbox_test_write.txt",  # Should be blocked
     os.path.expanduser("~/.sandbox_test_write.txt"),
 ]
 
@@ -503,7 +503,7 @@ for filepath in write_targets:
             f.write("sandbox_test_content")
         test["writable"] = True
         test["file_created"] = os.path.exists(filepath)
-        # 清理
+        # Cleanup
         if test["file_created"]:
             os.remove(filepath)
     except PermissionError as e:
@@ -518,7 +518,7 @@ for filepath in write_targets:
     
     result["tests"].append(test)
 
-# 总结
+# Summary
 writable_count = sum(1 for t in result["tests"] if t["writable"])
 
 if writable_count == 0:
@@ -537,11 +537,11 @@ print(json.dumps(result, indent=2))
 '''
     ),
     
-    # ========== 网络测试 ==========
+    # ========== Network Test ==========
     DetailedSecurityTest(
         name="network_detailed",
-        category="网络",
-        description="网络访问细化测试",
+        category="Network",
+        description="Network Access Detailed Test",
         code='''
 import json
 import socket
@@ -551,7 +551,7 @@ result = {
     "tests": []
 }
 
-# 测试 1: socket 模块是否可用
+# Test 1: Check if socket module is available
 test_socket = {
     "test": "socket module import",
     "success": False,
@@ -564,7 +564,7 @@ except ImportError as e:
     test_socket["error"] = str(e)
 result["tests"].append(test_socket)
 
-# 测试 2: 创建 socket
+# Test 2: Create socket
 test_create = {
     "test": "socket creation",
     "success": False,
@@ -578,7 +578,7 @@ except Exception as e:
     test_create["error"] = f"{type(e).__name__}: {e}"
 result["tests"].append(test_create)
 
-# 测试 3: DNS 查询
+# Test 3: DNS lookup
 test_dns = {
     "test": "DNS lookup",
     "success": False,
@@ -593,7 +593,7 @@ except Exception as e:
     test_dns["error"] = f"{type(e).__name__}: {e}"
 result["tests"].append(test_dns)
 
-# 测试 4: TCP 连接
+# Test 4: TCP connection
 test_connect = {
     "test": "TCP connect to google.com:80",
     "success": False,
@@ -609,7 +609,7 @@ except Exception as e:
     test_connect["error"] = f"{type(e).__name__}: {e}"
 result["tests"].append(test_connect)
 
-# 测试 5: 监听端口
+# Test 5: Listen on port
 test_listen = {
     "test": "listen on port 18888",
     "success": False,
@@ -626,7 +626,7 @@ except Exception as e:
     test_listen["error"] = f"{type(e).__name__}: {e}"
 result["tests"].append(test_listen)
 
-# 总结
+# Summary
 success_count = sum(1 for t in result["tests"] if t.get("success", False))
 
 if success_count == 0:
@@ -646,11 +646,11 @@ print(json.dumps(result, indent=2))
         timeout=15
     ),
     
-    # ========== ctypes 测试 ==========
+    # ========== ctypes Test ==========
     DetailedSecurityTest(
         name="ctypes_detailed",
-        category="代码注入",
-        description="ctypes 模块细化测试",
+        category="Code Injection",
+        description="ctypes Module Detailed Test",
         code='''
 import json
 import sys
@@ -666,7 +666,7 @@ result = {
     "conclusion": None
 }
 
-# 测试 1: 模块是否可导入
+# Test 1: Check if module is importable
 try:
     import ctypes
     result["module_importable"] = True
@@ -677,22 +677,22 @@ except ImportError as e:
     print(json.dumps(result, indent=2))
     sys.exit(0)
 
-# 测试 2: CDLL 是否可访问
+# Test 2: Check if CDLL is accessible
 try:
     cdll = ctypes.CDLL
     result["cdll_accessible"] = True
 except Exception as e:
     result["exception_message"] = str(e)
 
-# 测试 3: 加载 libc
+# Test 3: Load libc
 try:
     import ctypes.util
     libc_name = ctypes.util.find_library("c")
     if libc_name:
         libc = ctypes.CDLL(libc_name)
         result["libc_loadable"] = True
-        
-        # 测试 4: 调用 system()
+
+        # Test 4: Call system()
         try:
             libc.system(b"echo ctypes_test > /dev/null 2>&1")
             result["system_callable"] = True
@@ -701,7 +701,7 @@ try:
 except Exception as e:
     result["exception_message"] = str(e)
 
-# 总结
+# Summary
 if not result["module_importable"]:
     result["conclusion"] = "FUNCTION_BLOCKED"
 elif not result["libc_loadable"]:
@@ -718,12 +718,12 @@ print(json.dumps(result, indent=2))
 
 
 def check_command_available(command: str) -> bool:
-    """检查命令是否可用"""
+    """Check if command is available"""
     return shutil.which(command) is not None
 
 
 def check_claude_srt_available() -> bool:
-    """检查 Claude SRT 是否可用"""
+    """Check if Claude SRT is available"""
     if not check_command_available("srt"):
         return False
     try:
@@ -734,7 +734,7 @@ def check_claude_srt_available() -> bool:
 
 
 def check_skillbox_available(binary_path: str = None) -> tuple:
-    """检查 skillbox 是否可用"""
+    """Check if skillbox is available"""
     if binary_path and os.path.exists(binary_path):
         return True, binary_path
     
@@ -755,7 +755,7 @@ def check_skillbox_available(binary_path: str = None) -> tuple:
 
 
 class DetailedSkillboxTest:
-    """Skillbox 细化安全测试"""
+    """Skillbox detailed security test"""
     
     def __init__(self, binary_path: str):
         self.binary_path = os.path.abspath(binary_path)
@@ -779,11 +779,11 @@ entry_point: scripts/main.py
             f.write(skill_md)
     
     def run_test(self, test: DetailedSecurityTest) -> dict:
-        """运行测试并返回详细结果"""
+        """Run test and return detailed result"""
         script_path = os.path.join(self.skill_dir, "scripts", "main.py")
         with open(script_path, "w") as f:
             f.write(test.code)
-        
+
         try:
             result = subprocess.run(
                 [self.binary_path, "run", self.skill_dir, "{}"],
@@ -791,12 +791,12 @@ entry_point: scripts/main.py
                 timeout=test.timeout,
                 cwd=self.work_dir
             )
-            
+
             output = result.stdout.decode() + result.stderr.decode()
-            
-            # 尝试解析 JSON 输出
+
+            # Try to parse JSON output
             try:
-                # 找到 JSON 部分
+                # Find JSON section
                 json_start = output.find('{')
                 json_end = output.rfind('}') + 1
                 if json_start >= 0 and json_end > json_start:
@@ -822,17 +822,17 @@ entry_point: scripts/main.py
 
 
 class DetailedClaudeSRTTest:
-    """Claude SRT 细化安全测试"""
-    
+    """Claude SRT detailed security test"""
+
     def __init__(self):
         self.work_dir = tempfile.mkdtemp(prefix="claude_srt_detailed_")
-    
+
     def run_test(self, test: DetailedSecurityTest) -> dict:
-        """运行测试并返回详细结果"""
+        """Run test and return detailed result"""
         script_path = os.path.join(self.work_dir, "test_script.py")
         with open(script_path, "w") as f:
             f.write(test.code)
-        
+
         try:
             result = subprocess.run(
                 ["srt", "python3", script_path],
@@ -840,10 +840,10 @@ class DetailedClaudeSRTTest:
                 timeout=test.timeout,
                 cwd=self.work_dir
             )
-            
+
             output = result.stdout.decode() + result.stderr.decode()
-            
-            # 尝试解析 JSON 输出
+
+            # Try to parse JSON output
             try:
                 json_start = output.find('{')
                 json_end = output.rfind('}') + 1
@@ -870,10 +870,10 @@ class DetailedClaudeSRTTest:
 
 
 class DetailedNativePythonTest:
-    """原生 Python 细化安全测试（作为基准）"""
-    
+    """Native Python detailed security test (as baseline)"""
+
     def run_test(self, test: DetailedSecurityTest) -> dict:
-        """运行测试并返回详细结果"""
+        """Run test and return detailed result"""
         try:
             result = subprocess.run(
                 [sys.executable, "-c", test.code],
@@ -905,17 +905,17 @@ class DetailedNativePythonTest:
 
 
 def print_detailed_results(results: Dict[str, Dict[str, dict]], platforms: List[str]):
-    """打印详细结果表格"""
+    """Print detailed results table"""
     print("\n" + "=" * 100)
-    print("细化安全测试结果")
+    print("Detailed Security Test Results")
     print("=" * 100)
-    
-    # 结论映射
+
+    # Conclusion mapping
     conclusion_display = {
-        "FUNCTION_BLOCKED": "🔒 函数被阻止",
-        "EFFECT_LIMITED": "🛡️ 效果被限制",
-        "FULLY_ALLOWED": "❌ 完全允许",
-        "ERROR": "⚙️ 错误",
+        "FUNCTION_BLOCKED": "🔒 Function Blocked",
+        "EFFECT_LIMITED": "🛡️ Effect Limited",
+        "FULLY_ALLOWED": "❌ Fully Allowed",
+        "ERROR": "⚙️ Error",
     }
     
     for test in DETAILED_SECURITY_TESTS:
@@ -929,8 +929,8 @@ def print_detailed_results(results: Dict[str, Dict[str, dict]], platforms: List[
                 display = conclusion_display.get(conclusion, conclusion)
                 
                 print(f"\n**{platform}**: {display}")
-                
-                # 打印详细信息
+
+                # Print detailed information
                 if "tests" in result:
                     for t in result["tests"]:
                         if isinstance(t, dict):
@@ -951,42 +951,42 @@ def print_detailed_results(results: Dict[str, Dict[str, dict]], platforms: List[
 
 def main():
     print("=" * 100)
-    print("SkillLite 细化安全性基准测试")
+    print("SkillLite Detailed Security Benchmark")
     print("=" * 100)
-    
-    # 检查可用的测试平台
+
+    # Check available test platforms
     platforms = []
     testers = {}
-    
-    # 原生 Python（作为基准）
+
+    # Native Python (as baseline)
     platforms.append("Native Python")
     testers["Native Python"] = DetailedNativePythonTest()
-    
+
     # Claude SRT
     if check_claude_srt_available():
         platforms.append("Claude SRT")
         testers["Claude SRT"] = DetailedClaudeSRTTest()
-        print("✅ Claude SRT 可用")
+        print("✅ Claude SRT available")
     else:
-        print("⚠️ Claude SRT 不可用，跳过")
-    
+        print("⚠️ Claude SRT not available, skipping")
+
     # Skillbox
     skillbox_available, skillbox_path = check_skillbox_available()
     if skillbox_available:
         platforms.append("Skillbox")
         testers["Skillbox"] = DetailedSkillboxTest(skillbox_path)
-        print(f"✅ Skillbox 可用: {skillbox_path}")
+        print(f"✅ Skillbox available: {skillbox_path}")
     else:
-        print("⚠️ Skillbox 不可用，跳过")
-    
-    print(f"\n测试平台: {', '.join(platforms)}")
-    print(f"测试用例数: {len(DETAILED_SECURITY_TESTS)}")
-    
-    # 运行测试
+        print("⚠️ Skillbox not available, skipping")
+
+    print(f"\nTest platforms: {', '.join(platforms)}")
+    print(f"Test cases: {len(DETAILED_SECURITY_TESTS)}")
+
+    # Run tests
     results = {platform: {} for platform in platforms}
-    
+
     for test in DETAILED_SECURITY_TESTS:
-        print(f"\n运行测试: {test.description}...")
+        print(f"\nRunning test: {test.description}...")
         
         for platform in platforms:
             tester = testers[platform]
@@ -996,19 +996,19 @@ def main():
             conclusion = result.get("conclusion", "ERROR")
             print(f"  {platform}: {conclusion}")
     
-    # 打印详细结果
+    # Print detailed results
     print_detailed_results(results, platforms)
-    
-    # 清理
+
+    # Cleanup
     for platform, tester in testers.items():
         if hasattr(tester, "cleanup"):
             tester.cleanup()
-    
-    # 打印对比总结
+
+    # Print comparison summary
     print("\n" + "=" * 100)
-    print("对比总结")
+    print("Comparison Summary")
     print("=" * 100)
-    
+
     summary_table = []
     for test in DETAILED_SECURITY_TESTS:
         row = {"test": test.description}
@@ -1018,20 +1018,20 @@ def main():
             else:
                 row[platform] = "SKIPPED"
         summary_table.append(row)
-    
-    # 打印表格
-    header = f"| {'测试项'.ljust(35)} |"
+
+    # Print table
+    header = f"| {'Test Item'.ljust(35)} |"
     for platform in platforms:
         header += f" {platform.center(18)} |"
     print(header)
     print("|" + "-" * 37 + "|" + ("|" + "-" * 20) * len(platforms))
     
     conclusion_short = {
-        "FUNCTION_BLOCKED": "🔒 阻止",
-        "EFFECT_LIMITED": "🛡️ 限制",
-        "FULLY_ALLOWED": "❌ 允许",
-        "ERROR": "⚙️ 错误",
-        "SKIPPED": "⏭️ 跳过",
+        "FUNCTION_BLOCKED": "🔒 Blocked",
+        "EFFECT_LIMITED": "🛡️ Limited",
+        "FULLY_ALLOWED": "❌ Allowed",
+        "ERROR": "⚙️ Error",
+        "SKIPPED": "⏭️ Skipped",
     }
     
     for row in summary_table:

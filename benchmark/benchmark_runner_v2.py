@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
-SkillBox Benchmark Runner V2 - 高并发性能对比测试（增强版）
+SkillBox Benchmark Runner V2 - High Concurrency Performance Comparison Test (Enhanced Version)
 
-对比 SkillBox 与其他沙箱方案在高并发场景下的性能表现：
+Comparing SkillBox with other sandbox solutions under high concurrency scenarios:
 1. SkillBox Native Sandbox (Seatbelt/Namespace)
 2. Docker Container Sandbox
 3. SRT (Anthropic Sandbox Runtime)
 4. Pyodide (WebAssembly)
 
-测试指标：
-- 冷启动时间 (Cold Start Latency)
-- 热启动时间 (Warm Start Latency)  
-- 并发吞吐量 (Throughput under Concurrency)
-- P50/P95/P99 延迟
-- 内存使用 (Peak Memory)
-- CPU 使用时间
+Test metrics:
+- Cold Start Latency
+- Warm Start Latency
+- Throughput under Concurrency
+- P50/P95/P99 Latency
+- Memory Usage (Peak Memory)
+- CPU Time
 
-测试场景：
-- 简单计算 (calculator) - 无依赖
-- 数据分析 (data-analyzer) - 需要 pandas/numpy 依赖
+Test scenarios:
+- Simple calculation (calculator) - no dependencies
+- Data analysis (data-analyzer) - requires pandas/numpy dependencies
 """
 
 import json
@@ -35,26 +35,26 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# 项目根目录
+# Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
 SKILLS_DIR = PROJECT_ROOT / ".skills"
 CALCULATOR_SKILL = SKILLS_DIR / "calculator"
 DATA_ANALYZER_SKILL = SKILLS_DIR / "data-analyzer"
 
-# SkillBox 二进制路径
+# SkillBox binary path
 SKILLBOX_BIN = shutil.which("skillbox") or str(PROJECT_ROOT / "skillbox" / "target" / "release" / "skillbox")
 
 
 @dataclass
 class ResourceUsage:
-    """资源使用情况"""
+    """Resource usage information"""
     peak_memory_mb: float = 0.0
     cpu_time_ms: float = 0.0
     
 
 @dataclass
 class BenchmarkResult:
-    """单次执行结果"""
+    """Single execution result"""
     executor_name: str
     success: bool
     latency_ms: float
@@ -66,7 +66,7 @@ class BenchmarkResult:
 
 @dataclass
 class BenchmarkStats:
-    """统计结果"""
+    """Statistics"""
     executor_name: str
     skill_name: str
     total_requests: int
@@ -110,7 +110,7 @@ class BenchmarkStats:
 
 
 def percentile(data: List[float], p: float) -> float:
-    """计算百分位数"""
+    """Calculate percentile"""
     if not data:
         return 0.0
     sorted_data = sorted(data)
@@ -119,10 +119,10 @@ def percentile(data: List[float], p: float) -> float:
 
 
 def get_process_memory(pid: int) -> float:
-    """获取进程内存使用（MB）"""
+    """Get process memory usage (MB)"""
     try:
         if sys.platform == "darwin":
-            # macOS: 使用 ps 命令
+            # macOS: use ps command
             result = subprocess.run(
                 ["ps", "-o", "rss=", "-p", str(pid)],
                 capture_output=True,
@@ -143,13 +143,13 @@ def get_process_memory(pid: int) -> float:
 
 
 def monitor_process_resources(pid: int, interval: float = 0.05) -> Tuple[float, List[float]]:
-    """监控进程资源使用，返回 (peak_memory_mb, memory_samples)"""
+    """Monitor process resource usage, returns (peak_memory_mb, memory_samples)"""
     memory_samples = []
     peak_memory = 0.0
-    
+
     while True:
         try:
-            # 检查进程是否还存在
+            # Check if process still exists
             os.kill(pid, 0)
             mem = get_process_memory(pid)
             if mem > 0:
@@ -163,26 +163,26 @@ def monitor_process_resources(pid: int, interval: float = 0.05) -> Tuple[float, 
 
 
 class BaseExecutor:
-    """执行器基类"""
-    
+    """Executor base class"""
+
     name: str = "base"
-    
+
     def setup(self) -> None:
         pass
-    
+
     def teardown(self) -> None:
         pass
-    
+
     def execute(self, input_json: str) -> BenchmarkResult:
         raise NotImplementedError
-    
+
     def execute_with_monitoring(self, input_json: str) -> BenchmarkResult:
-        """执行并监控资源使用"""
+        """Execute and monitor resource usage"""
         return self.execute(input_json)
 
 
 class SkillBoxExecutor(BaseExecutor):
-    """SkillBox 原生沙箱执行器"""
+    """SkillBox native sandbox executor"""
     
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, skill_name: str = "calculator"):
         self.skill_dir = skill_dir
@@ -199,7 +199,7 @@ class SkillBoxExecutor(BaseExecutor):
         resource_usage = ResourceUsage()
         
         try:
-            # 使用 Popen 以便监控资源
+            # Use Popen to monitor resources
             process = subprocess.Popen(
                 [self.skillbox_bin, "run", str(self.skill_dir), input_json],
                 stdout=subprocess.PIPE,
@@ -207,7 +207,7 @@ class SkillBoxExecutor(BaseExecutor):
                 text=True
             )
             
-            # 启动资源监控线程
+            # Start resource monitoring thread
             peak_memory = [0.0]
             def monitor():
                 pm, _ = monitor_process_resources(process.pid)
@@ -221,7 +221,7 @@ class SkillBoxExecutor(BaseExecutor):
             
             monitor_thread.join(timeout=0.1)
             resource_usage.peak_memory_mb = peak_memory[0]
-            resource_usage.cpu_time_ms = latency_ms  # 近似值
+            resource_usage.cpu_time_ms = latency_ms  # Approximate value
             
             return BenchmarkResult(
                 executor_name=self.name,
@@ -254,7 +254,7 @@ class SkillBoxExecutor(BaseExecutor):
 
 
 class DockerExecutor(BaseExecutor):
-    """Docker 容器沙箱执行器"""
+    """Docker container sandbox executor"""
     
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, skill_name: str = "calculator"):
         self.skill_dir = skill_dir
@@ -276,7 +276,7 @@ class DockerExecutor(BaseExecutor):
             print(f"[WARN] Docker not available, {self.name} will be skipped")
             return
         
-        # 根据 skill 类型构建不同的 Dockerfile
+        # Build different Dockerfile based on skill type
         if self.skill_name == "data-analyzer":
             dockerfile_content = """FROM python:3.11-slim
 WORKDIR /app
@@ -303,7 +303,7 @@ CMD ["python", "/app/main.py"]
                 ["docker", "build", "-t", self.image_name, "."],
                 cwd=tmpdir,
                 capture_output=True,
-                timeout=300  # 5 分钟超时（安装依赖可能较慢）
+                timeout=300  # 5 minute timeout (installing dependencies may be slow)
             )
             if result.returncode != 0:
                 print(f"[WARN] Failed to build Docker image: {result.stderr.decode()}")
@@ -347,8 +347,8 @@ CMD ["python", "/app/main.py"]
             stdout, stderr = process.communicate(input=input_json, timeout=60)
             latency_ms = (time.perf_counter() - start_time) * 1000
             
-            # Docker 容器内存限制为 512MB
-            resource_usage.peak_memory_mb = 512.0  # 最大限制
+            # Docker container memory limited to 512MB
+            resource_usage.peak_memory_mb = 512.0  # max limit
             resource_usage.cpu_time_ms = latency_ms
             
             return BenchmarkResult(
@@ -382,7 +382,7 @@ CMD ["python", "/app/main.py"]
 
 
 class SRTExecutor(BaseExecutor):
-    """SRT (Sandbox Runtime) 执行器"""
+    """SRT (Sandbox Runtime) Executor"""
     
     def __init__(self, script_path: Path, skill_name: str = "calculator"):
         self.script_path = script_path
@@ -395,7 +395,7 @@ class SRTExecutor(BaseExecutor):
         self.srt_bin = shutil.which("srt") or shutil.which("sandbox-runtime")
         
         if not self.srt_bin:
-            # 尝试从 nvm 路径查找
+            # Try to find from nvm path
             home = Path.home()
             nvm_paths = list(home.glob(".nvm/versions/node/*/bin/srt"))
             if nvm_paths:
@@ -427,7 +427,7 @@ class SRTExecutor(BaseExecutor):
                 text=True
             )
             
-            # 监控资源
+            # Monitor resources
             peak_memory = [0.0]
             def monitor():
                 pm, _ = monitor_process_resources(process.pid)
@@ -474,7 +474,7 @@ class SRTExecutor(BaseExecutor):
 
 
 class PyodideExecutor(BaseExecutor):
-    """Pyodide (WebAssembly) 执行器"""
+    """Pyodide (WebAssembly) Executor"""
     
     def __init__(self, script_path: Path, skill_name: str = "calculator"):
         self.script_path = script_path
@@ -501,7 +501,7 @@ class PyodideExecutor(BaseExecutor):
             print("[WARN] Node.js not found, Pyodide executor will be skipped")
             return
         
-        # 检查 pyodide
+        # Check pyodide
         benchmark_dir = Path(__file__).parent
         local_node_modules = benchmark_dir / "node_modules"
         project_node_modules = PROJECT_ROOT / "node_modules"
@@ -535,7 +535,7 @@ class PyodideExecutor(BaseExecutor):
             print("[WARN] Pyodide runner script not found")
             return
         
-        # 注意：Pyodide 不支持 pandas/numpy，所以 data-analyzer 会失败
+        # Note: Pyodide does not support pandas/numpy, so data-analyzer will fail
         if self.skill_name == "data-analyzer":
             print("[WARN] Pyodide does not support pandas/numpy, data-analyzer will fail")
             
@@ -576,15 +576,15 @@ class PyodideExecutor(BaseExecutor):
                 env=env
             )
             
-            # 监控资源
+            # Monitor resources
             peak_memory = [0.0]
             def monitor():
                 pm, _ = monitor_process_resources(process.pid)
                 peak_memory[0] = pm
-            
+
             monitor_thread = threading.Thread(target=monitor, daemon=True)
             monitor_thread.start()
-            
+
             stdout, stderr = process.communicate(input=input_json, timeout=120)
             latency_ms = (time.perf_counter() - start_time) * 1000
             
@@ -623,7 +623,7 @@ class PyodideExecutor(BaseExecutor):
 
 
 def run_single_benchmark(executor: BaseExecutor, input_json: str) -> BenchmarkResult:
-    """运行单次 benchmark"""
+    """Run single benchmark"""
     return executor.execute(input_json)
 
 
@@ -634,7 +634,7 @@ def run_concurrent_benchmark(
     concurrency: int,
     skill_name: str = "calculator"
 ) -> BenchmarkStats:
-    """运行并发 benchmark"""
+    """Run concurrent benchmark"""
     
     print(f"\n{'='*60}")
     print(f"Running: {executor.name}")
@@ -721,7 +721,7 @@ def run_concurrent_benchmark(
 
 
 def generate_calculator_input() -> str:
-    """生成 calculator 测试输入"""
+    """Generate calculator test input"""
     return json.dumps({
         "operation": "multiply",
         "a": 123,
@@ -730,7 +730,7 @@ def generate_calculator_input() -> str:
 
 
 def generate_data_analyzer_input() -> str:
-    """生成 data-analyzer 测试输入"""
+    """Generate data-analyzer test input"""
     return json.dumps({
         "data": json.dumps([
             {"name": "Alice", "age": 25, "score": 85},
@@ -744,7 +744,7 @@ def generate_data_analyzer_input() -> str:
 
 
 def print_comparison_table(all_stats: List[BenchmarkStats]) -> None:
-    """打印对比表格"""
+    """Print comparison table"""
     print("\n" + "=" * 120)
     print("BENCHMARK COMPARISON SUMMARY")
     print("=" * 120)
@@ -756,7 +756,7 @@ def print_comparison_table(all_stats: List[BenchmarkStats]) -> None:
     print(header_line)
     print("-" * len(header_line))
     
-    # 按 skill 和延迟排序
+    # Sort by skill and latency
     sorted_stats = sorted(all_stats, key=lambda s: (s.skill_name, s.avg_latency_ms))
     
     for stats in sorted_stats:
@@ -776,7 +776,7 @@ def print_comparison_table(all_stats: List[BenchmarkStats]) -> None:
     
     print("=" * 120)
     
-    # 按 skill 分组分析
+    # Analyze by skill group
     skills = set(s.skill_name for s in sorted_stats)
     for skill in sorted(skills):
         skill_stats = [s for s in sorted_stats if s.skill_name == skill and s.avg_latency_ms > 0]
@@ -789,7 +789,7 @@ def print_comparison_table(all_stats: List[BenchmarkStats]) -> None:
 
 
 def main():
-    """主函数"""
+    """Main function"""
     import argparse
     
     parser = argparse.ArgumentParser(description="SkillBox Benchmark Runner V2")
@@ -812,8 +812,8 @@ def main():
     print(f"  SkillBox Binary: {SKILLBOX_BIN}")
     
     all_stats: List[BenchmarkStats] = []
-    
-    # 测试场景配置
+
+    # Test scenario configuration
     test_scenarios = [
         {
             "name": "calculator",
@@ -855,7 +855,7 @@ def main():
         except Exception as e:
             print(f"[ERROR] SkillBox ({skill_name}) failed: {e}")
         
-        # SRT (仅支持无依赖的 skill，因为 SRT 不会自动安装依赖)
+        # SRT (only supports skills without dependencies, as SRT doesn't auto-install dependencies)
         if not args.skip_srt and not has_deps:
             executor = SRTExecutor(script_path, skill_name)
             try:
@@ -866,7 +866,7 @@ def main():
             except Exception as e:
                 print(f"[ERROR] SRT ({skill_name}) failed: {e}")
         
-        # Pyodide (不支持 pandas/numpy)
+        # Pyodide (doesn't support pandas/numpy)
         if not args.skip_pyodide and not has_deps:
             executor = PyodideExecutor(script_path, skill_name)
             try:

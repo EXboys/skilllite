@@ -1,361 +1,361 @@
 # SkillBox Benchmark Suite
 
-高并发性能对比测试套件，用于对比 SkillBox 与其他沙箱方案的性能表现。
+High-concurrency performance comparison test suite for comparing SkillBox with other sandbox solutions.
 
-## 测试对象
+## Test Targets
 
-| 执行器 | 描述 | 隔离级别 | 安装要求 |
-|--------|------|----------|----------|
-| **SkillBox (Native Sandbox)** | 使用 Seatbelt/Namespace 的原生沙箱 | 系统级 | 内置 |
-| **SkillBox (No Sandbox)** | 禁用沙箱的 SkillBox | 无 | 内置 |
-| **Direct Python** | 直接执行 Python 脚本 | 无 | 内置 |
-| **Subprocess (Resource Limits)** | 带资源限制的子进程 | 进程级 | 内置 |
-| **SRT (Anthropic Sandbox)** | Anthropic 开源的沙箱工具 | 系统级 | 需安装 |
-| **Pyodide (WebAssembly)** | 基于 WebAssembly 的 Python 运行时 | 浏览器级 | 需安装 |
-| **Docker Container** | Docker 容器沙箱 | 容器级 | 需安装 |
+| Executor | Description | Isolation Level | Installation |
+|----------|-------------|-----------------|--------------|
+| **SkillBox (Native Sandbox)** | Native sandbox using Seatbelt/Namespace | System Level | Built-in |
+| **SkillBox (No Sandbox)** | SkillBox with sandbox disabled | None | Built-in |
+| **Direct Python** | Direct Python script execution | None | Built-in |
+| **Subprocess (Resource Limits)** | Subprocess with resource limits | Process Level | Built-in |
+| **SRT (Anthropic Sandbox)** | Anthropic open-source sandbox tool | System Level | Requires Installation |
+| **Pyodide (WebAssembly)** | Python runtime based on WebAssembly | Browser Level | Requires Installation |
+| **Docker Container** | Docker container sandbox | Container Level | Requires Installation |
 
-## 测试指标
+## Test Metrics
 
-- **冷启动时间** (Cold Start Latency)
-- **热启动时间** (Warm Start Latency)
-- **并发吞吐量** (Throughput under Concurrency)
-- **P50/P95/P99 延迟**
-- **成功率**
-- **内存占用**
+- **Cold Start Latency**
+- **Warm Start Latency**
+- **Throughput under Concurrency**
+- **P50/P95/P99 Latency**
+- **Success Rate**
+- **Memory Usage**
 
-## 测试脚本
+## Test Scripts
 
-| 脚本 | 对比对象 | 说明 |
-|------|----------|------|
-| `benchmark_runner.py` | 全部执行器 | 高并发性能对比 |
-| `docker_vs.py` | Docker | 容器 vs 原生沙箱 |
-| `pyodide_vs.py` | Pyodide (WebAssembly) | WASM vs 原生沙箱 |
-| `srt_vs_skillbox_benchmark.py` | SRT (Anthropic) | Anthropic 沙箱对比 |
-| `security_vs.py` | 全部 | 安全性对比测试 |
+| Script | Comparison Target | Description |
+|--------|------------------|-------------|
+| `benchmark_runner.py` | All Executors | High-concurrency performance comparison |
+| `docker_vs.py` | Docker | Container vs Native Sandbox |
+| `pyodide_vs.py` | Pyodide (WebAssembly) | WASM vs Native Sandbox |
+| `srt_vs_skillbox_benchmark.py` | SRT (Anthropic) | Anthropic Sandbox Comparison |
+| `security_vs.py` | All | Security Comparison Test |
 
-## 测试环境
+## Test Environment
 
-- **操作系统**: macOS
-- **SkillBox**: Rust 原生沙箱 (Seatbelt)
-- **Docker**: python:3.11-slim 镜像 (~150MB)
-- **网络**: 下载 28 Mbps / 上传 28 Mbps
+- **Operating System**: macOS
+- **SkillBox**: Rust Native Sandbox (Seatbelt)
+- **Docker**: python:3.11-slim image (~150MB)
+- **Network**: Download 28 Mbps / Upload 28 Mbps
 
-## 安装依赖
+## Installing Dependencies
 
-### 必需依赖
+### Required Dependencies
 - Python 3.8+
-- SkillBox（项目内置，首次运行会自动编译）
+- SkillBox (Built-in to project, auto-compiled on first run)
 
-### 可选依赖（用于完整对比测试）
+### Optional Dependencies (for complete comparison testing)
 
 ```bash
-# 安装 SRT (Anthropic Sandbox Runtime)
+# Install SRT (Anthropic Sandbox Runtime)
 npm install -g @anthropic-ai/sandbox-runtime
 
-# 安装 Pyodide (WebAssembly Python)
+# Install Pyodide (WebAssembly Python)
 npm install pyodide
 
-# 安装 Docker（用于容器沙箱测试）
+# Install Docker (for container sandbox testing)
 # macOS: brew install --cask docker
-# Linux: 参考 https://docs.docker.com/engine/install/
+# Linux: See https://docs.docker.com/engine/install/
 ```
 
-## 快速开始
+## Quick Start
 
 ```bash
-# 基础测试 (100 请求, 10 并发)
+# Basic test (100 requests, 10 concurrent)
 ./run_benchmark.sh
 
-# 高并发测试 (500 请求, 50 并发)
+# High-concurrency test (500 requests, 50 concurrent)
 ./run_benchmark.sh -n 500 -c 50
 
-# 包含冷启动测试
+# Include cold start test
 ./run_benchmark.sh --cold-start
 
-# 跳过 Docker 测试
+# Skip Docker test
 ./run_benchmark.sh --skip-docker
 
-# 保存结果到文件
+# Save results to file
 ./run_benchmark.sh -o results.json
 ```
 
-## 直接使用 Python
+## Using Python Directly
 
 ```bash
-# 基础测试
+# Basic test
 python3 benchmark_runner.py -n 100 -c 10
 
-# 完整测试
+# Complete test
 python3 benchmark_runner.py -n 500 -c 50 --cold-start -o results.json
 ```
 
 ---
 
-## 测试结果
+## Test Results
 
-### SkillBox vs Docker 热启动对比 (镜像已缓存)
+### SkillBox vs Docker Warm Start Comparison (Image Cached)
 
-| 测试项 | 原生 Python | SkillBox | Docker | SkillBox 优势 |
+| Test Item | Native Python | SkillBox | Docker | SkillBox Advantage |
 |--------|-------------|----------|--------|---------------|
-| **startup** | 17.44 ms | 40.14 ms | 194.23 ms | **4.8x 更快** |
-| simple_print | 17.05 ms | 33.45 ms | 226.56 ms | 6.8x 更快 |
-| loop_1000 | 18.22 ms | 33.54 ms | 228.25 ms | 6.8x 更快 |
-| loop_100000 | 17.84 ms | 34.20 ms | 237.07 ms | 6.9x 更快 |
-| string_ops | 17.35 ms | 33.56 ms | 235.75 ms | 7.0x 更快 |
-| list_comprehension | 17.10 ms | 33.83 ms | 233.85 ms | 6.9x 更快 |
-| fibonacci | 18.01 ms | 34.07 ms | 236.00 ms | 6.9x 更快 |
-| **concurrent_5** | - | 60.63 ms | 417.40 ms | **6.9x 更快** |
+| **startup** | 17.44 ms | 40.14 ms | 194.23 ms | **4.8x faster** |
+| simple_print | 17.05 ms | 33.45 ms | 226.56 ms | 6.8x faster |
+| loop_1000 | 18.22 ms | 33.54 ms | 228.25 ms | 6.8x faster |
+| loop_100000 | 17.84 ms | 34.20 ms | 237.07 ms | 6.9x faster |
+| string_ops | 17.35 ms | 33.56 ms | 235.75 ms | 7.0x faster |
+| list_comprehension | 17.10 ms | 33.83 ms | 233.85 ms | 6.9x faster |
+| fibonacci | 18.01 ms | 34.07 ms | 236.00 ms | 6.9x faster |
+| **concurrent_5** | - | 60.63 ms | 417.40 ms | **6.9x faster** |
 
-**关键结论:**
-- SkillBox 沙箱开销: +22.7 ms (+130%)
-- SkillBox vs Docker 启动速度: **4.8x 更快**
-- SkillBox vs Docker 并发性能: **6.9x 更快**
+**Key Conclusions:**
+- SkillBox Sandbox Overhead: +22.7 ms (+130%)
+- SkillBox vs Docker Startup Speed: **4.8x faster**
+- SkillBox vs Docker Concurrent Performance: **6.9x faster**
 
-### 冷启动对比 (无缓存)
+### Cold Start Comparison (No Cache)
 
-| 环境 | 冷启动时间 | 说明 |
+| Environment | Cold Start Time | Description |
 |------|-----------|------|
-| **SkillBox** | **492 ms** | 本地二进制加载 (~1.6MB) |
-| **Docker** | 120,618 ms (2分钟) | 需下载镜像 (~150MB) |
+| **SkillBox** | **492 ms** | Local binary loading (~1.6MB) |
+| **Docker** | 120,618 ms (2 minutes) | Need to download image (~150MB) |
 
-**🚀 SkillBox 比 Docker 冷启动快 245x**
+**🚀 SkillBox cold start is 245x faster than Docker**
 
-## 命令行参数
+## Command Line Arguments
 
-| 参数 | 简写 | 描述 | 默认值 |
+| Argument | Short | Description | Default |
 |------|------|------|--------|
-| `--requests` | `-n` | 请求总数 | 100 |
-| `--concurrency` | `-c` | 并发数 | 10 |
-| `--cold-start` | - | 运行冷启动测试 | false |
-| `--cold-iterations` | - | 冷启动迭代次数 | 10 |
-| `--skip-docker` | - | 跳过 Docker 测试 | false |
-| `--output` | `-o` | 输出 JSON 文件 | - |
+| `--requests` | `-n` | Total number of requests | 100 |
+| `--concurrency` | `-c` | Concurrency level | 10 |
+| `--cold-start` | - | Run cold start test | false |
+| `--cold-iterations` | - | Cold start iterations | 10 |
+| `--skip-docker` | - | Skip Docker test | false |
+| `--output` | `-o` | Output JSON file | - |
 
-## 测试用例
+## Test Cases
 
-| 用例 | 代码 | 说明 |
+| Case | Code | Description |
 |------|------|------|
-| startup | `print("hello")` | 最小启动时间 |
-| simple_print | `print("Hello, World!")` | 简单输出 |
-| loop_1000 | `sum(range(1000))` | 小循环 |
-| loop_10000 | `sum(range(10000))` | 中循环 |
-| loop_100000 | `sum(range(100000))` | 大循环 |
-| string_ops | `"hello" * 1000` | 字符串操作 |
-| list_comprehension | `[x**2 for x in range(1000)]` | 列表推导 |
-| dict_operations | 字典操作 | 字典增删改查 |
-| fibonacci | 递归计算 fib(20/25) | CPU 密集型 |
+| startup | `print("hello")` | Minimum startup time |
+| simple_print | `print("Hello, World!")` | Simple output |
+| loop_1000 | `sum(range(1000))` | Small loop |
+| loop_10000 | `sum(range(10000))` | Medium loop |
+| loop_100000 | `sum(range(100000))` | Large loop |
+| string_ops | `"hello" * 1000` | String operations |
+| list_comprehension | `[x**2 for x in range(1000)]` | List comprehension |
+| dict_operations | Dictionary operations | Dictionary CRUD operations |
+| fibonacci | Recursive calculation fib(20/25) | CPU intensive |
 
-## 结论
+## Conclusion
 
-| 场景 | SkillBox 优势 | 适用情况 |
+| Scenario | SkillBox Advantage | Applicable Situation |
 |------|--------------|----------|
-| **冷启动** | 245x 更快 | 首次部署、无缓存环境 |
-| **热启动** | 5-7x 更快 | 日常运行、高频调用 |
-| **并发性能** | 6.9x 更快 | 高并发场景 |
-| **资源占用** | 极低 | 边缘设备、资源受限环境 |
-| **部署复杂度** | 单二进制 | 无需 Docker 守护进程 |
+| **Cold Start** | 245x faster | First deployment, no cache environment |
+| **Warm Start** | 5-7x faster | Daily operation, frequent calls |
+| **Concurrent Performance** | 6.9x faster | High-concurrency scenarios |
+| **Resource Usage** | Very low | Edge devices, resource-limited environments |
+| **Deployment Complexity** | Single binary | No Docker daemon required |
 
-SkillBox 的核心优势在于：**零依赖、本地执行、毫秒级启动**。
+SkillBox's core advantages: **zero dependencies, local execution, millisecond-level startup**.
 
 ---
 
-## Pyodide (WebAssembly) 对比测试
+## Pyodide (WebAssembly) Comparison Test
 
-### 测试结果
+### Test Results
 
-| 测试项 | SkillBox (ms) | Pyodide (ms) | SkillBox 优势 |
+| Test Item | SkillBox (ms) | Pyodide (ms) | SkillBox Advantage |
 |--------|---------------|--------------|---------------|
-| **startup** | 37.41 | 672.16 | **18x 更快** |
-| simple_print | 32.60 | 668.08 | 20x 更快 |
-| loop_1000 | 32.62 | 667.52 | 20x 更快 |
-| fibonacci | 32.91 | 673.59 | 20x 更快 |
+| **startup** | 37.41 | 672.16 | **18x faster** |
+| simple_print | 32.60 | 668.08 | 20x faster |
+| loop_1000 | 32.62 | 667.52 | 20x faster |
+| fibonacci | 32.91 | 673.59 | 20x faster |
 
-**关键结论:**
-- SkillBox 启动时间: **37 ms**
-- Pyodide 启动时间: **672 ms** (需加载 ~50MB WebAssembly)
-- **SkillBox 比 Pyodide 快 18-20x**
+**Key Conclusions:**
+- SkillBox Startup Time: **37 ms**
+- Pyodide Startup Time: **672 ms** (need to load ~50MB WebAssembly)
+- **SkillBox is 18-20x faster than Pyodide**
 
-### 运行测试
+### Running Tests
 
 ```bash
 python3 benchmark/pyodide_vs.py
 ```
 
-### Pyodide 的局限性
+### Pyodide Limitations
 
-Pyodide 是 LangChain 等框架使用的 Python 沙箱方案：
+Pyodide is a Python sandbox solution used by frameworks like LangChain:
 
-| 维度 | SkillBox | Pyodide |
+| Dimension | SkillBox | Pyodide |
 |------|----------|---------|
-| **运行时** | 原生 Python | WebAssembly 解释执行 |
-| **启动开销** | ~40 ms | ~700 ms (加载 WASM) |
-| **执行速度** | 原生速度 | 比原生慢 2-5x |
-| **依赖大小** | 1.6 MB | ~50 MB |
-| **平台支持** | macOS/Linux | 需要 Node.js/浏览器 |
+| **Runtime** | Native Python | WebAssembly Interpretation |
+| **Startup Overhead** | ~40 ms | ~700 ms (loading WASM) |
+| **Execution Speed** | Native Speed | 2-5x slower than native |
+| **Dependency Size** | 1.6 MB | ~50 MB |
+| **Platform Support** | macOS/Linux | Requires Node.js/Browser |
 
 ---
 
-## SRT (Anthropic Sandbox Runtime) 对比测试
+## SRT (Anthropic Sandbox Runtime) Comparison Test
 
-SRT 是 Anthropic 开源的沙箱运行时，使用相同的底层技术 (Seatbelt)，但用 Rust 实现。
+SRT is Anthropic's open-source sandbox runtime that uses the same underlying technology (Seatbelt) but implemented in Rust.
 
-### 测试结果
+### Test Results
 
-| 测试项 | SkillBox (ms) | SRT (ms) | SkillBox 优势 |
+| Test Item | SkillBox (ms) | SRT (ms) | SkillBox Advantage |
 |--------|---------------|----------|---------------|
-| **startup** | 119.91 | 596.00 | **5.0x 更快** |
-| simple_print | 121.50 | 717.36 | 5.9x 更快 |
-| loop_10000 | 119.98 | 713.05 | 5.9x 更快 |
-| fibonacci_25 | 120.78 | 720.48 | 6.0x 更快 |
-| list_comprehension | 119.99 | 718.69 | 6.0x 更快 |
-| dict_operations | 120.63 | 720.52 | 6.0x 更快 |
+| **startup** | 119.91 | 596.00 | **5.0x faster** |
+| simple_print | 121.50 | 717.36 | 5.9x faster |
+| loop_10000 | 119.98 | 713.05 | 5.9x faster |
+| fibonacci_25 | 120.78 | 720.48 | 6.0x faster |
+| list_comprehension | 119.99 | 718.69 | 6.0x faster |
+| dict_operations | 120.63 | 720.52 | 6.0x faster |
 
-**关键结论:**
-- SkillBox 启动时间: **120 ms**
-- SRT 启动时间: **596 ms**
-- **SkillBox 比 SRT 快约 5-6x**
+**Key Conclusions:**
+- SkillBox Startup Time: **120 ms**
+- SRT Startup Time: **596 ms**
+- **SkillBox is approximately 5-6x faster than SRT**
 
-### 内存占用对比
+### Memory Usage Comparison
 
-| 测试项 | SkillBox (KB) | SRT (KB) | SkillBox 优势 |
+| Test Item | SkillBox (KB) | SRT (KB) | SkillBox Advantage |
 |--------|---------------|----------|---------------|
-| startup | 12,208 | 84,416 | **6.9x 更低** |
-| simple_print | 12,192 | 84,304 | 6.9x 更低 |
-| loop_10000 | 12,208 | 83,552 | 6.8x 更低 |
-| fibonacci_25 | 12,272 | 82,848 | 6.8x 更低 |
+| startup | 12,208 | 84,416 | **6.9x lower** |
+| simple_print | 12,192 | 84,304 | 6.9x lower |
+| loop_10000 | 12,208 | 83,552 | 6.8x lower |
+| fibonacci_25 | 12,272 | 82,848 | 6.8x lower |
 
-### 安全性对比
+### Security Comparison
 
-| 安全测试项 | SkillBox | SRT |
+| Security Test Item | SkillBox | SRT |
 |-----------|----------|-----|
-| 读取 /etc/passwd | ✅ 阻止 | ❌ 允许 |
-| 网络访问 | ✅ 阻止 | ✅ 阻止 |
-| 进程创建 | ✅ 阻止 | ❌ 允许 |
-| 写入 /tmp | ✅ 阻止 | ✅ 阻止 |
+| Read /etc/passwd | ✅ Blocked | ❌ Allowed |
+| Network Access | ✅ Blocked | ✅ Blocked |
+| Process Creation | ✅ Blocked | ❌ Allowed |
+| Write to /tmp | ✅ Blocked | ✅ Blocked |
 
-### 运行测试
+### Running Tests
 
 ```bash
 python3 benchmark/srt_vs_skillbox_benchmark.py
 ```
 
-> 参考: [Anthropic Sandbox Runtime](https://github.com/anthropics/anthropic-quickstarts)
+> Reference: [Anthropic Sandbox Runtime](https://github.com/anthropics/anthropic-quickstarts)
 
 ---
 
-## 安全性对比测试
+## Security Comparison Test
 
-除了性能测试，我们还提供了安全性对比测试，用于评估各沙箱方案对恶意行为的防护能力。
+In addition to performance tests, we provide security comparison tests to evaluate the protection capabilities of sandbox solutions against malicious behavior.
 
-### 测试维度
+### Test Dimensions
 
-| 类别 | 测试项 | 说明 |
+| Category | Test Item | Description |
 |------|--------|------|
-| **文件系统** | 读取敏感文件 | `/etc/passwd`、`~/.ssh/id_rsa` |
-| | 写入文件 | 尝试在沙箱外创建文件 |
-| | 目录遍历 | `../../../` 路径穿越攻击 |
-| **网络** | HTTP 请求 | 外网访问能力 |
-| | DNS 查询 | 域名解析能力 |
-| | 端口监听 | 开启 socket 服务 |
-| **进程** | 系统命令 | `os.system()`、`subprocess` |
-| | 进程枚举 | 查看其他进程信息 |
-| | 信号发送 | 尝试 kill 其他进程 |
-| **资源限制** | 内存炸弹 | 无限分配内存 |
-| | Fork 炸弹 | 无限创建进程 |
-| | CPU 炸弹 | 无限循环计算 |
-| **代码注入** | 动态导入 | `__import__`、`importlib` |
-| | eval/exec | 动态代码执行 |
+| **File System** | Read sensitive files | `/etc/passwd`, `~/.ssh/id_rsa` |
+| | Write files | Try to create files outside sandbox |
+| | Directory traversal | `../../../` path traversal attacks |
+| **Network** | HTTP requests | External network access capability |
+| | DNS queries | Domain name resolution capability |
+| | Port listening | Open socket services |
+| **Process** | System commands | `os.system()`, `subprocess` |
+| | Process enumeration | View other process information |
+| | Signal sending | Try to kill other processes |
+| **Resource Limits** | Memory bomb | Infinite memory allocation |
+| | Fork bomb | Infinite process creation |
+| | CPU bomb | Infinite loop calculation |
+| **Code Injection** | Dynamic import | `__import__`, `importlib` |
+| | eval/exec | Dynamic code execution |
 
-### 安全性对比结果
+### Security Comparison结果
 
-| 测试项                  |    Skillbox    |     Docker     |    Pyodide     |   Claude SRT   |
+| Test Item               |    SkillBox    |     Docker     |    Pyodide     |   Claude SRT   |
 |----------------------|----------------|----------------|----------------|----------------|
-| **文件系统** | | | | |
-| 读取 /etc/passwd       |      ✅ 阻止      |      ❌ 允许      |      ✅ 阻止      |      ❌ 允许      |
-| 读取 SSH 私钥            |      ✅ 阻止      |      ✅ 阻止      |      ✅ 阻止      |      ❌ 允许      |
-| 写入 /tmp 目录           |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ✅ 阻止      |
-| 目录遍历攻击 (../../../)   |      ✅ 阻止      |      ❌ 允许      |      ✅ 阻止      |      ❌ 允许      |
-| 列出根目录内容              |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |
-| **网络** | | | | |
-| 发起 HTTP 请求           |      ✅ 阻止      |      ❌ 允许      |      ✅ 阻止      |      ✅ 阻止      |
-| DNS 查询               |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ✅ 阻止      |
-| 监听端口                 |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ✅ 阻止      |
-| **进程** | | | | |
-| 执行 os.system()       |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |
-| 执行 subprocess        |      ✅ 阻止      |      ❌ 允许      |      ✅ 阻止      |      ❌ 允许      |
-| 枚举系统进程               |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ✅ 阻止      |
-| 发送进程信号               |      ✅ 阻止      |      ❌ 允许      |      ✅ 阻止      |    ⚠️ 部分阻止     |
-| **资源限制** | | | | |
-| 内存炸弹 (分配大量内存)        |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |
-| Fork 炸弹              |      ✅ 阻止      |      ❌ 允许      |      ✅ 阻止      |      ❌ 允许      |
-| CPU 密集计算 (是否有时间限制)   |      ✅ 阻止      |      ✅ 阻止      |      ❌ 允许      |      ✅ 阻止      |
-| **代码注入** | | | | |
-| 动态导入 os 模块           |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |
-| 使用 eval/exec 执行代码    |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |
-| 修改内置函数               |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |
-| **信息泄露** | | | | |
-| 读取环境变量               |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |
-| 获取系统信息               |      ✅ 阻止      |      ❌ 允许      |      ❌ 允许      |      ❌ 允许      |
+| **File System** | | | | |
+| Read /etc/passwd       |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
+| Read SSH private key    |      ✅ Blocked      |      ✅ Blocked      |      ✅ Blocked      |      ❌ Allowed      |
+| Write to /tmp dir       |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
+| Directory traversal     |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
+| List root directory     |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| **Network** | | | | |
+| Send HTTP request       |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ✅ Blocked      |
+| DNS query              |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
+| Listen port             |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
+| **Process** | | | | |
+| Execute os.system()    |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Execute subprocess     |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
+| Enumerate processes    |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
+| Send process signal    |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |    ⚠️ Partially Blocked     |
+| **Resource Limits** | | | | |
+| Memory bomb             |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Fork bomb              |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
+| CPU intensive compute  |      ✅ Blocked      |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |
+| **Code Injection** | | | | |
+| Dynamic import os      |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Use eval/exec          |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Modify built-in funcs  |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| **Information Leakage** | | | | |
+| Read environment vars  |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Get system info        |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
 
-#### 安全评分
+#### Security Scores
 
-| 平台 | 阻止 | 部分阻止 | 允许 | 安全评分 |
+| Platform | Blocked | Partially Blocked | Allowed | Security Score |
 |------|------|----------|------|----------|
-| Skillbox | 18 | 0 | 2 | 90.0% |
+| SkillBox | 18 | 0 | 2 | 90.0% |
 | Docker | 2 | 0 | 18 | 10.0% |
 | Pyodide | 7 | 0 | 13 | 35.0% |
 | Claude SRT | 6 | 1 | 13 | 32.5% |
 
-### 运行安全性测试
+### Running Security Tests
 
 ```bash
-# 完整测试 (SkillBox + Docker + Pyodide)
+# Complete test (SkillBox + Docker + Pyodide)
 python3 benchmark/security_vs.py
 
-# 仅测试 SkillBox
+# Test SkillBox only
 python3 benchmark/security_vs.py --skip-docker --skip-pyodide
 
-# 输出 JSON 结果
+# Output JSON results
 python3 benchmark/security_vs.py --output security_results.json
 ```
 
-### 参数说明
+### Parameter Description
 
-| 参数 | 说明 | 默认值 |
+| Argument | Description | Default |
 |------|------|--------|
-| `--skillbox` | SkillBox 可执行文件路径 | 自动检测 |
-| `--docker-image` | Docker 镜像名称 | python:3.11-slim |
-| `--skip-docker` | 跳过 Docker 测试 | false |
-| `--skip-pyodide` | 跳过 Pyodide 测试 | false |
-| `--output` | 输出 JSON 结果文件路径 | - |
+| `--skillbox` | SkillBox executable path | Auto-detect |
+| `--docker-image` | Docker image name | python:3.11-slim |
+| `--skip-docker` | Skip Docker test | false |
+| `--skip-pyodide` | Skip Pyodide test | false |
+| `--output` | Output JSON result file path | - |
 
-### 结果说明
+### Result Description
 
-| 符号 | 含义 |
+| Symbol | Meaning |
 |------|------|
-| ✅ 阻止 | 攻击被完全阻止 |
-| ⚠️ 部分阻止 | 攻击被部分阻止或有限制 |
-| ❌ 允许 | 攻击成功执行 |
-| ⏭️ 跳过 | 测试被跳过 |
+| ✅ Blocked | Attack completely blocked |
+| ⚠️ Partially Blocked | Attack partially blocked or limited |
+| ❌ Allowed | Attack executed successfully |
+| ⏭️ Skipped | Test skipped |
 
 ---
 
-## 综合对比总结
+## Comprehensive Comparison Summary
 
-| 维度 | SkillBox | Docker | Pyodide | SRT |
+| Dimension | SkillBox | Docker | Pyodide | SRT |
 |------|----------|--------|---------|-----|
-| **热启动延迟** | 40 ms | 194 ms | 672 ms | 596 ms |
-| **冷启动延迟** | 492 ms | 120s | ~5s | ~1s |
-| **内存占用** | 12 MB | ~100 MB | ~50 MB | 84 MB |
-| **安全性** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
-| **部署复杂度** | 单二进制 | 需守护进程 | 需 Node.js | 需安装 |
-| **平台支持** | macOS/Linux | 全平台 | 全平台 | macOS/Linux |
+| **Warm Start Latency** | 40 ms | 194 ms | 672 ms | 596 ms |
+| **Cold Start Latency** | 492 ms | 120s | ~5s | ~1s |
+| **Memory Usage** | 10 MB | ~100 MB | ~50 MB | 84 MB |
+| **Security** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **Deployment Complexity** | Single binary | Requires daemon | Requires Node.js | Requires installation |
+| **Platform Support** | macOS/Linux | All platforms | All platforms | macOS/Linux |
 
 ---
 
-## 扩展测试
+## Extended Testing
 
-如需添加新的执行器进行对比，可以继承 `BaseExecutor` 类：
+To add new executors for comparison, you can inherit the `BaseExecutor` class:
 
 ```python
 class MyCustomExecutor(BaseExecutor):
@@ -374,37 +374,37 @@ class MyCustomExecutor(BaseExecutor):
         pass
 ```
 
-## 注意事项
+## Notes
 
-1. **Docker 测试**：需要安装 Docker 并确保当前用户有权限运行 Docker 命令
-2. **SkillBox 编译**：首次运行会自动编译 SkillBox（需要 Rust 环境）
-3. **资源限制**：`Subprocess (Resource Limits)` 使用 `resource` 模块，仅在 Unix 系统可用
-4. **结果波动**：建议多次运行取平均值，避免系统负载影响结果
+1. **Docker Test**: Requires Docker installation and user permission to run Docker commands
+2. **SkillBox Compilation**: Auto-compiled on first run (requires Rust environment)
+3. **Resource Limits**: `Subprocess (Resource Limits)` uses `resource` module, only available on Unix systems
+4. **Result Fluctuation**: Recommended to run multiple times and take average to avoid system load impact
 
-安全评分计算公式：`(阻止数 + 部分阻止数 × 0.5) / 总测试数 × 100%`
+Security score formula: `(Blocked Count + Partially Blocked Count × 0.5) / Total Test Count × 100%`
 
-评分越高表示沙箱安全性越好。原生 Python 无沙箱保护，评分接近 0%，作为基准对比。
+Higher scores indicate better sandbox security. Native Python has no sandbox protection, score close to 0%, as benchmark comparison.
 
-### 当前状态说明
+### Current Status Description
 
-**macOS 平台限制**：
+**macOS Platform Limitations**:
 
-由于 macOS 的系统完整性保护 (SIP) 限制，`sandbox-exec` 在现代 macOS 版本上可能无法正常工作。Skillbox 采用以下策略：
+Due to macOS System Integrity Protection (SIP) limitations, `sandbox-exec` may not work properly on modern macOS versions. SkillBox uses the following strategy:
 
-1. **优先尝试 sandbox-exec**：使用 Seatbelt profile 进行沙箱隔离
-2. **回退到受限执行**：如果 sandbox-exec 失败，使用环境隔离：
-   - 清除敏感环境变量
-   - 设置隔离的 HOME 和 TMPDIR
-   - 禁用 Python 用户站点包
+1. **Try sandbox-exec first**: Use Seatbelt profile for sandbox isolation
+2. **Fall back to restricted execution**: If sandbox-exec fails, use environment isolation:
+   - Clear sensitive environment variables
+   - Set isolated HOME and TMPDIR
+   - Disable Python user site packages
 
-**Linux 平台**：
+**Linux Platform**:
 
-Linux 上使用更强的隔离机制：
-- **bubblewrap (bwrap)**：推荐，提供完整的命名空间隔离
-- **firejail**：备选，提供 seccomp 和文件系统隔离
-- **命名空间隔离**：需要 root 权限
+Stronger isolation mechanisms are used on Linux:
+- **bubblewrap (bwrap)**: Recommended, provides complete namespace isolation
+- **firejail**: Alternative, provides seccomp and file system isolation
+- **Namespace isolation**: Requires root privilege
 
-### 安装推荐的沙箱工具
+### Install Recommended Sandbox Tools
 
 **Linux**:
 ```bash
@@ -418,9 +418,9 @@ sudo apt install firejail
 **macOS**:
 macOS 使用内置的 sandbox-exec，无需额外安装。
 
-### 禁用沙箱
+### Disable Sandbox
 
-如果需要禁用沙箱（不推荐），设置环境变量：
+If you need to disable sandbox (not recommended), set the environment variable:
 ```bash
 export SKILLBOX_NO_SANDBOX=1
 ```

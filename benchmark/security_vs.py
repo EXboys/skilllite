@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-SkillLite 安全性基准测试: Skillbox (Rust 沙箱) vs Docker vs Pyodide
+SkillLite Security Benchmark: Skillbox (Rust Sandbox) vs Docker vs Pyodide
 
-测试维度：
-1. 文件系统隔离 - 读取/写入敏感文件、目录遍历
-2. 网络隔离 - 外网访问、端口监听
-3. 进程隔离 - 系统命令执行、进程枚举
-4. 资源限制 - CPU/内存/磁盘炸弹防护
-5. 代码注入 - 动态导入、eval/exec 防护
+Test Dimensions:
+1. File System Isolation - Read/write sensitive files, directory traversal
+2. Network Isolation - External network access, port listening
+3. Process Isolation - System command execution, process enumeration
+4. Resource Limits - CPU/Memory/disk bomb protection
+5. Code Injection - Dynamic imports, eval/exec protection
 
 cd ./benchmark
 python3 security_vs.py
 python3 benchmark/security_vs.py --skillbox-level 0
 
-Level 1: 无沙箱 - 直接执行
-Level 2: 仅沙箱隔离
-Level 3: 沙箱隔离 + 静态代码扫描
+Level 1: No Sandbox - Direct execution
+Level 2: Sandbox isolation only
+Level 3: Sandbox isolation + static code scanning
 """
 
 import subprocess
@@ -30,32 +30,32 @@ from typing import Optional
 
 
 class SecurityResult(Enum):
-    """安全测试结果"""
-    BLOCKED = "✅ 阻止"      # 攻击被完全阻止
-    PARTIAL = "⚠️ 部分阻止"  # 攻击被部分阻止或有限制
-    ALLOWED = "❌ 允许"      # 攻击成功执行
-    ERROR = "⚙️ 错误"        # 测试执行出错
-    SKIPPED = "⏭️ 跳过"      # 测试被跳过
+    """Security test result"""
+    BLOCKED = "✅ Blocked"     # Attack completely blocked
+    PARTIAL = "⚠️ Partial"    # Attack partially blocked or limited
+    ALLOWED = "❌ Allowed"     # Attack successfully executed
+    ERROR = "⚙️ Error"         # Test execution error
+    SKIPPED = "⏭️ Skipped"     # Test skipped
 
 
 @dataclass
 class SecurityTest:
-    """安全测试用例"""
+    """Security test case"""
     name: str
     category: str
     description: str
     code: str
-    success_indicator: str  # 如果输出包含此字符串，说明攻击成功
+    success_indicator: str  # If output contains this string, attack succeeded
     timeout: int = 10
 
 
-# 安全测试用例定义
+# Security test case definitions
 SECURITY_TESTS = [
-    # ========== 文件系统隔离 ==========
+    # ========== File System Isolation ==========
     SecurityTest(
         name="read_etc_passwd",
-        category="文件系统",
-        description="读取 /etc/passwd",
+        category="File System",
+        description="Read /etc/passwd",
         code='''
 import json
 try:
@@ -70,8 +70,8 @@ except Exception as e:
     
     SecurityTest(
         name="read_ssh_key",
-        category="文件系统",
-        description="读取 SSH 私钥",
+        category="File System",
+        description="Read SSH private key",
         code='''
 import json
 import os
@@ -88,8 +88,8 @@ except Exception as e:
     
     SecurityTest(
         name="write_tmp_file",
-        category="文件系统",
-        description="写入 /tmp 目录",
+        category="File System",
+        description="Write to /tmp directory",
         code='''
 import json
 try:
@@ -104,13 +104,13 @@ except Exception as e:
     
     SecurityTest(
         name="path_traversal",
-        category="文件系统",
-        description="目录遍历攻击 (../../../)",
+        category="File System",
+        description="Path traversal attack (../../../)",
         code='''
 import json
 import os
 try:
-    # 尝试通过路径遍历读取系统文件
+    # Try to read system file through path traversal
     path = "../../../../../../../etc/passwd"
     with open(path, "r") as f:
         content = f.read()
@@ -123,8 +123,8 @@ except Exception as e:
     
     SecurityTest(
         name="list_root_dir",
-        category="文件系统",
-        description="列出根目录内容",
+        category="File System",
+        description="List root directory contents",
         code='''
 import json
 import os
@@ -137,11 +137,11 @@ except Exception as e:
         success_indicator='"result": "SUCCESS"'
     ),
     
-    # ========== 网络隔离 ==========
+    # ========== Network Isolation ==========
     SecurityTest(
         name="http_request",
-        category="网络",
-        description="发起 HTTP 请求",
+        category="Network",
+        description="Make HTTP requests",
         code='''
 import json
 try:
@@ -157,8 +157,8 @@ except Exception as e:
     
     SecurityTest(
         name="dns_lookup",
-        category="网络",
-        description="DNS 查询",
+        category="Network",
+        description="DNS lookup",
         code='''
 import json
 try:
@@ -174,8 +174,8 @@ except Exception as e:
     
     SecurityTest(
         name="socket_listen",
-        category="网络",
-        description="监听端口",
+        category="Network",
+        description="Listen on port",
         code='''
 import json
 try:
@@ -191,11 +191,11 @@ except Exception as e:
         success_indicator='"result": "SUCCESS"'
     ),
     
-    # ========== 进程隔离 ==========
+    # ========== Process Isolation ==========
     SecurityTest(
         name="os_system",
-        category="进程",
-        description="执行 os.system()",
+        category="Process",
+        description="Execute os.system()",
         code='''
 import json
 import os
@@ -210,8 +210,8 @@ except Exception as e:
     
     SecurityTest(
         name="subprocess_run",
-        category="进程",
-        description="执行 subprocess",
+        category="Process",
+        description="Execute subprocess",
         code='''
 import json
 try:
@@ -226,13 +226,13 @@ except Exception as e:
     
     SecurityTest(
         name="process_list",
-        category="进程",
-        description="枚举系统进程",
+        category="Process",
+        description="Enumerate system processes",
         code='''
 import json
 import os
 try:
-    # 尝试读取 /proc 目录列出进程
+    # Try to read /proc directory to list processes
     procs = [p for p in os.listdir("/proc") if p.isdigit()]
     print(json.dumps({"result": "SUCCESS", "process_count": len(procs)}))
 except Exception as e:
@@ -243,15 +243,15 @@ except Exception as e:
     
     SecurityTest(
         name="kill_process",
-        category="进程",
-        description="发送进程信号",
+        category="Process",
+        description="Send process signal",
         code='''
 import json
 import os
 import signal
 try:
-    # 尝试向 init 进程发送信号 (不会真的杀死它)
-    os.kill(1, 0)  # 信号 0 只检查进程是否存在
+    # Try to send signal to init process (won't actually kill it)
+    os.kill(1, 0)  # Signal 0 only checks if process exists
     print(json.dumps({"result": "SUCCESS"}))
 except PermissionError:
     print(json.dumps({"result": "PARTIAL", "error": "Permission denied but process visible"}))
@@ -263,15 +263,15 @@ except Exception as e:
         success_indicator='"result": "SUCCESS"'
     ),
     
-    # ========== 资源限制 ==========
+    # ========== Resource Limits ==========
     SecurityTest(
         name="memory_bomb",
-        category="资源限制",
-        description="内存炸弹 (分配大量内存)",
+        category="Resource Limits",
+        description="Memory bomb (allocate large memory)",
         code='''
 import json
 try:
-    # 尝试分配 100MB 内存（减小以加快测试）
+    # Try to allocate 500MB memory (reduced for faster testing)
     data = bytearray(500 * 1024 * 1024)
     print(json.dumps({"result": "SUCCESS", "size": len(data)}))
 except MemoryError:
@@ -285,13 +285,13 @@ except Exception as e:
     
     SecurityTest(
         name="fork_bomb",
-        category="资源限制",
-        description="Fork 炸弹",
+        category="Resource Limits",
+        description="Fork bomb",
         code='''
 import json
 import os
 try:
-    # 只尝试 fork 一次，不是真正的炸弹
+    # Only try to fork once, not a real bomb
     pid = os.fork()
     if pid == 0:
         os._exit(0)
@@ -306,36 +306,36 @@ except Exception as e:
     
     SecurityTest(
         name="cpu_intensive",
-        category="资源限制",
-        description="CPU 密集计算 (是否有时间限制)",
+        category="Resource Limits",
+        description="CPU intensive calculation (check time limits)",
         code='''
 import json
 import time
 try:
     start = time.time()
-    # 执行一个需要超过 5 秒的计算
-    # 如果有 CPU 时间限制，进程会被 SIGXCPU 终止
-    # 如果有超时机制，进程会被 SIGKILL 终止
+    # Execute a calculation that takes more than 5 seconds
+    # If there is a CPU time limit, the process will be terminated by SIGXCPU
+    # If there is a timeout mechanism, the process will be terminated by SIGKILL
     count = 0
     while True:
         _ = sum(i * i for i in range(100000))
         count += 1
         elapsed = time.time() - start
-        if elapsed > 10:  # 安全退出
+        if elapsed > 10:  # Safe exit
             break
     print(json.dumps({"result": "SUCCESS", "elapsed": elapsed, "iterations": count}))
 except Exception as e:
     print(json.dumps({"result": "BLOCKED", "error": str(e)}))
 ''',
         success_indicator='"result": "SUCCESS"',
-        timeout=8  # 缩短超时时间，加快测试
+        timeout=8  # Shortened timeout for faster testing
     ),
     
-    # ========== 代码注入 ==========
+    # ========== Code Injection ==========
     SecurityTest(
         name="dynamic_import",
-        category="代码注入",
-        description="动态导入 os 模块",
+        category="Code Injection",
+        description="Dynamic import of os module",
         code='''
 import json
 try:
@@ -350,8 +350,8 @@ except Exception as e:
     
     SecurityTest(
         name="eval_exec",
-        category="代码注入",
-        description="使用 eval/exec 执行代码",
+        category="Code Injection",
+        description="Use eval/exec to execute code",
         code='''
 import json
 try:
@@ -365,15 +365,15 @@ except Exception as e:
     
     SecurityTest(
         name="modify_builtins",
-        category="代码注入",
-        description="修改内置函数",
+        category="Code Injection",
+        description="Modify built-in functions",
         code='''
 import json
 import builtins
 try:
     original_open = builtins.open
     builtins.open = lambda *args, **kwargs: None
-    # 恢复
+    # Restore
     builtins.open = original_open
     print(json.dumps({"result": "SUCCESS"}))
 except Exception as e:
@@ -382,11 +382,11 @@ except Exception as e:
         success_indicator='"result": "SUCCESS"'
     ),
     
-    # ========== 环境信息泄露 ==========
+    # ========== Information Leakage ==========
     SecurityTest(
         name="env_variables",
-        category="信息泄露",
-        description="读取环境变量",
+        category="Information Leakage",
+        description="Read environment variables",
         code='''
 import json
 import os
@@ -402,8 +402,8 @@ except Exception as e:
     
     SecurityTest(
         name="system_info",
-        category="信息泄露",
-        description="获取系统信息",
+        category="Information Leakage",
+        description="Get system information",
         code='''
 import json
 import platform
@@ -426,11 +426,11 @@ except Exception as e:
 
 
 def check_command_available(command: str) -> bool:
-    """检查命令是否可用"""
+    """Check if a command is available"""
     return shutil.which(command) is not None
 
 def check_claude_srt_available() -> bool:
-    """检查 Claude SRT (Sandboxed Runtime) 是否可用"""
+    """Check if Claude SRT (Sandboxed Runtime) is available"""
     if not check_command_available("srt"):
         return False
     try:
@@ -445,7 +445,7 @@ def check_claude_srt_available() -> bool:
 
 
 def check_docker_available() -> bool:
-    """检查 Docker 是否可用"""
+    """Check if Docker is available"""
     if not check_command_available("docker"):
         return False
     try:
@@ -460,7 +460,7 @@ def check_docker_available() -> bool:
 
 
 def check_skillbox_available(binary_path: str = None) -> tuple:
-    """检查 skillbox 是否可用，返回 (是否可用, 实际路径)"""
+    """Check if skillbox is available, returns (is_available, actual_path)"""
     if binary_path and os.path.exists(binary_path):
         try:
             subprocess.run([binary_path, "--help"], capture_output=True, timeout=10)
@@ -485,7 +485,7 @@ def check_skillbox_available(binary_path: str = None) -> tuple:
 
 
 class SkillboxSecurityTest:
-    """Skillbox 安全性测试"""
+    """Skillbox security test"""
     
     def __init__(self, binary_path: str, sandbox_level: int = 2):
         # Convert to absolute path to avoid issues when running from different directories
@@ -495,7 +495,7 @@ class SkillboxSecurityTest:
         self._setup_test_skill()
     
     def _setup_test_skill(self):
-        """创建测试用的 Skill 目录结构"""
+        """Create Skill directory structure for testing"""
         self.skill_dir = os.path.join(self.work_dir, "test-skill")
         scripts_dir = os.path.join(self.skill_dir, "scripts")
         os.makedirs(scripts_dir, exist_ok=True)
@@ -512,7 +512,7 @@ entry_point: scripts/main.py
             f.write(skill_md)
     
     def run_test(self, test: SecurityTest) -> SecurityResult:
-        """运行单个安全测试"""
+        """Run a single security test"""
         script_path = os.path.join(self.skill_dir, "scripts", "main.py")
         with open(script_path, "w") as f:
             f.write(test.code)
@@ -556,24 +556,24 @@ entry_point: scripts/main.py
                 return SecurityResult.BLOCKED
                 
         except subprocess.TimeoutExpired:
-            return SecurityResult.BLOCKED  # 超时视为被阻止
+            return SecurityResult.BLOCKED  # Timeout is treated as blocked
         except Exception as e:
             return SecurityResult.ERROR
     
     def cleanup(self):
-        """清理临时目录"""
+        """Clean up temporary directory"""
         if self.work_dir and os.path.exists(self.work_dir):
             shutil.rmtree(self.work_dir, ignore_errors=True)
 
 
 class DockerSecurityTest:
-    """Docker 安全性测试"""
+    """Docker security test"""
     
     def __init__(self, image: str = "python:3.11-slim"):
         self.image = image
     
     def run_test(self, test: SecurityTest) -> SecurityResult:
-        """运行单个安全测试"""
+        """Run a single security test"""
         try:
             result = subprocess.run(
                 ["docker", "run", "--rm", self.image, "python", "-c", test.code],
@@ -597,16 +597,16 @@ class DockerSecurityTest:
 
 
 class PyodideSecurityTest:
-    """Pyodide (WebAssembly) 安全性测试"""
-    
+    """Pyodide (WebAssembly) security test"""
+
     def __init__(self):
         self.node_available = check_command_available("node")
-        # 检查 Pyodide 是否已安装（通过检查文件系统）
+        # Check if Pyodide is installed (by checking file system)
         self.pyodide_available = self._check_pyodide_installed()
-    
+
     def _check_pyodide_installed(self) -> bool:
-        """检查 Pyodide npm 包是否已安装"""
-        # 检查多个可能的安装位置
+        """Check if Pyodide npm package is installed"""
+        # Check multiple possible installation locations
         possible_paths = [
             os.path.join(os.path.dirname(__file__), "node_modules", "pyodide", "package.json"),
             os.path.join(os.getcwd(), "node_modules", "pyodide", "package.json"),
@@ -620,15 +620,15 @@ class PyodideSecurityTest:
         return False
     
     def run_test(self, test: SecurityTest) -> SecurityResult:
-        """运行单个安全测试"""
+        """Run a single security test"""
         if not self.node_available:
             return SecurityResult.ERROR
         
         if not self.pyodide_available:
             return SecurityResult.ERROR
         
-        # Pyodide 在 WebAssembly 中运行，天然隔离了大部分系统调用
-        # 这里我们模拟其行为
+        # Pyodide runs in WebAssembly, naturally isolating most system calls
+        # Here we simulate its behavior
         js_code = f'''
 const {{ loadPyodide }} = require("pyodide");
 
@@ -646,8 +646,8 @@ main();
 '''
         
         try:
-            # 在 benchmark 目录下创建临时文件，而不是系统临时目录
-            # 这样 Node.js 可以正确找到 pyodide 模块
+            # Create temporary file in benchmark directory instead of system temp directory
+            # So that Node.js can correctly find the pyodide module
             benchmark_dir = os.path.dirname(os.path.abspath(__file__))
             js_file = os.path.join(benchmark_dir, f".pyodide_test_{os.getpid()}_{test.name}.js")
             
@@ -658,71 +658,71 @@ main();
                 result = subprocess.run(
                     ["node", js_file],
                     capture_output=True,
-                    timeout=test.timeout + 10,  # Pyodide 加载需要额外时间
+                    timeout=test.timeout + 10,  # Pyodide loading needs extra time
                     cwd=benchmark_dir
                 )
             finally:
-                # 清理临时文件
+                # Clean up temporary file
                 if os.path.exists(js_file):
                     os.unlink(js_file)
             
             output = result.stdout.decode() + result.stderr.decode()
-            
-            # 调试输出：显示实际执行结果
+
+            # Debug output: show actual execution result
             if result.returncode != 0:
-                print(f"  [Pyodide 调试] {test.description}: Node.js 返回码 {result.returncode}", file=sys.stderr)
+                print(f"  [Pyodide Debug] {test.description}: Node.js return code {result.returncode}", file=sys.stderr)
                 if output:
-                    print(f"  [Pyodide 调试] 输出: {output[:200]}", file=sys.stderr)
+                    print(f"  [Pyodide Debug] Output: {output[:200]}", file=sys.stderr)
             
             if test.success_indicator in output:
                 return SecurityResult.ALLOWED
             elif '"result": "BLOCKED"' in output:
                 return SecurityResult.BLOCKED
             elif result.returncode != 0:
-                # Node.js 执行失败，说明 Pyodide 真的不可用
-                print(f"  [Pyodide 错误] {test.description}: 执行失败 (返回码 {result.returncode})", file=sys.stderr)
+                # Node.js execution failed, meaning Pyodide is really not available
+                print(f"  [Pyodide Error] {test.description}: Execution failed (return code {result.returncode})", file=sys.stderr)
                 return SecurityResult.ERROR
             else:
-                # 执行成功但没有匹配到成功指示符，视为被阻止
+                # Execution succeeded but no success indicator matched, treated as blocked
                 return SecurityResult.BLOCKED
                 
         except subprocess.TimeoutExpired:
-            print(f"  [Pyodide 超时] {test.description}: 执行超时", file=sys.stderr)
+            print(f"  [Pyodide Timeout] {test.description}: Execution timeout", file=sys.stderr)
             return SecurityResult.BLOCKED
         except Exception as e:
-            # 真正的错误情况，不应该返回预设结果
-            print(f"  [Pyodide 错误] {test.description}: {str(e)}", file=sys.stderr)
+            # Real error case, should not return preset result
+            print(f"  [Pyodide Error] {test.description}: {str(e)}", file=sys.stderr)
             return SecurityResult.ERROR
     
     def _get_expected_result(self, test: SecurityTest) -> SecurityResult:
-        """根据 Pyodide 的已知特性返回预期结果
-        
-        注意：此方法已废弃，不再使用。Pyodide 测试现在必须实际执行。
-        如果执行失败，应返回 ERROR 而不是预设结果。
+        """Return expected result based on Pyodide's known characteristics
+
+        Note: This method is deprecated and no longer used. Pyodide tests must now actually execute.
+        If execution fails, should return ERROR instead of preset result.
         """
-        # 此方法保留仅为向后兼容，但不应再被调用
+        # This method is kept only for backward compatibility but should not be called
         return SecurityResult.ERROR
 
 
 class ClaudeSRTSecurityTest:
-    """Claude SRT (Sandboxed Runtime) 安全性测试
-    
-    Claude SRT 是 Anthropic 提供的沙箱运行时环境，用于安全执行代码。
-    它使用 Linux 命名空间和 seccomp 进行隔离。
+    """Claude SRT (Sandboxed Runtime) security test
+
+    Claude SRT is a sandboxed runtime environment provided by Anthropic for safe code execution.
+    It uses Linux namespaces and seccomp for isolation.
     """
     
     def __init__(self):
         self.work_dir = tempfile.mkdtemp(prefix="claude_srt_security_")
     
     def run_test(self, test: SecurityTest) -> SecurityResult:
-        """运行单个安全测试"""
-        # 将测试代码写入临时文件
+        """Run a single security test"""
+        # Write test code to temporary file
         script_path = os.path.join(self.work_dir, "test_script.py")
         with open(script_path, "w") as f:
             f.write(test.code)
         
         try:
-            # 使用 srt 命令运行 Python 脚本 (使用 python3)
+            # Use srt command to run Python script (using python3)
             result = subprocess.run(
                 ["srt", "python3", script_path],
                 capture_output=True,
@@ -731,54 +731,54 @@ class ClaudeSRTSecurityTest:
             )
             
             output = result.stdout.decode() + result.stderr.decode()
-            
-            # 检查攻击是否成功
+
+            # Check if attack succeeded
             if test.success_indicator in output:
                 return SecurityResult.ALLOWED
             elif '"result": "PARTIAL"' in output:
                 return SecurityResult.PARTIAL
-            # 检查是否被 SRT 安全机制阻止
+            # Check if blocked by SRT security mechanism
             elif "Permission denied" in output or "Operation not permitted" in output:
                 return SecurityResult.BLOCKED
             elif "seccomp" in output.lower() or "sandbox" in output.lower():
                 return SecurityResult.BLOCKED
             elif '"result": "BLOCKED"' in output:
                 return SecurityResult.BLOCKED
-            # 如果执行失败，检查是否是安全阻止
+            # If execution failed, check if it was a security block
             elif result.returncode != 0:
                 if any(keyword in output.lower() for keyword in ["denied", "permission", "blocked", "forbidden"]):
                     return SecurityResult.BLOCKED
-                return SecurityResult.BLOCKED  # 执行失败视为被阻止
+                return SecurityResult.BLOCKED  # Execution failure treated as blocked
             else:
                 return SecurityResult.BLOCKED
                 
         except subprocess.TimeoutExpired:
-            return SecurityResult.BLOCKED  # 超时视为被阻止
+            return SecurityResult.BLOCKED  # Timeout treated as blocked
         except Exception as e:
             return SecurityResult.ERROR
     
     def cleanup(self):
-        """清理临时目录"""
+        """Clean up temporary directory"""
         if self.work_dir and os.path.exists(self.work_dir):
             shutil.rmtree(self.work_dir, ignore_errors=True)
 
 
 
 def print_results_table(results: dict, platforms: list):
-    """打印结果表格"""
-    # 按类别分组
+    """Print results table"""
+    # Group by category
     categories = {}
     for test in SECURITY_TESTS:
         if test.category not in categories:
             categories[test.category] = []
         categories[test.category].append(test)
-    
-    # 计算列宽
+
+    # Calculate column width
     name_width = max(len(t.description) for t in SECURITY_TESTS) + 2
     platform_width = 14
-    
-    # 打印表头
-    header = f"| {'测试项'.ljust(name_width)} |"
+
+    # Print header
+    header = f"| {'Test Item'.ljust(name_width)} |"
     for platform in platforms:
         header += f" {platform.center(platform_width)} |"
     print(header)
@@ -787,10 +787,10 @@ def print_results_table(results: dict, platforms: list):
     for _ in platforms:
         separator += f"{'-' * (platform_width + 2)}|"
     print(separator)
-    
-    # 按类别打印结果
+
+    # Print results by category
     for category, tests in categories.items():
-        # 打印类别标题
+        # Print category title
         print(f"| **{category}** |" + " |" * len(platforms))
         
         for test in tests:
@@ -804,7 +804,7 @@ def print_results_table(results: dict, platforms: list):
 
 
 def calculate_security_score(results: dict) -> dict:
-    """计算安全评分"""
+    """Calculate security score"""
     scores = {}
     for platform, platform_results in results.items():
         blocked = sum(1 for r in platform_results.values() if r == SecurityResult.BLOCKED)
@@ -829,47 +829,47 @@ def calculate_security_score(results: dict) -> dict:
 
 def main():
     import argparse
-    
-    parser = argparse.ArgumentParser(description="SkillLite 安全性基准测试")
-    parser.add_argument("--skillbox", type=str, help="Skillbox 可执行文件路径")
-    parser.add_argument("--docker-image", type=str, default="python:3.11-slim", help="Docker 镜像")
-    parser.add_argument("--skip-docker", action="store_true", help="跳过 Docker 测试")
-    parser.add_argument("--skip-pyodide", action="store_true", help="跳过 Pyodide 测试")
-    parser.add_argument("--skip-claude-srt", action="store_true", help="跳过 Claude SRT 测试")
-    parser.add_argument("--output", type=str, help="输出 JSON 结果到文件")
-    parser.add_argument("--skillbox-level", type=int, default=2, 
+
+    parser = argparse.ArgumentParser(description="SkillLite Security Benchmark")
+    parser.add_argument("--skillbox", type=str, help="Skillbox executable path")
+    parser.add_argument("--docker-image", type=str, default="python:3.11-slim", help="Docker image")
+    parser.add_argument("--skip-docker", action="store_true", help="Skip Docker test")
+    parser.add_argument("--skip-pyodide", action="store_true", help="Skip Pyodide test")
+    parser.add_argument("--skip-claude-srt", action="store_true", help="Skip Claude SRT test")
+    parser.add_argument("--output", type=str, help="Output JSON result to file")
+    parser.add_argument("--skillbox-level", type=int, default=2,
                        choices=[1, 2, 3],
-                       help="Skillbox 沙箱安全级别 (1=无沙箱, 2=仅沙箱, 3=沙箱+静态检查)")
-    parser.add_argument("--test-all-levels", action="store_true", 
-                       help="测试 Skillbox 的所有安全级别 (1, 2, 3)")
+                       help="Skillbox sandbox security level (1=No sandbox, 2=Sandbox only, 3=Sandbox+static check)")
+    parser.add_argument("--test-all-levels", action="store_true",
+                       help="Test all Skillbox security levels (1, 2, 3)")
     args = parser.parse_args()
     
     print("=" * 60)
-    print("SkillLite 安全性基准测试")
+    print("SkillLite Security Benchmark")
     print("=" * 60)
     print()
     
     results = {}
     platforms = []
     
-    # Skillbox 测试
+    # Skillbox Test
     skillbox_available, skillbox_path = check_skillbox_available(args.skillbox)
     if skillbox_available:
-        # 确定要测试的安全级别
+        # Determine security levels to test
         if args.test_all_levels:
             test_levels = [1, 2, 3]
         else:
             test_levels = [args.skillbox_level]
-        
+
         level_names = {
-            1: "无沙箱",
-            2: "仅沙箱",
-            3: "沙箱+静态检查"
+            1: "No Sandbox",
+            2: "Sandbox Only",
+            3: "Sandbox + Static Check"
         }
-        
+
         for level in test_levels:
             platform_name = f"Skillbox (Level {level})"
-            print(f"🦀 测试 {platform_name} - {level_names[level]} ({skillbox_path})...")
+            print(f"🦀 Testing {platform_name} - {level_names[level]} ({skillbox_path})...")
             skillbox_tester = SkillboxSecurityTest(skillbox_path, sandbox_level=level)
             results[platform_name] = {}
             platforms.append(platform_name)
@@ -882,12 +882,12 @@ def main():
             skillbox_tester.cleanup()
             print()
     else:
-        print("⚠️  Skillbox 不可用，跳过测试")
+        print("⚠️  Skillbox not available, skipping test")
         print()
     
-    # Docker 测试
+    # Docker Test
     if not args.skip_docker and check_docker_available():
-        print(f"🐳 测试 Docker ({args.docker_image})...")
+        print(f"🐳 Testing Docker ({args.docker_image})...")
         docker_tester = DockerSecurityTest(args.docker_image)
         results["Docker"] = {}
         platforms.append("Docker")
@@ -898,26 +898,26 @@ def main():
             print(f"  {test.description}: {result.value}")
         print()
     elif args.skip_docker:
-        print("⏭️  跳过 Docker 测试")
+        print("⏭️  Skipping Docker test")
         print()
     else:
-        print("⚠️  Docker 不可用，跳过测试")
+        print("⚠️  Docker not available, skipping test")
         print()
     
-    # Pyodide 测试
+    # Pyodide Test
     if not args.skip_pyodide:
-        print("🌐 测试 Pyodide (WebAssembly)...")
+        print("🌐 Testing Pyodide (WebAssembly)...")
         pyodide_tester = PyodideSecurityTest()
-        
-        # 检查 Pyodide 是否真正可用
+
+        # Check if Pyodide is really available
         if not pyodide_tester.node_available:
-            print("⚠️  Node.js 不可用，跳过 Pyodide 测试")
+            print("⚠️  Node.js not available, skipping Pyodide test")
             print()
         else:
-            # 检查 Pyodide 是否已安装
+            # Check if Pyodide is installed
             if not pyodide_tester.pyodide_available:
-                print("⚠️  Pyodide npm 包未安装，跳过测试")
-                print("   提示: 运行 'npm install pyodide' 来安装")
+                print("⚠️  Pyodide npm package not installed, skipping test")
+                print("   Hint: Run 'npm install pyodide' to install")
                 print()
             else:
                 results["Pyodide"] = {}
@@ -929,9 +929,9 @@ def main():
                     print(f"  {test.description}: {result.value}")
                 print()
     
-    # Claude SRT 测试
+    # Claude SRT Test
     if not args.skip_claude_srt and check_claude_srt_available():
-        print("🤖 测试 Claude SRT (Sandboxed Runtime)...")
+        print("🤖 Testing Claude SRT (Sandboxed Runtime)...")
         claude_srt_tester = ClaudeSRTSecurityTest()
         results["Claude SRT"] = {}
         platforms.append("Claude SRT")
@@ -944,32 +944,32 @@ def main():
         claude_srt_tester.cleanup()
         print()
     elif args.skip_claude_srt:
-        print("⏭️  跳过 Claude SRT 测试")
+        print("⏭️  Skipping Claude SRT test")
         print()
     elif not check_claude_srt_available():
-        print("⚠️  Claude SRT 不可用，跳过测试")
-        print("   提示: 请确保已安装 srt 命令行工具")
+        print("⚠️  Claude SRT not available, skipping test")
+        print("   Hint: Please ensure the srt command-line tool is installed")
         print()
     
-    # 打印结果表格
+    # Print results table
     print("=" * 60)
-    print("安全性对比结果")
+    print("Security Comparison Results")
     print("=" * 60)
     print()
     print_results_table(results, platforms)
-    
-    # 计算并打印安全评分
+
+    # Calculate and print security scores
     scores = calculate_security_score(results)
-    print("## 安全评分")
+    print("## Security Score")
     print()
-    print("| 平台 | 阻止 | 部分阻止 | 允许 | 安全评分 |")
-    print("|------|------|----------|------|----------|")
+    print("| Platform | Blocked | Partial | Allowed | Security Score |")
+    print("|----------|---------|---------|---------|----------------|")
     for platform in platforms:
         s = scores[platform]
         print(f"| {platform} | {s['blocked']} | {s['partial']} | {s['allowed']} | {s['score']:.1f}% |")
     print()
     
-    # 输出 JSON 结果
+    # Output JSON results
     if args.output:
         output_data = {
             "results": {
@@ -988,10 +988,10 @@ def main():
         }
         with open(args.output, "w") as f:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
-        print(f"📄 结果已保存到 {args.output}")
-    
+        print(f"📄 Results saved to {args.output}")
+
     print("=" * 60)
-    print("测试完成!")
+    print("Test completed!")
     print("=" * 60)
 
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-SkillBox Benchmark Runner - 高并发性能对比测试
+SkillBox Benchmark Runner - High Concurrency Performance Comparison Test
 
-对比 SkillBox 与其他沙箱方案在高并发场景下的性能表现：
+Comparing SkillBox with other sandbox solutions under high concurrency scenarios:
 1. SkillBox Native Sandbox (Seatbelt/Namespace)
 2. Docker Container Sandbox
 3. Direct Execution (No Sandbox - Baseline)
@@ -10,12 +10,12 @@ SkillBox Benchmark Runner - 高并发性能对比测试
 5. SRT (Anthropic Sandbox Runtime)
 6. Pyodide (WebAssembly)
 
-测试指标：
-- 冷启动时间 (Cold Start Latency)
-- 热启动时间 (Warm Start Latency)  
-- 并发吞吐量 (Throughput under Concurrency)
-- P50/P95/P99 延迟
-- 资源使用 (CPU/Memory)
+Test metrics:
+- Cold Start Latency
+- Warm Start Latency
+- Throughput under Concurrency
+- P50/P95/P99 Latency
+- Resource Usage (CPU/Memory)
 """
 
 import json
@@ -31,18 +31,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# 项目根目录
+# Project root directory
 PROJECT_ROOT = Path(__file__).parent.parent
 SKILLS_DIR = PROJECT_ROOT / ".skills"
 CALCULATOR_SKILL = SKILLS_DIR / "calculator"
 
-# SkillBox 二进制路径
+# SkillBox binary path
 SKILLBOX_BIN = shutil.which("skillbox") or str(PROJECT_ROOT / "skillbox" / "target" / "release" / "skillbox")
 
 
 @dataclass
 class BenchmarkResult:
-    """单次执行结果"""
+    """Single execution result"""
     executor_name: str
     success: bool
     latency_ms: float
@@ -53,7 +53,7 @@ class BenchmarkResult:
 
 @dataclass
 class BenchmarkStats:
-    """统计结果"""
+    """Statistics"""
     executor_name: str
     total_requests: int
     successful_requests: int
@@ -87,7 +87,7 @@ class BenchmarkStats:
 
 
 def percentile(data: List[float], p: float) -> float:
-    """计算百分位数"""
+    """Calculate percentile"""
     if not data:
         return 0.0
     sorted_data = sorted(data)
@@ -96,7 +96,7 @@ def percentile(data: List[float], p: float) -> float:
 
 
 class BaseExecutor:
-    """执行器基类"""
+    """Executor base class"""
     
     name: str = "base"
     
@@ -111,19 +111,19 @@ class BaseExecutor:
 
 
 class SkillBoxExecutor(BaseExecutor):
-    """SkillBox 原生沙箱执行器"""
-    
+    """SkillBox native sandbox executor"""
+
     name = "SkillBox (Native Sandbox)"
-    
+
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, sandbox_level: Optional[int] = None):
         self.skill_dir = skill_dir
         self.skillbox_bin = SKILLBOX_BIN
-        # 从环境变量或参数获取 sandbox level，默认为 3
+        # Get sandbox level from environment variable or parameter, default is 3
         if sandbox_level is not None:
             self.sandbox_level = sandbox_level
         else:
             self.sandbox_level = int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
-        # 更新执行器名称以反映安全层级
+        # Update executor name to reflect security level
         self.name = f"SkillBox (Level {self.sandbox_level})"
         
     def setup(self) -> None:
@@ -133,7 +133,7 @@ class SkillBoxExecutor(BaseExecutor):
     def execute(self, input_json: str) -> BenchmarkResult:
         start_time = time.perf_counter()
         try:
-            # 设置环境变量传递 sandbox level
+            # Set environment variable to pass sandbox level
             env = os.environ.copy()
             env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
             
@@ -174,7 +174,7 @@ class SkillBoxExecutor(BaseExecutor):
 
 
 class DockerExecutor(BaseExecutor):
-    """Docker 容器沙箱执行器"""
+    """Docker container sandbox executor"""
     
     name = "Docker Container"
     
@@ -280,7 +280,7 @@ CMD ["python", "/app/main.py"]
 
 
 class SubprocessResourceLimitExecutor(BaseExecutor):
-    """带资源限制的 Subprocess 执行器"""
+    """Subprocess executor with resource limits"""
     
     name = "Subprocess (Resource Limits)"
     
@@ -351,13 +351,13 @@ class SubprocessResourceLimitExecutor(BaseExecutor):
 
 
 class SRTExecutor(BaseExecutor):
-    """SRT (Sandbox Runtime) 执行器 - Anthropic 开源的沙箱工具
-    
-    SRT 使用与 SkillBox 相同的底层技术栈：
+    """SRT (Sandbox Runtime) Executor - Open source sandbox tool by Anthropic
+
+    SRT uses the same underlying technology stack as SkillBox:
     - macOS: Seatbelt (sandbox-exec)
     - Linux: bubblewrap + namespace
-    
-    安装方式: npm install -g @anthropic-ai/sandbox-runtime
+
+    Installation: npm install -g @anthropic-ai/sandbox-runtime
     """
     
     name = "SRT (Anthropic Sandbox)"
@@ -368,11 +368,11 @@ class SRTExecutor(BaseExecutor):
         self.srt_available = False
         
     def setup(self) -> None:
-        # 首先尝试 which
+        # First try which
         self.srt_bin = shutil.which("srt") or shutil.which("sandbox-runtime")
-        
+
         if not self.srt_bin:
-            # 尝试从 npm 全局路径查找
+            # Try to find from npm global path
             try:
                 npm_global = subprocess.run(
                     ["npm", "root", "-g"],
@@ -393,12 +393,12 @@ class SRTExecutor(BaseExecutor):
             except (subprocess.TimeoutExpired, FileNotFoundError):
                 pass
         
-        # 尝试常见的 nvm 路径
+        # Try common nvm paths
         if not self.srt_bin:
             home = Path.home()
             nvm_paths = list(home.glob(".nvm/versions/node/*/bin/srt"))
             if nvm_paths:
-                self.srt_bin = str(nvm_paths[-1])  # 使用最新版本
+                self.srt_bin = str(nvm_paths[-1])  # Use latest version
         
         if self.srt_bin:
             self.srt_available = True
@@ -416,7 +416,7 @@ class SRTExecutor(BaseExecutor):
             
         start_time = time.perf_counter()
         try:
-            # SRT 命令格式: srt [command...] (不需要 run 子命令)
+            # SRT command format: srt [command...] (no need for run subcommand)
             result = subprocess.run(
                 [self.srt_bin, sys.executable, str(self.script_path)],
                 input=input_json,
@@ -453,12 +453,12 @@ class SRTExecutor(BaseExecutor):
 
 
 class PyodideExecutor(BaseExecutor):
-    """Pyodide (WebAssembly) 执行器
-    
-    Pyodide 将 CPython 编译为 WebAssembly，在浏览器沙箱中运行。
-    根据官方文档，Pyodide 通常比原生 Python 慢 3-5 倍。
-    
-    安装依赖: cd benchmark && npm install
+    """Pyodide (WebAssembly) Executor
+
+    Pyodide compiles CPython to WebAssembly, running in a browser sandbox.
+    According to official documentation, Pyodide is typically 3-5x slower than native Python.
+
+    Install dependencies: cd benchmark && npm install
     """
     
     name = "Pyodide (WebAssembly)"
@@ -486,14 +486,14 @@ class PyodideExecutor(BaseExecutor):
             print("[WARN] Node.js not found, Pyodide executor will be skipped")
             return
         
-        # 检查 pyodide 是否安装（优先检查 benchmark 目录下的 node_modules）
+        # Check if pyodide is installed (prioritize node_modules in benchmark directory)
         benchmark_dir = Path(__file__).parent
         local_node_modules = benchmark_dir / "node_modules"
         project_node_modules = PROJECT_ROOT / "node_modules"
-        
+
         pyodide_found = False
-        
-        # 优先使用 benchmark 目录下的 node_modules
+
+        # Prioritize node_modules in benchmark directory
         if (local_node_modules / "pyodide").exists():
             self.node_path = str(local_node_modules)
             pyodide_found = True
@@ -501,7 +501,7 @@ class PyodideExecutor(BaseExecutor):
             self.node_path = str(project_node_modules)
             pyodide_found = True
         else:
-            # 尝试全局安装
+            # Try global installation
             try:
                 result = subprocess.run(
                     ["node", "-e", "require('pyodide')"],
@@ -518,12 +518,12 @@ class PyodideExecutor(BaseExecutor):
             print("       Install via: cd benchmark && npm install")
             return
         
-        # 检查 runner 脚本是否存在
+        # Check if runner script exists
         if not self.pyodide_runner.exists():
             print("[WARN] Pyodide runner script not found")
             return
-            
-        # 将 Python 代码写入临时文件
+
+        # Write Python code to temporary file
         self.python_code_file = Path(tempfile.gettempdir()) / "pyodide_python_code.py"
         python_code = self.script_path.read_text()
         self.python_code_file.write_text(python_code)
@@ -548,7 +548,7 @@ class PyodideExecutor(BaseExecutor):
             env = os.environ.copy()
             env["PYTHON_CODE_PATH"] = str(self.python_code_file)
             
-            # 设置 NODE_PATH 以便 Node.js 能找到本地安装的 pyodide
+            # Set NODE_PATH so Node.js can find locally installed pyodide
             if self.node_path:
                 env["NODE_PATH"] = self.node_path
             
@@ -589,7 +589,7 @@ class PyodideExecutor(BaseExecutor):
 
 
 def run_single_benchmark(executor: BaseExecutor, input_json: str) -> BenchmarkResult:
-    """运行单次 benchmark"""
+    """Run single benchmark"""
     return executor.execute(input_json)
 
 
@@ -599,7 +599,7 @@ def run_concurrent_benchmark(
     num_requests: int,
     concurrency: int
 ) -> BenchmarkStats:
-    """运行并发 benchmark"""
+    """Run concurrent benchmark"""
     
     print(f"\n{'='*60}")
     print(f"Running: {executor.name}")
@@ -677,7 +677,7 @@ def run_concurrent_benchmark(
 
 
 def run_cold_start_benchmark(executor: BaseExecutor, input_json: str, iterations: int = 10) -> Dict:
-    """冷启动测试"""
+    """Cold start test"""
     print(f"\n{'='*60}")
     print(f"Cold Start Test: {executor.name}")
     print(f"Iterations: {iterations}")
@@ -715,7 +715,7 @@ def run_cold_start_benchmark(executor: BaseExecutor, input_json: str, iterations
 
 
 def generate_test_input() -> str:
-    """生成测试输入"""
+    """Generate test input"""
     return json.dumps({
         "operation": "multiply",
         "a": 123,
@@ -724,7 +724,7 @@ def generate_test_input() -> str:
 
 
 def print_comparison_table(all_stats: List[BenchmarkStats]) -> None:
-    """打印对比表格"""
+    """Print comparison table"""
     print("\n" + "=" * 100)
     print("BENCHMARK COMPARISON SUMMARY")
     print("=" * 100)
@@ -763,7 +763,7 @@ def print_comparison_table(all_stats: List[BenchmarkStats]) -> None:
 
 
 def main():
-    """主函数"""
+    """Main function"""
     import argparse
     
     parser = argparse.ArgumentParser(description="SkillBox Benchmark Runner")
@@ -783,7 +783,7 @@ def main():
     
     args = parser.parse_args()
     
-    # 确定 sandbox level
+    # Determine sandbox level
     sandbox_level = args.sandbox_level
     if sandbox_level is None:
         sandbox_level = int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
@@ -799,7 +799,7 @@ def main():
     
     if args.compare_levels:
         print(f"  Mode: Compare all sandbox levels (1, 2, 3)")
-        # 测试所有安全层级
+        # Test all security levels
         executors = [
             SkillBoxExecutor(sandbox_level=1),
             SkillBoxExecutor(sandbox_level=2),

@@ -19,6 +19,98 @@ A lightweight AI Agent Skills execution engine that integrates with any OpenAI-c
 | **LLM Agnostic** | ✅ Any LLM | ❌ Claude Only | ✅ | ❌ OpenAI Only | ✅ |
 | **License** | MIT | Apache 2.0 | MIT | Closed | MIT |
 
+
+## Security Comparison Test
+
+In addition to performance tests, we provide security comparison tests to evaluate the protection capabilities of sandbox solutions against malicious behavior.
+
+### Test Dimensions
+
+| Category | Test Item | Description |
+|------|--------|------|
+| **File System** | Read sensitive files | `/etc/passwd`, `~/.ssh/id_rsa` |
+| | Write files | Try to create files outside sandbox |
+| | Directory traversal | `../../../` path traversal attacks |
+| **Network** | HTTP requests | External network access capability |
+| | DNS queries | Domain name resolution capability |
+| | Port listening | Open socket services |
+| **Process** | System commands | `os.system()`, `subprocess` |
+| | Process enumeration | View other process information |
+| | Signal sending | Try to kill other processes |
+| **Resource Limits** | Memory bomb | Infinite memory allocation |
+| | Fork bomb | Infinite process creation |
+| | CPU bomb | Infinite loop calculation |
+| **Code Injection** | Dynamic import | `__import__`, `importlib` |
+| | eval/exec | Dynamic code execution |
+
+### Security Comparison 
+
+| Test Item               |    SkillBox    |     Docker     |    Pyodide     |   Claude SRT   |
+|----------------------|----------------|----------------|----------------|----------------|
+| **File System** | | | | |
+| Read /etc/passwd       |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
+| Read SSH private key    |      ✅ Blocked      |      ✅ Blocked      |      ✅ Blocked      |      ❌ Allowed      |
+| Write to /tmp dir       |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
+| Directory traversal     |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
+| List root directory     |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| **Network** | | | | |
+| Send HTTP request       |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ✅ Blocked      |
+| DNS query              |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
+| Listen port             |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
+| **Process** | | | | |
+| Execute os.system()    |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Execute subprocess     |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
+| Enumerate processes    |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
+| Send process signal    |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |    ⚠️ Partially Blocked     |
+| **Resource Limits** | | | | |
+| Memory bomb             |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Fork bomb              |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
+| CPU intensive compute  |      ✅ Blocked      |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |
+| **Code Injection** | | | | |
+| Dynamic import os      |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Use eval/exec          |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Modify built-in funcs  |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| **Information Leakage** | | | | |
+| Read environment vars  |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Get system info        |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+
+#### Security Scores
+
+| Platform | Blocked | Partially Blocked | Allowed | Security Score |
+|------|------|----------|------|----------|
+| SkillBox | 18 | 0 | 2 | 90.0% |
+| Docker | 2 | 0 | 18 | 10.0% |
+| Pyodide | 7 | 0 | 13 | 35.0% |
+| Claude SRT | 6 | 1 | 13 | 32.5% |
+
+### Running Security Tests
+
+```bash
+# Complete test (SkillBox + Docker + Pyodide)
+python3 benchmark/security_vs.py
+
+# Test SkillBox only
+python3 benchmark/security_vs.py --skip-docker --skip-pyodide
+
+# Output JSON results
+python3 benchmark/security_vs.py --output security_results.json
+```
+
+---
+
+## Comprehensive Comparison Summary
+
+| Dimension | SkillBox | Docker | Pyodide | SRT |
+|------|----------|--------|---------|-----|
+| **Warm Start Latency** | 40 ms | 194 ms | 672 ms | 596 ms |
+| **Cold Start Latency** | 492 ms | 120s | ~5s | ~1s |
+| **Memory Usage** | ~10 MB | ~100 MB | ~50 MB | 84 MB |
+| **Security** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
+| **Deployment Complexity** | Single binary | Requires daemon | Requires Node.js | Requires installation |
+| **Platform Support** | macOS/Linux | All platforms | All platforms | macOS/Linux |
+
+---
+
 ### Comparison with Claude Code Sandbox
 
 Claude/Anthropic released [Claude Code Sandbox](https://www.anthropic.com/engineering/claude-code-sandboxing) in October 2025, using the **same underlying technology stack** as SkillLite:
@@ -37,6 +129,8 @@ Claude/Anthropic released [Claude Code Sandbox](https://www.anthropic.com/engine
 | **Use Case** | Any Agent Framework Integration | Claude Code Internal Use |
 
 > 💡 **Summary**: Claude Code Sandbox validates that "native system-level sandbox" is the right direction for AI Agent secure execution. SkillLite provides an **LLM-agnostic, Rust-implemented, lighter-weight** alternative for scenarios requiring multi-LLM integration or maximum performance.
+
+
 
 ## 🔐 Core Innovation: Native System-Level Security Sandbox
 

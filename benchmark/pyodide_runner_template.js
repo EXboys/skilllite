@@ -13,11 +13,11 @@ async function main() {
     try {
         const pyodide = await loadPyodide();
         
-        // 读取 Python 代码文件路径（从环境变量获取）
+        // Read Python code file path (from environment variable)
         const pythonCodePath = process.env.PYTHON_CODE_PATH;
         const pythonCode = fs.readFileSync(pythonCodePath, "utf8");
         
-        // 设置 stdin - 使用字符串拼接避免模板字符串问题
+        // Setup stdin - use string concatenation to avoid template string issues
         const stdinSetupCode = [
             "import sys",
             "import io",
@@ -35,7 +35,7 @@ async function main() {
         
         pyodide.runPython(stdinSetupCode);
         
-        // 捕获 stdout
+        // Capture stdout
         pyodide.runPython([
             "import sys",
             "import io",
@@ -43,10 +43,10 @@ async function main() {
             "sys.stdout = _stdout_buffer"
         ].join("\n"));
         
-        // 运行用户代码
+        // Execute user code
         pyodide.runPython(pythonCode);
         
-        // 获取输出
+        // Get output
         const output = pyodide.runPython("_stdout_buffer.getvalue()");
         console.log(output);
         

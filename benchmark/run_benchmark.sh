@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # SkillBox Benchmark Runner Script
-# 高并发性能对比测试脚本
+# High Concurrency Performance Comparison Test Script
 #
 
 set -e
@@ -9,7 +9,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-# 颜色输出
+# Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -20,7 +20,7 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  SkillBox High-Concurrency Benchmark${NC}"
 echo -e "${BLUE}========================================${NC}"
 
-# 默认参数
+# Default parameters
 REQUESTS=${REQUESTS:-100}
 CONCURRENCY=${CONCURRENCY:-10}
 COLD_START=${COLD_START:-false}
@@ -29,7 +29,7 @@ OUTPUT_FILE=""
 SANDBOX_LEVEL=""
 COMPARE_LEVELS=${COMPARE_LEVELS:-false}
 
-# 解析命令行参数
+# Parse command line arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
         -n|--requests)
@@ -93,7 +93,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# 检查 SkillBox 是否已编译
+# Check if SkillBox is compiled
 SKILLBOX_BIN=""
 if command -v skillbox &> /dev/null; then
     SKILLBOX_BIN=$(which skillbox)
@@ -108,13 +108,13 @@ fi
 
 echo -e "${GREEN}SkillBox binary: $SKILLBOX_BIN${NC}"
 
-# 检查 Python
+# Check Python
 if ! command -v python3 &> /dev/null; then
     echo -e "${RED}Python3 is required but not found${NC}"
     exit 1
 fi
 
-# 构建命令参数
+# Build command arguments
 CMD_ARGS="-n $REQUESTS -c $CONCURRENCY"
 
 if [ "$COLD_START" = true ]; then
@@ -137,7 +137,7 @@ if [ "$COMPARE_LEVELS" = true ]; then
     CMD_ARGS="$CMD_ARGS --compare-levels"
 fi
 
-# 运行 benchmark
+# Run benchmark
 echo -e "${BLUE}Running benchmark with: $CMD_ARGS${NC}"
 echo ""
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-SkillLite 性能基准测试: Skillbox vs Claude Code Sandbox (srt)
+SkillLite Performance Benchmark: Skillbox vs Claude Code Sandbox (srt)
 
-真实对比测试：
+Real comparison test:
 - Skillbox: Rust + Seatbelt (macOS) / Namespace+Seccomp (Linux)
 - srt (Claude Code Sandbox): Node.js/TypeScript + Seatbelt (macOS) / bubblewrap (Linux)
 
-参考: https://www.anthropic.com/engineering/claude-code-sandboxing
+Reference: https://www.anthropic.com/engineering/claude-code-sandboxing
 """
 
 import time
@@ -23,13 +23,13 @@ from typing import Optional
 
 @dataclass
 class BenchmarkResult:
-    """基准测试结果"""
+    """Benchmark result"""
     name: str
     times_ms: list
     success: bool
     output: str = ""
     error: str = ""
-    memory_kb: float = 0  # 峰值内存使用 (KB)
+    memory_kb: float = 0  # Peak memory usage (KB)
     
     @property
     def mean(self) -> float:
@@ -49,18 +49,18 @@ class BenchmarkResult:
 
 
 class ResourceMonitor:
-    """资源监控器 - 测量进程的内存消耗"""
-    
+    """Resource monitor - measures process memory consumption"""
+
     @staticmethod
     def get_peak_memory_kb(command: list, cwd: str = None, timeout: int = 30) -> tuple:
         """
-        运行命令并获取峰值内存使用量
-        返回: (elapsed_ms, success, stdout, stderr, peak_memory_kb)
+        Run command and get peak memory usage
+        Returns: (elapsed_ms, success, stdout, stderr, peak_memory_kb)
         """
         is_macos = platform.system() == "Darwin"
-        
+
         if is_macos:
-            # macOS: 使用 /usr/bin/time -l
+            # macOS: use /usr/bin/time -l
             full_command = ["/usr/bin/time", "-l"] + command
             start = time.perf_counter()
             try:
@@ -74,12 +74,12 @@ class ResourceMonitor:
                 elapsed_ms = (end - start) * 1000
                 
                 stderr_text = result.stderr.decode(errors='replace')
-                # macOS time 输出格式: "maximum resident set size" 单位是字节
+                # macOS time output format: "maximum resident set size" in bytes
                 memory_kb = 0
                 for line in stderr_text.split('\n'):
                     if 'maximum resident set size' in line.lower():
                         try:
-                            # 提取数字 (字节)
+                            # Extract number (bytes)
                             parts = line.strip().split()
                             memory_bytes = int(parts[0])
                             memory_kb = memory_bytes / 1024
@@ -99,7 +99,7 @@ class ResourceMonitor:
             except Exception as e:
                 return (0, False, "", str(e), 0)
         else:
-            # Linux: 使用 /usr/bin/time -v
+            # Linux: use /usr/bin/time -v
             full_command = ["/usr/bin/time", "-v"] + command
             start = time.perf_counter()
             try:
@@ -113,7 +113,7 @@ class ResourceMonitor:
                 elapsed_ms = (end - start) * 1000
                 
                 stderr_text = result.stderr.decode(errors='replace')
-                # Linux time 输出格式: "Maximum resident set size (kbytes):"
+                # Linux time output format: "Maximum resident set size (kbytes):"
                 memory_kb = 0
                 for line in stderr_text.split('\n'):
                     if 'maximum resident set size' in line.lower():
@@ -138,17 +138,17 @@ class ResourceMonitor:
 
 
 class SrtBenchmark:
-    """Claude Code Sandbox (srt) 性能测试"""
-    
+    """Claude Code Sandbox (srt) performance test"""
+
     def __init__(self):
         self.srt_path = shutil.which("srt")
         if not self.srt_path:
             raise RuntimeError("srt not found in PATH")
         self.work_dir = tempfile.mkdtemp(prefix="srt_bench_")
         self.resource_monitor = ResourceMonitor()
-    
+
     def run_command(self, command: str, timeout: int = 30) -> tuple:
-        """运行 srt 命令并返回 (耗时ms, 成功, stdout, stderr)"""
+        """Run srt command and return (elapsed_ms, success, stdout, stderr)"""
         start = time.perf_counter()
         try:
             result = subprocess.run(
@@ -171,7 +171,7 @@ class SrtBenchmark:
             return (0, False, "", str(e))
     
     def run_command_with_memory(self, command: list, timeout: int = 30) -> tuple:
-        """运行命令并测量内存，返回 (耗时ms, 成功, stdout, stderr, memory_kb)"""
+        """Run command and measure memory, return (elapsed_ms, success, stdout, stderr, memory_kb)"""
         return self.resource_monitor.get_peak_memory_kb(
             ["srt"] + command,
             cwd=self.work_dir,
@@ -179,7 +179,7 @@ class SrtBenchmark:
         )
     
     def run_python_code(self, code: str, timeout: int = 30) -> tuple:
-        """通过 srt 运行 Python 代码"""
+        """Run Python code through srt"""
         script_path = os.path.join(self.work_dir, "test_script.py")
         with open(script_path, "w") as f:
             f.write(code)
@@ -206,7 +206,7 @@ class SrtBenchmark:
             return (0, False, "", str(e))
     
     def run_python_code_with_memory(self, code: str, timeout: int = 30) -> tuple:
-        """通过 srt 运行 Python 代码并测量内存"""
+        """Run Python code through srt and measure memory"""
         script_path = os.path.join(self.work_dir, "test_script.py")
         with open(script_path, "w") as f:
             f.write(code)
@@ -218,7 +218,7 @@ class SrtBenchmark:
         )
     
     def measure_startup(self, iterations: int = 10) -> BenchmarkResult:
-        """测量启动时间 (echo hello)"""
+        """Measure startup time (echo hello)"""
         times = []
         last_output = ""
         last_error = ""
@@ -235,12 +235,12 @@ class SrtBenchmark:
         return BenchmarkResult("startup", times, success, last_output, last_error)
     
     def measure_startup_with_memory(self) -> BenchmarkResult:
-        """测量启动时间和内存消耗"""
+        """Measure startup time and memory consumption"""
         elapsed, ok, stdout, stderr, memory_kb = self.run_command_with_memory(["echo", "hello"])
         return BenchmarkResult("startup", [elapsed], ok, stdout, stderr, memory_kb)
     
     def measure_python_execution(self, name: str, code: str, iterations: int = 10) -> BenchmarkResult:
-        """测量 Python 代码执行时间"""
+        """Measure Python code execution time"""
         times = []
         last_output = ""
         last_error = ""
@@ -257,7 +257,7 @@ class SrtBenchmark:
         return BenchmarkResult(name, times, success, last_output, last_error)
     
     def measure_python_with_memory(self, name: str, code: str) -> BenchmarkResult:
-        """测量 Python 代码执行时间和内存消耗"""
+        """Measure Python code execution time and memory consumption"""
         elapsed, ok, stdout, stderr, memory_kb = self.run_python_code_with_memory(code)
         return BenchmarkResult(name, [elapsed], ok, stdout, stderr, memory_kb)
     
@@ -267,7 +267,7 @@ class SrtBenchmark:
 
 
 class SkillboxBenchmark:
-    """Skillbox 性能测试"""
+    """Skillbox performance test"""
     
     def __init__(self):
         self.skillbox_path = shutil.which("skillbox")
@@ -278,7 +278,7 @@ class SkillboxBenchmark:
         self._setup_test_skill()
     
     def _setup_test_skill(self):
-        """创建测试 skill 目录结构"""
+        """Create test skill directory structure"""
         self.skill_dir = os.path.join(self.work_dir, "test-skill")
         scripts_dir = os.path.join(self.skill_dir, "scripts")
         os.makedirs(scripts_dir, exist_ok=True)
@@ -287,13 +287,13 @@ class SkillboxBenchmark:
             f.write("---\nname: test\nversion: 1.0.0\nentry_point: scripts/main.py\n---\n")
     
     def _create_test_script(self, code: str):
-        """创建测试脚本"""
+        """Create test script"""
         script_path = os.path.join(self.skill_dir, "scripts", "main.py")
         with open(script_path, "w") as f:
             f.write(code)
     
     def run_skill(self, code: str, timeout: int = 30) -> tuple:
-        """运行 skill 并返回 (耗时ms, 成功, stdout, stderr)"""
+        """Run skill and return (elapsed_ms, success, stdout, stderr)"""
         self._create_test_script(code)
         
         start = time.perf_counter()
@@ -318,7 +318,7 @@ class SkillboxBenchmark:
             return (0, False, "", str(e))
     
     def run_skill_with_memory(self, code: str, timeout: int = 30) -> tuple:
-        """运行 skill 并测量内存，返回 (耗时ms, 成功, stdout, stderr, memory_kb)"""
+        """Run skill and measure memory, return (elapsed_ms, success, stdout, stderr, memory_kb)"""
         self._create_test_script(code)
         
         return self.resource_monitor.get_peak_memory_kb(
@@ -328,7 +328,7 @@ class SkillboxBenchmark:
         )
     
     def measure_startup(self, iterations: int = 10) -> BenchmarkResult:
-        """测量启动时间"""
+        """Measure startup time"""
         times = []
         code = 'import json; print(json.dumps({"result": "hello"}))'
         last_output = ""
@@ -346,13 +346,13 @@ class SkillboxBenchmark:
         return BenchmarkResult("startup", times, success, last_output, last_error)
     
     def measure_startup_with_memory(self) -> BenchmarkResult:
-        """测量启动时间和内存消耗"""
+        """Measure startup time and memory consumption"""
         code = 'import json; print(json.dumps({"result": "hello"}))'
         elapsed, ok, stdout, stderr, memory_kb = self.run_skill_with_memory(code)
         return BenchmarkResult("startup", [elapsed], ok, stdout, stderr, memory_kb)
     
     def measure_python_execution(self, name: str, code: str, iterations: int = 10) -> BenchmarkResult:
-        """测量 Python 代码执行时间"""
+        """Measure Python code execution time"""
         times = []
         last_output = ""
         last_error = ""
@@ -369,7 +369,7 @@ class SkillboxBenchmark:
         return BenchmarkResult(name, times, success, last_output, last_error)
     
     def measure_python_with_memory(self, name: str, code: str) -> BenchmarkResult:
-        """测量 Python 代码执行时间和内存消耗"""
+        """Measure Python code execution time and memory consumption"""
         elapsed, ok, stdout, stderr, memory_kb = self.run_skill_with_memory(code)
         return BenchmarkResult(name, [elapsed], ok, stdout, stderr, memory_kb)
     
@@ -379,17 +379,17 @@ class SkillboxBenchmark:
 
 
 class SecurityTest:
-    """安全性测试"""
-    
+    """Security test"""
+
     def __init__(self):
         self.work_dir = tempfile.mkdtemp(prefix="security_test_")
-    
+
     def test_srt_security(self) -> dict:
-        """测试 srt 的安全限制"""
+        """Test srt security restrictions"""
         results = {}
-        
-        # 测试 1: 文件系统访问限制
-        print("  测试文件系统访问限制...")
+
+        # Test 1: File system access restriction
+        print("  Testing file system access restriction...")
         result = subprocess.run(
             ["srt", "cat", "/etc/passwd"],
             capture_output=True,
@@ -400,9 +400,9 @@ class SecurityTest:
             "output": result.stdout.decode(errors='replace')[:200],
             "error": result.stderr.decode(errors='replace')[:200]
         }
-        
-        # 测试 2: 网络访问限制
-        print("  测试网络访问限制...")
+
+        # Test 2: Network access restriction
+        print("  Testing network access restriction...")
         result = subprocess.run(
             ["srt", "curl", "-s", "--connect-timeout", "5", "https://example.com"],
             capture_output=True,
@@ -413,9 +413,9 @@ class SecurityTest:
             "output": result.stdout.decode(errors='replace')[:200],
             "error": result.stderr.decode(errors='replace')[:200]
         }
-        
-        # 测试 3: 进程创建限制
-        print("  测试进程创建...")
+
+        # Test 3: Process creation restriction
+        print("  Testing process creation...")
         result = subprocess.run(
             ["srt", "bash", "-c", "echo subprocess_test"],
             capture_output=True,
@@ -426,9 +426,9 @@ class SecurityTest:
             "output": result.stdout.decode(errors='replace')[:200],
             "error": result.stderr.decode(errors='replace')[:200]
         }
-        
-        # 测试 4: 环境变量隔离
-        print("  测试环境变量隔离...")
+
+        # Test 4: Environment variable isolation
+        print("  Testing environment variable isolation...")
         result = subprocess.run(
             ["srt", "bash", "-c", "echo $HOME"],
             capture_output=True,
@@ -439,9 +439,9 @@ class SecurityTest:
             "output": result.stdout.decode(errors='replace')[:200],
             "error": result.stderr.decode(errors='replace')[:200]
         }
-        
-        # 测试 5: 写入系统目录
-        print("  测试写入系统目录限制...")
+
+        # Test 5: Write to system directory
+        print("  Testing write to system directory restriction...")
         result = subprocess.run(
             ["srt", "touch", "/tmp/srt_security_test_file"],
             capture_output=True,
@@ -454,9 +454,9 @@ class SecurityTest:
         }
         
         return results
-    
+
     def test_skillbox_security(self) -> dict:
-        """测试 skillbox 的安全限制"""
+        """Test skillbox security restrictions"""
         results = {}
         skill_dir = os.path.join(self.work_dir, "security-skill")
         scripts_dir = os.path.join(skill_dir, "scripts")
@@ -475,9 +475,9 @@ class SecurityTest:
                 timeout=15
             )
             return result.returncode == 0, result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace')
-        
-        # 测试 1: 文件系统访问限制
-        print("  测试文件系统访问限制...")
+
+        # Test 1: File system access restriction
+        print("  Testing file system access restriction...")
         code = '''
 import json
 try:
@@ -493,9 +493,9 @@ except Exception as e:
             "output": stdout[:200],
             "error": stderr[:200]
         }
-        
-        # 测试 2: 网络访问限制
-        print("  测试网络访问限制...")
+
+        # Test 2: Network access restriction
+        print("  Testing network access restriction...")
         code = '''
 import json
 import urllib.request
@@ -512,9 +512,9 @@ except Exception as e:
             "output": stdout[:200],
             "error": stderr[:200]
         }
-        
-        # 测试 3: 进程创建限制
-        print("  测试进程创建...")
+
+        # Test 3: Process creation restriction
+        print("  Testing process creation...")
         code = '''
 import json
 import subprocess
@@ -530,9 +530,9 @@ except Exception as e:
             "output": stdout[:200],
             "error": stderr[:200]
         }
-        
-        # 测试 4: 环境变量隔离
-        print("  测试环境变量隔离...")
+
+        # Test 4: Environment variable isolation
+        print("  Testing environment variable isolation...")
         code = '''
 import json
 import os
@@ -544,9 +544,9 @@ print(json.dumps({"home": os.environ.get("HOME", ""), "path": os.environ.get("PA
             "output": stdout[:200],
             "error": stderr[:200]
         }
-        
-        # 测试 5: 写入临时目录
-        print("  测试写入临时目录...")
+
+        # Test 5: Write to temporary directory
+        print("  Testing write to temporary directory...")
         code = '''
 import json
 try:
@@ -568,7 +568,7 @@ except Exception as e:
     def cleanup(self):
         if self.work_dir and os.path.exists(self.work_dir):
             shutil.rmtree(self.work_dir, ignore_errors=True)
-        # 清理测试文件
+        # Clean up test files
         for f in ["/tmp/srt_security_test_file", "/tmp/skillbox_security_test"]:
             try:
                 os.remove(f)
@@ -577,52 +577,52 @@ except Exception as e:
 
 
 def print_header(title: str):
-    """打印标题"""
+    """Print header"""
     print("\n" + "=" * 70)
     print(f"  {title}")
     print("=" * 70)
 
 
 def print_section(title: str):
-    """打印章节标题"""
+    """Print section title"""
     print(f"\n[{title}]")
     print("-" * 50)
 
 
 def run_benchmark():
-    """运行完整的 benchmark 测试"""
-    
-    print_header("SkillLite 性能基准测试")
+    """Run complete benchmark test"""
+
+    print_header("SkillLite Performance Benchmark")
     print("  Skillbox (Rust) vs srt/Claude Code Sandbox (Node.js)")
     print("  " + "=" * 66)
-    
-    # 检查环境
-    print_section("环境检测")
+
+    # Check environment
+    print_section("Environment Check")
     
     srt_path = shutil.which("srt")
     skillbox_path = shutil.which("skillbox")
     is_macos = os.uname().sysname == "Darwin"
     
-    print(f"  srt:       {'✓ ' + srt_path if srt_path else '✗ 不可用'}")
-    print(f"  skillbox:  {'✓ ' + skillbox_path if skillbox_path else '✗ 不可用'}")
-    print(f"  平台:      {'macOS (Seatbelt)' if is_macos else 'Linux'}")
-    
-    # 获取版本
+    print(f"  srt:       {'✓ ' + srt_path if srt_path else '✗ Not available'}")
+    print(f"  skillbox:  {'✓ ' + skillbox_path if skillbox_path else '✗ Not available'}")
+    print(f"  Platform:  {'macOS (Seatbelt)' if is_macos else 'Linux'}")
+
+    # Get version
     if srt_path:
         result = subprocess.run(["srt", "--version"], capture_output=True)
         srt_version = result.stdout.decode().strip()
-        print(f"  srt 版本:  {srt_version}")
-    
+        print(f"  srt version:  {srt_version}")
+
     if skillbox_path:
         result = subprocess.run(["skillbox", "--version"], capture_output=True)
         skillbox_version = result.stdout.decode().strip()
-        print(f"  skillbox 版本: {skillbox_version}")
-    
+        print(f"  skillbox version: {skillbox_version}")
+
     if not srt_path or not skillbox_path:
-        print("\n⚠️  需要同时安装 srt 和 skillbox 才能进行对比测试")
+        print("\n⚠️  Both srt and skillbox need to be installed for comparison test")
         return
-    
-    # 测试用例
+
+    # Test cases
     test_cases = {
         "simple_print": 'import json; print(json.dumps({"result": "Hello"}))',
         "loop_10000": 'import json; print(json.dumps({"result": sum(range(10000))}))',
@@ -649,15 +649,15 @@ print(json.dumps({"result": result}))
     iterations = 10
     results = {"srt": {}, "skillbox": {}}
     memory_results = {"srt": {}, "skillbox": {}}
-    
-    # ==================== 性能测试 ====================
-    print_header("性能测试")
-    
-    # srt 测试
-    print_section("srt (Claude Code Sandbox) 测试")
+
+    # ==================== Performance Test ====================
+    print_header("Performance Test")
+
+    # srt test
+    print_section("srt (Claude Code Sandbox) Test")
     srt_bench = SrtBenchmark()
-    
-    print(f"  测试启动时间 ({iterations} 次)...")
+
+    print(f"  Testing startup time ({iterations} iterations)...")
     startup_result = srt_bench.measure_startup(iterations)
     results["srt"]["startup"] = {
         "mean": startup_result.mean,
@@ -666,10 +666,10 @@ print(json.dumps({"result": result}))
         "stdev": startup_result.stdev,
         "success": startup_result.success
     }
-    print(f"    平均: {startup_result.mean:.2f} ms (±{startup_result.stdev:.2f})")
-    
+    print(f"    Average: {startup_result.mean:.2f} ms (±{startup_result.stdev:.2f})")
+
     for name, code in test_cases.items():
-        print(f"  测试 {name}...")
+        print(f"  Testing {name}...")
         exec_result = srt_bench.measure_python_execution(name, code, iterations)
         results["srt"][name] = {
             "mean": exec_result.mean,
@@ -679,28 +679,28 @@ print(json.dumps({"result": result}))
             "success": exec_result.success
         }
         status = "✓" if exec_result.success else "✗"
-        print(f"    {status} 平均: {exec_result.mean:.2f} ms")
-    
-    # srt 内存测试
-    print_section("srt 内存消耗测试")
-    print("  测试启动内存...")
+        print(f"    {status} Average: {exec_result.mean:.2f} ms")
+
+    # srt memory test
+    print_section("srt Memory Consumption Test")
+    print("  Testing startup memory...")
     mem_result = srt_bench.measure_startup_with_memory()
     memory_results["srt"]["startup"] = mem_result.memory_kb
-    print(f"    峰值内存: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
-    
+    print(f"    Peak memory: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
+
     for name, code in test_cases.items():
-        print(f"  测试 {name} 内存...")
+        print(f"  Testing {name} memory...")
         mem_result = srt_bench.measure_python_with_memory(name, code)
         memory_results["srt"][name] = mem_result.memory_kb
-        print(f"    峰值内存: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
+        print(f"    Peak memory: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
     
     srt_bench.cleanup()
-    
-    # skillbox 测试
-    print_section("Skillbox (Rust) 测试")
+
+    # skillbox test
+    print_section("Skillbox (Rust) Test")
     skillbox_bench = SkillboxBenchmark()
-    
-    print(f"  测试启动时间 ({iterations} 次)...")
+
+    print(f"  Testing startup time ({iterations} iterations)...")
     startup_result = skillbox_bench.measure_startup(iterations)
     results["skillbox"]["startup"] = {
         "mean": startup_result.mean,
@@ -709,10 +709,10 @@ print(json.dumps({"result": result}))
         "stdev": startup_result.stdev,
         "success": startup_result.success
     }
-    print(f"    平均: {startup_result.mean:.2f} ms (±{startup_result.stdev:.2f})")
-    
+    print(f"    Average: {startup_result.mean:.2f} ms (±{startup_result.stdev:.2f})")
+
     for name, code in test_cases.items():
-        print(f"  测试 {name}...")
+        print(f"  Testing {name}...")
         exec_result = skillbox_bench.measure_python_execution(name, code, iterations)
         results["skillbox"][name] = {
             "mean": exec_result.mean,
@@ -722,154 +722,154 @@ print(json.dumps({"result": result}))
             "success": exec_result.success
         }
         status = "✓" if exec_result.success else "✗"
-        print(f"    {status} 平均: {exec_result.mean:.2f} ms")
-    
-    # skillbox 内存测试
-    print_section("Skillbox 内存消耗测试")
-    print("  测试启动内存...")
+        print(f"    {status} Average: {exec_result.mean:.2f} ms")
+
+    # skillbox memory test
+    print_section("Skillbox Memory Consumption Test")
+    print("  Testing startup memory...")
     mem_result = skillbox_bench.measure_startup_with_memory()
     memory_results["skillbox"]["startup"] = mem_result.memory_kb
-    print(f"    峰值内存: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
-    
+    print(f"    Peak memory: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
+
     for name, code in test_cases.items():
-        print(f"  测试 {name} 内存...")
+        print(f"  Testing {name} memory...")
         mem_result = skillbox_bench.measure_python_with_memory(name, code)
         memory_results["skillbox"][name] = mem_result.memory_kb
-        print(f"    峰值内存: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
+        print(f"    Peak memory: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
     
     skillbox_bench.cleanup()
-    
-    # ==================== 安全性测试 ====================
-    print_header("安全性测试")
-    
+
+    # ==================== Security Test ====================
+    print_header("Security Test")
+
     security_test = SecurityTest()
-    
-    print_section("srt 安全性测试")
+
+    print_section("srt Security Test")
     srt_security = security_test.test_srt_security()
     results["srt"]["security"] = srt_security
-    
-    print_section("Skillbox 安全性测试")
+
+    print_section("Skillbox Security Test")
     skillbox_security = security_test.test_skillbox_security()
     results["skillbox"]["security"] = skillbox_security
-    
+
     security_test.cleanup()
-    
-    # ==================== 结果汇总 ====================
-    print_header("性能对比结果")
-    
-    print(f"\n{'测试项':<20} {'srt (ms)':<15} {'Skillbox (ms)':<15} {'对比':<20}")
+
+    # ==================== Results Summary ====================
+    print_header("Performance Comparison Results")
+
+    print(f"\n{'Test Item':<20} {'srt (ms)':<15} {'Skillbox (ms)':<15} {'Comparison':<20}")
     print("-" * 70)
-    
+
     all_tests = ["startup"] + list(test_cases.keys())
     for test_name in all_tests:
         srt_time = results["srt"].get(test_name, {}).get("mean", 0)
         skillbox_time = results["skillbox"].get(test_name, {}).get("mean", 0)
-        
+
         if srt_time and skillbox_time:
             if srt_time < skillbox_time:
                 ratio = skillbox_time / srt_time
-                comparison = f"srt 快 {ratio:.2f}x"
+                comparison = f"srt {ratio:.2f}x faster"
             else:
                 ratio = srt_time / skillbox_time
-                comparison = f"Skillbox 快 {ratio:.2f}x"
+                comparison = f"Skillbox {ratio:.2f}x faster"
             print(f"{test_name:<20} {srt_time:<15.2f} {skillbox_time:<15.2f} {comparison}")
         else:
-            print(f"{test_name:<20} {'N/A':<15} {'N/A':<15} {'无法对比'}")
+            print(f"{test_name:<20} {'N/A':<15} {'N/A':<15} {'Cannot compare'}")
     
-    # ==================== 内存消耗对比 ====================
-    print_header("内存消耗对比结果")
-    
-    print(f"\n{'测试项':<20} {'srt (MB)':<15} {'Skillbox (MB)':<15} {'对比':<25}")
+    # ==================== Memory Consumption Comparison ====================
+    print_header("Memory Consumption Comparison Results")
+
+    print(f"\n{'Test Item':<20} {'srt (MB)':<15} {'Skillbox (MB)':<15} {'Comparison':<25}")
     print("-" * 75)
-    
+
     for test_name in all_tests:
         srt_mem_kb = memory_results["srt"].get(test_name, 0)
         skillbox_mem_kb = memory_results["skillbox"].get(test_name, 0)
         srt_mem_mb = srt_mem_kb / 1024
         skillbox_mem_mb = skillbox_mem_kb / 1024
-        
+
         if srt_mem_kb > 0 and skillbox_mem_kb > 0:
             if srt_mem_kb < skillbox_mem_kb:
                 ratio = skillbox_mem_kb / srt_mem_kb
-                comparison = f"srt 省 {ratio:.2f}x"
+                comparison = f"srt saves {ratio:.2f}x"
             else:
                 ratio = srt_mem_kb / skillbox_mem_kb
-                comparison = f"Skillbox 省 {ratio:.2f}x"
+                comparison = f"Skillbox saves {ratio:.2f}x"
             print(f"{test_name:<20} {srt_mem_mb:<15.2f} {skillbox_mem_mb:<15.2f} {comparison}")
         else:
-            print(f"{test_name:<20} {'N/A':<15} {'N/A':<15} {'无法对比'}")
+            print(f"{test_name:<20} {'N/A':<15} {'N/A':<15} {'Cannot compare'}")
     
-    # 安全性对比
-    print_header("安全性对比结果")
-    
+    # Security comparison
+    print_header("Security Comparison Results")
+
     security_items = [
-        ("fs_read_etc_passwd", "读取 /etc/passwd", "blocked"),
-        ("network_access", "网络访问", "blocked"),
-        ("process_creation", "进程创建", "allowed"),
-        ("env_isolation", "环境变量隔离", "home_visible"),
-        ("write_tmp", "写入 /tmp", "allowed"),
+        ("fs_read_etc_passwd", "Read /etc/passwd", "blocked"),
+        ("network_access", "Network access", "blocked"),
+        ("process_creation", "Process creation", "allowed"),
+        ("env_isolation", "Environment variable isolation", "home_visible"),
+        ("write_tmp", "Write to /tmp", "allowed"),
     ]
-    
-    print(f"\n{'安全项':<25} {'srt':<15} {'Skillbox':<15}")
+
+    print(f"\n{'Security Item':<25} {'srt':<15} {'Skillbox':<15}")
     print("-" * 55)
-    
+
     for key, name, check_field in security_items:
         srt_val = srt_security.get(key, {}).get(check_field, "N/A")
         skillbox_val = skillbox_security.get(key, {}).get(check_field, "N/A")
-        
-        srt_str = "✓ 是" if srt_val else "✗ 否" if srt_val is False else str(srt_val)
-        skillbox_str = "✓ 是" if skillbox_val else "✗ 否" if skillbox_val is False else str(skillbox_val)
-        
+
+        srt_str = "✓ Yes" if srt_val else "✗ No" if srt_val is False else str(srt_val)
+        skillbox_str = "✓ Yes" if skillbox_val else "✗ No" if skillbox_val is False else str(skillbox_val)
+
         print(f"{name:<25} {srt_str:<15} {skillbox_str:<15}")
     
-    # 关键结论
-    print_header("关键结论")
-    
+    # Key conclusions
+    print_header("Key Conclusions")
+
     srt_startup = results["srt"].get("startup", {}).get("mean", 0)
     skillbox_startup = results["skillbox"].get("startup", {}).get("mean", 0)
-    
-    print("\n📊 性能分析:")
-    print(f"  • srt 启动时间: {srt_startup:.0f} ms")
-    print(f"  • Skillbox 启动时间: {skillbox_startup:.0f} ms")
-    
+
+    print("\n📊 Performance Analysis:")
+    print(f"  • srt startup time: {srt_startup:.0f} ms")
+    print(f"  • Skillbox startup time: {skillbox_startup:.0f} ms")
+
     if srt_startup and skillbox_startup:
         if srt_startup < skillbox_startup:
             ratio = skillbox_startup / srt_startup
-            print(f"  • srt 启动速度比 Skillbox 快约 {ratio:.1f}x")
+            print(f"  • srt starts about {ratio:.1f}x faster than Skillbox")
         else:
             ratio = srt_startup / skillbox_startup
-            print(f"  • Skillbox 启动速度比 srt 快约 {ratio:.1f}x")
-    
-    # 内存分析
+            print(f"  • Skillbox starts about {ratio:.1f}x faster than srt")
+
+    # Memory analysis
     srt_startup_mem = memory_results["srt"].get("startup", 0)
     skillbox_startup_mem = memory_results["skillbox"].get("startup", 0)
-    
-    print("\n💾 内存消耗分析:")
-    print(f"  • srt 启动内存: {srt_startup_mem/1024:.2f} MB")
-    print(f"  • Skillbox 启动内存: {skillbox_startup_mem/1024:.2f} MB")
-    
+
+    print("\n💾 Memory Consumption Analysis:")
+    print(f"  • srt startup memory: {srt_startup_mem/1024:.2f} MB")
+    print(f"  • Skillbox startup memory: {skillbox_startup_mem/1024:.2f} MB")
+
     if srt_startup_mem > 0 and skillbox_startup_mem > 0:
         if srt_startup_mem < skillbox_startup_mem:
             ratio = skillbox_startup_mem / srt_startup_mem
-            print(f"  • srt 内存占用比 Skillbox 少约 {ratio:.1f}x")
+            print(f"  • srt uses about {ratio:.1f}x less memory than Skillbox")
         else:
             ratio = srt_startup_mem / skillbox_startup_mem
-            print(f"  • Skillbox 内存占用比 srt 少约 {ratio:.1f}x")
-    
-    print("\n🔒 安全性分析:")
+            print(f"  • Skillbox uses about {ratio:.1f}x less memory than srt")
+
+    print("\n🔒 Security Analysis:")
     srt_fs_blocked = srt_security.get("fs_read_etc_passwd", {}).get("blocked", False)
     skillbox_fs_blocked = skillbox_security.get("fs_read_etc_passwd", {}).get("blocked", False)
     srt_net_blocked = srt_security.get("network_access", {}).get("blocked", False)
     skillbox_net_blocked = skillbox_security.get("network_access", {}).get("blocked", False)
-    
-    print(f"  • 文件系统隔离: srt={'✓' if srt_fs_blocked else '✗'}, Skillbox={'✓' if skillbox_fs_blocked else '✗'}")
-    print(f"  • 网络隔离: srt={'✓' if srt_net_blocked else '✗'}, Skillbox={'✓' if skillbox_net_blocked else '✗'}")
-    
-    print("\n📝 技术栈对比:")
+
+    print(f"  • File system isolation: srt={'✓' if srt_fs_blocked else '✗'}, Skillbox={'✓' if skillbox_fs_blocked else '✗'}")
+    print(f"  • Network isolation: srt={'✓' if srt_net_blocked else '✗'}, Skillbox={'✓' if skillbox_net_blocked else '✗'}")
+
+    print("\n📝 Tech Stack Comparison:")
     print("  • srt: Node.js/TypeScript + Seatbelt (macOS) / bubblewrap (Linux)")
     print("  • Skillbox: Rust + Seatbelt (macOS) / Namespace+Seccomp (Linux)")
-    
-    # 保存结果
+
+    # Save results
     all_results = {
         "performance": results,
         "memory": memory_results
@@ -877,7 +877,7 @@ print(json.dumps({"result": result}))
     output_file = "benchmark/srt_vs_skillbox_results.json"
     with open(output_file, "w") as f:
         json.dump(all_results, f, indent=2, ensure_ascii=False, default=str)
-    print(f"\n📁 详细结果已保存到: {output_file}")
+    print(f"\n📁 Detailed results saved to: {output_file}")
 
 
 if __name__ == "__main__":
