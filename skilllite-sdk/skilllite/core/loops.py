@@ -534,15 +534,18 @@ Based on the documentation, call the tools with correct parameters.
             # No tool calls
             if not message.tool_calls:
                 self._log("📝 LLM did not call any tools")
-                
+
                 if self.enable_task_planning:
                     completed_id = self._check_task_completion_in_content(message.content)
                     if completed_id:
                         self._update_task_list(completed_id)
-                    
+
                     if self._check_all_tasks_completed():
                         self._log("🎯 All tasks completed, ending iteration")
                         return response
+                    else:
+                        # Tasks not complete and no tool calls - continue to next iteration
+                        continue
                 else:
                     return response
             
