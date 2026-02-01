@@ -20,6 +20,60 @@ A lightweight AI Agent Skills execution engine that integrates with any OpenAI-c
 | **License** | MIT | Apache 2.0 | MIT | Closed | MIT |
 
 
+## 🚀 Quick Start
+
+### Installation (Recommended: pip)
+
+```bash
+# Install SkillLite SDK
+pip install skilllite
+
+# Install the sandbox binary (auto-downloads pre-compiled binary)
+skilllite install
+
+# Verify installation
+skilllite status
+```
+
+That's it! No Rust, no Docker, no complex setup required.
+
+> ⚠️ **Platform Support**: macOS and Linux only. Windows is not supported yet.
+
+### Run Your First Example
+
+```python
+from skilllite import SkillRunner
+
+runner = SkillRunner()
+result = runner.run("Calculate 15 * 27")
+print(result)
+```
+
+### Environment Configuration
+
+```bash
+# Create .env file with your LLM API configuration
+cat > .env << EOF
+BASE_URL=https://api.deepseek.com/v1
+API_KEY=your_api_key_here
+MODEL=deepseek-chat
+EOF
+```
+
+## 📚 Tutorials
+
+| Tutorial | Time | Description |
+|----------|------|-------------|
+| [01. Basic Usage](./tutorials/01_basic) | 5 min | Simplest examples, one-line execution |
+| [02. Skill Management](./tutorials/02_skill_management) | 10 min | Create and manage skills |
+| [03. Agentic Loop](./tutorials/03_agentic_loop) | 15 min | Multi-turn conversations and tool calls |
+| [04. LangChain Integration](./tutorials/04_langchain_integration) | 15 min | Integration with LangChain framework |
+| [05. LlamaIndex Integration](./tutorials/05_llamaindex_integration) | 15 min | RAG + skill execution |
+| [06. MCP Server](./tutorials/06_mcp_server) | 10 min | Claude Desktop integration |
+| [07. OpenCode Integration](./tutorials/07_opencode_integration) | 10 min | OpenCode AI coding agent integration |
+
+👉 **[View All Tutorials](./tutorials/README.md)**
+
 ## Security Comparison Test
 
 In addition to performance tests, we provide security comparison tests to evaluate the protection capabilities of sandbox solutions against malicious behavior.
@@ -183,59 +237,7 @@ SkillLite uses a **Rust-implemented native system-level sandbox**, not Docker or
 - **🔧 Tool Calls Handling** - Seamlessly handle LLM tool call requests
 - **📄 Rich Context Support** - Support for references, assets, and other extended resources
 
-## 🚀 Quick Start
 
-### Installation (Recommended: pip)
-
-```bash
-# Install SkillLite SDK
-pip install skilllite
-
-# Install the sandbox binary (auto-downloads pre-compiled binary)
-skilllite install
-
-# Verify installation
-skilllite status
-```
-
-That's it! No Rust, no Docker, no complex setup required.
-
-> ⚠️ **Platform Support**: macOS and Linux only. Windows is not supported yet.
-
-### Run Your First Example
-
-```python
-from skilllite import SkillRunner
-
-runner = SkillRunner()
-result = runner.run("Calculate 15 * 27")
-print(result)
-```
-
-### Environment Configuration
-
-```bash
-# Create .env file with your LLM API configuration
-cat > .env << EOF
-BASE_URL=https://api.deepseek.com/v1
-API_KEY=your_api_key_here
-MODEL=deepseek-chat
-EOF
-```
-
-## 📚 Tutorials
-
-| Tutorial | Time | Description |
-|----------|------|-------------|
-| [01. Basic Usage](./tutorials/01_basic) | 5 min | Simplest examples, one-line execution |
-| [02. Skill Management](./tutorials/02_skill_management) | 10 min | Create and manage skills |
-| [03. Agentic Loop](./tutorials/03_agentic_loop) | 15 min | Multi-turn conversations and tool calls |
-| [04. LangChain Integration](./tutorials/04_langchain_integration) | 15 min | Integration with LangChain framework |
-| [05. LlamaIndex Integration](./tutorials/05_llamaindex_integration) | 15 min | RAG + skill execution |
-| [06. MCP Server](./tutorials/06_mcp_server) | 10 min | Claude Desktop integration |
-| [07. OpenCode Integration](./tutorials/07_opencode_integration) | 10 min | OpenCode AI coding agent integration |
-
-👉 **[View All Tutorials](./tutorials/README.md)**
 
 ## 🔧 Alternative: Build from Source
 
