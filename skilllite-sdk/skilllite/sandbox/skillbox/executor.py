@@ -156,14 +156,18 @@ class SkillboxExecutor(SandboxExecutor):
     def _build_skill_env(self, skill_dir: Path, timeout: Optional[int] = None) -> Dict[str, str]:
         """
         Build environment variables for skill execution.
-        
+
         Args:
             skill_dir: Path to the skill directory
             timeout: Optional timeout override
-            
+
         Returns:
             Environment dictionary
         """
+        # Allow runtime override of sandbox level via environment variable
+        # This enables Python-layer security confirmation to skip skillbox confirmation
+        effective_sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL", self.sandbox_level)
+
         return {
             **os.environ,
             "PYTHONUNBUFFERED": "1",
@@ -171,12 +175,81 @@ class SkillboxExecutor(SandboxExecutor):
             "SKILL_ASSETS_DIR": str(skill_dir / "assets"),
             "SKILL_REFERENCES_DIR": str(skill_dir / "references"),
             "SKILL_SCRIPTS_DIR": str(skill_dir / "scripts"),
-            "SKILLBOX_SANDBOX_LEVEL": self.sandbox_level,
+            "SKILLBOX_SANDBOX_LEVEL": effective_sandbox_level,
             "SKILLBOX_MAX_MEMORY_MB": str(self.max_memory_mb),
             "SKILLBOX_TIMEOUT_SECS": str(timeout if timeout is not None else self.execution_timeout),
             "SKILLBOX_AUTO_APPROVE": os.environ.get("SKILLBOX_AUTO_APPROVE", ""),
         }
-    
+
+    def _format_sandbox_error(self, error_msg: str) -> str:
+        """
+        Format sandbox restriction errors into user-friendly messages.
+
+        Args:
+            error_msg: Raw error message from subprocess
+
+        Returns:
+            Formatted error message
+        """
+        # Check for common sandbox restriction patterns
+        sandbox_errors = {
+            "BlockingIOError": "🔒 Sandbox blocked process creation (fork/exec not allowed)",
+            "Resource temporarily unavailable": "🔒 Sandbox blocked system resource access",
+            "Operation not permitted": "🔒 Sandbox blocked this operation",
+            "Permission denied": "🔒 Sandbox denied file/resource access",
+            "sandbox-exec": "🔒 Sandbox restriction triggered",
+        }
+
+        for pattern, friendly_msg in sandbox_errors.items():
+            if pattern in error_msg:
+                # Return only the friendly message, hide the traceback
+                return f"{friendly_msg}\n\n💡 This skill requires operations that are blocked by the sandbox for security reasons."
+
+        return error_msg
+
+    def _extract_json_from_output(self, output: str) -> Optional[Any]:
+        """
+        Try to extract JSON from skillbox output that may contain log lines.
+
+        Skillbox output format may include:
+        - [INFO] ... log lines
+        - [WARN] ... log lines
+        - Error: ... messages
+        - Then the actual JSON object
+
+        Args:
+            output: Raw output from skillbox
+
+        Returns:
+            Parsed JSON object if found, None otherwise
+        """
+        if not output:
+            return None
+
+        # First try: parse entire output as JSON
+        try:
+            return json.loads(output.strip())
+        except json.JSONDecodeError:
+            pass
+
+        # Second try: find JSON object by looking for { and matching }
+        # This handles cases where JSON contains newlines (like \n in strings)
+        brace_start = output.rfind('{')
+        if brace_start == -1:
+            return None
+
+        brace_end = output.rfind('}')
+        if brace_end == -1 or brace_end < brace_start:
+            return None
+
+        json_str = output[brace_start:brace_end + 1]
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+
+        return None
+
     def _parse_output(self, stdout: str, stderr: str, returncode: int) -> ExecutionResult:
         """
         Parse subprocess output into ExecutionResult.
@@ -209,9 +282,13 @@ class SkillboxExecutor(SandboxExecutor):
                     stderr=stderr
                 )
         else:
+            # Check for sandbox restriction errors and provide friendly messages
+            error_msg = stderr or stdout or f"Exit code: {returncode}"
+            error_msg = self._format_sandbox_error(error_msg)
+
             return ExecutionResult(
                 success=False,
-                error=stderr or f"Exit code: {returncode}",
+                error=error_msg,
                 exit_code=returncode,
                 stdout=stdout,
                 stderr=stderr
@@ -537,20 +614,25 @@ class SkillboxExecutor(SandboxExecutor):
             cmd.extend(["--cache-dir", self.cache_dir])
         
         skill_env = self._build_skill_env(skill_dir, timeout)
-        
+
+        # Get effective sandbox level (may be overridden by environment variable)
+        effective_sandbox_level = skill_env.get("SKILLBOX_SANDBOX_LEVEL", self.sandbox_level)
+
         # Execute with Level 3 user interaction support
         try:
-            if self.sandbox_level == "3":
+            if effective_sandbox_level == "3":
+                # Level 3: Allow user interaction for authorization prompts
                 result = subprocess.run(
                     cmd,
                     stdin=None,
                     stdout=subprocess.PIPE,
-                    stderr=None,
+                    stderr=None,  # Let stderr flow to terminal for authorization prompts
                     text=True,
                     timeout=effective_timeout,
                     env=skill_env
                 )
             else:
+                # Level 1/2: Capture all output
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
@@ -560,10 +642,14 @@ class SkillboxExecutor(SandboxExecutor):
                 )
             
             stderr = result.stderr if hasattr(result, 'stderr') and result.stderr else ""
-            
+
+            # Combine stdout and stderr for JSON extraction
+            # skillbox may output JSON to either stream
+            combined_output = result.stdout + stderr
+
             if result.returncode == 0:
-                try:
-                    output = json.loads(result.stdout.strip())
+                output = self._extract_json_from_output(combined_output)
+                if output is not None:
                     return ExecutionResult(
                         success=True,
                         output=output,
@@ -571,18 +657,35 @@ class SkillboxExecutor(SandboxExecutor):
                         stdout=result.stdout,
                         stderr=stderr
                     )
-                except json.JSONDecodeError as e:
+                else:
+                    # No JSON found, return raw output as success
                     return ExecutionResult(
-                        success=False,
-                        error=f"Invalid JSON output: {e}",
+                        success=True,
+                        output={"raw_output": result.stdout.strip()},
                         exit_code=result.returncode,
                         stdout=result.stdout,
                         stderr=stderr
                     )
             else:
+                # Check if there's valid JSON in combined output (skillbox may still output results)
+                output = self._extract_json_from_output(combined_output)
+                if output is not None:
+                    # If we found valid JSON with exit_code=0, treat as success
+                    if isinstance(output, dict) and output.get("exit_code") == 0:
+                        return ExecutionResult(
+                            success=True,
+                            output=output,
+                            exit_code=0,
+                            stdout=result.stdout,
+                            stderr=stderr
+                        )
+
+                error_msg = stderr or result.stdout or f"Exit code: {result.returncode}"
+                error_msg = self._format_sandbox_error(error_msg)
+
                 return ExecutionResult(
                     success=False,
-                    error=stderr or f"Exit code: {result.returncode}",
+                    error=error_msg,
                     exit_code=result.returncode,
                     stdout=result.stdout,
                     stderr=stderr

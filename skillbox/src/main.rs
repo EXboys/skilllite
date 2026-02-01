@@ -230,7 +230,10 @@ fn exec_script(
     // Store args in metadata for the executor to use
     if let Some(ref args_str) = args {
         // Parse args and pass them through environment variable
-        std::env::set_var("SKILLBOX_SCRIPT_ARGS", args_str);
+        // SAFETY: We are setting an environment variable before spawning any threads
+        unsafe {
+            std::env::set_var("SKILLBOX_SCRIPT_ARGS", args_str);
+        }
     }
 
     // Execute in sandbox

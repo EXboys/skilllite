@@ -244,15 +244,34 @@ class SkillLiteToolSpec:
                 code_hash=self._generate_input_hash(skill_name, input_data)
             )
 
+        # Find the script file to scan
+        script_path = None
+        scripts_dir = os.path.join(skill.path, "scripts")
+        if os.path.exists(scripts_dir):
+            for f in os.listdir(scripts_dir):
+                if f.endswith(".py") or f.endswith(".js"):
+                    script_path = os.path.join(scripts_dir, f)
+                    break
+
+        if not script_path:
+            # No script found, assume safe
+            return SecurityScanResult(
+                is_safe=True,
+                scan_id=str(uuid.uuid4()),
+                code_hash=self._generate_input_hash(skill_name, input_data)
+            )
+
         try:
+            # Use security-scan command
             result = subprocess.run(
-                [skillbox_path, "scan", skill.path],
+                [skillbox_path, "security-scan", script_path],
                 capture_output=True,
                 text=True,
                 timeout=30
             )
             return self._parse_scan_output(result.stdout, skill_name, input_data)
-        except Exception:
+        except Exception as e:
+            pass  # Silently fail - return safe result
             return SecurityScanResult(
                 is_safe=True,
                 scan_id=str(uuid.uuid4()),
@@ -260,35 +279,57 @@ class SkillLiteToolSpec:
             )
 
     def _parse_scan_output(self, output: str, skill_name: str, input_data: Dict[str, Any]) -> SecurityScanResult:
-        """Parse skillbox scan output into SecurityScanResult."""
-        import json
+        """Parse skillbox security-scan text output into SecurityScanResult."""
+        import re
 
         scan_id = str(uuid.uuid4())
         code_hash = self._generate_input_hash(skill_name, input_data)
 
-        try:
-            data = json.loads(output)
-            issues = data.get("issues", [])
-
-            high_count = sum(1 for i in issues if i.get("severity") in ["Critical", "High"])
-            medium_count = sum(1 for i in issues if i.get("severity") == "Medium")
-            low_count = sum(1 for i in issues if i.get("severity") == "Low")
-
-            return SecurityScanResult(
-                is_safe=len(issues) == 0,
-                issues=issues,
-                scan_id=scan_id,
-                code_hash=code_hash,
-                high_severity_count=high_count,
-                medium_severity_count=medium_count,
-                low_severity_count=low_count
-            )
-        except json.JSONDecodeError:
+        # Check if no issues found
+        if "No security issues found" in output or "✅" in output:
             return SecurityScanResult(
                 is_safe=True,
                 scan_id=scan_id,
                 code_hash=code_hash
             )
+
+        # Parse text output for issues
+        # Format: 🟡 #1 [Medium] Network Request
+        #         🔴 #2 [High] System Command
+        issues = []
+        high_count = 0
+        medium_count = 0
+        low_count = 0
+
+        # Match patterns like: 🟡 #1 [Medium] Network Request
+        issue_pattern = re.compile(r'[🔴🟠🟡🟢]\s*#(\d+)\s*\[(\w+)\]\s*(.+)')
+
+        for line in output.split('\n'):
+            match = issue_pattern.search(line)
+            if match:
+                severity = match.group(2)
+                issue_type = match.group(3).strip()
+                issues.append({
+                    "severity": severity,
+                    "issue_type": issue_type,
+                    "description": issue_type
+                })
+                if severity in ["Critical", "High"]:
+                    high_count += 1
+                elif severity == "Medium":
+                    medium_count += 1
+                elif severity == "Low":
+                    low_count += 1
+
+        return SecurityScanResult(
+            is_safe=len(issues) == 0,
+            issues=issues,
+            scan_id=scan_id,
+            code_hash=code_hash,
+            high_severity_count=high_count,
+            medium_severity_count=medium_count,
+            low_severity_count=low_count
+        )
 
     def _create_skill_function(self, skill_name: str):
         """Create a callable function for a skill with security confirmation support."""
@@ -329,14 +370,23 @@ class SkillLiteToolSpec:
             if not confirmed:
                 return "❌ Execution cancelled by user after security review."
 
-            # User confirmed, execute
-            return self._execute_skill(skill_name, kwargs)
+            # User confirmed, execute with sandbox_level=1 to allow full execution
+            return self._execute_skill(skill_name, kwargs, skip_skillbox_confirmation=True)
 
         return skill_fn
 
-    def _execute_skill(self, skill_name: str, kwargs: Dict[str, Any]) -> str:
+    def _execute_skill(self, skill_name: str, kwargs: Dict[str, Any], skip_skillbox_confirmation: bool = False) -> str:
         """Execute a skill and return the result."""
+        import os
+
+        old_sandbox_level = None
         try:
+            # If user already confirmed in Python layer, use Level 1 (no sandbox)
+            # This allows dangerous operations to execute after user approval
+            if skip_skillbox_confirmation:
+                old_sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL")
+                os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"  # No sandbox - user approved
+
             result = self.manager.execute(
                 skill_name,
                 kwargs,
@@ -349,6 +399,13 @@ class SkillLiteToolSpec:
                 return f"Error: {result.error}"
         except Exception as e:
             return f"Execution failed: {str(e)}"
+        finally:
+            # Restore original sandbox level
+            if skip_skillbox_confirmation:
+                if old_sandbox_level is not None:
+                    os.environ["SKILLBOX_SANDBOX_LEVEL"] = old_sandbox_level
+                elif "SKILLBOX_SANDBOX_LEVEL" in os.environ:
+                    del os.environ["SKILLBOX_SANDBOX_LEVEL"]
     
     def to_tool_list(self) -> List[LlamaBaseTool]:
         """

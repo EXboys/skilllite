@@ -205,17 +205,18 @@ class SkillLiteTool(BaseTool):
         # Try to get skill info and scan its entry point
         try:
             skill_info = self.manager._registry.get_skill(self.skill_name)
-            if skill_info and skill_info.entry_point:
-                entry_script = skill_info.path / skill_info.entry_point
+            entry_point = skill_info.metadata.entry_point if skill_info and skill_info.metadata else None
+            if skill_info and entry_point:
+                entry_script = skill_info.path / entry_point
                 if entry_script.exists():
-                    # Use skillbox scan command if available
+                    # Use skillbox security-scan command if available
                     from ...sandbox.skillbox import find_binary
                     import subprocess
 
                     skillbox_path = find_binary()
                     if skillbox_path:
                         result = subprocess.run(
-                            [skillbox_path, "scan", str(skill_info.path)],
+                            [skillbox_path, "security-scan", str(entry_script)],
                             capture_output=True,
                             text=True,
                             timeout=30
@@ -303,6 +304,11 @@ class SkillLiteTool(BaseTool):
         **kwargs: Any
     ) -> str:
         """Execute the skill synchronously with security confirmation support."""
+        import os
+
+        skip_skillbox_confirmation = False
+        old_sandbox_level = None
+
         try:
             # For sandbox level 3, perform security scan first
             if self.sandbox_level >= 3:
@@ -320,6 +326,8 @@ class SkillLiteTool(BaseTool):
                                 f"{report}\n\n"
                                 f"User declined to proceed with execution."
                             )
+                        # User confirmed - skip skillbox confirmation
+                        skip_skillbox_confirmation = True
                     else:
                         # No callback, return security report and require manual confirmation
                         return (
@@ -327,6 +335,12 @@ class SkillLiteTool(BaseTool):
                             f"{scan_result.format_report()}\n\n"
                             f"To execute this skill, provide a confirmation_callback when creating the tool."
                         )
+
+            # If user already confirmed in Python layer, use Level 1 (no sandbox)
+            # This allows dangerous operations to execute after user approval
+            if skip_skillbox_confirmation:
+                old_sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL")
+                os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"  # No sandbox - user approved
 
             # Execute the skill
             result = self.manager.execute(
@@ -341,6 +355,13 @@ class SkillLiteTool(BaseTool):
                 return f"Error: {result.error}"
         except Exception as e:
             return f"Execution failed: {str(e)}"
+        finally:
+            # Restore original sandbox level
+            if skip_skillbox_confirmation:
+                if old_sandbox_level is not None:
+                    os.environ["SKILLBOX_SANDBOX_LEVEL"] = old_sandbox_level
+                elif "SKILLBOX_SANDBOX_LEVEL" in os.environ:
+                    del os.environ["SKILLBOX_SANDBOX_LEVEL"]
 
     async def _arun(
         self,
@@ -348,6 +369,11 @@ class SkillLiteTool(BaseTool):
         **kwargs: Any
     ) -> str:
         """Execute the skill asynchronously with security confirmation support."""
+        import os
+
+        skip_skillbox_confirmation = False
+        old_sandbox_level = None
+
         try:
             # For sandbox level 3, perform security scan first
             if self.sandbox_level >= 3:
@@ -365,6 +391,8 @@ class SkillLiteTool(BaseTool):
                                 f"{report}\n\n"
                                 f"User declined to proceed with execution."
                             )
+                        # User confirmed - skip skillbox confirmation
+                        skip_skillbox_confirmation = True
                     elif self.confirmation_callback:
                         # Fall back to sync callback in thread
                         report = scan_result.format_report()
@@ -378,6 +406,8 @@ class SkillLiteTool(BaseTool):
                                 f"{report}\n\n"
                                 f"User declined to proceed with execution."
                             )
+                        # User confirmed - skip skillbox confirmation
+                        skip_skillbox_confirmation = True
                     else:
                         # No callback, return security report
                         return (
@@ -385,6 +415,12 @@ class SkillLiteTool(BaseTool):
                             f"{scan_result.format_report()}\n\n"
                             f"To execute this skill, provide a confirmation_callback when creating the tool."
                         )
+
+            # If user already confirmed in Python layer, use Level 1 (no sandbox)
+            # This allows dangerous operations to execute after user approval
+            if skip_skillbox_confirmation:
+                old_sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL")
+                os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"  # No sandbox - user approved
 
             # Execute the skill in thread pool
             result = await asyncio.to_thread(
@@ -400,6 +436,13 @@ class SkillLiteTool(BaseTool):
                 return f"Error: {result.error}"
         except Exception as e:
             return f"Execution failed: {str(e)}"
+        finally:
+            # Restore original sandbox level
+            if skip_skillbox_confirmation:
+                if old_sandbox_level is not None:
+                    os.environ["SKILLBOX_SANDBOX_LEVEL"] = old_sandbox_level
+                elif "SKILLBOX_SANDBOX_LEVEL" in os.environ:
+                    del os.environ["SKILLBOX_SANDBOX_LEVEL"]
 
 
 class SkillLiteToolkit:

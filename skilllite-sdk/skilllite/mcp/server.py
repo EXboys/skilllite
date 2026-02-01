@@ -422,7 +422,9 @@ This skill executes code from MCP.
                     "stderr": (
                         f"🔐 Security Review Required\n\n"
                         f"{scan_result.format_report()}\n\n"
-                        f"To execute this code, call execute_code again with:\n"
+                        f"⚠️ IMPORTANT: You MUST ask the user for confirmation before proceeding.\n"
+                        f"Show this security report to the user and wait for their explicit approval.\n\n"
+                        f"If the user approves, call execute_code again with:\n"
                         f"  - confirmed: true\n"
                         f"  - scan_id: \"{scan_result.scan_id}\"\n"
                     ),
@@ -594,7 +596,10 @@ class MCPServer:
                     description=(
                         "Execute a skill with the given input parameters. "
                         "Use list_skills to see available skills and "
-                        "get_skill_info to understand required parameters."
+                        "get_skill_info to understand required parameters. "
+                        "IMPORTANT: If the skill has high-severity security issues, "
+                        "you MUST show the security report to the user and ASK for their explicit confirmation "
+                        "before setting confirmed=true. Do NOT auto-confirm without user approval."
                     ),
                     inputSchema={
                         "type": "object",
@@ -606,6 +611,17 @@ class MCPServer:
                             "input": {
                                 "type": "object",
                                 "description": "Input parameters for the skill"
+                            },
+                            "confirmed": {
+                                "type": "boolean",
+                                "description": (
+                                    "Set to true ONLY after the user has explicitly approved execution. "
+                                    "You must ask the user for confirmation first."
+                                )
+                            },
+                            "scan_id": {
+                                "type": "string",
+                                "description": "Scan ID from security review (required when confirmed=true)"
                             }
                         },
                         "required": ["skill_name"]
@@ -639,8 +655,9 @@ class MCPServer:
                     name="execute_code",
                     description=(
                         "Execute code in a secure sandbox environment. "
-                        "If security issues are found, you must set confirmed=true "
-                        "and provide the scan_id from a previous scan_code call."
+                        "IMPORTANT: If security issues are found, you MUST show the security report "
+                        "to the user and ASK for their explicit confirmation before setting confirmed=true. "
+                        "Do NOT auto-confirm without user approval."
                     ),
                     inputSchema={
                         "type": "object",
@@ -657,8 +674,8 @@ class MCPServer:
                             "confirmed": {
                                 "type": "boolean",
                                 "description": (
-                                    "Set to true to confirm execution despite security warnings. "
-                                    "Required when high-severity issues are found."
+                                    "Set to true ONLY after the user has explicitly approved execution. "
+                                    "You must ask the user for confirmation first."
                                 ),
                                 "default": False
                             },
@@ -921,9 +938,11 @@ class MCPServer:
         )
 
     async def _handle_run_skill(self, arguments: Dict[str, Any]) -> "CallToolResult":
-        """Handle run_skill tool call."""
+        """Handle run_skill tool call with security scanning."""
         skill_name = arguments.get("skill_name")
         input_data = arguments.get("input", {})
+        confirmed = arguments.get("confirmed", False)
+        scan_id = arguments.get("scan_id")
 
         if not skill_name:
             return CallToolResult(
@@ -959,6 +978,58 @@ class MCPServer:
                 ]
             )
 
+        # Get skill info for security scan
+        skill = self.skill_manager.get_skill(skill_name)
+        if not skill:
+            return CallToolResult(
+                isError=True,
+                content=[
+                    TextContent(
+                        type="text",
+                        text=f"Could not load skill: {skill_name}"
+                    )
+                ]
+            )
+
+        # Security scan for Level 3
+        sandbox_level = int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
+        if sandbox_level >= 3 and not confirmed:
+            # Find script file to scan
+            script_path = None
+            skill_dir = Path(skill.path)
+            for entry in ["scripts/main.py", "main.py"]:
+                candidate = skill_dir / entry
+                if candidate.exists():
+                    script_path = str(candidate)
+                    break
+
+            if script_path:
+                # Perform security scan
+                scan_result = self._scan_skill_script(skill_name, script_path)
+                if scan_result and scan_result.high_severity_count > 0:
+                    return CallToolResult(
+                        content=[
+                            TextContent(
+                                type="text",
+                                text=(
+                                    f"🔐 Security Review Required for skill '{skill_name}'\n\n"
+                                    f"{scan_result.format_report()}\n\n"
+                                    f"⚠️ IMPORTANT: You MUST ask the user for confirmation before proceeding.\n"
+                                    f"Show this security report to the user and wait for their explicit approval.\n\n"
+                                    f"If the user approves, call run_skill again with:\n"
+                                    f"  - confirmed: true\n"
+                                    f"  - scan_id: \"{scan_result.scan_id}\"\n"
+                                )
+                            )
+                        ]
+                    )
+
+        # If confirmed, use Level 1 (no sandbox) for execution
+        old_sandbox_level = None
+        if confirmed:
+            old_sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL")
+            os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"
+
         # Execute the skill
         try:
             result = self.skill_manager.execute(skill_name, input_data)
@@ -992,6 +1063,45 @@ class MCPServer:
                     )
                 ]
             )
+        finally:
+            # Restore sandbox level
+            if confirmed:
+                if old_sandbox_level is not None:
+                    os.environ["SKILLBOX_SANDBOX_LEVEL"] = old_sandbox_level
+                elif "SKILLBOX_SANDBOX_LEVEL" in os.environ:
+                    del os.environ["SKILLBOX_SANDBOX_LEVEL"]
+
+    def _scan_skill_script(self, skill_name: str, script_path: str) -> Optional[SecurityScanResult]:
+        """Scan a skill's script for security issues."""
+        import subprocess
+        import hashlib
+        import uuid
+
+        try:
+            result = subprocess.run(
+                [self.executor.skillbox_path, "security-scan", script_path],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+
+            issues = self.executor._parse_scan_output(result.stdout + result.stderr)
+            high_count = sum(1 for i in issues if i.get("severity") in ["Critical", "High"])
+
+            scan_id = str(uuid.uuid4())[:8]
+            code_hash = hashlib.sha256(f"{skill_name}:{script_path}".encode()).hexdigest()[:16]
+
+            scan_result = SecurityScanResult(
+                is_safe=high_count == 0,
+                issues=issues,
+                scan_id=scan_id,
+                code_hash=code_hash,
+                high_severity_count=high_count,
+            )
+
+            return scan_result
+        except Exception:
+            return None
 
     async def run(self):
         """Run the MCP server."""
