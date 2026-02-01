@@ -1,11 +1,11 @@
 [package]
 name = "skillbox"
 version = "0.1.0"
-edition = "2021"
-authors = ["EX <chenduan.cd@alibaba-inc.com>"]
+edition = "2026"
+authors = ["EX <boyex345@gmail.com>"]
 description = "A lightweight Skills secure execution engine"
 license = "MIT"
-repository = "https://github.com/nickliu02/skilllite"
+repository = "https://github.com/EXboys/skilllite"
 keywords = ["agent", "skills", "sandbox", "security"]
 categories = ["command-line-utilities", "development-tools"]
 
