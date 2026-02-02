@@ -41,6 +41,12 @@ jobs:
             artifact_name: skillbox
             asset_name: skillbox-linux-arm64
 
+          # Windows x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: skillbox.exe
+            asset_name: skillbox-windows-x64
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -80,18 +86,35 @@ jobs:
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Create tarball
+      - name: Create tarball (Unix)
+        if: runner.os != 'Windows'
         shell: bash
         run: |
           cd skillbox/target/${{ matrix.target }}/release
           tar -czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
           mv ${{ matrix.asset_name }}.tar.gz ../../../../
 
-      - name: Upload artifact
+      - name: Create zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd skillbox/target/${{ matrix.target }}/release
+          Compress-Archive -Path ${{ matrix.artifact_name }} -DestinationPath ${{ matrix.asset_name }}.zip
+          Move-Item ${{ matrix.asset_name }}.zip ../../../../
+
+      - name: Upload artifact (Unix)
+        if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}.tar.gz
+
+      - name: Upload artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: ${{ matrix.asset_name }}.zip
 
   release:
     name: Create Release
@@ -124,6 +147,7 @@ jobs:
             ./artifacts/skillbox-darwin-x64/skillbox-darwin-x64.tar.gz
             ./artifacts/skillbox-darwin-arm64/skillbox-darwin-arm64.tar.gz
             ./artifacts/skillbox-linux-arm64/skillbox-linux-arm64.tar.gz
+            ./artifacts/skillbox-windows-x64/skillbox-windows-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
