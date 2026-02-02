@@ -30,7 +30,7 @@ jobs:
             asset_name: skillbox-darwin-x64
 
           # macOS ARM64 (Apple Silicon)
-          - os: macos-14
+          - os: macos-latest
             target: aarch64-apple-darwin
             artifact_name: skillbox
             asset_name: skillbox-darwin-arm64
