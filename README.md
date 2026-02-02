@@ -2,13 +2,13 @@
 
 [中文文档](./README_CN.md)
 
-**The only lightweight AI Agent Skills engine with built-in native system-level sandbox, zero dependencies, and local execution.**
+**The  lightweight AI Agent Skills engine with built-in native system-level sandbox, zero dependencies, and local execution.**
 
 A lightweight AI Agent Skills execution engine that integrates with any OpenAI-compatible LLM.
 
 ## 🎯 Why SkillLite?
 
-| Feature | SkillLite | Claude Code Sandbox | LangChain Sandbox | OpenAI Plugins | Semantic Kernel |
+| Feature | SkillLite | Claude Code Sandbox | Pyodide  | OpenAI Plugins | Semantic Kernel |
 |---------|-----------|---------------------|-------------------|----------------|-----------------|
 | **Built-in Sandbox** | ✅ Rust Native | ✅ Node.js Native | ⚠️ Pyodide/Docker | ⚠️ Cloud (Closed) | ❌ None (Azure) |
 | **Sandbox Tech** | Seatbelt + Namespace | Seatbelt + bubblewrap | WebAssembly/Docker | Cloud Isolation | - |
