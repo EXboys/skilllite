@@ -81,4 +81,8 @@ coverage.xml
 *.tmp
 *.temp
 
+# Separate repository (langchain-skilllite has its own git repo)
+langchain-skilllite/
+test/
+
 

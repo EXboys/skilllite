@@ -22,21 +22,4 @@ Provide an operation and two numbers to get the result.
 - Multiply: `{"operation": "multiply", "a": 6, "b": 7}` → `42`
 - Divide: `{"operation": "divide", "a": 20, "b": 4}` → `5`
 
-## Runtime
 
-```yaml
-input_schema:
-  type: object
-  properties:
-    operation:
-      type: string
-      description: "The operation to perform: add, subtract, multiply, divide"
-      enum: [add, subtract, multiply, divide]
-    a:
-      type: number
-      description: First operand
-    b:
-      type: number
-      description: Second operand
-  required: [operation, a, b]
-```
