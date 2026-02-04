@@ -248,29 +248,53 @@ SkillLite provides adapters for popular AI frameworks with security confirmation
 
 ### LangChain Integration
 
+For LangChain/LangGraph integration, we recommend using the dedicated **[langchain-skilllite](https://pypi.org/project/langchain-skilllite/)** package:
+
+```bash
+pip install langchain-skilllite
+```
+
+```python
+from langchain_skilllite import SkillLiteToolkit
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+
+# Load all skills from a directory as LangChain tools
+tools = SkillLiteToolkit.from_directory("./skills")
+
+# Create a LangGraph agent
+agent = create_react_agent(ChatOpenAI(model="gpt-4"), tools)
+
+# Run the agent
+result = agent.invoke({
+    "messages": [("user", "Convert 'hello world' to uppercase")]
+})
+```
+
+With security confirmation (sandbox_level=3):
+
+```python
+def confirm_execution(report: str, scan_id: str) -> bool:
+    print(report)
+    return input("Continue? [y/N]: ").lower() == 'y'
+
+tools = SkillLiteToolkit.from_directory(
+    "./skills",
+    sandbox_level=3,  # 1=no sandbox, 2=sandbox only, 3=sandbox+scan
+    confirmation_callback=confirm_execution
+)
+```
+
+For more details, see the [langchain-skilllite documentation](../langchain-skilllite/README.md).
+
+**Alternative**: You can also use the built-in adapter:
+
 ```python
 from skilllite import SkillManager
 from skilllite.core.adapters.langchain import SkillLiteToolkit
 
 manager = SkillManager(skills_dir="./skills")
-
-# Basic usage
 tools = SkillLiteToolkit.from_manager(manager).get_tools()
-
-# With security confirmation (sandbox_level=3)
-def confirm_execution(report: str, scan_id: str) -> bool:
-    print(report)
-    return input("Continue? [y/N]: ").lower() == 'y'
-
-tools = SkillLiteToolkit.from_manager(
-    manager,
-    sandbox_level=3,  # 1=no sandbox, 2=sandbox only, 3=sandbox+scan
-    confirmation_callback=confirm_execution
-).get_tools()
-
-# Use with LangChain agent
-from langchain.agents import AgentExecutor, create_openai_tools_agent
-agent = create_openai_tools_agent(llm, tools, prompt)
 ```
 
 ### LlamaIndex Integration
