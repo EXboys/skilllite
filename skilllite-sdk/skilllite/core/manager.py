@@ -304,7 +304,64 @@ class SkillManager:
     ) -> List[ToolResult]:
         """Parse and execute all tool calls from Claude's native API response."""
         return self._handler.handle_tool_calls_claude_native(response, allow_network, timeout)
-    
+
+    def handle_tool_calls_with_unified_service(
+        self,
+        response: Any,
+        confirmation_callback: Optional[Callable[[str, str], bool]] = None,
+        allow_network: Optional[bool] = None,
+        timeout: Optional[int] = None
+    ) -> List[ToolResult]:
+        """
+        Parse and execute all tool calls using UnifiedExecutionService.
+
+        This method uses the unified execution layer which:
+        1. Reads sandbox level at runtime
+        2. Handles security scanning and confirmation per-skill
+        3. Properly downgrades sandbox level after confirmation
+
+        Args:
+            response: Response from OpenAI-compatible API
+            confirmation_callback: Callback for security confirmation
+            allow_network: Whether to allow network access
+            timeout: Execution timeout in seconds
+
+        Returns:
+            List of ToolResult objects
+        """
+        return self._handler.handle_tool_calls_with_unified_service(
+            response,
+            confirmation_callback=confirmation_callback,
+            allow_network=allow_network,
+            timeout=timeout
+        )
+
+    def handle_tool_calls_claude_native_with_unified_service(
+        self,
+        response: Any,
+        confirmation_callback: Optional[Callable[[str, str], bool]] = None,
+        allow_network: Optional[bool] = None,
+        timeout: Optional[int] = None
+    ) -> List[ToolResult]:
+        """
+        Parse and execute all Claude tool calls using UnifiedExecutionService.
+
+        Args:
+            response: Response from Claude's native API
+            confirmation_callback: Callback for security confirmation
+            allow_network: Whether to allow network access
+            timeout: Execution timeout in seconds
+
+        Returns:
+            List of ToolResult objects
+        """
+        return self._handler.handle_tool_calls_claude_native_with_unified_service(
+            response,
+            confirmation_callback=confirmation_callback,
+            allow_network=allow_network,
+            timeout=timeout
+        )
+
     def format_tool_results_claude_native(self, results: List[ToolResult]) -> List[Dict[str, Any]]:
         """Format tool results for Claude's native API."""
         return self._handler.format_tool_results_claude_native(results)
@@ -335,6 +392,7 @@ class SkillManager:
         custom_tool_handler: Optional[Callable] = None,
         enable_task_planning: bool = True,
         verbose: bool = True,
+        confirmation_callback: Optional[Callable[[str, str], bool]] = None,
         **kwargs
     ) -> AgenticLoop:
         """
@@ -351,15 +409,16 @@ class SkillManager:
             custom_tool_handler: Optional custom tool handler
             enable_task_planning: Whether to generate task list before execution
             verbose: Whether to print detailed logs
+            confirmation_callback: Callback for security confirmation (sandbox_level=3)
             **kwargs: Additional arguments passed to the LLM
-            
+
         Returns:
             AgenticLoop instance
-            
+
         Example:
             # OpenAI-compatible (default)
             loop = manager.create_agentic_loop(client, "gpt-4")
-            
+
             # Claude native API
             loop = manager.create_agentic_loop(client, "claude-3-opus",
                                                api_format="claude_native")
@@ -375,6 +434,7 @@ class SkillManager:
             custom_tool_handler=custom_tool_handler,
             enable_task_planning=enable_task_planning,
             verbose=verbose,
+            confirmation_callback=confirmation_callback,
             **kwargs
         )
     
@@ -421,14 +481,15 @@ class SkillManager:
         custom_tool_executor: Optional[Callable] = None,
         enable_task_planning: bool = True,
         verbose: bool = True,
+        confirmation_callback: Optional[Callable[[str, str], bool]] = None,
         **kwargs
     ) -> AgenticLoop:
         """
         Create an enhanced agentic loop with custom tools support.
-        
+
         This method creates an AgenticLoop that can handle both skill tools
         and custom tools (like file operations).
-        
+
         Args:
             client: LLM client (OpenAI-compatible)
             model: Model name to use
@@ -438,27 +499,32 @@ class SkillManager:
             custom_tool_executor: Executor function for custom tools
             enable_task_planning: Whether to generate task list before execution
             verbose: Whether to print detailed logs
+            confirmation_callback: Callback for security confirmation (sandbox_level=3)
             **kwargs: Additional arguments passed to the LLM
-            
+
         Returns:
             AgenticLoop instance with enhanced capabilities
         """
         # Create custom tool handler that combines skill tools and custom tools
         def combined_tool_handler(response, manager, allow_network, timeout):
             from .tools import ToolUseRequest, ToolResult
-            
+
             requests = ToolUseRequest.parse_from_openai_response(response)
             results = []
-            
+
             # Get skill tool names
             skill_tool_names = set(self.skill_names())
             skill_tool_names.update(self._registry.list_multi_script_tools())
-            
+
             for request in requests:
                 if request.name in skill_tool_names:
-                    # Execute as skill tool
-                    result = self._handler.execute_tool_call(
-                        request, allow_network=allow_network, timeout=timeout
+                    # Execute as skill tool using UnifiedExecutionService
+                    # This handles security scanning, confirmation, and proper sandbox level
+                    result = self._handler.execute_tool_call_with_unified_service(
+                        request,
+                        confirmation_callback=confirmation_callback,
+                        allow_network=allow_network,
+                        timeout=timeout
                     )
                     results.append(result)
                 elif custom_tool_executor:
@@ -473,9 +539,9 @@ class SkillManager:
                     results.append(ToolResult.error(
                         request.id, f"No executor found for tool: {request.name}"
                     ))
-            
+
             return results
-        
+
         return AgenticLoop(
             manager=self,
             client=client,
@@ -486,6 +552,7 @@ class SkillManager:
             custom_tool_handler=combined_tool_handler if custom_tool_executor else None,
             enable_task_planning=enable_task_planning,
             verbose=verbose,
+            confirmation_callback=confirmation_callback,
             **kwargs
         )
     

@@ -56,11 +56,12 @@ class AgenticLoop:
         custom_tool_handler: Optional[Callable] = None,
         enable_task_planning: bool = True,
         verbose: bool = True,
+        confirmation_callback: Optional[Callable[[str, str], bool]] = None,
         **kwargs
     ):
         """
         Initialize the agentic loop.
-        
+
         Args:
             manager: SkillManager instance
             client: LLM client (OpenAI or Anthropic)
@@ -71,6 +72,9 @@ class AgenticLoop:
             custom_tool_handler: Optional custom tool handler function
             enable_task_planning: Whether to generate task list before execution
             verbose: Whether to print detailed logs
+            confirmation_callback: Callback for security confirmation (sandbox_level=3).
+                Signature: (security_report: str, scan_id: str) -> bool
+                If None and sandbox_level=3, will use interactive terminal confirmation.
             **kwargs: Additional arguments passed to the LLM
         """
         self.manager = manager
@@ -82,14 +86,157 @@ class AgenticLoop:
         self.custom_tool_handler = custom_tool_handler
         self.enable_task_planning = enable_task_planning
         self.verbose = verbose
+        self.confirmation_callback = confirmation_callback
         self.extra_kwargs = kwargs
         self.task_list: List[Dict] = []
-    
+
+        # Initialize security scanner for sandbox_level=3
+        self._security_scanner = None
+        self._pending_confirmation = False  # Track if confirmation is pending
+
     def _log(self, message: str) -> None:
         """Print log message if verbose mode is enabled."""
         if self.verbose:
             print(message)
-    
+
+    def _get_security_scanner(self):
+        """Get or lazily initialize the security scanner."""
+        if self._security_scanner is None:
+            from .security import SecurityScanner
+            self._security_scanner = SecurityScanner()
+        return self._security_scanner
+
+    def _should_perform_security_scan(self) -> bool:
+        """Check if security scanning should be performed."""
+        import os
+        sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3")
+        return sandbox_level == "3" and self.confirmation_callback is not None
+
+    def _interactive_confirmation(self, report: str, scan_id: str) -> bool:
+        """Default interactive terminal confirmation."""
+        self._log(f"\n{report}")
+        self._log("\n" + "=" * 60)
+        while True:
+            response = input("⚠️  Allow execution? (y/n): ").strip().lower()
+            if response in ['y', 'yes']:
+                return True
+            elif response in ['n', 'no']:
+                return False
+            self._log("Please enter 'y' or 'n'")
+
+    def _perform_security_confirmation_for_tools(
+        self,
+        tool_calls: List[Any]
+    ) -> bool:
+        """
+        Perform security scan and confirmation for tool calls.
+
+        Returns True if execution should proceed, False if denied.
+        Also handles skills that require elevated permissions.
+        """
+        import os
+        from .security import SecurityScanResult
+
+        sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3")
+        if sandbox_level != "3":
+            return True  # No confirmation needed for levels 1-2
+
+        # Get skill tool names
+        skill_tool_names = set(self.manager.skill_names())
+        skill_tool_names.update(self.manager._registry.list_multi_script_tools())
+
+        # Scan each skill tool call
+        combined_issues = []
+        scanned_skills = set()
+        requires_elevated = False  # Track if any skill requires elevated permissions
+
+        for tc in tool_calls:
+            tool_name = tc.function.name if hasattr(tc, 'function') else tc.get('name', '')
+
+            # Only scan skill tools, not custom tools
+            if tool_name not in skill_tool_names:
+                continue
+
+            # Get skill info
+            skill_name = tool_name.split('__')[0] if '__' in tool_name else tool_name
+            if skill_name in scanned_skills:
+                continue
+            scanned_skills.add(skill_name)
+
+            skill_info = self.manager.get_skill(skill_name)
+            if not skill_info:
+                continue
+
+            # Check if skill requires elevated permissions
+            if skill_info.metadata and getattr(skill_info.metadata, 'requires_elevated_permissions', False):
+                requires_elevated = True
+                self._log(f"🔓 Skill '{skill_name}' requires elevated permissions")
+
+            # Parse input data
+            try:
+                import json
+                input_data = json.loads(tc.function.arguments) if hasattr(tc, 'function') else {}
+            except (json.JSONDecodeError, AttributeError):
+                input_data = {}
+
+            # Perform security scan
+            scanner = self._get_security_scanner()
+            result = scanner.scan_skill(skill_info, input_data)
+            combined_issues.extend(result.issues)
+
+        # If skill requires elevated permissions, downgrade sandbox level
+        if requires_elevated and not combined_issues:
+            self._log("✅ Skill requires elevated permissions, downgrading to sandbox level 1...")
+            os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"
+            self._pending_confirmation = True
+            return True
+
+        if not combined_issues:
+            return True  # No issues found
+
+        # Create combined scan result
+        high_count = sum(1 for i in combined_issues if i.get("severity") in ["Critical", "High"])
+        medium_count = sum(1 for i in combined_issues if i.get("severity") == "Medium")
+        low_count = sum(1 for i in combined_issues if i.get("severity") == "Low")
+
+        combined_result = SecurityScanResult(
+            is_safe=high_count == 0,
+            issues=combined_issues,
+            scan_id=f"batch-{len(scanned_skills)}",
+            high_severity_count=high_count,
+            medium_severity_count=medium_count,
+            low_severity_count=low_count,
+        )
+
+        if not combined_result.requires_confirmation:
+            return True  # Only low/medium issues, proceed
+
+        # Ask for confirmation
+        report = combined_result.format_report()
+        self._log(f"\n🔒 Security scan detected potential issues:")
+
+        if self.confirmation_callback:
+            confirmed = self.confirmation_callback(report, combined_result.scan_id)
+        else:
+            confirmed = self._interactive_confirmation(report, combined_result.scan_id)
+
+        if confirmed:
+            # Temporarily downgrade sandbox level to allow execution
+            self._log("✅ User confirmed. Executing with sandbox level 1...")
+            os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"
+            self._pending_confirmation = True
+            return True
+        else:
+            self._log("❌ User denied execution.")
+            return False
+
+    def _restore_sandbox_level(self, original_level: str) -> None:
+        """Restore original sandbox level after execution."""
+        import os
+        if self._pending_confirmation:
+            os.environ["SKILLBOX_SANDBOX_LEVEL"] = original_level
+            self._pending_confirmation = False
+
     def _get_execution_system_prompt(self) -> str:
         """
         Generate the main execution system prompt for skill selection and file operations.
@@ -573,17 +720,25 @@ Based on the documentation, call the tools with correct parameters.
                 continue
             
             messages.append(message)
-            
+
+            # Execute tools using unified execution service
             self._log(f"\n⚙️  Executing tools...")
+
             if self.custom_tool_handler:
+                # Custom tool handler takes precedence
                 tool_results = self.custom_tool_handler(
                     response, self.manager, allow_network, timeout
                 )
             else:
-                tool_results = self.manager.handle_tool_calls(
-                    response, allow_network=allow_network, timeout=timeout
+                # Use unified execution service with confirmation callback
+                # This handles security scanning, confirmation, and sandbox level management
+                tool_results = self.manager.handle_tool_calls_with_unified_service(
+                    response,
+                    confirmation_callback=self.confirmation_callback or self._interactive_confirmation,
+                    allow_network=allow_network,
+                    timeout=timeout
                 )
-            
+
             self._log(f"\n📊 Tool execution results:")
             for idx, (result, tc) in enumerate(zip(tool_results, message.tool_calls), 1):
                 output = result.content
@@ -591,7 +746,7 @@ Based on the documentation, call the tools with correct parameters.
                     output = output[:500] + "... (truncated)"
                 self._log(f"   {idx}. {tc.function.name}")
                 self._log(f"      Result: {output}")
-            
+
             for result in tool_results:
                 messages.append(result.to_openai_format())
             
@@ -693,19 +848,26 @@ Based on the documentation, call the tools with correct parameters.
                 self._log(f"      Arguments: {json.dumps(block.input, ensure_ascii=False)}")
             
             messages.append({"role": "assistant", "content": response.content})
-            
+
+            # Execute tools using unified execution service
             self._log(f"\n⚙️  Executing tools...")
-            tool_results = self.manager.handle_tool_calls_claude_native(
-                response, allow_network=allow_network, timeout=timeout
+
+            # Use unified execution service with confirmation callback
+            # This handles security scanning, confirmation, and sandbox level management
+            tool_results = self.manager.handle_tool_calls_claude_native_with_unified_service(
+                response,
+                confirmation_callback=self.confirmation_callback or self._interactive_confirmation,
+                allow_network=allow_network,
+                timeout=timeout
             )
-            
+
             self._log(f"\n📊 Tool execution results:")
             for idx, result in enumerate(tool_results, 1):
                 output = result.content
                 if len(output) > 500:
                     output = output[:500] + "... (truncated)"
                 self._log(f"   {idx}. Result: {output}")
-            
+
             formatted_results = self.manager.format_tool_results_claude_native(tool_results)
             messages.append({"role": "user", "content": formatted_results})
             

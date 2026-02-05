@@ -91,6 +91,16 @@ pub fn execute_simple_with_limits(
         }
     };
 
+    // Add script arguments from SKILLBOX_SCRIPT_ARGS environment variable
+    // This allows passing CLI arguments to scripts that use argparse
+    if let Ok(script_args) = std::env::var("SKILLBOX_SCRIPT_ARGS") {
+        if !script_args.is_empty() {
+            for arg in script_args.split_whitespace() {
+                cmd.arg(arg);
+            }
+        }
+    }
+
     // Set working directory
     cmd.current_dir(skill_dir);
 
@@ -202,7 +212,7 @@ fn execute_with_sandbox(
     fs::write(&profile_path, &profile_content)?;
 
     // Prepare command based on language
-    let (executable, args) = match language.as_str() {
+    let (executable, mut args) = match language.as_str() {
         "python" => {
             let python = get_python_executable(env_path);
             (python, vec![entry_point.to_string()])
@@ -215,6 +225,17 @@ fn execute_with_sandbox(
             anyhow::bail!("Unsupported language: {}", language);
         }
     };
+
+    // Add script arguments from SKILLBOX_SCRIPT_ARGS environment variable
+    // This allows passing CLI arguments to scripts that use argparse
+    if let Ok(script_args) = std::env::var("SKILLBOX_SCRIPT_ARGS") {
+        if !script_args.is_empty() {
+            // Split by whitespace - arguments should not contain spaces
+            for arg in script_args.split_whitespace() {
+                args.push(arg.to_string());
+            }
+        }
+    }
 
     // Build sandbox-exec command - directly execute interpreter (no script injection)
     let mut cmd = Command::new("sandbox-exec");

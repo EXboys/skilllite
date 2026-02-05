@@ -92,7 +92,8 @@ class SkillRunner:
         allow_network: Optional[bool] = None,
         enable_sandbox: Optional[bool] = None,
         execution_timeout: Optional[int] = None,
-        max_memory_mb: Optional[int] = None
+        max_memory_mb: Optional[int] = None,
+        confirmation_callback: Optional[Callable[[str, str], bool]] = None
     ):
         """
         Initialize SkillRunner.
@@ -122,6 +123,9 @@ class SkillRunner:
             enable_sandbox: Whether to enable sandbox protection (defaults from .env or True)
             execution_timeout: Skill execution timeout in seconds (defaults from .env or 120)
             max_memory_mb: Maximum memory limit in MB (defaults from .env or 512)
+            confirmation_callback: Callback for security confirmation when sandbox_level=3.
+                Signature: (security_report: str, scan_id: str) -> bool
+                If None and sandbox_level=3, will use interactive terminal confirmation.
         """
         # Load .env
         load_env(env_file)
@@ -161,7 +165,11 @@ class SkillRunner:
         
         self.custom_tool_executor = custom_tool_executor
         self.use_enhanced_loop = use_enhanced_loop
-        
+
+        # Security confirmation callback
+        # If None and sandbox_level=3, will use interactive terminal confirmation
+        self.confirmation_callback = confirmation_callback
+
         # Lazy initialization
         self._client = None
         self._manager = None
@@ -282,7 +290,8 @@ Example of CORRECT approach:
                 model=self.model,
                 max_iterations=self.max_iterations,
                 custom_tools=self.custom_tools if self.custom_tools else None,
-                custom_tool_executor=tool_executor
+                custom_tool_executor=tool_executor,
+                confirmation_callback=self.confirmation_callback
             )
         else:
             # Use basic AgenticLoop (backward compatible)
@@ -290,7 +299,8 @@ Example of CORRECT approach:
                 client=self.client,
                 model=self.model,
                 system_prompt=self.system_context,
-                max_iterations=self.max_iterations
+                max_iterations=self.max_iterations,
+                confirmation_callback=self.confirmation_callback
             )
         
         response = loop.run(user_message)

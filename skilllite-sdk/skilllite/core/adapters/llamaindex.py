@@ -33,9 +33,6 @@ Requirements:
 """
 
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
-import hashlib
-import time
-import uuid
 
 try:
     from llama_index.core.tools import FunctionTool, ToolMetadata
@@ -129,10 +126,6 @@ class SkillLiteToolSpec:
         )
     """
 
-    # Class-level scan cache for confirmation flow
-    _scan_cache: Dict[str, SecurityScanResult] = {}
-    _SCAN_CACHE_TTL: int = 300  # 5 minutes
-
     def __init__(
         self,
         manager: "SkillManager",
@@ -193,219 +186,42 @@ class SkillLiteToolSpec:
             confirmation_callback=confirmation_callback
         )
 
-    def _generate_input_hash(self, skill_name: str, input_data: Dict[str, Any]) -> str:
-        """Generate a hash of the input data for verification."""
-        import json
-        content = json.dumps({"skill": skill_name, "inputs": input_data}, sort_keys=True)
-        return hashlib.sha256(content.encode()).hexdigest()
-
-    def _cleanup_expired_scans(self) -> None:
-        """Remove expired scan results from cache."""
-        current_time = time.time()
-        expired = [
-            scan_id for scan_id, result in self._scan_cache.items()
-            if current_time - result.timestamp > self._SCAN_CACHE_TTL
-        ]
-        for scan_id in expired:
-            del self._scan_cache[scan_id]
-
-    def _perform_security_scan(self, skill_name: str, input_data: Dict[str, Any]) -> SecurityScanResult:
-        """Perform security scan on skill code before execution."""
-        import subprocess
-        import os
-
-        # Get skill info to find the code file
-        skill = self.manager.get_skill(skill_name)
-        if not skill or not skill.path:
-            return SecurityScanResult(
-                is_safe=True,
-                scan_id=str(uuid.uuid4()),
-                code_hash=self._generate_input_hash(skill_name, input_data)
-            )
-
-        # Try to find skillbox binary
-        skillbox_paths = [
-            os.path.join(os.path.dirname(__file__), "..", "..", "sandbox", "skillbox", "skillbox"),
-            os.path.expanduser("~/.skilllite/bin/skillbox"),
-            "/usr/local/bin/skillbox"
-        ]
-
-        skillbox_path = None
-        for path in skillbox_paths:
-            if os.path.exists(path) and os.access(path, os.X_OK):
-                skillbox_path = path
-                break
-
-        if not skillbox_path:
-            # No skillbox available, assume safe
-            return SecurityScanResult(
-                is_safe=True,
-                scan_id=str(uuid.uuid4()),
-                code_hash=self._generate_input_hash(skill_name, input_data)
-            )
-
-        # Find the script file to scan
-        script_path = None
-        scripts_dir = os.path.join(skill.path, "scripts")
-        if os.path.exists(scripts_dir):
-            for f in os.listdir(scripts_dir):
-                if f.endswith(".py") or f.endswith(".js"):
-                    script_path = os.path.join(scripts_dir, f)
-                    break
-
-        if not script_path:
-            # No script found, assume safe
-            return SecurityScanResult(
-                is_safe=True,
-                scan_id=str(uuid.uuid4()),
-                code_hash=self._generate_input_hash(skill_name, input_data)
-            )
-
-        try:
-            # Use security-scan command
-            result = subprocess.run(
-                [skillbox_path, "security-scan", script_path],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            return self._parse_scan_output(result.stdout, skill_name, input_data)
-        except Exception as e:
-            pass  # Silently fail - return safe result
-            return SecurityScanResult(
-                is_safe=True,
-                scan_id=str(uuid.uuid4()),
-                code_hash=self._generate_input_hash(skill_name, input_data)
-            )
-
-    def _parse_scan_output(self, output: str, skill_name: str, input_data: Dict[str, Any]) -> SecurityScanResult:
-        """Parse skillbox security-scan text output into SecurityScanResult."""
-        import re
-
-        scan_id = str(uuid.uuid4())
-        code_hash = self._generate_input_hash(skill_name, input_data)
-
-        # Check if no issues found
-        if "No security issues found" in output or "✅" in output:
-            return SecurityScanResult(
-                is_safe=True,
-                scan_id=scan_id,
-                code_hash=code_hash
-            )
-
-        # Parse text output for issues
-        # Format: 🟡 #1 [Medium] Network Request
-        #         🔴 #2 [High] System Command
-        issues = []
-        high_count = 0
-        medium_count = 0
-        low_count = 0
-
-        # Match patterns like: 🟡 #1 [Medium] Network Request
-        issue_pattern = re.compile(r'[🔴🟠🟡🟢]\s*#(\d+)\s*\[(\w+)\]\s*(.+)')
-
-        for line in output.split('\n'):
-            match = issue_pattern.search(line)
-            if match:
-                severity = match.group(2)
-                issue_type = match.group(3).strip()
-                issues.append({
-                    "severity": severity,
-                    "issue_type": issue_type,
-                    "description": issue_type
-                })
-                if severity in ["Critical", "High"]:
-                    high_count += 1
-                elif severity == "Medium":
-                    medium_count += 1
-                elif severity == "Low":
-                    low_count += 1
-
-        return SecurityScanResult(
-            is_safe=len(issues) == 0,
-            issues=issues,
-            scan_id=scan_id,
-            code_hash=code_hash,
-            high_severity_count=high_count,
-            medium_severity_count=medium_count,
-            low_severity_count=low_count
-        )
-
     def _create_skill_function(self, skill_name: str):
-        """Create a callable function for a skill with security confirmation support."""
+        """
+        Create a callable function for a skill using UnifiedExecutionService.
+
+        This method uses the unified execution layer which:
+        1. Reads sandbox level at runtime
+        2. Handles security scanning and confirmation
+        3. Properly downgrades sandbox level after confirmation
+        """
         def skill_fn(**kwargs) -> str:
-            # Cleanup expired scans
-            self._cleanup_expired_scans()
+            try:
+                # Get skill info
+                skill_info = self.manager.get_skill(skill_name)
+                if not skill_info:
+                    return f"Error: Skill '{skill_name}' not found"
 
-            # For sandbox_level < 3, skip security scan
-            if self.sandbox_level < 3:
-                return self._execute_skill(skill_name, kwargs)
+                # Use UnifiedExecutionService
+                from ...sandbox.execution_service import UnifiedExecutionService
 
-            # Perform security scan
-            scan_result = self._perform_security_scan(skill_name, kwargs)
-
-            # If no high severity issues, execute directly
-            if not scan_result.requires_confirmation:
-                return self._execute_skill(skill_name, kwargs)
-
-            # Store scan result for confirmation
-            self._scan_cache[scan_result.scan_id] = scan_result
-
-            # If no callback, return security report
-            if not self.confirmation_callback:
-                report = scan_result.format_report()
-                return (
-                    f"⚠️ Security confirmation required but no callback configured.\n\n"
-                    f"{report}\n\n"
-                    f"To proceed, configure a confirmation_callback when creating SkillLiteToolSpec."
+                service = UnifiedExecutionService.get_instance()
+                result = service.execute_skill(
+                    skill_info=skill_info,
+                    input_data=kwargs,
+                    confirmation_callback=self.confirmation_callback,
+                    allow_network=self.allow_network,
+                    timeout=self.timeout,
                 )
 
-            # Call confirmation callback
-            report = scan_result.format_report()
-            try:
-                confirmed = self.confirmation_callback(report, scan_result.scan_id)
+                if result.success:
+                    return result.output or "Execution completed successfully"
+                else:
+                    return f"Error: {result.error}"
             except Exception as e:
-                return f"Error during security confirmation: {str(e)}"
-
-            if not confirmed:
-                return "❌ Execution cancelled by user after security review."
-
-            # User confirmed, execute with sandbox_level=1 to allow full execution
-            return self._execute_skill(skill_name, kwargs, skip_skillbox_confirmation=True)
+                return f"Execution failed: {str(e)}"
 
         return skill_fn
-
-    def _execute_skill(self, skill_name: str, kwargs: Dict[str, Any], skip_skillbox_confirmation: bool = False) -> str:
-        """Execute a skill and return the result."""
-        import os
-
-        old_sandbox_level = None
-        try:
-            # If user already confirmed in Python layer, use Level 1 (no sandbox)
-            # This allows dangerous operations to execute after user approval
-            if skip_skillbox_confirmation:
-                old_sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL")
-                os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"  # No sandbox - user approved
-
-            result = self.manager.execute(
-                skill_name,
-                kwargs,
-                allow_network=self.allow_network,
-                timeout=self.timeout
-            )
-            if result.success:
-                return result.output or "Execution completed successfully"
-            else:
-                return f"Error: {result.error}"
-        except Exception as e:
-            return f"Execution failed: {str(e)}"
-        finally:
-            # Restore original sandbox level
-            if skip_skillbox_confirmation:
-                if old_sandbox_level is not None:
-                    os.environ["SKILLBOX_SANDBOX_LEVEL"] = old_sandbox_level
-                elif "SKILLBOX_SANDBOX_LEVEL" in os.environ:
-                    del os.environ["SKILLBOX_SANDBOX_LEVEL"]
     
     def to_tool_list(self) -> List[LlamaBaseTool]:
         """

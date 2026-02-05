@@ -5,16 +5,22 @@ This module handles:
 - Parsing tool calls from LLM responses
 - Executing tool calls
 - Formatting tool results
+
+Updated to support UnifiedExecutionService for consistent sandbox level handling.
 """
 
 import json
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from .executor import ExecutionResult, SkillExecutor
 from .tools import ToolResult, ToolUseRequest
 
 if TYPE_CHECKING:
     from .registry import SkillRegistry
+    from ..sandbox.execution_service import UnifiedExecutionService
+
+# Type alias for confirmation callback
+ConfirmationCallback = Callable[[str, str], bool]
 
 
 class ToolCallHandler:
@@ -95,7 +101,71 @@ class ToolCallHandler:
             allow_network=allow_network,
             timeout=timeout
         )
-    
+
+    def execute_with_unified_service(
+        self,
+        skill_name: str,
+        input_data: Dict[str, Any],
+        confirmation_callback: Optional[ConfirmationCallback] = None,
+        allow_network: Optional[bool] = None,
+        timeout: Optional[int] = None
+    ) -> ExecutionResult:
+        """
+        Execute a skill using the UnifiedExecutionService.
+
+        This method uses the unified execution layer which:
+        1. Reads sandbox level at runtime (not from instance variables)
+        2. Handles security scanning and confirmation
+        3. Properly downgrades sandbox level after confirmation
+
+        Args:
+            skill_name: Name of the skill or multi-script tool
+            input_data: Input data for the skill
+            confirmation_callback: Callback for security confirmation
+            allow_network: Whether to allow network access
+            timeout: Execution timeout in seconds
+
+        Returns:
+            ExecutionResult with output or error
+        """
+        from ..sandbox.execution_service import UnifiedExecutionService
+
+        service = UnifiedExecutionService.get_instance()
+
+        # Check if it's a multi-script tool
+        tool_info = self._registry.get_multi_script_tool_info(skill_name)
+        if tool_info:
+            parent_skill = self._registry.get_skill(tool_info["skill_name"])
+            if not parent_skill:
+                return ExecutionResult(
+                    success=False,
+                    error=f"Parent skill not found: {tool_info['skill_name']}"
+                )
+            return service.execute_skill(
+                skill_info=parent_skill,
+                input_data=input_data,
+                entry_point=tool_info["script_path"],
+                confirmation_callback=confirmation_callback,
+                allow_network=allow_network,
+                timeout=timeout,
+            )
+
+        # Regular skill execution
+        info = self._registry.get_skill(skill_name)
+        if not info:
+            return ExecutionResult(
+                success=False,
+                error=f"Skill not found: {skill_name}"
+            )
+
+        return service.execute_skill(
+            skill_info=info,
+            input_data=input_data,
+            confirmation_callback=confirmation_callback,
+            allow_network=allow_network,
+            timeout=timeout,
+        )
+
     def execute_tool_call(
         self,
         request: ToolUseRequest,
@@ -130,7 +200,45 @@ class ToolCallHandler:
                 tool_use_id=request.id,
                 error=result.error or "Unknown error"
             )
-    
+
+    def execute_tool_call_with_unified_service(
+        self,
+        request: ToolUseRequest,
+        confirmation_callback: Optional[ConfirmationCallback] = None,
+        allow_network: Optional[bool] = None,
+        timeout: Optional[int] = None
+    ) -> ToolResult:
+        """
+        Execute a tool call using the UnifiedExecutionService.
+
+        Args:
+            request: Tool use request from LLM
+            confirmation_callback: Callback for security confirmation
+            allow_network: Whether to allow network access
+            timeout: Execution timeout in seconds
+
+        Returns:
+            ToolResult with success or error
+        """
+        result = self.execute_with_unified_service(
+            skill_name=request.name,
+            input_data=request.input,
+            confirmation_callback=confirmation_callback,
+            allow_network=allow_network,
+            timeout=timeout
+        )
+
+        if result.success:
+            return ToolResult.success(
+                tool_use_id=request.id,
+                content=result.output
+            )
+        else:
+            return ToolResult.error(
+                tool_use_id=request.id,
+                error=result.error or "Unknown error"
+            )
+
     # ==================== LLM Response Parsing ====================
     
     def parse_tool_calls(self, response: Any) -> List[ToolUseRequest]:
@@ -186,7 +294,74 @@ class ToolCallHandler:
             )
             results.append(result)
         return results
-    
+
+    def handle_tool_calls_with_unified_service(
+        self,
+        response: Any,
+        confirmation_callback: Optional[ConfirmationCallback] = None,
+        allow_network: Optional[bool] = None,
+        timeout: Optional[int] = None
+    ) -> List[ToolResult]:
+        """
+        Parse and execute all tool calls using UnifiedExecutionService.
+
+        This method uses the unified execution layer which:
+        1. Reads sandbox level at runtime
+        2. Handles security scanning and confirmation per-skill
+        3. Properly downgrades sandbox level after confirmation
+
+        Args:
+            response: Response from OpenAI-compatible API
+            confirmation_callback: Callback for security confirmation
+            allow_network: Whether to allow network access
+            timeout: Execution timeout in seconds
+
+        Returns:
+            List of ToolResult objects
+        """
+        requests = self.parse_tool_calls(response)
+        results = []
+        for request in requests:
+            result = self.execute_tool_call_with_unified_service(
+                request,
+                confirmation_callback=confirmation_callback,
+                allow_network=allow_network,
+                timeout=timeout
+            )
+            results.append(result)
+        return results
+
+    def handle_tool_calls_claude_native_with_unified_service(
+        self,
+        response: Any,
+        confirmation_callback: Optional[ConfirmationCallback] = None,
+        allow_network: Optional[bool] = None,
+        timeout: Optional[int] = None
+    ) -> List[ToolResult]:
+        """
+        Parse and execute all Claude tool calls using UnifiedExecutionService.
+
+        Args:
+            response: Response from Claude's native API
+            confirmation_callback: Callback for security confirmation
+            allow_network: Whether to allow network access
+            timeout: Execution timeout in seconds
+
+        Returns:
+            List of ToolResult objects
+        """
+        requests = self.parse_tool_calls_claude_native(response)
+        results = []
+        for request in requests:
+            result = self.execute_tool_call_with_unified_service(
+                request,
+                confirmation_callback=confirmation_callback,
+                allow_network=allow_network,
+                timeout=timeout
+            )
+            results.append(result)
+        return results
+
     def handle_tool_calls_claude_native(
         self,
         response: Any,

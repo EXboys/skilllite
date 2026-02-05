@@ -361,10 +361,12 @@ class SkillboxExecutor(SandboxExecutor):
         
         if allow_network:
             cmd.append("--allow-network")
-        
-        if enable_sandbox:
-            cmd.append("--enable-sandbox")
-        
+
+        # Use --sandbox-level instead of --enable-sandbox
+        # sandbox_level: 1=no sandbox, 2=sandbox only, 3=sandbox+scan
+        if self.sandbox_level:
+            cmd.extend(["--sandbox-level", str(self.sandbox_level)])
+
         if self.cache_dir:
             cmd.extend(["--cache-dir", self.cache_dir])
         

@@ -35,31 +35,37 @@ class SkillMetadata:
     network: NetworkPolicy = field(default_factory=NetworkPolicy)
     input_schema: Optional[Dict[str, Any]] = None
     output_schema: Optional[Dict[str, Any]] = None
-    
+    requires_elevated_permissions: bool = False  # For skills that need to write outside their directory
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any], skill_dir: Optional[Path] = None) -> "SkillMetadata":
         """Create SkillMetadata from parsed YAML front matter."""
         version = data.get("version")
         if not version and "metadata" in data:
             version = data["metadata"].get("version")
-        
+
         compatibility = data.get("compatibility")
-        
+
         # Parse network policy from compatibility field
         network = parse_compatibility_for_network(compatibility)
-        
+
         # Auto-detect entry point
         entry_point = ""
         if skill_dir:
             detected = detect_entry_point(skill_dir)
             if detected:
                 entry_point = detected
-        
+
         # Detect language from compatibility or entry point
         language = parse_compatibility_for_language(compatibility)
         if not language and entry_point:
             language = detect_language_from_entry_point(entry_point)
-        
+
+        # Parse requires_elevated_permissions flag
+        requires_elevated = data.get("requires_elevated_permissions", False)
+        if isinstance(requires_elevated, str):
+            requires_elevated = requires_elevated.lower() in ("true", "yes", "1")
+
         return cls(
             name=data.get("name", ""),
             entry_point=entry_point,
@@ -69,7 +75,8 @@ class SkillMetadata:
             compatibility=compatibility,
             network=network,
             input_schema=data.get("input_schema"),
-            output_schema=data.get("output_schema")
+            output_schema=data.get("output_schema"),
+            requires_elevated_permissions=bool(requires_elevated)
         )
 
 

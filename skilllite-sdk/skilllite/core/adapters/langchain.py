@@ -36,9 +36,7 @@ Requirements:
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
 import asyncio
-import hashlib
 import time
-import uuid
 
 try:
     from langchain_core.tools import BaseTool
@@ -168,281 +166,88 @@ class SkillLiteTool(BaseTool):
         description="Async callback for security confirmation: (report: str, scan_id: str) -> Future[bool]"
     )
 
-    # Internal scan cache for confirmation flow
-    _scan_cache: Dict[str, SecurityScanResult] = {}
-    _SCAN_CACHE_TTL: int = 300  # 5 minutes
-
     model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    def _generate_input_hash(self, input_data: Dict[str, Any]) -> str:
-        """Generate a hash of the input data for verification."""
-        import json
-        content = json.dumps(input_data, sort_keys=True, ensure_ascii=False)
-        return hashlib.sha256(content.encode()).hexdigest()[:16]
-
-    def _cleanup_expired_scans(self) -> None:
-        """Remove expired scan results from cache."""
-        current_time = time.time()
-        expired_keys = [
-            k for k, v in self._scan_cache.items()
-            if current_time - v.timestamp > self._SCAN_CACHE_TTL
-        ]
-        for key in expired_keys:
-            del self._scan_cache[key]
-
-    def _perform_security_scan(self, input_data: Dict[str, Any]) -> SecurityScanResult:
-        """
-        Perform a security scan on the skill execution.
-
-        For skills, we scan based on the skill's entry point script.
-        Returns a SecurityScanResult with any issues found.
-        """
-        self._cleanup_expired_scans()
-
-        input_hash = self._generate_input_hash(input_data)
-        scan_id = str(uuid.uuid4())
-
-        # Try to get skill info and scan its entry point
-        try:
-            skill_info = self.manager._registry.get_skill(self.skill_name)
-            entry_point = skill_info.metadata.entry_point if skill_info and skill_info.metadata else None
-            if skill_info and entry_point:
-                entry_script = skill_info.path / entry_point
-                if entry_script.exists():
-                    # Use skillbox security-scan command if available
-                    from ...sandbox.skillbox import find_binary
-                    import subprocess
-
-                    skillbox_path = find_binary()
-                    if skillbox_path:
-                        result = subprocess.run(
-                            [skillbox_path, "security-scan", str(entry_script)],
-                            capture_output=True,
-                            text=True,
-                            timeout=30
-                        )
-
-                        # Parse scan output
-                        issues = self._parse_scan_output(result.stdout + result.stderr)
-                        high_count = sum(1 for i in issues if i.get("severity") in ["Critical", "High"])
-                        medium_count = sum(1 for i in issues if i.get("severity") == "Medium")
-                        low_count = sum(1 for i in issues if i.get("severity") == "Low")
-
-                        scan_result = SecurityScanResult(
-                            is_safe=high_count == 0,
-                            issues=issues,
-                            scan_id=scan_id,
-                            code_hash=input_hash,
-                            high_severity_count=high_count,
-                            medium_severity_count=medium_count,
-                            low_severity_count=low_count,
-                        )
-                        self._scan_cache[scan_id] = scan_result
-                        return scan_result
-        except Exception:
-            pass
-
-        # Default: no issues found (skill already validated)
-        scan_result = SecurityScanResult(
-            is_safe=True,
-            issues=[],
-            scan_id=scan_id,
-            code_hash=input_hash,
-        )
-        self._scan_cache[scan_id] = scan_result
-        return scan_result
-
-    def _parse_scan_output(self, output: str) -> List[Dict[str, Any]]:
-        """Parse skillbox scan output into structured issues."""
-        issues = []
-        current_issue: Optional[Dict[str, Any]] = None
-
-        for line in output.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-
-            # Detect severity markers
-            if any(sev in line for sev in ['[Critical]', '[High]', '[Medium]', '[Low]']):
-                if current_issue:
-                    issues.append(current_issue)
-
-                severity = "Medium"
-                for sev in ['Critical', 'High', 'Medium', 'Low']:
-                    if f'[{sev}]' in line:
-                        severity = sev
-                        break
-
-                current_issue = {
-                    "severity": severity,
-                    "issue_type": "SecurityIssue",
-                    "description": line,
-                    "rule_id": "unknown",
-                    "line_number": 0,
-                    "code_snippet": ""
-                }
-            elif current_issue:
-                if 'Rule:' in line:
-                    current_issue["rule_id"] = line.split('Rule:')[-1].strip()
-                elif 'Line' in line:
-                    try:
-                        line_num = int(line.split('Line')[-1].split(':')[0].strip())
-                        current_issue["line_number"] = line_num
-                    except ValueError:
-                        pass
-                elif 'Code:' in line or '│' in line:
-                    current_issue["code_snippet"] = line.split('Code:')[-1].strip() if 'Code:' in line else line
-
-        if current_issue:
-            issues.append(current_issue)
-
-        return issues
 
     def _run(
         self,
         run_manager: Optional[CallbackManagerForToolRun] = None,
         **kwargs: Any
     ) -> str:
-        """Execute the skill synchronously with security confirmation support."""
-        import os
+        """
+        Execute the skill synchronously using UnifiedExecutionService.
 
-        skip_skillbox_confirmation = False
-        old_sandbox_level = None
-
+        This method uses the unified execution layer which:
+        1. Reads sandbox level at runtime
+        2. Handles security scanning and confirmation
+        3. Properly downgrades sandbox level after confirmation
+        """
         try:
-            # For sandbox level 3, perform security scan first
-            if self.sandbox_level >= 3:
-                scan_result = self._perform_security_scan(kwargs)
+            # Get skill info
+            skill_info = self.manager._registry.get_skill(self.skill_name)
+            if not skill_info:
+                return f"Error: Skill '{self.skill_name}' not found"
 
-                if scan_result.requires_confirmation:
-                    # Check if we have a confirmation callback
-                    if self.confirmation_callback:
-                        report = scan_result.format_report()
-                        confirmed = self.confirmation_callback(report, scan_result.scan_id)
+            # Use UnifiedExecutionService
+            from ...sandbox.execution_service import UnifiedExecutionService
 
-                        if not confirmed:
-                            return (
-                                f"🔐 Execution cancelled by user.\n\n"
-                                f"{report}\n\n"
-                                f"User declined to proceed with execution."
-                            )
-                        # User confirmed - skip skillbox confirmation
-                        skip_skillbox_confirmation = True
-                    else:
-                        # No callback, return security report and require manual confirmation
-                        return (
-                            f"🔐 Security Review Required\n\n"
-                            f"{scan_result.format_report()}\n\n"
-                            f"To execute this skill, provide a confirmation_callback when creating the tool."
-                        )
-
-            # If user already confirmed in Python layer, use Level 1 (no sandbox)
-            # This allows dangerous operations to execute after user approval
-            if skip_skillbox_confirmation:
-                old_sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL")
-                os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"  # No sandbox - user approved
-
-            # Execute the skill
-            result = self.manager.execute(
-                self.skill_name,
-                kwargs,
+            service = UnifiedExecutionService.get_instance()
+            result = service.execute_skill(
+                skill_info=skill_info,
+                input_data=kwargs,
+                confirmation_callback=self.confirmation_callback,
                 allow_network=self.allow_network,
-                timeout=self.timeout
+                timeout=self.timeout,
             )
+
             if result.success:
                 return result.output or "Execution completed successfully"
             else:
                 return f"Error: {result.error}"
         except Exception as e:
             return f"Execution failed: {str(e)}"
-        finally:
-            # Restore original sandbox level
-            if skip_skillbox_confirmation:
-                if old_sandbox_level is not None:
-                    os.environ["SKILLBOX_SANDBOX_LEVEL"] = old_sandbox_level
-                elif "SKILLBOX_SANDBOX_LEVEL" in os.environ:
-                    del os.environ["SKILLBOX_SANDBOX_LEVEL"]
 
     async def _arun(
         self,
         run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
         **kwargs: Any
     ) -> str:
-        """Execute the skill asynchronously with security confirmation support."""
-        import os
+        """
+        Execute the skill asynchronously using UnifiedExecutionService.
 
-        skip_skillbox_confirmation = False
-        old_sandbox_level = None
-
+        This method uses the unified execution layer which:
+        1. Reads sandbox level at runtime
+        2. Handles security scanning and confirmation
+        3. Properly downgrades sandbox level after confirmation
+        """
         try:
-            # For sandbox level 3, perform security scan first
-            if self.sandbox_level >= 3:
-                scan_result = await asyncio.to_thread(self._perform_security_scan, kwargs)
+            # Get skill info
+            skill_info = self.manager._registry.get_skill(self.skill_name)
+            if not skill_info:
+                return f"Error: Skill '{self.skill_name}' not found"
 
-                if scan_result.requires_confirmation:
-                    # Check if we have an async confirmation callback
-                    if self.async_confirmation_callback:
-                        report = scan_result.format_report()
-                        confirmed = await self.async_confirmation_callback(report, scan_result.scan_id)
+            # Use UnifiedExecutionService in thread pool
+            from ...sandbox.execution_service import UnifiedExecutionService
 
-                        if not confirmed:
-                            return (
-                                f"🔐 Execution cancelled by user.\n\n"
-                                f"{report}\n\n"
-                                f"User declined to proceed with execution."
-                            )
-                        # User confirmed - skip skillbox confirmation
-                        skip_skillbox_confirmation = True
-                    elif self.confirmation_callback:
-                        # Fall back to sync callback in thread
-                        report = scan_result.format_report()
-                        confirmed = await asyncio.to_thread(
-                            self.confirmation_callback, report, scan_result.scan_id
-                        )
+            def execute_sync():
+                service = UnifiedExecutionService.get_instance()
+                # Use async confirmation callback if available, otherwise sync
+                callback = self.confirmation_callback
+                return service.execute_skill(
+                    skill_info=skill_info,
+                    input_data=kwargs,
+                    confirmation_callback=callback,
+                    allow_network=self.allow_network,
+                    timeout=self.timeout,
+                )
 
-                        if not confirmed:
-                            return (
-                                f"🔐 Execution cancelled by user.\n\n"
-                                f"{report}\n\n"
-                                f"User declined to proceed with execution."
-                            )
-                        # User confirmed - skip skillbox confirmation
-                        skip_skillbox_confirmation = True
-                    else:
-                        # No callback, return security report
-                        return (
-                            f"🔐 Security Review Required\n\n"
-                            f"{scan_result.format_report()}\n\n"
-                            f"To execute this skill, provide a confirmation_callback when creating the tool."
-                        )
+            result = await asyncio.to_thread(execute_sync)
 
-            # If user already confirmed in Python layer, use Level 1 (no sandbox)
-            # This allows dangerous operations to execute after user approval
-            if skip_skillbox_confirmation:
-                old_sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL")
-                os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"  # No sandbox - user approved
-
-            # Execute the skill in thread pool
-            result = await asyncio.to_thread(
-                self.manager.execute,
-                self.skill_name,
-                kwargs,
-                self.allow_network,
-                self.timeout
-            )
             if result.success:
                 return result.output or "Execution completed successfully"
             else:
                 return f"Error: {result.error}"
         except Exception as e:
             return f"Execution failed: {str(e)}"
-        finally:
-            # Restore original sandbox level
-            if skip_skillbox_confirmation:
-                if old_sandbox_level is not None:
-                    os.environ["SKILLBOX_SANDBOX_LEVEL"] = old_sandbox_level
-                elif "SKILLBOX_SANDBOX_LEVEL" in os.environ:
-                    del os.environ["SKILLBOX_SANDBOX_LEVEL"]
 
 
 class SkillLiteToolkit:

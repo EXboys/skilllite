@@ -19,20 +19,37 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'skilllite-sdk'))
 
 from skilllite import SkillRunner
 
+
+def interactive_confirmation(report: str, scan_id: str) -> bool:
+    """交互式确认回调 - 当检测到高危操作时提示用户确认"""
+    print("\n" + "=" * 60)
+    print(report)
+    print("=" * 60)
+    while True:
+        response = input("⚠️  是否允许执行？(y/n): ").strip().lower()
+        if response in ['y', 'yes', '是']:
+            return True
+        elif response in ['n', 'no', '否']:
+            return False
+        print("请输入 'y' 或 'n'")
+
+
 if __name__ == "__main__":
     print("=" * 60)
     print("🚀 SkillLite 示例（使用内置增强功能）")
     print("=" * 60)
     print()
-    
+
     # 创建 Runner（自动加载 .env 配置）
     # 内置功能：
     # ✅ 智能任务完成检测
     # ✅ 任务执行指导 system prompt
     # ✅ 自动规划和迭代
+    # ✅ 安全确认回调（sandbox_level=3 时生效）
     runner = SkillRunner(
         verbose=True,           # 显示详细日志
-        max_iterations=30       # 最多 30 次迭代
+        max_iterations=30,      # 最多 30 次迭代
+        confirmation_callback=interactive_confirmation  # 安全确认回调
     )
     
     print(f"📡 API: {runner.base_url}")
@@ -44,7 +61,7 @@ if __name__ == "__main__":
     # 👇 在这里修改你要测试的用户消息 👇
     # ============================================================
     
-    # user_message = "帮我创建一个简单的数据分析技能，包含数据清洗和统计功能"
+    # user_message = "帮我创建一个简单的数据分析技能"
     user_message = "深圳今天天气怎样，适合除去玩吗？" 
 
     # user_message = "帮忙写一首关于skilllite的诗歌"

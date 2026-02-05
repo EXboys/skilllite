@@ -1074,7 +1074,14 @@ class MCPServer:
         )
 
     async def _handle_run_skill(self, arguments: Dict[str, Any]) -> "CallToolResult":
-        """Handle run_skill tool call with security scanning."""
+        """
+        Handle run_skill tool call using UnifiedExecutionService.
+
+        This method uses the unified execution layer which:
+        1. Reads sandbox level at runtime
+        2. Handles security scanning
+        3. Properly downgrades sandbox level after confirmation
+        """
         skill_name = arguments.get("skill_name")
         input_data = arguments.get("input", {})
         confirmed = arguments.get("confirmed", False)
@@ -1114,7 +1121,7 @@ class MCPServer:
                 ]
             )
 
-        # Get skill info for security scan
+        # Get skill info
         skill = self.skill_manager.get_skill(skill_name)
         if not skill:
             return CallToolResult(
@@ -1127,141 +1134,72 @@ class MCPServer:
                 ]
             )
 
-        # Security scan for Level 3
-        sandbox_level = int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
-        if sandbox_level >= 3 and not confirmed:
-            # Find script file to scan
-            script_path = None
-            skill_dir = Path(skill.path)
-            for entry in ["scripts/main.py", "main.py"]:
-                candidate = skill_dir / entry
-                if candidate.exists():
-                    script_path = str(candidate)
-                    break
+        # Use UnifiedExecutionService
+        from ..sandbox.execution_service import UnifiedExecutionService
+        from ..sandbox.context import ExecutionContext
 
-            if script_path:
-                # Perform security scan
-                scan_result = self._scan_skill_script(skill_name, script_path, sandbox_level=sandbox_level)
+        service = UnifiedExecutionService.get_instance()
 
-                # Check for hard blocked issues first
-                if scan_result and scan_result.has_hard_blocked:
-                    return CallToolResult(
-                        isError=True,
-                        content=[
-                            TextContent(
-                                type="text",
-                                text=(
-                                    f"🚫 Skill '{skill_name}' Execution Blocked\n\n"
-                                    f"{scan_result.format_report()}\n\n"
-                                    f"❌ This skill contains operations that are PERMANENTLY BLOCKED\n"
-                                    f"   in the L{sandbox_level} sandbox environment.\n\n"
-                                    f"   Even with confirmation, this skill CANNOT be executed.\n\n"
-                                    f"Options:\n"
-                                    f"  1. Modify the skill to remove blocked operations\n"
-                                    f"  2. Use a lower sandbox level (set SKILLBOX_SANDBOX_LEVEL=1 or 2)\n"
-                                )
-                            )
-                        ]
-                    )
+        # MCP uses async confirmation pattern (return report -> client calls back with confirmed=True)
+        # Create a "callback" that captures the scan result for MCP's async flow
+        scan_result_holder = {"result": None}
 
-                # Soft risk: can be confirmed
-                if scan_result and scan_result.high_severity_count > 0:
-                    return CallToolResult(
-                        content=[
-                            TextContent(
-                                type="text",
-                                text=(
-                                    f"🔐 Security Review Required for skill '{skill_name}'\n\n"
-                                    f"{scan_result.format_report()}\n\n"
-                                    f"⚠️ IMPORTANT: You MUST ask the user for confirmation before proceeding.\n"
-                                    f"Show this security report to the user and wait for their explicit approval.\n\n"
-                                    f"If the user approves, call run_skill again with:\n"
-                                    f"  - confirmed: true\n"
-                                    f"  - scan_id: \"{scan_result.scan_id}\"\n"
-                                )
-                            )
-                        ]
-                    )
+        def mcp_confirmation_callback(report: str, scan_id_from_scan: str) -> bool:
+            # If client already confirmed, return True
+            if confirmed:
+                return True
+            # Otherwise, store the result and return False to abort execution
+            # MCP will then return the report to the client
+            scan_result_holder["result"] = {"report": report, "scan_id": scan_id_from_scan}
+            return False
 
-        # If confirmed, use Level 1 (no sandbox) for execution
-        old_sandbox_level = None
-        if confirmed:
-            old_sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL")
-            os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"
+        # Execute using unified service
+        result = service.execute_skill(
+            skill_info=skill,
+            input_data=input_data,
+            confirmation_callback=mcp_confirmation_callback if not confirmed else lambda r, s: True,
+        )
 
-        # Execute the skill
-        try:
-            result = self.skill_manager.execute(skill_name, input_data)
-
-            if result.success:
-                return CallToolResult(
-                    content=[
-                        TextContent(
-                            type="text",
-                            text=f"Skill '{skill_name}' executed successfully.\n\nOutput:\n{result.output}"
+        # Check if we need to return a security report (MCP async confirmation pattern)
+        if scan_result_holder["result"] is not None:
+            report_data = scan_result_holder["result"]
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=(
+                            f"🔐 Security Review Required for skill '{skill_name}'\n\n"
+                            f"{report_data['report']}\n\n"
+                            f"⚠️ IMPORTANT: You MUST ask the user for confirmation before proceeding.\n"
+                            f"Show this security report to the user and wait for their explicit approval.\n\n"
+                            f"If the user approves, call run_skill again with:\n"
+                            f"  - confirmed: true\n"
+                            f"  - scan_id: \"{report_data['scan_id']}\"\n"
                         )
-                    ]
-                )
-            else:
-                return CallToolResult(
-                    isError=True,
-                    content=[
-                        TextContent(
-                            type="text",
-                            text=f"Skill '{skill_name}' execution failed.\n\nError:\n{result.error}"
-                        )
-                    ]
-                )
-        except Exception as e:
+                    )
+                ]
+            )
+
+        # Return execution result
+        if result.success:
+            return CallToolResult(
+                content=[
+                    TextContent(
+                        type="text",
+                        text=f"Skill '{skill_name}' executed successfully.\n\nOutput:\n{result.output}"
+                    )
+                ]
+            )
+        else:
             return CallToolResult(
                 isError=True,
                 content=[
                     TextContent(
                         type="text",
-                        text=f"Error executing skill '{skill_name}': {str(e)}"
+                        text=f"Skill '{skill_name}' execution failed.\n\nError:\n{result.error}"
                     )
                 ]
             )
-        finally:
-            # Restore sandbox level
-            if confirmed:
-                if old_sandbox_level is not None:
-                    os.environ["SKILLBOX_SANDBOX_LEVEL"] = old_sandbox_level
-                elif "SKILLBOX_SANDBOX_LEVEL" in os.environ:
-                    del os.environ["SKILLBOX_SANDBOX_LEVEL"]
-
-    def _scan_skill_script(self, skill_name: str, script_path: str, sandbox_level: int = 3) -> Optional[SecurityScanResult]:
-        """Scan a skill's script for security issues."""
-        import subprocess
-        import hashlib
-        import uuid
-
-        try:
-            result = subprocess.run(
-                [self.executor.skillbox_path, "security-scan", script_path],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            issues = self.executor._parse_scan_output(result.stdout + result.stderr)
-            high_count = sum(1 for i in issues if i.get("severity") in ["Critical", "High"])
-
-            scan_id = str(uuid.uuid4())[:8]
-            code_hash = hashlib.sha256(f"{skill_name}:{script_path}".encode()).hexdigest()[:16]
-
-            scan_result = SecurityScanResult(
-                is_safe=high_count == 0,
-                issues=issues,
-                scan_id=scan_id,
-                code_hash=code_hash,
-                high_severity_count=high_count,
-                sandbox_level=sandbox_level,
-            )
-
-            return scan_result
-        except Exception:
-            return None
 
     async def run(self):
         """Run the MCP server."""
