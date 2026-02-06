@@ -2,7 +2,6 @@
 
 [English](./README.md)
 
-**唯一一个内置原生系统级沙箱、零依赖、本地执行的轻量级 AI Agent Skills 引擎 **
 
 一个轻量级的 AI Agent Skills 执行引擎，支持与任意 OpenAI 兼容的 LLM 集成。
 
