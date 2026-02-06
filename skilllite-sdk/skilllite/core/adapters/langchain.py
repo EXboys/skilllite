@@ -33,10 +33,8 @@ Requirements:
     pip install skilllite[langchain]
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Type, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Type, TYPE_CHECKING
 import asyncio
-import time
 
 try:
     from langchain_core.tools import BaseTool
@@ -48,80 +46,16 @@ except ImportError as e:
         "Install with: pip install skilllite[langchain]"
     ) from e
 
+# Import unified types from protocols layer - Single Source of Truth
+from ..protocols import (
+    SecurityScanResult,
+    ConfirmationCallback,
+    AsyncConfirmationCallback,
+)
+from .base import BaseAdapter
+
 if TYPE_CHECKING:
     from ..manager import SkillManager
-
-
-# Type alias for confirmation callback
-# Signature: (security_report: str, scan_id: str) -> bool
-ConfirmationCallback = Callable[[str, str], bool]
-AsyncConfirmationCallback = Callable[[str, str], "asyncio.Future[bool]"]
-
-
-@dataclass
-class SecurityScanResult:
-    """Result of a security scan for LangChain adapter."""
-
-    is_safe: bool
-    issues: List[Dict[str, Any]] = field(default_factory=list)
-    scan_id: str = ""
-    code_hash: str = ""
-    high_severity_count: int = 0
-    medium_severity_count: int = 0
-    low_severity_count: int = 0
-    timestamp: float = field(default_factory=time.time)
-
-    @property
-    def requires_confirmation(self) -> bool:
-        """Check if user confirmation is required."""
-        return self.high_severity_count > 0
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "is_safe": self.is_safe,
-            "issues": self.issues,
-            "scan_id": self.scan_id,
-            "code_hash": self.code_hash,
-            "high_severity_count": self.high_severity_count,
-            "medium_severity_count": self.medium_severity_count,
-            "low_severity_count": self.low_severity_count,
-            "requires_confirmation": self.requires_confirmation,
-        }
-
-    def format_report(self) -> str:
-        """Format a human-readable security report."""
-        if not self.issues:
-            return "✅ Security scan passed. No issues found."
-
-        lines = [
-            f"📋 Security Scan Report (ID: {self.scan_id[:8]})",
-            f"   Found {len(self.issues)} item(s) for review:",
-            "",
-        ]
-
-        severity_icons = {
-            "Critical": "🔴",
-            "High": "🟠",
-            "Medium": "🟡",
-            "Low": "🟢",
-        }
-
-        for idx, issue in enumerate(self.issues, 1):
-            severity = issue.get("severity", "Medium")
-            icon = severity_icons.get(severity, "⚪")
-            lines.append(f"  {icon} #{idx} [{severity}] {issue.get('issue_type', 'Unknown')}")
-            lines.append(f"     ├─ Rule: {issue.get('rule_id', 'N/A')}")
-            lines.append(f"     ├─ Line {issue.get('line_number', '?')}: {issue.get('description', '')}")
-            snippet = issue.get('code_snippet', '')
-            lines.append(f"     └─ Code: {snippet[:60]}{'...' if len(snippet) > 60 else ''}")
-            lines.append("")
-
-        if self.high_severity_count > 0:
-            lines.append("⚠️  High severity issues found. Confirmation required to execute.")
-        else:
-            lines.append("ℹ️  Only low/medium severity issues found. Safe to execute.")
-
-        return "\n".join(lines)
 
 
 class SkillLiteTool(BaseTool):
@@ -187,13 +121,20 @@ class SkillLiteTool(BaseTool):
             if not skill_info:
                 return f"Error: Skill '{self.skill_name}' not found"
 
+            # Extract actual input data from kwargs
+            # LangChain may wrap arguments in a 'kwargs' key
+            if 'kwargs' in kwargs and isinstance(kwargs['kwargs'], dict) and len(kwargs) == 1:
+                input_data = kwargs['kwargs']
+            else:
+                input_data = kwargs
+
             # Use UnifiedExecutionService
             from ...sandbox.execution_service import UnifiedExecutionService
 
             service = UnifiedExecutionService.get_instance()
             result = service.execute_skill(
                 skill_info=skill_info,
-                input_data=kwargs,
+                input_data=input_data,
                 confirmation_callback=self.confirmation_callback,
                 allow_network=self.allow_network,
                 timeout=self.timeout,
@@ -225,6 +166,13 @@ class SkillLiteTool(BaseTool):
             if not skill_info:
                 return f"Error: Skill '{self.skill_name}' not found"
 
+            # Extract actual input data from kwargs
+            # LangChain may wrap arguments in a 'kwargs' key
+            if 'kwargs' in kwargs and isinstance(kwargs['kwargs'], dict) and len(kwargs) == 1:
+                input_data = kwargs['kwargs']
+            else:
+                input_data = kwargs
+
             # Use UnifiedExecutionService in thread pool
             from ...sandbox.execution_service import UnifiedExecutionService
 
@@ -234,7 +182,7 @@ class SkillLiteTool(BaseTool):
                 callback = self.confirmation_callback
                 return service.execute_skill(
                     skill_info=skill_info,
-                    input_data=kwargs,
+                    input_data=input_data,
                     confirmation_callback=callback,
                     allow_network=self.allow_network,
                     timeout=self.timeout,
@@ -250,12 +198,17 @@ class SkillLiteTool(BaseTool):
             return f"Execution failed: {str(e)}"
 
 
-class SkillLiteToolkit:
+class SkillLiteToolkit(BaseAdapter):
     """
-    LangChain Toolkit for SkillLite.
+    LangChain Toolkit for SkillLite - inherits from BaseAdapter.
 
     Provides a convenient way to create LangChain tools from all skills
     registered in a SkillManager.
+
+    This class inherits common functionality from BaseAdapter:
+    - Unified execution through UnifiedExecutionService
+    - Shared security scanning logic
+    - Common confirmation flow
 
     Usage:
         manager = SkillManager(skills_dir="./skills")
@@ -281,8 +234,40 @@ class SkillLiteToolkit:
         )
     """
 
-    @staticmethod
+    def to_tools(self) -> List[SkillLiteTool]:
+        """
+        Convert skills to LangChain tools.
+
+        Implements the abstract method from BaseAdapter.
+
+        Returns:
+            List of SkillLiteTool instances
+        """
+        tools = []
+        for skill in self.get_executable_skills():
+            # Skill Usage Protocol - Phase 2 (Usage Phase):
+            # Use full SKILL.md content as description so LLM can infer
+            # correct parameters from usage examples.
+            full_content = skill.get_full_content()
+            tool_description = full_content or skill.description or f"Execute the {skill.name} skill"
+
+            tool = SkillLiteTool(
+                name=skill.name,
+                description=tool_description,
+                manager=self.manager,
+                skill_name=skill.name,
+                allow_network=self.allow_network,
+                timeout=self.timeout,
+                sandbox_level=self.sandbox_level,
+                confirmation_callback=self.confirmation_callback,
+                async_confirmation_callback=self.async_confirmation_callback,
+            )
+            tools.append(tool)
+        return tools
+
+    @classmethod
     def from_manager(
+        cls,
         manager: "SkillManager",
         skill_names: Optional[List[str]] = None,
         allow_network: bool = False,
@@ -293,6 +278,8 @@ class SkillLiteToolkit:
     ) -> List[SkillLiteTool]:
         """
         Create LangChain tools from a SkillManager.
+
+        This is a convenience factory method that maintains backward compatibility.
 
         Args:
             manager: SkillManager instance with registered skills
@@ -325,31 +312,16 @@ class SkillLiteToolkit:
                 confirmation_callback=my_callback
             )
         """
-        tools = []
-
-        # Get executable skills
-        skills = manager.list_executable_skills()
-
-        for skill in skills:
-            # Filter by name if specified
-            if skill_names and skill.name not in skill_names:
-                continue
-
-            # Create tool with security confirmation support
-            tool = SkillLiteTool(
-                name=skill.name,
-                description=skill.description or f"Execute the {skill.name} skill",
-                manager=manager,
-                skill_name=skill.name,
-                allow_network=allow_network,
-                timeout=timeout,
-                sandbox_level=sandbox_level,
-                confirmation_callback=confirmation_callback,
-                async_confirmation_callback=async_confirmation_callback,
-            )
-            tools.append(tool)
-
-        return tools
+        toolkit = cls(
+            manager=manager,
+            sandbox_level=sandbox_level,
+            allow_network=allow_network,
+            timeout=timeout,
+            confirmation_callback=confirmation_callback,
+            async_confirmation_callback=async_confirmation_callback,
+            skill_names=skill_names,
+        )
+        return toolkit.to_tools()
 
 
 __all__ = [

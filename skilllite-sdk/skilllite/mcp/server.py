@@ -1044,31 +1044,18 @@ class MCPServer:
                 ]
             )
 
-        # Format skill info
-        lines = [f"# {skill.name}", ""]
-        if skill.description:
-            lines.append(skill.description)
-            lines.append("")
-
-        lines.append("## Details")
-        lines.append(f"- **Language**: {skill.language or 'unknown'}")
-        lines.append(f"- **Path**: {skill.path}")
-        if skill.entry_point:
-            lines.append(f"- **Entry Point**: {skill.entry_point}")
-
-        # Add input schema if available
-        if skill.input_schema:
-            lines.append("")
-            lines.append("## Input Schema")
-            lines.append("```json")
-            lines.append(json.dumps(skill.input_schema, indent=2))
-            lines.append("```")
+        # Skill Usage Protocol - Phase 2 (Usage Phase):
+        # Return the full SKILL.md content so LLM can infer correct
+        # parameters from usage examples.
+        full_content = skill.get_full_content()
+        if not full_content:
+            full_content = f"# {skill.name}\n\n{skill.description or 'No description available.'}"
 
         return CallToolResult(
             content=[
                 TextContent(
                     type="text",
-                    text="\n".join(lines)
+                    text=full_content
                 )
             ]
         )
