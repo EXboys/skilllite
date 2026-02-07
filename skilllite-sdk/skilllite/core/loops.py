@@ -83,6 +83,8 @@ class AgenticLoop:
         self.verbose = verbose
         self.confirmation_callback = confirmation_callback
         self.extra_kwargs = kwargs
+        self._no_tools_needed = False  # Set True when task planner says no tools needed
+        self._max_no_tool_retries = 3  # Max consecutive iterations without tool calls before giving up
 
         # Delegate task planning to TaskPlanner
         self._planner = TaskPlanner(
@@ -208,12 +210,13 @@ Based on the documentation, call the tools with correct parameters.
         
         messages.append({"role": "user", "content": user_message})
         
-        tools = self.manager.get_tools()
+        tools = None if self._no_tools_needed else self.manager.get_tools()
         response = None
-        
+        consecutive_no_tool = 0  # Track consecutive iterations without tool calls or task progress
+
         for iteration in range(self.max_iterations):
             self._log(f"\n🔄 Iteration #{iteration + 1}/{self.max_iterations}")
-            
+
             self._log("⏳ Calling LLM...")
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -221,12 +224,12 @@ Based on the documentation, call the tools with correct parameters.
                 tools=tools if tools else None,
                 **self.extra_kwargs
             )
-            
+
             message = response.choices[0].message
             finish_reason = response.choices[0].finish_reason
-            
+
             self._log(f"✅ LLM response completed (finish_reason: {finish_reason})")
-            
+
             # No tool calls
             if not message.tool_calls:
                 self._log("📝 LLM did not call any tools")
@@ -235,11 +238,19 @@ Based on the documentation, call the tools with correct parameters.
                     completed_id = self._planner.check_completion_in_content(message.content)
                     if completed_id:
                         self._planner.update_task_list(completed_id)
+                        consecutive_no_tool = 0  # Reset: made progress
 
                     if self._planner.check_all_completed():
                         self._log("🎯 All tasks completed, ending iteration")
                         return response
                     else:
+                        # Guard: if LLM keeps not calling tools and not completing tasks, stop
+                        if not completed_id:
+                            consecutive_no_tool += 1
+                        if consecutive_no_tool >= self._max_no_tool_retries:
+                            self._log(f"⚠️  LLM failed to call tools or make progress after {self._max_no_tool_retries} consecutive attempts, returning current response")
+                            return response
+
                         # Tasks not complete and no tool calls — nudge the LLM
                         # to continue working (mirror Claude-native behaviour).
                         self._log("⏳ There are still pending tasks, continuing execution...")
@@ -264,11 +275,12 @@ Based on the documentation, call the tools with correct parameters.
                     return response
             
             # Handle tool calls
+            consecutive_no_tool = 0  # Reset: LLM is calling tools
             self._log(f"\n🔧 LLM decided to call {len(message.tool_calls)} tools:")
             for idx, tc in enumerate(message.tool_calls, 1):
                 self._log(f"   {idx}. {tc.function.name}")
                 self._log(f"      Arguments: {tc.function.arguments}")
-            
+
             # Get full SKILL.md content for tools that haven't been documented yet
             skill_docs = self._get_skill_docs_for_tools(message.tool_calls)
             
@@ -353,20 +365,21 @@ Based on the documentation, call the tools with correct parameters.
     ) -> Any:
         """Run loop using Claude's native API."""
         messages = [{"role": "user", "content": user_message}]
-        tools = self.manager.get_tools_for_claude_native()
-        
+        tools = None if self._no_tools_needed else self.manager.get_tools_for_claude_native()
+
         # Build system prompt
         system = self.system_prompt or ""
         if self.enable_task_planning and self._planner.task_list:
             system = (system + "\n\n" if system else "") + self._planner.build_task_system_prompt(self.manager)
         
         response = None
-        
+        consecutive_no_tool = 0  # Track consecutive iterations without tool calls or task progress
+
         for iteration in range(self.max_iterations):
             self._log(f"\n🔄 Iteration #{iteration + 1}/{self.max_iterations}")
-            
+
             self._log("⏳ Calling LLM...")
-            
+
             kwargs = {
                 "model": self.model,
                 "max_tokens": self.extra_kwargs.get("max_tokens", 4096),
@@ -376,30 +389,38 @@ Based on the documentation, call the tools with correct parameters.
             }
             if system:
                 kwargs["system"] = system
-            
+
             response = self.client.messages.create(**kwargs)
-            
+
             self._log(f"✅ LLM response completed (stop_reason: {response.stop_reason})")
-            
+
             # No tool use
             if response.stop_reason != "tool_use":
                 self._log("📝 LLM did not call any tools")
-                
+
                 if self.enable_task_planning:
                     # Extract text content
                     text_content = ""
                     for block in response.content:
                         if hasattr(block, 'text'):
                             text_content += block.text
-                    
+
                     completed_id = self._planner.check_completion_in_content(text_content)
                     if completed_id:
                         self._planner.update_task_list(completed_id)
+                        consecutive_no_tool = 0  # Reset: made progress
 
                     if self._planner.check_all_completed():
                         self._log("🎯 All tasks completed, ending iteration")
                         return response
                     else:
+                        # Guard: if LLM keeps not calling tools and not completing tasks, stop
+                        if not completed_id:
+                            consecutive_no_tool += 1
+                        if consecutive_no_tool >= self._max_no_tool_retries:
+                            self._log(f"⚠️  LLM failed to call tools or make progress after {self._max_no_tool_retries} consecutive attempts, returning current response")
+                            return response
+
                         self._log("⏳ There are still pending tasks, continuing execution...")
                         messages.append({"role": "assistant", "content": response.content})
                         messages.append({"role": "user", "content": "Please continue to complete the remaining tasks."})
@@ -408,6 +429,7 @@ Based on the documentation, call the tools with correct parameters.
                     return response
             
             # Handle tool calls
+            consecutive_no_tool = 0  # Reset: LLM is calling tools
             tool_use_blocks = [b for b in response.content if hasattr(b, 'type') and b.type == 'tool_use']
             self._log(f"\n🔧 LLM decided to call {len(tool_use_blocks)} tools:")
             for idx, block in enumerate(tool_use_blocks, 1):
@@ -490,6 +512,7 @@ Based on the documentation, call the tools with correct parameters.
             if not self._planner.task_list:
                 self._log("\n💡 Task can be completed directly by LLM, no tools needed")
                 self.enable_task_planning = False
+                self._no_tools_needed = True
         
         # Dispatch to appropriate implementation
         if self.api_format == ApiFormat.OPENAI:

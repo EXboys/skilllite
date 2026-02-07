@@ -425,6 +425,51 @@ class SkillboxExecutor(SandboxExecutor):
                 exit_code=-1
             )
     
+    def _ensure_skill_python(self, skill_dir: Path) -> str:
+        """Get Python executable with dependencies installed if needed.
+
+        Mirrors the logic in UnifiedExecutor._ensure_skill_python.
+        """
+        try:
+            from ...core.metadata import parse_skill_metadata
+            from ...cli.init import (
+                parse_compatibility_for_packages,
+                _get_cache_dir,
+                _compute_packages_hash,
+                _get_cache_key,
+                _ensure_python_env,
+            )
+        except ImportError:
+            return sys.executable
+
+        try:
+            metadata = parse_skill_metadata(skill_dir)
+        except Exception:
+            return sys.executable
+
+        packages = metadata.resolved_packages
+        if packages is None:
+            packages = parse_compatibility_for_packages(metadata.compatibility)
+
+        if not packages:
+            return sys.executable
+
+        language = metadata.language or "python"
+        content_hash = _compute_packages_hash(packages)
+        cache_key = _get_cache_key(language, content_hash)
+        cache_dir = _get_cache_dir()
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        env_path = cache_dir / cache_key
+
+        _ensure_python_env(env_path, packages)
+
+        python = (
+            env_path / "Scripts" / "python"
+            if os.name == "nt"
+            else env_path / "bin" / "python"
+        )
+        return str(python) if python.exists() else sys.executable
+
     def _exec_python_script_direct(
         self,
         skill_dir: Path,
@@ -458,7 +503,8 @@ class SkillboxExecutor(SandboxExecutor):
         except ImportError:
             has_psutil = False
         
-        python_executable = sys.executable
+        # Ensure dependencies are installed and get the correct python executable
+        python_executable = self._ensure_skill_python(skill_dir)
         cmd = [python_executable, str(script_path)]
         
         if args:
