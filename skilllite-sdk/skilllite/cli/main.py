@@ -13,6 +13,8 @@ from .binary import cmd_install, cmd_uninstall, cmd_status, cmd_version
 from .mcp import cmd_mcp_server
 from .integrations.opencode import cmd_init_opencode
 from .init import cmd_init
+from .add import cmd_add
+from .repo import cmd_list, cmd_remove
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -30,6 +32,9 @@ Examples:
   skilllite mcp              Start MCP server (requires pip install skilllite[mcp])
   skilllite init             Initialize SkillLite project (binary + .skills + deps)
   skilllite init-opencode    Initialize OpenCode integration
+  skilllite add owner/repo   Add skills from a remote repository
+  skilllite list             List installed skills
+  skilllite remove <name>    Remove an installed skill
 
 For more information, visit: https://github.com/skilllite/skilllite
         """
@@ -151,6 +156,68 @@ For more information, visit: https://github.com/skilllite/skilllite
         help="Force overwrite existing files"
     )
     init_parser.set_defaults(func=cmd_init)
+
+    # add command
+    add_parser = subparsers.add_parser(
+        "add",
+        help="Add skills from a remote repository or local path"
+    )
+    add_parser.add_argument(
+        "source",
+        help="Skill source (owner/repo, URL, or local path)"
+    )
+    add_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default=".skills",
+        help="Skills directory path (default: .skills)"
+    )
+    add_parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force overwrite existing skills"
+    )
+    add_parser.add_argument(
+        "--list", "-l",
+        action="store_true",
+        help="List available skills without installing"
+    )
+    add_parser.set_defaults(func=cmd_add)
+
+    # list command
+    list_parser = subparsers.add_parser(
+        "list",
+        help="List installed skills"
+    )
+    list_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default=".skills",
+        help="Skills directory path (default: .skills)"
+    )
+    list_parser.set_defaults(func=cmd_list)
+
+    # remove command
+    remove_parser = subparsers.add_parser(
+        "remove",
+        help="Remove an installed skill"
+    )
+    remove_parser.add_argument(
+        "skill_name",
+        help="Name of the skill to remove"
+    )
+    remove_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default=".skills",
+        help="Skills directory path (default: .skills)"
+    )
+    remove_parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Skip confirmation prompt"
+    )
+    remove_parser.set_defaults(func=cmd_remove)
 
     return parser
 

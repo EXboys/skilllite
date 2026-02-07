@@ -377,11 +377,41 @@ For detailed documentation, see [OpenCode Integration Tutorial](../tutorials/07_
 
 ## CLI Commands
 
+### Project Setup
+
 ```bash
-skilllite install        # Install skillbox sandbox binary
-skilllite uninstall      # Remove skillbox binary
-skilllite status         # Show installation status
-skilllite version        # Show version information
+skilllite install              # Install skillbox sandbox binary
+skilllite install --force      # Force reinstall
+skilllite uninstall            # Remove skillbox binary
+skilllite status               # Show installation status
+skilllite version              # Show version information
+skilllite init                 # Initialize SkillLite project (binary + .skills + deps)
+skilllite init --skip-binary   # Skip binary installation
+skilllite init --skip-deps     # Skip dependency installation
+skilllite init --force         # Force overwrite existing files
+```
+
+### Skill Repository Management
+
+```bash
+# Add skills from remote repositories
+skilllite add owner/repo                    # Add all skills from a GitHub repo
+skilllite add owner/repo/skill-name         # Add a specific skill by path
+skilllite add owner/repo@skill-name         # Add a specific skill by name filter
+skilllite add https://github.com/owner/repo # Add from full GitHub URL
+skilllite add ./local-path                  # Add from local directory
+skilllite add owner/repo --list             # List available skills without installing
+skilllite add owner/repo --force            # Force overwrite existing skills
+
+# Manage installed skills
+skilllite list                              # List all installed skills
+skilllite remove <skill-name>               # Remove an installed skill
+skilllite remove <skill-name> --force       # Remove without confirmation
+```
+
+### Integrations
+
+```bash
 skilllite mcp            # Start MCP server
 skilllite init-opencode  # Initialize OpenCode integration
 ```
