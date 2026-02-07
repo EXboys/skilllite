@@ -55,6 +55,10 @@ pub struct SkillMetadata {
 
     /// Network policy configuration (derived from compatibility)
     pub network: NetworkPolicy,
+
+    /// Resolved package list from .skilllite.lock (written by `skilllite init`).
+    /// When present, this takes priority over parsing the compatibility field.
+    pub resolved_packages: Option<Vec<String>>,
 }
 
 /// Network access policy (derived from compatibility field)
@@ -244,6 +248,11 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
     // Parse network policy from compatibility field
     let network = parse_compatibility_for_network(front_matter.compatibility.as_deref());
 
+    // Read resolved_packages from .skilllite.lock (written by `skilllite init`)
+    let resolved_packages = skill_dir.and_then(|dir| {
+        read_lock_file_packages(dir, front_matter.compatibility.as_deref())
+    });
+
     let metadata = SkillMetadata {
         name: front_matter.name.clone(),
         entry_point,
@@ -251,6 +260,7 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         description: front_matter.description.clone(),
         compatibility: front_matter.compatibility.clone(),
         network,
+        resolved_packages,
     };
 
     // Validate required fields
@@ -259,6 +269,38 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
     }
 
     Ok(metadata)
+}
+
+/// Read resolved packages from ``.skilllite.lock`` in *skill_dir*.
+///
+/// Returns ``None`` if the lock file is missing, invalid, or stale
+/// (i.e. its ``compatibility_hash`` does not match the current compatibility string).
+fn read_lock_file_packages(skill_dir: &Path, compatibility: Option<&str>) -> Option<Vec<String>> {
+    let lock_path = skill_dir.join(".skilllite.lock");
+    let content = fs::read_to_string(&lock_path).ok()?;
+    let lock: serde_json::Value = serde_json::from_str(&content).ok()?;
+
+    // Staleness check: compare compatibility hash
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(compatibility.unwrap_or("").as_bytes());
+    let current_hash = hex::encode(hasher.finalize());
+
+    if lock.get("compatibility_hash")?.as_str()? != current_hash {
+        return None; // stale lock
+    }
+
+    let arr = lock.get("resolved_packages")?.as_array()?;
+    let packages: Vec<String> = arr
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
+
+    if packages.is_empty() {
+        None
+    } else {
+        Some(packages)
+    }
 }
 
 /// Detect language from skill directory if not specified

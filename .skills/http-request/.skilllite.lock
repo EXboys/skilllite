@@ -1,0 +1,9 @@
+{
+  "compatibility_hash": "1fb223d2c75e0e2f995d229fa50a300258fdc815b6000bf22b3c8c1b97ed0a7c",
+  "language": "python",
+  "resolved_packages": [
+    "requests"
+  ],
+  "resolved_at": "2026-02-07T01:25:15.549312+00:00",
+  "resolver": "llm"
+}

@@ -217,6 +217,7 @@ fn exec_script(
             description: None,
             compatibility: None,
             network: skill::metadata::NetworkPolicy::default(),
+            resolved_packages: None,
         };
         (meta, std::path::PathBuf::new())
     };

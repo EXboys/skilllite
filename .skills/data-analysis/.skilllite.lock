@@ -1,0 +1,10 @@
+{
+  "compatibility_hash": "390d78975530dfc3e9125c5a9f5592ea15eb898aecaa18127c916decac10bdd5",
+  "language": "python",
+  "resolved_packages": [
+    "numpy",
+    "pandas"
+  ],
+  "resolved_at": "2026-02-07T01:25:08.101314+00:00",
+  "resolver": "llm"
+}

@@ -10,12 +10,15 @@ Network access and language are derived from the 'compatibility' field.
 Entry point is auto-detected from scripts/ directory.
 """
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import yaml
+
+LOCK_FILE_NAME = ".skilllite.lock"
 
 @dataclass
 class NetworkPolicy:
@@ -36,6 +39,7 @@ class SkillMetadata:
     input_schema: Optional[Dict[str, Any]] = None
     output_schema: Optional[Dict[str, Any]] = None
     requires_elevated_permissions: bool = False  # For skills that need to write outside their directory
+    resolved_packages: Optional[List[str]] = None  # Cached from .skilllite.lock
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], skill_dir: Optional[Path] = None) -> "SkillMetadata":
@@ -66,6 +70,9 @@ class SkillMetadata:
         if isinstance(requires_elevated, str):
             requires_elevated = requires_elevated.lower() in ("true", "yes", "1")
 
+        # Read resolved_packages from .skilllite.lock if available
+        resolved_packages = _read_resolved_packages(skill_dir, compatibility)
+
         return cls(
             name=data.get("name", ""),
             entry_point=entry_point,
@@ -76,8 +83,40 @@ class SkillMetadata:
             network=network,
             input_schema=data.get("input_schema"),
             output_schema=data.get("output_schema"),
-            requires_elevated_permissions=bool(requires_elevated)
+            requires_elevated_permissions=bool(requires_elevated),
+            resolved_packages=resolved_packages,
         )
+
+
+def _read_resolved_packages(
+    skill_dir: Optional[Path],
+    compatibility: Optional[str],
+) -> Optional[List[str]]:
+    """Read resolved_packages from ``.skilllite.lock`` if it exists and is fresh.
+
+    Returns ``None`` if the lock file is missing, invalid, or stale
+    (compatibility has changed since the lock was written).
+    """
+    if not skill_dir:
+        return None
+    lock_path = skill_dir / LOCK_FILE_NAME
+    if not lock_path.exists():
+        return None
+    try:
+        lock_data = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+
+    # Staleness check: compare compatibility hash
+    import hashlib
+    current_hash = hashlib.sha256((compatibility or "").encode()).hexdigest()
+    if lock_data.get("compatibility_hash") != current_hash:
+        return None
+
+    packages = lock_data.get("resolved_packages")
+    if isinstance(packages, list) and all(isinstance(p, str) for p in packages):
+        return packages
+    return None
 
 
 def parse_compatibility_for_network(compatibility: Optional[str]) -> NetworkPolicy:

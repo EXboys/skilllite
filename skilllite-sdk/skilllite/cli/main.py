@@ -12,6 +12,7 @@ from ..sandbox.skillbox import BINARY_VERSION
 from .binary import cmd_install, cmd_uninstall, cmd_status, cmd_version
 from .mcp import cmd_mcp_server
 from .integrations.opencode import cmd_init_opencode
+from .init import cmd_init
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -27,6 +28,7 @@ Examples:
   skilllite status           Check installation status
   skilllite uninstall        Remove the binary
   skilllite mcp              Start MCP server (requires pip install skilllite[mcp])
+  skilllite init             Initialize SkillLite project (binary + .skills + deps)
   skilllite init-opencode    Initialize OpenCode integration
 
 For more information, visit: https://github.com/skilllite/skilllite
@@ -115,6 +117,40 @@ For more information, visit: https://github.com/skilllite/skilllite
         help="Force overwrite existing opencode.json"
     )
     init_opencode_parser.set_defaults(func=cmd_init_opencode)
+
+    # init command
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Initialize SkillLite project (install binary, create .skills, install deps)"
+    )
+    init_parser.add_argument(
+        "--project-dir", "-p",
+        dest="project_dir",
+        default=None,
+        help="Project directory (default: current directory)"
+    )
+    init_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default=".skills",
+        help="Skills directory path (default: .skills)"
+    )
+    init_parser.add_argument(
+        "--skip-binary",
+        action="store_true",
+        help="Skip binary installation"
+    )
+    init_parser.add_argument(
+        "--skip-deps",
+        action="store_true",
+        help="Skip dependency installation"
+    )
+    init_parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force overwrite existing files"
+    )
+    init_parser.set_defaults(func=cmd_init)
 
     return parser
 

@@ -33,8 +33,15 @@ pub enum DependencyType {
 ///   - "Requires Node.js with axios"
 pub fn detect_dependencies(_skill_dir: &Path, metadata: &SkillMetadata) -> Result<DependencyInfo> {
     let language = crate::skill::metadata::detect_language(_skill_dir, metadata);
-    let packages = parse_compatibility_for_packages(metadata.compatibility.as_deref());
-    
+
+    // Priority 1: Use resolved_packages from .skilllite.lock if available
+    // Priority 2: Fallback to parsing compatibility field with hardcoded whitelist
+    let packages = if let Some(ref resolved) = metadata.resolved_packages {
+        resolved.clone()
+    } else {
+        parse_compatibility_for_packages(metadata.compatibility.as_deref())
+    };
+
     if packages.is_empty() {
         return Ok(DependencyInfo {
             dep_type: DependencyType::None,
@@ -161,10 +168,16 @@ fn is_word_match(text: &str, word: &str) -> bool {
     false
 }
 
-/// Compute hash from package list
+/// Compute hash from package list.
+///
+/// The list is **sorted** before hashing so that different orderings of the
+/// same packages always produce the same hash.
 fn compute_packages_hash(packages: &[String]) -> String {
+    let mut sorted_packages: Vec<&String> = packages.iter().collect();
+    sorted_packages.sort();
+
     let mut hasher = Sha256::new();
-    for pkg in packages {
+    for pkg in sorted_packages {
         hasher.update(pkg.as_bytes());
         hasher.update(b"\n");
     }

@@ -769,6 +769,7 @@ mod tests {
             description: None,
             compatibility: None,
             network: Default::default(),
+            resolved_packages: None,
         };
 
         let profile = generate_sandbox_profile(skill_dir, env_path, &metadata, work_dir).unwrap();

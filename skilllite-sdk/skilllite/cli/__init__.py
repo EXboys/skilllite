@@ -10,6 +10,7 @@ Usage:
     skilllite status        # Show installation status
     skilllite version       # Show version information
     skilllite mcp           # Start MCP server
+    skilllite init          # Initialize SkillLite project (binary + .skills + deps)
     skilllite init-opencode # Initialize OpenCode integration
 """
 
