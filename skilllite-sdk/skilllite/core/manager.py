@@ -40,7 +40,7 @@ Usage with different providers:
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from .executor import ExecutionResult, SkillExecutor
+from .executor import ExecutionResult
 from .loops import AgenticLoop, AgenticLoopClaudeNative, ApiFormat
 from .registry import SkillRegistry
 from .tool_builder import ToolBuilder
@@ -109,24 +109,13 @@ class SkillManager:
             max_memory_mb: Maximum memory limit in MB (default: 512).
             sandbox_level: Sandbox security level (1/2/3, default from env or 3).
         """
-        # Initialize executor
-        self._executor = SkillExecutor(
-            binary_path=binary_path,
-            cache_dir=cache_dir,
-            allow_network=allow_network,
-            enable_sandbox=enable_sandbox,
-            execution_timeout=execution_timeout,
-            max_memory_mb=max_memory_mb,
-            sandbox_level=sandbox_level
-        )
-        
         # Initialize registry
         self._registry = SkillRegistry()
-        
+
         # Initialize builders and handler
         self._tool_builder = ToolBuilder(self._registry)
         self._prompt_builder = PromptBuilder(self._registry)
-        self._handler = ToolCallHandler(self._registry, self._executor)
+        self._handler = ToolCallHandler(self._registry)
         
         # Scan skills directory if provided
         if skills_dir:
@@ -257,105 +246,72 @@ class SkillManager:
         self._prompt_builder.print_prompt_only_status()
     
     # ==================== Skill Execution (delegated to handler) ====================
-    
+
     def execute(
         self,
         skill_name: str,
         input_data: Dict[str, Any],
+        confirmation_callback: Optional[Callable[[str, str], bool]] = None,
         allow_network: Optional[bool] = None,
         timeout: Optional[int] = None
     ) -> ExecutionResult:
         """Execute a skill or multi-script tool with the given input."""
-        return self._handler.execute(skill_name, input_data, allow_network, timeout)
-    
+        return self._handler.execute(
+            skill_name, input_data,
+            confirmation_callback=confirmation_callback,
+            allow_network=allow_network,
+            timeout=timeout
+        )
+
     def execute_tool_call(
         self,
         request: ToolUseRequest,
+        confirmation_callback: Optional[Callable[[str, str], bool]] = None,
         allow_network: Optional[bool] = None,
         timeout: Optional[int] = None
     ) -> ToolResult:
         """Execute a tool call request from an LLM."""
-        return self._handler.execute_tool_call(request, allow_network, timeout)
-    
+        return self._handler.execute_tool_call(
+            request,
+            confirmation_callback=confirmation_callback,
+            allow_network=allow_network,
+            timeout=timeout
+        )
+
     # ==================== LLM Response Handling (delegated to handler) ====================
-    
+
     def parse_tool_calls(self, response: Any) -> List[ToolUseRequest]:
         """Parse tool calls from an OpenAI-compatible LLM response."""
         return self._handler.parse_tool_calls(response)
-    
+
     def parse_tool_calls_claude_native(self, response: Any) -> List[ToolUseRequest]:
         """Parse tool calls from Claude's native API response."""
         return self._handler.parse_tool_calls_claude_native(response)
-    
-    def handle_tool_calls(
-        self,
-        response: Any,
-        allow_network: Optional[bool] = None,
-        timeout: Optional[int] = None
-    ) -> List[ToolResult]:
-        """Parse and execute all tool calls from an OpenAI-compatible LLM response."""
-        return self._handler.handle_tool_calls(response, allow_network, timeout)
-    
-    def handle_tool_calls_claude_native(
-        self,
-        response: Any,
-        allow_network: Optional[bool] = None,
-        timeout: Optional[int] = None
-    ) -> List[ToolResult]:
-        """Parse and execute all tool calls from Claude's native API response."""
-        return self._handler.handle_tool_calls_claude_native(response, allow_network, timeout)
 
-    def handle_tool_calls_with_unified_service(
+    def handle_tool_calls(
         self,
         response: Any,
         confirmation_callback: Optional[Callable[[str, str], bool]] = None,
         allow_network: Optional[bool] = None,
         timeout: Optional[int] = None
     ) -> List[ToolResult]:
-        """
-        Parse and execute all tool calls using UnifiedExecutionService.
-
-        This method uses the unified execution layer which:
-        1. Reads sandbox level at runtime
-        2. Handles security scanning and confirmation per-skill
-        3. Properly downgrades sandbox level after confirmation
-
-        Args:
-            response: Response from OpenAI-compatible API
-            confirmation_callback: Callback for security confirmation
-            allow_network: Whether to allow network access
-            timeout: Execution timeout in seconds
-
-        Returns:
-            List of ToolResult objects
-        """
-        return self._handler.handle_tool_calls_with_unified_service(
+        """Parse and execute all tool calls from an OpenAI-compatible LLM response."""
+        return self._handler.handle_tool_calls(
             response,
             confirmation_callback=confirmation_callback,
             allow_network=allow_network,
             timeout=timeout
         )
 
-    def handle_tool_calls_claude_native_with_unified_service(
+    def handle_tool_calls_claude_native(
         self,
         response: Any,
         confirmation_callback: Optional[Callable[[str, str], bool]] = None,
         allow_network: Optional[bool] = None,
         timeout: Optional[int] = None
     ) -> List[ToolResult]:
-        """
-        Parse and execute all Claude tool calls using UnifiedExecutionService.
-
-        Args:
-            response: Response from Claude's native API
-            confirmation_callback: Callback for security confirmation
-            allow_network: Whether to allow network access
-            timeout: Execution timeout in seconds
-
-        Returns:
-            List of ToolResult objects
-        """
-        return self._handler.handle_tool_calls_claude_native_with_unified_service(
+        """Parse and execute all tool calls from Claude's native API response."""
+        return self._handler.handle_tool_calls_claude_native(
             response,
             confirmation_callback=confirmation_callback,
             allow_network=allow_network,
@@ -520,7 +476,7 @@ class SkillManager:
                 if request.name in skill_tool_names:
                     # Execute as skill tool using UnifiedExecutionService
                     # This handles security scanning, confirmation, and proper sandbox level
-                    result = self._handler.execute_tool_call_with_unified_service(
+                    result = self._handler.execute_tool_call(
                         request,
                         confirmation_callback=confirmation_callback,
                         allow_network=allow_network,

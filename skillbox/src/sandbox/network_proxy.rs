@@ -109,6 +109,93 @@ impl ProxyConfig {
 }
 
 // ============================================================================
+// Shared Tunneling
+// ============================================================================
+
+/// Bidirectionally tunnel data between two TCP streams.
+///
+/// Spawns two threads — one for each direction — and waits for both to finish.
+/// Parameters allow callers to control buffer size, read timeout, and whether
+/// Nagle's algorithm is disabled (nodelay).
+fn tunnel_data(
+    stream1: &mut TcpStream,
+    stream2: &mut TcpStream,
+    buf_size: usize,
+    read_timeout: Duration,
+    nodelay: bool,
+) -> std::io::Result<()> {
+    let mut s1_read = stream1.try_clone()?;
+    let mut s1_write = stream1.try_clone()?;
+    let mut s2_read = stream2.try_clone()?;
+    let mut s2_write = stream2.try_clone()?;
+
+    s1_read.set_read_timeout(Some(read_timeout))?;
+    s2_read.set_read_timeout(Some(read_timeout))?;
+
+    if nodelay {
+        let _ = s1_read.set_nodelay(true);
+        let _ = s2_read.set_nodelay(true);
+    }
+
+    // stream1 → stream2
+    let handle1 = thread::spawn(move || {
+        let mut buf = vec![0u8; buf_size];
+        loop {
+            match s1_read.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if s2_write.write_all(&buf[..n]).is_err() {
+                        break;
+                    }
+                    if s2_write.flush().is_err() {
+                        break;
+                    }
+                }
+                Err(ref e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    continue;
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = s2_write.shutdown(Shutdown::Write);
+    });
+
+    // stream2 → stream1
+    let handle2 = thread::spawn(move || {
+        let mut buf = vec![0u8; buf_size];
+        loop {
+            match s2_read.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    if s1_write.write_all(&buf[..n]).is_err() {
+                        break;
+                    }
+                    if s1_write.flush().is_err() {
+                        break;
+                    }
+                }
+                Err(ref e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut =>
+                {
+                    continue;
+                }
+                Err(_) => break,
+            }
+        }
+        let _ = s1_write.shutdown(Shutdown::Write);
+    });
+
+    let _ = handle1.join();
+    let _ = handle2.join();
+
+    Ok(())
+}
+
+// ============================================================================
 // HTTP Proxy Server
 // ============================================================================
 
@@ -273,8 +360,8 @@ impl HttpProxy {
         target_stream.set_read_timeout(Some(Duration::from_secs(120)))?;
         target_stream.set_write_timeout(Some(Duration::from_secs(120)))?;
 
-        // Tunnel data between client and target
-        Self::tunnel_data(client, &mut target_stream)
+        // Tunnel data between client and target (32KB buffer, 120s, nodelay for SSL)
+        tunnel_data(client, &mut target_stream, 32768, Duration::from_secs(120), true)
     }
 
     /// Handle regular HTTP requests
@@ -356,97 +443,8 @@ impl HttpProxy {
         target_stream.write_all(b"\r\n")?;
         target_stream.flush()?;
 
-        // Forward response
-        Self::tunnel_data(&mut target_stream, client)
-    }
-
-    /// Tunnel data bidirectionally between two streams
-    fn tunnel_data(stream1: &mut TcpStream, stream2: &mut TcpStream) -> std::io::Result<()> {
-        let mut s1_read = stream1.try_clone()?;
-        let mut s1_write = stream1.try_clone()?;
-        let mut s2_read = stream2.try_clone()?;
-        let mut s2_write = stream2.try_clone()?;
-
-        // Set read timeouts (longer for SSL handshake)
-        s1_read.set_read_timeout(Some(Duration::from_secs(120)))?;
-        s2_read.set_read_timeout(Some(Duration::from_secs(120)))?;
-        
-        // Disable Nagle's algorithm for lower latency
-        let _ = s1_read.set_nodelay(true);
-        let _ = s2_read.set_nodelay(true);
-
-        // Thread 1: stream1 -> stream2 (client -> target)
-        let handle1 = thread::spawn(move || {
-            let mut buf = [0u8; 32768]; // Larger buffer for SSL
-            loop {
-                match s1_read.read(&mut buf) {
-                    Ok(0) => {
-                        // EOF - client closed connection
-                        break;
-                    }
-                    Ok(n) => {
-                        if s2_write.write_all(&buf[..n]).is_err() {
-                            break;
-                        }
-                        if s2_write.flush().is_err() {
-                            break;
-                        }
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        // Non-blocking timeout, continue
-                        continue;
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                        // Read timeout, continue waiting
-                        continue;
-                    }
-                    Err(_) => {
-                        // Other error, stop
-                        break;
-                    }
-                }
-            }
-            let _ = s2_write.shutdown(Shutdown::Write);
-        });
-
-        // Thread 2: stream2 -> stream1 (target -> client)
-        let handle2 = thread::spawn(move || {
-            let mut buf = [0u8; 32768]; // Larger buffer for SSL
-            loop {
-                match s2_read.read(&mut buf) {
-                    Ok(0) => {
-                        // EOF - target closed connection
-                        break;
-                    }
-                    Ok(n) => {
-                        if s1_write.write_all(&buf[..n]).is_err() {
-                            break;
-                        }
-                        if s1_write.flush().is_err() {
-                            break;
-                        }
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        // Non-blocking timeout, continue
-                        continue;
-                    }
-                    Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                        // Read timeout, continue waiting
-                        continue;
-                    }
-                    Err(_) => {
-                        // Other error, stop
-                        break;
-                    }
-                }
-            }
-            let _ = s1_write.shutdown(Shutdown::Write);
-        });
-
-        let _ = handle1.join();
-        let _ = handle2.join();
-
-        Ok(())
+        // Forward response (32KB buffer, 120s, nodelay for SSL)
+        tunnel_data(&mut target_stream, client, 32768, Duration::from_secs(120), true)
     }
 
     /// Send an HTTP error response
@@ -696,9 +694,9 @@ impl Socks5Proxy {
         // Send success reply
         Self::send_reply(&mut client, 0x00)?;
 
-        // Tunnel data
+        // Tunnel data (8KB buffer, 60s timeout, no nodelay)
         let mut target = target_stream;
-        Self::tunnel_data(&mut client, &mut target)
+        tunnel_data(&mut client, &mut target, 8192, Duration::from_secs(60), false)
     }
 
     /// Send SOCKS5 reply
@@ -716,53 +714,7 @@ impl Socks5Proxy {
         client.flush()
     }
 
-    /// Tunnel data bidirectionally between two streams
-    fn tunnel_data(stream1: &mut TcpStream, stream2: &mut TcpStream) -> std::io::Result<()> {
-        let mut s1_read = stream1.try_clone()?;
-        let mut s1_write = stream1.try_clone()?;
-        let mut s2_read = stream2.try_clone()?;
-        let mut s2_write = stream2.try_clone()?;
 
-        s1_read.set_read_timeout(Some(Duration::from_secs(60)))?;
-        s2_read.set_read_timeout(Some(Duration::from_secs(60)))?;
-
-        let handle1 = thread::spawn(move || {
-            let mut buf = [0u8; 8192];
-            loop {
-                match s1_read.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        if s2_write.write_all(&buf[..n]).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-            let _ = s2_write.shutdown(Shutdown::Write);
-        });
-
-        let handle2 = thread::spawn(move || {
-            let mut buf = [0u8; 8192];
-            loop {
-                match s2_read.read(&mut buf) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        if s1_write.write_all(&buf[..n]).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-            let _ = s1_write.shutdown(Shutdown::Write);
-        });
-
-        let _ = handle1.join();
-        let _ = handle2.join();
-
-        Ok(())
-    }
 }
 
 // ============================================================================

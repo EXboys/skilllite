@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 import hashlib
+import json
 import subprocess
 import time
 import uuid
@@ -100,6 +101,39 @@ class SecurityScanResult:
         return "\n".join(lines)
 
 
+def parse_scan_json_output(output: str) -> Dict[str, Any]:
+    """Parse skillbox JSON scan output into structured result.
+
+    This is a shared function used by SecurityScanner and adapters
+    to parse the structured JSON output from `skillbox security-scan --json`.
+
+    Args:
+        output: Raw stdout from skillbox security-scan --json
+
+    Returns:
+        Dict with keys: is_safe, issues, high_severity_count,
+        medium_severity_count, low_severity_count
+    """
+    try:
+        data = json.loads(output)
+        return {
+            "is_safe": data.get("is_safe", True),
+            "issues": data.get("issues", []),
+            "high_severity_count": data.get("high_severity_count", 0),
+            "medium_severity_count": data.get("medium_severity_count", 0),
+            "low_severity_count": data.get("low_severity_count", 0),
+        }
+    except (json.JSONDecodeError, TypeError):
+        # Fallback: if JSON parsing fails, return safe result
+        return {
+            "is_safe": True,
+            "issues": [],
+            "high_severity_count": 0,
+            "medium_severity_count": 0,
+            "low_severity_count": 0,
+        }
+
+
 class SecurityScanner:
     """
     Security scanner for skill execution.
@@ -162,56 +196,13 @@ class SecurityScanner:
         for key in expired_keys:
             del self._scan_cache[key]
 
-    def _parse_scan_output(self, output: str) -> List[Dict[str, Any]]:
-        """Parse skillbox scan output into structured issues."""
-        issues = []
-        current_issue: Optional[Dict[str, Any]] = None
+    def _parse_scan_output(self, output: str) -> Dict[str, Any]:
+        """Parse skillbox JSON scan output into structured result.
 
-        for line in output.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-
-            # Detect severity markers
-            if any(sev in line for sev in ['[Critical]', '[High]', '[Medium]', '[Low]']):
-                if current_issue:
-                    issues.append(current_issue)
-
-                severity = "Medium"
-                for sev in ['Critical', 'High', 'Medium', 'Low']:
-                    if f'[{sev}]' in line:
-                        severity = sev
-                        break
-
-                current_issue = {
-                    "severity": severity,
-                    "issue_type": "SecurityIssue",
-                    "description": line,
-                    "rule_id": "unknown",
-                    "line_number": 0,
-                    "code_snippet": "",
-                }
-            elif current_issue:
-                # Try to extract line number
-                if "line" in line.lower() and ":" in line:
-                    try:
-                        parts = line.split(":")
-                        for part in parts:
-                            if part.strip().isdigit():
-                                current_issue["line_number"] = int(part.strip())
-                                break
-                    except (ValueError, IndexError):
-                        pass
-                # Append to description
-                if current_issue["code_snippet"]:
-                    current_issue["code_snippet"] += " " + line
-                else:
-                    current_issue["code_snippet"] = line
-
-        if current_issue:
-            issues.append(current_issue)
-
-        return issues
+        Returns a dict with keys: is_safe, issues, high_severity_count,
+        medium_severity_count, low_severity_count.
+        """
+        return parse_scan_json_output(output)
 
     def scan_skill(
         self,
@@ -275,37 +266,78 @@ class SecurityScanner:
 
         try:
             result = subprocess.run(
-                [self.skillbox_path, "security-scan", str(entry_script)],
+                [self.skillbox_path, "security-scan", "--json", str(entry_script)],
                 capture_output=True,
                 text=True,
                 timeout=30
             )
 
-            # Parse scan output
-            issues = self._parse_scan_output(result.stdout + result.stderr)
-            high_count = sum(1 for i in issues if i.get("severity") in ["Critical", "High"])
-            medium_count = sum(1 for i in issues if i.get("severity") == "Medium")
-            low_count = sum(1 for i in issues if i.get("severity") == "Low")
+            # Check if the command failed (e.g. --json not supported by old binary)
+            if result.returncode != 0:
+                # Fail-secure: if scan command errored, require confirmation
+                # This prevents silently skipping security when binary is outdated
+                return SecurityScanResult(
+                    is_safe=False,
+                    issues=[{
+                        "severity": "High",
+                        "issue_type": "Scan Error",
+                        "rule_id": "scan-error",
+                        "line_number": 0,
+                        "description": f"Security scan failed (exit code {result.returncode}). "
+                                       f"Manual review required.",
+                        "code_snippet": result.stderr.strip()[:100] if result.stderr else "",
+                    }],
+                    scan_id=scan_id,
+                    code_hash=input_hash,
+                    high_severity_count=1,
+                )
+
+            # Parse structured JSON output
+            data = self._parse_scan_output(result.stdout)
 
             scan_result = SecurityScanResult(
-                is_safe=high_count == 0,
-                issues=issues,
+                is_safe=data["is_safe"],
+                issues=data["issues"],
                 scan_id=scan_id,
                 code_hash=input_hash,
-                high_severity_count=high_count,
-                medium_severity_count=medium_count,
-                low_severity_count=low_count,
+                high_severity_count=data["high_severity_count"],
+                medium_severity_count=data["medium_severity_count"],
+                low_severity_count=data["low_severity_count"],
             )
             self._scan_cache[scan_id] = scan_result
             return scan_result
 
-        except Exception:
-            # On error, return safe result
+        except subprocess.TimeoutExpired:
+            # Scan timed out - fail-secure
             return SecurityScanResult(
-                is_safe=True,
-                issues=[],
+                is_safe=False,
+                issues=[{
+                    "severity": "High",
+                    "issue_type": "Scan Timeout",
+                    "rule_id": "scan-timeout",
+                    "line_number": 0,
+                    "description": "Security scan timed out. Manual review required.",
+                    "code_snippet": "",
+                }],
                 scan_id=scan_id,
                 code_hash=input_hash,
+                high_severity_count=1,
+            )
+        except Exception:
+            # On unexpected error, fail-secure: require confirmation
+            return SecurityScanResult(
+                is_safe=False,
+                issues=[{
+                    "severity": "High",
+                    "issue_type": "Scan Error",
+                    "rule_id": "scan-exception",
+                    "line_number": 0,
+                    "description": "Security scan encountered an error. Manual review required.",
+                    "code_snippet": "",
+                }],
+                scan_id=scan_id,
+                code_hash=input_hash,
+                high_severity_count=1,
             )
 
     def scan_code(
@@ -373,25 +405,23 @@ class SecurityScanner:
 
             try:
                 result = subprocess.run(
-                    [self.skillbox_path, "security-scan", temp_path],
+                    [self.skillbox_path, "security-scan", "--json", temp_path],
                     capture_output=True,
                     text=True,
                     timeout=30
                 )
 
-                issues = self._parse_scan_output(result.stdout + result.stderr)
-                high_count = sum(1 for i in issues if i.get("severity") in ["Critical", "High"])
-                medium_count = sum(1 for i in issues if i.get("severity") == "Medium")
-                low_count = sum(1 for i in issues if i.get("severity") == "Low")
+                # Parse structured JSON output
+                data = self._parse_scan_output(result.stdout)
 
                 scan_result = SecurityScanResult(
-                    is_safe=high_count == 0,
-                    issues=issues,
+                    is_safe=data["is_safe"],
+                    issues=data["issues"],
                     scan_id=scan_id,
                     code_hash=code_hash,
-                    high_severity_count=high_count,
-                    medium_severity_count=medium_count,
-                    low_severity_count=low_count,
+                    high_severity_count=data["high_severity_count"],
+                    medium_severity_count=data["medium_severity_count"],
+                    low_severity_count=data["low_severity_count"],
                 )
                 self._scan_cache[scan_id] = scan_result
                 return scan_result

@@ -64,8 +64,9 @@ fn main() -> Result<()> {
             allow_network,
             allow_file_ops,
             allow_process_exec,
+            json,
         } => {
-            security_scan_script(&script_path, allow_network, allow_file_ops, allow_process_exec)?;
+            security_scan_script(&script_path, allow_network, allow_file_ops, allow_process_exec, json)?;
         }
     }
 
@@ -289,12 +290,13 @@ fn security_scan_script(
     allow_network: bool,
     allow_file_ops: bool,
     allow_process_exec: bool,
+    json_output: bool,
 ) -> Result<()> {
     use std::path::Path;
-    use crate::sandbox::security::{ScriptScanner, format_scan_result};
+    use crate::sandbox::security::{ScriptScanner, format_scan_result, format_scan_result_json};
 
     let path = Path::new(script_path);
-    
+
     // Validate script exists
     if !path.exists() {
         anyhow::bail!("Script not found: {}", path.display());
@@ -310,8 +312,12 @@ fn security_scan_script(
     let scan_result = scanner.scan_file(path)?;
 
     // Display results
-    println!("Security Scan Results for: {}\n", path.display());
-    println!("{}", format_scan_result(&scan_result));
+    if json_output {
+        println!("{}", format_scan_result_json(&scan_result));
+    } else {
+        println!("Security Scan Results for: {}\n", path.display());
+        println!("{}", format_scan_result(&scan_result));
+    }
 
     Ok(())
 }

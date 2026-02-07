@@ -27,7 +27,7 @@ from ..config import (
     DEFAULT_ENABLE_SANDBOX,
 )
 from ..utils import convert_json_to_cli_args
-from .binary import find_binary, ensure_installed
+from .binary import find_binary, ensure_installed, _get_search_locations
 
 
 class SkillboxExecutor(SandboxExecutor):
@@ -111,10 +111,13 @@ class SkillboxExecutor(SandboxExecutor):
         try:
             return ensure_installed(auto_install=auto_install, show_progress=True)
         except FileNotFoundError as e:
+            searched = _get_search_locations()
+            paths_info = "\n".join(f"    - [{label}] {path}" for label, path in searched)
             raise FileNotFoundError(
-                f"Skillbox binary not found. Please run 'cargo build --release' in skillbox/ "
-                f"directory, or set SKILLBOX_BINARY_PATH environment variable to the binary path. "
-                f"Original error: {e}"
+                f"Skillbox binary not found. Searched locations:\n"
+                f"{paths_info}\n\n"
+                f"Please run 'cargo build --release' in skillbox/ directory, "
+                f"or set SKILLBOX_BINARY_PATH environment variable to the binary path."
             ) from e
         except PermissionError as e:
             raise PermissionError(

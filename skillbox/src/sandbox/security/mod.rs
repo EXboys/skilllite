@@ -50,6 +50,6 @@ pub mod types;
 pub use default_rules::{get_default_javascript_rules, get_default_python_rules, get_default_rules};
 #[allow(unused_imports)]
 pub use rules::{RulesConfig, SecurityRule, CONFIG_FILE_NAMES};
-pub use scanner::{format_scan_result, ScriptScanner};
+pub use scanner::{format_scan_result, format_scan_result_json, ScriptScanner};
 #[allow(unused_imports)]
 pub use types::{ScanResult, SecurityIssue, SecurityIssueType, SecuritySeverity};

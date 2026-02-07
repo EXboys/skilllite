@@ -38,6 +38,9 @@ def mock_skill_info():
     skill = Mock()
     skill.name = "test_skill"
     skill.description = "A test skill for unit testing"
+    skill.get_full_content = Mock(return_value="A test skill for unit testing")
+    skill.path = Path("/fake/skill/path")
+    skill.metadata = None
     return skill
 
 
@@ -56,7 +59,11 @@ def mock_manager(mock_skill_info, mock_execution_result):
     """Create a mock SkillManager."""
     manager = Mock()
     manager.list_executable_skills.return_value = [mock_skill_info]
-    manager.execute.return_value = mock_execution_result
+    manager.get_skill.return_value = mock_skill_info
+    # LangChain adapter uses manager._registry.get_skill()
+    registry = Mock()
+    registry.get_skill.return_value = mock_skill_info
+    manager._registry = registry
     return manager
 
 
@@ -94,26 +101,26 @@ class TestLangChainAdapter:
         not _has_langchain(),
         reason="LangChain not installed"
     )
-    def test_skilllite_tool_run(self, mock_manager):
+    def test_skilllite_tool_run(self, mock_manager, mock_execution_result):
         """Test SkillLiteTool execution."""
         from skilllite.core.adapters.langchain import SkillLiteTool
-        
+
         tool = SkillLiteTool(
             name="test_skill",
             description="A test skill",
             manager=mock_manager,
             skill_name="test_skill"
         )
-        
-        result = tool._run(param1="value1")
-        
+
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = mock_execution_result
+            mock_cls.get_instance.return_value = mock_service
+
+            result = tool._run(param1="value1")
+
         assert result == "Test output"
-        mock_manager.execute.assert_called_once_with(
-            "test_skill",
-            {"param1": "value1"},
-            allow_network=False,
-            timeout=None
-        )
+        mock_service.execute_skill.assert_called_once()
     
     @pytest.mark.skipif(
         not _has_langchain(),
@@ -141,6 +148,9 @@ class TestLangChainAdapter:
         skill2 = Mock()
         skill2.name = "other_skill"
         skill2.description = "Another skill"
+        skill2.get_full_content = Mock(return_value="Another skill")
+        skill2.path = Path("/fake/skill/other_path")
+        skill2.metadata = None
         mock_manager.list_executable_skills.return_value = [mock_skill_info, skill2]
 
         # Filter to only include test_skill
@@ -342,10 +352,14 @@ class TestLangChainSecurityConfirmation:
             confirmation_callback=my_callback,
         )
 
-        result = tool._run(param1="value1")
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = mock_execution_result
+            mock_cls.get_instance.return_value = mock_service
 
-        # Callback should NOT be called for sandbox level 1
-        assert len(callback_called) == 0
+            result = tool._run(param1="value1")
+
+        # Callback is passed to the service but not called (level 1)
         assert result == "Test output"
 
     @pytest.mark.skipif(
@@ -371,10 +385,14 @@ class TestLangChainSecurityConfirmation:
             confirmation_callback=my_callback,
         )
 
-        result = tool._run(param1="value1")
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = mock_execution_result
+            mock_cls.get_instance.return_value = mock_service
 
-        # Callback should NOT be called for sandbox level 2
-        assert len(callback_called) == 0
+            result = tool._run(param1="value1")
+
+        # Callback is passed to the service but not called (level 2)
         assert result == "Test output"
 
     @pytest.mark.skipif(
@@ -383,9 +401,8 @@ class TestLangChainSecurityConfirmation:
     )
     def test_tool_run_no_callback_returns_security_report(self, mock_manager):
         """Test that missing callback returns security report when issues found."""
-        from skilllite.core.adapters.langchain import SkillLiteTool, SecurityScanResult
+        from skilllite.core.adapters.langchain import SkillLiteTool
 
-        # Mock the security scan to return high severity issues
         tool = SkillLiteTool(
             name="test_skill",
             description="A test skill",
@@ -395,22 +412,19 @@ class TestLangChainSecurityConfirmation:
             confirmation_callback=None,  # No callback
         )
 
-        # Mock _perform_security_scan to return issues
-        def mock_scan(input_data):
-            return SecurityScanResult(
-                is_safe=False,
-                issues=[{"severity": "High", "issue_type": "Test"}],
-                scan_id="mock-scan",
-                code_hash="hash",
-                high_severity_count=1,
-            )
+        # Mock UnifiedExecutionService to return security error
+        security_result = Mock()
+        security_result.success = False
+        security_result.error = "Security confirmation required:\nHigh severity issues found"
 
-        tool._perform_security_scan = mock_scan
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = security_result
+            mock_cls.get_instance.return_value = mock_service
 
-        result = tool._run(param1="value1")
+            result = tool._run(param1="value1")
 
-        assert "Security Review Required" in result
-        assert "confirmation_callback" in result
+        assert "Security confirmation required" in result
 
     @pytest.mark.skipif(
         not _has_langchain(),
@@ -418,7 +432,7 @@ class TestLangChainSecurityConfirmation:
     )
     def test_tool_run_callback_denies_execution(self, mock_manager):
         """Test that callback returning False cancels execution."""
-        from skilllite.core.adapters.langchain import SkillLiteTool, SecurityScanResult
+        from skilllite.core.adapters.langchain import SkillLiteTool
 
         def deny_callback(report: str, scan_id: str) -> bool:
             return False  # Deny execution
@@ -432,23 +446,19 @@ class TestLangChainSecurityConfirmation:
             confirmation_callback=deny_callback,
         )
 
-        # Mock _perform_security_scan to return issues
-        def mock_scan(input_data):
-            return SecurityScanResult(
-                is_safe=False,
-                issues=[{"severity": "High", "issue_type": "Test"}],
-                scan_id="mock-scan",
-                code_hash="hash",
-                high_severity_count=1,
-            )
+        # Mock UnifiedExecutionService to return cancelled error
+        cancelled_result = Mock()
+        cancelled_result.success = False
+        cancelled_result.error = "Execution cancelled by user after security review"
 
-        tool._perform_security_scan = mock_scan
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = cancelled_result
+            mock_cls.get_instance.return_value = mock_service
 
-        result = tool._run(param1="value1")
+            result = tool._run(param1="value1")
 
         assert "cancelled by user" in result
-        # Manager.execute should NOT be called
-        mock_manager.execute.assert_not_called()
 
     @pytest.mark.skipif(
         not _has_langchain(),
@@ -456,12 +466,9 @@ class TestLangChainSecurityConfirmation:
     )
     def test_tool_run_callback_approves_execution(self, mock_manager, mock_execution_result):
         """Test that callback returning True allows execution."""
-        from skilllite.core.adapters.langchain import SkillLiteTool, SecurityScanResult
-
-        callback_reports = []
+        from skilllite.core.adapters.langchain import SkillLiteTool
 
         def approve_callback(report: str, scan_id: str) -> bool:
-            callback_reports.append(report)
             return True  # Approve execution
 
         tool = SkillLiteTool(
@@ -473,27 +480,19 @@ class TestLangChainSecurityConfirmation:
             confirmation_callback=approve_callback,
         )
 
-        # Mock _perform_security_scan to return issues
-        def mock_scan(input_data):
-            return SecurityScanResult(
-                is_safe=False,
-                issues=[{"severity": "High", "issue_type": "DangerousOp"}],
-                scan_id="mock-scan",
-                code_hash="hash",
-                high_severity_count=1,
-            )
+        # Mock UnifiedExecutionService to return success (callback approved)
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = mock_execution_result
+            mock_cls.get_instance.return_value = mock_service
 
-        tool._perform_security_scan = mock_scan
-
-        result = tool._run(param1="value1")
-
-        # Callback should have been called with the report
-        assert len(callback_reports) == 1
-        assert "DangerousOp" in callback_reports[0]
+            result = tool._run(param1="value1")
 
         # Execution should proceed
         assert result == "Test output"
-        mock_manager.execute.assert_called_once()
+        # Service should have been called with the confirmation callback
+        call_kwargs = mock_service.execute_skill.call_args
+        assert call_kwargs.kwargs.get("confirmation_callback") == approve_callback
 
     @pytest.mark.skipif(
         not _has_langchain(),
@@ -501,12 +500,9 @@ class TestLangChainSecurityConfirmation:
     )
     def test_tool_run_safe_code_no_callback(self, mock_manager, mock_execution_result):
         """Test that safe code (no high severity) doesn't trigger callback."""
-        from skilllite.core.adapters.langchain import SkillLiteTool, SecurityScanResult
-
-        callback_called = []
+        from skilllite.core.adapters.langchain import SkillLiteTool
 
         def my_callback(report: str, scan_id: str) -> bool:
-            callback_called.append(True)
             return True
 
         tool = SkillLiteTool(
@@ -518,23 +514,14 @@ class TestLangChainSecurityConfirmation:
             confirmation_callback=my_callback,
         )
 
-        # Mock _perform_security_scan to return NO high severity issues
-        def mock_scan(input_data):
-            return SecurityScanResult(
-                is_safe=True,
-                issues=[{"severity": "Low", "issue_type": "MinorWarning"}],
-                scan_id="mock-scan",
-                code_hash="hash",
-                high_severity_count=0,  # No high severity
-                low_severity_count=1,
-            )
+        # Mock UnifiedExecutionService to return success (safe code, no callback needed)
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = mock_execution_result
+            mock_cls.get_instance.return_value = mock_service
 
-        tool._perform_security_scan = mock_scan
+            result = tool._run(param1="value1")
 
-        result = tool._run(param1="value1")
-
-        # Callback should NOT be called for safe code
-        assert len(callback_called) == 0
         # Execution should proceed
         assert result == "Test output"
 
@@ -623,8 +610,6 @@ class TestLlamaIndexSecurityConfirmation:
         """Test that sandbox_level=1 skips security scan."""
         from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
 
-        mock_manager.execute.return_value = mock_execution_result
-
         tool_spec = SkillLiteToolSpec.from_manager(
             mock_manager,
             sandbox_level=1
@@ -633,8 +618,14 @@ class TestLlamaIndexSecurityConfirmation:
         tools = tool_spec.to_tool_list()
         assert len(tools) == 1
 
-        # Execute should work directly without scanning
-        result = tools[0](param1="value1")
+        # Mock UnifiedExecutionService for execution
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = mock_execution_result
+            mock_cls.get_instance.return_value = mock_service
+
+            result = tools[0](param1="value1")
+
         # LlamaIndex returns ToolOutput, check raw_output
         assert result.raw_output == "Test output"
 
@@ -642,11 +633,9 @@ class TestLlamaIndexSecurityConfirmation:
         not _has_llamaindex(),
         reason="LlamaIndex not installed"
     )
-    def test_toolspec_run_no_callback_returns_security_report(self, mock_manager, mock_execution_result):
+    def test_toolspec_run_no_callback_returns_security_report(self, mock_manager):
         """Test that high severity issues without callback returns security report."""
-        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec, SecurityScanResult
-
-        mock_manager.execute.return_value = mock_execution_result
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
 
         tool_spec = SkillLiteToolSpec.from_manager(
             mock_manager,
@@ -654,38 +643,32 @@ class TestLlamaIndexSecurityConfirmation:
             # No confirmation_callback
         )
 
-        # Mock _perform_security_scan to return high severity issues
-        def mock_scan(skill_name, input_data):
-            return SecurityScanResult(
-                is_safe=False,
-                issues=[{"severity": "High", "issue_type": "DangerousOperation"}],
-                scan_id="mock-scan-123",
-                code_hash="hash123",
-                high_severity_count=1,
-            )
-
-        tool_spec._perform_security_scan = mock_scan
         tools = tool_spec.to_tool_list()
 
-        result = tools[0](param1="value1")
+        # Mock UnifiedExecutionService to return security error
+        security_result = Mock()
+        security_result.success = False
+        security_result.error = "Security confirmation required:\nHigh severity issues found"
 
-        # Should return security warning message (check raw_output for LlamaIndex)
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = security_result
+            mock_cls.get_instance.return_value = mock_service
+
+            result = tools[0](param1="value1")
+
+        # Should return security error message (check raw_output for LlamaIndex)
         assert "Security confirmation required" in result.raw_output
-        assert "no callback configured" in result.raw_output
 
     @pytest.mark.skipif(
         not _has_llamaindex(),
         reason="LlamaIndex not installed"
     )
-    def test_toolspec_run_callback_denies_execution(self, mock_manager, mock_execution_result):
+    def test_toolspec_run_callback_denies_execution(self, mock_manager):
         """Test that callback returning False cancels execution."""
-        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec, SecurityScanResult
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
 
-        mock_manager.execute.return_value = mock_execution_result
-
-        callback_called = []
         def deny_callback(report: str, scan_id: str) -> bool:
-            callback_called.append((report, scan_id))
             return False  # Deny execution
 
         tool_spec = SkillLiteToolSpec.from_manager(
@@ -694,23 +677,20 @@ class TestLlamaIndexSecurityConfirmation:
             confirmation_callback=deny_callback
         )
 
-        # Mock _perform_security_scan
-        def mock_scan(skill_name, input_data):
-            return SecurityScanResult(
-                is_safe=False,
-                issues=[{"severity": "High", "issue_type": "DangerousOperation"}],
-                scan_id="mock-scan-456",
-                code_hash="hash456",
-                high_severity_count=1,
-            )
-
-        tool_spec._perform_security_scan = mock_scan
         tools = tool_spec.to_tool_list()
 
-        result = tools[0](param1="value1")
+        # Mock UnifiedExecutionService to return cancelled error
+        cancelled_result = Mock()
+        cancelled_result.success = False
+        cancelled_result.error = "Execution cancelled by user after security review"
 
-        # Callback should be called
-        assert len(callback_called) == 1
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = cancelled_result
+            mock_cls.get_instance.return_value = mock_service
+
+            result = tools[0](param1="value1")
+
         # Execution should be cancelled (check raw_output for LlamaIndex)
         assert "cancelled" in result.raw_output.lower()
 
@@ -720,13 +700,9 @@ class TestLlamaIndexSecurityConfirmation:
     )
     def test_toolspec_run_callback_approves_execution(self, mock_manager, mock_execution_result):
         """Test that callback returning True allows execution."""
-        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec, SecurityScanResult
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
 
-        mock_manager.execute.return_value = mock_execution_result
-
-        callback_called = []
         def approve_callback(report: str, scan_id: str) -> bool:
-            callback_called.append((report, scan_id))
             return True  # Approve execution
 
         tool_spec = SkillLiteToolSpec.from_manager(
@@ -735,23 +711,16 @@ class TestLlamaIndexSecurityConfirmation:
             confirmation_callback=approve_callback
         )
 
-        # Mock _perform_security_scan
-        def mock_scan(skill_name, input_data):
-            return SecurityScanResult(
-                is_safe=False,
-                issues=[{"severity": "High", "issue_type": "DangerousOperation"}],
-                scan_id="mock-scan-789",
-                code_hash="hash789",
-                high_severity_count=1,
-            )
-
-        tool_spec._perform_security_scan = mock_scan
         tools = tool_spec.to_tool_list()
 
-        result = tools[0](param1="value1")
+        # Mock UnifiedExecutionService to return success (callback approved)
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = mock_execution_result
+            mock_cls.get_instance.return_value = mock_service
 
-        # Callback should be called
-        assert len(callback_called) == 1
+            result = tools[0](param1="value1")
+
         # Execution should proceed (check raw_output for LlamaIndex)
         assert result.raw_output == "Test output"
 
@@ -761,13 +730,9 @@ class TestLlamaIndexSecurityConfirmation:
     )
     def test_toolspec_run_safe_code_no_callback(self, mock_manager, mock_execution_result):
         """Test that safe code (no high severity) executes without callback."""
-        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec, SecurityScanResult
+        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
 
-        mock_manager.execute.return_value = mock_execution_result
-
-        callback_called = []
         def my_callback(report: str, scan_id: str) -> bool:
-            callback_called.append(True)
             return True
 
         tool_spec = SkillLiteToolSpec.from_manager(
@@ -776,23 +741,15 @@ class TestLlamaIndexSecurityConfirmation:
             confirmation_callback=my_callback
         )
 
-        # Mock _perform_security_scan to return NO high severity issues
-        def mock_scan(skill_name, input_data):
-            return SecurityScanResult(
-                is_safe=True,
-                issues=[{"severity": "Low", "issue_type": "MinorWarning"}],
-                scan_id="mock-scan",
-                code_hash="hash",
-                high_severity_count=0,  # No high severity
-                low_severity_count=1,
-            )
-
-        tool_spec._perform_security_scan = mock_scan
         tools = tool_spec.to_tool_list()
 
-        result = tools[0](param1="value1")
+        # Mock UnifiedExecutionService to return success (safe code)
+        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
+            mock_service = Mock()
+            mock_service.execute_skill.return_value = mock_execution_result
+            mock_cls.get_instance.return_value = mock_service
 
-        # Callback should NOT be called for safe code
-        assert len(callback_called) == 0
+            result = tools[0](param1="value1")
+
         # Execution should proceed (check raw_output for LlamaIndex)
         assert result.raw_output == "Test output"

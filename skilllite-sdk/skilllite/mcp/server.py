@@ -342,25 +342,24 @@ This skill executes code from MCP.
 
             try:
                 result = subprocess.run(
-                    [self.skillbox_path, "security-scan", code_file],
+                    [self.skillbox_path, "security-scan", "--json", code_file],
                     capture_output=True,
                     text=True,
                     timeout=30
                 )
 
-                issues = self._parse_scan_output(result.stdout + result.stderr)
-                high_count = sum(1 for i in issues if i.get("severity") in ["Critical", "High"])
-                medium_count = sum(1 for i in issues if i.get("severity") == "Medium")
-                low_count = sum(1 for i in issues if i.get("severity") == "Low")
+                # Parse structured JSON output
+                from skilllite.core.security import parse_scan_json_output
+                data = parse_scan_json_output(result.stdout)
 
                 scan_result = SecurityScanResult(
-                    is_safe=high_count == 0,
-                    issues=issues,
+                    is_safe=data["is_safe"],
+                    issues=data["issues"],
                     scan_id=scan_id,
                     code_hash=code_hash,
-                    high_severity_count=high_count,
-                    medium_severity_count=medium_count,
-                    low_severity_count=low_count,
+                    high_severity_count=data["high_severity_count"],
+                    medium_severity_count=data["medium_severity_count"],
+                    low_severity_count=data["low_severity_count"],
                     sandbox_level=sandbox_level,
                 )
 
@@ -393,62 +392,7 @@ This skill executes code from MCP.
                 sandbox_level=sandbox_level,
             )
     
-    def _parse_scan_output(self, output: str) -> List[Dict[str, Any]]:
-        """Parse security scan output into structured issues."""
-        issues = []
-        lines = output.split("\n")
-        
-        current_issue = None
-        for line in lines:
-            line = line.strip()
-            
-            if line.startswith(("🔴", "🟠", "🟡", "🟢", "🚨")):
-                if current_issue:
-                    issues.append(current_issue)
-                
-                severity = "Medium"
-                if "🔴" in line or "🚨" in line:
-                    severity = "Critical" if "🚨" in line else "High"
-                elif "🟠" in line:
-                    severity = "High"
-                elif "🟡" in line:
-                    severity = "Medium"
-                elif "🟢" in line:
-                    severity = "Low"
-                
-                issue_type = "Unknown"
-                if "[" in line and "]" in line:
-                    start = line.index("[") + 1
-                    end = line.index("]")
-                    issue_type = line[end+1:].strip() if end + 1 < len(line) else "Unknown"
-                
-                current_issue = {
-                    "severity": severity,
-                    "issue_type": issue_type,
-                    "rule_id": "",
-                    "line_number": 0,
-                    "description": "",
-                    "code_snippet": "",
-                }
-            elif current_issue:
-                if "Rule:" in line:
-                    current_issue["rule_id"] = line.split("Rule:")[-1].strip()
-                elif "Line" in line and ":" in line:
-                    parts = line.split(":", 1)
-                    if len(parts) > 1:
-                        try:
-                            line_part = parts[0].replace("├─", "").replace("Line", "").strip()
-                            current_issue["line_number"] = int(line_part)
-                            current_issue["description"] = parts[1].strip()
-                        except ValueError:
-                            current_issue["description"] = line
-                elif "Code:" in line:
-                    current_issue["code_snippet"] = line.split("Code:")[-1].strip()
-        
-        if current_issue:
-            issues.append(current_issue)
-        
-        return issues
+
     
     def verify_scan(self, scan_id: str, code_hash: str) -> Optional[SecurityScanResult]:
         """Verify a scan result exists and matches the code hash."""

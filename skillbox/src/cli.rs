@@ -123,5 +123,9 @@ pub enum Commands {
         /// Allow process execution (default: false)
         #[arg(long, default_value = "false")]
         allow_process_exec: bool,
+
+        /// Output results as structured JSON (default: false)
+        #[arg(long, default_value = "false")]
+        json: bool,
     },
 }

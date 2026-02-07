@@ -15,6 +15,7 @@ Key Features:
 5. Temporary context overrides
 """
 
+import hashlib
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -35,35 +36,40 @@ ConfirmationCallback = Callable[[str, str], bool]
 class UnifiedExecutionService:
     """
     Unified execution service - single entry point for all skill execution.
-    
+
     This service integrates:
     1. Security scanning (via UnifiedSecurityScanner)
     2. User confirmation flow
     3. Skill execution (via UnifiedExecutor)
-    
+    4. Session-level confirmation cache (avoid repeated prompts)
+
     Usage:
         service = UnifiedExecutionService.get_instance()
         result = service.execute_skill(skill_info, input_data, confirmation_callback)
     """
-    
+
     _instance: Optional["UnifiedExecutionService"] = None
-    
+
     @classmethod
     def get_instance(cls) -> "UnifiedExecutionService":
         """Get singleton instance of the service."""
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
-    
+
     @classmethod
     def reset_instance(cls) -> None:
         """Reset singleton instance (for testing)."""
         cls._instance = None
-    
+
     def __init__(self):
         """Initialize the service."""
         self._executor = UnifiedExecutor()
         self._scanner = None  # Lazy initialization
+        # Session-level confirmation cache: skill_name -> code_hash
+        # When user confirms a skill, we cache it so the same skill
+        # won't prompt again within the same session (unless code changes).
+        self._confirmed_skills: Dict[str, str] = {}
     
     def _get_scanner(self):
         """Get security scanner (lazy initialization)."""
@@ -120,29 +126,50 @@ class UnifiedExecutionService:
         
         # 4. Security scan and confirmation (Level 3 only)
         if context.sandbox_level == "3":
-            scan_result = self._perform_security_scan(skill_info, input_data)
-            
-            if scan_result and scan_result.requires_confirmation:
-                if confirmation_callback:
-                    report = scan_result.format_report()
-                    confirmed = confirmation_callback(report, scan_result.scan_id)
-                    
-                    if confirmed:
-                        # User confirmed -> downgrade to Level 1
-                        context = context.with_user_confirmation(scan_result.scan_id)
+            skill_name = skill_info.name
+            code_hash = self._compute_skill_code_hash(skill_info, entry_point)
+
+            # Check session-level confirmation cache
+            if (skill_name in self._confirmed_skills
+                    and self._confirmed_skills[skill_name] == code_hash):
+                # Already confirmed in this session, skip scan
+                context = context.with_user_confirmation("")
+            else:
+                scan_result = self._perform_security_scan(
+                    skill_info, input_data, entry_point
+                )
+
+                if scan_result and scan_result.requires_confirmation:
+                    if confirmation_callback:
+                        report = scan_result.format_report()
+                        confirmed = confirmation_callback(report, scan_result.scan_id)
+
+                        if confirmed:
+                            # User confirmed -> downgrade to Level 1
+                            context = context.with_user_confirmation(scan_result.scan_id)
+                            # Cache confirmation for this session
+                            self._confirmed_skills[skill_name] = code_hash
+                        else:
+                            return ExecutionResult(
+                                success=False,
+                                error="Execution cancelled by user after security review",
+                                exit_code=1,
+                            )
                     else:
+                        # No callback, return security report
                         return ExecutionResult(
                             success=False,
-                            error="Execution cancelled by user after security review",
-                            exit_code=1,
+                            error=f"Security confirmation required:\n{scan_result.format_report()}",
+                            exit_code=2,
                         )
                 else:
-                    # No callback, return security report
-                    return ExecutionResult(
-                        success=False,
-                        error=f"Security confirmation required:\n{scan_result.format_report()}",
-                        exit_code=2,
-                    )
+                    # Scan passed (no high-severity issues) -> downgrade to Level 1.
+                    # Python has already performed the security check, so the Rust
+                    # binary doesn't need to redo it.  Running at Level 1 avoids:
+                    #   - Rust's redundant security scan + interactive prompt
+                    #   - Rust's strict JSON-output requirement (scripts may output text)
+                    #   - Working-directory issues (Rust sets cwd to skill_dir)
+                    context = context.with_override(sandbox_level="1")
         
         # 5. Execute skill
         return self._executor.execute(
@@ -190,17 +217,68 @@ class UnifiedExecutionService:
             return getattr(skill_info.metadata, 'requires_elevated_permissions', False)
         return False
 
+    def _compute_skill_code_hash(
+        self,
+        skill_info: "SkillInfo",
+        entry_point: Optional[str] = None,
+    ) -> str:
+        """Compute hash of skill's entry script for confirmation caching.
+
+        The hash changes when the actual script code changes, so a re-confirmation
+        is triggered if the skill is modified.
+        """
+        if entry_point:
+            script = skill_info.path / entry_point
+        elif skill_info.metadata and skill_info.metadata.entry_point:
+            script = skill_info.path / skill_info.metadata.entry_point
+        else:
+            script = None
+            for default in ["scripts/main.py", "main.py"]:
+                candidate = skill_info.path / default
+                if candidate.exists():
+                    script = candidate
+                    break
+
+        if script and script.exists():
+            try:
+                content = script.read_bytes()
+                return hashlib.sha256(content).hexdigest()[:16]
+            except Exception:
+                return ""
+        return ""
+
     def _perform_security_scan(
         self,
         skill_info: "SkillInfo",
         input_data: Dict[str, Any],
+        entry_point: Optional[str] = None,
     ):
-        """Perform security scan on skill."""
+        """Perform security scan on skill.
+
+        Fail-secure: if scanning raises an unexpected error, return a result
+        that requires confirmation rather than silently allowing execution.
+        """
         try:
             scanner = self._get_scanner()
-            return scanner.scan_skill(skill_info, input_data)
+            return scanner.scan_skill(skill_info, input_data, entry_point=entry_point)
         except Exception:
-            return None
+            # Fail-secure: treat scan exceptions as requiring confirmation
+            from ..core.security import SecurityScanResult
+            return SecurityScanResult(
+                is_safe=False,
+                issues=[{
+                    "severity": "High",
+                    "issue_type": "Scan Error",
+                    "rule_id": "scan-exception",
+                    "line_number": 0,
+                    "description": "Security scan encountered an unexpected error. "
+                                   "Manual review required.",
+                    "code_snippet": "",
+                }],
+                scan_id="error",
+                code_hash="",
+                high_severity_count=1,
+            )
 
     @contextmanager
     def temporary_context(

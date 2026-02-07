@@ -16,7 +16,6 @@ Key Features:
 
 import hashlib
 import json
-import os
 import subprocess
 import time
 import uuid
@@ -29,6 +28,7 @@ from ..protocols import (
     AsyncConfirmationCallback,
     ExecutionOptions,
 )
+from ..security import parse_scan_json_output
 
 if TYPE_CHECKING:
     from ..manager import SkillManager
@@ -198,16 +198,20 @@ class BaseAdapter(ABC):
                     skillbox_path = find_binary()
                     if skillbox_path:
                         result = subprocess.run(
-                            [skillbox_path, "security-scan", str(entry_script)],
+                            [skillbox_path, "security-scan", "--json", str(entry_script)],
                             capture_output=True,
                             text=True,
                             timeout=30
                         )
-                        issues = self._parse_scan_output(result.stdout + result.stderr)
-                        scan_result = SecurityScanResult.from_issues(
-                            issues=issues,
+                        data = parse_scan_json_output(result.stdout)
+                        scan_result = SecurityScanResult(
+                            is_safe=data["is_safe"],
+                            issues=data["issues"],
                             scan_id=scan_id,
                             code_hash=input_hash,
+                            high_severity_count=data["high_severity_count"],
+                            medium_severity_count=data["medium_severity_count"],
+                            low_severity_count=data["low_severity_count"],
                         )
                         self._scan_cache[scan_id] = scan_result
                         return scan_result
@@ -219,52 +223,7 @@ class BaseAdapter(ABC):
         self._scan_cache[scan_id] = scan_result
         return scan_result
 
-    def _parse_scan_output(self, output: str) -> List[Dict[str, Any]]:
-        """Parse skillbox scan output into structured issues."""
-        issues = []
-        current_issue: Optional[Dict[str, Any]] = None
 
-        for line in output.split('\n'):
-            line = line.strip()
-            if not line:
-                continue
-
-            if any(sev in line for sev in ['[Critical]', '[High]', '[Medium]', '[Low]']):
-                if current_issue:
-                    issues.append(current_issue)
-
-                severity = "Medium"
-                for sev in ['Critical', 'High', 'Medium', 'Low']:
-                    if f'[{sev}]' in line:
-                        severity = sev
-                        break
-
-                current_issue = {
-                    "severity": severity,
-                    "issue_type": "SecurityIssue",
-                    "description": line,
-                    "rule_id": "unknown",
-                    "line_number": 0,
-                    "code_snippet": ""
-                }
-            elif current_issue:
-                if 'Rule:' in line:
-                    current_issue["rule_id"] = line.split('Rule:')[-1].strip()
-                elif 'Line' in line:
-                    try:
-                        line_num = int(line.split('Line')[-1].split(':')[0].strip())
-                        current_issue["line_number"] = line_num
-                    except ValueError:
-                        pass
-                elif 'Code:' in line or '│' in line:
-                    current_issue["code_snippet"] = (
-                        line.split('Code:')[-1].strip() if 'Code:' in line else line
-                    )
-
-        if current_issue:
-            issues.append(current_issue)
-
-        return issues
 
     # ==================== Confirmation Flow ====================
 
@@ -317,20 +276,6 @@ class BaseAdapter(ABC):
                 f"Provide a confirmation_callback when creating the adapter."
             )
 
-    # ==================== Environment Management ====================
-
-    def set_sandbox_level_env(self, level: str) -> Optional[str]:
-        """Set sandbox level environment variable, return old value."""
-        old_value = os.environ.get("SKILLBOX_SANDBOX_LEVEL")
-        os.environ["SKILLBOX_SANDBOX_LEVEL"] = level
-        return old_value
-
-    def restore_sandbox_level_env(self, old_value: Optional[str]) -> None:
-        """Restore sandbox level environment variable."""
-        if old_value is not None:
-            os.environ["SKILLBOX_SANDBOX_LEVEL"] = old_value
-        elif "SKILLBOX_SANDBOX_LEVEL" in os.environ:
-            del os.environ["SKILLBOX_SANDBOX_LEVEL"]
 
 
 __all__ = ["BaseAdapter"]

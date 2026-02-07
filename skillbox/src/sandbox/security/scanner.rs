@@ -254,3 +254,56 @@ pub fn format_scan_result(result: &ScanResult) -> String {
 
     output
 }
+
+/// Format scan result as structured JSON for machine parsing
+pub fn format_scan_result_json(result: &ScanResult) -> String {
+    let severity_str = |s: &SecuritySeverity| -> &str {
+        match s {
+            SecuritySeverity::Low => "Low",
+            SecuritySeverity::Medium => "Medium",
+            SecuritySeverity::High => "High",
+            SecuritySeverity::Critical => "Critical",
+        }
+    };
+
+    let issues_json: Vec<serde_json::Value> = result
+        .issues
+        .iter()
+        .map(|issue| {
+            serde_json::json!({
+                "rule_id": issue.rule_id,
+                "severity": severity_str(&issue.severity),
+                "issue_type": issue.issue_type.to_string(),
+                "line_number": issue.line_number,
+                "description": issue.description,
+                "code_snippet": issue.code_snippet,
+            })
+        })
+        .collect();
+
+    let high_count = result
+        .issues
+        .iter()
+        .filter(|i| matches!(i.severity, SecuritySeverity::High | SecuritySeverity::Critical))
+        .count();
+    let medium_count = result
+        .issues
+        .iter()
+        .filter(|i| matches!(i.severity, SecuritySeverity::Medium))
+        .count();
+    let low_count = result
+        .issues
+        .iter()
+        .filter(|i| matches!(i.severity, SecuritySeverity::Low))
+        .count();
+
+    let output = serde_json::json!({
+        "is_safe": result.is_safe,
+        "issues": issues_json,
+        "high_severity_count": high_count,
+        "medium_severity_count": medium_count,
+        "low_severity_count": low_count,
+    });
+
+    serde_json::to_string(&output).unwrap_or_else(|_| "{}".to_string())
+}

@@ -6,17 +6,26 @@ sandbox binary, similar to how Playwright manages browser binaries.
 """
 
 import hashlib
+import logging
 import os
 import platform
 import shutil
 import stat
+import subprocess
 import sys
 import tarfile
 import tempfile
 import urllib.request
+import warnings
 import zipfile
 from pathlib import Path
 from typing import Optional, Tuple
+
+logger = logging.getLogger(__name__)
+
+# Module-level cache for find_binary() result
+_binary_path_cache: Optional[str] = None
+_binary_path_cache_set: bool = False  # distinguish None (not found) from "not cached"
 
 # Version of the binary to download
 BINARY_VERSION = "0.1.0"
@@ -293,83 +302,194 @@ def install(
     
     print(f"✓ Successfully installed skillbox v{version}")
     print(f"  Location: {dest_binary}")
-    
+
+    # Invalidate cache so next find_binary() picks up the new install
+    invalidate_binary_cache()
+
     return dest_binary
 
 
 def uninstall() -> bool:
     """
     Uninstall the skillbox binary.
-    
+
     Returns:
         True if uninstalled, False if not installed.
     """
     binary_path = get_binary_path()
     version_file = get_version_file()
-    
+
     if not binary_path.exists():
         print("skillbox is not installed")
         return False
-    
+
     binary_path.unlink()
     if version_file.exists():
         version_file.unlink()
-    
+
+    # Invalidate cache so next find_binary() reflects the removal
+    invalidate_binary_cache()
+
     print("✓ Successfully uninstalled skillbox")
     return True
 
 
+def invalidate_binary_cache() -> None:
+    """
+    Invalidate the cached binary path.
+
+    Call this after installing/uninstalling the binary, or in tests
+    to ensure fresh lookups.
+    """
+    global _binary_path_cache, _binary_path_cache_set
+    _binary_path_cache = None
+    _binary_path_cache_set = False
+
+
+def _get_search_locations() -> list:
+    """
+    Return all search locations as (label, path) tuples for diagnostics.
+    """
+    home = Path.home()
+    return [
+        ("installed", get_binary_path()),
+        ("PATH", shutil.which(BINARY_NAME)),
+        ("cargo", home / ".cargo" / "bin" / BINARY_NAME),
+        ("/usr/local/bin", Path("/usr/local/bin") / BINARY_NAME),
+        ("/usr/bin", Path("/usr/bin") / BINARY_NAME),
+        # Development build locations (release + debug)
+        ("dev-release", Path("skillbox/target/release") / BINARY_NAME),
+        ("dev-debug", Path("skillbox/target/debug") / BINARY_NAME),
+        ("dev-release-parent", Path("../skillbox/target/release") / BINARY_NAME),
+        ("dev-debug-parent", Path("../skillbox/target/debug") / BINARY_NAME),
+        ("dev-release-grandparent", Path("../../skillbox/target/release") / BINARY_NAME),
+        ("dev-debug-grandparent", Path("../../skillbox/target/debug") / BINARY_NAME),
+    ]
+
+
 def find_binary() -> Optional[str]:
     """
-    Find the skillbox binary.
-    
+    Find the skillbox binary (cached).
+
+    Results are cached at module level. Call ``invalidate_binary_cache()``
+    to force a fresh lookup.
+
     Search order:
     1. ~/.skillbox/bin/skillbox (installed by this package)
     2. System PATH
     3. ~/.cargo/bin/skillbox (cargo install)
     4. Common system locations
-    5. Development build locations
-    
+    5. Development build locations (release and debug)
+
     Returns:
         Path to the binary, or None if not found.
     """
+    global _binary_path_cache, _binary_path_cache_set
+
+    # Return cached result if available
+    if _binary_path_cache_set:
+        return _binary_path_cache
+
+    found: Optional[str] = None
+
     # 1. Check our install location first
     our_binary = get_binary_path()
     if our_binary.exists() and os.access(our_binary, os.X_OK):
-        return str(our_binary)
-    
+        found = str(our_binary)
+
     # 2. Check PATH
-    path_binary = shutil.which(BINARY_NAME)
-    if path_binary:
-        return path_binary
-    
+    if found is None:
+        path_binary = shutil.which(BINARY_NAME)
+        if path_binary:
+            found = path_binary
+
     # 3. Check cargo install location
-    cargo_binary = Path.home() / ".cargo" / "bin" / BINARY_NAME
-    if cargo_binary.exists():
-        return str(cargo_binary)
-    
+    if found is None:
+        cargo_binary = Path.home() / ".cargo" / "bin" / BINARY_NAME
+        if cargo_binary.exists():
+            found = str(cargo_binary)
+
     # 4. Check common system locations
-    system_locations = [
-        Path("/usr/local/bin") / BINARY_NAME,
-        Path("/usr/bin") / BINARY_NAME,
-    ]
-    
-    for loc in system_locations:
-        if loc.exists() and os.access(loc, os.X_OK):
-            return str(loc)
-    
-    # 5. Check development build locations (relative to common project structures)
-    dev_locations = [
-        Path("skillbox/target/release") / BINARY_NAME,
-        Path("../skillbox/target/release") / BINARY_NAME,
-        Path("../../skillbox/target/release") / BINARY_NAME,
-    ]
-    
-    for loc in dev_locations:
-        if loc.exists() and os.access(loc, os.X_OK):
-            return str(loc.resolve())
-    
-    return None
+    if found is None:
+        system_locations = [
+            Path("/usr/local/bin") / BINARY_NAME,
+            Path("/usr/bin") / BINARY_NAME,
+        ]
+        for loc in system_locations:
+            if loc.exists() and os.access(loc, os.X_OK):
+                found = str(loc)
+                break
+
+    # 5. Check development build locations (release + debug)
+    if found is None:
+        dev_locations = [
+            Path("skillbox/target/release") / BINARY_NAME,
+            Path("skillbox/target/debug") / BINARY_NAME,
+            Path("../skillbox/target/release") / BINARY_NAME,
+            Path("../skillbox/target/debug") / BINARY_NAME,
+            Path("../../skillbox/target/release") / BINARY_NAME,
+            Path("../../skillbox/target/debug") / BINARY_NAME,
+        ]
+        for loc in dev_locations:
+            if loc.exists() and os.access(loc, os.X_OK):
+                found = str(loc.resolve())
+                break
+
+    # Cache the result (including None = not found)
+    _binary_path_cache = found
+    _binary_path_cache_set = True
+
+    return found
+
+
+def check_binary_version(binary_path: str) -> Optional[str]:
+    """
+    Query the binary for its version and check compatibility with the SDK.
+
+    Runs ``skillbox --version`` and compares with ``BINARY_VERSION``.
+    Emits a warning if there is a mismatch but does **not** raise —
+    a version mismatch is informational, not fatal.
+
+    Args:
+        binary_path: Path to the skillbox binary.
+
+    Returns:
+        The version string reported by the binary, or None on error.
+    """
+    try:
+        result = subprocess.run(
+            [binary_path, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        # clap outputs "skillbox 0.1.0\n"
+        version_line = result.stdout.strip()
+        # Extract version number from "skillbox X.Y.Z"
+        parts = version_line.split()
+        binary_version = parts[-1] if parts else version_line
+
+        if binary_version != BINARY_VERSION:
+            warnings.warn(
+                f"skillbox binary version mismatch: "
+                f"binary reports {binary_version}, SDK expects {BINARY_VERSION}. "
+                f"Consider updating with: skilllite install --force",
+                UserWarning,
+                stacklevel=2,
+            )
+            logger.warning(
+                "skillbox version mismatch: binary=%s, SDK=%s, path=%s",
+                binary_version, BINARY_VERSION, binary_path,
+            )
+        else:
+            logger.debug(
+                "skillbox version OK: %s (path=%s)", binary_version, binary_path,
+            )
+
+        return binary_version
+    except Exception as e:
+        logger.debug("Failed to check skillbox version: %s", e)
+        return None
 
 
 def ensure_installed(
@@ -378,44 +498,54 @@ def ensure_installed(
 ) -> str:
     """
     Ensure the skillbox binary is installed and return its path.
-    
+
     This is the main entry point for getting a working binary path.
     It will:
-    1. Try to find an existing binary
-    2. If not found and auto_install is True, download and install it
-    3. Raise an error if binary cannot be found or installed
-    
+    1. Try to find an existing binary (cached)
+    2. Check version compatibility
+    3. If not found and auto_install is True, download and install it
+    4. Raise an error if binary cannot be found or installed
+
     Args:
         auto_install: Automatically install if not found.
         show_progress: Show download progress during installation.
-        
+
     Returns:
         Path to the binary.
-        
+
     Raises:
         FileNotFoundError: If binary not found and auto_install is False.
         RuntimeError: If installation fails.
     """
-    # First, try to find existing binary
+    # First, try to find existing binary (cached)
     existing = find_binary()
     if existing:
+        # Version negotiation — warn but don't block
+        check_binary_version(existing)
         return existing
-    
+
     # Not found - try to install if allowed
     if auto_install:
         try:
             installed_path = install(show_progress=show_progress)
+            # Invalidate cache so next find_binary() picks up the new install
+            invalidate_binary_cache()
             return str(installed_path)
         except Exception as e:
             raise RuntimeError(
                 f"Failed to install skillbox binary: {e}\n"
                 f"You can manually install it with: skilllite install"
             ) from e
-    
-    # Not found and not allowed to install
+
+    # Not found and not allowed to install — build a detailed error message
+    searched = _get_search_locations()
+    paths_info = "\n".join(f"    - [{label}] {path}" for label, path in searched)
     raise FileNotFoundError(
-        "skillbox binary not found. Install it with:\n"
-        "  skilllite install\n"
-        "Or build from source:\n"
-        "  cd skillbox && cargo build --release"
+        f"skillbox binary not found. Searched locations:\n"
+        f"{paths_info}\n\n"
+        f"Install it with:\n"
+        f"  skilllite install\n"
+        f"Or build from source:\n"
+        f"  cd skillbox && cargo build --release\n"
+        f"  cd skillbox && cargo build          # (debug build also works)"
     )

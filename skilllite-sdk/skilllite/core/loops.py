@@ -6,17 +6,12 @@ both OpenAI-compatible APIs and Claude's native API through a single interface.
 """
 
 import json
-from enum import Enum
 from typing import Any, List, Optional, TYPE_CHECKING, Dict, Callable
+
+from .task_planner import ApiFormat, TaskPlanner
 
 if TYPE_CHECKING:
     from .manager import SkillManager
-
-
-class ApiFormat(Enum):
-    """Supported API formats."""
-    OPENAI = "openai"
-    CLAUDE_NATIVE = "claude_native"
 
 
 class AgenticLoop:
@@ -88,29 +83,20 @@ class AgenticLoop:
         self.verbose = verbose
         self.confirmation_callback = confirmation_callback
         self.extra_kwargs = kwargs
-        self.task_list: List[Dict] = []
 
-        # Initialize security scanner for sandbox_level=3
-        self._security_scanner = None
-        self._pending_confirmation = False  # Track if confirmation is pending
+        # Delegate task planning to TaskPlanner
+        self._planner = TaskPlanner(
+            client=client,
+            model=model,
+            api_format=api_format,
+            verbose=verbose,
+            extra_kwargs=kwargs
+        )
 
     def _log(self, message: str) -> None:
         """Print log message if verbose mode is enabled."""
         if self.verbose:
             print(message)
-
-    def _get_security_scanner(self):
-        """Get or lazily initialize the security scanner."""
-        if self._security_scanner is None:
-            from .security import SecurityScanner
-            self._security_scanner = SecurityScanner()
-        return self._security_scanner
-
-    def _should_perform_security_scan(self) -> bool:
-        """Check if security scanning should be performed."""
-        import os
-        sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3")
-        return sandbox_level == "3" and self.confirmation_callback is not None
 
     def _interactive_confirmation(self, report: str, scan_id: str) -> bool:
         """Default interactive terminal confirmation."""
@@ -124,446 +110,9 @@ class AgenticLoop:
                 return False
             self._log("Please enter 'y' or 'n'")
 
-    def _perform_security_confirmation_for_tools(
-        self,
-        tool_calls: List[Any]
-    ) -> bool:
-        """
-        Perform security scan and confirmation for tool calls.
+    # Task planning is delegated to self._planner (TaskPlanner)
 
-        Returns True if execution should proceed, False if denied.
-        Also handles skills that require elevated permissions.
-        """
-        import os
-        from .security import SecurityScanResult
 
-        sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3")
-        if sandbox_level != "3":
-            return True  # No confirmation needed for levels 1-2
-
-        # Get skill tool names
-        skill_tool_names = set(self.manager.skill_names())
-        skill_tool_names.update(self.manager._registry.list_multi_script_tools())
-
-        # Scan each skill tool call
-        combined_issues = []
-        scanned_skills = set()
-        requires_elevated = False  # Track if any skill requires elevated permissions
-
-        for tc in tool_calls:
-            tool_name = tc.function.name if hasattr(tc, 'function') else tc.get('name', '')
-
-            # Only scan skill tools, not custom tools
-            if tool_name not in skill_tool_names:
-                continue
-
-            # Get skill info
-            skill_name = tool_name.split('__')[0] if '__' in tool_name else tool_name
-            if skill_name in scanned_skills:
-                continue
-            scanned_skills.add(skill_name)
-
-            skill_info = self.manager.get_skill(skill_name)
-            if not skill_info:
-                continue
-
-            # Check if skill requires elevated permissions
-            if skill_info.metadata and getattr(skill_info.metadata, 'requires_elevated_permissions', False):
-                requires_elevated = True
-                self._log(f"🔓 Skill '{skill_name}' requires elevated permissions")
-
-            # Parse input data
-            try:
-                import json
-                input_data = json.loads(tc.function.arguments) if hasattr(tc, 'function') else {}
-            except (json.JSONDecodeError, AttributeError):
-                input_data = {}
-
-            # Perform security scan
-            scanner = self._get_security_scanner()
-            result = scanner.scan_skill(skill_info, input_data)
-            combined_issues.extend(result.issues)
-
-        # If skill requires elevated permissions, downgrade sandbox level
-        if requires_elevated and not combined_issues:
-            self._log("✅ Skill requires elevated permissions, downgrading to sandbox level 1...")
-            os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"
-            self._pending_confirmation = True
-            return True
-
-        if not combined_issues:
-            return True  # No issues found
-
-        # Create combined scan result
-        high_count = sum(1 for i in combined_issues if i.get("severity") in ["Critical", "High"])
-        medium_count = sum(1 for i in combined_issues if i.get("severity") == "Medium")
-        low_count = sum(1 for i in combined_issues if i.get("severity") == "Low")
-
-        combined_result = SecurityScanResult(
-            is_safe=high_count == 0,
-            issues=combined_issues,
-            scan_id=f"batch-{len(scanned_skills)}",
-            high_severity_count=high_count,
-            medium_severity_count=medium_count,
-            low_severity_count=low_count,
-        )
-
-        if not combined_result.requires_confirmation:
-            return True  # Only low/medium issues, proceed
-
-        # Ask for confirmation
-        report = combined_result.format_report()
-        self._log(f"\n🔒 Security scan detected potential issues:")
-
-        if self.confirmation_callback:
-            confirmed = self.confirmation_callback(report, combined_result.scan_id)
-        else:
-            confirmed = self._interactive_confirmation(report, combined_result.scan_id)
-
-        if confirmed:
-            # Temporarily downgrade sandbox level to allow execution
-            self._log("✅ User confirmed. Executing with sandbox level 1...")
-            os.environ["SKILLBOX_SANDBOX_LEVEL"] = "1"
-            self._pending_confirmation = True
-            return True
-        else:
-            self._log("❌ User denied execution.")
-            return False
-
-    def _restore_sandbox_level(self, original_level: str) -> None:
-        """Restore original sandbox level after execution."""
-        import os
-        if self._pending_confirmation:
-            os.environ["SKILLBOX_SANDBOX_LEVEL"] = original_level
-            self._pending_confirmation = False
-
-    def _get_execution_system_prompt(self) -> str:
-        """
-        Generate the main execution system prompt for skill selection and file operations.
-        
-        This prompt guides the LLM to:
-        1. Analyze tasks and select appropriate skills
-        2. Determine when to use built-in file read/write capabilities
-        3. Execute tasks step by step
-        """
-        # Get available skills info
-        skills_info = []
-        for skill in self.manager.list_skills():
-            skill_desc = {
-                "name": skill.name,
-                "description": skill.description or "No description",
-                "executable": self.manager.is_executable(skill.name),
-                "path": str(skill.path) if hasattr(skill, 'path') else ""
-            }
-            skills_info.append(skill_desc)
-        
-        skills_list_str = "\n".join([
-            f"  - **{s['name']}**: {s['description']} {'[Executable]' if s['executable'] else '[Reference Only]'}"
-            for s in skills_info
-        ])
-        
-        # Determine skills directory
-        skills_dir = ".skills"  # Default
-        if skills_info and skills_info[0].get("path"):
-            # Extract skills directory from first skill path
-            first_path = skills_info[0]["path"]
-            if ".skills" in first_path:
-                skills_dir = ".skills"
-            elif "skills" in first_path:
-                skills_dir = "skills"
-        
-        return f"""You are an intelligent task execution assistant responsible for planning and executing tasks based on user requirements.
-
-## Project Structure
-
-**Skills Directory**: `{skills_dir}/`
-
-All skills are stored in the `{skills_dir}/` directory, each skill is an independent subdirectory.
-
-## Available Skills
-
-{skills_list_str}
-
-## Built-in File Operations
-
-In addition to the above Skills, you have the following built-in file operation capabilities:
-
-1. **read_file**: Read file content
-   - Used to view existing files, understand project structure, read configurations, etc.
-   - Parameter: `file_path` (string, file path)
-
-2. **write_file**: Write/create files
-   - Used to create new files or modify existing file content
-   - Parameters: `file_path` (string, file path), `content` (string, file content)
-
-3. **list_directory**: List directory contents
-   - Used to view directory structure, understand project layout
-   - Parameter: `directory_path` (string, directory path, e.g., "." or ".skills")
-
-4. **file_exists**: Check if file exists
-   - Used to confirm file status before operations
-   - Parameter: `file_path` (string, file path)
-
-**Note**: Parameter names must be used exactly as defined above, otherwise errors will occur.
-
-## Task Execution Strategy
-
-### 1. Task Analysis
-- Carefully analyze user requirements and understand the final goal
-- Break down complex tasks into executable sub-steps
-- Identify the tools needed for each step (Skill or built-in file operations)
-
-### 2. Tool Selection Principles
-
-**When to prioritize Skills:**
-- Tasks involve specialized domain processing (e.g., data analysis, text processing, HTTP requests)
-- Skills have encapsulated complex business logic
-- Need to call external services or APIs
-
-**When to use built-in file operations:**
-- Need to read existing files to understand content or structure
-- Need to create new files or modify existing files
-- Need to view directory structure to locate files
-- Need to prepare input data before calling Skills
-- Need to save output results after calling Skills
-
-### 3. Execution Order
-
-1. **Information Gathering Phase**: Use read_file, list_directory to understand current state
-2. **Planning Phase**: Determine which Skills to use and operation order
-3. **Execution Phase**: Call Skills and file operations in sequence
-4. **Verification Phase**: Check execution results, make corrections if necessary
-
-### 4. Error Handling
-
-- If Skill execution fails, analyze the error cause and try to fix it
-- If file operation fails, check if the path is correct
-- When encountering unsolvable problems, explain the situation to the user and request help
-
-## Output Guidelines
-
-- After completing each task step, explicitly declare: "Task X completed"
-- Provide clear execution process explanations
-- Give a complete summary of execution results at the end
-"""
-
-    def _generate_task_list(self, user_message: str) -> List[Dict]:
-        """Generate task list from user message using LLM."""
-        # Get available skills for context
-        skills_names = self.manager.skill_names()
-        skills_info = ", ".join(skills_names) if skills_names else "None"
-        
-        planning_prompt = f"""You are a task planning assistant. Based on user requirements, determine whether tools are needed and generate a task list.
-
-## Core Principle: Minimize Tool Usage
-
-**Important**: Not all tasks require tools! Follow these principles:
-
-1. **Complete simple tasks directly**: If a task can be completed directly by the LLM (such as writing, translation, Q&A, creative generation, etc.), return an empty task list `[]` and let the LLM answer directly
-2. **Use tools only when necessary**: Only plan tool-using tasks when the task truly requires external capabilities (such as calculations, HTTP requests, file operations, data analysis, etc.)
-
-## Examples of tasks that DON'T need tools (return empty list `[]`)
-
-- Writing poems, articles, stories
-- Translating text
-- Answering knowledge-based questions
-- Code explanation, code review suggestions
-- Creative generation, brainstorming
-- Summarizing, rewriting, polishing text
-
-## Examples of tasks that NEED tools
-
-- Precise calculations (use calculator)
-- Sending HTTP requests (use http-request)
-- Reading/writing files (use built-in file operations)
-- Querying real-time weather (use weather)
-- Creating new Skills (use skill-creator)
-
-## Available Resources
-
-**Available Skills**: {skills_info}
-
-**Built-in capabilities**: read_file (read files), write_file (write files), list_directory (list directory), file_exists (check file existence)
-
-## Planning Principles
-
-1. **Task decomposition**: Break down user requirements into specific, executable steps
-2. **Tool matching**: Select appropriate tools for each step (Skill or built-in file operations)
-3. **Dependency order**: Ensure tasks are arranged in correct dependency order
-4. **Verifiability**: Each task should have clear completion criteria
-
-## Output Format
-
-Must return pure JSON format, no other text.
-Task list is an array, each task contains:
-- id: Task ID (number)
-- description: Task description (concise and clear, stating what to do)
-- tool_hint: Suggested tool (skill name or "file_operation" or "analysis")
-- completed: Whether completed (initially false)
-
-Example format:
-[
-  {{"id": 1, "description": "Use list_directory to view project structure", "tool_hint": "file_operation", "completed": false}},
-  {{"id": 2, "description": "Use skill-creator to create basic skill structure", "tool_hint": "skill-creator", "completed": false}},
-  {{"id": 3, "description": "Use write_file to write main skill code", "tool_hint": "file_operation", "completed": false}},
-  {{"id": 4, "description": "Verify the created skill is correct", "tool_hint": "analysis", "completed": false}}
-]
-- If task can be completed directly by LLM, return: `[]`
-- If tools are needed, return task array, each task contains:
-  - id: Task ID (number)
-  - description: Task description
-  - tool_hint: Suggested tool (skill name or "file_operation")
-  - completed: false
-
-Example 1 - Simple task (writing poetry):
-User request: "Write a poem praising spring"
-Return: []
-
-Example 2 - Task requiring tools:
-User request: "Calculate 123 * 456 + 789 for me"
-Return: [{{"id": 1, "description": "Use calculator to compute expression", "tool_hint": "calculator", "completed": false}}]
-
-Return only JSON, no other content."""
-
-        try:
-            if self.api_format == ApiFormat.OPENAI:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": planning_prompt},
-                        {"role": "user", "content": f"User request:\n{user_message}\n\nPlease generate task list:"}
-                    ],
-                    temperature=0.3
-                )
-                result = response.choices[0].message.content.strip()
-            else:  # CLAUDE_NATIVE
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=2048,
-                    system=planning_prompt,
-                    messages=[
-                        {"role": "user", "content": f"User request:\n{user_message}\n\nPlease generate task list:"}
-                    ]
-                )
-                result = response.content[0].text.strip()
-            
-            # Parse JSON
-            if result.startswith("```json"):
-                result = result[7:]
-            if result.startswith("```"):
-                result = result[3:]
-            if result.endswith("```"):
-                result = result[:-3]
-            
-            task_list = json.loads(result.strip())
-            
-            for task in task_list:
-                if "completed" not in task:
-                    task["completed"] = False
-            
-            # Check if any task involves creating a skill using skill-creator
-            # If so, automatically add a task to write SKILL.md content (if not already present)
-            has_skill_creation = any(
-                "skill-creator" in task.get("description", "").lower() or 
-                "skill-creator" in task.get("tool_hint", "").lower()
-                for task in task_list
-            )
-            
-            # Check if SKILL.md writing task already exists
-            has_skillmd_task = any(
-                "skill.md" in task.get("description", "").lower() or
-                "skill.md" in task.get("tool_hint", "").lower()
-                for task in task_list
-            )
-            
-            if has_skill_creation and not has_skillmd_task:
-                # Add task to write SKILL.md actual content
-                max_id = max((task["id"] for task in task_list), default=0)
-                new_task = {
-                    "id": max_id + 1,
-                    "description": "Use write_file to write actual SKILL.md content (skill description, usage, parameter documentation, etc.)",
-                    "tool_hint": "file_operation",
-                    "completed": False
-                }
-                task_list.append(new_task)
-                self._log(f"\n💡 Detected skill creation task, automatically adding SKILL.md writing task")
-            
-            self._log(f"\n📋 Generated task list ({len(task_list)} tasks):")
-            for task in task_list:
-                status = "✅" if task["completed"] else "⬜"
-                self._log(f"   {status} [{task['id']}] {task['description']}")
-            
-            return task_list
-            
-        except Exception as e:
-            self._log(f"⚠️  Failed to generate task list: {e}")
-            return [{"id": 1, "description": user_message, "completed": False}]
-    
-    def _update_task_list(self, completed_task_id: Optional[int] = None) -> None:
-        """Update task list display."""
-        if completed_task_id is not None:
-            for task in self.task_list:
-                if task["id"] == completed_task_id:
-                    task["completed"] = True
-                    break
-        
-        completed = sum(1 for t in self.task_list if t["completed"])
-        self._log(f"\n📋 Current task progress ({completed}/{len(self.task_list)}):")
-        for task in self.task_list:
-            status = "✅" if task["completed"] else "⬜"
-            self._log(f"   {status} [{task['id']}] {task['description']}")
-    
-    def _check_all_tasks_completed(self) -> bool:
-        """Check if all tasks are completed."""
-        return all(task["completed"] for task in self.task_list)
-    
-    def _check_task_completion_in_content(self, content: str) -> Optional[int]:
-        """Check if any task was completed based on LLM response content."""
-        if not content:
-            return None
-        content_lower = content.lower()
-        for task in self.task_list:
-            if not task["completed"]:
-                if f"task {task['id']} completed" in content_lower or f"task{task['id']} completed" in content_lower:
-                    return task["id"]
-        return None
-    
-    def _get_task_system_prompt(self) -> str:
-        """Generate system prompt with task list and execution guidance."""
-        # Get the main execution system prompt
-        execution_prompt = self._get_execution_system_prompt()
-        
-        # Format task list
-        task_list_str = json.dumps(self.task_list, ensure_ascii=False, indent=2)
-        current_task = next((t for t in self.task_list if not t["completed"]), None)
-        current_task_info = ""
-        if current_task:
-            tool_hint = current_task.get("tool_hint", "")
-            hint_str = f"(Suggested tool: {tool_hint})" if tool_hint else ""
-            current_task_info = f"\n\n🎯 **Current task to execute**: Task {current_task['id']} - {current_task['description']} {hint_str}"
-        
-        task_rules = f"""
----
-
-## Current Task List
-
-{task_list_str}
-
-## Execution Rules
-
-1. **Strict sequential execution**: Must execute tasks in order, do not skip tasks
-2. **Focus on current task**: Focus only on executing the current task at a time
-3. **Explicit completion declaration**: After completing a task, must explicitly declare in response: "Task X completed" (X is task ID)
-4. **Sequential progression**: Can only start next task after current task is completed
-5. **Avoid repetition**: Do not repeat already completed tasks
-6. **Multi-step tasks**: If a task requires multiple tool calls to complete, continue calling tools until the task is truly completed before declaring
-{current_task_info}
-
-⚠️ **Important**: You must explicitly declare after completing each task so the system can track progress and know when to end.
-"""
-        
-        return execution_prompt + task_rules
-    
     def _get_skill_docs_for_tools(self, tool_calls: List[Any]) -> Optional[str]:
         """
         Get full SKILL.md documentation for the tools being called.
@@ -654,8 +203,8 @@ Based on the documentation, call the tools with correct parameters.
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
         
-        if self.enable_task_planning and self.task_list:
-            messages.append({"role": "system", "content": self._get_task_system_prompt()})
+        if self.enable_task_planning and self._planner.task_list:
+            messages.append({"role": "system", "content": self._planner.build_task_system_prompt(self.manager)})
         
         messages.append({"role": "user", "content": user_message})
         
@@ -683,15 +232,33 @@ Based on the documentation, call the tools with correct parameters.
                 self._log("📝 LLM did not call any tools")
 
                 if self.enable_task_planning:
-                    completed_id = self._check_task_completion_in_content(message.content)
+                    completed_id = self._planner.check_completion_in_content(message.content)
                     if completed_id:
-                        self._update_task_list(completed_id)
+                        self._planner.update_task_list(completed_id)
 
-                    if self._check_all_tasks_completed():
+                    if self._planner.check_all_completed():
                         self._log("🎯 All tasks completed, ending iteration")
                         return response
                     else:
-                        # Tasks not complete and no tool calls - continue to next iteration
+                        # Tasks not complete and no tool calls — nudge the LLM
+                        # to continue working (mirror Claude-native behaviour).
+                        self._log("⏳ There are still pending tasks, continuing execution...")
+                        messages.append(message)
+
+                        current_task = next(
+                            (t for t in self._planner.task_list if not t["completed"]),
+                            None,
+                        )
+                        task_list_str = json.dumps(
+                            self._planner.task_list, ensure_ascii=False, indent=2
+                        )
+                        nudge = (
+                            f"Task progress update:\n{task_list_str}\n\n"
+                            f"Current task to execute: Task {current_task['id']} - "
+                            f"{current_task['description']}\n\n"
+                            "Please use the available tools to complete this task."
+                        ) if current_task else "Please continue to complete the remaining tasks."
+                        messages.append({"role": "user", "content": nudge})
                         continue
                 else:
                     return response
@@ -732,7 +299,7 @@ Based on the documentation, call the tools with correct parameters.
             else:
                 # Use unified execution service with confirmation callback
                 # This handles security scanning, confirmation, and sandbox level management
-                tool_results = self.manager.handle_tool_calls_with_unified_service(
+                tool_results = self.manager.handle_tool_calls(
                     response,
                     confirmation_callback=self.confirmation_callback or self._interactive_confirmation,
                     allow_network=allow_network,
@@ -753,21 +320,21 @@ Based on the documentation, call the tools with correct parameters.
             # Check task completion
             if self.enable_task_planning:
                 if message.content:
-                    completed_id = self._check_task_completion_in_content(message.content)
+                    completed_id = self._planner.check_completion_in_content(message.content)
                     if completed_id:
-                        self._update_task_list(completed_id)
-                
-                if self._check_all_tasks_completed():
+                        self._planner.update_task_list(completed_id)
+
+                if self._planner.check_all_completed():
                     self._log("🎯 All tasks completed, ending iteration")
                     final_response = self.client.chat.completions.create(
                         model=self.model, messages=messages, tools=None
                     )
                     return final_response
-                
+
                 # Update task focus
-                current_task = next((t for t in self.task_list if not t["completed"]), None)
+                current_task = next((t for t in self._planner.task_list if not t["completed"]), None)
                 if current_task:
-                    task_list_str = json.dumps(self.task_list, ensure_ascii=False, indent=2)
+                    task_list_str = json.dumps(self._planner.task_list, ensure_ascii=False, indent=2)
                     messages.append({
                         "role": "system",
                         "content": f"Task progress update:\n{task_list_str}\n\nCurrent task to execute: Task {current_task['id']} - {current_task['description']}\n\nPlease continue to focus on completing the current task."
@@ -790,8 +357,8 @@ Based on the documentation, call the tools with correct parameters.
         
         # Build system prompt
         system = self.system_prompt or ""
-        if self.enable_task_planning and self.task_list:
-            system = (system + "\n\n" if system else "") + self._get_task_system_prompt()
+        if self.enable_task_planning and self._planner.task_list:
+            system = (system + "\n\n" if system else "") + self._planner.build_task_system_prompt(self.manager)
         
         response = None
         
@@ -825,11 +392,11 @@ Based on the documentation, call the tools with correct parameters.
                         if hasattr(block, 'text'):
                             text_content += block.text
                     
-                    completed_id = self._check_task_completion_in_content(text_content)
+                    completed_id = self._planner.check_completion_in_content(text_content)
                     if completed_id:
-                        self._update_task_list(completed_id)
-                    
-                    if self._check_all_tasks_completed():
+                        self._planner.update_task_list(completed_id)
+
+                    if self._planner.check_all_completed():
                         self._log("🎯 All tasks completed, ending iteration")
                         return response
                     else:
@@ -854,7 +421,7 @@ Based on the documentation, call the tools with correct parameters.
 
             # Use unified execution service with confirmation callback
             # This handles security scanning, confirmation, and sandbox level management
-            tool_results = self.manager.handle_tool_calls_claude_native_with_unified_service(
+            tool_results = self.manager.handle_tool_calls_claude_native(
                 response,
                 confirmation_callback=self.confirmation_callback or self._interactive_confirmation,
                 allow_network=allow_network,
@@ -878,11 +445,11 @@ Based on the documentation, call the tools with correct parameters.
                     if hasattr(block, 'text'):
                         text_content += block.text
                 
-                completed_id = self._check_task_completion_in_content(text_content)
+                completed_id = self._planner.check_completion_in_content(text_content)
                 if completed_id:
-                    self._update_task_list(completed_id)
-                
-                if self._check_all_tasks_completed():
+                    self._planner.update_task_list(completed_id)
+
+                if self._planner.check_all_completed():
                     self._log("🎯 All tasks completed, ending iteration")
                     final_response = self.client.messages.create(
                         model=self.model,
@@ -916,11 +483,11 @@ Based on the documentation, call the tools with correct parameters.
         """
         # Generate task list if enabled
         if self.enable_task_planning:
-            self.task_list = self._generate_task_list(user_message)
-            
+            self._planner.generate_task_list(user_message, self.manager)
+
             # If task list is empty, the task can be completed by LLM directly
             # Disable task planning mode for this run
-            if not self.task_list:
+            if not self._planner.task_list:
                 self._log("\n💡 Task can be completed directly by LLM, no tools needed")
                 self.enable_task_planning = False
         

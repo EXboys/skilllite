@@ -20,6 +20,8 @@ from .binary import (
     uninstall,
     find_binary,
     ensure_installed,
+    invalidate_binary_cache,
+    check_binary_version,
 )
 from .executor import SkillboxExecutor
 
@@ -39,6 +41,8 @@ __all__ = [
     "uninstall",
     "find_binary",
     "ensure_installed",
+    "invalidate_binary_cache",
+    "check_binary_version",
     # Executor
     "SkillboxExecutor",
 ]

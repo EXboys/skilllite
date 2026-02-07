@@ -237,7 +237,7 @@ class UnifiedExecutor:
 
         # Set sandbox level in environment (for consistency)
         env["SKILLBOX_SANDBOX_LEVEL"] = context.sandbox_level
-        env["SKILLBOX_AUTO_APPROVE"] = "1" if context.auto_approve or context.confirmed else "1"
+        env["SKILLBOX_AUTO_APPROVE"] = "1" if context.auto_approve or context.confirmed else "0"
 
         # Set skill-specific environment
         env["SKILL_DIR"] = str(skill_dir)

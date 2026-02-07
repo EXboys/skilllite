@@ -167,7 +167,7 @@ fn request_user_authorization(issues_count: usize, severity: &str) -> bool {
     
     loop {
         eprint!("  👉 Continue execution? [y/N]: ");
-        io::stdout().flush().unwrap();
+        io::stderr().flush().unwrap();
         
         let mut input = String::new();
         io::stdin().read_line(&mut input).unwrap();
