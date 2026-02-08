@@ -83,6 +83,7 @@ from .core import (
 # Import from non-core modules (utilities, quick start, etc.)
 from .quick import SkillRunner, quick_run, load_env, get_runner
 from .core.metadata import get_skill_summary
+from .logger import get_logger, setup_logging, LoggerMixin
 from .sandbox.skillbox import (
     install as install_binary,
     uninstall as uninstall_binary,
@@ -156,4 +157,8 @@ __all__ = [
     "MCPServer",
     "SandboxExecutor",
     "MCP_AVAILABLE",
+    # Logging
+    "get_logger",
+    "setup_logging",
+    "LoggerMixin",
 ]

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from .core import SkillManager, AgenticLoop
+from .logger import get_logger
 
 
 def load_env(env_file: Optional[Union[str, Path]] = None) -> Dict[str, str]:
@@ -144,6 +145,9 @@ class SkillRunner:
         self.verbose = verbose
         self.enable_builtin_tools = enable_builtin_tools
         
+        # Initialize logger
+        self._logger = get_logger("skilllite.quick", verbose=verbose)
+        
         # Sandbox and network configuration (read from .env or use defaults)
         # Use SKILLBOX_* prefix environment variables (preferred)
         # Fall back to legacy variable names for backward compatibility
@@ -215,7 +219,7 @@ class SkillRunner:
                 sandbox_level=self.sandbox_level
             )
             if self.verbose:
-                print(f"📦 Loaded Skills: {self._manager.skill_names()}")
+                self._logger.info(f"📦 Loaded Skills: {self._manager.skill_names()}")
         return self._manager
     
     @property
@@ -260,7 +264,7 @@ Example of CORRECT approach:
                     include_references=self.include_references,
                     include_assets=self.include_assets
                 )
-                print(f"📊 System Prompt estimated tokens: ~{estimated_tokens}")
+                self._logger.info(f"📊 System Prompt estimated tokens: ~{estimated_tokens}")
         return self._system_context
     
     @property
@@ -280,8 +284,8 @@ Example of CORRECT approach:
             Final response content from LLM
         """
         if self.verbose:
-            print(f"👤 User: {user_message}")
-            print(f"⏳ Calling LLM...")
+            self._logger.info(f"👤 User: {user_message}")
+            self._logger.info(f"⏳ Calling LLM...")
         
         # Prepare tool executor
         tool_executor = self.custom_tool_executor
@@ -326,7 +330,7 @@ Example of CORRECT approach:
         result = response.choices[0].message.content or ""
         
         if self.verbose:
-            print(f"🤖 Assistant: {result}")
+            self._logger.info(f"🤖 Assistant: {result}")
         
         return result
     

@@ -8,6 +8,7 @@ both OpenAI-compatible APIs and Claude's native API through a single interface.
 import json
 from typing import Any, List, Optional, TYPE_CHECKING, Dict, Callable
 
+from ..logger import get_logger
 from .task_planner import ApiFormat, TaskPlanner
 
 if TYPE_CHECKING:
@@ -94,11 +95,14 @@ class AgenticLoop:
             verbose=verbose,
             extra_kwargs=kwargs
         )
+        
+        # Initialize logger
+        self._logger = get_logger("skilllite.core.loops", verbose=verbose)
 
     def _log(self, message: str) -> None:
-        """Print log message if verbose mode is enabled."""
+        """Log message if verbose mode is enabled."""
         if self.verbose:
-            print(message)
+            self._logger.info(message)
 
     def _interactive_confirmation(self, report: str, scan_id: str) -> bool:
         """Default interactive terminal confirmation."""

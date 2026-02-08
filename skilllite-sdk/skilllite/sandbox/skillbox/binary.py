@@ -6,7 +6,6 @@ sandbox binary, similar to how Playwright manages browser binaries.
 """
 
 import hashlib
-import logging
 import os
 import platform
 import shutil
@@ -21,7 +20,9 @@ import zipfile
 from pathlib import Path
 from typing import Optional, Tuple
 
-logger = logging.getLogger(__name__)
+from ...logger import get_logger
+
+logger = get_logger("skilllite.sandbox.skillbox.binary", verbose=True)
 
 # Module-level cache for find_binary() result
 _binary_path_cache: Optional[str] = None
@@ -260,11 +261,11 @@ def install(
     
     if not force and is_installed() and not needs_update(version):
         installed_version = get_installed_version()
-        print(f"✓ skillbox v{installed_version} is already installed")
+        logger.info(f"✓ skillbox v{installed_version} is already installed")
         return get_binary_path()
     
     plat = get_platform()
-    print(f"Installing skillbox v{version} for {plat}...")
+    logger.info(f"Installing skillbox v{version} for {plat}...")
     
     # Create install directory
     install_dir = get_install_dir()
@@ -278,11 +279,11 @@ def install(
         
         # Download
         url = get_download_url(version)
-        print(f"  Downloading from: {url}")
+        logger.info(f"  Downloading from: {url}")
         download_with_progress(url, archive_path, show_progress)
         
         # Extract
-        print("  Extracting...")
+        logger.info("  Extracting...")
         extracted_binary = extract_archive(archive_path, temp_path)
         
         # Move to install location
@@ -300,8 +301,8 @@ def install(
     version_file.parent.mkdir(parents=True, exist_ok=True)
     version_file.write_text(version)
     
-    print(f"✓ Successfully installed skillbox v{version}")
-    print(f"  Location: {dest_binary}")
+    logger.info(f"✓ Successfully installed skillbox v{version}")
+    logger.info(f"  Location: {dest_binary}")
 
     # Invalidate cache so next find_binary() picks up the new install
     invalidate_binary_cache()

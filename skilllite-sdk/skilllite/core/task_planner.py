@@ -11,6 +11,8 @@ import json
 from enum import Enum
 from typing import Any, List, Optional, Dict, TYPE_CHECKING
 
+from ..logger import get_logger
+
 if TYPE_CHECKING:
     from .manager import SkillManager
 
@@ -45,11 +47,14 @@ class TaskPlanner:
         self.verbose = verbose
         self.extra_kwargs = extra_kwargs or {}
         self.task_list: List[Dict] = []
+        
+        # Initialize logger
+        self._logger = get_logger("skilllite.core.task_planner", verbose=verbose)
     
     def _log(self, message: str) -> None:
-        """Print log message if verbose mode is enabled."""
+        """Log message if verbose mode is enabled."""
         if self.verbose:
-            print(message)
+            self._logger.info(message)
 
     def build_execution_prompt(self, manager: "SkillManager") -> str:
         """
