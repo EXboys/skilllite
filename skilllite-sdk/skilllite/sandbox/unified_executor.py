@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 
 from .base import ExecutionResult
 from .context import ExecutionContext
+from .utils import extract_json_from_output, format_sandbox_error
 
 
 class UnifiedExecutor:
@@ -388,23 +389,16 @@ class UnifiedExecutor:
         """Parse subprocess output into ExecutionResult."""
         combined = stdout + stderr
 
-        # Try to parse JSON output
-        try:
-            # Look for JSON in output
-            for line in combined.split('\n'):
-                line = line.strip()
-                if line.startswith('{') and line.endswith('}'):
-                    data = json.loads(line)
-                    if isinstance(data, dict):
-                        return ExecutionResult(
-                            success=returncode == 0,
-                            output=data,
-                            exit_code=returncode,
-                            stdout=stdout,
-                            stderr=stderr,
-                        )
-        except json.JSONDecodeError:
-            pass
+        # Try to extract JSON from output using shared utility
+        json_data = extract_json_from_output(combined, strategy="auto")
+        if json_data is not None and isinstance(json_data, dict):
+            return ExecutionResult(
+                success=returncode == 0,
+                output=json_data,
+                exit_code=returncode,
+                stdout=stdout,
+                stderr=stderr,
+            )
 
         # Return as plain text
         if returncode == 0:
@@ -417,9 +411,11 @@ class UnifiedExecutor:
             )
         else:
             error_msg = stderr.strip() if stderr.strip() else stdout.strip()
+            # Format sandbox errors using shared utility
+            formatted_error = format_sandbox_error(error_msg)
             return ExecutionResult(
                 success=False,
-                error=f"Skill execution failed with exit code {returncode}: {error_msg}",
+                error=f"Skill execution failed with exit code {returncode}: {formatted_error}",
                 exit_code=returncode,
                 stdout=stdout,
                 stderr=stderr,

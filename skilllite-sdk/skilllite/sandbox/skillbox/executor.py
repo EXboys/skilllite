@@ -26,7 +26,7 @@ from ..config import (
     DEFAULT_ALLOW_NETWORK,
     DEFAULT_ENABLE_SANDBOX,
 )
-from ..utils import convert_json_to_cli_args
+from ..utils import convert_json_to_cli_args, extract_json_from_output, format_sandbox_error
 from .binary import find_binary, ensure_installed, _get_search_locations
 
 
@@ -188,31 +188,21 @@ class SkillboxExecutor(SandboxExecutor):
         """
         Format sandbox restriction errors into user-friendly messages.
 
+        Delegates to shared utility function in sandbox.utils.
+
         Args:
             error_msg: Raw error message from subprocess
 
         Returns:
             Formatted error message
         """
-        # Check for common sandbox restriction patterns
-        sandbox_errors = {
-            "BlockingIOError": "🔒 Sandbox blocked process creation (fork/exec not allowed)",
-            "Resource temporarily unavailable": "🔒 Sandbox blocked system resource access",
-            "Operation not permitted": "🔒 Sandbox blocked this operation",
-            "Permission denied": "🔒 Sandbox denied file/resource access",
-            "sandbox-exec": "🔒 Sandbox restriction triggered",
-        }
-
-        for pattern, friendly_msg in sandbox_errors.items():
-            if pattern in error_msg:
-                # Return only the friendly message, hide the traceback
-                return f"{friendly_msg}\n\n💡 This skill requires operations that are blocked by the sandbox for security reasons."
-
-        return error_msg
+        return format_sandbox_error(error_msg)
 
     def _extract_json_from_output(self, output: str) -> Optional[Any]:
         """
         Try to extract JSON from skillbox output that may contain log lines.
+
+        Delegates to shared utility function in sandbox.utils.
 
         Skillbox output format may include:
         - [INFO] ... log lines
@@ -226,36 +216,13 @@ class SkillboxExecutor(SandboxExecutor):
         Returns:
             Parsed JSON object if found, None otherwise
         """
-        if not output:
-            return None
-
-        # First try: parse entire output as JSON
-        try:
-            return json.loads(output.strip())
-        except json.JSONDecodeError:
-            pass
-
-        # Second try: find JSON object by looking for { and matching }
-        # This handles cases where JSON contains newlines (like \n in strings)
-        brace_start = output.rfind('{')
-        if brace_start == -1:
-            return None
-
-        brace_end = output.rfind('}')
-        if brace_end == -1 or brace_end < brace_start:
-            return None
-
-        json_str = output[brace_start:brace_end + 1]
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            pass
-
-        return None
+        return extract_json_from_output(output, strategy="auto")
 
     def _parse_output(self, stdout: str, stderr: str, returncode: int) -> ExecutionResult:
         """
         Parse subprocess output into ExecutionResult.
+        
+        Uses shared utility functions for JSON extraction and error formatting.
         
         Args:
             stdout: Standard output
@@ -266,24 +233,24 @@ class SkillboxExecutor(SandboxExecutor):
             ExecutionResult
         """
         if returncode == 0:
-            try:
-                output = json.loads(stdout.strip())
+            # Try to extract JSON from output using shared utility
+            json_data = extract_json_from_output(stdout, strategy="auto")
+            if json_data is not None:
                 return ExecutionResult(
                     success=True,
-                    output=output,
+                    output=json_data,
                     exit_code=returncode,
                     stdout=stdout,
                     stderr=stderr
                 )
-            except json.JSONDecodeError:
-                # Script output is not JSON, return as raw text
-                return ExecutionResult(
-                    success=True,
-                    output={"raw_output": stdout.strip()},
-                    exit_code=returncode,
-                    stdout=stdout,
-                    stderr=stderr
-                )
+            # Script output is not JSON, return as raw text
+            return ExecutionResult(
+                success=True,
+                output={"raw_output": stdout.strip()} if stdout.strip() else None,
+                exit_code=returncode,
+                stdout=stdout,
+                stderr=stderr
+            )
         else:
             # Check for sandbox restriction errors and provide friendly messages
             error_msg = stderr or stdout or f"Exit code: {returncode}"
