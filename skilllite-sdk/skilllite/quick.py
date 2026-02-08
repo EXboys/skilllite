@@ -145,14 +145,33 @@ class SkillRunner:
         self.enable_builtin_tools = enable_builtin_tools
         
         # Sandbox and network configuration (read from .env or use defaults)
+        # Use SKILLBOX_* prefix environment variables (preferred)
+        # Fall back to legacy variable names for backward compatibility
+        def _get_bool_env(new_key: str, legacy_key: str, default: bool) -> bool:
+            """Get boolean from environment, checking new key first, then legacy key."""
+            value = os.environ.get(new_key) or os.environ.get(legacy_key)
+            if value is None:
+                return default
+            return value.lower() in ("true", "1", "yes", "on")
+        
+        def _get_int_env(new_key: str, legacy_key: str, default: int) -> int:
+            """Get integer from environment, checking new key first, then legacy key."""
+            value = os.environ.get(new_key) or os.environ.get(legacy_key)
+            if value:
+                try:
+                    return int(value)
+                except ValueError:
+                    pass
+            return default
+        
         self.allow_network = allow_network if allow_network is not None else \
-            (os.environ.get("ALLOW_NETWORK", "false").lower() == "true")
+            _get_bool_env("SKILLBOX_ALLOW_NETWORK", "ALLOW_NETWORK", False)
         self.enable_sandbox = enable_sandbox if enable_sandbox is not None else \
-            (os.environ.get("ENABLE_SANDBOX", "true").lower() == "true")
+            _get_bool_env("SKILLBOX_ENABLE_SANDBOX", "ENABLE_SANDBOX", True)
         self.execution_timeout = execution_timeout or \
-            int(os.environ.get("EXECUTION_TIMEOUT", "120"))
+            _get_int_env("SKILLBOX_TIMEOUT_SECS", "EXECUTION_TIMEOUT", 120)
         self.max_memory_mb = max_memory_mb or \
-            int(os.environ.get("MAX_MEMORY_MB", "512"))
+            _get_int_env("SKILLBOX_MAX_MEMORY_MB", "MAX_MEMORY_MB", 512)
         # Read sandbox security level (from .env or default to 3)
         self.sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3")
         

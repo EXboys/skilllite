@@ -16,13 +16,17 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
+# Import default values from config module (single source of truth)
+from .config import (
+    DEFAULT_EXECUTION_TIMEOUT,
+    DEFAULT_MAX_MEMORY_MB,
+    DEFAULT_SANDBOX_LEVEL,
+    DEFAULT_ALLOW_NETWORK,
+)
 
-# Default configuration values
-DEFAULT_SANDBOX_LEVEL = "3"
-DEFAULT_TIMEOUT = 120
-DEFAULT_MAX_MEMORY_MB = 512
-DEFAULT_ALLOW_NETWORK = False
-DEFAULT_AUTO_APPROVE = False
+# Alias for consistency with ExecutionContext field names
+DEFAULT_TIMEOUT = DEFAULT_EXECUTION_TIMEOUT
+DEFAULT_AUTO_APPROVE = False  # Only used in ExecutionContext, not in SandboxConfig
 
 
 def _parse_bool_env(key: str, default: bool) -> bool:
@@ -151,5 +155,12 @@ class ExecutionContext:
         )
 
 
-__all__ = ["ExecutionContext", "DEFAULT_SANDBOX_LEVEL", "DEFAULT_TIMEOUT", "DEFAULT_MAX_MEMORY_MB"]
+__all__ = [
+    "ExecutionContext",
+    "DEFAULT_SANDBOX_LEVEL",
+    "DEFAULT_TIMEOUT",
+    "DEFAULT_MAX_MEMORY_MB",
+    "DEFAULT_ALLOW_NETWORK",
+    "DEFAULT_AUTO_APPROVE",
+]
 
