@@ -11,7 +11,7 @@ A lightweight AI Agent Skills execution engine that integrates with any OpenAI-c
 
 See SkillLite's performance compared to other sandbox solutions in real-time:
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/yfTxjCj8I4Q?autoplay=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+[![Performance Benchmark Video](https://img.youtube.com/vi/yfTxjCj8I4Q/0.jpg)](https://www.youtube.com/watch?v=yfTxjCj8I4Q)
 
 ![Performance Benchmark Comparison](./docs/images/benchmark-en.png)
 
