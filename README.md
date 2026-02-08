@@ -24,6 +24,7 @@ A lightweight AI Agent Skills execution engine that integrates with any OpenAI-c
 See SkillLite's performance compared to other sandbox solutions in real-time:
 
 ![Performance Benchmark Comparison](./docs/images/benmark-en.gif)
+![Performance Benchmark Comparison](./docs/images/benmark-en.png)
 
 > **Performance Highlights**: SkillLite achieves **3-5x faster** execution than Docker and SRT, with **10x lower memory footprint** (~10MB vs ~100MB).
 
