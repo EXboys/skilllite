@@ -2,46 +2,56 @@
   "performance": {
     "srt": {
       "startup": {
-        "mean": 596.0014040996612,
-        "min": 591.7747909988975,
-        "max": 601.3950839987956,
-        "stdev": 3.6417856008186167,
+        "mean": 151.8057541223243,
+        "min": 149.7111669741571,
+        "max": 155.05316690541804,
+        "stdev": 1.7601120733355058,
         "success": true
       },
       "simple_print": {
-        "mean": 717.3554457000137,
-        "min": 709.107333999782,
-        "max": 723.3326660007151,
-        "stdev": 4.839490250097303,
-        "success": true
+        "mean": 165.6952415825799,
+        "min": 164.30033301003277,
+        "max": 166.7804999742657,
+        "stdev": 0.748177693590601,
+        "success": true,
+        "output": "{\"result\": \"Hello\"}\n",
+        "error": ""
       },
       "loop_10000": {
-        "mean": 713.0520959000933,
-        "min": 706.2925830014137,
-        "max": 721.1769169989566,
-        "stdev": 4.321749168409844,
-        "success": true
+        "mean": 166.90886260475963,
+        "min": 165.67483288235962,
+        "max": 170.37679092027247,
+        "stdev": 1.5463124005061841,
+        "success": true,
+        "output": "{\"result\": 49995000}\n",
+        "error": ""
       },
       "fibonacci_25": {
-        "mean": 720.4797790996963,
-        "min": 709.5769999996264,
-        "max": 725.9458329990593,
-        "stdev": 5.134496837619868,
-        "success": true
+        "mean": 171.56250830739737,
+        "min": 170.0475828256458,
+        "max": 173.69458312168717,
+        "stdev": 1.2251155906746947,
+        "success": true,
+        "output": "{\"result\": 75025}\n",
+        "error": ""
       },
       "list_comprehension": {
-        "mean": 718.6920167001517,
-        "min": 716.5329170002224,
-        "max": 721.7350829996576,
-        "stdev": 1.4306834987163124,
-        "success": true
+        "mean": 167.3901873640716,
+        "min": 165.80020799301565,
+        "max": 168.42204192653298,
+        "stdev": 0.7957592669615298,
+        "success": true,
+        "output": "{\"result\": 1000}\n",
+        "error": ""
       },
       "dict_operations": {
-        "mean": 720.5167751000772,
-        "min": 714.2809169999964,
-        "max": 731.6937499999767,
-        "stdev": 4.9102957127631415,
-        "success": true
+        "mean": 169.1520497435704,
+        "min": 167.73737501353025,
+        "max": 171.82899988256395,
+        "stdev": 1.3725398711630914,
+        "success": true,
+        "output": "{\"result\": 332833500}\n",
+        "error": ""
       },
       "security": {
         "fs_read_etc_passwd": {
@@ -61,7 +71,7 @@
         },
         "env_isolation": {
           "home_visible": true,
-          "output": "/Users/luren\n",
+          "output": "/Users/airlu\n",
           "error": ""
         },
         "write_tmp": {
@@ -73,92 +83,102 @@
     },
     "skillbox": {
       "startup": {
-        "mean": 119.91233739954623,
-        "min": 117.07920799926796,
-        "max": 124.08733300071617,
-        "stdev": 2.358831741579817,
+        "mean": 123.32724998705089,
+        "min": 117.84470896236598,
+        "max": 124.67233301140368,
+        "stdev": 2.2130895887999356,
         "success": true
       },
       "simple_print": {
-        "mean": 121.49532499970519,
-        "min": 117.58033299884119,
-        "max": 124.33749999945576,
-        "stdev": 1.9865968865972832,
-        "success": true
+        "mean": 124.23592894338071,
+        "min": 123.79099987447262,
+        "max": 124.66324982233346,
+        "stdev": 0.257226812072944,
+        "success": true,
+        "output": "{\"result\": \"Hello\"}\n",
+        "error": "[INFO] Sandbox Level: Level3 (Sandbox isolation + static code scanning)\n"
       },
       "loop_10000": {
-        "mean": 119.9801249000302,
-        "min": 117.71633399985149,
-        "max": 123.27908299994306,
-        "stdev": 2.1287776506189995,
-        "success": true
+        "mean": 124.41280414350331,
+        "min": 123.97979106754065,
+        "max": 125.0468750949949,
+        "stdev": 0.35113015422895694,
+        "success": true,
+        "output": "{\"result\": 49995000}\n",
+        "error": "[INFO] Sandbox Level: Level3 (Sandbox isolation + static code scanning)\n"
       },
       "fibonacci_25": {
-        "mean": 120.78185830014263,
-        "min": 118.16983399876335,
-        "max": 123.06404100127111,
-        "stdev": 1.9108233763507045,
-        "success": true
+        "mean": 122.5562458159402,
+        "min": 121.87587516382337,
+        "max": 123.71595809236169,
+        "stdev": 0.4890473949926991,
+        "success": true,
+        "output": "{\"result\": 75025}\n",
+        "error": "[INFO] Sandbox Level: Level3 (Sandbox isolation + static code scanning)\n"
       },
       "list_comprehension": {
-        "mean": 119.99170849976508,
-        "min": 117.57212500015157,
-        "max": 122.8493750004418,
-        "stdev": 2.142384717804956,
-        "success": true
+        "mean": 124.2710123769939,
+        "min": 122.62437515892088,
+        "max": 124.96029189787805,
+        "stdev": 0.6768950124779181,
+        "success": true,
+        "output": "{\"result\": 1000}\n",
+        "error": "[INFO] Sandbox Level: Level3 (Sandbox isolation + static code scanning)\n"
       },
       "dict_operations": {
-        "mean": 120.63484999962384,
-        "min": 117.31300000064948,
-        "max": 123.11820899958548,
-        "stdev": 2.0185672601101907,
-        "success": true
+        "mean": 124.10072525963187,
+        "min": 123.72587504796684,
+        "max": 124.59254218265414,
+        "stdev": 0.2752030382914496,
+        "success": true,
+        "output": "{\"result\": 332833500}\n",
+        "error": "[INFO] Sandbox Level: Level3 (Sandbox isolation + static code scanning)\n"
       },
       "security": {
         "fs_read_etc_passwd": {
           "blocked": true,
           "output": "{\"success\": false, \"error\": \"[Errno 1] Operation not permitted: '/etc/passwd'\"}\n",
-          "error": ""
+          "error": "[INFO] Sandbox Level: Level3 (Sandbox isolation + static code scanning)\n📋 Security Scan: 1 item(s) flagged for review\n\n  🟡 #1 [Medium] File Operation\n     ├─ Rule: py-file-open\n     ├─ Line 4: Built-i"
         },
         "network_access": {
           "blocked": true,
           "output": "{\"success\": false, \"error\": \"<urlopen error [Errno 8] nodename nor servname provided, or not known>\"}\n",
-          "error": ""
+          "error": "[INFO] Sandbox Level: Level3 (Sandbox isolation + static code scanning)\n📋 Security Scan: 3 item(s) flagged for review\n\n  🟡 #1 [Medium] Network Request\n     ├─ Rule: py-net-import\n     ├─ Line 3: Netwo"
         },
         "process_creation": {
           "allowed": false,
-          "output": "{\"success\": false, \"error\": \"[Errno 35] Resource temporarily unavailable\"}\n",
-          "error": ""
+          "output": "",
+          "error": "Test timed out after 10 seconds"
         },
         "env_isolation": {
-          "home_visible": true,
-          "output": "{\"home\": \"/var/folders/gr/h057y1j11qx118m2q6dn2jh00000gn/T/.tmpi0By4Y\", \"path\": \"/Users/luren/.nvm/versions/node/v24.12.0/bin:/Users/luren/.dotnet:/Users/luren/.dotnet:/usr/local/sh\"}\n",
-          "error": ""
+          "home_visible": false,
+          "output": "",
+          "error": "Test timed out after 15 seconds"
         },
         "write_tmp": {
           "allowed": false,
           "output": "{\"success\": false, \"error\": \"[Errno 1] Operation not permitted: '/tmp/skillbox_security_test'\"}\n",
-          "error": ""
+          "error": "[INFO] Sandbox Level: Level3 (Sandbox isolation + static code scanning)\n📋 Security Scan: 1 item(s) flagged for review\n\n  🟡 #1 [Medium] File Operation\n     ├─ Rule: py-file-open\n     ├─ Line 4: Built-i"
         }
       }
     }
   },
   "memory": {
     "srt": {
-      "startup": 84416.0,
-      "simple_print": 84304.0,
-      "loop_10000": 83552.0,
-      "fibonacci_25": 82848.0,
-      "list_comprehension": 84320.0,
-      "dict_operations": 84480.0
+      "startup": 81584.0,
+      "simple_print": 82192.0,
+      "loop_10000": 83152.0,
+      "fibonacci_25": 82864.0,
+      "list_comprehension": 83424.0,
+      "dict_operations": 82544.0
     },
     "skillbox": {
-      "startup": 12208.0,
-      "simple_print": 12192.0,
-      "loop_10000": 12208.0,
-      "fibonacci_25": 12272.0,
-      "list_comprehension": 12240.0,
-      "dict_operations": 12336.0
+      "startup": 11008.0,
+      "simple_print": 11008.0,
+      "loop_10000": 11008.0,
+      "fibonacci_25": 11072.0,
+      "list_comprehension": 11072.0,
+      "dict_operations": 11184.0
     }
   }
 }

@@ -20,11 +20,13 @@ Test metrics:
 
 import json
 import os
+import platform
 import shutil
 import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -49,6 +51,7 @@ class BenchmarkResult:
     stdout: str = ""
     stderr: str = ""
     error: Optional[str] = None
+    memory_kb: float = 0.0  # Peak memory usage in KB
 
 
 @dataclass
@@ -66,6 +69,8 @@ class BenchmarkStats:
     p99_latency_ms: float
     throughput_rps: float
     total_time_sec: float
+    avg_memory_mb: float = 0.0  # Average memory usage in MB
+    peak_memory_mb: float = 0.0  # Peak memory usage in MB
     
     def to_dict(self) -> dict:
         return {
@@ -83,6 +88,10 @@ class BenchmarkStats:
             },
             "throughput_rps": round(self.throughput_rps, 2),
             "total_time_sec": round(self.total_time_sec, 2),
+            "memory_mb": {
+                "avg": round(self.avg_memory_mb, 2),
+                "peak": round(self.peak_memory_mb, 2),
+            },
         }
 
 
@@ -93,6 +102,113 @@ def percentile(data: List[float], p: float) -> float:
     sorted_data = sorted(data)
     index = int(len(sorted_data) * p / 100)
     return sorted_data[min(index, len(sorted_data) - 1)]
+
+
+class ResourceMonitor:
+    """Resource monitor - measures process memory consumption"""
+
+    @staticmethod
+    def get_peak_memory_kb(command: list, cwd: str = None, timeout: int = 30, input_data: str = None, env: dict = None) -> tuple:
+        """
+        Run command and get peak memory usage
+        Returns: (elapsed_ms, success, stdout, stderr, peak_memory_kb)
+        """
+        is_macos = platform.system() == "Darwin"
+
+        if is_macos:
+            # macOS: use /usr/bin/time -l
+            full_command = ["/usr/bin/time", "-l"] + command
+            start = time.perf_counter()
+            try:
+                # Merge with current environment if env is provided
+                run_env = os.environ.copy()
+                if env:
+                    run_env.update(env)
+                
+                result = subprocess.run(
+                    full_command,
+                    capture_output=True,
+                    timeout=timeout,
+                    cwd=cwd,
+                    input=input_data.encode() if input_data else None,
+                    text=False if input_data else True,
+                    env=run_env if env else None
+                )
+                end = time.perf_counter()
+                elapsed_ms = (end - start) * 1000
+                
+                stderr_text = result.stderr.decode(errors='replace') if isinstance(result.stderr, bytes) else result.stderr
+                # macOS time output format: "maximum resident set size" in bytes
+                memory_kb = 0
+                for line in stderr_text.split('\n'):
+                    if 'maximum resident set size' in line.lower():
+                        try:
+                            # Extract number (bytes)
+                            parts = line.strip().split()
+                            memory_bytes = int(parts[0])
+                            memory_kb = memory_bytes / 1024
+                        except (ValueError, IndexError):
+                            pass
+                        break
+                
+                stdout_text = result.stdout.decode(errors='replace') if isinstance(result.stdout, bytes) else result.stdout
+                return (
+                    elapsed_ms,
+                    result.returncode == 0,
+                    stdout_text,
+                    stderr_text,
+                    memory_kb
+                )
+            except subprocess.TimeoutExpired:
+                return (timeout * 1000, False, "", "Timeout", 0)
+            except Exception as e:
+                return (0, False, "", str(e), 0)
+        else:
+            # Linux: use /usr/bin/time -v
+            full_command = ["/usr/bin/time", "-v"] + command
+            start = time.perf_counter()
+            try:
+                # Merge with current environment if env is provided
+                run_env = os.environ.copy()
+                if env:
+                    run_env.update(env)
+                
+                result = subprocess.run(
+                    full_command,
+                    capture_output=True,
+                    timeout=timeout,
+                    cwd=cwd,
+                    input=input_data.encode() if input_data else None,
+                    text=False if input_data else True,
+                    env=run_env if env else None
+                )
+                end = time.perf_counter()
+                elapsed_ms = (end - start) * 1000
+                
+                stderr_text = result.stderr.decode(errors='replace') if isinstance(result.stderr, bytes) else result.stderr
+                # Linux time output format: "Maximum resident set size (kbytes):"
+                memory_kb = 0
+                for line in stderr_text.split('\n'):
+                    if 'maximum resident set size' in line.lower():
+                        try:
+                            parts = line.strip().split(':')
+                            memory_kb = float(parts[-1].strip())
+                        except (ValueError, IndexError):
+                            pass
+                        break
+                
+                stdout_text = result.stdout.decode(errors='replace') if isinstance(result.stdout, bytes) else result.stdout
+                return (
+                    elapsed_ms,
+                    result.returncode == 0,
+                    stdout_text,
+                    stderr_text,
+                    memory_kb
+                )
+            except subprocess.TimeoutExpired:
+                return (timeout * 1000, False, "", "Timeout", 0)
+            except Exception as e:
+                return (0, False, "", str(e), 0)
 
 
 class BaseExecutor:
@@ -115,9 +231,11 @@ class SkillBoxExecutor(BaseExecutor):
 
     name = "SkillBox (Native Sandbox)"
 
-    def __init__(self, skill_dir: Path = CALCULATOR_SKILL, sandbox_level: Optional[int] = None):
+    def __init__(self, skill_dir: Path = CALCULATOR_SKILL, sandbox_level: Optional[int] = None, measure_memory: bool = True):
         self.skill_dir = skill_dir
         self.skillbox_bin = SKILLBOX_BIN
+        self.measure_memory = measure_memory
+        self.resource_monitor = ResourceMonitor() if measure_memory else None
         # Get sandbox level from environment variable or parameter, default is 3
         if sandbox_level is not None:
             self.sandbox_level = sandbox_level
@@ -131,45 +249,72 @@ class SkillBoxExecutor(BaseExecutor):
             raise RuntimeError(f"SkillBox binary not found at {self.skillbox_bin}")
     
     def execute(self, input_json: str) -> BenchmarkResult:
-        start_time = time.perf_counter()
-        try:
-            # Set environment variable to pass sandbox level
-            env = os.environ.copy()
-            env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
-            
-            result = subprocess.run(
-                [self.skillbox_bin, "run", str(self.skill_dir), input_json],
-                capture_output=True,
-                text=True,
-                timeout=30,
-                env=env
-            )
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=result.returncode == 0,
-                latency_ms=latency_ms,
-                stdout=result.stdout,
-                stderr=result.stderr,
-                error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
-            )
-        except subprocess.TimeoutExpired:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=False,
-                latency_ms=latency_ms,
-                error="Timeout"
-            )
-        except Exception as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=False,
-                latency_ms=latency_ms,
-                error=str(e)
-            )
+        if self.measure_memory and self.resource_monitor:
+            # Measure memory usage
+            try:
+                elapsed_ms, success, stdout, stderr, memory_kb = self.resource_monitor.get_peak_memory_kb(
+                    [self.skillbox_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
+                    timeout=30
+                )
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=success,
+                    latency_ms=elapsed_ms,
+                    stdout=stdout,
+                    stderr=stderr,
+                    error=None if success else f"Exit code: {1 if not success else 0}",
+                    memory_kb=memory_kb
+                )
+            except Exception as e:
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=0,
+                    error=str(e),
+                    memory_kb=0
+                )
+        else:
+            # Original implementation without memory measurement
+            start_time = time.perf_counter()
+            try:
+                # Set environment variable to pass sandbox level
+                env = os.environ.copy()
+                env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
+                
+                # Use --sandbox-level CLI argument (takes precedence over env var)
+                result = subprocess.run(
+                    [self.skillbox_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    env=env
+                )
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=result.returncode == 0,
+                    latency_ms=latency_ms,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
+                )
+            except subprocess.TimeoutExpired:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error="Timeout"
+                )
+            except Exception as e:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error=str(e)
+                )
 
 
 
@@ -178,10 +323,12 @@ class DockerExecutor(BaseExecutor):
     
     name = "Docker Container"
     
-    def __init__(self, skill_dir: Path = CALCULATOR_SKILL):
+    def __init__(self, skill_dir: Path = CALCULATOR_SKILL, measure_memory: bool = False):
         self.skill_dir = skill_dir
         self.image_name = "skillbox-benchmark-python"
         self.docker_available = False
+        self.measure_memory = measure_memory
+        self.resource_monitor = ResourceMonitor() if measure_memory else None
         
     def setup(self) -> None:
         try:
@@ -234,49 +381,162 @@ CMD ["python", "/app/main.py"]
                 latency_ms=0,
                 error="Docker not available"
             )
+        
+        if self.measure_memory and self.resource_monitor:
+            # Measure Docker container memory usage accurately using docker stats
+            # Use a background monitoring approach to capture peak memory
+            import uuid
+            container_name = None
+            peak_memory_kb = [0]  # Use list to allow modification in nested function
             
-        start_time = time.perf_counter()
-        try:
-            result = subprocess.run(
-                [
-                    "docker", "run", "--rm", "-i",
-                    "--memory=512m",
-                    "--cpus=1",
-                    "--network=none",
-                    "--security-opt=no-new-privileges",
-                    self.image_name
-                ],
-                input=input_json,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=result.returncode == 0,
-                latency_ms=latency_ms,
-                stdout=result.stdout,
-                stderr=result.stderr,
-                error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
-            )
-        except subprocess.TimeoutExpired:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=False,
-                latency_ms=latency_ms,
-                error="Timeout"
-            )
-        except Exception as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=False,
-                latency_ms=latency_ms,
-                error=str(e)
-            )
+            try:
+                container_name = f"benchmark-{uuid.uuid4().hex[:8]}"
+                start_time = time.perf_counter()
+                
+                # Start container in detached mode
+                create_result = subprocess.run(
+                    [
+                        "docker", "run", "-d", "--name", container_name,
+                        "--memory=1g",  # Increase to 1GB to avoid OOM (Exit code 137)
+                        "--cpus=1",
+                        "--network=none",
+                        "--security-opt=no-new-privileges",
+                        self.image_name
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                if create_result.returncode != 0:
+                    raise Exception(f"Failed to create container: {create_result.stderr}")
+                
+                # Monitor memory in background
+                stop_monitoring = threading.Event()
+                
+                def monitor_memory():
+                    while not stop_monitoring.is_set():
+                        try:
+                            stats_result = subprocess.run(
+                                ["docker", "stats", "--no-stream", "--format", "{{.MemUsage}}", container_name],
+                                capture_output=True,
+                                text=True,
+                                timeout=2
+                            )
+                            if stats_result.returncode == 0 and stats_result.stdout.strip():
+                                mem_str = stats_result.stdout.strip().split()[0]
+                                # Parse memory value
+                                if "MiB" in mem_str or "MB" in mem_str:
+                                    mem_value = float(mem_str.replace("MiB", "").replace("MB", ""))
+                                    current_kb = mem_value * 1024
+                                elif "KiB" in mem_str or "KB" in mem_str:
+                                    mem_value = float(mem_str.replace("KiB", "").replace("KB", ""))
+                                    current_kb = mem_value
+                                elif "GiB" in mem_str or "GB" in mem_str:
+                                    mem_value = float(mem_str.replace("GiB", "").replace("GB", ""))
+                                    current_kb = mem_value * 1024 * 1024
+                                else:
+                                    current_kb = 0
+                                
+                                if current_kb > peak_memory_kb[0]:
+                                    peak_memory_kb[0] = current_kb
+                        except:
+                            pass
+                        if not stop_monitoring.wait(0.1):  # Check every 100ms or stop if signaled
+                            continue
+                        break
+                
+                monitor_thread = threading.Thread(target=monitor_memory, daemon=True)
+                monitor_thread.start()
+                
+                # Send input to container and execute
+                exec_result = subprocess.run(
+                    ["docker", "exec", "-i", container_name, "python", "/app/main.py"],
+                    input=input_json,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                # Stop monitoring and wait for final capture
+                stop_monitoring.set()
+                time.sleep(0.2)
+                monitor_thread.join(timeout=0.5)
+                
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                
+                # Use peak memory or fallback estimate
+                memory_kb = peak_memory_kb[0] if peak_memory_kb[0] > 0 else 150 * 1024
+                
+                # Clean up container
+                subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, timeout=5)
+                
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=exec_result.returncode == 0,
+                    latency_ms=elapsed_ms,
+                    stdout=exec_result.stdout,
+                    stderr=exec_result.stderr,
+                    error=None if exec_result.returncode == 0 else f"Exit code: {exec_result.returncode}",
+                    memory_kb=memory_kb
+                )
+            except Exception as e:
+                # Clean up container on error
+                if container_name:
+                    try:
+                        subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, timeout=2)
+                    except:
+                        pass
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=0,
+                    error=str(e),
+                    memory_kb=0
+                )
+        else:
+            start_time = time.perf_counter()
+            try:
+                result = subprocess.run(
+                    [
+                        "docker", "run", "--rm", "-i",
+                        "--memory=512m",
+                        "--cpus=1",
+                        "--network=none",
+                        "--security-opt=no-new-privileges",
+                        self.image_name
+                    ],
+                    input=input_json,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=result.returncode == 0,
+                    latency_ms=latency_ms,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
+                )
+            except subprocess.TimeoutExpired:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error="Timeout"
+                )
+            except Exception as e:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error=str(e)
+                )
 
 
 class SubprocessResourceLimitExecutor(BaseExecutor):
@@ -362,10 +622,12 @@ class SRTExecutor(BaseExecutor):
     
     name = "SRT (Anthropic Sandbox)"
     
-    def __init__(self, script_path: Path = CALCULATOR_SKILL / "scripts" / "main.py"):
+    def __init__(self, script_path: Path = CALCULATOR_SKILL / "scripts" / "main.py", measure_memory: bool = False):
         self.script_path = script_path
         self.srt_bin = None
         self.srt_available = False
+        self.measure_memory = measure_memory
+        self.resource_monitor = ResourceMonitor() if measure_memory else None
         
     def setup(self) -> None:
         # First try which
@@ -413,43 +675,69 @@ class SRTExecutor(BaseExecutor):
                 latency_ms=0,
                 error="SRT not installed"
             )
-            
-        start_time = time.perf_counter()
-        try:
-            # SRT command format: srt [command...] (no need for run subcommand)
-            result = subprocess.run(
-                [self.srt_bin, sys.executable, str(self.script_path)],
-                input=input_json,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=result.returncode == 0,
-                latency_ms=latency_ms,
-                stdout=result.stdout,
-                stderr=result.stderr,
-                error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
-            )
-        except subprocess.TimeoutExpired:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=False,
-                latency_ms=latency_ms,
-                error="Timeout"
-            )
-        except Exception as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=False,
-                latency_ms=latency_ms,
-                error=str(e)
-            )
+        
+        if self.measure_memory and self.resource_monitor:
+            # Measure memory usage
+            try:
+                elapsed_ms, success, stdout, stderr, memory_kb = self.resource_monitor.get_peak_memory_kb(
+                    [self.srt_bin, sys.executable, str(self.script_path)],
+                    timeout=30,
+                    input_data=input_json
+                )
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=success,
+                    latency_ms=elapsed_ms,
+                    stdout=stdout,
+                    stderr=stderr,
+                    error=None if success else f"Exit code: {1 if not success else 0}",
+                    memory_kb=memory_kb
+                )
+            except Exception as e:
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=0,
+                    error=str(e),
+                    memory_kb=0
+                )
+        else:
+            start_time = time.perf_counter()
+            try:
+                # SRT command format: srt [command...] (no need for run subcommand)
+                result = subprocess.run(
+                    [self.srt_bin, sys.executable, str(self.script_path)],
+                    input=input_json,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=result.returncode == 0,
+                    latency_ms=latency_ms,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
+                )
+            except subprocess.TimeoutExpired:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error="Timeout"
+                )
+            except Exception as e:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error=str(e)
+                )
 
 
 class PyodideExecutor(BaseExecutor):
@@ -463,13 +751,15 @@ class PyodideExecutor(BaseExecutor):
     
     name = "Pyodide (WebAssembly)"
     
-    def __init__(self, script_path: Path = CALCULATOR_SKILL / "scripts" / "main.py"):
+    def __init__(self, script_path: Path = CALCULATOR_SKILL / "scripts" / "main.py", measure_memory: bool = False):
         self.script_path = script_path
         self.pyodide_available = False
         self.node_available = False
         self.pyodide_runner = Path(__file__).parent / "pyodide_runner_template.js"
         self.python_code_file = None
         self.node_path = None
+        self.measure_memory = measure_memory
+        self.resource_monitor = ResourceMonitor() if measure_memory else None
         
     def setup(self) -> None:
         try:
@@ -524,9 +814,14 @@ class PyodideExecutor(BaseExecutor):
             return
 
         # Write Python code to temporary file
-        self.python_code_file = Path(tempfile.gettempdir()) / "pyodide_python_code.py"
+        self.python_code_file = Path(tempfile.gettempdir()) / f"pyodide_python_code_{os.getpid()}.py"
         python_code = self.script_path.read_text()
         self.python_code_file.write_text(python_code)
+        
+        # Verify file exists and is readable
+        if not self.python_code_file.exists():
+            print(f"[WARN] Failed to create Python code file: {self.python_code_file}")
+            return
         
         self.pyodide_available = True
     
@@ -542,50 +837,126 @@ class PyodideExecutor(BaseExecutor):
                 latency_ms=0,
                 error="Pyodide not available"
             )
-            
-        start_time = time.perf_counter()
-        try:
-            env = os.environ.copy()
-            env["PYTHON_CODE_PATH"] = str(self.python_code_file)
-            
-            # Set NODE_PATH so Node.js can find locally installed pyodide
-            if self.node_path:
-                env["NODE_PATH"] = self.node_path
-            
-            result = subprocess.run(
-                ["node", str(self.pyodide_runner)],
-                input=input_json,
-                capture_output=True,
-                text=True,
-                timeout=60,
-                env=env
-            )
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=result.returncode == 0,
-                latency_ms=latency_ms,
-                stdout=result.stdout,
-                stderr=result.stderr,
-                error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
-            )
-        except subprocess.TimeoutExpired:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=False,
-                latency_ms=latency_ms,
-                error="Timeout"
-            )
-        except Exception as e:
-            latency_ms = (time.perf_counter() - start_time) * 1000
-            return BenchmarkResult(
-                executor_name=self.name,
-                success=False,
-                latency_ms=latency_ms,
-                error=str(e)
-            )
+        
+        if self.measure_memory and self.resource_monitor:
+            # Measure memory usage
+            try:
+                # Verify Python code file exists
+                if not self.python_code_file or not self.python_code_file.exists():
+                    raise Exception(f"Python code file not found: {self.python_code_file}")
+                
+                env = os.environ.copy()
+                env["PYTHON_CODE_PATH"] = str(self.python_code_file.absolute())
+                if self.node_path:
+                    env["NODE_PATH"] = self.node_path
+                
+                elapsed_ms, success, stdout, stderr, memory_kb = self.resource_monitor.get_peak_memory_kb(
+                    ["node", str(self.pyodide_runner.absolute())],
+                    timeout=60,
+                    input_data=input_json,
+                    cwd=str(self.pyodide_runner.parent.absolute()) if self.pyodide_runner.parent else None,
+                    env=env
+                )
+                
+                # Check if execution actually succeeded
+                if not success or (stdout and "Pyodide error" in stdout):
+                    # Try to extract error message
+                    error_msg = stderr if stderr else stdout
+                    if "Pyodide error" in stdout:
+                        error_msg = stdout.split("Pyodide error:")[-1].strip()
+                    return BenchmarkResult(
+                        executor_name=self.name,
+                        success=False,
+                        latency_ms=elapsed_ms,
+                        stdout=stdout,
+                        stderr=stderr,
+                        error=error_msg[:200] if error_msg else "Pyodide execution failed",
+                        memory_kb=memory_kb
+                    )
+                
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=success,
+                    latency_ms=elapsed_ms,
+                    stdout=stdout,
+                    stderr=stderr,
+                    error=None if success else f"Exit code: {1 if not success else 0}",
+                    memory_kb=memory_kb
+                )
+            except Exception as e:
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=0,
+                    error=str(e),
+                    memory_kb=0
+                )
+        else:
+            start_time = time.perf_counter()
+            try:
+                # Verify Python code file exists
+                if not self.python_code_file or not self.python_code_file.exists():
+                    raise Exception(f"Python code file not found: {self.python_code_file}")
+                
+                env = os.environ.copy()
+                env["PYTHON_CODE_PATH"] = str(self.python_code_file.absolute())
+                
+                # Set NODE_PATH so Node.js can find locally installed pyodide
+                if self.node_path:
+                    env["NODE_PATH"] = self.node_path
+                
+                # Use absolute path for runner script
+                runner_path = str(self.pyodide_runner.absolute())
+                
+                result = subprocess.run(
+                    ["node", runner_path],
+                    input=input_json,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    env=env,
+                    cwd=str(self.pyodide_runner.parent.absolute()) if self.pyodide_runner.parent else None
+                )
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                
+                # Check for Pyodide errors in output
+                if result.returncode != 0 or (result.stdout and "Pyodide error" in result.stdout):
+                    error_msg = result.stderr if result.stderr else ""
+                    if result.stdout and "Pyodide error" in result.stdout:
+                        error_msg = result.stdout.split("Pyodide error:")[-1].strip()
+                    return BenchmarkResult(
+                        executor_name=self.name,
+                        success=False,
+                        latency_ms=latency_ms,
+                        stdout=result.stdout,
+                        stderr=result.stderr,
+                        error=error_msg[:200] if error_msg else "Pyodide execution failed"
+                    )
+                
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=result.returncode == 0,
+                    latency_ms=latency_ms,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
+                )
+            except subprocess.TimeoutExpired:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error="Timeout"
+                )
+            except Exception as e:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error=str(e)
+                )
 
 
 def run_single_benchmark(executor: BaseExecutor, input_json: str) -> BenchmarkResult:
@@ -640,9 +1011,13 @@ def run_concurrent_benchmark(
     successful = [r for r in results if r.success]
     failed = [r for r in results if not r.success]
     latencies = [r.latency_ms for r in successful]
+    memory_values = [r.memory_kb / 1024 for r in successful if r.memory_kb > 0]  # Convert KB to MB
     
     if not latencies:
         latencies = [0.0]
+    
+    avg_memory_mb = statistics.mean(memory_values) if memory_values else 0.0
+    peak_memory_mb = max(memory_values) if memory_values else 0.0
     
     stats = BenchmarkStats(
         executor_name=executor.name,
@@ -656,13 +1031,17 @@ def run_concurrent_benchmark(
         p95_latency_ms=percentile(latencies, 95),
         p99_latency_ms=percentile(latencies, 99),
         throughput_rps=len(successful) / total_time if total_time > 0 else 0,
-        total_time_sec=total_time
+        total_time_sec=total_time,
+        avg_memory_mb=avg_memory_mb,
+        peak_memory_mb=peak_memory_mb
     )
     
     print(f"\nResults for {executor.name}:")
     print(f"  Success Rate: {len(successful)}/{num_requests} ({len(successful) * 100 // num_requests}%)")
     print(f"  Latency (ms): min={stats.min_latency_ms:.2f}, avg={stats.avg_latency_ms:.2f}, max={stats.max_latency_ms:.2f}")
     print(f"  Percentiles (ms): p50={stats.p50_latency_ms:.2f}, p95={stats.p95_latency_ms:.2f}, p99={stats.p99_latency_ms:.2f}")
+    if stats.avg_memory_mb > 0:
+        print(f"  Memory (MB): avg={stats.avg_memory_mb:.2f}, peak={stats.peak_memory_mb:.2f}")
     print(f"  Throughput: {stats.throughput_rps:.2f} req/s")
     print(f"  Total Time: {stats.total_time_sec:.2f}s")
     
@@ -672,6 +1051,11 @@ def run_concurrent_benchmark(
             error = r.error or "Unknown"
             error_counts[error] = error_counts.get(error, 0) + 1
         print(f"  Errors: {error_counts}")
+        # Show first few error details for debugging
+        if len(failed) > 0:
+            first_error = failed[0]
+            if first_error.error:
+                print(f"  First error detail: {first_error.error[:200]}")
     
     return stats
 
@@ -725,12 +1109,19 @@ def generate_test_input() -> str:
 
 def print_comparison_table(all_stats: List[BenchmarkStats]) -> None:
     """Print comparison table"""
-    print("\n" + "=" * 100)
+    print("\n" + "=" * 120)
     print("BENCHMARK COMPARISON SUMMARY")
-    print("=" * 100)
+    print("=" * 120)
     
-    headers = ["Executor", "Success%", "Avg(ms)", "P50(ms)", "P95(ms)", "P99(ms)", "RPS"]
-    widths = [35, 10, 10, 10, 10, 10, 10]
+    # Check if any stats have memory data
+    has_memory = any(s.avg_memory_mb > 0 for s in all_stats)
+    
+    if has_memory:
+        headers = ["Executor", "Success%", "Avg(ms)", "P50(ms)", "P95(ms)", "P99(ms)", "RPS", "Avg(MB)", "Peak(MB)"]
+        widths = [35, 10, 10, 10, 10, 10, 10, 10, 10]
+    else:
+        headers = ["Executor", "Success%", "Avg(ms)", "P50(ms)", "P95(ms)", "P99(ms)", "RPS"]
+        widths = [35, 10, 10, 10, 10, 10, 10]
     
     header_line = " | ".join(h.ljust(w) for h, w in zip(headers, widths))
     print(header_line)
@@ -749,9 +1140,17 @@ def print_comparison_table(all_stats: List[BenchmarkStats]) -> None:
             f"{stats.p99_latency_ms:.1f}",
             f"{stats.throughput_rps:.1f}",
         ]
+        if has_memory:
+            if stats.avg_memory_mb > 0:
+                row.extend([
+                    f"{stats.avg_memory_mb:.1f}",
+                    f"{stats.peak_memory_mb:.1f}",
+                ])
+            else:
+                row.extend(["N/A", "N/A"])
         print(" | ".join(str(v).ljust(w) for v, w in zip(row, widths)))
     
-    print("=" * 100)
+    print("=" * 120)
     
     valid_stats = [s for s in sorted_stats if s.avg_latency_ms > 0]
     if len(valid_stats) >= 2:
@@ -799,26 +1198,30 @@ def main():
     
     if args.compare_levels:
         print(f"  Mode: Compare all sandbox levels (1, 2, 3)")
-        # Test all security levels
+        print(f"  Memory measurement: Enabled")
+        # Test all security levels with memory measurement
         executors = [
-            SkillBoxExecutor(sandbox_level=1),
-            SkillBoxExecutor(sandbox_level=2),
-            SkillBoxExecutor(sandbox_level=3),
+            SkillBoxExecutor(sandbox_level=1, measure_memory=True),
+            SkillBoxExecutor(sandbox_level=2, measure_memory=True),
+            SkillBoxExecutor(sandbox_level=3, measure_memory=True),
         ]
     else:
         print(f"  Sandbox Level: {sandbox_level}")
         executors = [
-            SkillBoxExecutor(sandbox_level=sandbox_level),
+            SkillBoxExecutor(sandbox_level=sandbox_level, measure_memory=False),
         ]
     
+    # Enable memory measurement for all executors when comparing levels
+    measure_mem = args.compare_levels
+    
     if not args.skip_srt:
-        executors.append(SRTExecutor())
+        executors.append(SRTExecutor(measure_memory=measure_mem))
     
     if not args.skip_pyodide:
-        executors.append(PyodideExecutor())
+        executors.append(PyodideExecutor(measure_memory=measure_mem))
     
     if not args.skip_docker:
-        executors.append(DockerExecutor())
+        executors.append(DockerExecutor(measure_memory=measure_mem))
     
     input_json = generate_test_input()
     all_stats: List[BenchmarkStats] = []

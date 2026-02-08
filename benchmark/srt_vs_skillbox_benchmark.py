@@ -143,7 +143,14 @@ class SrtBenchmark:
     def __init__(self):
         self.srt_path = shutil.which("srt")
         if not self.srt_path:
-            raise RuntimeError("srt not found in PATH")
+            raise RuntimeError("srt not found in PATH. Install via: npm install -g @anthropic-ai/sandbox-runtime")
+        
+        # Check for required dependencies
+        if not shutil.which("rg"):
+            print("⚠️  警告: ripgrep (rg) 未找到，srt 需要此依赖")
+            print("   安装方法: brew install ripgrep")
+            print("   srt 测试可能会失败\n")
+        
         self.work_dir = tempfile.mkdtemp(prefix="srt_bench_")
         self.resource_monitor = ResourceMonitor()
 
@@ -245,14 +252,45 @@ class SrtBenchmark:
         last_output = ""
         last_error = ""
         success = True
+        success_count = 0
+        failed_count = 0
         
-        for _ in range(iterations):
+        for i in range(iterations):
             elapsed, ok, stdout, stderr = self.run_python_code(code)
-            times.append(elapsed)
             last_output = stdout
             last_error = stderr
-            if not ok:
+            
+            # Verify output contains expected JSON result
+            if ok:
+                if '{"result"' not in stdout and '"result"' not in stdout:
+                    # Check if it's a simple print statement
+                    if 'print(' in code and stdout.strip():
+                        pass  # Simple print is OK
+                    elif stderr and not stdout:
+                        ok = False  # Only stderr means likely error
+            
+            if ok:
+                # Only record time for successful executions
+                times.append(elapsed)
+                success_count += 1
+            else:
+                failed_count += 1
                 success = False
+                # Log failed attempts for debugging
+                if failed_count <= 3:  # Only log first 3 failures to avoid spam
+                    print(f"      ⚠️  迭代 {i+1} 失败: {stderr[:100] if stderr else '无错误信息'}")
+        
+        # Consider successful if at least 80% of iterations succeeded
+        if success_count < iterations * 0.8:
+            success = False
+            if success_count == 0:
+                # If all failed, use failed times to show they were fast failures
+                print(f"      ❌ 所有 {iterations} 次迭代都失败了！")
+        
+        # If we have successful runs, use those; otherwise use all times (failed)
+        if not times:
+            # All failed - record failed times to show they were quick failures
+            times = [0] * failed_count  # Use 0 or actual elapsed time if available
         
         return BenchmarkResult(name, times, success, last_output, last_error)
     
@@ -269,10 +307,11 @@ class SrtBenchmark:
 class SkillboxBenchmark:
     """Skillbox performance test"""
     
-    def __init__(self):
+    def __init__(self, sandbox_level: int = 3):
         self.skillbox_path = shutil.which("skillbox")
         if not self.skillbox_path:
             raise RuntimeError("skillbox not found in PATH")
+        self.sandbox_level = sandbox_level  # Default to Level 3
         self.work_dir = tempfile.mkdtemp(prefix="skillbox_bench_")
         self.resource_monitor = ResourceMonitor()
         self._setup_test_skill()
@@ -298,8 +337,9 @@ class SkillboxBenchmark:
         
         start = time.perf_counter()
         try:
+            # Use --sandbox-level CLI argument (takes precedence over env var)
             result = subprocess.run(
-                [self.skillbox_path, "run", self.skill_dir, "{}"],
+                [self.skillbox_path, "run", "--sandbox-level", str(self.sandbox_level), self.skill_dir, "{}"],
                 capture_output=True,
                 timeout=timeout,
                 cwd=self.work_dir
@@ -321,8 +361,9 @@ class SkillboxBenchmark:
         """Run skill and measure memory, return (elapsed_ms, success, stdout, stderr, memory_kb)"""
         self._create_test_script(code)
         
+        # Use --sandbox-level CLI argument (takes precedence over env var)
         return self.resource_monitor.get_peak_memory_kb(
-            [self.skillbox_path, "run", self.skill_dir, "{}"],
+            [self.skillbox_path, "run", "--sandbox-level", str(self.sandbox_level), self.skill_dir, "{}"],
             cwd=self.work_dir,
             timeout=timeout
         )
@@ -357,14 +398,45 @@ class SkillboxBenchmark:
         last_output = ""
         last_error = ""
         success = True
+        success_count = 0
+        failed_count = 0
         
-        for _ in range(iterations):
+        for i in range(iterations):
             elapsed, ok, stdout, stderr = self.run_skill(code)
-            times.append(elapsed)
             last_output = stdout
             last_error = stderr
-            if not ok:
+            
+            # Verify output contains expected JSON result
+            if ok:
+                if '{"result"' not in stdout and '"result"' not in stdout:
+                    # Check if it's a simple print statement
+                    if 'print(' in code and stdout.strip():
+                        pass  # Simple print is OK
+                    elif stderr and not stdout:
+                        ok = False  # Only stderr means likely error
+            
+            if ok:
+                # Only record time for successful executions
+                times.append(elapsed)
+                success_count += 1
+            else:
+                failed_count += 1
                 success = False
+                # Log failed attempts for debugging
+                if failed_count <= 3:  # Only log first 3 failures to avoid spam
+                    print(f"      ⚠️  迭代 {i+1} 失败: {stderr[:100] if stderr else '无错误信息'}")
+        
+        # Consider successful if at least 80% of iterations succeeded
+        if success_count < iterations * 0.8:
+            success = False
+            if success_count == 0:
+                # If all failed, use failed times to show they were fast failures
+                print(f"      ❌ 所有 {iterations} 次迭代都失败了！")
+        
+        # If we have successful runs, use those; otherwise use all times (failed)
+        if not times:
+            # All failed - record failed times to show they were quick failures
+            times = [0] * failed_count  # Use 0 or actual elapsed time if available
         
         return BenchmarkResult(name, times, success, last_output, last_error)
     
@@ -465,16 +537,20 @@ class SecurityTest:
         with open(os.path.join(skill_dir, "SKILL.md"), "w") as f:
             f.write("---\nname: security-test\nversion: 1.0.0\nentry_point: scripts/main.py\n---\n")
         
-        def run_security_test(code: str) -> tuple:
+        def run_security_test(code: str, timeout: int = 15) -> tuple:
             script_path = os.path.join(scripts_dir, "main.py")
             with open(script_path, "w") as f:
                 f.write(code)
+            try:
+            # Use default Level 3 for security tests
             result = subprocess.run(
-                ["skillbox", "run", skill_dir, "{}"],
+                ["skillbox", "run", "--sandbox-level", "3", skill_dir, "{}"],
                 capture_output=True,
-                timeout=15
+                timeout=timeout
             )
-            return result.returncode == 0, result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace')
+                return result.returncode == 0, result.stdout.decode(errors='replace'), result.stderr.decode(errors='replace')
+            except subprocess.TimeoutExpired:
+                return False, "", f"Test timed out after {timeout} seconds"
 
         # Test 1: File system access restriction
         print("  Testing file system access restriction...")
@@ -519,12 +595,14 @@ except Exception as e:
 import json
 import subprocess
 try:
-    result = subprocess.run(["echo", "subprocess_test"], capture_output=True)
+    result = subprocess.run(["echo", "subprocess_test"], capture_output=True, timeout=3)
     print(json.dumps({"success": True, "output": result.stdout.decode()}))
+except subprocess.TimeoutExpired:
+    print(json.dumps({"success": False, "error": "subprocess timed out"}))
 except Exception as e:
     print(json.dumps({"success": False, "error": str(e)}))
 '''
-        ok, stdout, stderr = run_security_test(code)
+        ok, stdout, stderr = run_security_test(code, timeout=10)
         results["process_creation"] = {
             "allowed": ok and "subprocess_test" in stdout,
             "output": stdout[:200],
@@ -655,50 +733,102 @@ print(json.dumps({"result": result}))
 
     # srt test
     print_section("srt (Claude Code Sandbox) Test")
-    srt_bench = SrtBenchmark()
-
-    print(f"  Testing startup time ({iterations} iterations)...")
-    startup_result = srt_bench.measure_startup(iterations)
-    results["srt"]["startup"] = {
-        "mean": startup_result.mean,
-        "min": startup_result.min,
-        "max": startup_result.max,
-        "stdev": startup_result.stdev,
-        "success": startup_result.success
-    }
-    print(f"    Average: {startup_result.mean:.2f} ms (±{startup_result.stdev:.2f})")
-
-    for name, code in test_cases.items():
-        print(f"  Testing {name}...")
-        exec_result = srt_bench.measure_python_execution(name, code, iterations)
-        results["srt"][name] = {
-            "mean": exec_result.mean,
-            "min": exec_result.min,
-            "max": exec_result.max,
-            "stdev": exec_result.stdev,
-            "success": exec_result.success
-        }
-        status = "✓" if exec_result.success else "✗"
-        print(f"    {status} Average: {exec_result.mean:.2f} ms")
-
-    # srt memory test
-    print_section("srt Memory Consumption Test")
-    print("  Testing startup memory...")
-    mem_result = srt_bench.measure_startup_with_memory()
-    memory_results["srt"]["startup"] = mem_result.memory_kb
-    print(f"    Peak memory: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
-
-    for name, code in test_cases.items():
-        print(f"  Testing {name} memory...")
-        mem_result = srt_bench.measure_python_with_memory(name, code)
-        memory_results["srt"][name] = mem_result.memory_kb
-        print(f"    Peak memory: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
+    try:
+        srt_bench = SrtBenchmark()
+    except RuntimeError as e:
+        print(f"  ❌ {e}")
+        print("  srt 测试将被跳过\n")
+        srt_bench = None
     
-    srt_bench.cleanup()
+    if srt_bench:
+        print(f"  Testing startup time ({iterations} iterations)...")
+        startup_result = srt_bench.measure_startup(iterations)
+        results["srt"]["startup"] = {
+            "mean": startup_result.mean,
+            "min": startup_result.min,
+            "max": startup_result.max,
+            "stdev": startup_result.stdev,
+            "success": startup_result.success
+        }
+        if not startup_result.success:
+            print(f"    ⚠️  启动测试失败！平均时间: {startup_result.mean:.2f} ms")
+            print(f"    错误: {startup_result.error[:150] if startup_result.error else '无错误信息'}")
+        else:
+            print(f"    Average: {startup_result.mean:.2f} ms (±{startup_result.stdev:.2f})")
+
+        for name, code in test_cases.items():
+            print(f"  Testing {name}...")
+            exec_result = srt_bench.measure_python_execution(name, code, iterations)
+            results["srt"][name] = {
+                "mean": exec_result.mean,
+                "min": exec_result.min,
+                "max": exec_result.max,
+                "stdev": exec_result.stdev,
+                "success": exec_result.success,
+                "output": exec_result.output[:200] if exec_result.output else "",
+                "error": exec_result.error[:200] if exec_result.error else ""
+            }
+            status = "✓" if exec_result.success else "✗"
+            if exec_result.success and exec_result.mean > 0:
+                print(f"    {status} Average: {exec_result.mean:.2f} ms")
+            else:
+                print(f"    {status} 执行失败！")
+                if exec_result.error:
+                    print(f"      错误: {exec_result.error[:150]}")
+                if exec_result.output:
+                    print(f"      输出: {exec_result.output[:150]}")
+                if exec_result.mean == 0 or not exec_result.times_ms:
+                    print(f"      ⚠️  警告: 所有迭代都失败了，时间数据不可靠！")
+        
+        # srt memory test
+        print_section("srt Memory Consumption Test")
+        print("  Testing startup memory...")
+        mem_result = srt_bench.measure_startup_with_memory()
+        memory_results["srt"]["startup"] = mem_result.memory_kb
+        if mem_result.success:
+            print(f"    Peak memory: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
+        else:
+            print(f"    ⚠️  内存测试失败: {mem_result.error[:150] if mem_result.error else '无错误信息'}")
+
+        for name, code in test_cases.items():
+            print(f"  Testing {name} memory...")
+            mem_result = srt_bench.measure_python_with_memory(name, code)
+            memory_results["srt"][name] = mem_result.memory_kb
+            if mem_result.success:
+                print(f"    Peak memory: {mem_result.memory_kb:.2f} KB ({mem_result.memory_kb/1024:.2f} MB)")
+            else:
+                print(f"    ⚠️  内存测试失败: {mem_result.error[:150] if mem_result.error else '无错误信息'}")
+        
+        srt_bench.cleanup()
+    else:
+        # srt not available, fill with placeholder
+        results["srt"]["startup"] = {
+            "mean": 0,
+            "min": 0,
+            "max": 0,
+            "stdev": 0,
+            "success": False
+        }
+        for name in test_cases.keys():
+            results["srt"][name] = {
+                "mean": 0,
+                "min": 0,
+                "max": 0,
+                "stdev": 0,
+                "success": False,
+                "output": "",
+                "error": "srt not available"
+            }
+        memory_results["srt"]["startup"] = 0
+        for name in test_cases.keys():
+            memory_results["srt"][name] = 0
 
     # skillbox test
     print_section("Skillbox (Rust) Test")
-    skillbox_bench = SkillboxBenchmark()
+    # Get sandbox level from environment or default to 3
+    sandbox_level = int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
+    skillbox_bench = SkillboxBenchmark(sandbox_level=sandbox_level)
+    print(f"  Skillbox Sandbox Level: {sandbox_level} (1=No sandbox, 2=Sandbox only, 3=Sandbox+scan)")
 
     print(f"  Testing startup time ({iterations} iterations)...")
     startup_result = skillbox_bench.measure_startup(iterations)
@@ -719,10 +849,18 @@ print(json.dumps({"result": result}))
             "min": exec_result.min,
             "max": exec_result.max,
             "stdev": exec_result.stdev,
-            "success": exec_result.success
+            "success": exec_result.success,
+            "output": exec_result.output[:200] if exec_result.output else "",
+            "error": exec_result.error[:200] if exec_result.error else ""
         }
         status = "✓" if exec_result.success else "✗"
         print(f"    {status} Average: {exec_result.mean:.2f} ms")
+        if not exec_result.success:
+            print(f"      ⚠️  执行失败！")
+            if exec_result.error:
+                print(f"      错误: {exec_result.error[:150]}")
+            if exec_result.output:
+                print(f"      输出: {exec_result.output[:150]}")
 
     # skillbox memory test
     print_section("Skillbox Memory Consumption Test")
@@ -874,7 +1012,9 @@ print(json.dumps({"result": result}))
         "performance": results,
         "memory": memory_results
     }
-    output_file = "benchmark/srt_vs_skillbox_results.json"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_file = os.path.join(script_dir, "srt_vs_skillbox_results.json")
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, "w") as f:
         json.dump(all_results, f, indent=2, ensure_ascii=False, default=str)
     print(f"\n📁 Detailed results saved to: {output_file}")

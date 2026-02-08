@@ -69,9 +69,10 @@ def check_skillbox_available(binary_path: str = None) -> tuple:
 class SkillboxBenchmark:
     """SkillLite Rust Sandbox (skillbox) Performance Test"""
     
-    def __init__(self, binary_path: str, work_dir: str = None):
+    def __init__(self, binary_path: str, work_dir: str = None, sandbox_level: int = 3):
         self.binary_path = binary_path
         self.work_dir = work_dir or tempfile.mkdtemp(prefix="skillbox_bench_")
+        self.sandbox_level = sandbox_level  # Default to Level 3 (sandbox + scan)
         self._setup_test_skill()
     
     def _setup_test_skill(self):
@@ -107,11 +108,15 @@ entry_point: scripts/main.py
         
         for i in range(iterations):
             start = time.perf_counter()
+            # Set sandbox level via CLI argument (takes precedence over env var)
+            env = os.environ.copy()
+            env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
             result = subprocess.run(
-                [self.binary_path, "run", self.skill_dir, input_json],
+                [self.binary_path, "run", "--sandbox-level", str(self.sandbox_level), self.skill_dir, input_json],
                 capture_output=True,
                 timeout=30,
-                cwd=self.work_dir
+                cwd=self.work_dir,
+                env=env
             )
             end = time.perf_counter()
             elapsed = (end - start) * 1000
@@ -133,11 +138,15 @@ entry_point: scripts/main.py
         
         for _ in range(iterations):
             start = time.perf_counter()
+            # Set sandbox level via CLI argument (takes precedence over env var)
+            env = os.environ.copy()
+            env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
             subprocess.run(
-                [self.binary_path, "run", self.skill_dir, input_json],
+                [self.binary_path, "run", "--sandbox-level", str(self.sandbox_level), self.skill_dir, input_json],
                 capture_output=True,
                 timeout=60,
-                cwd=self.work_dir
+                cwd=self.work_dir,
+                env=env
             )
             end = time.perf_counter()
             times.append((end - start) * 1000)
@@ -151,11 +160,15 @@ entry_point: scripts/main.py
         
         def run_once():
             start = time.perf_counter()
+            # Set sandbox level via CLI argument (takes precedence over env var)
+            env = os.environ.copy()
+            env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
             subprocess.run(
-                [self.binary_path, "run", self.skill_dir, input_json],
+                [self.binary_path, "run", "--sandbox-level", str(self.sandbox_level), self.skill_dir, input_json],
                 capture_output=True,
                 timeout=30,
-                cwd=self.work_dir
+                cwd=self.work_dir,
+                env=env
             )
             return (time.perf_counter() - start) * 1000
         
@@ -198,55 +211,114 @@ class DockerBenchmark:
             subprocess.run(["docker", "pull", self.image], capture_output=True, timeout=300)
     
     def measure_startup(self, iterations: int = 10) -> list:
-        """Measure container startup time"""
+        """Measure container startup time - only count successful executions"""
         times = []
+        failed_count = 0
         test_code = 'print("hello")'
         
-        for _ in range(iterations):
+        for i in range(iterations):
             start = time.perf_counter()
-            subprocess.run(
+            result = subprocess.run(
                 ["docker", "run", "--rm", self.image, "python", "-c", test_code],
                 capture_output=True,
                 timeout=60
             )
             end = time.perf_counter()
-            times.append((end - start) * 1000)
+            elapsed_ms = (end - start) * 1000
+            
+            # Only record time for successful executions
+            if result.returncode == 0 and "hello" in result.stdout.decode(errors='replace'):
+                times.append(elapsed_ms)
+            else:
+                failed_count += 1
+                if failed_count <= 2:  # Log first 2 failures
+                    print(f"      ⚠️  迭代 {i+1} 失败 (返回码 {result.returncode})")
+        
+        if failed_count > 0:
+            print(f"      ⚠️  警告: {failed_count}/{iterations} 次迭代失败")
+        if len(times) == 0:
+            print(f"      ❌ 所有迭代都失败了！")
+            return [0] * failed_count
         
         return times
     
     def measure_execution(self, code: str, iterations: int = 10) -> list:
-        """Measure code execution time"""
+        """Measure code execution time - only count successful executions"""
         times = []
+        failed_count = 0
 
-        for _ in range(iterations):
+        for i in range(iterations):
             start = time.perf_counter()
-            subprocess.run(
+            result = subprocess.run(
                 ["docker", "run", "--rm", self.image, "python", "-c", code],
                 capture_output=True,
                 timeout=120
             )
             end = time.perf_counter()
-            times.append((end - start) * 1000)
+            elapsed_ms = (end - start) * 1000
+            
+            # Only record time for successful executions
+            if result.returncode == 0:
+                # Verify output (for JSON output tests)
+                stdout = result.stdout.decode(errors='replace')
+                if '{"result"' in stdout or '"result"' in stdout or stdout.strip():
+                    times.append(elapsed_ms)
+                else:
+                    failed_count += 1
+                    if failed_count <= 2:  # Log first 2 failures
+                        print(f"      ⚠️  迭代 {i+1} 失败: 无有效输出")
+            else:
+                failed_count += 1
+                if failed_count <= 2:  # Log first 2 failures
+                    stderr = result.stderr.decode(errors='replace')
+                    print(f"      ⚠️  迭代 {i+1} 失败 (返回码 {result.returncode}): {stderr[:100]}")
+        
+        if failed_count > 0:
+            print(f"      ⚠️  警告: {failed_count}/{iterations} 次迭代失败")
+        if len(times) == 0:
+            print(f"      ❌ 所有迭代都失败了！")
+            # Return failed times to show they were quick failures
+            return [0] * failed_count
 
         return times
     
     def measure_concurrent(self, num_concurrent: int = 5, iterations: int = 3) -> dict:
-        """Measure concurrent execution performance"""
+        """Measure concurrent execution performance - only count successful executions"""
         def run_once():
             start = time.perf_counter()
-            subprocess.run(
+            result = subprocess.run(
                 ["docker", "run", "--rm", self.image, "python", "-c", 'print("concurrent")'],
                 capture_output=True,
                 timeout=60
             )
-            return (time.perf_counter() - start) * 1000
+            elapsed_ms = (time.perf_counter() - start) * 1000
+            # Only return time if successful
+            if result.returncode == 0 and "concurrent" in result.stdout.decode(errors='replace'):
+                return elapsed_ms
+            return None  # Failed execution
         
         all_times = []
+        failed_count = 0
         for _ in range(iterations):
             with ThreadPoolExecutor(max_workers=num_concurrent) as executor:
                 futures = [executor.submit(run_once) for _ in range(num_concurrent)]
                 batch_times = [f.result() for f in as_completed(futures)]
-                all_times.extend(batch_times)
+                for t in batch_times:
+                    if t is not None:
+                        all_times.append(t)
+                    else:
+                        failed_count += 1
+        
+        if failed_count > 0:
+            print(f"      ⚠️  警告: {failed_count} 次并发执行失败")
+        
+        if len(all_times) == 0:
+            print(f"      ❌ 所有并发执行都失败了！")
+            return {
+                "mean": 0,
+                "max": 0,
+                "total_runs": 0,
+            }
         
         return {
             "mean": statistics.mean(all_times),
@@ -445,7 +517,10 @@ print(json.dumps({"result": fib(20)}))
     if skillbox_available:
         print("\n[Skillbox Test] (Rust Native Sandbox)")
         print("-" * 50)
-        skillbox_bench = SkillboxBenchmark(skillbox_path)
+        # Get sandbox level from environment or default to 3
+        sandbox_level = int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
+        skillbox_bench = SkillboxBenchmark(skillbox_path, sandbox_level=sandbox_level)
+        print(f"  Skillbox Sandbox Level: {sandbox_level} (1=No sandbox, 2=Sandbox only, 3=Sandbox+scan)")
         
         print(f"  Testing startup time ({iterations} iterations)...")
         try:

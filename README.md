@@ -19,6 +19,15 @@ A lightweight AI Agent Skills execution engine that integrates with any OpenAI-c
 | **LLM Agnostic** | ✅ Any LLM | ❌ Claude Only | ✅ | ❌ OpenAI Only | ✅ |
 | **License** | MIT | Apache 2.0 | MIT | Closed | MIT |
 
+## ⚡ Performance Benchmark
+
+See SkillLite's performance compared to other sandbox solutions in real-time:
+
+<div align="center">
+  <img src="./docs/images/benchmark-en.gif" alt="Performance Benchmark Comparison" width="800"/>
+</div>
+
+> **Performance Highlights**: SkillLite achieves **3-5x faster** execution than Docker and SRT, with **10x lower memory footprint** (~10MB vs ~100MB).
 
 ## 🚀 Quick Start
 

@@ -341,7 +341,9 @@ print(json.dumps({"result": fib(20)}))
         print(f"  • Skillbox is {speedup:.0f}x faster than Pyodide")
 
     # Save results
-    output_file = "benchmark/pyodide_results.json"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    output_file = os.path.join(script_dir, "pyodide_results.json")
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     with open(output_file, "w") as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     print(f"\n📁 Detailed results saved to: {output_file}")
