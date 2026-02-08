@@ -28,11 +28,30 @@ A lightweight AI Agent Skills execution engine that integrates with any OpenAI-c
 # Install SkillLite SDK
 pip install skilllite
 
-# Install the sandbox binary (auto-downloads pre-compiled binary)
-skilllite install
+# Install the sandbox binary and skills directory and  skills files
+skilllite init
 
 # Verify installation
 skilllite status
+
+```
+
+### Skill Repository Management
+
+```bash
+# Add skills from remote repositories
+skilllite add owner/repo                    # Add all skills from a GitHub repo
+skilllite add owner/repo/skill-name         # Add a specific skill by path
+skilllite add owner/repo@skill-name         # Add a specific skill by name filter
+skilllite add https://github.com/owner/repo # Add from full GitHub URL
+skilllite add ./local-path                  # Add from local directory
+skilllite add owner/repo --list             # List available skills without installing
+skilllite add owner/repo --force            # Force overwrite existing skills
+
+# Manage installed skills
+skilllite list                              # List all installed skills
+skilllite remove <skill-name>               # Remove an installed skill
+skilllite remove <skill-name> --force       # Remove without confirmation
 ```
 
 That's it! No Rust, no Docker, no complex setup required.
