@@ -6,6 +6,15 @@
 
 A lightweight AI Agent Skills execution engine that integrates with any OpenAI-compatible LLM.
 
+
+## ⚡ Performance Benchmark
+
+See SkillLite's performance compared to other sandbox solutions in real-time:
+
+![Performance Benchmark Comparison](./docs/images/benchmark-en.gif)
+![Performance Benchmark Comparison](./docs/images/benchmark-en.png)
+
+
 ## 🎯 Why SkillLite?
 
 | Feature | SkillLite | Claude Code Sandbox | Pyodide  | OpenAI Plugins | Semantic Kernel |
@@ -19,12 +28,7 @@ A lightweight AI Agent Skills execution engine that integrates with any OpenAI-c
 | **LLM Agnostic** | ✅ Any LLM | ❌ Claude Only | ✅ | ❌ OpenAI Only | ✅ |
 | **License** | MIT | Apache 2.0 | MIT | Closed | MIT |
 
-## ⚡ Performance Benchmark
 
-See SkillLite's performance compared to other sandbox solutions in real-time:
-
-![Performance Benchmark Comparison](./docs/images/benmark-en.gif)
-![Performance Benchmark Comparison](./docs/images/benchmark-en.png)
 
 > **Performance Highlights**: SkillLite achieves **3-5x faster** execution than Docker and SRT, with **10x lower memory footprint** (~10MB vs ~100MB).
 
@@ -251,29 +255,6 @@ After compilation, the binary will be at:
 
 </details>
 
-## 📁 Project Structure
-
-```
-skillLite/
-├── skillbox/              # Rust sandbox executor
-├── skilllite/             # Python SDK
-│   └── skilllite/
-│       ├── manager.py     # SkillManager core manager
-│       ├── executor.py    # Skill executor
-│       ├── loops.py       # Agentic Loop implementation
-│       ├── tools.py       # Tool definitions
-│       └── ...
-├── .skills/               # Skills directory
-│   ├── calculator/        # Calculator Skill
-│   ├── data-analyzer/     # Data Analysis Skill
-│   ├── http-request/      # HTTP Request Skill
-│   ├── text-processor/    # Text Processing Skill
-│   ├── weather/           # Weather Query Skill
-│   └── writing-helper/    # Writing Assistant Skill
-├── simple_demo.py         # Full example
-├── simple_demo_v2.py      # Simplified example
-└── simple_demo_minimal.py # Minimal example
-```
 
 ## 💡 Usage
 
