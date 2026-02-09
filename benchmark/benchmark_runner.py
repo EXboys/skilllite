@@ -10,6 +10,10 @@ Comparing SkillBox with other sandbox solutions under high concurrency scenarios
 5. SRT (Anthropic Sandbox Runtime)
 6. Pyodide (WebAssembly)
 
+Note: gVisor runs ON TOP OF Docker (--runtime=runsc), so its performance will
+always be worse than Docker. It's only useful for security isolation comparison,
+not performance benchmarking. See security_vs.py for security comparison tests.
+
 Test metrics:
 - Cold Start Latency
 - Warm Start Latency
@@ -500,6 +504,285 @@ CMD ["python", "/app/main.py"]
                 result = subprocess.run(
                     [
                         "docker", "run", "--rm", "-i",
+                        "--memory=512m",
+                        "--cpus=1",
+                        "--network=none",
+                        "--security-opt=no-new-privileges",
+                        self.image_name
+                    ],
+                    input=input_json,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=result.returncode == 0,
+                    latency_ms=latency_ms,
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                    error=None if result.returncode == 0 else f"Exit code: {result.returncode}"
+                )
+            except subprocess.TimeoutExpired:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error="Timeout"
+                )
+            except Exception as e:
+                latency_ms = (time.perf_counter() - start_time) * 1000
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=latency_ms,
+                    error=str(e)
+                )
+
+
+class GvisorExecutor(BaseExecutor):
+    """gVisor sandbox executor using Docker with runsc runtime
+    
+    DEPRECATED: gVisor runs ON TOP OF Docker (--runtime=runsc), so its performance
+    will always be worse than Docker. It's only useful for security isolation
+    comparison, not performance benchmarking.
+    
+    If you need gVisor comparison, use security_vs.py instead of benchmark_runner.py.
+    
+    Installation:
+    - Linux: sudo apt-get install runsc (or download from https://gvisor.dev)
+    - Configure Docker: sudo runsc install && sudo systemctl restart docker
+    """
+    
+    name = "gVisor (runsc)"
+    
+    def __init__(self, skill_dir: Path = CALCULATOR_SKILL, measure_memory: bool = False):
+        self.skill_dir = skill_dir
+        self.image_name = "skillbox-benchmark-python"
+        self.gvisor_available = False
+        self.docker_available = False
+        self.setup_error = None
+        self.measure_memory = measure_memory
+        self.resource_monitor = ResourceMonitor() if measure_memory else None
+        
+    def setup(self) -> None:
+        self.setup_error = None  # Store error message for later reporting
+        
+        # Check platform - gVisor only supports Linux
+        if platform.system() != "Linux":
+            self.setup_error = f"gVisor only supports Linux (current: {platform.system()}). Use Linux or skip gVisor test."
+            print(f"[WARN] {self.setup_error}")
+            return
+        
+        # Check Docker availability
+        try:
+            result = subprocess.run(
+                ["docker", "version"],
+                capture_output=True,
+                timeout=5
+            )
+            self.docker_available = result.returncode == 0
+            if not self.docker_available:
+                self.setup_error = "Docker not available"
+                print(f"[WARN] Docker not available, {self.name} will be skipped")
+                return
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            self.docker_available = False
+            self.setup_error = f"Docker not found: {e}"
+            print(f"[WARN] Docker not available, {self.name} will be skipped")
+            return
+        
+        # Check if runsc runtime is available
+        runsc_found = False
+        try:
+            result = subprocess.run(
+                ["runsc", "--version"],
+                capture_output=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                runsc_found = True
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+        
+        # If runsc command not found, check if it's configured in Docker
+        if not runsc_found:
+            try:
+                result = subprocess.run(
+                    ["docker", "info", "--format", "{{.Runtimes}}"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and "runsc" in result.stdout:
+                    runsc_found = True
+            except:
+                pass
+        
+        if not runsc_found:
+            self.setup_error = "gVisor (runsc) runtime not found. Install via: sudo apt-get install runsc && sudo runsc install && sudo systemctl restart docker"
+            print(f"[WARN] {self.setup_error}")
+            return
+        
+        self.gvisor_available = True
+        
+        # Build Docker image if needed (reuse same image as DockerExecutor)
+        dockerfile_content = """FROM python:3.11-slim
+WORKDIR /app
+COPY scripts/main.py /app/main.py
+CMD ["python", "/app/main.py"]
+"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            dockerfile_path = Path(tmpdir) / "Dockerfile"
+            dockerfile_path.write_text(dockerfile_content)
+            
+            scripts_dir = Path(tmpdir) / "scripts"
+            scripts_dir.mkdir()
+            shutil.copy(self.skill_dir / "scripts" / "main.py", scripts_dir / "main.py")
+            
+            result = subprocess.run(
+                ["docker", "build", "-t", self.image_name, "."],
+                cwd=tmpdir,
+                capture_output=True,
+                timeout=120
+            )
+            if result.returncode != 0:
+                print(f"[WARN] Failed to build Docker image: {result.stderr.decode()}")
+                self.gvisor_available = False
+    
+    def teardown(self) -> None:
+        # Image cleanup is handled by DockerExecutor, so we don't need to remove it here
+        pass
+    
+    def execute(self, input_json: str) -> BenchmarkResult:
+        if not self.gvisor_available or not self.docker_available:
+            error_msg = self.setup_error or "gVisor not available"
+            return BenchmarkResult(
+                executor_name=self.name,
+                success=False,
+                latency_ms=0,
+                error=error_msg
+            )
+        
+        if self.measure_memory and self.resource_monitor:
+            # Measure gVisor container memory usage using docker stats
+            import uuid
+            container_name = None
+            peak_memory_kb = [0]
+            
+            try:
+                container_name = f"benchmark-gvisor-{uuid.uuid4().hex[:8]}"
+                start_time = time.perf_counter()
+                
+                # Start container with gVisor runtime in detached mode
+                create_result = subprocess.run(
+                    [
+                        "docker", "run", "-d", "--name", container_name,
+                        "--runtime=runsc",
+                        "--memory=1g",
+                        "--cpus=1",
+                        "--network=none",
+                        "--security-opt=no-new-privileges",
+                        self.image_name
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
+                
+                if create_result.returncode != 0:
+                    raise Exception(f"Failed to create gVisor container: {create_result.stderr}")
+                
+                # Monitor memory in background
+                stop_monitoring = threading.Event()
+                
+                def monitor_memory():
+                    while not stop_monitoring.is_set():
+                        try:
+                            stats_result = subprocess.run(
+                                ["docker", "stats", "--no-stream", "--format", "{{.MemUsage}}", container_name],
+                                capture_output=True,
+                                text=True,
+                                timeout=2
+                            )
+                            if stats_result.returncode == 0 and stats_result.stdout.strip():
+                                mem_str = stats_result.stdout.strip().split()[0]
+                                if "MiB" in mem_str or "MB" in mem_str:
+                                    mem_value = float(mem_str.replace("MiB", "").replace("MB", ""))
+                                    current_kb = mem_value * 1024
+                                elif "KiB" in mem_str or "KB" in mem_str:
+                                    mem_value = float(mem_str.replace("KiB", "").replace("KB", ""))
+                                    current_kb = mem_value
+                                elif "GiB" in mem_str or "GB" in mem_str:
+                                    mem_value = float(mem_str.replace("GiB", "").replace("GB", ""))
+                                    current_kb = mem_value * 1024 * 1024
+                                else:
+                                    current_kb = 0
+                                
+                                if current_kb > peak_memory_kb[0]:
+                                    peak_memory_kb[0] = current_kb
+                        except:
+                            pass
+                        if not stop_monitoring.wait(0.1):
+                            continue
+                        break
+                
+                monitor_thread = threading.Thread(target=monitor_memory, daemon=True)
+                monitor_thread.start()
+                
+                # Send input to container and execute
+                exec_result = subprocess.run(
+                    ["docker", "exec", "-i", container_name, "python", "/app/main.py"],
+                    input=input_json,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                
+                # Stop monitoring
+                stop_monitoring.set()
+                time.sleep(0.2)
+                monitor_thread.join(timeout=0.5)
+                
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+                memory_kb = peak_memory_kb[0] if peak_memory_kb[0] > 0 else 150 * 1024
+                
+                # Clean up container
+                subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, timeout=5)
+                
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=exec_result.returncode == 0,
+                    latency_ms=elapsed_ms,
+                    stdout=exec_result.stdout,
+                    stderr=exec_result.stderr,
+                    error=None if exec_result.returncode == 0 else f"Exit code: {exec_result.returncode}",
+                    memory_kb=memory_kb
+                )
+            except Exception as e:
+                if container_name:
+                    try:
+                        subprocess.run(["docker", "rm", "-f", container_name], capture_output=True, timeout=2)
+                    except:
+                        pass
+                return BenchmarkResult(
+                    executor_name=self.name,
+                    success=False,
+                    latency_ms=0,
+                    error=str(e),
+                    memory_kb=0
+                )
+        else:
+            start_time = time.perf_counter()
+            try:
+                # Use gVisor runtime with Docker
+                result = subprocess.run(
+                    [
+                        "docker", "run", "--rm", "-i",
+                        "--runtime=runsc",
                         "--memory=512m",
                         "--cpus=1",
                         "--network=none",
@@ -1057,6 +1340,15 @@ def run_concurrent_benchmark(
             if first_error.error:
                 print(f"  First error detail: {first_error.error[:200]}")
     
+    # If all requests failed, show setup error if available
+    if len(successful) == 0 and hasattr(executor, 'setup_error') and executor.setup_error:
+        print(f"\n  ⚠️  Setup Error: {executor.setup_error}")
+        if "Linux" in executor.setup_error:
+            print(f"  💡  gVisor only works on Linux. On macOS, use Docker instead.")
+        else:
+            print(f"  💡  Hint: gVisor requires Docker + runsc installation (Linux only).")
+            print(f"      Install: sudo apt-get install runsc && sudo runsc install && sudo systemctl restart docker")
+    
     return stats
 
 
@@ -1171,6 +1463,8 @@ def main():
     parser.add_argument("--cold-start", action="store_true", help="Run cold start test")
     parser.add_argument("--cold-iterations", type=int, default=10, help="Cold start iterations")
     parser.add_argument("--skip-docker", action="store_true", help="Skip Docker tests")
+    parser.add_argument("--include-gvisor", action="store_true", 
+                        help="Include gVisor test (NOT RECOMMENDED: runs on Docker, performance will be worse)")
     parser.add_argument("--skip-srt", action="store_true", help="Skip SRT tests")
     parser.add_argument("--skip-pyodide", action="store_true", help="Skip Pyodide tests")
     parser.add_argument("--output", "-o", type=str, help="Output JSON file")
@@ -1222,6 +1516,15 @@ def main():
     
     if not args.skip_docker:
         executors.append(DockerExecutor(measure_memory=measure_mem))
+    
+    # Note: gVisor runs ON TOP OF Docker (--runtime=runsc), so its performance
+    # will always be worse than Docker. It's only useful for security isolation
+    # comparison, not performance benchmarking. Use security_vs.py for that.
+    # Only include if explicitly requested (not recommended for performance tests)
+    if args.include_gvisor:
+        print("[WARN] gVisor runs ON TOP OF Docker, so its performance will be worse than Docker.")
+        print("[WARN] This is mainly for curiosity/completeness, not meaningful performance comparison.")
+        executors.append(GvisorExecutor(measure_memory=measure_mem))
     
     input_json = generate_test_input()
     all_stats: List[BenchmarkStats] = []

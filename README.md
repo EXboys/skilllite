@@ -197,6 +197,8 @@ python3 benchmark/security_vs.py --output security_results.json
 | **Deployment Complexity** | Single binary | Requires daemon | Requires Node.js | Requires installation |
 | **Platform Support** | macOS/Linux | All platforms | All platforms | macOS/Linux |
 
+**Note**: gVisor runs ON TOP OF Docker (using `--runtime=runsc`), so its performance will always be worse than Docker. It's only useful for security isolation comparison, not performance benchmarking.
+
 ---
 
 ### Comparison with Claude Code Sandbox

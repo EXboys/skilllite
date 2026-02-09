@@ -58,6 +58,7 @@ npm install pyodide
 # Install Docker (for container sandbox testing)
 # macOS: brew install --cask docker
 # Linux: See https://docs.docker.com/engine/install/
+
 ```
 
 ## Quick Start
@@ -83,10 +84,10 @@ npm install pyodide
 
 ```bash
 # Basic test
-python3 benchmark_runner.py -n 100 -c 10
+python benchmark_runner.py -n 100 -c 10
 
 # Complete test
-python3 benchmark_runner.py -n 500 -c 50 --cold-start -o results.json
+python benchmark_runner.py -n 500 -c 50 --cold-start -o results.json
 ```
 
 ---
@@ -351,6 +352,8 @@ python3 benchmark/security_vs.py --output security_results.json
 | **Deployment Complexity** | Single binary | Requires daemon | Requires Node.js | Requires installation |
 | **Platform Support** | macOS/Linux | All platforms | All platforms | macOS/Linux |
 
+**Note**: gVisor runs ON TOP OF Docker (using `--runtime=runsc`), so its performance will always be worse than Docker. It's only useful for security isolation comparison, not performance benchmarking. See `security_vs.py` for security comparison tests.
+
 ---
 
 ## Extended Testing
@@ -377,9 +380,10 @@ class MyCustomExecutor(BaseExecutor):
 ## Notes
 
 1. **Docker Test**: Requires Docker installation and user permission to run Docker commands
-2. **SkillBox Compilation**: Auto-compiled on first run (requires Rust environment)
-3. **Resource Limits**: `Subprocess (Resource Limits)` uses `resource` module, only available on Unix systems
-4. **Result Fluctuation**: Recommended to run multiple times and take average to avoid system load impact
+2. **gVisor**: gVisor runs ON TOP OF Docker (using `--runtime=runsc`), so its performance will always be worse than Docker. It's only useful for security isolation comparison, not performance benchmarking. Use `security_vs.py` for security comparison tests.
+3. **SkillBox Compilation**: Auto-compiled on first run (requires Rust environment)
+4. **Resource Limits**: `Subprocess (Resource Limits)` uses `resource` module, only available on Unix systems
+5. **Result Fluctuation**: Recommended to run multiple times and take average to avoid system load impact
 
 Security score formula: `(Blocked Count + Partially Blocked Count × 0.5) / Total Test Count × 100%`
 
