@@ -114,7 +114,8 @@ class BaseAdapter(ABC):
                 exit_code=1,
             )
         
-        service = UnifiedExecutionService.get_instance()
+        # Get execution service from manager (shared instance)
+        service = self.manager._execution_service
         return service.execute_skill(
             skill_info=skill_info,
             input_data=input_data,

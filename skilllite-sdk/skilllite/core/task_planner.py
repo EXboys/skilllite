@@ -127,6 +127,21 @@ In addition to the above Skills, you have the following built-in file operation 
 
 ### 2. Tool Selection Principles
 
+**IMPORTANT: Minimize Tool Usage - Do Simple Tasks Directly**
+
+**When to calculate directly (DO NOT use calculator):**
+- Simple arithmetic: addition, subtraction, multiplication, division of small numbers
+- Examples: 0.85 * 0.3 = 0.255, 1 + 2 = 3, 10 / 2 = 5
+- Basic weighted averages: (0.85 * 0.3) + (1.0 * 0.2) = 0.455
+- These calculations should be done directly in your response, NOT by calling calculator tool
+
+**When to use calculator tool:**
+- Complex statistical formulas (standard deviation, correlation, regression)
+- Matrix operations or linear algebra
+- Financial calculations (compound interest, NPV, etc.)
+- Large dataset operations
+- Scientific calculations requiring high precision
+
 **When to prioritize Skills:**
 - Tasks involve specialized domain processing (e.g., data analysis, text processing, HTTP requests)
 - Skills have encapsulated complex business logic
@@ -181,7 +196,9 @@ In addition to the above Skills, you have the following built-in file operation 
 
 ## Examples of tasks that NEED tools
 
-- Precise calculations (use calculator)
+- **Complex or high-precision calculations** (use calculator only for: complex formulas, large numbers, scientific calculations, or when explicit precision is required)
+  - ❌ DON'T use calculator for: simple arithmetic (e.g., 0.85 * 0.3, 1 + 2), basic math you can do directly
+  - ✅ DO use calculator for: statistical formulas, matrix operations, financial calculations, or when handling large datasets
 - Sending HTTP requests (use http-request)
 - Reading/writing files (use built-in file operations)
 - Querying real-time weather (use weather)

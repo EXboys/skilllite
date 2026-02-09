@@ -128,10 +128,8 @@ class SkillLiteTool(BaseTool):
             else:
                 input_data = kwargs
 
-            # Use UnifiedExecutionService
-            from ...sandbox.execution_service import UnifiedExecutionService
-
-            service = UnifiedExecutionService.get_instance()
+            # Use execution service from manager
+            service = self.manager._execution_service
             result = service.execute_skill(
                 skill_info=skill_info,
                 input_data=input_data,
@@ -173,11 +171,9 @@ class SkillLiteTool(BaseTool):
             else:
                 input_data = kwargs
 
-            # Use UnifiedExecutionService in thread pool
-            from ...sandbox.execution_service import UnifiedExecutionService
-
+            # Use execution service from manager in thread pool
             def execute_sync():
-                service = UnifiedExecutionService.get_instance()
+                service = self.manager._execution_service
                 # Use async confirmation callback if available, otherwise sync
                 callback = self.confirmation_callback
                 return service.execute_skill(

@@ -1065,11 +1065,21 @@ class MCPServer:
                 ]
             )
 
-        # Use UnifiedExecutionService
-        from ..sandbox.execution_service import UnifiedExecutionService
+        # Use execution service from skill manager
         from ..sandbox.context import ExecutionContext
-
-        service = UnifiedExecutionService.get_instance()
+        
+        if not self.skill_manager:
+            return CallToolResult(
+                isError=True,
+                content=[
+                    TextContent(
+                        type="text",
+                        text="SkillManager not initialized. Skills directory may not exist."
+                    )
+                ]
+            )
+        
+        service = self.skill_manager._execution_service
 
         # MCP uses async confirmation pattern (return report -> client calls back with confirmed=True)
         # Create a "callback" that captures the scan result for MCP's async flow

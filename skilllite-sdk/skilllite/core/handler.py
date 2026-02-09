@@ -35,14 +35,21 @@ class ToolCallHandler:
     def __init__(
         self,
         registry: "SkillRegistry",
+        execution_service: Optional["UnifiedExecutionService"] = None,
     ):
         """
         Initialize the handler.
 
         Args:
             registry: Skill registry for accessing skill info
+            execution_service: Optional UnifiedExecutionService instance.
+                             If None, creates a new one.
         """
         self._registry = registry
+        if execution_service is None:
+            from ..sandbox.execution_service import UnifiedExecutionService
+            execution_service = UnifiedExecutionService()
+        self._execution_service = execution_service
 
     # ==================== Skill Execution ====================
 
@@ -73,10 +80,6 @@ class ToolCallHandler:
         Returns:
             ExecutionResult with output or error
         """
-        from ..sandbox.execution_service import UnifiedExecutionService
-
-        service = UnifiedExecutionService.get_instance()
-
         # Check if it's a multi-script tool
         tool_info = self._registry.get_multi_script_tool_info(skill_name)
         if tool_info:
@@ -86,7 +89,7 @@ class ToolCallHandler:
                     success=False,
                     error=f"Parent skill not found: {tool_info['skill_name']}"
                 )
-            return service.execute_skill(
+            return self._execution_service.execute_skill(
                 skill_info=parent_skill,
                 input_data=input_data,
                 entry_point=tool_info["script_path"],
@@ -103,7 +106,7 @@ class ToolCallHandler:
                 error=f"Skill not found: {skill_name}"
             )
 
-        return service.execute_skill(
+        return self._execution_service.execute_skill(
             skill_info=info,
             input_data=input_data,
             confirmation_callback=confirmation_callback,

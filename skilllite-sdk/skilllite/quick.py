@@ -397,22 +397,6 @@ Example of CORRECT approach:
 
 # ==================== Convenience Functions ====================
 
-_default_runner: Optional[SkillRunner] = None
-
-
-def get_runner(**kwargs) -> SkillRunner:
-    """
-    Get default SkillRunner instance (singleton pattern).
-    
-    Creates instance on first call, subsequent calls return the same instance.
-    Passed parameters will override default configuration.
-    """
-    global _default_runner
-    if _default_runner is None or kwargs:
-        _default_runner = SkillRunner(**kwargs)
-    return _default_runner
-
-
 def quick_run(
     user_message: str,
     skills_dir: Optional[str] = None,
@@ -449,5 +433,5 @@ def quick_run(
         kwargs["skills_dir"] = skills_dir
     kwargs["verbose"] = verbose
     
-    runner = get_runner(**kwargs)
+    runner = SkillRunner(**kwargs)
     return runner.run(user_message)

@@ -112,10 +112,14 @@ class SkillManager:
         # Initialize registry
         self._registry = SkillRegistry()
 
+        # Initialize execution service (shared across handlers)
+        from ..sandbox.execution_service import UnifiedExecutionService
+        self._execution_service = UnifiedExecutionService()
+
         # Initialize builders and handler
         self._tool_builder = ToolBuilder(self._registry)
         self._prompt_builder = PromptBuilder(self._registry)
-        self._handler = ToolCallHandler(self._registry)
+        self._handler = ToolCallHandler(self._registry, self._execution_service)
         
         # Scan skills directory if provided
         if skills_dir:

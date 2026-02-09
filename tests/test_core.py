@@ -234,27 +234,12 @@ class TestSecurityScanResult:
 class TestUnifiedExecutionService:
     """Tests for UnifiedExecutionService."""
 
-    @pytest.fixture(autouse=True)
-    def reset_singleton(self):
-        """Reset singleton before each test."""
+    def test_instance_creation(self):
+        """Test that instances can be created."""
         from skilllite.sandbox.execution_service import UnifiedExecutionService
-        UnifiedExecutionService.reset_instance()
-        yield
-        UnifiedExecutionService.reset_instance()
-
-    def test_singleton_pattern(self):
-        """Test singleton returns same instance."""
-        from skilllite.sandbox.execution_service import UnifiedExecutionService
-        s1 = UnifiedExecutionService.get_instance()
-        s2 = UnifiedExecutionService.get_instance()
-        assert s1 is s2
-
-    def test_reset_instance(self):
-        """Test reset creates new instance."""
-        from skilllite.sandbox.execution_service import UnifiedExecutionService
-        s1 = UnifiedExecutionService.get_instance()
-        UnifiedExecutionService.reset_instance()
-        s2 = UnifiedExecutionService.get_instance()
+        s1 = UnifiedExecutionService()
+        s2 = UnifiedExecutionService()
+        # Each instance should be independent
         assert s1 is not s2
 
     @patch("skilllite.sandbox.execution_service.UnifiedExecutor")
@@ -267,7 +252,7 @@ class TestUnifiedExecutionService:
         mock_executor.execute.return_value = ExecutionResult(success=True, output={"result": "ok"})
         mock_executor_cls.return_value = mock_executor
 
-        service = UnifiedExecutionService.get_instance()
+        service = UnifiedExecutionService()
 
         skill_info = Mock()
         skill_info.metadata = None
@@ -291,7 +276,7 @@ class TestUnifiedExecutionService:
         mock_executor.execute.return_value = ExecutionResult(success=True, output={"result": "ok"})
         mock_executor_cls.return_value = mock_executor
 
-        service = UnifiedExecutionService.get_instance()
+        service = UnifiedExecutionService()
         # Mock scanner to return safe result
         service._scanner = Mock()
         service._scanner.scan_skill.return_value = SecurityScanResult(
@@ -318,7 +303,7 @@ class TestUnifiedExecutionService:
         mock_executor = Mock()
         mock_executor_cls.return_value = mock_executor
 
-        service = UnifiedExecutionService.get_instance()
+        service = UnifiedExecutionService()
         service._scanner = Mock()
         service._scanner.scan_skill.return_value = SecurityScanResult(
             is_safe=False,
@@ -355,7 +340,7 @@ class TestUnifiedExecutionService:
         mock_executor.execute.return_value = ExecutionResult(success=True, output={"result": "ok"})
         mock_executor_cls.return_value = mock_executor
 
-        service = UnifiedExecutionService.get_instance()
+        service = UnifiedExecutionService()
         service._scanner = Mock()
         service._scanner.scan_skill.return_value = SecurityScanResult(
             is_safe=False,
@@ -394,7 +379,7 @@ class TestUnifiedExecutionService:
         mock_executor = Mock()
         mock_executor_cls.return_value = mock_executor
 
-        service = UnifiedExecutionService.get_instance()
+        service = UnifiedExecutionService()
         service._scanner = Mock()
         service._scanner.scan_skill.return_value = SecurityScanResult(
             is_safe=False,
@@ -427,7 +412,7 @@ class TestUnifiedExecutionService:
         mock_executor.execute.return_value = ExecutionResult(success=True, output={})
         mock_executor_cls.return_value = mock_executor
 
-        service = UnifiedExecutionService.get_instance()
+        service = UnifiedExecutionService()
 
         skill_info = Mock()
         skill_info.metadata = Mock()
@@ -484,57 +469,52 @@ class TestToolCallHandler:
         assert result.success is False
         assert "not found" in result.error.lower()
 
-    @patch("skilllite.core.handler.UnifiedExecutionService", create=True)
-    def test_execute_regular_skill(self, mock_svc_cls):
+    def test_execute_regular_skill(self):
         """Test execute delegates to UnifiedExecutionService for regular skill."""
         from skilllite.sandbox.base import ExecutionResult
+        from skilllite.core.handler import ToolCallHandler
 
         mock_service = Mock()
         mock_service.execute_skill.return_value = ExecutionResult(
             success=True, output={"result": "hello"}
         )
 
-        # Patch get_instance at the module level
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService.get_instance",
-                    return_value=mock_service):
-            skill_info = Mock()
-            skill_info.path = Path("/fake/skill")
+        skill_info = Mock()
+        skill_info.path = Path("/fake/skill")
 
-            registry = Mock()
-            registry.get_multi_script_tool_info.return_value = None
-            registry.get_skill.return_value = skill_info
+        registry = Mock()
+        registry.get_multi_script_tool_info.return_value = None
+        registry.get_skill.return_value = skill_info
 
-            handler = self._make_handler(registry)
-            result = handler.execute("my_skill", {"x": 1})
+        handler = ToolCallHandler(registry, execution_service=mock_service)
+        result = handler.execute("my_skill", {"x": 1})
 
         assert result.success is True
         assert result.output == {"result": "hello"}
         mock_service.execute_skill.assert_called_once()
 
-    @patch("skilllite.core.handler.UnifiedExecutionService", create=True)
-    def test_execute_multi_script_tool(self, mock_svc_cls):
+    def test_execute_multi_script_tool(self):
         """Test execute handles multi-script tools correctly."""
         from skilllite.sandbox.base import ExecutionResult
+        from skilllite.core.handler import ToolCallHandler
 
         mock_service = Mock()
         mock_service.execute_skill.return_value = ExecutionResult(
             success=True, output={"step": "done"}
         )
 
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService.get_instance",
-                    return_value=mock_service):
-            parent_skill = Mock()
-            parent_skill.path = Path("/fake/parent")
+        parent_skill = Mock()
+        parent_skill.path = Path("/fake/parent")
 
-            registry = Mock()
-            registry.get_multi_script_tool_info.return_value = {
-                "skill_name": "parent",
-                "script_path": "scripts/init.py",
-            }
-            registry.get_skill.return_value = parent_skill
+        registry = Mock()
+        registry.get_multi_script_tool_info.return_value = {
+            "skill_name": "parent",
+            "script_path": "scripts/init.py",
+        }
+        registry.get_skill.return_value = parent_skill
 
-            handler = self._make_handler(registry)
-            result = handler.execute("parent__init", {"name": "test"})
+        handler = ToolCallHandler(registry, execution_service=mock_service)
+        result = handler.execute("parent__init", {"name": "test"})
 
         assert result.success is True
         call_kwargs = mock_service.execute_skill.call_args

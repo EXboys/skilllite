@@ -38,41 +38,36 @@ class UnifiedExecutionService:
     Unified execution service - single entry point for all skill execution.
 
     This service integrates:
-    1. Security scanning (via UnifiedSecurityScanner)
+    1. Security scanning (via SecurityScanner)
     2. User confirmation flow
     3. Skill execution (via UnifiedExecutor)
     4. Session-level confirmation cache (avoid repeated prompts)
 
     Usage:
-        service = UnifiedExecutionService.get_instance()
+        service = UnifiedExecutionService()
         result = service.execute_skill(skill_info, input_data, confirmation_callback)
+        
+    For dependency injection:
+        scanner = SecurityScanner()
+        service = UnifiedExecutionService(scanner=scanner)
     """
 
-    _instance: Optional["UnifiedExecutionService"] = None
-
-    @classmethod
-    def get_instance(cls) -> "UnifiedExecutionService":
-        """Get singleton instance of the service."""
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
-    @classmethod
-    def reset_instance(cls) -> None:
-        """Reset singleton instance (for testing)."""
-        cls._instance = None
-
-    def __init__(self):
-        """Initialize the service."""
+    def __init__(self, scanner: Optional["SecurityScanner"] = None):
+        """
+        Initialize the service.
+        
+        Args:
+            scanner: Optional SecurityScanner instance. If None, creates a new one lazily.
+        """
         self._executor = UnifiedExecutor()
-        self._scanner = None  # Lazy initialization
+        self._scanner = scanner  # Can be injected or lazy initialized
         # Session-level confirmation cache: skill_name -> code_hash
         # When user confirms a skill, we cache it so the same skill
         # won't prompt again within the same session (unless code changes).
         self._confirmed_skills: Dict[str, str] = {}
     
     def _get_scanner(self):
-        """Get security scanner (lazy initialization)."""
+        """Get security scanner (lazy initialization if not injected)."""
         if self._scanner is None:
             from ..core.security import SecurityScanner
             self._scanner = SecurityScanner()

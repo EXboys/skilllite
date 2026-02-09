@@ -64,6 +64,10 @@ def mock_manager(mock_skill_info, mock_execution_result):
     registry = Mock()
     registry.get_skill.return_value = mock_skill_info
     manager._registry = registry
+    # Adapters use manager._execution_service
+    mock_execution_service = Mock()
+    mock_execution_service.execute_skill.return_value = mock_execution_result
+    manager._execution_service = mock_execution_service
     return manager
 
 
@@ -112,15 +116,10 @@ class TestLangChainAdapter:
             skill_name="test_skill"
         )
 
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = mock_execution_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tool._run(param1="value1")
+        result = tool._run(param1="value1")
 
         assert result == "Test output"
-        mock_service.execute_skill.assert_called_once()
+        mock_manager._execution_service.execute_skill.assert_called_once()
     
     @pytest.mark.skipif(
         not _has_langchain(),
@@ -352,12 +351,9 @@ class TestLangChainSecurityConfirmation:
             confirmation_callback=my_callback,
         )
 
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = mock_execution_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tool._run(param1="value1")
+        # Update mock service return value if needed
+        mock_manager._execution_service.execute_skill.return_value = mock_execution_result
+        result = tool._run(param1="value1")
 
         # Callback is passed to the service but not called (level 1)
         assert result == "Test output"
@@ -385,12 +381,9 @@ class TestLangChainSecurityConfirmation:
             confirmation_callback=my_callback,
         )
 
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = mock_execution_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tool._run(param1="value1")
+        # Update mock service return value if needed
+        mock_manager._execution_service.execute_skill.return_value = mock_execution_result
+        result = tool._run(param1="value1")
 
         # Callback is passed to the service but not called (level 2)
         assert result == "Test output"
@@ -417,12 +410,8 @@ class TestLangChainSecurityConfirmation:
         security_result.success = False
         security_result.error = "Security confirmation required:\nHigh severity issues found"
 
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = security_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tool._run(param1="value1")
+        mock_manager._execution_service.execute_skill.return_value = security_result
+        result = tool._run(param1="value1")
 
         assert "Security confirmation required" in result
 
@@ -451,12 +440,8 @@ class TestLangChainSecurityConfirmation:
         cancelled_result.success = False
         cancelled_result.error = "Execution cancelled by user after security review"
 
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = cancelled_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tool._run(param1="value1")
+        mock_manager._execution_service.execute_skill.return_value = cancelled_result
+        result = tool._run(param1="value1")
 
         assert "cancelled by user" in result
 
@@ -481,17 +466,14 @@ class TestLangChainSecurityConfirmation:
         )
 
         # Mock UnifiedExecutionService to return success (callback approved)
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = mock_execution_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tool._run(param1="value1")
+        # Update mock service return value if needed
+        mock_manager._execution_service.execute_skill.return_value = mock_execution_result
+        result = tool._run(param1="value1")
 
         # Execution should proceed
         assert result == "Test output"
         # Service should have been called with the confirmation callback
-        call_kwargs = mock_service.execute_skill.call_args
+        call_kwargs = mock_manager._execution_service.execute_skill.call_args
         assert call_kwargs.kwargs.get("confirmation_callback") == approve_callback
 
     @pytest.mark.skipif(
@@ -515,12 +497,9 @@ class TestLangChainSecurityConfirmation:
         )
 
         # Mock UnifiedExecutionService to return success (safe code, no callback needed)
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = mock_execution_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tool._run(param1="value1")
+        # Update mock service return value if needed
+        mock_manager._execution_service.execute_skill.return_value = mock_execution_result
+        result = tool._run(param1="value1")
 
         # Execution should proceed
         assert result == "Test output"
@@ -618,13 +597,9 @@ class TestLlamaIndexSecurityConfirmation:
         tools = tool_spec.to_tool_list()
         assert len(tools) == 1
 
-        # Mock UnifiedExecutionService for execution
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = mock_execution_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tools[0](param1="value1")
+        # Mock execution service for execution
+        mock_manager._execution_service.execute_skill.return_value = mock_execution_result
+        result = tools[0](param1="value1")
 
         # LlamaIndex returns ToolOutput, check raw_output
         assert result.raw_output == "Test output"
@@ -650,12 +625,8 @@ class TestLlamaIndexSecurityConfirmation:
         security_result.success = False
         security_result.error = "Security confirmation required:\nHigh severity issues found"
 
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = security_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tools[0](param1="value1")
+        mock_manager._execution_service.execute_skill.return_value = security_result
+        result = tools[0](param1="value1")
 
         # Should return security error message (check raw_output for LlamaIndex)
         assert "Security confirmation required" in result.raw_output
@@ -679,17 +650,13 @@ class TestLlamaIndexSecurityConfirmation:
 
         tools = tool_spec.to_tool_list()
 
-        # Mock UnifiedExecutionService to return cancelled error
+        # Mock execution service to return cancelled error
         cancelled_result = Mock()
         cancelled_result.success = False
         cancelled_result.error = "Execution cancelled by user after security review"
 
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = cancelled_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tools[0](param1="value1")
+        mock_manager._execution_service.execute_skill.return_value = cancelled_result
+        result = tools[0](param1="value1")
 
         # Execution should be cancelled (check raw_output for LlamaIndex)
         assert "cancelled" in result.raw_output.lower()
@@ -713,13 +680,9 @@ class TestLlamaIndexSecurityConfirmation:
 
         tools = tool_spec.to_tool_list()
 
-        # Mock UnifiedExecutionService to return success (callback approved)
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = mock_execution_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tools[0](param1="value1")
+        # Mock execution service to return success (callback approved)
+        mock_manager._execution_service.execute_skill.return_value = mock_execution_result
+        result = tools[0](param1="value1")
 
         # Execution should proceed (check raw_output for LlamaIndex)
         assert result.raw_output == "Test output"
@@ -743,13 +706,9 @@ class TestLlamaIndexSecurityConfirmation:
 
         tools = tool_spec.to_tool_list()
 
-        # Mock UnifiedExecutionService to return success (safe code)
-        with patch("skilllite.sandbox.execution_service.UnifiedExecutionService") as mock_cls:
-            mock_service = Mock()
-            mock_service.execute_skill.return_value = mock_execution_result
-            mock_cls.get_instance.return_value = mock_service
-
-            result = tools[0](param1="value1")
+        # Mock execution service to return success (safe code)
+        mock_manager._execution_service.execute_skill.return_value = mock_execution_result
+        result = tools[0](param1="value1")
 
         # Execution should proceed (check raw_output for LlamaIndex)
         assert result.raw_output == "Test output"

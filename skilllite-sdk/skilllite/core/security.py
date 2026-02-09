@@ -140,23 +140,10 @@ class SecurityScanner:
 
     Uses skillbox binary to perform static code analysis before execution.
 
-    This class supports singleton pattern for shared instance across
-    all entry points (AgenticLoop, LangChain, LlamaIndex, MCP).
+    Usage:
+        scanner = SecurityScanner()
+        result = scanner.scan_skill(skill_info, input_data)
     """
-
-    _instance: Optional["SecurityScanner"] = None
-
-    @classmethod
-    def get_instance(cls) -> "SecurityScanner":
-        """Get singleton instance of the scanner."""
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
-
-    @classmethod
-    def reset_instance(cls) -> None:
-        """Reset singleton instance (for testing)."""
-        cls._instance = None
 
     def __init__(self, skillbox_path: Optional[str] = None):
         """

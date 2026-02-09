@@ -81,7 +81,7 @@ from .core import (
 )
 
 # Import from non-core modules (utilities, quick start, etc.)
-from .quick import SkillRunner, quick_run, load_env, get_runner
+from .quick import SkillRunner, quick_run, load_env
 from .core.metadata import get_skill_summary
 from .logger import get_logger, setup_logging, LoggerMixin
 from .sandbox.skillbox import (
@@ -140,7 +140,6 @@ __all__ = [
     "SkillRunner",
     "quick_run",
     "load_env",
-    "get_runner",
     # Binary Management
     "install_binary",
     "uninstall_binary",
