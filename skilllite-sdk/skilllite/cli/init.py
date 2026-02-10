@@ -61,6 +61,7 @@ KNOWN_PYTHON_PACKAGES = [
     "jinja2", "mako",
     "celery", "rq",
     "cryptography", "jwt", "passlib",
+    "playwright",
 ]
 
 KNOWN_NODE_PACKAGES = [
@@ -486,6 +487,9 @@ def _ensure_python_env(env_path: Path, packages: List[str]) -> None:
     """Create a Python venv and install *packages* into it."""
     marker = env_path / ".agentskill_complete"
     if env_path.exists() and marker.exists():
+        # 已有 env，仅检查 playwright 是否需补装 chromium
+        if "playwright" in packages:
+            _ensure_playwright_chromium(env_path)
         return  # already done
 
     # Remove incomplete env
@@ -511,6 +515,30 @@ def _ensure_python_env(env_path: Path, packages: List[str]) -> None:
             raise RuntimeError(f"pip install failed: {result.stderr}")
 
     marker.write_text("")
+
+    # Playwright 需要额外安装浏览器
+    if "playwright" in packages:
+        _ensure_playwright_chromium(env_path)
+
+
+def _ensure_playwright_chromium(env_path: Path) -> None:
+    """Run playwright install chromium in the given venv."""
+    pw_marker = env_path / ".playwright_chromium_done"
+    if pw_marker.exists():
+        return
+    python_bin = env_path / ("Scripts" if os.name == "nt" else "bin") / "python"
+    result = subprocess.run(
+        [str(python_bin), "-m", "playwright", "install", "chromium"],
+        capture_output=True, text=True,
+        timeout=300,
+    )
+    if result.returncode != 0:
+        err = result.stderr or result.stdout or ""
+        raise RuntimeError(
+            f"playwright install chromium 失败: {err}\n"
+            "可稍后手动运行: playwright install chromium"
+        )
+    pw_marker.write_text("")
 
 
 def _ensure_node_env(env_path: Path, packages: List[str]) -> None:

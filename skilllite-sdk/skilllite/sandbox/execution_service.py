@@ -140,7 +140,7 @@ class UnifiedExecutionService:
                         confirmed = confirmation_callback(report, scan_result.scan_id)
 
                         if confirmed:
-                            # User confirmed -> downgrade to Level 1
+                            # User confirmed -> downgrade (Level 1 or 2 from POST_CONFIRMATION_SANDBOX_LEVEL)
                             context = context.with_user_confirmation(scan_result.scan_id)
                             # Cache confirmation for this session
                             self._confirmed_skills[skill_name] = code_hash
@@ -158,13 +158,12 @@ class UnifiedExecutionService:
                             exit_code=2,
                         )
                 else:
-                    # Scan passed (no high-severity issues) -> downgrade to Level 1.
-                    # Python has already performed the security check, so the Rust
-                    # binary doesn't need to redo it.  Running at Level 1 avoids:
-                    #   - Rust's redundant security scan + interactive prompt
-                    #   - Rust's strict JSON-output requirement (scripts may output text)
-                    #   - Working-directory issues (Rust sets cwd to skill_dir)
-                    context = context.with_override(sandbox_level="1")
+                    # Scan passed (no high-severity issues) -> downgrade to Level 1 or 2.
+                    # Use Level 2 when POST_CONFIRMATION_SANDBOX_LEVEL=2 for sandbox isolation.
+                    post_level = os.environ.get("POST_CONFIRMATION_SANDBOX_LEVEL", "1").strip()
+                    context = context.with_override(
+                        sandbox_level="2" if post_level == "2" else "1"
+                    )
         
         # 5. Execute skill
         return self._executor.execute(

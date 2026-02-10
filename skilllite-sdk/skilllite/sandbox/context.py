@@ -134,10 +134,14 @@ class ExecutionContext:
         """
         Create a new context after user confirmation.
         
-        This downgrades sandbox level to 1 (no sandbox) since user has approved.
+        Downgrades from Level 3 to Level 1 or 2 based on POST_CONFIRMATION_SANDBOX_LEVEL.
+        - "1" (default): No sandbox, direct execution
+        - "2": Keep sandbox isolation (Seatbelt/namespaces)
         """
+        post_level = os.environ.get("POST_CONFIRMATION_SANDBOX_LEVEL", "1").strip()
+        level = "2" if post_level == "2" else "1"
         return self.with_override(
-            sandbox_level="1",
+            sandbox_level=level,
             confirmed=True,
             scan_id=scan_id,
         )

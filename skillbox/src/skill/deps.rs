@@ -90,6 +90,7 @@ fn parse_compatibility_for_packages(compatibility: Option<&str>) -> Vec<String> 
         "jinja2", "mako",
         "celery", "rq",
         "cryptography", "jwt", "passlib",
+        "playwright",
     ];
 
     // Common Node.js packages (excluding 'request' which conflicts with Python 'requests')

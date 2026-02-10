@@ -107,9 +107,10 @@ class UnifiedExecutor:
         if args is None and input_data:
             args = self._convert_json_to_cli_args(input_data)
         
-        # For Level 1/2 Python scripts, use direct execution for better performance
-        if script_path.endswith('.py') and context.sandbox_level != "3":
-            return self._exec_python_direct(context, skill_dir, script_path, args)
+        # All levels (1, 2, 3) go through skillbox for:
+        # - Consistent dependency resolution (ensure_environment reads compatibility/lock)
+        # - Level 2: proper sandbox isolation
+        # - Level 1: resource limits and env_path with deps (no isolation)
         
         # Build command for skillbox exec
         cmd = self._build_exec_command(context, skill_dir, script_path, input_data, args)
@@ -199,15 +200,16 @@ class UnifiedExecutor:
                 )
                 return self._parse_output(result.stdout, "", result.returncode)
             else:
-                # Level 1/2 or confirmed: capture all output
+                # Level 1/2 or confirmed: 捕获 stdout 解析 JSON，stderr 实时输出到终端便于看进度
                 result = subprocess.run(
                     cmd,
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=None,  # 实时输出，便于看到 playwright 下载等进度
                     text=True,
                     timeout=context.timeout,
                     env=env,
                 )
-                return self._parse_output(result.stdout, result.stderr, result.returncode)
+                return self._parse_output(result.stdout, "", result.returncode)
 
         except subprocess.TimeoutExpired:
             return ExecutionResult(

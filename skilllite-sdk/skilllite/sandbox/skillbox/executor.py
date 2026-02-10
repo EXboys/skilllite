@@ -281,8 +281,8 @@ class SkillboxExecutor(SandboxExecutor):
         requiring an entry_point in SKILL.md. Useful for skills with multiple
         scripts or prompt-only skills with helper scripts.
         
-        Note: Due to skillbox's --args parameter not correctly parsing arguments,
-        we execute Python scripts directly using subprocess for CLI-style scripts.
+        Note: All execution goes through skillbox for consistent dependency resolution
+        and sandbox behavior across all security levels.
         
         Args:
             skill_dir: Path to the skill directory
@@ -309,14 +309,10 @@ class SkillboxExecutor(SandboxExecutor):
         
         full_script_path = skill_dir / script_path
         
-        # Check sandbox level - Level 3 requires skillbox for security scanning
-        # Level 1 and 2 can use direct execution for better performance
-        if script_path.endswith('.py') and self.sandbox_level != "3":
-            return self._exec_python_script_direct(
-                skill_dir, full_script_path, input_data, args, timeout
-            )
-        
-        # For other languages or Level 3, use skillbox exec
+        # All levels (1, 2, 3) go through skillbox for:
+        # - Consistent dependency resolution (ensure_environment reads compatibility/lock)
+        # - Level 2: proper sandbox isolation (macOS Seatbelt / Linux namespace)
+        # - Level 1: resource limits and env_path with deps (no isolation)
         cmd = [
             self.binary_path,
             "exec",
@@ -364,14 +360,16 @@ class SkillboxExecutor(SandboxExecutor):
                 )
                 return self._parse_output(result.stdout, "", result.returncode)
             else:
+                # 捕获 stdout 解析 JSON，stderr 实时输出到终端便于看到 playwright 等进度
                 result = subprocess.run(
                     cmd,
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=None,
                     text=True,
                     timeout=effective_timeout,
                     env=skill_env
                 )
-                return self._parse_output(result.stdout, result.stderr, result.returncode)
+                return self._parse_output(result.stdout, "", result.returncode)
                 
         except subprocess.TimeoutExpired:
             return ExecutionResult(
@@ -602,20 +600,8 @@ class SkillboxExecutor(SandboxExecutor):
         
         effective_timeout = timeout if timeout is not None else self.execution_timeout
         
-        # Check sandbox level - Level 1 and 2 should use direct execution for Python skills
-        if self.sandbox_level != "3":
-            python_entry_points = ["scripts/main.py", "main.py"]
-            for entry in python_entry_points:
-                script_path = skill_dir / entry
-                if script_path.exists():
-                    return self.exec_script(
-                        skill_dir=skill_dir,
-                        script_path=entry,
-                        input_data=input_data,
-                        allow_network=allow_network,
-                        timeout=timeout,
-                        enable_sandbox=enable_sandbox
-                    )
+        # All levels (1, 2, 3) go through skillbox for consistent dependency resolution
+        # and sandbox behavior (Level 2 = isolation, Level 1 = env_path with deps only)
         
         # Build command for skillbox run
         cmd = [

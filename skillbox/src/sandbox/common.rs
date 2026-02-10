@@ -111,58 +111,89 @@ pub fn get_process_memory(pid: u32) -> Option<u64> {
 }
 
 /// Wait for child process with timeout and memory monitoring
-/// 
+///
 /// This function monitors a child process and enforces resource limits:
 /// - Timeout: kills the process if it exceeds the specified duration
 /// - Memory limit: kills the process if RSS exceeds the specified bytes
-/// 
+///
+/// IMPORTANT: Reads stdout/stderr in background threads while the process runs.
+/// Without this, a child writing large output (>64KB pipe buffer) would block
+/// on write, and we'd deadlock waiting for the child to exit.
+///
 /// # Arguments
 /// * `child` - The child process to monitor
 /// * `timeout_secs` - Maximum execution time in seconds
 /// * `memory_limit_bytes` - Maximum memory usage in bytes
-/// 
+/// * `stream_stderr` - If true, forward child stderr to parent stderr in real-time (shows progress)
+///
 /// # Returns
 /// A tuple of (stdout, stderr, exit_code, was_killed, kill_reason)
-/// - `was_killed`: true if the process was killed due to resource limits
-/// - `kill_reason`: "timeout" or "memory_limit" if killed, None otherwise
 pub fn wait_with_timeout(
     child: &mut Child,
     timeout_secs: u64,
     memory_limit_bytes: u64,
+    stream_stderr: bool,
 ) -> Result<(String, String, i32, bool, Option<String>)> {
     let start = Instant::now();
     let timeout = Duration::from_secs(timeout_secs);
     let check_interval = Duration::from_millis(MEMORY_CHECK_INTERVAL_MS);
-    
+
+    // Spawn threads to read stdout/stderr *while* the process runs.
+    // Otherwise large output (>pipe buffer ~64KB) blocks the child and we deadlock.
+    let stdout_handle = child.stdout.take().map(|mut out| {
+        thread::spawn(move || {
+            let mut s = String::new();
+            let _ = out.read_to_string(&mut s);
+            s
+        })
+    });
+    let stderr_handle = child.stderr.take().map(|mut err| {
+        thread::spawn(move || {
+            use std::io::Write;
+            let mut s = String::new();
+            let mut buf = [0u8; 4096];
+            loop {
+                match err.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let chunk = String::from_utf8_lossy(&buf[..n]);
+                        s.push_str(&chunk);
+                        if stream_stderr {
+                            let _ = std::io::stderr().write_all(&buf[..n]);
+                            let _ = std::io::stderr().flush();
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            s
+        })
+    });
+
     loop {
-        // Check if process has exited
         match child.try_wait() {
             Ok(Some(status)) => {
-                // Process exited normally
-                let mut stdout = String::new();
-                let mut stderr = String::new();
-                
-                if let Some(ref mut out) = child.stdout {
-                    let _ = out.read_to_string(&mut stdout);
-                }
-                if let Some(ref mut err) = child.stderr {
-                    let _ = err.read_to_string(&mut stderr);
-                }
-                
+                let stdout = stdout_handle
+                    .map(|h| h.join().unwrap_or_default())
+                    .unwrap_or_default();
+                let stderr = stderr_handle
+                    .map(|h| h.join().unwrap_or_default())
+                    .unwrap_or_default();
                 return Ok((stdout, stderr, status.code().unwrap_or(-1), false, None));
             }
-            Ok(None) => {
-                // Process still running, check constraints
-            }
+            Ok(None) => {}
             Err(e) => {
+                let _ = stdout_handle.map(|h| h.join());
+                let _ = stderr_handle.map(|h| h.join());
                 return Err(anyhow::anyhow!("Failed to wait for process: {}", e));
             }
         }
-        
-        // Check timeout
+
         if start.elapsed() > timeout {
             let _ = child.kill();
             let _ = child.wait();
+            let _ = stdout_handle.map(|h| h.join());
+            let _ = stderr_handle.map(|h| h.join());
             return Ok((
                 String::new(),
                 format!("Process killed: exceeded timeout of {} seconds", timeout_secs),
@@ -171,12 +202,13 @@ pub fn wait_with_timeout(
                 Some("timeout".to_string()),
             ));
         }
-        
-        // Check memory usage
+
         if let Some(memory) = get_process_memory(child.id()) {
             if memory > memory_limit_bytes {
                 let _ = child.kill();
                 let _ = child.wait();
+                let _ = stdout_handle.map(|h| h.join());
+                let _ = stderr_handle.map(|h| h.join());
                 let memory_mb = memory / (1024 * 1024);
                 let limit_mb = memory_limit_bytes / (1024 * 1024);
                 return Ok((
@@ -191,8 +223,7 @@ pub fn wait_with_timeout(
                 ));
             }
         }
-        
-        // Sleep before next check
+
         thread::sleep(check_interval);
     }
 }

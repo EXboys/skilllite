@@ -89,3 +89,9 @@ test/
 
 node_modules/
 TECHNICAL_ANALYSIS_REPORT.md
+CLI_CHAT_OPTIMIZATION_PLAN.md
+OPENCLAW_DEEP_ANALYSIS.md
+
+# Design documents (not published to online)
+todo/
+docs/SECURITY_ASSESSMENT.md

@@ -170,6 +170,7 @@ fn execute_simple_with_limits(
         &mut child,
         limits.timeout_secs,
         limits.max_memory_bytes(),
+        true,
     )?;
 
     Ok(ExecutionResult {
@@ -737,6 +738,7 @@ fn execute_with_namespaces(
         &mut child,
         limits.timeout_secs,
         limits.max_memory_bytes(),
+        true,
     )?;
 
     Ok(ExecutionResult {

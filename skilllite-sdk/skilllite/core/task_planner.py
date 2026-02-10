@@ -116,6 +116,11 @@ In addition to the above Skills, you have the following built-in file operation 
    - Used to confirm file status before operations
    - Parameter: `file_path` (string, file path)
 
+5. **run_command**: Execute shell command (requires user confirmation)
+   - Use when skill output suggests running commands (e.g. "请运行: pip install playwright && playwright install chromium")
+   - Parameter: `command` (string, the command to run)
+   - User will be prompted to confirm before execution
+
 **Note**: Parameter names must be used exactly as defined above, otherwise errors will occur.
 
 ## Task Execution Strategy
@@ -187,12 +192,20 @@ In addition to the above Skills, you have the following built-in file operation 
 
 ## Examples of tasks that DON'T need tools (return empty list `[]`)
 
-- Writing poems, articles, stories
+- Writing poems, articles, stories (EXCEPT 小红书/种草/图文笔记 - see below)
 - Translating text
-- Answering knowledge-based questions
+- Answering knowledge-based questions (EXCEPT 天气/气象 - see below)
 - Code explanation, code review suggestions
-- Creative generation, brainstorming
+- Creative generation, brainstorming (EXCEPT 小红书 - see below)
 - Summarizing, rewriting, polishing text
+
+## CRITICAL: When user explicitly requests a Skill, ALWAYS use it
+
+**If user says "使用 XX skill" / "用 XX 技能" / "use XX skills"**, you MUST add that skill to the task list. Do NOT return empty list.
+
+**天气/气象/天气预报**: When the user asks about weather (天气、气温、气象、今天天气、明天天气、某地天气、适合出行吗、适合出去玩吗 etc.), you MUST use **weather** skill. The LLM cannot provide real-time weather data; only the weather skill can. Return a task with tool_hint: "weather".
+
+**小红书/种草/图文笔记**: When the task involves 小红书、种草文案、小红书图文、小红书笔记, you MUST use **xiaohongshu-writer** skill. It generates structured content + thumbnail image. Return a task with tool_hint: "xiaohongshu-writer".
 
 ## Examples of tasks that NEED tools
 
@@ -203,12 +216,13 @@ In addition to the above Skills, you have the following built-in file operation 
 - Reading/writing files (use built-in file operations)
 - Querying real-time weather (use weather)
 - Creating new Skills (use skill-creator)
+- **小红书/种草/图文笔记** (use xiaohongshu-writer - generates structured content + cover image)
 
 ## Available Resources
 
 **Available Skills**: {skills_info}
 
-**Built-in capabilities**: read_file (read files), write_file (write files), list_directory (list directory), file_exists (check file existence)
+**Built-in capabilities**: read_file, write_file, list_directory, file_exists, run_command (execute shell command, requires user confirmation - use when skill suggests e.g. pip install)
 
 ## Planning Principles
 
@@ -247,6 +261,14 @@ Return: []
 Example 2 - Task requiring tools:
 User request: "Calculate 123 * 456 + 789 for me"
 Return: [{{"id": 1, "description": "Use calculator to compute expression", "tool_hint": "calculator", "completed": false}}]
+
+Example 3 - User explicitly asks to use a skill (MUST use that skill):
+User request: "写一个关于本项目推广的小红书的图文，使用小红书的skills"
+Return: [{{"id": 1, "description": "Use xiaohongshu-writer to generate 小红书 content with thumbnail", "tool_hint": "xiaohongshu-writer", "completed": false}}]
+
+Example 4 - Weather query (MUST use weather skill, LLM cannot provide real-time data):
+User request: "深圳今天天气怎样，适合出去玩吗？"
+Return: [{{"id": 1, "description": "Use weather skill to query real-time weather in Shenzhen", "tool_hint": "weather", "completed": false}}]
 
 Return only JSON, no other content."""
 

@@ -4,9 +4,7 @@ use crate::env::builder::{get_node_executable, get_node_modules_path, get_python
 use crate::sandbox::common::{
     wait_with_timeout,
     DEFAULT_FILE_SIZE_LIMIT_MB,
-    DEFAULT_MAX_MEMORY_MB,
     DEFAULT_MAX_PROCESSES,
-    DEFAULT_TIMEOUT_SECS,
 };
 use crate::sandbox::executor::ExecutionResult;
 use crate::sandbox::move_protection::{
@@ -134,6 +132,7 @@ pub fn execute_simple_with_limits(
         &mut child,
         limits.timeout_secs,
         memory_limit_bytes,
+        true,  // stream stderr so user sees "正在用 Pillow 生成图文封面..." etc.
     )?;
 
     Ok(ExecutionResult {
@@ -270,10 +269,10 @@ fn execute_with_sandbox(
     }
 
     // Apply resource limits using pre_exec (pure Rust, no script injection)
-    // This runs in the child process before exec, setting ulimits via setrlimit
-    // Constants are imported from common.rs for consistency
-    let memory_limit_mb = DEFAULT_MAX_MEMORY_MB;
-    let cpu_limit_secs = DEFAULT_TIMEOUT_SECS;
+    // Use limits from env (SKILLBOX_TIMEOUT_SECS, SKILLBOX_MAX_MEMORY_MB) so RLIMIT_CPU
+    // matches user's EXECUTION_TIMEOUT (e.g. 120s). Previously hardcoded 30s caused early kill.
+    let memory_limit_mb = limits.max_memory_mb;
+    let cpu_limit_secs = limits.timeout_secs;
     let file_size_limit_mb = DEFAULT_FILE_SIZE_LIMIT_MB;
     let max_processes = DEFAULT_MAX_PROCESSES;
     
@@ -281,7 +280,7 @@ fn execute_with_sandbox(
         cmd.pre_exec(move || {
             use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
             
-            // Memory limit (virtual address space) - 512 MB
+            // Memory limit - from SKILLBOX_MAX_MEMORY_MB
             let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
             let mem_limit = rlimit {
                 rlim_cur: memory_limit_bytes,
@@ -289,14 +288,14 @@ fn execute_with_sandbox(
             };
             setrlimit(RLIMIT_AS, &mem_limit);
             
-            // CPU time limit - 30 seconds
+            // CPU time limit - from SKILLBOX_TIMEOUT_SECS (matches EXECUTION_TIMEOUT)
             let cpu_limit = rlimit {
                 rlim_cur: cpu_limit_secs,
                 rlim_max: cpu_limit_secs,
             };
             setrlimit(RLIMIT_CPU, &cpu_limit);
             
-            // File size limit - 10 MB
+            // File size limit - 10 MB (sufficient for skill outputs; increase if needed for large images)
             let file_limit_bytes = file_size_limit_mb * 1024 * 1024;
             let file_limit = rlimit {
                 rlim_cur: file_limit_bytes,
@@ -328,7 +327,7 @@ fn execute_with_sandbox(
     // Wait with timeout and memory monitoring
     let memory_limit_bytes = limits.max_memory_bytes();
     let (stdout, stderr, exit_code, was_killed, kill_reason) = 
-        wait_with_timeout(&mut child, limits.timeout_secs, memory_limit_bytes)?;
+        wait_with_timeout(&mut child, limits.timeout_secs, memory_limit_bytes, true)?;
 
     // Check if sandbox-exec itself failed
     if exit_code == 1 && stderr.is_empty() && stdout.is_empty() && !was_killed {
@@ -528,6 +527,18 @@ fn generate_sandbox_profile_with_proxy(
         "(allow file-write* (subpath \"{}\"))\n",
         work_dir_str
     ));
+
+    // Allow writing to project root (parent of .skills) for skill outputs (e.g. xiaohongshu_thumbnail.png)
+    if let Some(project_root) = skill_dir.parent().and_then(|p| p.parent()) {
+        let project_root_str = project_root.to_string_lossy();
+        if !project_root_str.is_empty() && project_root != skill_dir {
+            profile.push_str("; Allow writing to project root for skill outputs\n");
+            profile.push_str(&format!(
+                "(allow file-write* (subpath \"{}\"))\n",
+                project_root_str
+            ));
+        }
+    }
     
     // Allow writing to /var/folders for system temp files (Python, Node.js cache)
     profile.push_str("; Allow writing to /var/folders for system temp files\n");
@@ -664,6 +675,18 @@ fn generate_sandbox_profile(
         "(allow file-write* (subpath \"{}\"))\n",
         work_dir_str
     ));
+
+    // Allow writing to project root (parent of .skills) for skill outputs (e.g. xiaohongshu_thumbnail.png)
+    if let Some(project_root) = skill_dir.parent().and_then(|p| p.parent()) {
+        let project_root_str = project_root.to_string_lossy();
+        if !project_root_str.is_empty() && project_root != skill_dir {
+            profile.push_str("; Allow writing to project root for skill outputs\n");
+            profile.push_str(&format!(
+                "(allow file-write* (subpath \"{}\"))\n",
+                project_root_str
+            ));
+        }
+    }
     
     // Allow writing to /var/folders for system temp files (Python, Node.js cache)
     profile.push_str("; Allow writing to /var/folders for system temp files\n");

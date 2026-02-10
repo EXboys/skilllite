@@ -292,18 +292,27 @@ Example of CORRECT approach:
         if self.enable_builtin_tools and tool_executor is None:
             # Create a combined executor that handles both built-in and custom tools
             from .builtin_tools import execute_builtin_file_tool
-            
+
+            confirmation_cb = self.confirmation_callback
+
+            workspace_root = Path(self.skills_dir).resolve().parent
+
             def combined_executor(tool_input: Dict[str, Any]) -> str:
                 tool_name = tool_input.get("tool_name")
-                builtin_names = {"read_file", "write_file", "list_directory", "file_exists"}
-                
+                builtin_names = {"read_file", "write_file", "list_directory", "file_exists", "run_command"}
+
                 if tool_name in builtin_names:
-                    return execute_builtin_file_tool(tool_name, tool_input)
+                    return execute_builtin_file_tool(
+                        tool_name,
+                        tool_input,
+                        run_command_confirmation=confirmation_cb if tool_name == "run_command" else None,
+                        workspace_root=workspace_root,
+                    )
                 elif self.custom_tool_executor:
                     return self.custom_tool_executor(tool_input)
                 else:
                     return f"Error: No executor found for tool: {tool_name}"
-            
+
             tool_executor = combined_executor
         
         # Use enhanced AgenticLoop to handle complete conversation flow
