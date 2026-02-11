@@ -14,7 +14,7 @@ from .config import (
     DEFAULT_ALLOW_NETWORK,
     DEFAULT_ENABLE_SANDBOX,
 )
-from .skillbox import SkillboxExecutor, install, uninstall, find_binary, ensure_installed
+from .skillbox import install, uninstall, find_binary, ensure_installed
 from .utils import (
     convert_json_to_cli_args,
     extract_json_from_output,
@@ -33,8 +33,7 @@ __all__ = [
     "DEFAULT_SANDBOX_LEVEL",
     "DEFAULT_ALLOW_NETWORK",
     "DEFAULT_ENABLE_SANDBOX",
-    # Skillbox implementation
-    "SkillboxExecutor",
+    # Skillbox binary management
     "install",
     "uninstall", 
     "find_binary",

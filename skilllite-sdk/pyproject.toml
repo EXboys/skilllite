@@ -69,6 +69,9 @@ skilllite-mcp = "skilllite.mcp:main"
 where = ["."]
 include = ["skilllite*"]
 
+[tool.setuptools.package-data]
+skilllite = ["config/*.json"]
+
 [tool.black]
 line-length = 100
 target-version = ["py38", "py39", "py310", "py311", "py312"]

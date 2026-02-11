@@ -349,7 +349,8 @@ class SkillBoxIPCExecutor(BaseExecutor):
         self.skill_dir = skill_dir
         self.sandbox_level = sandbox_level or int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
         self.name = f"SkillBox IPC (Level {self.sandbox_level})"
-        self._executor = None
+        self._service = None
+        self._context = None
         self.measure_memory = measure_memory
 
     def setup(self) -> None:
@@ -358,9 +359,10 @@ class SkillBoxIPCExecutor(BaseExecutor):
         # Suppress [INFO] logs from skillbox (daemon and subprocess fallback)
         os.environ["SKILLBOX_QUIET"] = "1"
         try:
-            from skilllite.sandbox.skillbox.executor import SkillboxExecutor
-            self._executor = SkillboxExecutor(
-                binary_path=SKILLBOX_BIN,
+            from skilllite.sandbox.execution_service import UnifiedExecutionService
+            from skilllite.sandbox.context import ExecutionContext
+            self._service = UnifiedExecutionService()
+            self._context = ExecutionContext.from_current_env().with_override(
                 sandbox_level=str(self.sandbox_level),
             )
         except ImportError as e:
@@ -370,15 +372,17 @@ class SkillBoxIPCExecutor(BaseExecutor):
             ) from e
 
     def teardown(self) -> None:
-        if self._executor and hasattr(self._executor, "_ipc_client") and self._executor._ipc_client:
-            try:
-                self._executor._ipc_client.close()
-            except Exception:
-                pass
-            self._executor._ipc_client = None
+        if getattr(self, "_service", None):
+            executor = getattr(self._service, "_executor", None)
+            if executor and hasattr(executor, "_ipc_client") and executor._ipc_client:
+                try:
+                    executor._ipc_client.close()
+                except Exception:
+                    pass
+                executor._ipc_client = None
 
     def execute(self, input_json: str) -> BenchmarkResult:
-        if self._executor is None:
+        if not hasattr(self, "_service") or self._service is None:
             return BenchmarkResult(
                 executor_name=self.name, success=False, latency_ms=0,
                 error="Executor not initialized (call setup first)"
@@ -387,14 +391,15 @@ class SkillBoxIPCExecutor(BaseExecutor):
         start_time = time.perf_counter()
         memory_kb = 0.0
         try:
-            result = self._executor.execute(
+            result = self._service.execute_with_context(
+                context=self._context,
                 skill_dir=Path(self.skill_dir),
                 input_data=input_data,
-                allow_network=False,
             )
             latency_ms = (time.perf_counter() - start_time) * 1000
-            if self.measure_memory and result.success and self._executor._ipc_client:
-                memory_kb = self._executor._ipc_client.get_peak_daemon_memory_kb()
+            executor = self._service._executor
+            if self.measure_memory and result.success and getattr(executor, "_ipc_client", None):
+                memory_kb = executor._ipc_client.get_peak_daemon_memory_kb()
             return BenchmarkResult(
                 executor_name=self.name,
                 success=result.success,

@@ -44,43 +44,26 @@ LOCK_FILE_NAME = ".skilllite.lock"
 
 
 # ---------------------------------------------------------------------------
-# Known packages list (ported from skillbox/src/skill/deps.rs)
+# Known packages list (single source: packages_whitelist.json)
 # ---------------------------------------------------------------------------
 
-KNOWN_PYTHON_PACKAGES = [
-    "requests", "pandas", "numpy", "scipy", "matplotlib", "seaborn",
-    "sklearn", "scikit-learn", "tensorflow", "torch", "pytorch",
-    "flask", "django", "fastapi", "aiohttp", "httpx",
-    "beautifulsoup", "bs4", "lxml", "selenium",
-    "pillow", "opencv", "cv2", "pyyaml", "yaml",
-    "sqlalchemy", "psycopg2", "pymysql", "redis", "pymongo",
-    "boto3", "google-cloud", "azure",
-    "pytest", "unittest", "mock",
-    "click", "argparse", "typer",
-    "pydantic", "dataclasses", "attrs",
-    "jinja2", "mako",
-    "celery", "rq",
-    "cryptography", "jwt", "passlib",
-    "playwright",
-]
+def _get_known_packages():
+    """Lazy load to avoid circular import at module load time."""
+    from ..packages_whitelist import get_python_packages, get_python_aliases, get_node_packages
+    python = get_python_packages()
+    aliases = get_python_aliases()
+    node = get_node_packages()
+    return python, aliases, node
 
-KNOWN_NODE_PACKAGES = [
-    "axios", "node-fetch", "got",
-    "express", "koa", "fastify", "hapi",
-    "lodash", "underscore", "ramda",
-    "moment", "dayjs", "date-fns",
-    "cheerio", "puppeteer", "playwright",
-    "mongoose", "sequelize", "knex", "prisma",
-    "ioredis",
-    "aws-sdk", "googleapis",
-    "jest", "mocha", "chai",
-    "commander", "yargs", "inquirer",
-    "chalk", "ora", "boxen",
-    "dotenv",
-    "jsonwebtoken", "bcrypt", "crypto-js",
-    "socket.io", "ws",
-    "sharp", "jimp",
-]
+
+def _known_python_set():
+    python, aliases, _ = _get_known_packages()
+    return {p.lower() for p in python} | {a.lower() for a in aliases}
+
+
+def _known_node_set():
+    _, _, node = _get_known_packages()
+    return {p.lower() for p in node}
 
 
 # ---------------------------------------------------------------------------
@@ -106,13 +89,7 @@ def _validate_packages_whitelist(
     if allow_unknown:
         return True, []
 
-    whitelist: set = set()
-    if language == "python":
-        whitelist = {p.lower() for p in KNOWN_PYTHON_PACKAGES}
-        # Common pip package name aliases
-        whitelist.update({"opencv-python", "opencv-contrib-python", "PyYAML", "pyyaml"})
-    elif language == "node":
-        whitelist = {p.lower() for p in KNOWN_NODE_PACKAGES}
+    whitelist = _known_python_set() if language == "python" else _known_node_set()
 
     unknown: List[str] = []
     for pkg in packages:
@@ -126,14 +103,16 @@ def parse_compatibility_for_packages(compatibility: Optional[str]) -> List[str]:
     """Parse compatibility string to extract package names.
 
     Mirrors ``skillbox/src/skill/deps.rs::parse_compatibility_for_packages``.
+    Uses packages_whitelist.json as single source of truth.
     """
     if not compatibility:
         return []
+    python_pkgs, _, node_pkgs = _get_known_packages()
     packages: List[str] = []
-    for pkg in KNOWN_PYTHON_PACKAGES:
+    for pkg in python_pkgs:
         if _is_word_match(compatibility, pkg):
             packages.append(pkg)
-    for pkg in KNOWN_NODE_PACKAGES:
+    for pkg in node_pkgs:
         if _is_word_match(compatibility, pkg):
             packages.append(pkg)
     return packages

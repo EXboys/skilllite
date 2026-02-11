@@ -81,6 +81,7 @@ class UnifiedExecutionService:
         confirmation_callback: Optional[ConfirmationCallback] = None,
         allow_network: Optional[bool] = None,
         timeout: Optional[int] = None,
+        sandbox_level: Optional[str] = None,
     ) -> ExecutionResult:
         """
         Execute a skill with unified security and confirmation flow.
@@ -108,10 +109,11 @@ class UnifiedExecutionService:
         context = ExecutionContext.from_current_env()
 
         # 2. Apply overrides
-        if allow_network is not None or timeout is not None:
+        if allow_network is not None or timeout is not None or sandbox_level is not None:
             context = context.with_override(
                 allow_network=allow_network,
                 timeout=timeout,
+                sandbox_level=sandbox_level,
             )
 
         # 3. Check if skill requires elevated permissions

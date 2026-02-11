@@ -5,11 +5,8 @@ This module provides the UnifiedExecutor class which handles all execution logic
 It uses ExecutionContext to get configuration at runtime, ensuring that any
 changes to environment variables or context overrides are immediately reflected.
 
-Key Design Principles:
-1. Never use instance variables for configuration
-2. Always read from ExecutionContext at execution time
-3. Single command building logic
-4. Single subprocess execution logic
+Supports both IPC (skillbox serve --stdio) and subprocess modes.
+Set SKILLBOX_USE_IPC=0 to force subprocess.
 """
 
 import json
@@ -21,6 +18,12 @@ from typing import Any, Dict, List, Optional
 from .base import ExecutionResult
 from .context import ExecutionContext
 from .utils import extract_json_from_output, format_sandbox_error
+
+
+def _use_ipc() -> bool:
+    """Check if IPC mode is enabled. Default: True. Set SKILLBOX_USE_IPC=0 to disable."""
+    val = os.environ.get("SKILLBOX_USE_IPC", "").lower()
+    return val not in ("0", "false", "no")
 
 
 class UnifiedExecutor:
@@ -37,6 +40,7 @@ class UnifiedExecutor:
         self._binary_path = find_binary()
         if not self._binary_path:
             raise RuntimeError("skillbox binary not found")
+        self._ipc_client = None  # Lazy init when IPC is used
     
     @property
     def binary_path(self) -> str:
@@ -78,7 +82,10 @@ class UnifiedExecutor:
                 args=args,
             )
         
-        # Build command for skillbox run
+        if _use_ipc():
+            result = self._execute_via_ipc_run(context, skill_dir, input_data)
+            if result is not None:
+                return result
         cmd, stdin_data = self._build_run_command(context, skill_dir, input_data)
         return self._run_subprocess(cmd, context, skill_dir, stdin_data=stdin_data)
     
@@ -112,7 +119,10 @@ class UnifiedExecutor:
         # - Level 2: proper sandbox isolation
         # - Level 1: resource limits and env_path with deps (no isolation)
         
-        # Build command for skillbox exec
+        if _use_ipc():
+            result = self._execute_via_ipc_exec(context, skill_dir, script_path, input_data, args)
+            if result is not None:
+                return result
         cmd = self._build_exec_command(context, skill_dir, script_path, input_data, args)
         return self._run_subprocess(cmd, context, skill_dir)
     
@@ -174,6 +184,69 @@ class UnifiedExecutor:
         cmd.extend(["--max-memory", str(context.max_memory_mb)])
 
         return cmd
+
+    def _get_ipc_client(self):
+        """Get or create IPC client pool (lazy init)."""
+        if self._ipc_client is None:
+            from .skillbox.ipc_client import SkillboxIPCClientPool
+            self._ipc_client = SkillboxIPCClientPool(
+                binary_path=self._binary_path,
+                cache_dir=None,
+            )
+        return self._ipc_client
+
+    def _execute_via_ipc_run(
+        self,
+        context: ExecutionContext,
+        skill_dir: Path,
+        input_data: Dict[str, Any],
+    ) -> Optional[ExecutionResult]:
+        """Execute run via IPC. Returns None on failure to fall back to subprocess."""
+        try:
+            client = self._get_ipc_client()
+            result = client.run(
+                skill_dir=str(Path(skill_dir).resolve()),
+                input_json=json.dumps(input_data, ensure_ascii=False),
+                allow_network=context.allow_network,
+                cache_dir=None,
+                timeout=context.timeout,
+                max_memory=context.max_memory_mb,
+                sandbox_level=context.sandbox_level,
+            )
+            output_str = result.get("output", "")
+            exit_code = result.get("exit_code", 0)
+            return self._parse_output(output_str, "", exit_code)
+        except Exception:
+            return None
+
+    def _execute_via_ipc_exec(
+        self,
+        context: ExecutionContext,
+        skill_dir: Path,
+        script_path: str,
+        input_data: Dict[str, Any],
+        args: Optional[List[str]] = None,
+    ) -> Optional[ExecutionResult]:
+        """Execute exec via IPC. Returns None on failure to fall back to subprocess."""
+        try:
+            client = self._get_ipc_client()
+            args_str = " ".join(args) if args else None
+            result = client.exec_cmd(
+                skill_dir=str(Path(skill_dir).resolve()),
+                script_path=script_path,
+                input_json=json.dumps(input_data, ensure_ascii=False),
+                args=args_str,
+                allow_network=context.allow_network,
+                cache_dir=None,
+                timeout=context.timeout,
+                max_memory=context.max_memory_mb,
+                sandbox_level=context.sandbox_level,
+            )
+            output_str = result.get("output", "")
+            exit_code = result.get("exit_code", 0)
+            return self._parse_output(output_str, "", exit_code)
+        except Exception:
+            return None
 
     def _run_subprocess(
         self,
@@ -245,62 +318,10 @@ class UnifiedExecutor:
     def _ensure_skill_python(self, skill_dir: Path) -> str:
         """Get Python executable with dependencies installed if needed.
 
-        If the skill has dependencies (from ``.skilllite.lock`` or the
-        ``compatibility`` field in SKILL.md), ensures a virtual environment
-        exists with those deps installed and returns the venv's python path.
-        Otherwise returns ``sys.executable``.
-
-        This mirrors what the Rust ``ensure_environment()`` does for Level 3,
-        so that Level 1/2 direct execution also gets automatic dependency
-        management without requiring ``skilllite init``.
+        Delegates to shared env_utils.ensure_skill_python().
         """
-        import sys
-
-        try:
-            from ..core.metadata import parse_skill_metadata
-            from ..cli.init import (
-                parse_compatibility_for_packages,
-                _get_cache_dir,
-                _compute_packages_hash,
-                _get_cache_key,
-                _ensure_python_env,
-            )
-        except ImportError:
-            return sys.executable
-
-        try:
-            metadata = parse_skill_metadata(skill_dir)
-        except Exception:
-            return sys.executable
-
-        # Prefer resolved_packages from .skilllite.lock, fallback to whitelist parsing
-        packages = metadata.resolved_packages
-        if packages is None:
-            packages = parse_compatibility_for_packages(
-                metadata.compatibility
-            )
-
-        if not packages:
-            return sys.executable
-
-        # Compute cache key and ensure venv exists
-        language = metadata.language or "python"
-        content_hash = _compute_packages_hash(packages)
-        cache_key = _get_cache_key(language, content_hash)
-        cache_dir = _get_cache_dir()
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        env_path = cache_dir / cache_key
-
-        # Create venv and install packages (idempotent — skips if marker exists)
-        _ensure_python_env(env_path, packages)
-
-        # Return venv's python executable
-        python = (
-            env_path / "Scripts" / "python"
-            if os.name == "nt"
-            else env_path / "bin" / "python"
-        )
-        return str(python) if python.exists() else sys.executable
+        from ...env_utils import ensure_skill_python
+        return ensure_skill_python(skill_dir)
 
     def _exec_python_direct(
         self,

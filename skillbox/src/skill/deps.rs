@@ -70,12 +70,15 @@ pub fn detect_dependencies(_skill_dir: &Path, metadata: &SkillMetadata) -> Resul
 ///   - "Requires Python 3.x with requests library" -> ["requests"]
 ///   - "Requires Python 3.x, pandas, numpy, network access" -> ["pandas", "numpy"]
 ///   - "Requires Node.js with axios, lodash" -> ["axios", "lodash"]
+///
+/// NOTE: Single source of truth is skilllite/packages_whitelist.json.
+/// Keep this list in sync when adding packages (or run sync script).
 fn parse_compatibility_for_packages(compatibility: Option<&str>) -> Vec<String> {
     let Some(compat) = compatibility else {
         return vec![];
     };
 
-    // Common Python packages that might appear in compatibility
+    // Common Python packages (sync with packages_whitelist.json)
     let known_python_packages = [
         "requests", "pandas", "numpy", "scipy", "matplotlib", "seaborn",
         "sklearn", "scikit-learn", "tensorflow", "torch", "pytorch",
@@ -93,7 +96,7 @@ fn parse_compatibility_for_packages(compatibility: Option<&str>) -> Vec<String> 
         "playwright",
     ];
 
-    // Common Node.js packages (excluding 'request' which conflicts with Python 'requests')
+    // Common Node.js packages (sync with packages_whitelist.json)
     let known_node_packages = [
         "axios", "node-fetch", "got",
         "express", "koa", "fastify", "hapi",
