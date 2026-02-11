@@ -11,6 +11,7 @@ use crate::sandbox::move_protection::{
     generate_log_tag, generate_move_blocking_rules, get_session_suffix,
 };
 use crate::sandbox::network_proxy::{ProxyConfig, ProxyManager};
+use crate::sandbox::security::policy::{self as security_policy, HomePathStyle, ResolvedNetworkPolicy};
 use crate::sandbox::seatbelt::generate_seatbelt_mandatory_deny_patterns;
 use crate::skill::metadata::{detect_language, SkillMetadata};
 use anyhow::{Context, Result};
@@ -38,13 +39,7 @@ pub fn execute_with_limits(
 
     // Playwright requires spawn (driver+Chromium); macOS Seatbelt blocks it despite allow rules.
     // Only skip sandbox when BOTH: user opts in AND this skill actually uses Playwright.
-    let user_allows_playwright = std::env::var("SKILLBOX_SANDBOX_LEVEL")
-        .map(|s| s.trim() == "2")
-        .unwrap_or(false)
-        || std::env::var("SKILLBOX_ALLOW_PLAYWRIGHT")
-            .map(|s| s.trim() == "1" || s.trim().eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
-    if user_allows_playwright && metadata.uses_playwright() {
+    if security_policy::should_allow_playwright() && metadata.uses_playwright() {
         eprintln!(
             "[INFO] Skill {} uses Playwright; skipping sandbox (SKILLBOX_ALLOW_PLAYWRIGHT/L2)",
             metadata.name
@@ -182,27 +177,26 @@ fn execute_with_sandbox(
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
-    // Check if "*" wildcard is in the outbound list (allow all without proxy)
-    let has_wildcard = metadata.network.outbound.iter()
-        .any(|d| d.trim() == "*");
+    // Resolve network policy from canonical security_policy
+    let network_policy = security_policy::resolve_network_policy(
+        metadata.network.enabled,
+        &metadata.network.outbound,
+    );
 
-    // Start network proxy if network is enabled with filtering (skip if wildcard "*" is present)
-    let proxy_manager = if metadata.network.enabled && !has_wildcard {
-        // Create proxy config based on outbound domains from metadata
-        let proxy_config = if metadata.network.outbound.is_empty() {
-            // No domains specified, block all by default for security
-            ProxyConfig::block_all()
-        } else {
-            ProxyConfig::with_allowed_domains(metadata.network.outbound.clone())
+    // Start network proxy when policy requires domain filtering
+    let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
+        let domains = match &network_policy {
+            ResolvedNetworkPolicy::ProxyFiltered { domains } => domains.clone(),
+            _ => vec![],
         };
-        
+        let proxy_config = ProxyConfig::with_allowed_domains(domains);
         match ProxyManager::new(proxy_config) {
             Ok(mut manager) => {
                 if let Err(e) = manager.start() {
                     eprintln!("[WARN] Failed to start network proxy: {}", e);
                     None
                 } else {
-                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}", 
+                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
                              manager.http_port(), manager.socks5_port());
                     Some(manager)
                 }
@@ -212,7 +206,7 @@ fn execute_with_sandbox(
                 None
             }
         }
-    } else if has_wildcard {
+    } else if security_policy::is_allow_all_network(&network_policy) {
         eprintln!("[INFO] Network access allowed for all domains (wildcard '*' configured)");
         None
     } else {
@@ -222,13 +216,13 @@ fn execute_with_sandbox(
     // Generate sandbox profile with proxy ports if available
     let profile_path = work_dir.join("sandbox.sb");
     let profile_content = generate_sandbox_profile_with_proxy(
-        skill_dir, 
-        env_path, 
-        metadata, 
+        skill_dir,
+        env_path,
+        metadata,
         work_dir,
         proxy_manager.as_ref().and_then(|m| m.http_port()),
         proxy_manager.as_ref().and_then(|m| m.socks5_port()),
-        has_wildcard,  // Pass wildcard flag to allow all network access
+        &network_policy,
     )?;
     fs::write(&profile_path, &profile_content)?;
 
@@ -377,10 +371,10 @@ fn execute_with_sandbox(
 }
 
 /// Generate a Seatbelt sandbox profile for macOS with network proxy support
-/// 
-/// Security controls (using allow-default with explicit deny):
+///
+/// Security controls from canonical security_policy (allow-default with explicit deny):
 /// 1. MANDATORY DENY: Always block writes to shell configs, git hooks, IDE configs, etc.
-/// 2. MOVE PROTECTION: Block file movement to prevent bypass via mv/rename (P0 security fix)
+/// 2. MOVE PROTECTION: Block file movement to prevent bypass via mv/rename (P0)
 /// 3. NETWORK: Route through proxy when enabled, block all when disabled
 /// 4. FILE READ: Block sensitive files (/etc, ~/.ssh, etc.)
 /// 5. FILE WRITE: Block writes outside work directory
@@ -393,20 +387,13 @@ fn generate_sandbox_profile_with_proxy(
     work_dir: &Path,
     http_proxy_port: Option<u16>,
     socks5_proxy_port: Option<u16>,
-    allow_all_network: bool,  // When true, allow all network access without proxy
+    network_policy: &ResolvedNetworkPolicy,
 ) -> Result<String> {
     let skill_dir_str = skill_dir.to_string_lossy();
     let work_dir_str = work_dir.to_string_lossy();
 
-    // L2 = relaxed: after user confirm, keep sandbox but allow .env, git, venv/cache
-    let relaxed = std::env::var("SKILLBOX_SANDBOX_LEVEL")
-        .map(|s| s.trim() == "2")
-        .unwrap_or(false);
-    // Allow Playwright when relaxed (L2) or when explicitly requested (e.g. xiaohongshu-writer HTML screenshot)
-    let allow_playwright = relaxed
-        || std::env::var("SKILLBOX_ALLOW_PLAYWRIGHT")
-            .map(|s| s.trim() == "1" || s.trim().eq_ignore_ascii_case("true"))
-            .unwrap_or(false);
+    let relaxed = security_policy::is_relaxed_mode();
+    let allow_playwright = security_policy::should_allow_playwright();
     
     // Generate unique log tag for this execution (P1: precise violation tracking)
     let command_desc = format!("skill:{}", metadata.name);
@@ -443,61 +430,32 @@ fn generate_sandbox_profile_with_proxy(
     
     // ============================================================
     // SECURITY: Move blocking rules - Prevent bypass via mv/rename (P0)
-    // This prevents attackers from moving protected directories to bypass restrictions
+    // Paths from canonical security_policy::get_move_protection_paths()
     // ============================================================
     profile.push_str("; SECURITY: Move blocking rules (prevents bypass via mv/rename)\n");
     profile.push_str("; Blocks moving/renaming protected paths and their ancestor directories\n");
-    let protected_paths = vec![
-        "~/.ssh".to_string(),
-        "~/.aws".to_string(),
-        "~/.gnupg".to_string(),
-        "~/.kube".to_string(),
-        "~/.docker".to_string(),
-        "~/.git/hooks".to_string(),
-        "~/.bashrc".to_string(),
-        "~/.zshrc".to_string(),
-        "~/.profile".to_string(),
-        "**/.git/hooks".to_string(),
-        "**/.env".to_string(),
-    ];
-    for rule in generate_move_blocking_rules(&protected_paths, &log_tag) {
+    for rule in generate_move_blocking_rules(&security_policy::get_move_protection_paths(), &log_tag) {
         profile.push_str(&rule);
         profile.push('\n');
     }
     profile.push('\n');
 
     // ============================================================
-    // SECURITY: Block sensitive file reads BEFORE allow default
+    // SECURITY: Block sensitive file reads (from security_policy)
     // ============================================================
     profile.push_str("; SECURITY: Block reading sensitive files\n");
-    profile.push_str("(deny file-read* (subpath \"/etc\"))\n");
-    profile.push_str("(deny file-read* (subpath \"/private/etc\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.ssh\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.aws\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.gnupg\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.kube\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.docker\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.config\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.netrc\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.npmrc\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.pypirc\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.bash_history\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.zsh_history\"))\n");
-    profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/Library/Keychains\"))\n");
-    // Relaxed: allow project .env and .git for load_dotenv, git operations
-    if !relaxed {
-        profile.push_str("(deny file-read* (regex #\"/\\.git/\"))\n");
-        profile.push_str("(deny file-read* (regex #\"/\\.env$\"))\n");
-        profile.push_str("(deny file-read* (regex #\"/\\.env\\.[^/]+$\"))\n");
+    for rule in crate::sandbox::seatbelt::generate_seatbelt_sensitive_read_deny_rules(relaxed) {
+        profile.push_str(&rule);
+        profile.push('\n');
     }
     profile.push_str("\n");
     // ============================================================
-    // SECURITY: Network isolation with proxy support
+    // SECURITY: Network isolation with proxy support (from security_policy)
     // ============================================================
-    if !metadata.network.enabled {
+    if security_policy::is_network_blocked(network_policy) {
         profile.push_str("; SECURITY: Network access DISABLED\n");
         profile.push_str("(deny network*)\n\n");
-    } else if allow_all_network {
+    } else if security_policy::is_allow_all_network(network_policy) {
         // Network enabled with wildcard "*" - allow all network access without proxy
         profile.push_str("; SECURITY: Network access ALLOWED (wildcard '*' configured)\n");
         profile.push_str("; All outbound network traffic is permitted\n");
@@ -561,21 +519,10 @@ fn generate_sandbox_profile_with_proxy(
             }
         }
     }
-    profile.push_str("; SECURITY: Block dangerous commands\n");
-    profile.push_str("(deny process-exec (literal \"/bin/bash\"))\n");
-    profile.push_str("(deny process-exec (literal \"/bin/zsh\"))\n");
-    profile.push_str("(deny process-exec (literal \"/bin/sh\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/env\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/curl\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/wget\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/ssh\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/scp\"))\n");
-    if !relaxed {
-        profile.push_str("(deny process-exec (literal \"/usr/bin/git\"))\n");
+    profile.push_str("; SECURITY: Block dangerous commands (from security_policy)\n");
+    for cmd in security_policy::get_process_exec_denylist(relaxed, HomePathStyle::MacOS) {
+        profile.push_str(&format!("(deny process-exec (literal \"{}\"))\n", cmd));
     }
-    profile.push_str("(deny process-exec (literal \"/bin/rm\"))\n");
-    profile.push_str("(deny process-exec (literal \"/bin/chmod\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/osascript\"))\n");
     profile.push_str("\n");
 
     // ============================================================

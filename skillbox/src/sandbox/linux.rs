@@ -4,7 +4,8 @@ use crate::env::builder::{get_node_executable, get_python_executable};
 use crate::sandbox::common::wait_with_timeout;
 use crate::sandbox::executor::{ExecutionResult, ResourceLimits};
 use crate::sandbox::network_proxy::{ProxyConfig, ProxyManager};
-use crate::sandbox::seatbelt::{get_mandatory_deny_rules, MANDATORY_DENY_DIRECTORIES};
+use crate::sandbox::security::policy::{self as security_policy, ResolvedNetworkPolicy};
+use crate::sandbox::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
 use crate::skill::metadata::{detect_language, SkillMetadata};
 use anyhow::{Context, Result};
 use nix::mount::{mount, MsFlags};
@@ -14,23 +15,6 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use tempfile::TempDir;
-
-/// Generate blacklist arguments for firejail based on mandatory deny rules
-fn generate_firejail_blacklist_args() -> Vec<String> {
-    let mut args = Vec::new();
-
-    for rule in get_mandatory_deny_rules() {
-        let path = if rule.pattern.starts_with('/') {
-            rule.pattern.clone()
-        } else {
-            format!("~/{}", rule.pattern)
-        };
-
-        args.push(format!("--blacklist={}", path));
-    }
-
-    args
-}
 
 /// Execute a skill in a Linux sandbox
 /// Sandbox is enabled by default. Set SKILLBOX_NO_SANDBOX=1 to disable.
@@ -297,23 +281,26 @@ fn execute_with_bwrap(
     work_dir: &Path,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    // Start network proxy if network is enabled with filtering
-    let proxy_manager = if metadata.network.enabled {
-        // Create proxy config based on outbound domains from metadata
-        let proxy_config = if metadata.network.outbound.is_empty() {
-            // No domains specified, block all by default for security
-            ProxyConfig::block_all()
-        } else {
-            ProxyConfig::with_allowed_domains(metadata.network.outbound.clone())
+    // Resolve network policy from canonical security_policy (aligns with macOS)
+    let network_policy = security_policy::resolve_network_policy(
+        metadata.network.enabled,
+        &metadata.network.outbound,
+    );
+
+    // Start network proxy when policy requires domain filtering
+    let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
+        let domains = match &network_policy {
+            ResolvedNetworkPolicy::ProxyFiltered { domains } => domains.clone(),
+            _ => vec![],
         };
-        
+        let proxy_config = ProxyConfig::with_allowed_domains(domains);
         match ProxyManager::new(proxy_config) {
             Ok(mut manager) => {
                 if let Err(e) = manager.start() {
                     eprintln!("[WARN] Failed to start network proxy: {}", e);
                     None
                 } else {
-                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}", 
+                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
                              manager.http_port(), manager.socks5_port());
                     Some(manager)
                 }
@@ -323,6 +310,9 @@ fn execute_with_bwrap(
                 None
             }
         }
+    } else if security_policy::is_allow_all_network(&network_policy) {
+        eprintln!("[INFO] Network access allowed for all domains (wildcard '*' configured)");
+        None
     } else {
         None
     };
@@ -358,10 +348,7 @@ fn execute_with_bwrap(
         cmd.args(["--ro-bind", &env_path_str, &env_path_str]);
     }
     
-    // L2: also mount ~/.cache (runtime cache sibling to env_path)
-    let relaxed = std::env::var("SKILLBOX_SANDBOX_LEVEL")
-        .map(|s| s.trim() == "2")
-        .unwrap_or(false);
+    let relaxed = security_policy::is_relaxed_mode();
     if relaxed {
         if let Ok(home) = std::env::var("HOME") {
             let cache = std::path::Path::new(&home).join(".cache");
@@ -382,13 +369,10 @@ fn execute_with_bwrap(
     // Create /proc (needed for Python)
     cmd.args(["--proc", "/proc"]);
     
-    // Network isolation - if proxy is available, share network but route through proxy
-    if metadata.network.enabled && proxy_manager.is_some() {
-        cmd.args(["--share-net"]);
-    } else if !metadata.network.enabled {
+    // Network isolation (from security_policy - aligns with macOS)
+    if security_policy::is_network_blocked(&network_policy) {
         cmd.args(["--unshare-net"]);
     } else {
-        eprintln!("[WARN] Network enabled without proxy filtering");
         cmd.args(["--share-net"]);
     }
     
@@ -542,23 +526,24 @@ fn execute_with_firejail(
     work_dir: &Path,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    // Start network proxy if network is enabled with filtering
-    let proxy_manager = if metadata.network.enabled {
-        // Create proxy config based on outbound domains from metadata
-        let proxy_config = if metadata.network.outbound.is_empty() {
-            // No domains specified, block all by default for security
-            ProxyConfig::block_all()
-        } else {
-            ProxyConfig::with_allowed_domains(metadata.network.outbound.clone())
+    let network_policy = security_policy::resolve_network_policy(
+        metadata.network.enabled,
+        &metadata.network.outbound,
+    );
+
+    let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
+        let domains = match &network_policy {
+            ResolvedNetworkPolicy::ProxyFiltered { domains } => domains.clone(),
+            _ => vec![],
         };
-        
+        let proxy_config = ProxyConfig::with_allowed_domains(domains);
         match ProxyManager::new(proxy_config) {
             Ok(mut manager) => {
                 if let Err(e) = manager.start() {
                     eprintln!("[WARN] Failed to start network proxy: {}", e);
                     None
                 } else {
-                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}", 
+                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
                              manager.http_port(), manager.socks5_port());
                     Some(manager)
                 }
@@ -568,6 +553,9 @@ fn execute_with_firejail(
                 None
             }
         }
+    } else if security_policy::is_allow_all_network(&network_policy) {
+        eprintln!("[INFO] Network access allowed for all domains (wildcard '*' configured)");
+        None
     } else {
         None
     };
@@ -603,16 +591,13 @@ fn execute_with_firejail(
         cmd.args([&format!("--read-only={}", env_path_str)]);
     }
     
-    // Network isolation - if proxy is available, keep network but route through proxy
-    if !metadata.network.enabled {
+    // Network isolation (from security_policy - aligns with macOS)
+    if security_policy::is_network_blocked(&network_policy) {
         cmd.args(["--net=none"]);
     } else if proxy_manager.is_some() {
-        // Network enabled with proxy - firejail will use host network
-        // but traffic will be routed through our proxy via environment variables
         eprintln!("[INFO] Network enabled with proxy filtering");
     } else {
-        // Network enabled but no proxy - log warning
-        eprintln!("[WARN] Network enabled without proxy filtering");
+        eprintln!("[INFO] Network enabled (wildcard or direct)");
     }
     
     // Block sensitive directories using mandatory deny list from security module

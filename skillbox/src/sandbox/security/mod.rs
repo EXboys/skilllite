@@ -1,12 +1,19 @@
-//! Security scanning module for skillbox
+//! Security module for skillbox
 //!
-//! This module provides security scanning capabilities for scripts before execution.
-//! It includes:
+//! Two complementary layers:
 //!
+//! - **Static scanning** (scanner, rules, default_rules): Pre-execution analysis
+//!   of script source to detect dangerous patterns (eval, subprocess, etc.)
+//!
+//! - **Runtime policy** (policy): Sandbox isolation rules — deny paths, process
+//!   denylist, network policy — translated by macOS/Linux into Seatbelt/bwrap
+//!
+//! Submodules:
 //! - **types**: Core type definitions (SecurityIssue, SecuritySeverity, etc.)
 //! - **rules**: Rule definitions and configuration loading
 //! - **default_rules**: Built-in security rules for Python and JavaScript
 //! - **scanner**: The main ScriptScanner implementation
+//! - **policy**: Canonical sandbox runtime policy (paths, processes, network)
 //!
 //! # Example
 //!
@@ -40,6 +47,7 @@
 //! ```
 
 pub mod default_rules;
+pub mod policy;
 pub mod rules;
 pub mod scanner;
 pub mod types;

@@ -2,8 +2,8 @@ pub mod common;
 pub mod executor;
 pub mod move_protection;
 pub mod network_proxy;
-pub mod seatbelt;
 pub mod security;
+pub mod seatbelt;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
