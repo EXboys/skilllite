@@ -203,12 +203,12 @@ pub fn run_in_sandbox_with_limits_and_level(
     limits: ResourceLimits,
     level: SandboxLevel,
 ) -> Result<String> {
-    eprintln!("[INFO] Sandbox Level: {:?} ({})", level, match level {
+    crate::info_log!("[INFO] Sandbox Level: {:?} ({})", level, match level {
         SandboxLevel::Level1 => "No sandbox - direct execution",
         SandboxLevel::Level2 => "Sandbox isolation only",
         SandboxLevel::Level3 => "Sandbox isolation + static code scanning",
     });
-    eprintln!("[INFO] execute_sandbox start...");
+    crate::info_log!("[INFO] execute_sandbox start...");
 
     // Level 3: Perform static code scanning
     if level.use_code_scanning() {

@@ -45,6 +45,16 @@ CALCULATOR_SKILL = SKILLS_DIR / "calculator"
 # SkillBox binary path
 SKILLBOX_BIN = shutil.which("skillbox") or str(PROJECT_ROOT / "skillbox" / "target" / "release" / "skillbox")
 
+# Add skilllite-sdk for IPC executor (uses skillbox serve --stdio daemon)
+sys.path.insert(0, str(PROJECT_ROOT / "skilllite-sdk"))
+
+# Load .env if available (SKILLBOX_QUIET, etc.)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(PROJECT_ROOT / ".env")
+except ImportError:
+    pass
+
 
 @dataclass
 class BenchmarkResult:
@@ -256,9 +266,11 @@ class SkillBoxExecutor(BaseExecutor):
         if self.measure_memory and self.resource_monitor:
             # Measure memory usage
             try:
+                skillbox_env = {"SKILLBOX_QUIET": "1"}
                 elapsed_ms, success, stdout, stderr, memory_kb = self.resource_monitor.get_peak_memory_kb(
                     [self.skillbox_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
-                    timeout=30
+                    timeout=30,
+                    env=skillbox_env
                 )
                 return BenchmarkResult(
                     executor_name=self.name,
@@ -284,6 +296,7 @@ class SkillBoxExecutor(BaseExecutor):
                 # Set environment variable to pass sandbox level
                 env = os.environ.copy()
                 env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
+                env["SKILLBOX_QUIET"] = "1"  # Suppress [INFO] to avoid perf impact
                 
                 # Use --sandbox-level CLI argument (takes precedence over env var)
                 result = subprocess.run(
@@ -320,6 +333,85 @@ class SkillBoxExecutor(BaseExecutor):
                     error=str(e)
                 )
 
+
+class SkillBoxIPCExecutor(BaseExecutor):
+    """
+    SkillBox via skilllite-sdk with IPC (skillbox serve --stdio daemon).
+    
+    Uses the same binary as SkillBoxExecutor but keeps a warm daemon process,
+    communicating via JSON-RPC over stdin/stdout. This avoids cold-start
+    overhead on each request (documented ~120-150ms -> ~10-30ms for IPC).
+    
+    Compare with SkillBoxExecutor (subprocess) to see IPC speedup.
+    """
+
+    def __init__(self, skill_dir: Path = CALCULATOR_SKILL, sandbox_level: Optional[int] = None, measure_memory: bool = False):
+        self.skill_dir = skill_dir
+        self.sandbox_level = sandbox_level or int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
+        self.name = f"SkillBox IPC (Level {self.sandbox_level})"
+        self._executor = None
+        self.measure_memory = measure_memory
+
+    def setup(self) -> None:
+        # Ensure IPC is enabled (default, but explicit for benchmark clarity)
+        os.environ["SKILLBOX_USE_IPC"] = "1"
+        # Suppress [INFO] logs from skillbox (daemon and subprocess fallback)
+        os.environ["SKILLBOX_QUIET"] = "1"
+        try:
+            from skilllite.sandbox.skillbox.executor import SkillboxExecutor
+            self._executor = SkillboxExecutor(
+                binary_path=SKILLBOX_BIN,
+                sandbox_level=str(self.sandbox_level),
+            )
+        except ImportError as e:
+            raise RuntimeError(
+                f"Cannot import skilllite for IPC benchmark: {e}. "
+                "Ensure skilllite-sdk is in project root and install deps: pip install -e skilllite-sdk"
+            ) from e
+
+    def teardown(self) -> None:
+        if self._executor and hasattr(self._executor, "_ipc_client") and self._executor._ipc_client:
+            try:
+                self._executor._ipc_client.close()
+            except Exception:
+                pass
+            self._executor._ipc_client = None
+
+    def execute(self, input_json: str) -> BenchmarkResult:
+        if self._executor is None:
+            return BenchmarkResult(
+                executor_name=self.name, success=False, latency_ms=0,
+                error="Executor not initialized (call setup first)"
+            )
+        input_data = json.loads(input_json)
+        start_time = time.perf_counter()
+        memory_kb = 0.0
+        try:
+            result = self._executor.execute(
+                skill_dir=Path(self.skill_dir),
+                input_data=input_data,
+                allow_network=False,
+            )
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            if self.measure_memory and result.success and self._executor._ipc_client:
+                memory_kb = self._executor._ipc_client.get_peak_daemon_memory_kb()
+            return BenchmarkResult(
+                executor_name=self.name,
+                success=result.success,
+                latency_ms=latency_ms,
+                stdout=result.stdout or "",
+                stderr=result.stderr or "",
+                error=result.error,
+                memory_kb=memory_kb,
+            )
+        except Exception as e:
+            latency_ms = (time.perf_counter() - start_time) * 1000
+            return BenchmarkResult(
+                executor_name=self.name,
+                success=False,
+                latency_ms=latency_ms,
+                error=str(e),
+            )
 
 
 class DockerExecutor(BaseExecutor):
@@ -1390,6 +1482,48 @@ def run_cold_start_benchmark(executor: BaseExecutor, input_json: str, iterations
     return {"executor": executor.name, "error": "All iterations failed"}
 
 
+def print_cold_start_comparison_table(cold_start_results: List[Dict]) -> None:
+    """Print cold start benchmark comparison table."""
+    if not cold_start_results:
+        return
+    valid_results = [r for r in cold_start_results if "avg_ms" in r]
+    if not valid_results:
+        return
+    print("\n" + "=" * 90)
+    print("COLD START BENCHMARK COMPARISON")
+    print("=" * 90)
+    headers = ["Executor", "Success%", "Avg(ms)", "Min(ms)", "P50(ms)", "P95(ms)", "Max(ms)"]
+    widths = [35, 10, 10, 10, 10, 10, 10]
+    header_line = " | ".join(h.ljust(w) for h, w in zip(headers, widths))
+    print(header_line)
+    print("-" * len(header_line))
+    sorted_results = sorted(valid_results, key=lambda r: r["avg_ms"])
+    for r in sorted_results:
+        success_rate = f"{r['successful'] * 100 // max(1, r.get('iterations', 1))}%"
+        row = [
+            r["executor"][:35],
+            success_rate,
+            f"{r['avg_ms']:.1f}",
+            f"{r['min_ms']:.1f}",
+            f"{r['p50_ms']:.1f}",
+            f"{r['p95_ms']:.1f}",
+            f"{r['max_ms']:.1f}",
+        ]
+        print(" | ".join(str(v).ljust(w) for v, w in zip(row, widths)))
+    for r in cold_start_results:
+        if "error" in r:
+            print(f"  {r['executor']}: FAILED - {r['error']}")
+    print("=" * 90)
+    if len(valid_results) >= 2:
+        baseline = sorted_results[0]
+        baseline_avg = baseline.get("avg_ms", 0)
+        if baseline_avg > 0:
+            print(f"\nCold Start Performance (baseline: {baseline['executor']}):")
+            for r in sorted_results[1:]:
+                ratio = r["avg_ms"] / baseline_avg
+                print(f"  {r['executor']}: {ratio:.2f}x slower than baseline")
+
+
 def generate_test_input() -> str:
     """Generate test input"""
     return json.dumps({
@@ -1473,6 +1607,9 @@ def main():
                              "Can also be set via SKILLBOX_SANDBOX_LEVEL env var")
     parser.add_argument("--compare-levels", action="store_true",
                         help="Compare performance across all sandbox levels (1, 2, 3)")
+    parser.add_argument("--compare-ipc", action="store_true",
+                        help="Include SkillBox IPC (daemon mode) to compare with subprocess. "
+                             "Shows real IPC speedup vs SkillBox subprocess.")
     
     args = parser.parse_args()
     
@@ -1490,23 +1627,31 @@ def main():
     print(f"  SkillBox Binary: {SKILLBOX_BIN}")
     print(f"  Test Skill: {CALCULATOR_SKILL}")
     
+    measure_mem = args.compare_levels
     if args.compare_levels:
         print(f"  Mode: Compare all sandbox levels (1, 2, 3)")
         print(f"  Memory measurement: Enabled")
-        # Test all security levels with memory measurement
+        # Test all security levels with memory measurement (subprocess)
         executors = [
             SkillBoxExecutor(sandbox_level=1, measure_memory=True),
             SkillBoxExecutor(sandbox_level=2, measure_memory=True),
             SkillBoxExecutor(sandbox_level=3, measure_memory=True),
         ]
+        if args.compare_ipc:
+            executors.extend([
+                SkillBoxIPCExecutor(sandbox_level=1, measure_memory=True),
+                SkillBoxIPCExecutor(sandbox_level=2, measure_memory=True),
+                SkillBoxIPCExecutor(sandbox_level=3, measure_memory=True),
+            ])
+            print(f"  IPC comparison: Enabled (SkillBox IPC L1/L2/L3)")
     else:
         print(f"  Sandbox Level: {sandbox_level}")
         executors = [
             SkillBoxExecutor(sandbox_level=sandbox_level, measure_memory=False),
         ]
-    
-    # Enable memory measurement for all executors when comparing levels
-    measure_mem = args.compare_levels
+        if args.compare_ipc:
+            executors.append(SkillBoxIPCExecutor(sandbox_level=sandbox_level, measure_memory=measure_mem))
+            print(f"  IPC comparison: Enabled (SkillBox IPC)")
     
     if not args.skip_srt:
         executors.append(SRTExecutor(measure_memory=measure_mem))
@@ -1537,6 +1682,7 @@ def main():
         for executor in executors:
             result = run_cold_start_benchmark(executor, input_json, args.cold_iterations)
             cold_start_results.append(result)
+        print_cold_start_comparison_table(cold_start_results)
     
     print("\n" + "=" * 60)
     print("HIGH CONCURRENCY BENCHMARK")

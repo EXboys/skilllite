@@ -128,4 +128,12 @@ pub enum Commands {
         #[arg(long, default_value = "false")]
         json: bool,
     },
+
+    /// Run as IPC daemon - read JSON-RPC requests from stdin, write responses to stdout
+    /// Used by Python SDK when SKILLBOX_USE_IPC=1. One JSON-RPC request per line.
+    Serve {
+        /// Use stdio for IPC (default, for subprocess daemon)
+        #[arg(long, default_value = "true")]
+        stdio: bool,
+    },
 }

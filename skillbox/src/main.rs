@@ -5,15 +5,21 @@ mod env;
 mod sandbox;
 mod skill;
 
-use anyhow::Result;
-use std::io::Read;
+use anyhow::{Context, Result};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use clap::Parser;
 use cli::{Cli, Commands};
+use serde_json::{json, Value};
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Serve { stdio } => {
+            if stdio {
+                serve_stdio()?;
+            }
+        }
         Commands::Run {
             skill_dir,
             input_json,
@@ -81,6 +87,137 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// IPC daemon: read JSON-RPC requests from stdin (one per line), write responses to stdout.
+/// Request: {"jsonrpc":"2.0","id":1,"method":"run"|"exec","params":{...}}
+/// Response: {"jsonrpc":"2.0","id":1,"result":{...}} or {"jsonrpc":"2.0","id":1,"error":{...}}
+fn serve_stdio() -> Result<()> {
+    // Suppress info logs in daemon mode (benchmark, etc.)
+    std::env::set_var("SKILLBOX_AUTO_APPROVE", "1");
+    std::env::set_var("SKILLBOX_QUIET", "1");
+
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+    let reader = BufReader::new(stdin.lock());
+
+    for line in reader.lines() {
+        let line = line.context("Failed to read stdin")?;
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        let request: Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(e) => {
+                let err_resp = json!({
+                    "jsonrpc": "2.0",
+                    "id": null,
+                    "error": {"code": -32700, "message": format!("Parse error: {}", e)}
+                });
+                writeln!(stdout, "{}", err_resp)?;
+                stdout.flush()?;
+                continue;
+            }
+        };
+
+        let id = request.get("id").cloned().unwrap_or(Value::Null);
+        let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
+        let params = request.get("params").cloned().unwrap_or(Value::Object(serde_json::Map::new()));
+
+        let result = match method {
+            "run" => handle_run(&params),
+            "exec" => handle_exec(&params),
+            _ => {
+                let err_resp = json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {"code": -32601, "message": format!("Method not found: {}", method)}
+                });
+                writeln!(stdout, "{}", err_resp)?;
+                stdout.flush()?;
+                continue;
+            }
+        };
+
+        match result {
+            Ok(res) => {
+                let resp = json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "result": res
+                });
+                writeln!(stdout, "{}", resp)?;
+            }
+            Err(e) => {
+                let err_resp = json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": {"code": -32603, "message": e.to_string()}
+                });
+                writeln!(stdout, "{}", err_resp)?;
+            }
+        }
+        stdout.flush()?;
+    }
+
+    Ok(())
+}
+
+fn handle_run(params: &Value) -> Result<Value> {
+    let p = params.as_object().context("params must be object")?;
+    let skill_dir = p.get("skill_dir").and_then(|v| v.as_str()).context("skill_dir required")?;
+    let input_json = p.get("input_json").and_then(|v| v.as_str()).context("input_json required")?;
+    let allow_network = p.get("allow_network").and_then(|v| v.as_bool()).unwrap_or(false);
+    let cache_dir = p.get("cache_dir").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let cache_dir_ref = cache_dir.as_ref();
+    let max_memory = p.get("max_memory").and_then(|v| v.as_u64());
+    let timeout = p.get("timeout").and_then(|v| v.as_u64());
+    let sandbox_level = p.get("sandbox_level").and_then(|v| v.as_u64()).map(|u| u as u8);
+
+    let sandbox_level = sandbox::executor::SandboxLevel::from_env_or_cli(sandbox_level);
+    let limits = sandbox::executor::ResourceLimits::from_env()
+        .with_cli_overrides(max_memory, timeout);
+
+    let output = run_skill(skill_dir, input_json, allow_network, cache_dir_ref, limits, sandbox_level)?;
+    Ok(json!({
+        "output": output,
+        "exit_code": 0
+    }))
+}
+
+fn handle_exec(params: &Value) -> Result<Value> {
+    let p = params.as_object().context("params must be object")?;
+    let skill_dir = p.get("skill_dir").and_then(|v| v.as_str()).context("skill_dir required")?;
+    let script_path = p.get("script_path").and_then(|v| v.as_str()).context("script_path required")?;
+    let input_json = p.get("input_json").and_then(|v| v.as_str()).context("input_json required")?;
+    let args = p.get("args").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let allow_network = p.get("allow_network").and_then(|v| v.as_bool()).unwrap_or(false);
+    let cache_dir = p.get("cache_dir").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let cache_dir_ref = cache_dir.as_ref();
+    let max_memory = p.get("max_memory").and_then(|v| v.as_u64());
+    let timeout = p.get("timeout").and_then(|v| v.as_u64());
+    let sandbox_level = p.get("sandbox_level").and_then(|v| v.as_u64()).map(|u| u as u8);
+
+    let sandbox_level = sandbox::executor::SandboxLevel::from_env_or_cli(sandbox_level);
+    let limits = sandbox::executor::ResourceLimits::from_env()
+        .with_cli_overrides(max_memory, timeout);
+
+    let output = exec_script(
+        skill_dir,
+        script_path,
+        input_json,
+        args.as_ref(),
+        allow_network,
+        cache_dir_ref,
+        limits,
+        sandbox_level,
+    )?;
+    Ok(json!({
+        "output": output,
+        "exit_code": 0
+    }))
+}
+
 fn run_skill(
     skill_dir: &str,
     input_json: &str,
@@ -106,9 +243,9 @@ fn run_skill(
         .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
 
     // 3. Setup environment (venv/node_modules)
-    eprintln!("[INFO] ensure_environment start...");
+    info_log!("[INFO] ensure_environment start...");
     let env_path = env::builder::ensure_environment(skill_path, &metadata, cache_dir.map(|s| s.as_str()))?;
-    eprintln!("[INFO] ensure_environment done");
+    info_log!("[INFO] ensure_environment done");
 
     // 4. Apply CLI overrides and execute in sandbox
     let mut effective_metadata = metadata;

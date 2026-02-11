@@ -49,6 +49,10 @@ High-concurrency performance comparison test suite for comparing SkillBox with o
 ### Optional Dependencies (for complete comparison testing)
 
 ```bash
+# Install psutil for SkillBox IPC 内存统计（--compare-ipc 时显示 Avg(MB)/Peak(MB)）
+pip install -r requirements.txt
+# 或单独: pip install psutil
+
 # Install SRT (Anthropic Sandbox Runtime)
 npm install -g @anthropic-ai/sandbox-runtime
 
@@ -63,32 +67,56 @@ npm install pyodide
 
 ## Quick Start
 
+**两种运行方式（二选一）：**
+
 ```bash
-# Basic test (100 requests, 10 concurrent)
-./run_benchmark.sh
+# 方式 1：从项目根目录
+cd /path/to/skillLite
+./benchmark/run_benchmark.sh                    # 基础测试
+python benchmark/benchmark_runner.py -n 100 -c 10  # 或直接用 Python
 
-# High-concurrency test (500 requests, 50 concurrent)
-./run_benchmark.sh -n 500 -c 50
+# 方式 2：从 benchmark 目录
+cd /path/to/skillLite/benchmark
+./run_benchmark.sh                             # 基础测试
+python benchmark_runner.py -n 100 -c 10       # 注意：在 benchmark 目录下不需要 benchmark/ 前缀
+```
 
-# Include cold start test
-./run_benchmark.sh --cold-start
+**注意**：已在 benchmark 目录时，不要再 `cd benchmark`（会报错 no such file）。直接用 `python benchmark_runner.py` 即可。
 
-# Skip Docker test
+```bash
+# 完整测试（含 IPC 对比、内存统计）
+./run_benchmark.sh --compare-levels --compare-ipc
+# 或
+python benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
+
+# 冷启动对比测试（每次迭代 setup -> execute -> teardown，模拟冷启动）
+python benchmark_runner.py --cold-start --compare-levels --compare-ipc
+python benchmark_runner.py --cold-start --cold-iterations 20 --compare-ipc  # 自定义迭代次数
+
+# 跳过 Docker / 其他
 ./run_benchmark.sh --skip-docker
-
-# Save results to file
 ./run_benchmark.sh -o results.json
 ```
 
-## Using Python Directly
+### 冷启动 vs 高并发
 
-```bash
-# Basic test
-python benchmark_runner.py -n 100 -c 10
+| 测试类型 | 说明 | 适用场景 |
+|----------|------|----------|
+| **冷启动** (`--cold-start`) | 每次迭代销毁并重建 executor（IPC daemon 会关闭），输出**冷启动对比表** | 比较首请求延迟、IPC 与 CMD 冷启动差异 |
+| **高并发** | 保持 warm 状态，多请求并发执行，输出**性能对比表** | 比较吞吐量、P50/P95/P99 延迟 |
 
-# Complete test
-python benchmark_runner.py -n 500 -c 50 --cold-start -o results.json
-```
+冷启动测试结束后会输出 `COLD START BENCHMARK COMPARISON` 表格，包含各 Executor 的 Avg/Min/P50/P95/Max 及相对 baseline 的倍数。
+
+### 关于 CMD vs IPC 性能
+
+- **高并发 warm 场景**：CMD（subprocess）与 IPC 性能接近，甚至 CMD 可能略快。原因：短任务（~100ms）下，进程创建开销（~15ms）与 IPC 的 JSON/pipe 开销（~10ms）相当。
+- **冷启动场景**：IPC 优势明显——daemon 常驻避免每次 fork/exec，首次请求延迟更低。
+- 使用 `--cold-start --compare-ipc` 可直观对比。
+
+### 关于 [INFO] 日志
+
+- **CMD (SkillBox subprocess)**：使用 `capture_output=True`，skillbox 的 stderr 被捕获，终端不显示 [INFO]；同时 benchmark 会传入 `SKILLBOX_QUIET=1`，减少日志与 syscall 开销。
+- **IPC (skillbox serve)**：daemon 启动时设置 `SKILLBOX_QUIET=1`，`serve_stdio` 也会强制设置，所以运行中不再输出 [INFO]，避免影响性能测试。
 
 ---
 
@@ -127,10 +155,12 @@ python benchmark_runner.py -n 500 -c 50 --cold-start -o results.json
 |------|------|------|--------|
 | `--requests` | `-n` | Total number of requests | 100 |
 | `--concurrency` | `-c` | Concurrency level | 10 |
-| `--cold-start` | - | Run cold start test | false |
+| `--cold-start` | - | Run cold start test (outputs comparison table) | false |
 | `--cold-iterations` | - | Cold start iterations | 10 |
+| `--compare-levels` | - | Compare all sandbox levels (1, 2, 3) | false |
+| `--compare-ipc` | - | Include SkillBox IPC (daemon mode) vs subprocess | false |
 | `--skip-docker` | - | Skip Docker test | false |
-| `--output` | `-o` | Output JSON file | - |
+| `--output` | `-o` | Output JSON file (includes cold_start_results) | - |
 
 ## Test Cases
 

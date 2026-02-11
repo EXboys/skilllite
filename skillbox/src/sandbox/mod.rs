@@ -1,4 +1,5 @@
 pub mod common;
+pub mod log;
 pub mod executor;
 pub mod move_protection;
 pub mod network_proxy;

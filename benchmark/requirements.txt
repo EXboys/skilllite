@@ -1,0 +1,3 @@
+# Optional: for SkillBox IPC memory stats (Avg(MB)/Peak(MB) in --compare-ipc)
+# Without psutil, IPC executors show N/A for memory
+psutil

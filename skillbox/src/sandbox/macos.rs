@@ -33,21 +33,21 @@ pub fn execute_with_limits(
     // Check if sandbox is explicitly disabled
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
-        eprintln!("[INFO] using simple execution (no sandbox-exec)");
+        crate::info_log!("[INFO] using simple execution (no sandbox-exec)");
         return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
     }
 
     // Playwright requires spawn (driver+Chromium); macOS Seatbelt blocks it despite allow rules.
     // Only skip sandbox when BOTH: user opts in AND this skill actually uses Playwright.
     if security_policy::should_allow_playwright() && metadata.uses_playwright() {
-        eprintln!(
+        crate::info_log!(
             "[INFO] Skill {} uses Playwright; skipping sandbox (SKILLBOX_ALLOW_PLAYWRIGHT/L2)",
             metadata.name
         );
         return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
     }
     
-    eprintln!("[INFO] using sandbox-exec (Seatbelt)...");
+    crate::info_log!("[INFO] using sandbox-exec (Seatbelt)...");
     // Use sandbox-exec with Seatbelt for system-level isolation
     // Falls back to simple execution if sandbox-exec fails
     match execute_with_sandbox(skill_dir, env_path, metadata, input_json, limits) {
@@ -68,7 +68,7 @@ pub fn execute_simple_with_limits(
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    eprintln!("[INFO] simple: executing {}...", metadata.entry_point);
+    crate::info_log!("[INFO] simple: executing {}...", metadata.entry_point);
     let language = detect_language(skill_dir, metadata);
     
     // Use relative entry_point since we set current_dir to skill_dir
@@ -131,9 +131,9 @@ pub fn execute_simple_with_limits(
     }
 
     // Spawn the process
-    eprintln!("[INFO] simple: spawning skill process...");
+    crate::info_log!("[INFO] simple: spawning skill process...");
     let mut child = cmd.spawn().with_context(|| "Failed to spawn skill process")?;
-    eprintln!("[INFO] simple: writing stdin...");
+    crate::info_log!("[INFO] simple: writing stdin...");
 
     // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
@@ -141,7 +141,7 @@ pub fn execute_simple_with_limits(
             .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
-    eprintln!("[INFO] simple: waiting for child (timeout {}s)...", limits.timeout_secs);
+    crate::info_log!("[INFO] simple: waiting for child (timeout {}s)...", limits.timeout_secs);
 
     // Wait with resource limits
     let memory_limit_bytes = limits.max_memory_bytes();
@@ -196,7 +196,7 @@ fn execute_with_sandbox(
                     eprintln!("[WARN] Failed to start network proxy: {}", e);
                     None
                 } else {
-                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
+                    crate::info_log!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
                              manager.http_port(), manager.socks5_port());
                     Some(manager)
                 }
@@ -207,7 +207,7 @@ fn execute_with_sandbox(
             }
         }
     } else if security_policy::is_allow_all_network(&network_policy) {
-        eprintln!("[INFO] Network access allowed for all domains (wildcard '*' configured)");
+        crate::info_log!("[INFO] Network access allowed for all domains (wildcard '*' configured)");
         None
     } else {
         None
@@ -331,9 +331,9 @@ fn execute_with_sandbox(
     }
 
     // Spawn the process
-    eprintln!("[INFO] sandbox-exec: spawning...");
+    crate::info_log!("[INFO] sandbox-exec: spawning...");
     let mut child = cmd.spawn().with_context(|| "Failed to spawn sandbox-exec")?;
-    eprintln!("[INFO] sandbox-exec: writing stdin...");
+    crate::info_log!("[INFO] sandbox-exec: writing stdin...");
 
     // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
@@ -341,7 +341,7 @@ fn execute_with_sandbox(
             .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
-    eprintln!("[INFO] sandbox-exec: waiting for child (timeout {}s)...", limits.timeout_secs);
+    crate::info_log!("[INFO] sandbox-exec: waiting for child (timeout {}s)...", limits.timeout_secs);
 
     // Wait with timeout and memory monitoring
     let memory_limit_bytes = limits.max_memory_bytes();

@@ -28,6 +28,7 @@ SKIP_DOCKER=${SKIP_DOCKER:-false}
 OUTPUT_FILE=""
 SANDBOX_LEVEL=""
 COMPARE_LEVELS=${COMPARE_LEVELS:-false}
+COMPARE_IPC=${COMPARE_IPC:-false}
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -60,6 +61,10 @@ while [[ $# -gt 0 ]]; do
             COMPARE_LEVELS=true
             shift
             ;;
+        --compare-ipc)
+            COMPARE_IPC=true
+            shift
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -74,6 +79,7 @@ while [[ $# -gt 0 ]]; do
             echo "                         3 = Sandbox + static code scan (default)"
             echo "                         Can also be set via SKILLBOX_SANDBOX_LEVEL env var"
             echo "  --compare-levels       Compare performance across all sandbox levels"
+            echo "  --compare-ipc          Include SkillBox IPC vs subprocess comparison"
             echo "  -o, --output FILE      Output JSON file"
             echo "  -h, --help             Show this help"
             echo ""
@@ -136,6 +142,13 @@ fi
 if [ "$COMPARE_LEVELS" = true ]; then
     CMD_ARGS="$CMD_ARGS --compare-levels"
 fi
+
+if [ "$COMPARE_IPC" = true ]; then
+    CMD_ARGS="$CMD_ARGS --compare-ipc"
+fi
+
+# Suppress skillbox [INFO] logs when running benchmark (IPC daemon mode)
+export SKILLBOX_QUIET=1
 
 # Run benchmark
 echo -e "${BLUE}Running benchmark with: $CMD_ARGS${NC}"

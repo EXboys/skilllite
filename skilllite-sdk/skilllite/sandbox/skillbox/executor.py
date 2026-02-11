@@ -28,6 +28,7 @@ from ..config import (
 )
 from ..utils import convert_json_to_cli_args, extract_json_from_output, format_sandbox_error
 from .binary import find_binary, ensure_installed, _get_search_locations
+from .ipc_client import SkillboxIPCClient, SkillboxIPCClientPool, _use_ipc
 
 
 class SkillboxExecutor(SandboxExecutor):
@@ -89,6 +90,7 @@ class SkillboxExecutor(SandboxExecutor):
         self.execution_timeout = self._config.execution_timeout
         self.max_memory_mb = self._config.max_memory_mb
         self.sandbox_level = self._config.sandbox_level
+        self._ipc_client: Optional[SkillboxIPCClientPool] = None
     
     def _find_binary(self, auto_install: bool = False) -> str:
         """
@@ -141,7 +143,158 @@ class SkillboxExecutor(SandboxExecutor):
     def name(self) -> str:
         """Return the name of this sandbox implementation."""
         return "skillbox"
-    
+
+    def _get_ipc_client(self) -> SkillboxIPCClientPool:
+        """Get or create IPC client pool (lazy init). Pool enables concurrent requests."""
+        if self._ipc_client is None:
+            self._ipc_client = SkillboxIPCClientPool(
+                binary_path=self.binary_path,
+                cache_dir=self.cache_dir,
+            )
+        return self._ipc_client
+
+    def _execute_via_ipc(
+        self,
+        skill_dir: Path,
+        input_data: Dict[str, Any],
+        allow_network: bool,
+        timeout: Optional[int],
+    ) -> ExecutionResult:
+        """Execute run via IPC daemon. Fallback to subprocess on failure."""
+        try:
+            client = self._get_ipc_client()
+            result = client.run(
+                skill_dir=str(skill_dir),
+                input_json=json.dumps(input_data, ensure_ascii=False),
+                allow_network=allow_network,
+                cache_dir=self.cache_dir,
+                timeout=timeout or self.execution_timeout,
+                max_memory=self.max_memory_mb,
+                sandbox_level=self.sandbox_level,
+            )
+            output_str = result.get("output", "")
+            exit_code = result.get("exit_code", 0)
+            return self._parse_output(output_str, "", exit_code)
+        except Exception:
+            # Fallback to subprocess on IPC failure
+            return self._execute_via_subprocess_run(skill_dir, input_data, allow_network, timeout)
+
+    def _exec_script_via_ipc(
+        self,
+        skill_dir: Path,
+        script_path: str,
+        input_data: Dict[str, Any],
+        args: Optional[list],
+        allow_network: bool,
+        timeout: Optional[int],
+    ) -> ExecutionResult:
+        """Execute exec via IPC daemon. Fallback to subprocess on failure."""
+        try:
+            client = self._get_ipc_client()
+            args_str = " ".join(args) if args else None
+            result = client.exec_cmd(
+                skill_dir=str(skill_dir),
+                script_path=script_path,
+                input_json=json.dumps(input_data, ensure_ascii=False),
+                args=args_str,
+                allow_network=allow_network,
+                cache_dir=self.cache_dir,
+                timeout=timeout or self.execution_timeout,
+                max_memory=self.max_memory_mb,
+                sandbox_level=self.sandbox_level,
+            )
+            output_str = result.get("output", "")
+            exit_code = result.get("exit_code", 0)
+            return self._parse_output(output_str, "", exit_code)
+        except Exception:
+            # Fallback to subprocess on IPC failure
+            return self._exec_script_via_subprocess(
+                skill_dir, script_path, input_data, args, allow_network, timeout
+            )
+
+    def _execute_via_subprocess_run(
+        self,
+        skill_dir: Path,
+        input_data: Dict[str, Any],
+        allow_network: bool,
+        timeout: Optional[int],
+    ) -> ExecutionResult:
+        """Execute run via subprocess (fallback when IPC unavailable)."""
+        effective_timeout = timeout if timeout is not None else self.execution_timeout
+        cmd = [
+            self.binary_path, "run", str(skill_dir),
+            json.dumps(input_data, ensure_ascii=False),
+        ]
+        if allow_network:
+            cmd.append("--allow-network")
+        if self.cache_dir:
+            cmd.extend(["--cache-dir", self.cache_dir])
+        skill_env = self._build_skill_env(skill_dir, timeout)
+        effective_sandbox_level = skill_env.get("SKILLBOX_SANDBOX_LEVEL", self.sandbox_level)
+        try:
+            result = subprocess.run(
+                cmd, stdin=None, stdout=subprocess.PIPE, stderr=None,
+                text=True, timeout=effective_timeout, env=skill_env,
+            )
+        except subprocess.TimeoutExpired:
+            return ExecutionResult(success=False, error=f"Execution timed out after {effective_timeout} seconds", exit_code=-1)
+        except FileNotFoundError:
+            return ExecutionResult(success=False, error=f"skillbox binary not found at: {self.binary_path}", exit_code=-1)
+        except Exception as e:
+            return ExecutionResult(success=False, error=str(e), exit_code=-1)
+        stderr = (result.stderr or "") if hasattr(result, "stderr") and result.stderr else ""
+        combined_output = result.stdout + stderr
+        if result.returncode == 0:
+            output = self._extract_json_from_output(combined_output)
+            if output is not None:
+                return ExecutionResult(success=True, output=output, exit_code=result.returncode, stdout=result.stdout, stderr=stderr)
+            return ExecutionResult(success=True, output={"raw_output": result.stdout.strip()}, exit_code=result.returncode, stdout=result.stdout, stderr=stderr)
+        output = self._extract_json_from_output(combined_output)
+        if output is not None and isinstance(output, dict) and output.get("exit_code") == 0:
+            return ExecutionResult(success=True, output=output, exit_code=0, stdout=result.stdout, stderr=stderr)
+        error_msg = self._format_sandbox_error(stderr or result.stdout or f"Exit code: {result.returncode}")
+        return ExecutionResult(success=False, error=error_msg, exit_code=result.returncode, stdout=result.stdout, stderr=stderr)
+
+    def _exec_script_via_subprocess(
+        self,
+        skill_dir: Path,
+        script_path: str,
+        input_data: Dict[str, Any],
+        args: Optional[list],
+        allow_network: bool,
+        timeout: Optional[int],
+    ) -> ExecutionResult:
+        """Execute exec via subprocess (fallback when IPC unavailable)."""
+        if args is None and input_data:
+            args = self._convert_json_to_cli_args(input_data)
+        effective_timeout = timeout if timeout is not None else self.execution_timeout
+        cmd = [
+            self.binary_path, "exec", str(skill_dir), script_path,
+            json.dumps(input_data, ensure_ascii=False),
+        ]
+        if args:
+            cmd.extend(["--args", " ".join(args) if isinstance(args, list) else args])
+        if allow_network:
+            cmd.append("--allow-network")
+        if self.sandbox_level:
+            cmd.extend(["--sandbox-level", str(self.sandbox_level)])
+        if self.cache_dir:
+            cmd.extend(["--cache-dir", self.cache_dir])
+        cmd.extend(["--timeout", str(effective_timeout), "--max-memory", str(self.max_memory_mb)])
+        skill_env = self._build_skill_env(skill_dir, timeout)
+        try:
+            result = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=None, text=True,
+                timeout=effective_timeout, env=skill_env,
+            )
+            return self._parse_output(result.stdout, "", result.returncode)
+        except subprocess.TimeoutExpired:
+            return ExecutionResult(success=False, error=f"Execution timed out after {effective_timeout} seconds", exit_code=-1)
+        except FileNotFoundError:
+            return ExecutionResult(success=False, error=f"skillbox binary not found at: {self.binary_path}", exit_code=-1)
+        except Exception as e:
+            return ExecutionResult(success=False, error=str(e), exit_code=-1)
+
     def _convert_json_to_cli_args(self, input_data: Dict[str, Any]) -> List[str]:
         """
         Convert JSON input data to command line arguments list.
@@ -303,92 +456,15 @@ class SkillboxExecutor(SandboxExecutor):
         if enable_sandbox is None:
             enable_sandbox = self.enable_sandbox
         
-        # Convert JSON input to CLI args if no explicit args provided
-        if args is None and input_data:
-            args = self._convert_json_to_cli_args(input_data)
-        
-        full_script_path = skill_dir / script_path
-        
-        # All levels (1, 2, 3) go through skillbox for:
-        # - Consistent dependency resolution (ensure_environment reads compatibility/lock)
-        # - Level 2: proper sandbox isolation (macOS Seatbelt / Linux namespace)
-        # - Level 1: resource limits and env_path with deps (no isolation)
-        cmd = [
-            self.binary_path,
-            "exec",
-            str(skill_dir),
-            script_path,
-            json.dumps(input_data),
-        ]
-        
-        if args:
-            args_str = " ".join(args) if isinstance(args, list) else args
-            cmd.extend(["--args", args_str])
-        
-        if allow_network:
-            cmd.append("--allow-network")
-
-        # Use --sandbox-level instead of --enable-sandbox
-        # sandbox_level: 1=no sandbox, 2=sandbox only, 3=sandbox+scan
-        if self.sandbox_level:
-            cmd.extend(["--sandbox-level", str(self.sandbox_level)])
-
-        if self.cache_dir:
-            cmd.extend(["--cache-dir", self.cache_dir])
-        
-        # Add resource limits
-        effective_timeout = timeout if timeout is not None else self.execution_timeout
-        cmd.extend([
-            "--timeout", str(effective_timeout),
-            "--max-memory", str(self.max_memory_mb)
-        ])
-        
-        skill_env = self._build_skill_env(skill_dir, timeout)
-        
-        # Execute with Level 3 user interaction support
-        try:
-            if self.sandbox_level == "3":
-                # Level 3: Allow user interaction for authorization prompts
-                result = subprocess.run(
-                    cmd,
-                    stdin=None,
-                    stdout=subprocess.PIPE,
-                    stderr=None,  # Let stderr flow to terminal for authorization prompts
-                    text=True,
-                    timeout=effective_timeout,
-                    env=skill_env
-                )
-                return self._parse_output(result.stdout, "", result.returncode)
-            else:
-                # Capture stdout for JSON, stream stderr to terminal for playwright etc.
-                result = subprocess.run(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=None,
-                    text=True,
-                    timeout=effective_timeout,
-                    env=skill_env
-                )
-                return self._parse_output(result.stdout, "", result.returncode)
-                
-        except subprocess.TimeoutExpired:
-            return ExecutionResult(
-                success=False,
-                error=f"Execution timed out after {effective_timeout} seconds",
-                exit_code=-1
+        # Use IPC by default (SKILLBOX_USE_IPC=0 to force subprocess)
+        if _use_ipc():
+            return self._exec_script_via_ipc(
+                skill_dir, script_path, input_data, args, allow_network, timeout
             )
-        except FileNotFoundError:
-            return ExecutionResult(
-                success=False,
-                error=f"skillbox binary not found at: {self.binary_path}",
-                exit_code=-1
-            )
-        except Exception as e:
-            return ExecutionResult(
-                success=False,
-                error=f"Execution failed: {str(e)}",
-                exit_code=-1
-            )
+        
+        return self._exec_script_via_subprocess(
+            skill_dir, script_path, input_data, args, allow_network, timeout
+        )
     
     def _ensure_skill_python(self, skill_dir: Path) -> str:
         """Get Python executable with dependencies installed if needed.
@@ -598,120 +674,8 @@ class SkillboxExecutor(SandboxExecutor):
         if enable_sandbox is None:
             enable_sandbox = self.enable_sandbox
         
-        effective_timeout = timeout if timeout is not None else self.execution_timeout
+        # Use IPC by default (avoids cold start; SKILLBOX_USE_IPC=0 for subprocess)
+        if _use_ipc():
+            return self._execute_via_ipc(skill_dir, input_data, allow_network, timeout)
         
-        # All levels (1, 2, 3) go through skillbox for consistent dependency resolution
-        # and sandbox behavior (Level 2 = isolation, Level 1 = env_path with deps only)
-        
-        # Build command for skillbox run
-        cmd = [
-            self.binary_path,
-            "run",
-            str(skill_dir),
-            json.dumps(input_data)
-        ]
-        
-        if allow_network:
-            cmd.append("--allow-network")
-        
-        if self.cache_dir:
-            cmd.extend(["--cache-dir", self.cache_dir])
-        
-        skill_env = self._build_skill_env(skill_dir, timeout)
-
-        # Get effective sandbox level (may be overridden by environment variable)
-        effective_sandbox_level = skill_env.get("SKILLBOX_SANDBOX_LEVEL", self.sandbox_level)
-
-        # Execute with Level 3 user interaction support
-        try:
-            if effective_sandbox_level == "3":
-                # Level 3: Allow user interaction for authorization prompts
-                result = subprocess.run(
-                    cmd,
-                    stdin=None,
-                    stdout=subprocess.PIPE,
-                    stderr=None,  # Let stderr flow to terminal for authorization prompts
-                    text=True,
-                    timeout=effective_timeout,
-                    env=skill_env
-                )
-            else:
-                # Level 1/2: stream stderr to help debug hangs (sandbox permission issues often hang without error)
-                result = subprocess.run(
-                    cmd,
-                    stdin=None,
-                    stdout=subprocess.PIPE,
-                    stderr=None,
-                    text=True,
-                    timeout=effective_timeout,
-                    env=skill_env
-                )
-            
-            stderr = (result.stderr or "") if hasattr(result, 'stderr') and result.stderr else ""
-
-            # Combine stdout and stderr for JSON extraction
-            # skillbox may output JSON to either stream
-            combined_output = result.stdout + stderr
-
-            if result.returncode == 0:
-                output = self._extract_json_from_output(combined_output)
-                if output is not None:
-                    return ExecutionResult(
-                        success=True,
-                        output=output,
-                        exit_code=result.returncode,
-                        stdout=result.stdout,
-                        stderr=stderr
-                    )
-                else:
-                    # No JSON found, return raw output as success
-                    return ExecutionResult(
-                        success=True,
-                        output={"raw_output": result.stdout.strip()},
-                        exit_code=result.returncode,
-                        stdout=result.stdout,
-                        stderr=stderr
-                    )
-            else:
-                # Check if there's valid JSON in combined output (skillbox may still output results)
-                output = self._extract_json_from_output(combined_output)
-                if output is not None:
-                    # If we found valid JSON with exit_code=0, treat as success
-                    if isinstance(output, dict) and output.get("exit_code") == 0:
-                        return ExecutionResult(
-                            success=True,
-                            output=output,
-                            exit_code=0,
-                            stdout=result.stdout,
-                            stderr=stderr
-                        )
-
-                error_msg = stderr or result.stdout or f"Exit code: {result.returncode}"
-                error_msg = self._format_sandbox_error(error_msg)
-
-                return ExecutionResult(
-                    success=False,
-                    error=error_msg,
-                    exit_code=result.returncode,
-                    stdout=result.stdout,
-                    stderr=stderr
-                )
-                
-        except subprocess.TimeoutExpired:
-            return ExecutionResult(
-                success=False,
-                error=f"Execution timed out after {effective_timeout} seconds",
-                exit_code=-1
-            )
-        except FileNotFoundError:
-            return ExecutionResult(
-                success=False,
-                error=f"skillbox binary not found at: {self.binary_path}",
-                exit_code=-1
-            )
-        except Exception as e:
-            return ExecutionResult(
-                success=False,
-                error=str(e),
-                exit_code=-1
-            )
+        return self._execute_via_subprocess_run(skill_dir, input_data, allow_network, timeout)

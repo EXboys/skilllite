@@ -15,6 +15,23 @@ See SkillLite's performance compared to other sandbox solutions in real-time:
 
 ![Performance Benchmark Comparison](./docs/images/benchmark-en.png)
 
+### Running Benchmarks
+
+```bash
+cd benchmark
+
+# High concurrency (warm) + CMD vs IPC comparison
+python benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
+
+# Cold start comparison (outputs COLD START BENCHMARK COMPARISON table)
+python benchmark_runner.py --cold-start --compare-ipc
+
+# Full test: cold start + high concurrency
+python benchmark_runner.py --cold-start --cold-iterations 20 --compare-levels --compare-ipc -o results.json
+```
+
+See [benchmark/README.md](./benchmark/README.md) for full documentation.
+
 
 ## 🎯 Why SkillLite?
 
