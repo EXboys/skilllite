@@ -376,11 +376,12 @@ def find_binary() -> Optional[str]:
     to force a fresh lookup.
 
     Search order:
-    1. ~/.skillbox/bin/skillbox (installed by this package)
-    2. System PATH
-    3. ~/.cargo/bin/skillbox (cargo install)
-    4. Common system locations
-    5. Development build locations (release and debug)
+    1. SKILLBOX_BINARY_PATH / SKILLBOX_PATH (explicit override)
+    2. ~/.cargo/bin/skillbox (cargo install - preferred when developing)
+    3. ~/.skillbox/bin/skillbox (skilllite install - prebuilt)
+    4. System PATH
+    5. Common system locations
+    6. Development build locations (release and debug)
 
     Returns:
         Path to the binary, or None if not found.
@@ -393,22 +394,28 @@ def find_binary() -> Optional[str]:
 
     found: Optional[str] = None
 
-    # 1. Check our install location first
-    our_binary = get_binary_path()
-    if our_binary.exists() and os.access(our_binary, os.X_OK):
-        found = str(our_binary)
+    # 0. Explicit override (for debugging: use locally built binary)
+    env_path = os.environ.get("SKILLBOX_BINARY_PATH") or os.environ.get("SKILLBOX_PATH")
+    if env_path and os.path.exists(env_path) and os.access(env_path, os.X_OK):
+        found = str(Path(env_path).resolve())
 
-    # 2. Check PATH
+    # 1. cargo install (preferred for dev: local build from source)
+    if found is None:
+        cargo_binary = Path.home() / ".cargo" / "bin" / BINARY_NAME
+        if cargo_binary.exists() and os.access(cargo_binary, os.X_OK):
+            found = str(cargo_binary)
+
+    # 2. skilllite install prebuilt (~/.skillbox/bin)
+    if found is None:
+        our_binary = get_binary_path()
+        if our_binary.exists() and os.access(our_binary, os.X_OK):
+            found = str(our_binary)
+
+    # 3. Check PATH
     if found is None:
         path_binary = shutil.which(BINARY_NAME)
         if path_binary:
             found = path_binary
-
-    # 3. Check cargo install location
-    if found is None:
-        cargo_binary = Path.home() / ".cargo" / "bin" / BINARY_NAME
-        if cargo_binary.exists():
-            found = str(cargo_binary)
 
     # 4. Check common system locations
     if found is None:

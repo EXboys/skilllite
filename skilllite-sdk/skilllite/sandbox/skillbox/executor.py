@@ -360,7 +360,7 @@ class SkillboxExecutor(SandboxExecutor):
                 )
                 return self._parse_output(result.stdout, "", result.returncode)
             else:
-                # 捕获 stdout 解析 JSON，stderr 实时输出到终端便于看到 playwright 等进度
+                # Capture stdout for JSON, stream stderr to terminal for playwright etc.
                 result = subprocess.run(
                     cmd,
                     stdout=subprocess.PIPE,
@@ -636,16 +636,18 @@ class SkillboxExecutor(SandboxExecutor):
                     env=skill_env
                 )
             else:
-                # Level 1/2: Capture all output
+                # Level 1/2: stream stderr to help debug hangs (sandbox permission issues often hang without error)
                 result = subprocess.run(
                     cmd,
-                    capture_output=True,
+                    stdin=None,
+                    stdout=subprocess.PIPE,
+                    stderr=None,
                     text=True,
                     timeout=effective_timeout,
                     env=skill_env
                 )
             
-            stderr = result.stderr if hasattr(result, 'stderr') and result.stderr else ""
+            stderr = (result.stderr or "") if hasattr(result, 'stderr') and result.stderr else ""
 
             # Combine stdout and stderr for JSON extraction
             # skillbox may output JSON to either stream

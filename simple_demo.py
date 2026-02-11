@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-SkillLite 示例 - 使用内置的增强功能
+SkillLite demo - built-in enhanced features
 
-优化说明：
-- 使用 SDK 内置的智能任务完成检测
-- 使用 SDK 内置的任务执行指导
-- 代码量从 ~600 行减少到 ~30 行
+- SDK built-in task completion detection
+- SDK built-in task execution guidance
+- Reduced from ~600 lines to ~30 lines
 
-使用方法:
+Usage:
     1. cp .env.example .env
-    2. 编辑 .env 填入你的配置
-    3. python3 simple_demo.py
+    2. Edit .env with your config
+    3. skilllite init   # optional, pre-install Skill deps (e.g. Pillow)
+    4. python3 simple_demo.py
 """
 import sys
 import os
@@ -21,7 +21,7 @@ from skilllite import SkillRunner
 
 
 def interactive_confirmation(report: str, scan_id: str) -> bool:
-    """交互式确认回调 - 当检测到高危操作时提示用户确认"""
+    """Interactive confirmation callback - prompts user when high-risk ops detected"""
     print("\n" + "=" * 60)
     print(report)
     print("=" * 60)
@@ -40,16 +40,13 @@ if __name__ == "__main__":
     print("=" * 60)
     print()
 
-    # 创建 Runner（自动加载 .env 配置）
-    # 内置功能：
-    # ✅ 智能任务完成检测
-    # ✅ 任务执行指导 system prompt
-    # ✅ 自动规划和迭代
-    # ✅ 安全确认回调（sandbox_level=3 时生效）
+    # Create Runner (auto-loads .env)
+    # Built-in: task completion detection, task guidance, planning, confirmation callback
     runner = SkillRunner(
-        verbose=True,           # 显示详细日志
-        max_iterations=50,      # 最多 30 次迭代
-        confirmation_callback=interactive_confirmation  # 安全确认回调
+        verbose=True,            # verbose logs
+        max_iterations=50,       # max iterations
+        execution_timeout=300,   # xiaohongshu-writer may install Pillow/Playwright on first run
+        confirmation_callback=interactive_confirmation,
     )
     
     print(f"📡 API: {runner.base_url}")
@@ -58,7 +55,7 @@ if __name__ == "__main__":
     print()
     
     # ============================================================
-    # 👇 在这里修改你要测试的用户消息 👇
+    # 👇 Edit user message to test here 👇
     # ============================================================
     
     # user_message = "帮我创建一个简单的数据分析技能"
@@ -70,10 +67,10 @@ if __name__ == "__main__":
     
     user_message = "写一个关于本项目推广的小红书的图文，使用小红书的skills"
     # ============================================================
-    # 👆 在这里修改你要测试的用户消息 👆
+    # 👆 Edit user message to test above 👆
     # ============================================================
     
-    # 一行代码运行！所有复杂逻辑都内置在 SDK 中
+    # Single line to run - all logic built into SDK
     result = runner.run(user_message)
     
     print()

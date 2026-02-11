@@ -70,82 +70,82 @@ def _generate_skill_md_content(skills: List[Dict[str, Any]]) -> str:
 
     return f'''---
 name: skilllite
-description: 在安全沙箱中执行代码或预定义技能。当需要运行不信任的代码、网络请求、数据处理时使用。
+description: Execute code or pre-defined skills in a secure sandbox. Use when running untrusted code, network requests, or data processing.
 ---
 
-## 概述
+## Overview
 
-SkillLite 提供了一个安全的沙箱执行环境。代码在系统级沙箱（macOS Seatbelt / Linux Namespace）中隔离运行，防止恶意代码影响主机系统。
+SkillLite provides a secure sandbox execution environment. Code runs isolated in a system-level sandbox (macOS Seatbelt / Linux Namespace), preventing malicious code from affecting the host.
 
-## 何时使用 SkillLite 而不是 bash
+## When to use SkillLite vs bash
 
-| 场景 | 用 bash | 用 SkillLite |
-|-----|---------|-------------|
-| git 操作 | ✅ | |
-| 读取项目文件 | ✅ | |
-| 执行用户提供的代码 | | ✅ |
-| 网络请求/API 调用 | | ✅ |
-| 数据分析处理 | | ✅ |
-| 运行不信任的脚本 | | ✅ |
-| 执行可能危险的命令 | | ✅ |
+| Scenario | bash | SkillLite |
+|----------|------|-----------|
+| git operations | ✅ | |
+| Read project files | ✅ | |
+| Execute user-provided code | | ✅ |
+| Network/API calls | | ✅ |
+| Data analysis | | ✅ |
+| Run untrusted scripts | | ✅ |
+| Execute potentially dangerous commands | | ✅ |
 
-## 可用工具
+## Available Tools
 
 ### 1. skilllite_execute_code
-在沙箱中执行任意代码（Python/JavaScript/Bash）。
+Execute arbitrary code (Python/JavaScript/Bash) in sandbox.
 
-**参数：**
+**Params:**
 - `language`: "python" | "javascript" | "bash"
-- `code`: 要执行的代码
-- `confirmed`: 是否确认执行（高危代码需要）
-- `scan_id`: 扫描 ID（确认执行时需要）
+- `code`: Code to execute
+- `confirmed`: Whether to confirm execution (required for高危 code)
+- `scan_id`: Scan ID (required when confirming)
 
-**安全确认流程：**
-当检测到危险代码时，会返回安全报告和 `scan_id`。向用户展示安全问题后，如果用户同意执行，需要再次调用时设置 `confirmed=true` 和返回的 `scan_id`。
+**Security confirmation flow:**
+When dangerous code is detected, returns security report and `scan_id`. After showing user the issues, if user agrees, call again with `confirmed=true` and the returned `scan_id`.
 
 ### 2. skilllite_run_skill
-执行预定义技能。
+Execute a pre-defined skill.
 
-**参数：**
-- `skill_name`: 技能名称
-- `input`: 技能的输入参数（JSON 对象）
+**Params:**
+- `skill_name`: Skill name
+- `input`: Skill input params (JSON object)
 
 ### 3. skilllite_list_skills
-查看所有可用的预定义技能。无需参数。
+List all available pre-defined skills. No params.
 
 ### 4. skilllite_get_skill_info
-获取指定技能的详细信息，包括输入参数模式。
+Get detailed info for a skill, including input schema.
 
-**参数：**
-- `skill_name`: 技能名称
+**Params:**
+- `skill_name`: Skill name
 
 ### 5. skilllite_scan_code
-仅扫描代码安全性，不执行。用于预检查代码是否安全。
+Scan code safety only, no execution. For pre-checking safety.
 
-**参数：**
+**Params:**
 - `language`: "python" | "javascript" | "bash"
-- `code`: 要扫描的代码
+- `code`: Code to scan
 
-## 预定义技能
+## Pre-defined Skills
 
 {skills_list}
 
-## 使用示例
+## Examples
 
-### 执行 Python 代码
+### Execute Python code
 ```
 skilllite_execute_code(language="python", code="print(sum(range(1, 101)))")
 ```
 
-### 处理危险代码
-1. 调用 `skilllite_execute_code` 执行代码
-2. 如果返回 `requires_confirmation=true`，向用户展示安全问题
-3. 用户确认后，再次调用时带上 `confirmed=true` 和 `scan_id`
+### Handle dangerous code
+1. Call `skilllite_execute_code` to execute
+2. If returns `requires_confirmation=true`, show user the security issues
+3. After user confirms, call again with `confirmed=true` and `scan_id`
 
-### 使用预定义技能
+### Use pre-defined skills
 ```
-skilllite_list_skills()  # 查看可用技能
-skilllite_get_skill_info(skill_name="calculator")  # 查看技能参数
+skilllite_list_skills()  # List available skills
+skilllite_get_skill_info(skill_name="calculator")  # Get skill params
 skilllite_run_skill(skill_name="calculator", input={{"operation": "add", "a": 5, "b": 3}})
 ```
 '''

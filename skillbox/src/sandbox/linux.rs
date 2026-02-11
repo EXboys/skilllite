@@ -348,10 +348,28 @@ fn execute_with_bwrap(
     let skill_dir_str = skill_dir.to_string_lossy();
     cmd.args(["--ro-bind", &skill_dir_str, &skill_dir_str]);
     
-    // Mount environment directory if exists
+    // Create empty home with --dir /home first, then bind env_path so Python/Node env is readable
+    cmd.args(["--dir", "/home"]);
+    cmd.args(["--dir", "/root"]);
+    
+    // Mount environment directory (Python venv / Node node_modules) - must be after --dir or it gets overwritten
     if !env_path.as_os_str().is_empty() && env_path.exists() {
         let env_path_str = env_path.to_string_lossy();
         cmd.args(["--ro-bind", &env_path_str, &env_path_str]);
+    }
+    
+    // L2: also mount ~/.cache (runtime cache sibling to env_path)
+    let relaxed = std::env::var("SKILLBOX_SANDBOX_LEVEL")
+        .map(|s| s.trim() == "2")
+        .unwrap_or(false);
+    if relaxed {
+        if let Ok(home) = std::env::var("HOME") {
+            let cache = std::path::Path::new(&home).join(".cache");
+            if cache.exists() {
+                let cache_str = cache.to_string_lossy();
+                cmd.args(["--ro-bind", &cache_str, &cache_str]);
+            }
+        }
     }
     
     // Mount work directory as read-write
@@ -365,13 +383,11 @@ fn execute_with_bwrap(
     cmd.args(["--proc", "/proc"]);
     
     // Network isolation - if proxy is available, share network but route through proxy
-    // Otherwise, completely isolate network
     if metadata.network.enabled && proxy_manager.is_some() {
         cmd.args(["--share-net"]);
     } else if !metadata.network.enabled {
         cmd.args(["--unshare-net"]);
     } else {
-        // Network enabled but no proxy - still share but log warning
         eprintln!("[WARN] Network enabled without proxy filtering");
         cmd.args(["--share-net"]);
     }
@@ -381,16 +397,11 @@ fn execute_with_bwrap(
     cmd.args(["--setenv", "TMPDIR", "/tmp"]);
     cmd.args(["--setenv", "HOME", "/tmp"]);
     
-    // Set proxy environment variables if proxy is running
     if let Some(ref manager) = proxy_manager {
         for (key, value) in manager.get_proxy_env_vars() {
             cmd.args(["--setenv", &key, &value]);
         }
     }
-    
-    // Block access to sensitive paths - create empty directories
-    cmd.args(["--dir", "/home"]);  // Empty home
-    cmd.args(["--dir", "/root"]);  // Empty root
     
     // Block mandatory deny directories using tmpfs (makes them empty)
     for dir in MANDATORY_DENY_DIRECTORIES {

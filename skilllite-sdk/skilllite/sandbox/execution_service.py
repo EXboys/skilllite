@@ -140,9 +140,8 @@ class UnifiedExecutionService:
                         confirmed = confirmation_callback(report, scan_result.scan_id)
 
                         if confirmed:
-                            # User confirmed -> downgrade (Level 1 or 2 from POST_CONFIRMATION_SANDBOX_LEVEL)
+                            # Confirm = allow: keep L2 + relaxed (.env, git, venv/cache)
                             context = context.with_user_confirmation(scan_result.scan_id)
-                            # Cache confirmation for this session
                             self._confirmed_skills[skill_name] = code_hash
                         else:
                             return ExecutionResult(
@@ -158,12 +157,8 @@ class UnifiedExecutionService:
                             exit_code=2,
                         )
                 else:
-                    # Scan passed (no high-severity issues) -> downgrade to Level 1 or 2.
-                    # Use Level 2 when POST_CONFIRMATION_SANDBOX_LEVEL=2 for sandbox isolation.
-                    post_level = os.environ.get("POST_CONFIRMATION_SANDBOX_LEVEL", "1").strip()
-                    context = context.with_override(
-                        sandbox_level="2" if post_level == "2" else "1"
-                    )
+                    # Scan passed (no high-severity) -> L2 + relaxed
+                    context = context.with_override(sandbox_level="2")
         
         # 5. Execute skill
         return self._executor.execute(

@@ -93,11 +93,11 @@ class TestExecutionContext:
         assert new_ctx.requires_elevated is True
 
     def test_with_user_confirmation(self):
-        """Test with_user_confirmation downgrades to level 1."""
+        """Test with_user_confirmation keeps L2 (relaxed)."""
         from skilllite.sandbox.context import ExecutionContext
         ctx = ExecutionContext(sandbox_level="3")
         confirmed_ctx = ctx.with_user_confirmation("scan-123")
-        assert confirmed_ctx.sandbox_level == "1"
+        assert confirmed_ctx.sandbox_level == "2"
         assert confirmed_ctx.confirmed is True
         assert confirmed_ctx.scan_id == "scan-123"
 
@@ -363,10 +363,10 @@ class TestUnifiedExecutionService:
             )
 
         assert result.success is True
-        # Check that executor was called with downgraded context (level 1)
+        # After confirm, keep L2 (relaxed)
         call_args = mock_executor.execute.call_args
         context_arg = call_args.kwargs.get("context") or call_args[1].get("context") or call_args[0][0]
-        assert context_arg.sandbox_level == "1"
+        assert context_arg.sandbox_level == "2"
         assert context_arg.confirmed is True
 
     @patch("skilllite.sandbox.execution_service.UnifiedExecutor")

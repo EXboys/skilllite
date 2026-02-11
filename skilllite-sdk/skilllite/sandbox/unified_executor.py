@@ -79,8 +79,8 @@ class UnifiedExecutor:
             )
         
         # Build command for skillbox run
-        cmd = self._build_run_command(context, skill_dir, input_data)
-        return self._run_subprocess(cmd, context, skill_dir)
+        cmd, stdin_data = self._build_run_command(context, skill_dir, input_data)
+        return self._run_subprocess(cmd, context, skill_dir, stdin_data=stdin_data)
     
     def exec_script(
         self,
@@ -121,27 +121,25 @@ class UnifiedExecutor:
         context: ExecutionContext,
         skill_dir: Path,
         input_data: Dict[str, Any],
-    ) -> List[str]:
-        """Build command for skillbox run."""
-        # Convert to absolute path to avoid path issues
+    ) -> tuple:
+        """Build command for skillbox run. Returns (cmd, stdin_data). Uses argv by default (L2 verified); stdin only when >100KB to avoid ARG_MAX."""
         abs_skill_dir = Path(skill_dir).resolve()
-        cmd = [
-            self._binary_path,
-            "run",
-            str(abs_skill_dir),
-            json.dumps(input_data),
-        ]
+        input_str = json.dumps(input_data)
+        # argv by default (L2 verified); stdin only for large input
+        if len(input_str) > 100000:
+            cmd = [self._binary_path, "run", str(abs_skill_dir), "-"]
+            stdin_data = input_str.encode("utf-8")
+        else:
+            cmd = [self._binary_path, "run", str(abs_skill_dir), input_str]
+            stdin_data = None
         
-        # Add sandbox level from context (NOT from instance variable)
         cmd.extend(["--sandbox-level", context.sandbox_level])
-        
         if context.allow_network:
             cmd.append("--allow-network")
-        
         cmd.extend(["--timeout", str(context.timeout)])
         cmd.extend(["--max-memory", str(context.max_memory_mb)])
         
-        return cmd
+        return cmd, stdin_data
     
     def _build_exec_command(
         self,
@@ -182,34 +180,29 @@ class UnifiedExecutor:
         cmd: List[str],
         context: ExecutionContext,
         skill_dir: Path,
+        stdin_data: Optional[bytes] = None,
     ) -> ExecutionResult:
         """Run subprocess with the given command."""
         env = self._build_env(context, skill_dir)
 
+        use_text = stdin_data is None
+        run_kw = dict(
+            stdout=subprocess.PIPE,
+            stderr=None,
+            text=use_text,
+            timeout=context.timeout,
+            env=env,
+        )
+        if stdin_data is not None:
+            run_kw["input"] = stdin_data
+        if os.environ.get("SKILLBOX_DEBUG") == "1":
+            import sys
+            print(f"[skillbox] binary={self._binary_path}", file=sys.stderr, flush=True)
+            print(f"[skillbox] spawning: {' '.join(cmd[:4])}...", file=sys.stderr, flush=True)
         try:
-            if context.sandbox_level == "3" and not context.confirmed:
-                # Level 3 without confirmation: allow stderr for prompts
-                result = subprocess.run(
-                    cmd,
-                    stdin=None,
-                    stdout=subprocess.PIPE,
-                    stderr=None,
-                    text=True,
-                    timeout=context.timeout,
-                    env=env,
-                )
-                return self._parse_output(result.stdout, "", result.returncode)
-            else:
-                # Level 1/2 or confirmed: 捕获 stdout 解析 JSON，stderr 实时输出到终端便于看进度
-                result = subprocess.run(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=None,  # 实时输出，便于看到 playwright 下载等进度
-                    text=True,
-                    timeout=context.timeout,
-                    env=env,
-                )
-                return self._parse_output(result.stdout, "", result.returncode)
+            result = subprocess.run(cmd, **run_kw)
+            out = result.stdout if use_text else result.stdout.decode("utf-8", errors="replace")
+            return self._parse_output(out, "", result.returncode)
 
         except subprocess.TimeoutExpired:
             return ExecutionResult(

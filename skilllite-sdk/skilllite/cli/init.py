@@ -487,7 +487,7 @@ def _ensure_python_env(env_path: Path, packages: List[str]) -> None:
     """Create a Python venv and install *packages* into it."""
     marker = env_path / ".agentskill_complete"
     if env_path.exists() and marker.exists():
-        # 已有 env，仅检查 playwright 是否需补装 chromium
+        # Env exists, only check if playwright needs chromium
         if "playwright" in packages:
             _ensure_playwright_chromium(env_path)
         return  # already done
@@ -516,7 +516,7 @@ def _ensure_python_env(env_path: Path, packages: List[str]) -> None:
 
     marker.write_text("")
 
-    # Playwright 需要额外安装浏览器
+    # Playwright needs browser install
     if "playwright" in packages:
         _ensure_playwright_chromium(env_path)
 
@@ -535,8 +535,8 @@ def _ensure_playwright_chromium(env_path: Path) -> None:
     if result.returncode != 0:
         err = result.stderr or result.stdout or ""
         raise RuntimeError(
-            f"playwright install chromium 失败: {err}\n"
-            "可稍后手动运行: playwright install chromium"
+            f"playwright install chromium failed: {err}\n"
+            "You can run manually later: playwright install chromium"
         )
     pw_marker.write_text("")
 

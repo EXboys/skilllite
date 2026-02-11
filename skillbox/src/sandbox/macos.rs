@@ -32,9 +32,11 @@ pub fn execute_with_limits(
     // Check if sandbox is explicitly disabled
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
+        eprintln!("[INFO] using simple execution (no sandbox-exec)");
         return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
     }
     
+    eprintln!("[INFO] using sandbox-exec (Seatbelt)...");
     // Use sandbox-exec with Seatbelt for system-level isolation
     // Falls back to simple execution if sandbox-exec fails
     match execute_with_sandbox(skill_dir, env_path, metadata, input_json, limits) {
@@ -55,6 +57,7 @@ pub fn execute_simple_with_limits(
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
+    eprintln!("[INFO] simple: executing {}...", metadata.entry_point);
     let language = detect_language(skill_dir, metadata);
     
     // Use relative entry_point since we set current_dir to skill_dir
@@ -117,7 +120,9 @@ pub fn execute_simple_with_limits(
     }
 
     // Spawn the process
+    eprintln!("[INFO] simple: spawning skill process...");
     let mut child = cmd.spawn().with_context(|| "Failed to spawn skill process")?;
+    eprintln!("[INFO] simple: writing stdin...");
 
     // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
@@ -125,6 +130,7 @@ pub fn execute_simple_with_limits(
             .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
+    eprintln!("[INFO] simple: waiting for child (timeout {}s)...", limits.timeout_secs);
 
     // Wait with resource limits
     let memory_limit_bytes = limits.max_memory_bytes();
@@ -132,7 +138,7 @@ pub fn execute_simple_with_limits(
         &mut child,
         limits.timeout_secs,
         memory_limit_bytes,
-        true,  // stream stderr so user sees "正在用 Pillow 生成图文封面..." etc.
+        true,  // stream stderr so user sees Pillow/playwright progress messages
     )?;
 
     Ok(ExecutionResult {
@@ -253,7 +259,7 @@ fn execute_with_sandbox(
     // Set environment variables
     cmd.env("SKILLBOX_SANDBOX", "1");
     cmd.env("TMPDIR", work_dir);
-    cmd.env("HOME", work_dir);
+    // Do not override HOME - some libs (fonts, cache) need it for path lookup
 
     // Set NODE_PATH for Node.js
     if language == "node" && !env_path.as_os_str().is_empty() {
@@ -315,7 +321,9 @@ fn execute_with_sandbox(
     }
 
     // Spawn the process
+    eprintln!("[INFO] sandbox-exec: spawning...");
     let mut child = cmd.spawn().with_context(|| "Failed to spawn sandbox-exec")?;
+    eprintln!("[INFO] sandbox-exec: writing stdin...");
 
     // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
@@ -323,6 +331,7 @@ fn execute_with_sandbox(
             .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
+    eprintln!("[INFO] sandbox-exec: waiting for child (timeout {}s)...", limits.timeout_secs);
 
     // Wait with timeout and memory monitoring
     let memory_limit_bytes = limits.max_memory_bytes();
@@ -372,6 +381,11 @@ fn generate_sandbox_profile_with_proxy(
 ) -> Result<String> {
     let skill_dir_str = skill_dir.to_string_lossy();
     let work_dir_str = work_dir.to_string_lossy();
+
+    // L2 = relaxed: after user confirm, keep sandbox but allow .env, git, venv/cache
+    let relaxed = std::env::var("SKILLBOX_SANDBOX_LEVEL")
+        .map(|s| s.trim() == "2")
+        .unwrap_or(false);
     
     // Generate unique log tag for this execution (P1: precise violation tracking)
     let command_desc = format!("skill:{}", metadata.name);
@@ -449,9 +463,12 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.bash_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.zsh_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/Library/Keychains\"))\n");
-    profile.push_str("(deny file-read* (regex #\"/\\.git/\"))\n");
-    profile.push_str("(deny file-read* (regex #\"/\\.env$\"))\n");
-    profile.push_str("(deny file-read* (regex #\"/\\.env\\.[^/]+$\"))\n");
+    // Relaxed: allow project .env and .git for load_dotenv, git operations
+    if !relaxed {
+        profile.push_str("(deny file-read* (regex #\"/\\.git/\"))\n");
+        profile.push_str("(deny file-read* (regex #\"/\\.env$\"))\n");
+        profile.push_str("(deny file-read* (regex #\"/\\.env\\.[^/]+$\"))\n");
+    }
     profile.push_str("\n");
     // ============================================================
     // SECURITY: Network isolation with proxy support
@@ -496,6 +513,7 @@ fn generate_sandbox_profile_with_proxy(
 
     // ============================================================
     // SECURITY: Block dangerous process execution
+    // Relaxed: allow git for version control operations
     // ============================================================
     profile.push_str("; SECURITY: Block dangerous commands\n");
     profile.push_str("(deny process-exec (literal \"/bin/bash\"))\n");
@@ -506,7 +524,9 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("(deny process-exec (literal \"/usr/bin/wget\"))\n");
     profile.push_str("(deny process-exec (literal \"/usr/bin/ssh\"))\n");
     profile.push_str("(deny process-exec (literal \"/usr/bin/scp\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/git\"))\n");
+    if !relaxed {
+        profile.push_str("(deny process-exec (literal \"/usr/bin/git\"))\n");
+    }
     profile.push_str("(deny process-exec (literal \"/bin/rm\"))\n");
     profile.push_str("(deny process-exec (literal \"/bin/chmod\"))\n");
     profile.push_str("(deny process-exec (literal \"/usr/bin/osascript\"))\n");
@@ -544,6 +564,10 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("; Allow writing to /var/folders for system temp files\n");
     profile.push_str("(allow file-write* (subpath \"/var/folders\"))\n");
     profile.push_str("(allow file-write* (subpath \"/private/var/folders\"))\n");
+    // L2 relaxed: allow ~/Library/Caches for Playwright, pip cache
+    if relaxed {
+        profile.push_str("(allow file-write* (regex #\"^/Users/[^/]+/Library/Caches\"))\n");
+    }
     profile.push_str("\n");
 
     // ============================================================
@@ -554,14 +578,23 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("(allow default)\n\n");
 
     // ============================================================
-    // ALLOW: Skill and environment directories
+    // ALLOW: Skill and runtime environment directories
+    // skill_dir: skill scripts
+    // env_path: skillbox isolated env (Python venv / Node node_modules)
+    // work_dir: TMPDIR, Python needs read/write for temp files
     // ============================================================
     profile.push_str("; Allow reading skill directory\n");
     profile.push_str(&format!(
         "(allow file-read* (subpath \"{}\"))\n",
         skill_dir_str
     ));
+    profile.push_str("; Allow reading TMPDIR (Python temp files)\n");
+    profile.push_str(&format!(
+        "(allow file-read* (subpath \"{}\"))\n",
+        work_dir_str
+    ));
 
+    // env_path: Python venv or Node node_modules cache, must be readable
     if !env_path.as_os_str().is_empty() && env_path.exists() {
         let env_path_str = env_path.to_string_lossy();
         profile.push_str(&format!(
@@ -569,6 +602,26 @@ fn generate_sandbox_profile_with_proxy(
             env_path_str
         ));
     }
+    // L2 relaxed: runtime env dirs (Python/Node/Playwright etc.)
+    // macOS: ~/Library/Caches (agentskill/envs, pip, playwright, npm)
+    // Covers env_path parent and sibling runtime caches
+    if relaxed {
+        profile.push_str("; L2: runtime env dirs (venv, node_modules, pip, playwright, npm)\n");
+        profile.push_str("(allow file-read* (regex #\"^/Users/[^/]+/Library/Caches\"))\n");
+        // System runtime (when env_path empty, use system python/node)
+        profile.push_str("(allow file-read* (subpath \"/usr\"))\n");
+        profile.push_str("(allow file-read* (subpath \"/opt/homebrew\"))\n");
+        profile.push_str("(allow file-read* (subpath \"/opt/local\"))\n");
+    }
+    // Python/Pillow runtime paths (xiaohongshu-writer etc. need read in L2)
+    // - /System/Library: dyld, Frameworks, Fonts
+    profile.push_str("(allow file-read* (subpath \"/System/Library\"))\n");
+    // - /Library: Frameworks, Fonts (python.org install etc.)
+    profile.push_str("(allow file-read* (subpath \"/Library\"))\n");
+    // - /dev: /dev/null, /dev/urandom (Python basic I/O)
+    profile.push_str("(allow file-read* (subpath \"/dev\"))\n");
+    // - Timezone: override /etc deny, allow localtime only
+    profile.push_str("(allow file-read* (literal \"/private/etc/localtime\"))\n");
     profile.push_str("\n");
 
     Ok(profile)
@@ -629,9 +682,12 @@ fn generate_sandbox_profile(
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.bash_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.zsh_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/Library/Keychains\"))\n");
-    profile.push_str("(deny file-read* (regex #\"/\\.git/\"))\n");
-    profile.push_str("(deny file-read* (regex #\"/\\.env$\"))\n");
-    profile.push_str("(deny file-read* (regex #\"/\\.env\\.[^/]+$\"))\n");
+    let legacy_relaxed = std::env::var("SKILLBOX_SANDBOX_LEVEL").map(|s| s.trim() == "2").unwrap_or(false);
+    if !legacy_relaxed {
+        profile.push_str("(deny file-read* (regex #\"/\\.git/\"))\n");
+        profile.push_str("(deny file-read* (regex #\"/\\.env$\"))\n");
+        profile.push_str("(deny file-read* (regex #\"/\\.env\\.[^/]+$\"))\n");
+    }
     profile.push_str("\n");
 
     // ============================================================
@@ -654,7 +710,9 @@ fn generate_sandbox_profile(
     profile.push_str("(deny process-exec (literal \"/usr/bin/wget\"))\n");
     profile.push_str("(deny process-exec (literal \"/usr/bin/ssh\"))\n");
     profile.push_str("(deny process-exec (literal \"/usr/bin/scp\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/git\"))\n");
+    if !legacy_relaxed {
+        profile.push_str("(deny process-exec (literal \"/usr/bin/git\"))\n");
+    }
     profile.push_str("(deny process-exec (literal \"/bin/rm\"))\n");
     profile.push_str("(deny process-exec (literal \"/bin/chmod\"))\n");
     profile.push_str("(deny process-exec (literal \"/usr/bin/osascript\"))\n");
@@ -692,6 +750,10 @@ fn generate_sandbox_profile(
     profile.push_str("; Allow writing to /var/folders for system temp files\n");
     profile.push_str("(allow file-write* (subpath \"/var/folders\"))\n");
     profile.push_str("(allow file-write* (subpath \"/private/var/folders\"))\n");
+    // L2 relaxed: allow ~/Library/Caches for Playwright, pip cache
+    if legacy_relaxed {
+        profile.push_str("(allow file-write* (regex #\"^/Users/[^/]+/Library/Caches\"))\n");
+    }
     profile.push_str("\n");
 
     // ============================================================
@@ -716,6 +778,12 @@ fn generate_sandbox_profile(
             "(allow file-read* (subpath \"{}\"))\n",
             env_path_str
         ));
+    }
+    if legacy_relaxed {
+        profile.push_str("(allow file-read* (regex #\"^/Users/[^/]+/Library/Caches\"))\n");
+        profile.push_str("(allow file-read* (subpath \"/usr\"))\n");
+        profile.push_str("(allow file-read* (subpath \"/opt/homebrew\"))\n");
+        profile.push_str("(allow file-read* (subpath \"/opt/local\"))\n");
     }
     profile.push_str("\n");
 

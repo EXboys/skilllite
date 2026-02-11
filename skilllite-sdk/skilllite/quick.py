@@ -290,24 +290,20 @@ Example of CORRECT approach:
         # Prepare tool executor
         tool_executor = self.custom_tool_executor
         if self.enable_builtin_tools and tool_executor is None:
-            # Create a combined executor that handles both built-in and custom tools
-            from .builtin_tools import execute_builtin_file_tool
-
-            confirmation_cb = self.confirmation_callback
+            # Create a combined executor (uses create_builtin_tool_executor for sandbox support)
+            from .builtin_tools import create_builtin_tool_executor
 
             workspace_root = Path(self.skills_dir).resolve().parent
+            builtin_executor = create_builtin_tool_executor(
+                run_command_confirmation=self.confirmation_callback,
+                workspace_root=workspace_root,
+            )
+            builtin_names = {"read_file", "write_file", "list_directory", "file_exists", "run_command"}
 
             def combined_executor(tool_input: Dict[str, Any]) -> str:
                 tool_name = tool_input.get("tool_name")
-                builtin_names = {"read_file", "write_file", "list_directory", "file_exists", "run_command"}
-
                 if tool_name in builtin_names:
-                    return execute_builtin_file_tool(
-                        tool_name,
-                        tool_input,
-                        run_command_confirmation=confirmation_cb if tool_name == "run_command" else None,
-                        workspace_root=workspace_root,
-                    )
+                    return builtin_executor(tool_input)
                 elif self.custom_tool_executor:
                     return self.custom_tool_executor(tool_input)
                 else:
@@ -335,7 +331,10 @@ Example of CORRECT approach:
                 confirmation_callback=self.confirmation_callback
             )
         
-        response = loop.run(user_message)
+        response = loop.run(
+            user_message,
+            timeout=self.execution_timeout,
+        )
         result = response.choices[0].message.content or ""
         
         if self.verbose:

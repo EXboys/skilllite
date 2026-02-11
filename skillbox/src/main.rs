@@ -6,6 +6,7 @@ mod sandbox;
 mod skill;
 
 use anyhow::Result;
+use std::io::Read;
 use clap::Parser;
 use cli::{Cli, Commands};
 
@@ -22,6 +23,13 @@ fn main() -> Result<()> {
             timeout,
             sandbox_level,
         } => {
+            let input_json = if input_json == "-" {
+                let mut s = String::new();
+                std::io::stdin().read_to_string(&mut s)?;
+                s
+            } else {
+                input_json
+            };
             let sandbox_level = sandbox::executor::SandboxLevel::from_env_or_cli(sandbox_level);
             let limits = sandbox::executor::ResourceLimits::from_env()
                 .with_cli_overrides(max_memory, timeout);
@@ -98,7 +106,9 @@ fn run_skill(
         .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
 
     // 3. Setup environment (venv/node_modules)
+    eprintln!("[INFO] ensure_environment start...");
     let env_path = env::builder::ensure_environment(skill_path, &metadata, cache_dir.map(|s| s.as_str()))?;
+    eprintln!("[INFO] ensure_environment done");
 
     // 4. Apply CLI overrides and execute in sandbox
     let mut effective_metadata = metadata;

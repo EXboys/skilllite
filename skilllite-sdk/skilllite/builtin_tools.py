@@ -6,28 +6,34 @@ that can be used with create_enhanced_agentic_loop.
 
 Security: When workspace_root is set, all file operations and run_command
 are restricted to that directory to prevent path traversal (e.g. ../../etc/passwd).
+
+When SANDBOX_BUILTIN_TOOLS=1, file operations (read_file, write_file, list_directory, file_exists)
+run in a separate subprocess for isolation; run_command stays in main process (needs confirmation).
 """
 
+import json
+import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
-# 危险命令模式：检测 rm -rf、curl|bash、wget|sh 等
+# Dangerous command patterns: detect rm -rf, curl|bash, wget|sh, etc.
 _DANGEROUS_COMMAND_PATTERNS = [
-    (re.compile(r"\brm\s+(-[rf]+|-rf|-fr)\b", re.I), "rm -rf 递归强制删除"),
-    (re.compile(r"rm\s+-rf\s+/", re.I), "rm -rf / 可破坏系统"),
-    (re.compile(r"curl\s+[^\s|]+\s*\|\s*(bash|sh)\s*$", re.I), "curl | bash 管道执行远程脚本"),
-    (re.compile(r"wget\s+[^\s|]+\s*\|\s*(bash|sh)\s*$", re.I), "wget | sh 管道执行远程脚本"),
-    (re.compile(r":\(\)\s*\{\s*:\|\:&\s*\}\s*;\s*:", re.I), "fork 炸弹"),
-    (re.compile(r"chmod\s+[0-7]{3,4}\s+(-R|\s+/)", re.I), "chmod 递归修改系统权限"),
+    (re.compile(r"\brm\s+(-[rf]+|-rf|-fr)\b", re.I), "rm -rf recursive force delete"),
+    (re.compile(r"rm\s+-rf\s+/", re.I), "rm -rf / can destroy system"),
+    (re.compile(r"curl\s+[^\s|]+\s*\|\s*(bash|sh)\s*$", re.I), "curl | bash pipe executes remote script"),
+    (re.compile(r"wget\s+[^\s|]+\s*\|\s*(bash|sh)\s*$", re.I), "wget | sh pipe executes remote script"),
+    (re.compile(r":\(\)\s*\{\s*:\|\:&\s*\}\s*;\s*:", re.I), "fork bomb"),
+    (re.compile(r"chmod\s+[0-7]{3,4}\s+(-R|\s+/)", re.I), "chmod recursive system permission change"),
 ]
 
 
 def _check_dangerous_command(cmd: str) -> Optional[str]:
     """
-    检测命令是否包含危险模式。
-    返回: 若危险则返回警告原因，否则返回 None。
+    Check if command contains dangerous patterns.
+    Returns: warning reason if dangerous, else None.
     """
     cmd_stripped = cmd.strip()
     for pattern, reason in _DANGEROUS_COMMAND_PATTERNS:
@@ -38,8 +44,8 @@ def _check_dangerous_command(cmd: str) -> Optional[str]:
 
 def _is_sensitive_write_path(path: Path) -> bool:
     """
-    判断路径是否为敏感文件，禁止写入。
-    包括: .env, .git/config, *.key
+    Check if path is sensitive file, prohibit write.
+    Includes: .env, .git/config, *.key
     """
     path = path.resolve()
     parts = [p.lower() for p in path.parts]
@@ -208,21 +214,21 @@ def execute_builtin_file_tool(
             if not cmd:
                 return "Error: command is required"
             if not run_command_confirmation:
-                return "Error: run_command 需要用户确认回调，当前未配置。请使用 SkillRunner(confirmation_callback=...) 传入确认函数。"
+                return "Error: run_command requires confirmation callback. Use SkillRunner(confirmation_callback=...) to pass one."
             danger_reason = _check_dangerous_command(cmd)
             if danger_reason:
                 msg = (
-                    f"⚠️ 危险命令检测\n\n"
-                    f"检测到可能造成严重损害的模式: {danger_reason}\n\n"
-                    f"命令: {cmd}\n\n"
-                    f"请仔细核实后再确认执行。"
+                    f"⚠️ Dangerous command detected\n\n"
+                    f"Pattern that may cause serious harm: {danger_reason}\n\n"
+                    f"Command: {cmd}\n\n"
+                    f"Please verify before confirming execution."
                 )
                 confirm_id = "run_command_dangerous"
             else:
-                msg = f"即将执行命令:\n  {cmd}\n\n是否确认执行？"
+                msg = f"About to execute command:\n  {cmd}\n\nConfirm execution?"
                 confirm_id = "run_command"
             if not run_command_confirmation(msg, confirm_id):
-                return "用户取消了命令执行"
+                return "User cancelled command execution"
             cwd = str(Path(workspace_root).resolve()) if workspace_root else None
             try:
                 import threading
@@ -245,16 +251,16 @@ def execute_builtin_file_tool(
 
                 t = threading.Thread(target=_read_and_print, daemon=True)
                 t.start()
-                proc.wait(timeout=300)  # 5 分钟，适应 playwright install 等耗时命令
+                proc.wait(timeout=300)  # 5 min, for playwright install etc.
                 t.join(timeout=1)
                 out = "".join(lines)
                 if proc.returncode == 0:
-                    return f"命令执行成功 (exit 0):\n{out}" if out else "命令执行成功"
-                return f"命令执行失败 (exit {proc.returncode}):\n{out}"
+                    return f"Command succeeded (exit 0):\n{out}" if out else "Command succeeded"
+                return f"Command failed (exit {proc.returncode}):\n{out}"
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
-                return "Error: 命令执行超时 (300s)"
+                return "Error: Command execution timeout (300s)"
             except Exception as e:
                 return f"Error: {e}"
         elif tool_name == "read_file":
@@ -304,8 +310,8 @@ def _write_file(
         return f"Error: {err}"
     if _is_sensitive_write_path(path):
         return (
-            f"Error: 禁止写入敏感文件 {file_path}。"
-            "受保护路径包括: .env、.git/config、*.key"
+            f"Error: Cannot write to sensitive file {file_path}. "
+            "Protected paths: .env, .git/config, *.key"
         )
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -376,9 +382,100 @@ def _file_exists(file_path: str, workspace_root: Optional[Union[str, Path]] = No
         return f"Path does not exist: {file_path}"
 
 
+# File-only tools that can run in sandbox subprocess (no user confirmation needed)
+_SANDBOXED_TOOL_NAMES = frozenset({"read_file", "write_file", "list_directory", "file_exists"})
+
+
+def _run_file_tool_in_subprocess(
+    tool_name: str,
+    tool_input: Dict[str, Any],
+    workspace_root: Optional[Union[str, Path]],
+) -> str:
+    """
+    Execute a file tool (read_file, write_file, list_directory, file_exists) in subprocess.
+    Isolates execution from main process for defense-in-depth.
+    """
+    req = {
+        "tool_name": tool_name,
+        "tool_input": tool_input,
+        "workspace_root": str(workspace_root) if workspace_root else None,
+    }
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable, "-c",
+                _SUBPROCESS_WORKER_SCRIPT,
+            ],
+            input=json.dumps(req) + "\n",
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=str(workspace_root) if workspace_root else None,
+        )
+        if proc.returncode != 0:
+            return f"Error: subprocess failed: {proc.stderr or proc.stdout}"
+        data = json.loads(proc.stdout.strip())
+        if data.get("ok"):
+            return data["result"]
+        return f"Error: {data.get('error', 'unknown')}"
+    except subprocess.TimeoutExpired:
+        return "Error: tool execution timed out (30s)"
+    except json.JSONDecodeError as e:
+        return f"Error: invalid subprocess output: {e}"
+    except Exception as e:
+        return f"Error: {e}"
+
+
+_SUBPROCESS_WORKER_SCRIPT = """
+import json
+import sys
+
+def run():
+    line = sys.stdin.read().strip()
+    if not line:
+        sys.exit(1)
+    req = json.loads(line)
+    tool_name = req["tool_name"]
+    tool_input = req["tool_input"]
+    workspace_root = req.get("workspace_root")
+    try:
+        from skilllite.builtin_tools import (
+            _read_file,
+            _write_file,
+            _list_directory,
+            _file_exists,
+        )
+        if tool_name == "read_file":
+            result = _read_file(tool_input["file_path"], workspace_root)
+        elif tool_name == "write_file":
+            result = _write_file(
+                tool_input["file_path"],
+                tool_input["content"],
+                workspace_root,
+            )
+        elif tool_name == "list_directory":
+            result = _list_directory(
+                tool_input["directory_path"],
+                tool_input.get("recursive", False),
+                workspace_root,
+            )
+        elif tool_name == "file_exists":
+            result = _file_exists(tool_input["file_path"], workspace_root)
+        else:
+            result = f"Error: Unsupported tool in sandbox: {tool_name}"
+        print(json.dumps({"ok": True, "result": result}))
+    except Exception as e:
+        print(json.dumps({"ok": False, "error": str(e)}))
+
+if __name__ == "__main__":
+    run()
+"""
+
+
 def create_builtin_tool_executor(
     run_command_confirmation: Optional[Callable[[str, str], bool]] = None,
     workspace_root: Optional[Union[str, Path]] = None,
+    use_sandbox: Optional[bool] = None,
 ):
     """
     Create an executor function for built-in tools.
@@ -386,10 +483,15 @@ def create_builtin_tool_executor(
     Args:
         run_command_confirmation: For run_command, callback before execution. (message, id) -> bool
         workspace_root: Restrict file ops and run_command cwd to this directory (default: None = no restriction)
+        use_sandbox: When True, run file tools in subprocess for isolation.
+            When None, reads from SANDBOX_BUILTIN_TOOLS env (1/true = enabled).
 
     Returns:
         Executor function that can be passed to create_enhanced_agentic_loop
     """
+    if use_sandbox is None:
+        use_sandbox = os.environ.get("SANDBOX_BUILTIN_TOOLS", "0").strip().lower() in ("1", "true", "yes")
+
     builtin_tool_names = {"read_file", "write_file", "list_directory", "file_exists", "run_command"}
 
     def executor(tool_input: Dict[str, Any]) -> str:
@@ -397,10 +499,20 @@ def create_builtin_tool_executor(
         tool_name = tool_input.get("tool_name")
         if tool_name not in builtin_tool_names:
             raise ValueError(f"Not a built-in tool: {tool_name}")
+        # run_command always runs in main process (needs confirmation callback)
+        if tool_name == "run_command":
+            return execute_builtin_file_tool(
+                tool_name,
+                tool_input,
+                run_command_confirmation=run_command_confirmation,
+                workspace_root=workspace_root,
+            )
+        if use_sandbox and tool_name in _SANDBOXED_TOOL_NAMES:
+            return _run_file_tool_in_subprocess(tool_name, tool_input, workspace_root)
         return execute_builtin_file_tool(
             tool_name,
             tool_input,
-            run_command_confirmation=run_command_confirmation if tool_name == "run_command" else None,
+            run_command_confirmation=None,
             workspace_root=workspace_root,
         )
 

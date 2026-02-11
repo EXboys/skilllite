@@ -127,8 +127,6 @@ def _hex_to_rgb(hex_color: str) -> tuple:
 
 def _find_chinese_font() -> str:
     """查找支持中文的系统字体路径。load_default() 不支持中文会显示方框，必须用 TrueType。"""
-    import subprocess
-
     # 1. 本 skill 目录下的 fonts/（可放置 NotoSansSC-Regular.otf 等）
     script_dir = Path(__file__).resolve().parent
     skill_dir = script_dir.parent
@@ -138,7 +136,7 @@ def _find_chinese_font() -> str:
         if p.exists():
             return str(p)
 
-    # 2. macOS
+    # 2. macOS：仅用直接路径，沙箱下 subprocess 可能卡住
     mac_fonts = [
         "/System/Library/Fonts/PingFang.ttc",
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
@@ -149,16 +147,18 @@ def _find_chinese_font() -> str:
         if Path(p).exists():
             return p
 
-    # 3. Linux: fontconfig
-    try:
-        r = subprocess.run(
-            ["fc-match", "-f", "%{file}", "zh", "sans"],
-            capture_output=True, text=True, timeout=2,
-        )
-        if r.returncode == 0 and r.stdout.strip() and Path(r.stdout.strip()).exists():
-            return r.stdout.strip()
-    except Exception:
-        pass
+    # 3. Linux: fontconfig（仅非 macOS，沙箱下 subprocess 可能卡住）
+    if sys.platform != "darwin":
+        try:
+            import subprocess
+            r = subprocess.run(
+                ["fc-match", "-f", "%{file}", "zh", "sans"],
+                capture_output=True, text=True, timeout=2,
+            )
+            if r.returncode == 0 and r.stdout.strip() and Path(r.stdout.strip()).exists():
+                return r.stdout.strip()
+        except Exception:
+            pass
 
     # 4. Linux 常见路径
     linux_fonts = [
@@ -355,28 +355,21 @@ def main():
     if not cover_title:
         cover_title = "小红书笔记"
 
-    # 缩略图：优先 Pillow（快、无浏览器），失败则尝试 Playwright
+    # 缩略图：仅用 Pillow（快速，2–5 秒）。Playwright 首次启动需下载 Chromium，易超时，不再作为回退。
     if generate_thumbnail:
         img_bytes = None
         source = None
         body_text = content.get("body") or ""
         tags = content.get("hashtags") or []
         try:
-            print("正在用 Pillow 生成图文封面...", file=sys.stderr, flush=True)
             img_bytes = _render_with_pillow(cover_title, body_text, tags, accent_color, style)
             source = "pillow"
-            print("封面图生成完成", file=sys.stderr, flush=True)
         except Exception as e1:
-            try:
-                print("Pillow 失败，尝试 Playwright...", file=sys.stderr, flush=True)
-                html_str = _render_html_cover(
-                    cover_title, body_text, tags, accent_color, style
-                )
-                img_bytes = _screenshot_html(html_str)
-                source = "playwright"
-                print("封面图生成完成（Playwright）", file=sys.stderr, flush=True)
-            except Exception as e2:
-                thumb["image_error"] = f"Pillow: {e1}; Playwright: {e2}"
+            thumb["image_error"] = (
+                f"Pillow 生成失败: {e1}。"
+                "请确保已安装 Pillow 及中文字体（macOS 自带 PingFang；Linux: apt install fonts-noto-cjk；"
+                "或于 .skills/xiaohongshu-writer/fonts/ 放入 NotoSansCJKsc-Regular.otf）。"
+            )
         if img_bytes:
             thumb["image_source"] = source
             # 同时保存到文件，便于用户查看

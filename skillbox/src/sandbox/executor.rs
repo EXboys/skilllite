@@ -208,6 +208,7 @@ pub fn run_in_sandbox_with_limits_and_level(
         SandboxLevel::Level2 => "Sandbox isolation only",
         SandboxLevel::Level3 => "Sandbox isolation + static code scanning",
     });
+    eprintln!("[INFO] execute_sandbox start...");
 
     // Level 3: Perform static code scanning
     if level.use_code_scanning() {

@@ -279,16 +279,16 @@ class PromptBuilder:
         """Print a formatted status of all loaded skills."""
         status = self.get_skills_status()
         
-        print(f"📦 已加载 Skills: {status['all_skills']}")
+        print(f"📦 Loaded Skills: {status['all_skills']}")
         
         if status["executable_tools"]:
-            print(f"   🔧 可调用工具 (Tools): {status['executable_tools']}")
+            print(f"   🔧 Tools: {status['executable_tools']}")
         
         if status["multi_script_tools"]:
-            print(f"   🔨 多脚本工具 (Multi-script): {status['multi_script_tools']}")
+            print(f"   🔨 Multi-script: {status['multi_script_tools']}")
         
         if status["prompt_only_guides"]:
-            print(f"   📝 参考指南 (Prompt-only): {status['prompt_only_guides']}")
+            print(f"   📝 Prompt-only: {status['prompt_only_guides']}")
         
         if verbose:
             for name, detail in status["details"].items():
@@ -315,7 +315,7 @@ class PromptBuilder:
         prompt_only = self.get_prompt_only_status()
         if prompt_only:
             names = [s["name"] for s in prompt_only]
-            print(f"📝 已注入参考指南 (Prompt-only Skills): {names}")
+            print(f"📝 Injected Prompt-only Skills: {names}")
             for s in prompt_only:
                 if s["description"]:
                     print(f"   └─ {s['name']}: {s['description']}")
