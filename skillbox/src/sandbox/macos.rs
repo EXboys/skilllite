@@ -37,15 +37,18 @@ pub fn execute_with_limits(
     }
 
     // Playwright requires spawn (driver+Chromium); macOS Seatbelt blocks it despite allow rules.
-    // Skip sandbox when user explicitly opts in (SKILLBOX_ALLOW_PLAYWRIGHT=1 or L2 with playwright skill)
-    let allow_playwright = std::env::var("SKILLBOX_SANDBOX_LEVEL")
+    // Only skip sandbox when BOTH: user opts in AND this skill actually uses Playwright.
+    let user_allows_playwright = std::env::var("SKILLBOX_SANDBOX_LEVEL")
         .map(|s| s.trim() == "2")
         .unwrap_or(false)
         || std::env::var("SKILLBOX_ALLOW_PLAYWRIGHT")
             .map(|s| s.trim() == "1" || s.trim().eq_ignore_ascii_case("true"))
             .unwrap_or(false);
-    if allow_playwright {
-        eprintln!("[INFO] SKILLBOX_ALLOW_PLAYWRIGHT/L2: skipping sandbox for Playwright (spawn) support");
+    if user_allows_playwright && metadata.uses_playwright() {
+        eprintln!(
+            "[INFO] Skill {} uses Playwright; skipping sandbox (SKILLBOX_ALLOW_PLAYWRIGHT/L2)",
+            metadata.name
+        );
         return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
     }
     

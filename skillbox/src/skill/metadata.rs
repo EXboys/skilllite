@@ -61,6 +61,26 @@ pub struct SkillMetadata {
     pub resolved_packages: Option<Vec<String>>,
 }
 
+impl SkillMetadata {
+    /// Returns true if this skill depends on Playwright (requires spawn/subprocess, blocked in sandbox).
+    pub fn uses_playwright(&self) -> bool {
+        if let Some(ref packages) = self.resolved_packages {
+            if packages
+                .iter()
+                .any(|p| p.to_lowercase().trim() == "playwright")
+            {
+                return true;
+            }
+        }
+        if let Some(ref compat) = self.compatibility {
+            if compat.to_lowercase().contains("playwright") {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 /// Network access policy (derived from compatibility field)
 #[derive(Debug, Clone, Default)]
 pub struct NetworkPolicy {

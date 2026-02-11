@@ -112,7 +112,7 @@ metadata:
 - `pip install playwright` 且执行 `playwright install chromium`（优先，skilllite init 时会安装）
 - 可选回退：`pip install Pillow` 及中文字体（macOS 自带 PingFang；Linux: `apt install fonts-noto-cjk`；或于 `.skills/xiaohongshu-writer/fonts/` 放入 NotoSansCJKsc-Regular.otf）
 
-**沙箱下使用 Playwright**：macOS 沙箱会阻止 fork/spawn，Playwright 无法在沙箱内运行。若需 HTML 截图，可设置（将跳过沙箱）：
+**沙箱下使用 Playwright**：macOS 沙箱会阻止 fork/spawn。若需 HTML 截图，可设置；**仅本技能**会跳过沙箱（其它技能仍走沙箱）：
 - `SKILLBOX_SANDBOX_LEVEL=2`，或
 - `SKILLBOX_ALLOW_PLAYWRIGHT=1`
 
