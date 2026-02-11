@@ -1,8 +1,8 @@
 ---
 name: xiaohongshu-writer
-description: 小红书图文内容创作助手。**必须传入 content**（含 title、body、hashtags、thumbnail），建议 generate_thumbnail=true。用 Pillow 绘制封面，优先本地字体。
+description: 小红书图文内容创作助手。**必须传入 content**（含 title、body、hashtags、thumbnail），建议 generate_thumbnail=true。优先 Playwright HTML 截图生成封面，失败时回退 Pillow。
 license: MIT
-compatibility: Requires Python 3.x with Pillow (pip install Pillow)
+compatibility: Requires Python 3.x with playwright (pip install playwright, playwright install chromium)，或 Pillow 作为回退
 metadata:
   author: skillLite
   version: "1.0"
@@ -14,9 +14,9 @@ metadata:
 
 1. **Agent 用本 Skill 的指引**，根据用户主题生成完整内容（标题、正文、标签、封面设计）
 2. **调用本工具**，传入生成的 `content`，建议 `generate_thumbnail: true`
-3. **脚本**：优先用 Pillow 绘制封面（快速、无浏览器），失败时可选 Playwright 截图；返回 base64 及保存到 `image_path`
+3. **脚本**：优先用 Playwright 渲染 HTML 并截图（效果好、排版一致），失败时回退 Pillow；返回 base64 及保存到 `image_path`
 
-**无需 OpenAI**，优先 Pillow 绘图，可选 Playwright 渲染 HTML。
+**无需 OpenAI**，优先 Playwright HTML 截图，回退 Pillow 绘图。
 
 ---
 
@@ -34,7 +34,7 @@ metadata:
     "style": "gradient",
     "image_base64": "封面图 base64（仅当未保存到文件时返回，避免输出过大）",
     "image_path": "项目根目录下保存的图片路径，如 xiaohongshu_thumbnail.png",
-    "image_source": "pillow 或 playwright"
+    "image_source": "playwright 或 pillow"
   }
 }
 ```
@@ -70,7 +70,7 @@ metadata:
 
 ## 缩略图（封面）设计
 
-封面为**高质量图文风格**，包含三部分：**主标题**、**正文摘要**（2–5 行）、**话题标签**。由 Pillow 绘制（主）或 HTML + Playwright 截图（备选）生成，竖版 3:4。成功后保存到项目根目录 `xiaohongshu_thumbnail.png`。
+封面为**高质量图文风格**，包含三部分：**主标题**、**正文摘要**（2–5 行）、**话题标签**。由 Playwright 渲染 HTML 并截图（主）或 Pillow 绘制（备选）生成，竖版 3:4。成功后保存到项目根目录 `xiaohongshu_thumbnail.png`。
 
 ### Agent 生成 content 时，thumbnail 需包含：
 
@@ -109,9 +109,12 @@ metadata:
 ```
 
 **前置条件**：
-- `pip install Pillow`（必需，skilllite init 时会安装）
-- **中文字体**：macOS 自带 PingFang 即可；Linux 需 `apt install fonts-noto-cjk` 或于 `fonts/` 目录放入 NotoSansCJKsc-Regular.otf（否则封面标题会显示为方框）
-- 可选：`playwright` + `playwright install chromium`（Pillow 失败时备用；skilllite init 会安装）
+- `pip install playwright` 且执行 `playwright install chromium`（优先，skilllite init 时会安装）
+- 可选回退：`pip install Pillow` 及中文字体（macOS 自带 PingFang；Linux: `apt install fonts-noto-cjk`；或于 `.skills/xiaohongshu-writer/fonts/` 放入 NotoSansCJKsc-Regular.otf）
+
+**沙箱下使用 Playwright**：macOS 沙箱会阻止 fork/spawn，Playwright 无法在沙箱内运行。若需 HTML 截图，可设置（将跳过沙箱）：
+- `SKILLBOX_SANDBOX_LEVEL=2`，或
+- `SKILLBOX_ALLOW_PLAYWRIGHT=1`
 
 ## Runtime
 

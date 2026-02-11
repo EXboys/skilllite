@@ -2,7 +2,7 @@
 """
 小红书图文创作 - 根据 Agent 生成的内容，生成封面缩略图。
 
-优先用 Pillow 绘制（快速、无额外依赖），可选 Playwright 渲染 HTML（需 playwright install chromium）。
+优先用 Playwright 渲染 HTML 并截图（效果好、排版一致），失败时回退到 Pillow（需 playwright install chromium）。
 """
 
 import base64
@@ -355,21 +355,30 @@ def main():
     if not cover_title:
         cover_title = "小红书笔记"
 
-    # 缩略图：仅用 Pillow（快速，2–5 秒）。Playwright 首次启动需下载 Chromium，易超时，不再作为回退。
+    # 缩略图：优先 Playwright HTML 截图（效果好），失败时回退到 Pillow
+    # 沙箱下需 SKILLBOX_ALLOW_PLAYWRIGHT=1 或 SKILLBOX_SANDBOX_LEVEL=2 才能用 Playwright
     if generate_thumbnail:
         img_bytes = None
         source = None
         body_text = content.get("body") or ""
         tags = content.get("hashtags") or []
+        # 1. 优先：Playwright 渲染 HTML 截图
         try:
-            img_bytes = _render_with_pillow(cover_title, body_text, tags, accent_color, style)
-            source = "pillow"
-        except Exception as e1:
-            thumb["image_error"] = (
-                f"Pillow 生成失败: {e1}。"
-                "请确保已安装 Pillow 及中文字体（macOS 自带 PingFang；Linux: apt install fonts-noto-cjk；"
-                "或于 .skills/xiaohongshu-writer/fonts/ 放入 NotoSansCJKsc-Regular.otf）。"
-            )
+            html_content = _render_html_cover(cover_title, body_text, tags, accent_color, style)
+            img_bytes = _screenshot_html(html_content)
+            source = "playwright"
+        except Exception:
+            pass  # 回退到 Pillow
+        # 2. Pillow 绘制（Playwright 失败时，如沙箱未放行）
+        if img_bytes is None:
+            try:
+                img_bytes = _render_with_pillow(cover_title, body_text, tags, accent_color, style)
+                source = "pillow"
+            except Exception as e1:
+                thumb["image_error"] = (
+                    f"封面生成失败: {e1}。"
+                    "请确保已安装 Pillow 及中文字体；非沙箱时需 playwright + playwright install chromium。"
+                )
         if img_bytes:
             thumb["image_source"] = source
             # 同时保存到文件，便于用户查看

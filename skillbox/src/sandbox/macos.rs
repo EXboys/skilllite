@@ -35,6 +35,19 @@ pub fn execute_with_limits(
         eprintln!("[INFO] using simple execution (no sandbox-exec)");
         return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
     }
+
+    // Playwright requires spawn (driver+Chromium); macOS Seatbelt blocks it despite allow rules.
+    // Skip sandbox when user explicitly opts in (SKILLBOX_ALLOW_PLAYWRIGHT=1 or L2 with playwright skill)
+    let allow_playwright = std::env::var("SKILLBOX_SANDBOX_LEVEL")
+        .map(|s| s.trim() == "2")
+        .unwrap_or(false)
+        || std::env::var("SKILLBOX_ALLOW_PLAYWRIGHT")
+            .map(|s| s.trim() == "1" || s.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+    if allow_playwright {
+        eprintln!("[INFO] SKILLBOX_ALLOW_PLAYWRIGHT/L2: skipping sandbox for Playwright (spawn) support");
+        return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
+    }
     
     eprintln!("[INFO] using sandbox-exec (Seatbelt)...");
     // Use sandbox-exec with Seatbelt for system-level isolation
@@ -386,6 +399,11 @@ fn generate_sandbox_profile_with_proxy(
     let relaxed = std::env::var("SKILLBOX_SANDBOX_LEVEL")
         .map(|s| s.trim() == "2")
         .unwrap_or(false);
+    // Allow Playwright when relaxed (L2) or when explicitly requested (e.g. xiaohongshu-writer HTML screenshot)
+    let allow_playwright = relaxed
+        || std::env::var("SKILLBOX_ALLOW_PLAYWRIGHT")
+            .map(|s| s.trim() == "1" || s.trim().eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
     
     // Generate unique log tag for this execution (P1: precise violation tracking)
     let command_desc = format!("skill:{}", metadata.name);
@@ -514,7 +532,32 @@ fn generate_sandbox_profile_with_proxy(
     // ============================================================
     // SECURITY: Block dangerous process execution
     // Relaxed: allow git for version control operations
+    // Relaxed: allow Playwright Chromium for browser-based skills (e.g. xiaohongshu-writer HTML screenshot)
     // ============================================================
+    if allow_playwright {
+        profile.push_str("; Allow Playwright for browser-based skills (L2 or SKILLBOX_ALLOW_PLAYWRIGHT=1)\n");
+        profile.push_str("; process-fork: required for subprocess.Popen\n");
+        profile.push_str("; process-exec: 1) Playwright driver (node) in venv; 2) Chromium in ms-playwright\n");
+        profile.push_str("(allow process-fork)\n");
+        // Playwright first spawns driver/node (Node.js) from venv's site-packages/playwright/driver/
+        if !env_path.as_os_str().is_empty() && env_path.exists() {
+            let env_path_str = env_path.to_string_lossy();
+            profile.push_str(&format!(
+                "(allow process-exec (subpath \"{}\"))\n",
+                env_path_str
+            ));
+        }
+        // Then driver spawns Chromium from ~/Library/Caches/ms-playwright/
+        if let Ok(home) = std::env::var("HOME") {
+            let playwright_cache = format!("{}/Library/Caches/ms-playwright", home);
+            if Path::new(&playwright_cache).exists() {
+                profile.push_str(&format!(
+                    "(allow process-exec (subpath \"{}\"))\n",
+                    playwright_cache
+                ));
+            }
+        }
+    }
     profile.push_str("; SECURITY: Block dangerous commands\n");
     profile.push_str("(deny process-exec (literal \"/bin/bash\"))\n");
     profile.push_str("(deny process-exec (literal \"/bin/zsh\"))\n");
