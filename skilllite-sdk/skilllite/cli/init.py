@@ -93,6 +93,35 @@ def _is_word_match(text: str, word: str) -> bool:
     return bool(re.search(pattern, text, re.IGNORECASE))
 
 
+def _validate_packages_whitelist(
+    packages: List[str],
+    language: str,
+    allow_unknown: bool,
+) -> tuple[bool, List[str]]:
+    """Validate packages against known whitelist. Returns (ok, unknown_packages).
+
+    When packages come from .skilllite.lock, we check each against the whitelist.
+    Non-whitelist packages are rejected unless allow_unknown is True.
+    """
+    if allow_unknown:
+        return True, []
+
+    whitelist: set = set()
+    if language == "python":
+        whitelist = {p.lower() for p in KNOWN_PYTHON_PACKAGES}
+        # Common pip package name aliases
+        whitelist.update({"opencv-python", "opencv-contrib-python", "PyYAML", "pyyaml"})
+    elif language == "node":
+        whitelist = {p.lower() for p in KNOWN_NODE_PACKAGES}
+
+    unknown: List[str] = []
+    for pkg in packages:
+        base = pkg.split("[")[0].strip().lower()  # strip extras like "pillow[image]"
+        if base not in whitelist:
+            unknown.append(pkg)
+    return len(unknown) == 0, unknown
+
+
 def parse_compatibility_for_packages(compatibility: Optional[str]) -> List[str]:
     """Parse compatibility string to extract package names.
 
@@ -564,12 +593,216 @@ def _ensure_node_env(env_path: Path, packages: List[str]) -> None:
     marker.write_text("")
 
 
+# ---------------------------------------------------------------------------
+# Dependency security audit (pip-audit, npm audit)
+# ---------------------------------------------------------------------------
+
+def _audit_python_env(env_path: Path) -> tuple[bool, List[Dict[str, Any]], Optional[bool]]:
+    """Run pip-audit on a Python venv. Returns (has_vulnerabilities, list_of_issues, pip_audit_available).
+
+    Third value: True=pip-audit ran, False=not installed, None=error.
+    """
+    pip_bin = env_path / ("Scripts" if os.name == "nt" else "bin") / "pip"
+    if not pip_bin.exists():
+        return False, [], None
+
+    # Get installed packages from venv
+    freeze_result = subprocess.run(
+        [str(pip_bin), "freeze"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if freeze_result.returncode != 0 or not freeze_result.stdout.strip():
+        return False, [], None
+
+    # Try to run pip-audit (may not be installed)
+    import tempfile
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False
+    ) as f:
+        f.write(freeze_result.stdout)
+        req_path = f.name
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip_audit", "-r", req_path, "-f", "json", "--progress-spinner", "off"],
+            capture_output=True, text=True, timeout=60,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return False, [], None
+    finally:
+        try:
+            os.unlink(req_path)
+        except OSError:
+            pass
+
+    # pip-audit not installed: ModuleNotFoundError produces exit code 1 and stderr
+    stderr_lower = (result.stderr or "").lower()
+    if "pip_audit" in stderr_lower or "no module named" in stderr_lower:
+        return False, [], False
+
+    # pip-audit exits 0=ok, 1=vulns found
+    if result.returncode not in (0, 1):
+        return False, [], None
+
+    issues: List[Dict[str, Any]] = []
+    try:
+        data = json.loads(result.stdout)
+        # pip-audit JSON: list of {name, version, vulns: [{id, fix_versions, ...}]}
+        if isinstance(data, list):
+            for pkg in data:
+                vulns = pkg.get("vulns", [])
+                if vulns:
+                    for v in vulns:
+                        issues.append({
+                            "package": pkg.get("name", "?"),
+                            "version": pkg.get("version", "?"),
+                            "id": v.get("id", "?"),
+                            "fix_versions": v.get("fix_versions", []),
+                        })
+    except json.JSONDecodeError:
+        # Output might have a "Found N vulnerabilities..." line before JSON, try to extract
+        for line in result.stdout.splitlines():
+            if line.strip().startswith("["):
+                try:
+                    data = json.loads(line)
+                    if isinstance(data, list):
+                        for pkg in data:
+                            vulns = pkg.get("vulns", [])
+                            if vulns:
+                                for v in vulns:
+                                    issues.append({
+                                        "package": pkg.get("name", "?"),
+                                        "version": pkg.get("version", "?"),
+                                        "id": v.get("id", "?"),
+                                        "fix_versions": v.get("fix_versions", []),
+                                    })
+                except json.JSONDecodeError:
+                    pass
+                break
+
+    return len(issues) > 0, issues, True
+
+
+def _audit_node_env(env_path: Path) -> tuple[bool, List[Dict[str, Any]]]:
+    """Run npm audit on a Node.js env. Returns (has_vulnerabilities, list_of_issues)."""
+    package_json = env_path / "package.json"
+    if not package_json.exists():
+        return False, []
+
+    result = subprocess.run(
+        ["npm", "audit", "--json"],
+        capture_output=True, text=True, timeout=60,
+        cwd=str(env_path),
+    )
+
+    # npm audit exits 1 when vulns found, 0 when none
+    if result.returncode not in (0, 1):
+        return False, []
+
+    issues: List[Dict[str, Any]] = []
+    try:
+        data = json.loads(result.stdout)
+        # npm audit JSON: vulnerabilities dict, or metadata.vulnerabilities for counts
+        meta = data.get("metadata", {}).get("vulnerabilities", {})
+        total = sum(
+            int(meta.get(k, 0) or 0)
+            for k in ("info", "low", "moderate", "high", "critical")
+        )
+        if total == 0:
+            return False, []
+
+        vulns_obj = data.get("vulnerabilities") or {}
+        if isinstance(vulns_obj, dict):
+            for name, info in vulns_obj.items():
+                if isinstance(info, dict):
+                    via = info.get("via")
+                    severity = "?"
+                    vuln_id = "?"
+                    if isinstance(via, dict):
+                        severity = via.get("severity", "?")
+                        vuln_id = via.get("url", via.get("source", "?"))
+                    elif isinstance(via, list) and via:
+                        v0 = via[0]
+                        if isinstance(v0, dict):
+                            severity = v0.get("severity", "?")
+                            vuln_id = v0.get("url", v0.get("source", "?"))
+                    issues.append({
+                        "package": name,
+                        "version": info.get("version", "?"),
+                        "id": vuln_id,
+                        "severity": severity,
+                    })
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return len(issues) > 0, issues
+
+
+def _run_dependency_audits(
+    dep_results: List[Dict],
+    strict: bool = False,
+    skip_audit: bool = False,
+) -> tuple[bool, List[str]]:
+    """Run pip-audit / npm audit on each env. Returns (success, list of warning lines)."""
+    if skip_audit:
+        return True, []
+
+    lines: List[str] = []
+    has_vulns = False
+    pip_audit_available: Optional[bool] = None
+
+    for r in dep_results:
+        if r.get("status") != "ok" or "env_path" not in r:
+            continue
+        env_path = Path(r["env_path"])
+        lang = r.get("language", "")
+        name = r.get("name", "?")
+
+        if lang == "python":
+            if pip_audit_available is False:
+                continue
+            vuln, issues, avail = _audit_python_env(env_path)
+            if avail is False:
+                pip_audit_available = False
+                lines.append("   \u2139 pip-audit not installed; skip Python audit. Install with: pip install pip-audit")
+                continue
+            if pip_audit_available is None:
+                pip_audit_available = True
+            if vuln:
+                has_vulns = True
+                lines.append(f"   \u26a0\ufe0f {name} [Python]: {len(issues)} known vulnerability(ies)")
+                for i in issues[:5]:  # Show first 5
+                    fix = f" (fix: {', '.join(i.get('fix_versions', []))})" if i.get("fix_versions") else ""
+                    lines.append(f"      - {i.get('package', '?')} {i.get('version', '?')}: {i.get('id', '?')}{fix}")
+                if len(issues) > 5:
+                    lines.append(f"      ... and {len(issues) - 5} more")
+
+        elif lang == "node":
+            try:
+                vuln, issues = _audit_node_env(env_path)
+            except Exception:
+                continue
+            if vuln:
+                has_vulns = True
+                lines.append(f"   \u26a0\ufe0f {name} [Node]: {len(issues)} known vulnerability(ies)")
+                for i in issues[:5]:
+                    lines.append(f"      - {i.get('package', '?')} {i.get('version', '?')}: {i.get('id', '?')} ({i.get('severity', '?')})")
+                if len(issues) > 5:
+                    lines.append(f"      ... and {len(issues) - 5} more")
+
+    success = not (strict and has_vulns)
+    return success, lines
+
 
 # ---------------------------------------------------------------------------
 # Skill scanning & dependency installation
 # ---------------------------------------------------------------------------
 
-def _scan_and_install_deps(skills_dir: Path, force: bool = False) -> List[Dict]:
+def _scan_and_install_deps(
+    skills_dir: Path,
+    force: bool = False,
+    allow_unknown_packages: bool = False,
+) -> List[Dict]:
     """Scan all skills under *skills_dir*, resolve dependencies, and install
     them into isolated environments.
 
@@ -619,6 +852,24 @@ def _scan_and_install_deps(skills_dir: Path, force: bool = False) -> List[Dict]:
             # Use cached resolution
             packages = lock_data.get("resolved_packages", [])
             resolver = "lock"
+            # Validate lock packages against whitelist (supply chain security)
+            if packages and language in ("python", "node"):
+                ok, unknown = _validate_packages_whitelist(
+                    packages, language, allow_unknown_packages
+                )
+                if not ok:
+                    results.append({
+                        "name": metadata.name or skill_path.name,
+                        "language": language,
+                        "packages": packages,
+                        "resolver": resolver,
+                        "status": "error",
+                        "error": (
+                            f"Packages not in whitelist: {', '.join(unknown)}. "
+                            "Run with --allow-unknown-packages to override, or update SKILL.md compatibility."
+                        ),
+                    })
+                    continue
         else:
             # Resolve from scratch
             packages, resolver = _resolve_packages(metadata.compatibility, language)
@@ -748,10 +999,17 @@ def cmd_init(args: argparse.Namespace) -> int:
 
         # -- Step 3: Scan & install dependencies ---------------------------
         force = getattr(args, "force", False)
+        allow_unknown = getattr(args, "allow_unknown_packages", False) or (
+            os.environ.get("SKILLLITE_ALLOW_UNKNOWN_PACKAGES", "").lower()
+            in ("1", "true", "yes")
+        )
+        dep_results: List[Dict[str, Any]] = []
         if not getattr(args, "skip_deps", False):
             print()
             print("\U0001f4e6 Scanning skills and installing dependencies...")
-            dep_results = _scan_and_install_deps(skills_dir, force=force)
+            dep_results = _scan_and_install_deps(
+                skills_dir, force=force, allow_unknown_packages=allow_unknown
+            )
 
             if not dep_results:
                 print("   (no skills found)")
@@ -768,9 +1026,33 @@ def cmd_init(args: argparse.Namespace) -> int:
                         print(f"   \u2713 {r['name']}{lang_tag}: {pkg_str}{resolver_tag} \u2014 {status}")
                     else:
                         print(f"   \u2717 {r['name']}{lang_tag}: {pkg_str}{resolver_tag} \u2014 {status}")
+                        if r.get("error"):
+                            print(f"      {r['error']}")
+
+            dep_errors = [r for r in dep_results if r.get("status") == "error"]
+            if dep_errors:
+                print()
+                print("Error: Some skills failed. Fix the issues above or run with --allow-unknown-packages.")
+                return 1
         else:
             print()
             print("\u23ed Skipping dependency installation (--skip-deps)")
+
+        # -- Step 3b: Dependency security audit ----------------------------
+        if dep_results and not getattr(args, "skip_audit", False):
+            print()
+            print("\U0001f512 Scanning dependencies for known vulnerabilities...")
+            audit_ok, audit_lines = _run_dependency_audits(
+                dep_results,
+                strict=getattr(args, "strict", False),
+                skip_audit=False,
+            )
+            for line in audit_lines:
+                print(line)
+            if not audit_ok:
+                print()
+                print("Error: Dependency audit found vulnerabilities. Fix them or run with --skip-audit.")
+                return 1
 
         # -- Step 4: Summary -----------------------------------------------
         print()

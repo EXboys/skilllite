@@ -155,6 +155,21 @@ For more information, visit: https://github.com/skilllite/skilllite
         action="store_true",
         help="Force overwrite existing files"
     )
+    init_parser.add_argument(
+        "--skip-audit",
+        action="store_true",
+        help="Skip dependency security audit (pip-audit, npm audit)"
+    )
+    init_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Fail init if dependency audit finds known vulnerabilities"
+    )
+    init_parser.add_argument(
+        "--allow-unknown-packages",
+        action="store_true",
+        help="Allow packages from .skilllite.lock that are not in the security whitelist"
+    )
     init_parser.set_defaults(func=cmd_init)
 
     # add command
