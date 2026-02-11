@@ -8,9 +8,52 @@ Security: When workspace_root is set, all file operations and run_command
 are restricted to that directory to prevent path traversal (e.g. ../../etc/passwd).
 """
 
+import re
 import subprocess
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
+
+# 危险命令模式：检测 rm -rf、curl|bash、wget|sh 等
+_DANGEROUS_COMMAND_PATTERNS = [
+    (re.compile(r"\brm\s+(-[rf]+|-rf|-fr)\b", re.I), "rm -rf 递归强制删除"),
+    (re.compile(r"rm\s+-rf\s+/", re.I), "rm -rf / 可破坏系统"),
+    (re.compile(r"curl\s+[^\s|]+\s*\|\s*(bash|sh)\s*$", re.I), "curl | bash 管道执行远程脚本"),
+    (re.compile(r"wget\s+[^\s|]+\s*\|\s*(bash|sh)\s*$", re.I), "wget | sh 管道执行远程脚本"),
+    (re.compile(r":\(\)\s*\{\s*:\|\:&\s*\}\s*;\s*:", re.I), "fork 炸弹"),
+    (re.compile(r"chmod\s+[0-7]{3,4}\s+(-R|\s+/)", re.I), "chmod 递归修改系统权限"),
+]
+
+
+def _check_dangerous_command(cmd: str) -> Optional[str]:
+    """
+    检测命令是否包含危险模式。
+    返回: 若危险则返回警告原因，否则返回 None。
+    """
+    cmd_stripped = cmd.strip()
+    for pattern, reason in _DANGEROUS_COMMAND_PATTERNS:
+        if pattern.search(cmd_stripped):
+            return reason
+    return None
+
+
+def _is_sensitive_write_path(path: Path) -> bool:
+    """
+    判断路径是否为敏感文件，禁止写入。
+    包括: .env, .git/config, *.key
+    """
+    path = path.resolve()
+    parts = [p.lower() for p in path.parts]
+    name = path.name.lower()
+    # .env
+    if name == ".env":
+        return True
+    # .git/config
+    if ".git" in parts and len(parts) >= 2 and path.parent.name == ".git" and name == "config":
+        return True
+    # *.key
+    if name.endswith(".key"):
+        return True
+    return False
 
 
 def _resolve_within_workspace(
@@ -166,10 +209,19 @@ def execute_builtin_file_tool(
                 return "Error: command is required"
             if not run_command_confirmation:
                 return "Error: run_command 需要用户确认回调，当前未配置。请使用 SkillRunner(confirmation_callback=...) 传入确认函数。"
-            if not run_command_confirmation(
-                f"即将执行命令:\n  {cmd}\n\n是否确认执行？",
-                "run_command",
-            ):
+            danger_reason = _check_dangerous_command(cmd)
+            if danger_reason:
+                msg = (
+                    f"⚠️ 危险命令检测\n\n"
+                    f"检测到可能造成严重损害的模式: {danger_reason}\n\n"
+                    f"命令: {cmd}\n\n"
+                    f"请仔细核实后再确认执行。"
+                )
+                confirm_id = "run_command_dangerous"
+            else:
+                msg = f"即将执行命令:\n  {cmd}\n\n是否确认执行？"
+                confirm_id = "run_command"
+            if not run_command_confirmation(msg, confirm_id):
                 return "用户取消了命令执行"
             cwd = str(Path(workspace_root).resolve()) if workspace_root else None
             try:
@@ -244,10 +296,17 @@ def _read_file(file_path: str, workspace_root: Optional[Union[str, Path]] = None
 def _write_file(
     file_path: str, content: str, workspace_root: Optional[Union[str, Path]] = None
 ) -> str:
-    """Write content to file. Restricted to workspace_root when set."""
+    """Write content to file. Restricted to workspace_root when set.
+    Prohibits writing to sensitive paths: .env, .git/config, *.key
+    """
     path, err = _resolve_within_workspace(file_path, workspace_root)
     if err:
         return f"Error: {err}"
+    if _is_sensitive_write_path(path):
+        return (
+            f"Error: 禁止写入敏感文件 {file_path}。"
+            "受保护路径包括: .env、.git/config、*.key"
+        )
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
