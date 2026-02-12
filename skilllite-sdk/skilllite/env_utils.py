@@ -26,7 +26,7 @@ def ensure_skill_python(skill_dir: Path) -> str:
     try:
         from .core.metadata import parse_skill_metadata
         from .cli.init_deps import parse_compatibility_for_packages
-        from .env import (
+        from .isolation import (
             get_cache_dir,
             get_cache_key,
             compute_packages_hash,

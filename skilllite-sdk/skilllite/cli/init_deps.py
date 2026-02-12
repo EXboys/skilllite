@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..core.metadata import parse_skill_metadata, detect_language
-from ..env import (
+from ..isolation import (
     get_cache_dir,
     get_cache_key,
     compute_packages_hash,
