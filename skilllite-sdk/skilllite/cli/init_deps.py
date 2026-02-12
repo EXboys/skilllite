@@ -34,7 +34,7 @@ LOCK_FILE_NAME = ".skilllite.lock"
 
 def _get_known_packages():
     """Lazy load to avoid circular import at module load time."""
-    from ..packages_whitelist import get_python_packages, get_python_aliases, get_node_packages
+    from ..config.packages_whitelist import get_python_packages, get_python_aliases, get_node_packages
     python = get_python_packages()
     aliases = get_python_aliases()
     node = get_node_packages()

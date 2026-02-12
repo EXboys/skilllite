@@ -32,9 +32,11 @@ class TestExecutionContext:
     def test_from_current_env_defaults(self):
         """Test from_current_env with no env vars set."""
         from skilllite.sandbox.context import ExecutionContext
+        # Clear SKILLBOX_* and legacy vars so we get true defaults
+        legacy_keys = {"MAX_MEMORY_MB", "EXECUTION_TIMEOUT", "ALLOW_NETWORK", "ENABLE_SANDBOX"}
         env = {
             k: v for k, v in os.environ.items()
-            if not k.startswith("SKILLBOX_")
+            if not k.startswith("SKILLBOX_") and k not in legacy_keys
         }
         with patch.dict(os.environ, env, clear=True):
             ctx = ExecutionContext.from_current_env()

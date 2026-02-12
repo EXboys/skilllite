@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from .core import SkillManager, AgenticLoop
+from .config.env_config import parse_bool_env, get_int_env
 from .logger import get_logger
 
 
@@ -149,33 +150,15 @@ class SkillRunner:
         self._logger = get_logger("skilllite.quick", verbose=verbose)
         
         # Sandbox and network configuration (read from .env or use defaults)
-        # Use SKILLBOX_* prefix environment variables (preferred)
-        # Fall back to legacy variable names for backward compatibility
-        def _get_bool_env(new_key: str, legacy_key: str, default: bool) -> bool:
-            """Get boolean from environment, checking new key first, then legacy key."""
-            value = os.environ.get(new_key) or os.environ.get(legacy_key)
-            if value is None:
-                return default
-            return value.lower() in ("true", "1", "yes", "on")
-        
-        def _get_int_env(new_key: str, legacy_key: str, default: int) -> int:
-            """Get integer from environment, checking new key first, then legacy key."""
-            value = os.environ.get(new_key) or os.environ.get(legacy_key)
-            if value:
-                try:
-                    return int(value)
-                except ValueError:
-                    pass
-            return default
-        
+        # Use SKILLBOX_* prefix env vars; fall back to legacy names for compatibility
         self.allow_network = allow_network if allow_network is not None else \
-            _get_bool_env("SKILLBOX_ALLOW_NETWORK", "ALLOW_NETWORK", False)
+            parse_bool_env("SKILLBOX_ALLOW_NETWORK", False, "ALLOW_NETWORK")
         self.enable_sandbox = enable_sandbox if enable_sandbox is not None else \
-            _get_bool_env("SKILLBOX_ENABLE_SANDBOX", "ENABLE_SANDBOX", True)
+            parse_bool_env("SKILLBOX_ENABLE_SANDBOX", True, "ENABLE_SANDBOX")
         self.execution_timeout = execution_timeout or \
-            _get_int_env("SKILLBOX_TIMEOUT_SECS", "EXECUTION_TIMEOUT", 120)
+            get_int_env("SKILLBOX_TIMEOUT_SECS", 120, "EXECUTION_TIMEOUT")
         self.max_memory_mb = max_memory_mb or \
-            _get_int_env("SKILLBOX_MAX_MEMORY_MB", "MAX_MEMORY_MB", 512)
+            get_int_env("SKILLBOX_MAX_MEMORY_MB", 512, "MAX_MEMORY_MB")
         # Read sandbox security level (from .env or default to 3)
         self.sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3")
         

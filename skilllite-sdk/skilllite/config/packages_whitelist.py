@@ -1,7 +1,7 @@
 """
 Package whitelist for skill dependency resolution.
 
-Single source of truth: packages_whitelist.json
+Single source of truth: packages_whitelist.json (same directory)
 Used by cli/init_deps.py for parse_compatibility_for_packages and validation.
 """
 
@@ -9,9 +9,7 @@ import json
 from pathlib import Path
 from typing import List, Tuple
 
-# Load from JSON (single source of truth)
-_WHITELIST_PATH = Path(__file__).parent / "config" / "packages_whitelist.json"
-
+_WHITELIST_PATH = Path(__file__).parent / "packages_whitelist.json"
 _CACHE: dict | None = None
 
 

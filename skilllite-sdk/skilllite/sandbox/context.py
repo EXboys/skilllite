@@ -14,7 +14,7 @@ Design Principles:
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 # Import default values from config module (single source of truth)
 from .config import (
@@ -23,23 +23,14 @@ from .config import (
     DEFAULT_SANDBOX_LEVEL,
     DEFAULT_ALLOW_NETWORK,
 )
+from ..config.env_config import parse_bool_env, get_timeout_from_env, get_memory_from_env
 
 # Alias for consistency with ExecutionContext field names
 DEFAULT_TIMEOUT = DEFAULT_EXECUTION_TIMEOUT
 DEFAULT_AUTO_APPROVE = False  # Only used in ExecutionContext, not in SandboxConfig
 
-
-def _parse_bool_env(key: str, default: bool) -> bool:
-    """Parse a boolean value from environment variable."""
-    value = os.environ.get(key)
-    if value is None:
-        return default
-    value_lower = value.lower().strip()
-    if value_lower in ("true", "1", "yes", "on"):
-        return True
-    elif value_lower in ("false", "0", "no", "off", ""):
-        return False
-    return default
+if TYPE_CHECKING:
+    from .config import SandboxConfig
 
 
 @dataclass(frozen=True)
@@ -70,26 +61,25 @@ class ExecutionContext:
     requires_elevated: bool = False
     
     @classmethod
+    def from_config(cls, config: "SandboxConfig") -> "ExecutionContext":
+        """Build context from SandboxConfig. Applies enable_sandbox (False -> level 1)."""
+        return config.to_context()
+
+    @classmethod
     def from_current_env(cls) -> "ExecutionContext":
         """
         Create context from current environment variables.
-        
-        This method reads from environment variables at call time,
-        ensuring the latest values are used.
-        
+
         Environment Variables:
-            SKILLBOX_SANDBOX_LEVEL: Sandbox level (1/2/3, default: 3)
-            SKILLBOX_ALLOW_NETWORK: Allow network access (true/false)
-            SKILLBOX_TIMEOUT_SECS: Execution timeout in seconds
-            SKILLBOX_MAX_MEMORY_MB: Maximum memory in MB
-            SKILLBOX_AUTO_APPROVE: Auto-approve security prompts
+            SKILLBOX_SANDBOX_LEVEL, SKILLBOX_ALLOW_NETWORK,
+            SKILLBOX_TIMEOUT_SECS, SKILLBOX_MAX_MEMORY_MB, SKILLBOX_AUTO_APPROVE
         """
         return cls(
             sandbox_level=os.environ.get("SKILLBOX_SANDBOX_LEVEL", DEFAULT_SANDBOX_LEVEL),
-            allow_network=_parse_bool_env("SKILLBOX_ALLOW_NETWORK", DEFAULT_ALLOW_NETWORK),
-            timeout=int(os.environ.get("SKILLBOX_TIMEOUT_SECS", str(DEFAULT_TIMEOUT))),
-            max_memory_mb=int(os.environ.get("SKILLBOX_MAX_MEMORY_MB", str(DEFAULT_MAX_MEMORY_MB))),
-            auto_approve=_parse_bool_env("SKILLBOX_AUTO_APPROVE", DEFAULT_AUTO_APPROVE),
+            allow_network=parse_bool_env("SKILLBOX_ALLOW_NETWORK", DEFAULT_ALLOW_NETWORK),
+            timeout=get_timeout_from_env(),
+            max_memory_mb=get_memory_from_env(),
+            auto_approve=parse_bool_env("SKILLBOX_AUTO_APPROVE", DEFAULT_AUTO_APPROVE),
         )
     
     def with_override(
