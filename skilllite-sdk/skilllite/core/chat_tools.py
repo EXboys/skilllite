@@ -1,10 +1,11 @@
 """
-Chat tools - memory_search and memory_write for LLM.
+Chat tools - memory_search, memory_write, memory_list for LLM.
 
 These tools allow the LLM to store and retrieve information from the
 persistent memory (BM25 index). Requires skillbox built with --features chat.
 """
 
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 
@@ -20,7 +21,7 @@ def get_memory_tools() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "memory_search",
-                "description": "Search the agent's memory for relevant information. Use when you need to recall past context, user preferences, or stored facts.",
+                "description": "Search the agent's memory (BM25). Use keywords in the same language as stored content (e.g. Chinese if content was in Chinese). If returns nothing, try memory_list then read_file to read memory files directly.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -64,6 +65,17 @@ def get_memory_tools() -> List[Dict[str, Any]]:
                 }
             }
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "memory_list",
+                "description": "List all memory files. Use when user asks to 'read/see current memory' or when memory_search returns nothing. Returns file paths (use read_file with path 'memory/<path>' to read content).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        },
     ]
 
 
@@ -79,8 +91,27 @@ def create_memory_tool_executor(workspace_path: Optional[str] = None):
     """
     def executor(tool_input: Dict[str, Any]) -> str:
         tool_name = tool_input.get("tool_name", "")
-        if tool_name not in ("memory_search", "memory_write"):
+        if tool_name not in ("memory_search", "memory_write", "memory_list"):
             raise ValueError(f"Unknown memory tool: {tool_name}")
+
+        ws = Path(workspace_path) if workspace_path else Path.home() / ".skilllite" / "chat"
+        memory_dir = ws / "memory"
+
+        if tool_name == "memory_list":
+            if not memory_dir.exists():
+                return "Memory directory is empty (no files stored yet)."
+            items = []
+            for f in sorted(memory_dir.rglob("*")):
+                if f.is_file() and f.suffix in (".md", ".txt", ".json"):
+                    rel = f.relative_to(memory_dir)
+                    items.append(str(rel))
+            if not items:
+                return "Memory directory is empty (no .md/.txt/.json files)."
+            return (
+                f"Memory files ({len(items)}):\n"
+                + "\n".join(f"- memory/{p}" for p in items)
+                + "\n\nUse read_file with path 'memory/<path>' to read content."
+            )
 
         from ..sandbox.skillbox import find_binary
         from ..sandbox.skillbox.ipc_client import SkillboxIPCClient

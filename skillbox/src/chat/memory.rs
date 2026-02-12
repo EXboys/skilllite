@@ -58,7 +58,9 @@ fn chunk_content(content: &str) -> Vec<String> {
 }
 
 /// Index a memory file into the SQLite DB (BM25).
+/// Removes existing chunks for this path before re-indexing (handles overwrite).
 pub fn index_file(conn: &Connection, path: &str, content: &str) -> Result<()> {
+    conn.execute("DELETE FROM memory_fts WHERE path = ?", rusqlite::params![path])?;
     let chunks = chunk_content(content);
     for (i, chunk) in chunks.iter().enumerate() {
         conn.execute(

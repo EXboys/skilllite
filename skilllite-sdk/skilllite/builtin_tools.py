@@ -68,19 +68,26 @@ def _resolve_within_workspace(
 ) -> tuple[Path, Optional[str]]:
     """
     Resolve path and ensure it is under workspace_root.
+    When workspace_root is set, "." and "" resolve to workspace root.
     Returns (resolved_path, error_msg). error_msg is None if valid.
     """
     if workspace_root is None:
         return Path(path).resolve(), None
+    root = Path(workspace_root).resolve()
+    path_str = str(path).strip()
+    if path_str in ("", "."):
+        return root, None
+    p = Path(path)
+    if not p.is_absolute():
+        p = root / p
+    p = p.resolve()
     try:
-        root = Path(workspace_root).resolve()
-        p = Path(path).resolve()
         p.relative_to(root)
         return p, None
     except ValueError:
         return (
-            Path(path).resolve(),
-            f"Path outside workspace: {path} (workspace: {Path(workspace_root).resolve()})",
+            p,
+            f"Path outside workspace: {path} (workspace: {root})",
         )
 
 

@@ -72,7 +72,8 @@ def cmd_chat(args: argparse.Namespace) -> int:
             session_key=session_key,
             workspace_path=workspace_path,
             system_prompt="You are a helpful assistant with access to memory and file tools. "
-                         "Use memory_search to recall past context, memory_write to store important information.",
+                         "Memory: use memory_search(keywords) to recall; use memory_list when user asks to 'read/see memory' or when memory_search returns nothing, then read_file('memory/<path>') to read content; use memory_write to store important info. "
+                         "File paths in list_directory/read_file are relative to workspace (e.g. '.' or 'memory' for memory dir).",
             enable_builtin_tools=True,
             enable_memory_tools=True,
             verbose=verbose,

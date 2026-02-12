@@ -149,7 +149,7 @@ class AgenticLoop:
             
             # Skip built-in tools (read_file, write_file, etc.) and memory tools
             if tool_name in ['read_file', 'write_file', 'list_directory', 'file_exists',
-                            'memory_search', 'memory_write', 'run_command']:
+                            'memory_search', 'memory_write', 'memory_list', 'run_command']:
                 continue
             
             # Skip if already documented in this session
