@@ -2,7 +2,7 @@
 Package whitelist for skill dependency resolution.
 
 Single source of truth: packages_whitelist.json
-Used by cli/init.py for parse_compatibility_for_packages and validation.
+Used by cli/init_deps.py for parse_compatibility_for_packages and validation.
 """
 
 import json

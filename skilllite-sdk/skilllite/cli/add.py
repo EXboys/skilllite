@@ -376,8 +376,8 @@ def cmd_add(args: argparse.Namespace) -> int:
         # --- Install dependencies ---
         print()
         print("📦 Installing dependencies...")
-        from .init import _scan_and_install_deps
-        dep_results = _scan_and_install_deps(skills_dir, force=force)
+        from .init_deps import scan_and_install_deps
+        dep_results = scan_and_install_deps(skills_dir, force=force)
         for r in dep_results:
             # Only show results for newly-installed skills
             if r.get("name") not in installed:

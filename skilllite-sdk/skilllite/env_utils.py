@@ -25,12 +25,12 @@ def ensure_skill_python(skill_dir: Path) -> str:
     """
     try:
         from .core.metadata import parse_skill_metadata
-        from .cli.init import (
-            parse_compatibility_for_packages,
-            _get_cache_dir,
-            _compute_packages_hash,
-            _get_cache_key,
-            _ensure_python_env,
+        from .cli.init_deps import parse_compatibility_for_packages
+        from .env import (
+            get_cache_dir,
+            get_cache_key,
+            compute_packages_hash,
+            ensure_python_env,
         )
     except ImportError:
         return sys.executable
@@ -50,14 +50,14 @@ def ensure_skill_python(skill_dir: Path) -> str:
 
     # Compute cache key and ensure venv exists
     language = metadata.language or "python"
-    content_hash = _compute_packages_hash(packages)
-    cache_key = _get_cache_key(language, content_hash)
-    cache_dir = _get_cache_dir()
+    content_hash = compute_packages_hash(packages)
+    cache_key = get_cache_key(language, content_hash)
+    cache_dir = get_cache_dir()
     cache_dir.mkdir(parents=True, exist_ok=True)
     env_path = cache_dir / cache_key
 
     # Create venv and install packages (idempotent — skips if marker exists)
-    _ensure_python_env(env_path, packages)
+    ensure_python_env(env_path, packages)
 
     # Return venv's python executable
     python = (
