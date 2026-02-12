@@ -81,7 +81,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
         )
 
         print("skilllite chat (session: %s)" % session_key)
-        print("Ctrl+C or /exit to quit, /clear to clear history\n")
+        print("Ctrl+C or /exit to quit, /clear to clear history, /compact to force compaction\n")
 
         while True:
             try:
@@ -95,7 +95,29 @@ def cmd_chat(args: argparse.Namespace) -> int:
             if user_input.lower() in ("/exit", "/quit", "/q"):
                 print("Bye.")
                 break
+            if user_input.lower() == "/compact":
+                print("Forcing compaction...")
+                try:
+                    old_threshold = session.COMPACTION_THRESHOLD
+                    session.COMPACTION_THRESHOLD = 2  # Force trigger
+                    entries = session._read_transcript()
+                    session._check_and_compact(entries)
+                    session.COMPACTION_THRESHOLD = old_threshold
+                    print("Compaction complete.")
+                except Exception as e:
+                    print(f"Compaction failed: {e}")
+                continue
             if user_input.lower() == "/clear":
+                # Memory flush: summarize current session before clearing
+                print("Flushing session memory...")
+                try:
+                    summary = session.summarize_for_memory()
+                    if summary:
+                        print(f"Session summary saved to memory ({len(summary)} chars).")
+                    else:
+                        print("No conversation to summarize.")
+                except Exception as e:
+                    print(f"Memory flush failed: {e}")
                 session_key = f"main_{int(time.time())}"
                 session.session_key = session_key
                 session._ensure_session()

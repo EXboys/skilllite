@@ -66,10 +66,6 @@ impl SessionStore {
         self.sessions.get(session_key)
     }
 
-    pub fn get_mut(&mut self, session_key: &str) -> Option<&mut SessionEntry> {
-        self.sessions.get_mut(session_key)
-    }
-
     pub fn create_or_get(&mut self, session_key: &str) -> &mut SessionEntry {
         let now = chrono_now();
         if !self.sessions.contains_key(session_key) {

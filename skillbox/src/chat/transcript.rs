@@ -1,12 +1,16 @@
 //! Transcript store: *.jsonl append-only, tree structure.
 //!
 //! Entry types: message, custom_message, custom, compaction, branch_summary.
+//!
+//! Time-based segmentation (aligned with OpenClaw): files are named
+//! `{session_key}-YYYY-MM-DD.jsonl` so each day gets a new file. Legacy
+//! `{session_key}.jsonl` without date is still supported for backward compat.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -64,16 +68,6 @@ impl TranscriptEntry {
         }
     }
 
-    pub fn parent_id(&self) -> Option<&str> {
-        match self {
-            Self::Message { parent_id, .. } => parent_id.as_deref(),
-            Self::CustomMessage { parent_id, .. } => parent_id.as_deref(),
-            Self::Custom { parent_id, .. } => parent_id.as_deref(),
-            Self::Compaction { parent_id, .. } => parent_id.as_deref(),
-            Self::BranchSummary { parent_id, .. } => parent_id.as_deref(),
-            _ => None,
-        }
-    }
 }
 
 /// Append an entry to transcript file. Creates file and parent dir if needed.
@@ -141,4 +135,85 @@ fn timestamp_now() -> String {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     format!("{}", secs)
+}
+
+/// Date string for today (YYYY-MM-DD), local timezone. Used for log segmentation.
+fn date_today() -> String {
+    chrono::Local::now().format("%Y-%m-%d").to_string()
+}
+
+/// Path for session's transcript file. With date segmentation: `{session_key}-YYYY-MM-DD.jsonl`.
+pub fn transcript_path_for_session(
+    transcripts_dir: &Path,
+    session_key: &str,
+    date: Option<&str>,
+) -> PathBuf {
+    let date_str = date.map(|s| s.to_string()).unwrap_or_else(date_today);
+    transcripts_dir.join(format!("{}-{}.jsonl", session_key, date_str))
+}
+
+/// Path for today's transcript file (used for append).
+pub fn transcript_path_today(transcripts_dir: &Path, session_key: &str) -> PathBuf {
+    transcript_path_for_session(transcripts_dir, session_key, None)
+}
+
+/// List all transcript files for a session, sorted by date (legacy first, then YYYY-MM-DD).
+pub fn list_transcript_files(transcripts_dir: &Path, session_key: &str) -> Result<Vec<PathBuf>> {
+    let legacy = transcripts_dir.join(format!("{}.jsonl", session_key));
+    let mut files = Vec::new();
+    if legacy.exists() {
+        files.push(legacy);
+    }
+    if !transcripts_dir.exists() {
+        return Ok(files);
+    }
+    let entries = std::fs::read_dir(transcripts_dir).with_context(|| {
+        format!(
+            "Failed to read transcripts dir: {}",
+            transcripts_dir.display()
+        )
+    })?;
+    for e in entries {
+        let e = e?;
+        let path = e.path();
+        if let Some(name) = path.file_name() {
+            let name = name.to_string_lossy();
+            if name.starts_with(session_key) && name.ends_with(".jsonl") && name != format!("{}.jsonl", session_key) {
+                files.push(path);
+            }
+        }
+    }
+    files.sort_by(|a, b| {
+        let date_a = extract_date_from_path(a, session_key);
+        let date_b = extract_date_from_path(b, session_key);
+        date_a.cmp(&date_b)
+    });
+    Ok(files)
+}
+
+fn extract_date_from_path(path: &Path, session_key: &str) -> String {
+    let name = path.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
+    if name == session_key {
+        return "0000-00-00".to_string(); // legacy, treat as oldest
+    }
+    let prefix = format!("{}-", session_key);
+    if name.starts_with(&prefix) {
+        name.trim_start_matches(&prefix).to_string()
+    } else {
+        "0000-00-00".to_string()
+    }
+}
+
+/// Read all entries from all transcript files for a session (merged in date order).
+pub fn read_entries_for_session(
+    transcripts_dir: &Path,
+    session_key: &str,
+) -> Result<Vec<TranscriptEntry>> {
+    let paths = list_transcript_files(transcripts_dir, session_key)?;
+    let mut all = Vec::new();
+    for p in paths {
+        let entries = read_entries(&p)?;
+        all.extend(entries);
+    }
+    Ok(all)
 }

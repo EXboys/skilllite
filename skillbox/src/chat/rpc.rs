@@ -7,7 +7,10 @@ use std::io::Write;
 
 use super::memory::{ensure_index, index_file, index_path, search_bm25};
 use super::session::SessionStore;
-use super::transcript::{append_entry, ensure_session_header, TranscriptEntry};
+use super::transcript::{
+    append_entry, ensure_session_header, read_entries_for_session, transcript_path_today,
+    TranscriptEntry,
+};
 use super::workspace_root;
 
 pub fn handle_session_create(params: &Value) -> Result<Value> {
@@ -91,7 +94,8 @@ pub fn handle_transcript_append(params: &Value) -> Result<Value> {
     let entry_json = p.get("entry").context("entry required")?;
 
     let root = workspace_root(workspace_path)?;
-    let transcript_path = root.join("transcripts").join(format!("{}.jsonl", session_key));
+    let transcripts_dir = root.join("transcripts");
+    let transcript_path = transcript_path_today(&transcripts_dir, session_key);
 
     // Accept flexible entry format - try structured first, else append raw line
     let entry: TranscriptEntry = match serde_json::from_value(entry_json.clone()) {
@@ -124,22 +128,13 @@ pub fn handle_transcript_read(params: &Value) -> Result<Value> {
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
 
     let root = workspace_root(workspace_path)?;
-    let transcript_path = root.join("transcripts").join(format!("{}.jsonl", session_key));
+    let transcripts_dir = root.join("transcripts");
 
-    if !transcript_path.exists() {
-        return Ok(json!([]));
-    }
-
-    let content = fs::read_to_string(&transcript_path)?;
-    let arr: Vec<Value> = content
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim();
-            if line.is_empty() {
-                return None;
-            }
-            serde_json::from_str(line).ok()
-        })
+    let entries = read_entries_for_session(&transcripts_dir, session_key)?;
+    let arr: Vec<Value> = entries
+        .into_iter()
+        .map(|e| serde_json::to_value(e))
+        .filter_map(Result::ok)
         .collect();
     Ok(json!(arr))
 }
@@ -152,7 +147,8 @@ pub fn handle_transcript_ensure(params: &Value) -> Result<Value> {
     let cwd = p.get("cwd").and_then(|v| v.as_str());
 
     let root = workspace_root(workspace_path)?;
-    let transcript_path = root.join("transcripts").join(format!("{}.jsonl", session_key));
+    let transcripts_dir = root.join("transcripts");
+    let transcript_path = transcript_path_today(&transcripts_dir, session_key);
 
     ensure_session_header(&transcript_path, session_id, cwd)?;
     Ok(json!({"ok": true}))

@@ -28,9 +28,35 @@ def _ensure_chat_client():
 
 
 def _transcript_entries_to_messages(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Convert transcript entries to OpenAI message format."""
-    messages = []
-    for e in entries:
+    """Convert transcript entries to OpenAI message format.
+
+    Compaction-aware: if a ``compaction`` entry exists, only use its summary
+    (as a system message) plus entries that come *after* it.  This keeps
+    context small while preserving important information.
+    """
+    # Find the last compaction entry (if any)
+    last_compaction_idx = -1
+    for i, e in enumerate(entries):
+        if e.get("type") == "compaction":
+            last_compaction_idx = i
+
+    messages: List[Dict[str, Any]] = []
+
+    if last_compaction_idx >= 0:
+        # Inject compaction summary as a system message
+        compaction = entries[last_compaction_idx]
+        summary = compaction.get("summary") or ""
+        if summary:
+            messages.append({
+                "role": "system",
+                "content": f"[Compacted conversation summary]\n{summary}",
+            })
+        # Only process entries after the compaction
+        remaining = entries[last_compaction_idx + 1:]
+    else:
+        remaining = entries
+
+    for e in remaining:
         if e.get("type") != "message":
             continue
         role = e.get("role")
@@ -56,6 +82,15 @@ def _message_to_transcript_entry(role: str, content: str, parent_id: Optional[st
     }
 
 
+_COMPACTION_PROMPT = """Summarize the following conversation concisely. Keep:
+- Key decisions and conclusions
+- Important facts, names, numbers
+- User preferences and instructions
+- Any unresolved questions or tasks
+
+Be concise but preserve essential information. Output the summary only, no preamble."""
+
+
 class ChatSession:
     """
     Persistent chat session with transcript history and memory.
@@ -63,7 +98,18 @@ class ChatSession:
     Uses skillbox IPC for session/transcript/memory. Integrates with
     AgenticLoop for LLM execution. Registers memory_search and memory_write
     as tools for the LLM.
+
+    Supports auto-compaction: when message count exceeds
+    ``compaction_threshold`` (default 30), older messages are summarized
+    via a silent LLM call and a ``compaction`` entry is written to the
+    transcript.  Subsequent reads only use the summary + post-compaction
+    messages, keeping context small.
     """
+
+    # Number of *message* entries (user+assistant) that trigger compaction
+    COMPACTION_THRESHOLD = 30
+    # How many recent messages to keep after compaction
+    COMPACTION_KEEP_RECENT = 10
 
     def __init__(
         self,
@@ -134,6 +180,146 @@ class ChatSession:
             workspace_path=self.workspace_path,
         )
 
+    def _check_and_compact(self, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Check if compaction is needed and perform it if so.
+
+        Returns the (possibly updated) entries list.
+        """
+        # Count message entries only
+        msg_entries = [e for e in entries if e.get("type") == "message"]
+        if len(msg_entries) < self.COMPACTION_THRESHOLD:
+            return entries
+
+        self._logger.info(
+            "[Compaction] %d messages exceed threshold (%d), compacting...",
+            len(msg_entries), self.COMPACTION_THRESHOLD,
+        )
+
+        # Split: messages to summarize vs. messages to keep
+        to_summarize = msg_entries[:-self.COMPACTION_KEEP_RECENT]
+        kept = msg_entries[-self.COMPACTION_KEEP_RECENT:]
+
+        # Build conversation text for summarization
+        conv_lines = []
+        for m in to_summarize:
+            role = m.get("role", "unknown")
+            content = m.get("content", "")
+            # Truncate very long individual messages
+            if len(content) > 500:
+                content = content[:500] + "..."
+            conv_lines.append(f"{role}: {content}")
+        conversation_text = "\n".join(conv_lines)
+
+        # Call LLM for summary (silent, no tools)
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": _COMPACTION_PROMPT},
+                    {"role": "user", "content": conversation_text},
+                ],
+                max_tokens=1024,
+            )
+            summary = response.choices[0].message.content or ""
+        except Exception as e:
+            self._logger.warning("[Compaction] LLM call failed: %s, skipping", e)
+            return entries
+
+        # Write compaction entry to transcript
+        first_kept_id = kept[0].get("id", "") if kept else ""
+        compaction_entry = {
+            "type": "compaction",
+            "id": f"c_{uuid.uuid4().hex[:12]}",
+            "parent_id": to_summarize[-1].get("id") if to_summarize else None,
+            "first_kept_entry_id": first_kept_id,
+            "tokens_before": len(conversation_text),  # approximate
+            "summary": summary,
+        }
+        self._append_transcript(compaction_entry)
+
+        # Update session compaction count
+        try:
+            ipc = self._get_ipc()
+            session_info = ipc.session_get(
+                session_key=self.session_key,
+                workspace_path=self.workspace_path,
+            )
+            count = session_info.get("compaction_count", 0) + 1
+            ipc.session_update(
+                session_key=self.session_key,
+                workspace_path=self.workspace_path,
+                compaction_count=count,
+            )
+        except Exception:
+            pass  # non-critical
+
+        self._logger.info("[Compaction] Done. Summarized %d messages.", len(to_summarize))
+
+        # Re-read to get updated entries with the compaction
+        return self._read_transcript()
+
+    def summarize_for_memory(self) -> Optional[str]:
+        """Summarize the current session transcript and write to memory.
+
+        Used for memory flush before /clear or session switch.
+        Returns the summary text, or None if nothing to summarize.
+        """
+        entries = self._read_transcript()
+        msg_entries = [e for e in entries if e.get("type") == "message"]
+        if len(msg_entries) < 2:
+            return None  # nothing worth summarizing
+
+        # Build conversation text
+        conv_lines = []
+        for m in msg_entries:
+            role = m.get("role", "unknown")
+            content = m.get("content", "")
+            if len(content) > 500:
+                content = content[:500] + "..."
+            conv_lines.append(f"{role}: {content}")
+        conversation_text = "\n".join(conv_lines)
+
+        # Call LLM for summary
+        flush_prompt = (
+            "Summarize the key information from this conversation that should be "
+            "remembered for future sessions. Focus on: user preferences, decisions, "
+            "important facts, and any pending tasks. Be concise."
+        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": flush_prompt},
+                    {"role": "user", "content": conversation_text},
+                ],
+                max_tokens=1024,
+            )
+            summary = response.choices[0].message.content or ""
+        except Exception as e:
+            self._logger.warning("[Memory Flush] LLM call failed: %s", e)
+            return None
+
+        if not summary.strip():
+            return None
+
+        # Write to memory via IPC
+        try:
+            import time
+            ipc = self._get_ipc()
+            rel_path = f"session_summaries/{self.session_key}.md"
+            header = f"# Session: {self.session_key}\n_Flushed: {time.strftime('%Y-%m-%d %H:%M')}_\n\n"
+            ipc.memory_write(
+                rel_path=rel_path,
+                content=header + summary + "\n",
+                workspace_path=self.workspace_path,
+                append=False,
+            )
+            self._logger.info("[Memory Flush] Saved to %s (%d chars)", rel_path, len(summary))
+        except Exception as e:
+            self._logger.warning("[Memory Flush] Write failed: %s", e)
+
+        return summary
+
     def _build_memory_context(self, user_message: str, limit: int = 5) -> str:
         """Get relevant memory context for the user message."""
         hits = self._memory_search(query=user_message, limit=limit)
@@ -195,8 +381,9 @@ class ChatSession:
         """
         self._ensure_session()
 
-        # Read transcript
+        # Read transcript and auto-compact if needed
         entries = self._read_transcript()
+        entries = self._check_and_compact(entries)
         history = _transcript_entries_to_messages(entries)
 
         # Memory context
@@ -213,8 +400,10 @@ class ChatSession:
         if system_content:
             messages.append({"role": "system", "content": system_content})
 
-        # Cap history to avoid token overflow (keep last N exchanges)
-        max_history = 20
+        # History is already compaction-aware (only post-compaction messages
+        # plus the summary).  Apply a safety cap in case compaction didn't
+        # trigger yet or just completed.
+        max_history = 40
         if len(history) > max_history:
             history = history[-max_history:]
         messages.extend(history)
