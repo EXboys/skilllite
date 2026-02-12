@@ -194,7 +194,7 @@ In addition to the above Skills, you have the following built-in file operation 
 
 - Writing poems, articles, stories (EXCEPT 小红书/种草/图文笔记 - see below)
 - Translating text
-- Answering knowledge-based questions (EXCEPT 天气/气象 - see below)
+- Answering knowledge-based questions (EXCEPT 天气/气象 - see below, EXCEPT when user asks for 实时/最新 - see below)
 - Code explanation, code review suggestions
 - Creative generation, brainstorming (EXCEPT 小红书 - see below)
 - Summarizing, rewriting, polishing text
@@ -204,6 +204,10 @@ In addition to the above Skills, you have the following built-in file operation 
 **If user says "使用 XX skill" / "用 XX 技能" / "use XX skills"**, you MUST add that skill to the task list. Do NOT return empty list.
 
 **天气/气象/天气预报**: When the user asks about weather (天气、气温、气象、今天天气、明天天气、某地天气、适合出行吗、适合出去玩吗 etc.), you MUST use **weather** skill. The LLM cannot provide real-time weather data; only the weather skill can. Return a task with tool_hint: "weather".
+
+**实时/最新/实时信息**: When the user explicitly asks for 实时、最新、实时信息、最新数据、实时数据、最新排名、实时查询、抓取网页、获取最新、fetch live data etc., you MUST use **http-request** skill. The LLM's knowledge has a cutoff; only HTTP requests can fetch current information. Return a task with tool_hint: "http-request".
+
+**继续/继续未完成的任务**: When the user says 继续、继续未完成、继续之前、继续任务 etc., you MUST use the **conversation context** (if provided) to understand what task to continue. If the context mentions: real-time data, rankings, university comparison, fees, QS ranking, 实时、最新、需要用户自行查询、请访问官网 etc., you MUST plan **http-request** to fetch the data. The AI must DO the work using tools, NOT ask the user to do it. Only return empty list [] when the continued task is truly LLM-only (e.g. creative writing).
 
 **小红书/种草/图文笔记**: When the task involves 小红书、种草文案、小红书图文、小红书笔记, you MUST use **xiaohongshu-writer** skill. It generates structured content + thumbnail image. Return a task with tool_hint: "xiaohongshu-writer".
 
@@ -270,13 +274,38 @@ Example 4 - Weather query (MUST use weather skill, LLM cannot provide real-time 
 User request: "深圳今天天气怎样，适合出去玩吗？"
 Return: [{{"id": 1, "description": "Use weather skill to query real-time weather in Shenzhen", "tool_hint": "weather", "completed": false}}]
 
+Example 5 - User asks for real-time/latest info (MUST use http-request):
+User request: "我需要更实时的信息" or "分析西安交大和清迈大学的对比，要最新数据"
+Return: [{{"id": 1, "description": "Use http-request to fetch latest data from authoritative sources (QS, official sites)", "tool_hint": "http-request", "completed": false}}, {{"id": 2, "description": "Analyze and compare based on fetched data", "tool_hint": "analysis", "completed": false}}]
+
+Example 6 - User says "继续" with context (MUST use context to infer task):
+User request: "继续为我呐未完成的任务"
+Conversation context: [assistant previously said: "要完成西安交大与清迈大学的对比，最关键的是获取实时信息... 需要您行动: 获取2024年最新排名数据（需访问QS官网）..."]
+Return: [{{"id": 1, "description": "Use http-request to fetch QS rankings and university official data for Xi'an Jiaotong vs Chiang Mai comparison", "tool_hint": "http-request", "completed": false}}, {{"id": 2, "description": "Analyze and present comparison based on fetched data", "tool_hint": "analysis", "completed": false}}]
+
 Return only JSON, no other content."""
 
-    def generate_task_list(self, user_message: str, manager: "SkillManager") -> List[Dict]:
-        """Generate task list from user message using LLM."""
+    def generate_task_list(
+        self,
+        user_message: str,
+        manager: "SkillManager",
+        conversation_context: Optional[str] = None,
+    ) -> List[Dict]:
+        """Generate task list from user message using LLM.
+
+        Args:
+            user_message: Current user message
+            manager: SkillManager for available skills
+            conversation_context: Optional recent conversation (for "继续" etc.) to infer task
+        """
         skills_names = manager.skill_names()
         skills_info = ", ".join(skills_names) if skills_names else "None"
         planning_prompt = self._build_planning_prompt(skills_info)
+
+        user_content = f"User request:\n{user_message}\n\n"
+        if conversation_context:
+            user_content += f"Conversation context (recent messages - use this to understand what task to continue):\n{conversation_context}\n\n"
+        user_content += "Please generate task list:"
 
         try:
             if self.api_format == ApiFormat.OPENAI:
@@ -284,9 +313,9 @@ Return only JSON, no other content."""
                     model=self.model,
                     messages=[
                         {"role": "system", "content": planning_prompt},
-                        {"role": "user", "content": f"User request:\n{user_message}\n\nPlease generate task list:"}
+                        {"role": "user", "content": user_content},
                     ],
-                    temperature=0.3
+                    temperature=0.3,
                 )
                 result = response.choices[0].message.content.strip()
             else:  # CLAUDE_NATIVE
@@ -294,9 +323,7 @@ Return only JSON, no other content."""
                     model=self.model,
                     max_tokens=2048,
                     system=planning_prompt,
-                    messages=[
-                        {"role": "user", "content": f"User request:\n{user_message}\n\nPlease generate task list:"}
-                    ]
+                    messages=[{"role": "user", "content": user_content}],
                 )
                 result = response.content[0].text.strip()
 

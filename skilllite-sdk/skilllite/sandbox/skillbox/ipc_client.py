@@ -295,6 +295,35 @@ class SkillboxIPCClient:
         result = self._send_request("plan_textify", {"plan": plan})
         return result.get("text", "")
 
+    def plan_write(
+        self,
+        session_key: str,
+        task_id: str,
+        task: str,
+        steps: List[Dict[str, Any]],
+        workspace_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Write plan to plans/{session_key}-{date}.json (overwrite). OpenClaw-style."""
+        params = {"session_key": session_key, "task_id": task_id, "task": task, "steps": steps}
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        return self._send_request("plan_write", params)
+
+    def plan_read(
+        self,
+        session_key: str,
+        workspace_path: Optional[str] = None,
+        date: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Read plan from plans/{session_key}-{date}.json."""
+        params = {"session_key": session_key}
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        if date is not None:
+            params["date"] = date
+        result = self._send_request("plan_read", params)
+        return result if result is not None else None
+
     def close(self) -> None:
         """Terminate the daemon process."""
         with self._lock:

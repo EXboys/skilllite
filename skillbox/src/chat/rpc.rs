@@ -139,6 +139,122 @@ pub fn handle_transcript_read(params: &Value) -> Result<Value> {
     Ok(json!(arr))
 }
 
+/// Plan file path: plans/{session_key}-{date}.json
+fn plan_path(plans_dir: &std::path::Path, session_key: &str) -> std::path::PathBuf {
+    let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+    plans_dir.join(format!("{}-{}.json", session_key, date_str))
+}
+
+/// Write plan to plans/{session_key}-{date}.json (overwrite). OpenClaw-style plan storage.
+pub fn handle_plan_write(params: &Value) -> Result<Value> {
+    let p = params.as_object().context("params must be object")?;
+    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
+    let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
+    let task_id = p.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
+    let task = p.get("task").and_then(|v| v.as_str()).unwrap_or("");
+    let task_list = p.get("steps").or(p.get("task_list")).context("steps or task_list required")?;
+    let tasks = task_list.as_array().context("steps must be array")?;
+
+    let root = workspace_root(workspace_path)?;
+    let plans_dir = root.join("plans");
+    let plan_path = plan_path(&plans_dir, session_key);
+
+    let (steps, current_step_id) = task_list_to_plan_steps(tasks)?;
+    let updated_at = chrono::Utc::now().to_rfc3339();
+    let plan_json = json!({
+        "session_key": session_key,
+        "task_id": task_id,
+        "task": task,
+        "steps": steps,
+        "current_step_id": current_step_id,
+        "updated_at": updated_at,
+    });
+
+    if let Some(parent) = plan_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let pretty = serde_json::to_string_pretty(&plan_json)?;
+    fs::write(&plan_path, pretty)?;
+
+    let text = plan_textify_inner(tasks)?;
+    Ok(json!({"ok": true, "text": text}))
+}
+
+/// Read plan from plans/{session_key}-{date}.json
+pub fn handle_plan_read(params: &Value) -> Result<Value> {
+    let p = params.as_object().context("params must be object")?;
+    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
+    let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
+    let date = p.get("date").and_then(|v| v.as_str());
+
+    let root = workspace_root(workspace_path)?;
+    let plans_dir = root.join("plans");
+    let plan_path = if let Some(d) = date {
+        plans_dir.join(format!("{}-{}.json", session_key, d))
+    } else {
+        plan_path(&plans_dir, session_key)
+    };
+
+    if !plan_path.exists() {
+        return Ok(json!(null));
+    }
+    let content = fs::read_to_string(&plan_path)?;
+    let plan: Value = serde_json::from_str(&content)?;
+    Ok(plan)
+}
+
+/// Convert task_list to plan steps with status: completed | running | pending
+fn task_list_to_plan_steps(tasks: &[Value]) -> Result<(Vec<Value>, i64)> {
+    let mut steps = Vec::with_capacity(tasks.len());
+    let mut current_step_id: i64 = 0;
+    let mut found_running = false;
+    for (i, task) in tasks.iter().enumerate() {
+        let completed = task.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+        let status = if completed {
+            "completed"
+        } else if !found_running {
+            found_running = true;
+            current_step_id = task.get("id").and_then(|v| v.as_i64()).unwrap_or((i + 1) as i64);
+            "running"
+        } else {
+            "pending"
+        };
+        let step = json!({
+            "id": task.get("id").unwrap_or(&json!(i + 1)),
+            "description": task.get("description").unwrap_or(&json!("")),
+            "tool_hint": task.get("tool_hint").unwrap_or(&json!(null)),
+            "status": status,
+            "result": task.get("result").unwrap_or(&json!(null)),
+        });
+        steps.push(step);
+    }
+    if current_step_id == 0 && !tasks.is_empty() {
+        current_step_id = tasks.last().and_then(|t| t.get("id").and_then(|v| v.as_i64())).unwrap_or(1);
+    }
+    Ok((steps, current_step_id))
+}
+
+fn plan_textify_inner(tasks: &[Value]) -> Result<String> {
+    let mut lines = Vec::with_capacity(tasks.len());
+    for (i, task) in tasks.iter().enumerate() {
+        let desc = task
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(no description)");
+        let tool_hint = task
+            .get("tool_hint")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let completed = task.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+        let status = if completed { "✓" } else { "○" };
+        let tool_part = tool_hint
+            .map(|t| format!(" [{}]", t))
+            .unwrap_or_default();
+        lines.push(format!("{}. {} {}{}", i + 1, status, desc, tool_part));
+    }
+    Ok(lines.join("\n"))
+}
+
 pub fn handle_transcript_ensure(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
     let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
@@ -242,24 +358,6 @@ pub fn handle_plan_textify(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
     let plan = p.get("plan").context("plan required")?;
     let tasks = plan.as_array().context("plan must be array")?;
-
-    let mut lines = Vec::with_capacity(tasks.len());
-    for (i, task) in tasks.iter().enumerate() {
-        let desc = task
-            .get("description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("(no description)");
-        let tool_hint = task
-            .get("tool_hint")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty());
-        let completed = task.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
-        let status = if completed { "✓" } else { "○" };
-        let tool_part = tool_hint
-            .map(|t| format!(" [{}]", t))
-            .unwrap_or_default();
-        lines.push(format!("{}. {} {}{}", i + 1, status, desc, tool_part));
-    }
-    let text = lines.join("\n");
+    let text = plan_textify_inner(tasks)?;
     Ok(json!({"text": text}))
 }

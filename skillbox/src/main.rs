@@ -150,6 +150,10 @@ fn serve_stdio() -> Result<()> {
             "token_count" => chat::rpc::handle_token_count(&params),
             #[cfg(feature = "chat")]
             "plan_textify" => chat::rpc::handle_plan_textify(&params),
+            #[cfg(feature = "chat")]
+            "plan_write" => chat::rpc::handle_plan_write(&params),
+            #[cfg(feature = "chat")]
+            "plan_read" => chat::rpc::handle_plan_read(&params),
             _ => {
                 let err_resp = json!({
                     "jsonrpc": "2.0",

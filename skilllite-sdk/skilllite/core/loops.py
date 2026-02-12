@@ -9,10 +9,37 @@ import json
 from typing import Any, List, Optional, TYPE_CHECKING, Dict, Callable
 
 from ..logger import get_logger
+from .long_text import summarize_long_content, truncate_content, SUMMARIZE_THRESHOLD
 from .task_planner import ApiFormat, TaskPlanner
+from .tools import ToolResult
 
 if TYPE_CHECKING:
     from .manager import SkillManager
+
+# Max chars per tool result (~2k tokens). Prevents context overflow from huge HTTP/HTML responses.
+TOOL_RESULT_MAX_CHARS = 8000
+
+# Max chars for context-overflow recovery retry (more aggressive truncation)
+TOOL_RESULT_RECOVERY_MAX_CHARS = 3000
+
+
+def _is_context_overflow_error(exc: Exception) -> bool:
+    """Check if exception is due to context length overflow."""
+    msg = str(exc).lower()
+    return (
+        "maximum context length" in msg
+        or "context_length_exceeded" in msg
+        or "token" in msg and "exceeded" in msg
+    )
+
+
+def _truncate_tool_messages_in_place(messages: List[Dict[str, Any]], max_chars: int) -> None:
+    """Truncate content of all tool messages in messages list (in place)."""
+    for m in messages:
+        if m.get("role") == "tool" and "content" in m:
+            content = m["content"]
+            if len(content) > max_chars:
+                m["content"] = content[:max_chars] + f"\n\n[... 已截断至 {max_chars} 字符 ...]"
 
 
 class AgenticLoop:
@@ -89,6 +116,7 @@ class AgenticLoop:
         self.extra_kwargs = kwargs
         self._no_tools_needed = False  # Set True when task planner says no tools needed
         self._max_no_tool_retries = 3  # Max consecutive iterations without tool calls before giving up
+        self._on_plan_updated: Optional[Callable[[List[Dict[str, Any]]], None]] = None
 
         # Delegate task planning to TaskPlanner
         self._planner = TaskPlanner(
@@ -118,6 +146,23 @@ class AgenticLoop:
             elif response in ['n', 'no']:
                 return False
             self._log("Please enter 'y' or 'n'")
+
+    def _process_tool_result_content(self, content: str) -> str:
+        """Process long tool result: chunked summarization if very long, else truncate."""
+        if len(content) <= TOOL_RESULT_MAX_CHARS:
+            return content
+        if len(content) <= SUMMARIZE_THRESHOLD:
+            return truncate_content(content, TOOL_RESULT_MAX_CHARS)
+        self._log(f"📝 Long content ({len(content)} chars), summarize 开头+结尾 (head+tail)...")
+        api_fmt = self.api_format.value if hasattr(self.api_format, "value") else "openai"
+        return summarize_long_content(
+            self.client,
+            self.model,
+            content,
+            api_format=api_fmt,
+            max_output_chars=TOOL_RESULT_MAX_CHARS,
+            logger=self._log,
+        )
 
     # Task planning is delegated to self._planner (TaskPlanner)
 
@@ -234,12 +279,31 @@ Based on the documentation, call the tools with correct parameters.
             self._log(f"\n🔄 Iteration #{iteration + 1}/{self.max_iterations}")
 
             self._log("⏳ Calling LLM...")
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=tools if tools else None,
-                **self.extra_kwargs
-            )
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=tools if tools else None,
+                    **self.extra_kwargs
+                )
+            except Exception as e:
+                if _is_context_overflow_error(e):
+                    self._log(f"⚠️  Context overflow detected, attempting recovery...")
+                    _truncate_tool_messages_in_place(messages, TOOL_RESULT_RECOVERY_MAX_CHARS)
+                    try:
+                        response = self.client.chat.completions.create(
+                            model=self.model,
+                            messages=messages,
+                            tools=tools if tools else None,
+                            **self.extra_kwargs
+                        )
+                    except Exception as retry_e:
+                        self._log(f"❌ Recovery failed: {retry_e}")
+                        raise RuntimeError(
+                            f"上下文长度超限，恢复失败。建议：1) 使用 /clear 清空对话 2) 避免请求返回超大内容的操作（如抓取整页 HTML）"
+                        ) from retry_e
+                else:
+                    raise
 
             message = response.choices[0].message
             finish_reason = response.choices[0].finish_reason
@@ -254,6 +318,8 @@ Based on the documentation, call the tools with correct parameters.
                     completed_id = self._planner.check_completion_in_content(message.content)
                     if completed_id:
                         self._planner.update_task_list(completed_id)
+                        if self._on_plan_updated:
+                            self._on_plan_updated(self._planner.task_list)
                         consecutive_no_tool = 0  # Reset: made progress
 
                     if self._planner.check_all_completed():
@@ -343,7 +409,12 @@ Based on the documentation, call the tools with correct parameters.
                 self._log(f"      Result: {output}")
 
             for result in tool_results:
-                messages.append(result.to_openai_format())
+                processed = self._process_tool_result_content(result.content)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": result.tool_use_id,
+                    "content": processed,
+                })
             
             # Check task completion
             if self.enable_task_planning:
@@ -351,12 +422,29 @@ Based on the documentation, call the tools with correct parameters.
                     completed_id = self._planner.check_completion_in_content(message.content)
                     if completed_id:
                         self._planner.update_task_list(completed_id)
+                        if self._on_plan_updated:
+                            self._on_plan_updated(self._planner.task_list)
 
                 if self._planner.check_all_completed():
                     self._log("🎯 All tasks completed, ending iteration")
-                    final_response = self.client.chat.completions.create(
-                        model=self.model, messages=messages, tools=None
-                    )
+                    try:
+                        final_response = self.client.chat.completions.create(
+                            model=self.model, messages=messages, tools=None
+                        )
+                    except Exception as e:
+                        if _is_context_overflow_error(e):
+                            self._log(f"⚠️  Context overflow on final response, attempting recovery...")
+                            _truncate_tool_messages_in_place(messages, TOOL_RESULT_RECOVERY_MAX_CHARS)
+                            try:
+                                final_response = self.client.chat.completions.create(
+                                    model=self.model, messages=messages, tools=None
+                                )
+                            except Exception as retry_e:
+                                raise RuntimeError(
+                                    f"上下文长度超限。请使用 /clear 清空对话后重试。"
+                                ) from retry_e
+                        else:
+                            raise
                     return final_response
 
                 # Update task focus
@@ -421,7 +509,12 @@ Based on the documentation, call the tools with correct parameters.
             if system:
                 kwargs["system"] = system
 
-            response = self.client.messages.create(**kwargs)
+            try:
+                response = self.client.messages.create(**kwargs)
+            except Exception as e:
+                if _is_context_overflow_error(e):
+                    self._log(f"⚠️  Context overflow detected (Claude), cannot auto-recover. Use /clear to reset.")
+                raise
 
             self._log(f"✅ LLM response completed (stop_reason: {response.stop_reason})")
 
@@ -439,6 +532,8 @@ Based on the documentation, call the tools with correct parameters.
                     completed_id = self._planner.check_completion_in_content(text_content)
                     if completed_id:
                         self._planner.update_task_list(completed_id)
+                        if self._on_plan_updated:
+                            self._on_plan_updated(self._planner.task_list)
                         consecutive_no_tool = 0  # Reset: made progress
 
                     if self._planner.check_all_completed():
@@ -488,7 +583,16 @@ Based on the documentation, call the tools with correct parameters.
                     output = output[:500] + "... (truncated)"
                 self._log(f"   {idx}. Result: {output}")
 
-            formatted_results = self.manager.format_tool_results_claude_native(tool_results)
+            # Process long content (summarize or truncate) before adding to context
+            processed_results = [
+                ToolResult(
+                    result.tool_use_id,
+                    self._process_tool_result_content(result.content),
+                    result.is_error,
+                )
+                for result in tool_results
+            ]
+            formatted_results = self.manager.format_tool_results_claude_native(processed_results)
             messages.append({"role": "user", "content": formatted_results})
             
             # Check task completion
@@ -501,15 +605,22 @@ Based on the documentation, call the tools with correct parameters.
                 completed_id = self._planner.check_completion_in_content(text_content)
                 if completed_id:
                     self._planner.update_task_list(completed_id)
+                    if self._on_plan_updated:
+                        self._on_plan_updated(self._planner.task_list)
 
                 if self._planner.check_all_completed():
                     self._log("🎯 All tasks completed, ending iteration")
-                    final_response = self.client.messages.create(
-                        model=self.model,
-                        max_tokens=self.extra_kwargs.get("max_tokens", 4096),
-                        system=system if system else None,
-                        messages=messages
-                    )
+                    try:
+                        final_response = self.client.messages.create(
+                            model=self.model,
+                            max_tokens=self.extra_kwargs.get("max_tokens", 4096),
+                            system=system if system else None,
+                            messages=messages
+                        )
+                    except Exception as e:
+                        if _is_context_overflow_error(e):
+                            raise RuntimeError("上下文长度超限。请使用 /clear 清空对话后重试。") from e
+                        raise
                     return final_response
         
         self._log(f"\n⚠️  Reached maximum iterations ({self.max_iterations}), stopping execution")
@@ -523,7 +634,9 @@ Based on the documentation, call the tools with correct parameters.
         allow_network: Optional[bool] = None,
         timeout: Optional[int] = None,
         initial_messages: Optional[List[Dict[str, Any]]] = None,
+        conversation_context: Optional[str] = None,
         on_plan_generated: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
+        on_plan_updated: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
     ) -> Any:
         """
         Run the agentic loop until completion.
@@ -533,14 +646,17 @@ Based on the documentation, call the tools with correct parameters.
             allow_network: Override default network setting for skill execution
             timeout: Execution timeout per tool call in seconds
             initial_messages: Optional conversation history to prepend (for chat sessions)
+            conversation_context: Optional recent conversation summary for planner (for "继续" etc.)
             on_plan_generated: Optional callback when task plan is generated (task_list)
+            on_plan_updated: Optional callback when task list is updated (e.g. step completed)
 
         Returns:
             The final LLM response
         """
+        self._on_plan_updated = on_plan_updated
         # Generate task list if enabled (every turn, so user always sees plan when tasks are needed)
         if self.enable_task_planning:
-            self._planner.generate_task_list(user_message, self.manager)
+            self._planner.generate_task_list(user_message, self.manager, conversation_context=conversation_context)
 
             # If task list is empty, the task can be completed by LLM directly
             if not self._planner.task_list:

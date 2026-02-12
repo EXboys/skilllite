@@ -332,6 +332,21 @@ class ChatSession:
                 parts.append(f"- {c[:300]}{'...' if len(c) > 300 else ''}")
         return "\n".join(parts) if len(parts) > 1 else ""
 
+    def _build_planner_context(self, history: List[Dict[str, Any]], keep_last: int = 6, max_per_msg: int = 600) -> str:
+        """Build conversation context for task planner (e.g. when user says '继续未完成任务')."""
+        if not history:
+            return ""
+        recent = history[-keep_last:] if len(history) > keep_last else history
+        lines = []
+        for m in recent:
+            role = m.get("role", "unknown")
+            content = m.get("content") or ""
+            if content and role in ("user", "assistant", "system"):
+                if len(content) > max_per_msg:
+                    content = content[:max_per_msg] + "..."
+                lines.append(f"[{role}]: {content}")
+        return "\n".join(lines) if lines else ""
+
     def _build_custom_tools_and_executor(self):
         """Build custom tools (builtin + memory) and combined executor."""
         from .chat_tools import get_memory_tools, create_memory_tool_executor
@@ -409,33 +424,42 @@ class ChatSession:
         messages.extend(history)
         messages.append({"role": "user", "content": user_message})
 
+        # Build conversation context for task planner (e.g. "继续未完成任务" needs context)
+        conv_ctx = self._build_planner_context(history)
+
         # Append user message first (plan and assistant will follow)
         last_id = entries[-1].get("id") if entries else None
         user_entry = _message_to_transcript_entry("user", user_message, last_id)
         self._append_transcript(user_entry)
 
-        def _on_plan_generated(task_list: List[Dict[str, Any]]) -> None:
-            """When task plan is generated: textify via Rust, append to transcript, show to user."""
+        def _write_plan(task_list: List[Dict[str, Any]]) -> str:
+            """Write plan to plans/{session_key}-{date}.json. Returns plan text for display."""
             try:
                 ipc = self._get_ipc()
-                plan_text = ipc.plan_textify(task_list)
+                r = ipc.plan_write(
+                    session_key=self.session_key,
+                    task_id=user_entry["id"],
+                    task=user_message,
+                    steps=task_list,
+                    workspace_path=self.workspace_path,
+                )
+                return r.get("text", "") or ipc.plan_textify(task_list)
             except Exception as e:
-                self._logger.warning("[Plan] plan_textify failed: %s, using fallback", e)
-                plan_text = "\n".join(
+                self._logger.warning("[Plan] plan_write failed: %s", e)
+                return "\n".join(
                     f"{i+1}. {t.get('description', '')} [{t.get('tool_hint', '')}]"
                     for i, t in enumerate(task_list)
                 )
-            plan_entry = {
-                "type": "custom",
-                "id": f"p_{uuid.uuid4().hex[:12]}",
-                "parent_id": user_entry["id"],
-                "kind": "plan",
-                "tasks": task_list,
-                "text": plan_text,
-            }
-            self._append_transcript(plan_entry)
+
+        def _on_plan_generated(task_list: List[Dict[str, Any]]) -> None:
+            """When task plan is generated: write to plan.json, show to user."""
+            plan_text = _write_plan(task_list)
             if self.verbose and plan_text:
                 print(f"\n📋 任务计划:\n{plan_text}\n")
+
+        def _on_plan_updated(task_list: List[Dict[str, Any]]) -> None:
+            """When step completes: overwrite plan.json with updated state."""
+            _write_plan(task_list)
 
         # Create loop with custom tools
         custom_tools, tool_executor = self._build_custom_tools_and_executor()
@@ -454,8 +478,10 @@ class ChatSession:
         response = loop.run(
             user_message,
             initial_messages=history,
+            conversation_context=conv_ctx,
             timeout=None,
             on_plan_generated=_on_plan_generated,
+            on_plan_updated=_on_plan_updated,
         )
 
         content = ""

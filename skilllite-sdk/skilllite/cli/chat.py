@@ -132,7 +132,11 @@ def cmd_chat(args: argparse.Namespace) -> int:
                     print("\nError: Chat feature not enabled in skillbox.")
                     print("  Build with: cd skillbox && cargo build --release --features chat")
                     sys.exit(1)
-                print(f"\nError: {e}\n")
+                if "上下文长度超限" in str(e) or "context" in str(e).lower():
+                    print(f"\nError: {e}")
+                    print("  建议: 输入 /clear 清空对话后重试\n")
+                else:
+                    print(f"\nError: {e}\n")
 
         session.close()
         return 0
