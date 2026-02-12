@@ -409,6 +409,34 @@ class ChatSession:
         messages.extend(history)
         messages.append({"role": "user", "content": user_message})
 
+        # Append user message first (plan and assistant will follow)
+        last_id = entries[-1].get("id") if entries else None
+        user_entry = _message_to_transcript_entry("user", user_message, last_id)
+        self._append_transcript(user_entry)
+
+        def _on_plan_generated(task_list: List[Dict[str, Any]]) -> None:
+            """When task plan is generated: textify via Rust, append to transcript, show to user."""
+            try:
+                ipc = self._get_ipc()
+                plan_text = ipc.plan_textify(task_list)
+            except Exception as e:
+                self._logger.warning("[Plan] plan_textify failed: %s, using fallback", e)
+                plan_text = "\n".join(
+                    f"{i+1}. {t.get('description', '')} [{t.get('tool_hint', '')}]"
+                    for i, t in enumerate(task_list)
+                )
+            plan_entry = {
+                "type": "custom",
+                "id": f"p_{uuid.uuid4().hex[:12]}",
+                "parent_id": user_entry["id"],
+                "kind": "plan",
+                "tasks": task_list,
+                "text": plan_text,
+            }
+            self._append_transcript(plan_entry)
+            if self.verbose and plan_text:
+                print(f"\n📋 任务计划:\n{plan_text}\n")
+
         # Create loop with custom tools
         custom_tools, tool_executor = self._build_custom_tools_and_executor()
         loop = self.manager.create_enhanced_agentic_loop(
@@ -418,36 +446,16 @@ class ChatSession:
             max_iterations=self.max_iterations,
             custom_tools=custom_tools,
             custom_tool_executor=tool_executor,
-            enable_task_planning=False,
+            enable_task_planning=True,
             verbose=self.verbose,
             confirmation_callback=self.confirmation_callback,
         )
 
-        # Run - we pass messages directly via a custom flow
-        # The loop normally takes user_message and builds messages. We need to inject history.
-        # AgenticLoop.run() builds messages from user_message. We need to override.
-        # Option: pass user_message as the latest, but the loop prepends system and adds user.
-        # The loop doesn't support pre-built messages. We need to either:
-        # 1. Extend AgenticLoop to accept initial_messages
-        # 2. Or run the loop with a concatenated "history as context" in the user message
-        # 3. Or run a modified loop that accepts messages
-
-        # Simpler: pass the full conversation as a single "user" message that includes history.
-        # No - that would confuse the model. Better to extend the loop.
-
-        # Check AgenticLoop.run - it calls _run_openai(user_message). The messages are built
-        # from system_prompt + user_message. We need to inject history. The cleanest is to
-        # add an optional initial_messages parameter to run().
-
-        # For now: use a workaround - build a synthetic user message that includes history.
-        # Format: "Previous conversation:\nUser: ...\nAssistant: ...\n\nCurrent: {user_message}"
-        # This is suboptimal. Better to extend AgenticLoop.
-
-        # Let me extend AgenticLoop.run to accept optional initial_messages.
         response = loop.run(
             user_message,
             initial_messages=history,
             timeout=None,
+            on_plan_generated=_on_plan_generated,
         )
 
         content = ""
@@ -455,10 +463,6 @@ class ChatSession:
             msg = response.choices[0].message
             content = msg.content or ""
 
-        # Append to transcript
-        last_id = entries[-1].get("id") if entries else None
-        user_entry = _message_to_transcript_entry("user", user_message, last_id)
-        self._append_transcript(user_entry)
         asst_entry = _message_to_transcript_entry("assistant", content, user_entry["id"])
         self._append_transcript(asst_entry)
 

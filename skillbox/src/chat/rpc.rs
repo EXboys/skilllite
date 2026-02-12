@@ -235,3 +235,31 @@ pub fn handle_token_count(params: &Value) -> Result<Value> {
     let count = (text.len() as f64 / 4.0).ceil() as u64;
     Ok(json!({"tokens": count}))
 }
+
+/// Convert plan (task list) JSON to human-readable text.
+/// Plan format: [{"id": 1, "description": "...", "tool_hint": "...", "completed": false}, ...]
+pub fn handle_plan_textify(params: &Value) -> Result<Value> {
+    let p = params.as_object().context("params must be object")?;
+    let plan = p.get("plan").context("plan required")?;
+    let tasks = plan.as_array().context("plan must be array")?;
+
+    let mut lines = Vec::with_capacity(tasks.len());
+    for (i, task) in tasks.iter().enumerate() {
+        let desc = task
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(no description)");
+        let tool_hint = task
+            .get("tool_hint")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let completed = task.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+        let status = if completed { "✓" } else { "○" };
+        let tool_part = tool_hint
+            .map(|t| format!(" [{}]", t))
+            .unwrap_or_default();
+        lines.push(format!("{}. {} {}{}", i + 1, status, desc, tool_part));
+    }
+    let text = lines.join("\n");
+    Ok(json!({"text": text}))
+}

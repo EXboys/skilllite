@@ -148,6 +148,8 @@ fn serve_stdio() -> Result<()> {
             "memory_search" => chat::rpc::handle_memory_search(&params),
             #[cfg(feature = "chat")]
             "token_count" => chat::rpc::handle_token_count(&params),
+            #[cfg(feature = "chat")]
+            "plan_textify" => chat::rpc::handle_plan_textify(&params),
             _ => {
                 let err_resp = json!({
                     "jsonrpc": "2.0",

@@ -523,6 +523,7 @@ Based on the documentation, call the tools with correct parameters.
         allow_network: Optional[bool] = None,
         timeout: Optional[int] = None,
         initial_messages: Optional[List[Dict[str, Any]]] = None,
+        on_plan_generated: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
     ) -> Any:
         """
         Run the agentic loop until completion.
@@ -532,20 +533,23 @@ Based on the documentation, call the tools with correct parameters.
             allow_network: Override default network setting for skill execution
             timeout: Execution timeout per tool call in seconds
             initial_messages: Optional conversation history to prepend (for chat sessions)
+            on_plan_generated: Optional callback when task plan is generated (task_list)
 
         Returns:
             The final LLM response
         """
-        # Generate task list if enabled
-        if self.enable_task_planning and not initial_messages:
+        # Generate task list if enabled (every turn, so user always sees plan when tasks are needed)
+        if self.enable_task_planning:
             self._planner.generate_task_list(user_message, self.manager)
 
             # If task list is empty, the task can be completed by LLM directly
-            # Disable task planning mode for this run
             if not self._planner.task_list:
                 self._log("\n💡 Task can be completed directly by LLM, no tools needed")
                 self.enable_task_planning = False
                 self._no_tools_needed = True
+            else:
+                if on_plan_generated:
+                    on_plan_generated(self._planner.task_list)
 
         # Dispatch to appropriate implementation
         if self.api_format == ApiFormat.OPENAI:

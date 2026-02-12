@@ -290,6 +290,11 @@ class SkillboxIPCClient:
         """Approximate token count (~4 chars per token)."""
         return self._send_request("token_count", {"text": text})
 
+    def plan_textify(self, plan: List[Dict[str, Any]]) -> str:
+        """Convert plan (task list) to human-readable text. Requires skillbox with chat feature."""
+        result = self._send_request("plan_textify", {"plan": plan})
+        return result.get("text", "")
+
     def close(self) -> None:
         """Terminate the daemon process."""
         with self._lock:
