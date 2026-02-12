@@ -178,6 +178,118 @@ class SkillboxIPCClient:
             params["sandbox_level"] = int(sandbox_level)
         return self._send_request("exec", params, timeout)
 
+    # --- Chat feature (session, transcript, memory) ---
+
+    def session_create(
+        self,
+        session_key: str,
+        workspace_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create or get session. Requires skillbox built with chat feature."""
+        params = {"session_key": session_key}
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        return self._send_request("session_create", params)
+
+    def session_get(
+        self,
+        session_key: str,
+        workspace_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Get session info."""
+        params = {"session_key": session_key}
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        return self._send_request("session_get", params)
+
+    def session_update(
+        self,
+        session_key: str,
+        workspace_path: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Update session (e.g. token counts)."""
+        params = {"session_key": session_key, **kwargs}
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        return self._send_request("session_update", params)
+
+    def transcript_append(
+        self,
+        session_key: str,
+        entry: Dict[str, Any],
+        workspace_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Append entry to transcript."""
+        params = {"session_key": session_key, "entry": entry}
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        return self._send_request("transcript_append", params)
+
+    def transcript_read(
+        self,
+        session_key: str,
+        workspace_path: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Read transcript entries."""
+        params = {"session_key": session_key}
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        result = self._send_request("transcript_read", params)
+        return result if isinstance(result, list) else []
+
+    def transcript_ensure(
+        self,
+        session_key: str,
+        session_id: str,
+        workspace_path: Optional[str] = None,
+        cwd: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Ensure transcript has session header."""
+        params = {"session_key": session_key, "session_id": session_id}
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        if cwd is not None:
+            params["cwd"] = cwd
+        return self._send_request("transcript_ensure", params)
+
+    def memory_write(
+        self,
+        rel_path: str,
+        content: str,
+        workspace_path: Optional[str] = None,
+        append: bool = False,
+        agent_id: str = "default",
+    ) -> Dict[str, Any]:
+        """Write to memory file."""
+        params = {
+            "rel_path": rel_path,
+            "content": content,
+            "append": append,
+            "agent_id": agent_id,
+        }
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        return self._send_request("memory_write", params)
+
+    def memory_search(
+        self,
+        query: str,
+        limit: int = 10,
+        workspace_path: Optional[str] = None,
+        agent_id: str = "default",
+    ) -> List[Dict[str, Any]]:
+        """Search memory (BM25)."""
+        params = {"query": query, "limit": limit, "agent_id": agent_id}
+        if workspace_path is not None:
+            params["workspace_path"] = workspace_path
+        result = self._send_request("memory_search", params)
+        return result if isinstance(result, list) else []
+
+    def token_count(self, text: str) -> Dict[str, Any]:
+        """Approximate token count (~4 chars per token)."""
+        return self._send_request("token_count", {"text": text})
+
     def close(self) -> None:
         """Terminate the daemon process."""
         with self._lock:
@@ -227,34 +339,15 @@ class SkillboxIPCClientPool:
                     peak_kb = max(peak_kb, rss_kb)
         return peak_kb
 
-
-def _get_process_rss_kb(pid: int) -> float:
-    """Get process RSS in KB. Uses psutil if available, else /proc on Linux."""
-    try:
-        import psutil
-        p = psutil.Process(pid)
-        return p.memory_info().rss / 1024
-    except ImportError:
-        pass
-    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
-        return 0.0
-    # Fallback: /proc on Linux
-    try:
-        with open(f"/proc/{pid}/status") as f:
-            for line in f:
-                if line.startswith("VmRSS:"):
-                    return float(line.split()[1])
-    except (FileNotFoundError, OSError, ValueError):
-        pass
-    return 0.0
-
     def _get_client(self, timeout: Optional[float] = None) -> SkillboxIPCClient:
         if self._closed:
             raise RuntimeError("IPC client pool is closed")
         try:
             return self._available.get(block=True, timeout=timeout or 60)
         except Empty:
-            raise RuntimeError("IPC pool exhausted (all daemons busy); consider increasing SKILLBOX_IPC_POOL_SIZE")
+            raise RuntimeError(
+                "IPC pool exhausted (all daemons busy); consider increasing SKILLBOX_IPC_POOL_SIZE"
+            )
 
     def _return_client(self, client: SkillboxIPCClient) -> None:
         if not self._closed:
@@ -319,3 +412,24 @@ def _get_process_rss_kb(pid: int) -> float:
                 client.close()
             except Exception:
                 pass
+
+
+def _get_process_rss_kb(pid: int) -> float:
+    """Get process RSS in KB. Uses psutil if available, else /proc on Linux."""
+    try:
+        import psutil
+        p = psutil.Process(pid)
+        return p.memory_info().rss / 1024
+    except ImportError:
+        pass
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
+        return 0.0
+    # Fallback: /proc on Linux
+    try:
+        with open(f"/proc/{pid}/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return float(line.split()[1])
+    except (FileNotFoundError, OSError, ValueError):
+        pass
+    return 0.0

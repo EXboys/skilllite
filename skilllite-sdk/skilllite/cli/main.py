@@ -15,6 +15,7 @@ from .integrations.opencode import cmd_init_opencode
 from .init import cmd_init
 from .add import cmd_add
 from .repo import cmd_list, cmd_remove
+from .chat import cmd_chat
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -35,6 +36,7 @@ Examples:
   skilllite add owner/repo   Add skills from a remote repository
   skilllite list             List installed skills
   skilllite remove <name>    Remove an installed skill
+  skilllite chat             Interactive chat (requires skillbox --features chat)
 
 For more information, visit: https://github.com/skilllite/skilllite
         """
@@ -211,6 +213,36 @@ For more information, visit: https://github.com/skilllite/skilllite
         help="Skills directory path (default: .skills)"
     )
     list_parser.set_defaults(func=cmd_list)
+
+    # chat command
+    chat_parser = subparsers.add_parser(
+        "chat",
+        help="Interactive chat with persistent transcript and memory"
+    )
+    chat_parser.add_argument(
+        "--workspace", "-w",
+        dest="workspace",
+        default=None,
+        help="Workspace path for chat data (default: ~/.skilllite/chat)"
+    )
+    chat_parser.add_argument(
+        "--session", "-s",
+        dest="session",
+        default="main",
+        help="Session key (default: main)"
+    )
+    chat_parser.add_argument(
+        "--skills-dir",
+        dest="skills_dir",
+        default=".skills",
+        help="Skills directory (default: .skills)"
+    )
+    chat_parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Suppress verbose output"
+    )
+    chat_parser.set_defaults(func=cmd_chat)
 
     # remove command
     remove_parser = subparsers.add_parser(

@@ -50,6 +50,7 @@ class AgenticLoop:
         max_iterations: int = 10,
         api_format: ApiFormat = ApiFormat.OPENAI,
         custom_tool_handler: Optional[Callable] = None,
+        custom_tools: Optional[List[Dict[str, Any]]] = None,
         enable_task_planning: bool = True,
         verbose: bool = True,
         confirmation_callback: Optional[Callable[[str, str], bool]] = None,
@@ -66,6 +67,7 @@ class AgenticLoop:
             max_iterations: Maximum number of iterations
             api_format: API format to use (OPENAI or CLAUDE_NATIVE)
             custom_tool_handler: Optional custom tool handler function
+            custom_tools: Additional tool definitions (e.g. builtin, memory)
             enable_task_planning: Whether to generate task list before execution
             verbose: Whether to print detailed logs
             confirmation_callback: Callback for security confirmation (sandbox_level=3).
@@ -80,6 +82,7 @@ class AgenticLoop:
         self.max_iterations = max_iterations
         self.api_format = api_format
         self.custom_tool_handler = custom_tool_handler
+        self.custom_tools = custom_tools or []
         self.enable_task_planning = enable_task_planning
         self.verbose = verbose
         self.confirmation_callback = confirmation_callback
@@ -144,8 +147,9 @@ class AgenticLoop:
         for tc in tool_calls:
             tool_name = tc.function.name if hasattr(tc, 'function') else tc.get('function', {}).get('name', '')
             
-            # Skip built-in tools (read_file, write_file, etc.)
-            if tool_name in ['read_file', 'write_file', 'list_directory', 'file_exists']:
+            # Skip built-in tools (read_file, write_file, etc.) and memory tools
+            if tool_name in ['read_file', 'write_file', 'list_directory', 'file_exists',
+                            'memory_search', 'memory_write', 'run_command']:
                 continue
             
             # Skip if already documented in this session
@@ -201,20 +205,28 @@ Based on the documentation, call the tools with correct parameters.
         self,
         user_message: str,
         allow_network: Optional[bool] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        initial_messages: Optional[List[Dict[str, Any]]] = None,
     ) -> Any:
         """Run loop using OpenAI-compatible API."""
         messages = []
-        
+
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
-        
+
         if self.enable_task_planning and self._planner.task_list:
             messages.append({"role": "system", "content": self._planner.build_task_system_prompt(self.manager)})
-        
+
+        if initial_messages:
+            messages.extend(initial_messages)
+
         messages.append({"role": "user", "content": user_message})
         
-        tools = None if self._no_tools_needed else self.manager.get_tools()
+        tools = None
+        if not self._no_tools_needed:
+            tools = self.manager.get_tools()
+            if self.custom_tools:
+                tools = tools + self.custom_tools
         response = None
         consecutive_no_tool = 0  # Track consecutive iterations without tool calls or task progress
 
@@ -365,11 +377,26 @@ Based on the documentation, call the tools with correct parameters.
         self,
         user_message: str,
         allow_network: Optional[bool] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        initial_messages: Optional[List[Dict[str, Any]]] = None,
     ) -> Any:
         """Run loop using Claude's native API."""
-        messages = [{"role": "user", "content": user_message}]
-        tools = None if self._no_tools_needed else self.manager.get_tools_for_claude_native()
+        messages: List[Dict[str, Any]] = []
+        if initial_messages:
+            messages.extend(initial_messages)
+        messages.append({"role": "user", "content": user_message})
+        tools = None
+        if not self._no_tools_needed:
+            tools = self.manager.get_tools_for_claude_native()
+            if self.custom_tools:
+                for t in self.custom_tools:
+                    if isinstance(t, dict) and t.get("type") == "function":
+                        fn = t.get("function", {})
+                        tools.append({
+                            "name": fn.get("name", ""),
+                            "description": fn.get("description", ""),
+                            "input_schema": fn.get("parameters", {})
+                        })
 
         # Build system prompt
         system = self.system_prompt or ""
@@ -494,21 +521,23 @@ Based on the documentation, call the tools with correct parameters.
         self,
         user_message: str,
         allow_network: Optional[bool] = None,
-        timeout: Optional[int] = None
+        timeout: Optional[int] = None,
+        initial_messages: Optional[List[Dict[str, Any]]] = None,
     ) -> Any:
         """
         Run the agentic loop until completion.
-        
+
         Args:
             user_message: The user's message
             allow_network: Override default network setting for skill execution
             timeout: Execution timeout per tool call in seconds
-            
+            initial_messages: Optional conversation history to prepend (for chat sessions)
+
         Returns:
             The final LLM response
         """
         # Generate task list if enabled
-        if self.enable_task_planning:
+        if self.enable_task_planning and not initial_messages:
             self._planner.generate_task_list(user_message, self.manager)
 
             # If task list is empty, the task can be completed by LLM directly
@@ -517,12 +546,12 @@ Based on the documentation, call the tools with correct parameters.
                 self._log("\n💡 Task can be completed directly by LLM, no tools needed")
                 self.enable_task_planning = False
                 self._no_tools_needed = True
-        
+
         # Dispatch to appropriate implementation
         if self.api_format == ApiFormat.OPENAI:
-            return self._run_openai(user_message, allow_network, timeout)
+            return self._run_openai(user_message, allow_network, timeout, initial_messages)
         else:
-            return self._run_claude_native(user_message, allow_network, timeout)
+            return self._run_claude_native(user_message, allow_network, timeout, initial_messages)
 
 
 # Backward compatibility alias

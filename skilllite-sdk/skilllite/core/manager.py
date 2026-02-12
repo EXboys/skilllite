@@ -510,6 +510,7 @@ class SkillManager:
             max_iterations=max_iterations,
             api_format=ApiFormat.OPENAI,
             custom_tool_handler=combined_tool_handler if custom_tool_executor else None,
+            custom_tools=custom_tools,
             enable_task_planning=enable_task_planning,
             verbose=verbose,
             confirmation_callback=confirmation_callback,

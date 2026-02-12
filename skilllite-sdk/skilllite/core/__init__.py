@@ -35,6 +35,7 @@ from .registry import SkillRegistry
 from .tool_builder import ToolBuilder
 from .prompt_builder import PromptBuilder
 from .handler import ToolCallHandler
+from .chat_session import ChatSession
 
 __all__ = [
     # Core Management (Facade)
@@ -55,6 +56,8 @@ __all__ = [
     "AgenticLoop",
     "AgenticLoopClaudeNative",
     "ApiFormat",
+    # Chat
+    "ChatSession",
     # Tools
     "ToolDefinition",
     "ToolUseRequest",
