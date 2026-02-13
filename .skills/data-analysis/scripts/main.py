@@ -7,12 +7,29 @@ import numpy as np
 import pandas as pd
 
 
+def _normalize_data_shape(rows, columns):
+    """Normalize data when columns count doesn't match row length.
+    LLM often passes [[v1,v2,v3,...]] with columns=[name] meaning one column of values."""
+    if not rows or not columns:
+        return rows, columns
+    first = rows[0]
+    n_cols = len(columns)
+    # Single row with many values but only 1 column name -> reshape to column vector
+    if n_cols == 1 and isinstance(first, (list, tuple)) and len(first) > 1:
+        return [[v] for v in first], columns
+    # Flat list [v1,v2,...] with 1 column -> reshape to rows
+    if n_cols == 1 and not isinstance(first, (list, tuple)):
+        return [[v] for v in rows], columns
+    return rows, columns
+
+
 def main():
     data = json.loads(sys.stdin.read())
     operation = data.get("operation", "describe")
     rows = data.get("data", [])
     columns = data.get("columns")
 
+    rows, columns = _normalize_data_shape(rows, columns)
     df = pd.DataFrame(rows, columns=columns)
 
     if operation == "describe":
