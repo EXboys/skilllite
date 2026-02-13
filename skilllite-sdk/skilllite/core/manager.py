@@ -347,7 +347,8 @@ class SkillManager:
         client: Any,
         model: str,
         system_prompt: Optional[str] = None,
-        max_iterations: int = 10,
+        max_iterations: int = 50,
+        max_tool_calls_per_task: int = 30,
         api_format: str = "openai",
         custom_tool_handler: Optional[Callable] = None,
         enable_task_planning: bool = True,
@@ -390,6 +391,7 @@ class SkillManager:
             model=model,
             system_prompt=system_prompt,
             max_iterations=max_iterations,
+            max_tool_calls_per_task=max_tool_calls_per_task,
             api_format=format_enum,
             custom_tool_handler=custom_tool_handler,
             enable_task_planning=enable_task_planning,
@@ -403,7 +405,8 @@ class SkillManager:
         client: Any,
         model: str,
         system_prompt: Optional[str] = None,
-        max_iterations: int = 10,
+        max_iterations: int = 50,
+        max_tool_calls_per_task: int = 30,
         **kwargs
     ) -> AgenticLoop:
         """
@@ -427,6 +430,7 @@ class SkillManager:
             model=model,
             system_prompt=system_prompt,
             max_iterations=max_iterations,
+            max_tool_calls_per_task=max_tool_calls_per_task,
             api_format="claude_native",
             **kwargs
         )
@@ -436,7 +440,8 @@ class SkillManager:
         client: Any,
         model: str,
         system_prompt: Optional[str] = None,
-        max_iterations: int = 10,
+        max_iterations: int = 50,
+        max_tool_calls_per_task: int = 30,
         custom_tools: Optional[List[Dict[str, Any]]] = None,
         custom_tool_executor: Optional[Callable] = None,
         enable_task_planning: bool = True,
@@ -508,6 +513,7 @@ class SkillManager:
             model=model,
             system_prompt=system_prompt,
             max_iterations=max_iterations,
+            max_tool_calls_per_task=max_tool_calls_per_task,
             api_format=ApiFormat.OPENAI,
             custom_tool_handler=combined_tool_handler if custom_tool_executor else None,
             custom_tools=custom_tools,

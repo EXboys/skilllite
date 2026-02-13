@@ -85,7 +85,8 @@ class SkillRunner:
         include_assets: bool = True,
         context_mode: str = "full",
         max_tokens_per_skill: Optional[int] = None,
-        max_iterations: int = 10,
+        max_iterations: int = 50,
+        max_tool_calls_per_task: int = 30,
         verbose: bool = False,
         custom_tools: Optional[List[Dict[str, Any]]] = None,
         custom_tool_executor: Optional[Callable] = None,
@@ -115,7 +116,8 @@ class SkillRunner:
                 - "full": Full mode, includes complete SKILL.md content
                 - "progressive": Progressive, summary + on-demand detail prompts
             max_tokens_per_skill: Maximum tokens per skill (for truncation)
-            max_iterations: Maximum tool call iterations
+            max_iterations: Global max iterations (plan-based budget when task planning enabled)
+            max_tool_calls_per_task: Max tool calls per task (default 30)
             verbose: Whether to output detailed logs
             custom_tools: Custom tools list (e.g., file operation tools)
             custom_tool_executor: Custom tool executor function
@@ -143,6 +145,7 @@ class SkillRunner:
         self.context_mode = context_mode
         self.max_tokens_per_skill = max_tokens_per_skill
         self.max_iterations = max_iterations
+        self.max_tool_calls_per_task = max_tool_calls_per_task
         self.verbose = verbose
         self.enable_builtin_tools = enable_builtin_tools
         
@@ -300,6 +303,7 @@ Example of CORRECT approach:
                 client=self.client,
                 model=self.model,
                 max_iterations=self.max_iterations,
+                max_tool_calls_per_task=self.max_tool_calls_per_task,
                 custom_tools=self.custom_tools if self.custom_tools else None,
                 custom_tool_executor=tool_executor,
                 confirmation_callback=self.confirmation_callback
@@ -311,6 +315,7 @@ Example of CORRECT approach:
                 model=self.model,
                 system_prompt=self.system_context,
                 max_iterations=self.max_iterations,
+                max_tool_calls_per_task=self.max_tool_calls_per_task,
                 confirmation_callback=self.confirmation_callback
             )
         

@@ -119,7 +119,8 @@ class ChatSession:
         session_key: str = "main",
         workspace_path: Optional[str] = None,
         system_prompt: Optional[str] = None,
-        max_iterations: int = 10,
+        max_iterations: int = 50,
+        max_tool_calls_per_task: int = 30,
         enable_builtin_tools: bool = True,
         enable_memory_tools: bool = True,
         verbose: bool = True,
@@ -132,6 +133,7 @@ class ChatSession:
         self.workspace_path = workspace_path or str(Path.home() / ".skilllite" / "chat")
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
+        self.max_tool_calls_per_task = max_tool_calls_per_task
         self.enable_builtin_tools = enable_builtin_tools
         self.enable_memory_tools = enable_memory_tools
         self.verbose = verbose
@@ -468,6 +470,7 @@ class ChatSession:
             model=self.model,
             system_prompt=system_content,
             max_iterations=self.max_iterations,
+            max_tool_calls_per_task=self.max_tool_calls_per_task,
             custom_tools=custom_tools,
             custom_tool_executor=tool_executor,
             enable_task_planning=True,

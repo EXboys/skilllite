@@ -74,7 +74,8 @@ class AgenticLoop:
         client: Any,
         model: str,
         system_prompt: Optional[str] = None,
-        max_iterations: int = 10,
+        max_iterations: int = 50,
+        max_tool_calls_per_task: int = 30,
         api_format: ApiFormat = ApiFormat.OPENAI,
         custom_tool_handler: Optional[Callable] = None,
         custom_tools: Optional[List[Dict[str, Any]]] = None,
@@ -91,7 +92,10 @@ class AgenticLoop:
             client: LLM client (OpenAI or Anthropic)
             model: Model name to use
             system_prompt: Optional system prompt
-            max_iterations: Maximum number of iterations
+            max_iterations: Global maximum iterations (safety cap). With task planning,
+                effective limit = min(max_iterations, num_tasks * max_tool_calls_per_task).
+            max_tool_calls_per_task: Max tool-call rounds per task. Prevents one task
+                from consuming all iterations. Reset when task completes.
             api_format: API format to use (OPENAI or CLAUDE_NATIVE)
             custom_tool_handler: Optional custom tool handler function
             custom_tools: Additional tool definitions (e.g. builtin, memory)
@@ -107,6 +111,7 @@ class AgenticLoop:
         self.model = model
         self.system_prompt = system_prompt
         self.max_iterations = max_iterations
+        self.max_tool_calls_per_task = max_tool_calls_per_task
         self.api_format = api_format
         self.custom_tool_handler = custom_tool_handler
         self.custom_tools = custom_tools or []
@@ -274,9 +279,17 @@ Based on the documentation, call the tools with correct parameters.
                 tools = tools + self.custom_tools
         response = None
         consecutive_no_tool = 0  # Track consecutive iterations without tool calls or task progress
+        tool_calls_count_current_task = 0  # Reset when task completes
 
-        for iteration in range(self.max_iterations):
-            self._log(f"\n🔄 Iteration #{iteration + 1}/{self.max_iterations}")
+        # Plan-based budget: effective_max = min(global, num_tasks * per_task)
+        if self.enable_task_planning and self._planner.task_list:
+            plan_budget = len(self._planner.task_list) * self.max_tool_calls_per_task
+            effective_max = min(self.max_iterations, plan_budget)
+        else:
+            effective_max = self.max_iterations
+
+        for iteration in range(effective_max):
+            self._log(f"\n🔄 Iteration #{iteration + 1}/{effective_max}")
 
             self._log("⏳ Calling LLM...")
             try:
@@ -321,6 +334,7 @@ Based on the documentation, call the tools with correct parameters.
                         if self._on_plan_updated:
                             self._on_plan_updated(self._planner.task_list)
                         consecutive_no_tool = 0  # Reset: made progress
+                        tool_calls_count_current_task = 0  # Reset for next task
 
                     if self._planner.check_all_completed():
                         self._log("🎯 All tasks completed, ending iteration")
@@ -358,6 +372,8 @@ Based on the documentation, call the tools with correct parameters.
             
             # Handle tool calls
             consecutive_no_tool = 0  # Reset: LLM is calling tools
+            tool_calls_count_current_task += 1
+
             self._log(f"\n🔧 LLM decided to call {len(message.tool_calls)} tools:")
             for idx, tc in enumerate(message.tool_calls, 1):
                 self._log(f"   {idx}. {tc.function.name}")
@@ -415,6 +431,20 @@ Based on the documentation, call the tools with correct parameters.
                     "tool_call_id": result.tool_use_id,
                     "content": processed,
                 })
+
+            # Per-task depth limit: after executing tools, ask LLM to wrap up if over limit
+            if (self.enable_task_planning and self._planner.task_list
+                    and tool_calls_count_current_task >= self.max_tool_calls_per_task):
+                current_task = next((t for t in self._planner.task_list if not t["completed"]), None)
+                if current_task:
+                    self._log(f"\n⚠️  Task {current_task['id']} reached max tool calls ({self.max_tool_calls_per_task}), requesting summary...")
+                    nudge = (
+                        f"You have used {self.max_tool_calls_per_task} tool calls for the current task. "
+                        f"Based on the information gathered so far, please provide a brief summary, "
+                        f"mark this task as completed, and proceed to the next task."
+                    )
+                    messages.append({"role": "user", "content": nudge})
+                    continue
             
             # Check task completion
             if self.enable_task_planning:
@@ -424,6 +454,7 @@ Based on the documentation, call the tools with correct parameters.
                         self._planner.update_task_list(completed_id)
                         if self._on_plan_updated:
                             self._on_plan_updated(self._planner.task_list)
+                        tool_calls_count_current_task = 0  # Reset for next task
 
                 if self._planner.check_all_completed():
                     self._log("🎯 All tasks completed, ending iteration")
@@ -456,7 +487,7 @@ Based on the documentation, call the tools with correct parameters.
                         "content": f"Task progress update:\n{task_list_str}\n\nCurrent task to execute: Task {current_task['id']} - {current_task['description']}\n\nPlease continue to focus on completing the current task."
                     })
         
-        self._log(f"\n⚠️  Reached maximum iterations ({self.max_iterations}), stopping execution")
+        self._log(f"\n⚠️  Reached maximum iterations ({effective_max}), stopping execution")
         return response
     
     # ==================== Claude Native API ====================
@@ -492,10 +523,18 @@ Based on the documentation, call the tools with correct parameters.
             system = (system + "\n\n" if system else "") + self._planner.build_task_system_prompt(self.manager)
         
         response = None
-        consecutive_no_tool = 0  # Track consecutive iterations without tool calls or task progress
+        consecutive_no_tool = 0
+        tool_calls_count_current_task = 0
 
-        for iteration in range(self.max_iterations):
-            self._log(f"\n🔄 Iteration #{iteration + 1}/{self.max_iterations}")
+        # Plan-based budget (same as OpenAI path)
+        if self.enable_task_planning and self._planner.task_list:
+            plan_budget = len(self._planner.task_list) * self.max_tool_calls_per_task
+            effective_max = min(self.max_iterations, plan_budget)
+        else:
+            effective_max = self.max_iterations
+
+        for iteration in range(effective_max):
+            self._log(f"\n🔄 Iteration #{iteration + 1}/{effective_max}")
 
             self._log("⏳ Calling LLM...")
 
@@ -534,13 +573,13 @@ Based on the documentation, call the tools with correct parameters.
                         self._planner.update_task_list(completed_id)
                         if self._on_plan_updated:
                             self._on_plan_updated(self._planner.task_list)
-                        consecutive_no_tool = 0  # Reset: made progress
+                        consecutive_no_tool = 0
+                        tool_calls_count_current_task = 0
 
                     if self._planner.check_all_completed():
                         self._log("🎯 All tasks completed, ending iteration")
                         return response
                     else:
-                        # Guard: if LLM keeps not calling tools and not completing tasks, stop
                         if not completed_id:
                             consecutive_no_tool += 1
                         if consecutive_no_tool >= self._max_no_tool_retries:
@@ -555,7 +594,8 @@ Based on the documentation, call the tools with correct parameters.
                     return response
             
             # Handle tool calls
-            consecutive_no_tool = 0  # Reset: LLM is calling tools
+            consecutive_no_tool = 0
+            tool_calls_count_current_task += 1
             tool_use_blocks = [b for b in response.content if hasattr(b, 'type') and b.type == 'tool_use']
             self._log(f"\n🔧 LLM decided to call {len(tool_use_blocks)} tools:")
             for idx, block in enumerate(tool_use_blocks, 1):
@@ -594,6 +634,20 @@ Based on the documentation, call the tools with correct parameters.
             ]
             formatted_results = self.manager.format_tool_results_claude_native(processed_results)
             messages.append({"role": "user", "content": formatted_results})
+
+            # Per-task depth limit (same as OpenAI path)
+            if (self.enable_task_planning and self._planner.task_list
+                    and tool_calls_count_current_task >= self.max_tool_calls_per_task):
+                current_task = next((t for t in self._planner.task_list if not t["completed"]), None)
+                if current_task:
+                    self._log(f"\n⚠️  Task {current_task['id']} reached max tool calls ({self.max_tool_calls_per_task}), requesting summary...")
+                    nudge = (
+                        f"You have used {self.max_tool_calls_per_task} tool calls for the current task. "
+                        f"Based on the information gathered so far, please provide a brief summary, "
+                        f"mark this task as completed, and proceed to the next task."
+                    )
+                    messages.append({"role": "user", "content": nudge})
+                    continue
             
             # Check task completion
             if self.enable_task_planning:
@@ -607,6 +661,7 @@ Based on the documentation, call the tools with correct parameters.
                     self._planner.update_task_list(completed_id)
                     if self._on_plan_updated:
                         self._on_plan_updated(self._planner.task_list)
+                    tool_calls_count_current_task = 0
 
                 if self._planner.check_all_completed():
                     self._log("🎯 All tasks completed, ending iteration")
@@ -623,7 +678,7 @@ Based on the documentation, call the tools with correct parameters.
                         raise
                     return final_response
         
-        self._log(f"\n⚠️  Reached maximum iterations ({self.max_iterations}), stopping execution")
+        self._log(f"\n⚠️  Reached maximum iterations ({effective_max}), stopping execution")
         return response
     
     # ==================== Public API ====================
