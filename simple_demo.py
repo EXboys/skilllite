@@ -5,6 +5,7 @@ SkillLite demo - built-in enhanced features
 - SDK built-in task completion detection
 - SDK built-in task execution guidance
 - Reduced from ~600 lines to ~30 lines
+- Final output files (reports, images) are written to output/ (separate from plan/memory/logs)
 
 Usage:
     1. cp .env.example .env

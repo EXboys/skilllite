@@ -383,9 +383,16 @@ def main():
             thumb["image_source"] = source
             # 同时保存到文件，便于用户查看
             try:
-                skill_dir = os.environ.get("SKILL_DIR", "")
-                out_dir = Path(skill_dir).parent.parent if skill_dir else Path.cwd()
-                out_path = Path(out_dir) / "xiaohongshu_thumbnail.png"
+                # Use SKILLLITE_OUTPUT_DIR if set (configurable via .env), else workspace_root/output
+                out_dir = os.environ.get("SKILLLITE_OUTPUT_DIR")
+                if out_dir:
+                    out_dir = Path(out_dir)
+                else:
+                    skill_dir = os.environ.get("SKILL_DIR", "")
+                    proj_root = Path(skill_dir).parent.parent if skill_dir else Path.cwd()
+                    out_dir = proj_root / "output"
+                out_dir.mkdir(parents=True, exist_ok=True)
+                out_path = out_dir / "xiaohongshu_thumbnail.png"
                 out_path.write_bytes(img_bytes)
                 thumb["image_path"] = str(out_path)
             except Exception:

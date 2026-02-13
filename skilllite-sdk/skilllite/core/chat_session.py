@@ -357,16 +357,19 @@ class ChatSession:
         builtin_executor = None
         memory_executor = None
 
-        builtin_names = {"read_file", "write_file", "list_directory", "file_exists", "run_command"}
+        builtin_names = {"read_file", "write_file", "write_output", "list_directory", "file_exists", "run_command"}
         memory_names = {"memory_search", "memory_write", "memory_list"}
 
         if self.enable_builtin_tools:
-            from ..builtin_tools import get_builtin_file_tools, create_builtin_tool_executor
+            from ..builtin_tools import get_builtin_file_tools, create_builtin_tool_executor, resolve_output_dir
             workspace_root = Path(self.workspace_path).resolve()
+            output_root = resolve_output_dir(workspace_root)
+            output_root.mkdir(parents=True, exist_ok=True)
             custom_tools.extend(get_builtin_file_tools())
             builtin_executor = create_builtin_tool_executor(
                 run_command_confirmation=self.confirmation_callback,
                 workspace_root=workspace_root,
+                output_root=output_root,
             )
 
         if self.enable_memory_tools:

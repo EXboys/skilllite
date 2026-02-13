@@ -104,19 +104,22 @@ In addition to the above Skills, you have the following built-in file operation 
    - Used to view existing files, understand project structure, read configurations, etc.
    - Parameter: `file_path` (string, file path)
 
-2. **write_file**: Write/create files
-   - Used to create new files or modify existing file content
-   - Parameters: `file_path` (string, file path), `content` (string, file content)
+2. **write_file**: Write/create project files (e.g. .skills/xxx/SKILL.md)
+   - Parameters: `file_path`, `content`
 
-3. **list_directory**: List directory contents
+3. **write_output**: Write final output (reports, images, generated content) to output directory
+   - Keeps results separate from plan/memory/logs. Path is relative to output dir (e.g. report.md, image.png)
+   - Parameters: `file_path` (filename or path under output), `content`
+
+4. **list_directory**: List directory contents
    - Used to view directory structure, understand project layout
    - Parameter: `directory_path` (string, directory path, e.g., "." or ".skills")
 
-4. **file_exists**: Check if file exists
+5. **file_exists**: Check if file exists
    - Used to confirm file status before operations
    - Parameter: `file_path` (string, file path)
 
-5. **run_command**: Execute shell command (requires user confirmation)
+6. **run_command**: Execute shell command (requires user confirmation)
    - Use when skill output suggests running commands (e.g. "请运行: pip install playwright && playwright install chromium")
    - Parameter: `command` (string, the command to run)
    - User will be prompted to confirm before execution
@@ -158,6 +161,7 @@ In addition to the above Skills, you have the following built-in file operation 
 - Need to view directory structure to locate files
 - Need to prepare input data before calling Skills
 - Need to save output results after calling Skills
+   - **Use write_output** for final outputs (reports, images). Path relative to output dir (e.g. report.md).
 
 ### 3. Execution Order
 
@@ -174,6 +178,7 @@ In addition to the above Skills, you have the following built-in file operation 
 
 ## Output Guidelines
 
+- **Final output files**: Use **write_output** (path relative to output dir, e.g. report.md, image.png). Keeps results separate from plan/memory/logs.
 - After completing each task step, explicitly declare: "Task X completed"
 - Provide clear execution process explanations
 - Give a complete summary of execution results at the end
@@ -226,7 +231,7 @@ In addition to the above Skills, you have the following built-in file operation 
 
 **Available Skills**: {skills_info}
 
-**Built-in capabilities**: read_file, write_file, list_directory, file_exists, run_command (execute shell command, requires user confirmation - use when skill suggests e.g. pip install)
+**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, file_exists, run_command (execute shell command, requires user confirmation - use when skill suggests e.g. pip install)
 
 ## Planning Principles
 

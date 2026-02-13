@@ -62,6 +62,22 @@ def _is_sensitive_write_path(path: Path) -> bool:
     return False
 
 
+def resolve_output_dir(workspace_root: Union[str, Path]) -> Path:
+    """
+    Resolve output directory for final results.
+    Uses SKILLLITE_OUTPUT_DIR env: absolute path as-is, relative path vs workspace_root.
+    Default: workspace_root/output
+    """
+    root = Path(workspace_root).resolve()
+    env_val = os.environ.get("SKILLLITE_OUTPUT_DIR", "").strip()
+    if not env_val:
+        return root / "output"
+    p = Path(env_val)
+    if p.is_absolute():
+        return p
+    return root / p
+
+
 def _resolve_within_workspace(
     path: Union[str, Path],
     workspace_root: Optional[Union[str, Path]],
@@ -120,17 +136,38 @@ def get_builtin_file_tools() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "write_file",
-                "description": "Write content to a file. Creates the file if it doesn't exist, overwrites if it does.",
+                "description": "Write content to a file in the project. Use for creating/modifying project files (e.g. .skills/xxx/SKILL.md). For final output (reports, images), prefer write_output.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "file_path": {
                             "type": "string",
-                            "description": "Path to the file to write (relative to workspace/project root)"
+                            "description": "Path relative to workspace root"
                         },
                         "content": {
                             "type": "string",
-                            "description": "Content to write to the file"
+                            "description": "Content to write"
+                        }
+                    },
+                    "required": ["file_path", "content"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "write_output",
+                "description": "Write final output to the output directory (separate from plan/memory/logs). Use for reports, generated content, images. Path is relative to output dir (e.g. report.md, image.png).",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Filename or path relative to output dir (e.g. report.md, results/data.json)"
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Content to write"
                         }
                     },
                     "required": ["file_path", "content"]
@@ -201,6 +238,7 @@ def execute_builtin_file_tool(
     tool_input: Dict[str, Any],
     run_command_confirmation: Optional[Callable[[str, str], bool]] = None,
     workspace_root: Optional[Union[str, Path]] = None,
+    output_root: Optional[Union[str, Path]] = None,
 ) -> str:
     """
     Execute a built-in tool (file ops or run_command).
@@ -274,6 +312,11 @@ def execute_builtin_file_tool(
             return _read_file(tool_input["file_path"], workspace_root)
         elif tool_name == "write_file":
             return _write_file(tool_input["file_path"], tool_input["content"], workspace_root)
+        elif tool_name == "write_output":
+            out_root = output_root or (Path(workspace_root).resolve() / "output" if workspace_root else None)
+            if not out_root:
+                return "Error: output_root not configured"
+            return _write_file(tool_input["file_path"], tool_input["content"], out_root)
         elif tool_name == "list_directory":
             recursive = tool_input.get("recursive", False)
             return _list_directory(tool_input["directory_path"], recursive, workspace_root)
@@ -390,22 +433,24 @@ def _file_exists(file_path: str, workspace_root: Optional[Union[str, Path]] = No
 
 
 # File-only tools that can run in sandbox subprocess (no user confirmation needed)
-_SANDBOXED_TOOL_NAMES = frozenset({"read_file", "write_file", "list_directory", "file_exists"})
+_SANDBOXED_TOOL_NAMES = frozenset({"read_file", "write_file", "write_output", "list_directory", "file_exists"})
 
 
 def _run_file_tool_in_subprocess(
     tool_name: str,
     tool_input: Dict[str, Any],
     workspace_root: Optional[Union[str, Path]],
+    output_root: Optional[Union[str, Path]] = None,
 ) -> str:
     """
-    Execute a file tool (read_file, write_file, list_directory, file_exists) in subprocess.
+    Execute a file tool (read_file, write_file, write_output, list_directory, file_exists) in subprocess.
     Isolates execution from main process for defense-in-depth.
     """
     req = {
         "tool_name": tool_name,
         "tool_input": tool_input,
         "workspace_root": str(workspace_root) if workspace_root else None,
+        "output_root": str(output_root) if output_root else None,
     }
     try:
         proc = subprocess.run(
@@ -445,6 +490,7 @@ def run():
     tool_name = req["tool_name"]
     tool_input = req["tool_input"]
     workspace_root = req.get("workspace_root")
+    output_root = req.get("output_root")
     try:
         from skilllite.builtin_tools import (
             _read_file,
@@ -460,6 +506,13 @@ def run():
                 tool_input["content"],
                 workspace_root,
             )
+        elif tool_name == "write_output":
+            root = output_root or (f"{workspace_root}/output" if workspace_root else None)
+            result = _write_file(
+                tool_input["file_path"],
+                tool_input["content"],
+                root,
+            ) if root else "Error: output_root not configured"
         elif tool_name == "list_directory":
             result = _list_directory(
                 tool_input["directory_path"],
@@ -482,6 +535,7 @@ if __name__ == "__main__":
 def create_builtin_tool_executor(
     run_command_confirmation: Optional[Callable[[str, str], bool]] = None,
     workspace_root: Optional[Union[str, Path]] = None,
+    output_root: Optional[Union[str, Path]] = None,
     use_sandbox: Optional[bool] = None,
 ):
     """
@@ -490,6 +544,7 @@ def create_builtin_tool_executor(
     Args:
         run_command_confirmation: For run_command, callback before execution. (message, id) -> bool
         workspace_root: Restrict file ops and run_command cwd to this directory (default: None = no restriction)
+        output_root: Directory for write_output (final results). Default: workspace_root/output or from SKILLLITE_OUTPUT_DIR
         use_sandbox: When True, run file tools in subprocess for isolation.
             When None, reads from SANDBOX_BUILTIN_TOOLS env (1/true = enabled).
 
@@ -499,7 +554,8 @@ def create_builtin_tool_executor(
     if use_sandbox is None:
         use_sandbox = os.environ.get("SANDBOX_BUILTIN_TOOLS", "0").strip().lower() in ("1", "true", "yes")
 
-    builtin_tool_names = {"read_file", "write_file", "list_directory", "file_exists", "run_command"}
+    builtin_tool_names = {"read_file", "write_file", "write_output", "list_directory", "file_exists", "run_command"}
+    resolved_output = Path(output_root).resolve() if output_root else (resolve_output_dir(workspace_root) if workspace_root else None)
 
     def executor(tool_input: Dict[str, Any]) -> str:
         """Execute built-in tools."""
@@ -515,12 +571,13 @@ def create_builtin_tool_executor(
                 workspace_root=workspace_root,
             )
         if use_sandbox and tool_name in _SANDBOXED_TOOL_NAMES:
-            return _run_file_tool_in_subprocess(tool_name, tool_input, workspace_root)
+            return _run_file_tool_in_subprocess(tool_name, tool_input, workspace_root, resolved_output)
         return execute_builtin_file_tool(
             tool_name,
             tool_input,
             run_command_confirmation=None,
             workspace_root=workspace_root,
+            output_root=resolved_output,
         )
 
     return executor

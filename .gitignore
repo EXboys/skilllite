@@ -52,6 +52,9 @@ env/
 *.log
 logs/
 
+# SkillLite execution output (final results, separate from plan/memory/logs)
+output/
+
 # Database
 *.db
 *.sqlite

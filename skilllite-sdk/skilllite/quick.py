@@ -273,18 +273,25 @@ Example of CORRECT approach:
             self._logger.info(f"👤 User: {user_message}")
             self._logger.info(f"⏳ Calling LLM...")
         
+        # Resolve output dir (SKILLLITE_OUTPUT_DIR or workspace_root/output) and ensure it exists
+        workspace_root = Path(self.skills_dir).resolve().parent
+        from .builtin_tools import resolve_output_dir
+        output_root = resolve_output_dir(workspace_root)
+        output_root.mkdir(parents=True, exist_ok=True)
+        os.environ["SKILLLITE_OUTPUT_DIR"] = str(output_root)  # Skills (e.g. xiaohongshu-writer) inherit this
+        
         # Prepare tool executor
         tool_executor = self.custom_tool_executor
         if self.enable_builtin_tools and tool_executor is None:
             # Create a combined executor (uses create_builtin_tool_executor for sandbox support)
             from .builtin_tools import create_builtin_tool_executor
 
-            workspace_root = Path(self.skills_dir).resolve().parent
             builtin_executor = create_builtin_tool_executor(
                 run_command_confirmation=self.confirmation_callback,
                 workspace_root=workspace_root,
+                output_root=output_root,
             )
-            builtin_names = {"read_file", "write_file", "list_directory", "file_exists", "run_command"}
+            builtin_names = {"read_file", "write_file", "write_output", "list_directory", "file_exists", "run_command"}
 
             def combined_executor(tool_input: Dict[str, Any]) -> str:
                 tool_name = tool_input.get("tool_name")
