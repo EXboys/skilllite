@@ -185,7 +185,7 @@ class SkillboxIPCClient:
         session_key: str,
         workspace_path: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Create or get session. Requires skillbox built with chat feature."""
+        """Create or get session. Requires skillbox built with executor feature."""
         params = {"session_key": session_key}
         if workspace_path is not None:
             params["workspace_path"] = workspace_path
@@ -291,7 +291,7 @@ class SkillboxIPCClient:
         return self._send_request("token_count", {"text": text})
 
     def plan_textify(self, plan: List[Dict[str, Any]]) -> str:
-        """Convert plan (task list) to human-readable text. Requires skillbox with chat feature."""
+        """Convert plan (task list) to human-readable text. Requires skillbox with executor feature."""
         result = self._send_request("plan_textify", {"plan": plan})
         return result.get("text", "")
 

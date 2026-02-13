@@ -36,7 +36,7 @@ Examples:
   skilllite add owner/repo   Add skills from a remote repository
   skilllite list             List installed skills
   skilllite remove <name>    Remove an installed skill
-  skilllite chat             Interactive chat (requires skillbox --features chat)
+  skilllite chat             Interactive chat (requires skillbox --features executor)
 
 For more information, visit: https://github.com/skilllite/skilllite
         """

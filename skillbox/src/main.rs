@@ -5,8 +5,8 @@ mod env;
 mod sandbox;
 mod skill;
 
-#[cfg(feature = "chat")]
-mod chat;
+#[cfg(feature = "executor")]
+mod executor;
 
 use anyhow::{Context, Result};
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -130,30 +130,30 @@ fn serve_stdio() -> Result<()> {
         let result = match method {
             "run" => handle_run(&params),
             "exec" => handle_exec(&params),
-            #[cfg(feature = "chat")]
-            "session_create" => chat::rpc::handle_session_create(&params),
-            #[cfg(feature = "chat")]
-            "session_get" => chat::rpc::handle_session_get(&params),
-            #[cfg(feature = "chat")]
-            "session_update" => chat::rpc::handle_session_update(&params),
-            #[cfg(feature = "chat")]
-            "transcript_append" => chat::rpc::handle_transcript_append(&params),
-            #[cfg(feature = "chat")]
-            "transcript_read" => chat::rpc::handle_transcript_read(&params),
-            #[cfg(feature = "chat")]
-            "transcript_ensure" => chat::rpc::handle_transcript_ensure(&params),
-            #[cfg(feature = "chat")]
-            "memory_write" => chat::rpc::handle_memory_write(&params),
-            #[cfg(feature = "chat")]
-            "memory_search" => chat::rpc::handle_memory_search(&params),
-            #[cfg(feature = "chat")]
-            "token_count" => chat::rpc::handle_token_count(&params),
-            #[cfg(feature = "chat")]
-            "plan_textify" => chat::rpc::handle_plan_textify(&params),
-            #[cfg(feature = "chat")]
-            "plan_write" => chat::rpc::handle_plan_write(&params),
-            #[cfg(feature = "chat")]
-            "plan_read" => chat::rpc::handle_plan_read(&params),
+            #[cfg(feature = "executor")]
+            "session_create" => executor::rpc::handle_session_create(&params),
+            #[cfg(feature = "executor")]
+            "session_get" => executor::rpc::handle_session_get(&params),
+            #[cfg(feature = "executor")]
+            "session_update" => executor::rpc::handle_session_update(&params),
+            #[cfg(feature = "executor")]
+            "transcript_append" => executor::rpc::handle_transcript_append(&params),
+            #[cfg(feature = "executor")]
+            "transcript_read" => executor::rpc::handle_transcript_read(&params),
+            #[cfg(feature = "executor")]
+            "transcript_ensure" => executor::rpc::handle_transcript_ensure(&params),
+            #[cfg(feature = "executor")]
+            "memory_write" => executor::rpc::handle_memory_write(&params),
+            #[cfg(feature = "executor")]
+            "memory_search" => executor::rpc::handle_memory_search(&params),
+            #[cfg(feature = "executor")]
+            "token_count" => executor::rpc::handle_token_count(&params),
+            #[cfg(feature = "executor")]
+            "plan_textify" => executor::rpc::handle_plan_textify(&params),
+            #[cfg(feature = "executor")]
+            "plan_write" => executor::rpc::handle_plan_write(&params),
+            #[cfg(feature = "executor")]
+            "plan_read" => executor::rpc::handle_plan_read(&params),
             _ => {
                 let err_resp = json!({
                     "jsonrpc": "2.0",

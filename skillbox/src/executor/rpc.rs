@@ -1,4 +1,4 @@
-//! JSON-RPC handlers for chat feature.
+//! JSON-RPC handlers for executor feature (session, transcript, memory, plan).
 
 use anyhow::{Context, Result};
 use serde_json::{json, Value};

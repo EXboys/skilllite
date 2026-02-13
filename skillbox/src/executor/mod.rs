@@ -1,6 +1,7 @@
-//! Chat module: session, transcript, memory.
+//! Executor module: session, transcript, memory, plan.
 //!
-//! Only compiled when the `chat` feature is enabled.
+//! Session/transcript/memory storage for agent execution context.
+//! Only compiled when the `executor` feature is enabled.
 
 pub mod memory;
 pub mod rpc;

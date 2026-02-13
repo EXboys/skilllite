@@ -2,7 +2,7 @@
 Chat tools - memory_search, memory_write, memory_list for LLM.
 
 These tools allow the LLM to store and retrieve information from the
-persistent memory (BM25 index). Requires skillbox built with --features chat.
+persistent memory (BM25 index). Requires skillbox built with --features executor.
 """
 
 from pathlib import Path

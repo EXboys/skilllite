@@ -12,8 +12,8 @@ categories = ["command-line-utilities", "development-tools"]
 [features]
 default = ["sandbox"]
 sandbox = []
-chat = ["rusqlite", "chrono"]
-# memory_vector = ["chat", "sqlite-vec"]  # 后续扩展
+executor = ["rusqlite", "chrono"]
+# memory_vector = ["executor", "sqlite-vec"]  # 后续扩展
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -28,7 +28,7 @@ hex = "0.4"
 regex = "1.10"
 dirs = "5.0"
 
-# Chat feature: session, transcript, memory (BM25)
+# Executor feature: session, transcript, memory (BM25), plan
 rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
 chrono = { version = "0.4", optional = true }
 

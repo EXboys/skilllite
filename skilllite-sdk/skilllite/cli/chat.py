@@ -4,10 +4,10 @@ Chat command for skilllite CLI.
 Provides the ``skilllite chat`` command for interactive multi-turn
 conversation with persistent transcript and memory.
 
-Requires skillbox built with --features chat.
+Requires skillbox built with --features executor.
 
 Prerequisites:
-  cd skillbox && cargo build --release --features chat
+  cd skillbox && cargo build --release --features executor
 
 Usage:
   skilllite chat
@@ -130,7 +130,7 @@ def cmd_chat(args: argparse.Namespace) -> int:
             except Exception as e:
                 if "Method not found" in str(e):
                     print("\nError: Chat feature not enabled in skillbox.")
-                    print("  Build with: cd skillbox && cargo build --release --features chat")
+                    print("  Build with: cd skillbox && cargo build --release --features executor")
                     sys.exit(1)
                 if "上下文长度超限" in str(e) or "context" in str(e).lower():
                     print(f"\nError: {e}")

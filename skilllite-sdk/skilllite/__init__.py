@@ -114,7 +114,7 @@ try:
 except ImportError:
     MCP_AVAILABLE = False
 
-__version__ = "0.1.1"
+__version__ = "0.1.4"
 __all__ = [
     # Core
     "SkillManager",

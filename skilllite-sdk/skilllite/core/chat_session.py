@@ -17,7 +17,7 @@ if False:  # TYPE_CHECKING
 
 
 def _ensure_chat_client():
-    """Get SkillboxIPCClient for chat RPC. Requires skillbox built with --features chat."""
+    """Get SkillboxIPCClient for executor RPC. Requires skillbox built with --features executor."""
     from ..sandbox.skillbox import find_binary
     from ..sandbox.skillbox.ipc_client import SkillboxIPCClient
 
