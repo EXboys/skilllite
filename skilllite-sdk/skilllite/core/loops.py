@@ -198,8 +198,8 @@ class AgenticLoop:
             tool_name = tc.function.name if hasattr(tc, 'function') else tc.get('function', {}).get('name', '')
             
             # Skip built-in tools (read_file, write_file, etc.) and memory tools
-            if tool_name in ['read_file', 'write_file', 'list_directory', 'file_exists',
-                            'memory_search', 'memory_write', 'memory_list', 'run_command']:
+            if tool_name in ['read_file', 'write_file', 'write_output', 'list_directory', 'file_exists',
+                            'memory_search', 'memory_write', 'memory_list', 'run_command', 'preview_server']:
                 continue
             
             # Skip if already documented in this session

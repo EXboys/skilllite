@@ -11,11 +11,14 @@ When SANDBOX_BUILTIN_TOOLS=1, file operations (read_file, write_file, list_direc
 run in a separate subprocess for isolation; run_command stays in main process (needs confirmation).
 """
 
+import http.server
 import json
 import os
 import re
+import socketserver
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -229,6 +232,33 @@ def get_builtin_file_tools() -> List[Dict[str, Any]]:
                     "required": ["command"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "preview_server",
+                "description": "Start a local HTTP server to preview HTML files in browser. Serves the given directory at http://127.0.0.1:PORT. Use after writing HTML to output/ with write_output. Server runs in background until process exits.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "directory_path": {
+                            "type": "string",
+                            "description": "Path relative to workspace (e.g. output, output/preview). If a file path (e.g. output/index.html), serves its parent directory."
+                        },
+                        "port": {
+                            "type": "integer",
+                            "description": "Port number (default: 8765). If busy, will try next available.",
+                            "default": 8765
+                        },
+                        "open_browser": {
+                            "type": "boolean",
+                            "description": "Whether to open browser automatically (default: true)",
+                            "default": True
+                        }
+                    },
+                    "required": ["directory_path"]
+                }
+            }
         }
     ]
 
@@ -322,6 +352,13 @@ def execute_builtin_file_tool(
             return _list_directory(tool_input["directory_path"], recursive, workspace_root)
         elif tool_name == "file_exists":
             return _file_exists(tool_input["file_path"], workspace_root)
+        elif tool_name == "preview_server":
+            return _start_preview_server(
+                directory_path=tool_input["directory_path"],
+                port=tool_input.get("port", 8765),
+                open_browser=tool_input.get("open_browser", True),
+                workspace_root=workspace_root,
+            )
         else:
             raise ValueError(f"Unknown built-in tool: {tool_name}")
     except KeyError as e:
@@ -430,6 +467,66 @@ def _file_exists(file_path: str, workspace_root: Optional[Union[str, Path]] = No
             return f"Path exists but is neither file nor directory: {file_path}"
     else:
         return f"Path does not exist: {file_path}"
+
+
+def _start_preview_server(
+    directory_path: str,
+    port: int = 8765,
+    open_browser: bool = True,
+    workspace_root: Optional[Union[str, Path]] = None,
+) -> str:
+    """Start a local HTTP server to preview HTML. Binds to 127.0.0.1 only. Runs in daemon thread."""
+    path, err = _resolve_within_workspace(directory_path, workspace_root)
+    if err:
+        return f"Error: {err}"
+    if not path.exists():
+        return f"Error: Path not found: {directory_path}"
+    serve_dir = path.parent if path.is_file() else path
+
+    port = int(port) if port else 8765
+    server = None
+    used_port = None
+
+    # Handler that serves from serve_dir (Python 3.9+ has directory param; else chdir in thread)
+    class _Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            if sys.version_info >= (3, 9):
+                kwargs["directory"] = str(serve_dir)
+            super().__init__(*args, **kwargs)
+
+    for p in range(port, min(port + 20, 65536)):
+        try:
+            server = socketserver.TCPServer(("127.0.0.1", p), _Handler)
+            used_port = p
+            break
+        except OSError:
+            continue
+
+    if server is None or used_port is None:
+        return f"Error: Could not bind to port {port} (tried {port}-{port + 19})"
+
+    def serve():
+        if sys.version_info < (3, 9):
+            os.chdir(serve_dir)
+        server.serve_forever()
+
+    t = threading.Thread(target=serve, daemon=True)
+    t.start()
+
+    url = f"http://127.0.0.1:{used_port}"
+    if open_browser:
+        try:
+            import webbrowser
+            webbrowser.open(url)
+        except Exception:
+            pass
+
+    return (
+        f"Preview server started at {url}\n\n"
+        f"Open in browser: {url}\n"
+        f"Serving directory: {serve_dir}\n"
+        f"(Server runs in background. Stops when you exit.)"
+    )
 
 
 # File-only tools that can run in sandbox subprocess (no user confirmation needed)
@@ -554,7 +651,7 @@ def create_builtin_tool_executor(
     if use_sandbox is None:
         use_sandbox = os.environ.get("SANDBOX_BUILTIN_TOOLS", "0").strip().lower() in ("1", "true", "yes")
 
-    builtin_tool_names = {"read_file", "write_file", "write_output", "list_directory", "file_exists", "run_command"}
+    builtin_tool_names = {"read_file", "write_file", "write_output", "list_directory", "file_exists", "run_command", "preview_server"}
     resolved_output = Path(output_root).resolve() if output_root else (resolve_output_dir(workspace_root) if workspace_root else None)
 
     def executor(tool_input: Dict[str, Any]) -> str:
