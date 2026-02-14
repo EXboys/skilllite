@@ -37,7 +37,34 @@ ConfirmationCallback = Callable[[str, str], bool]
 
 @dataclass
 class SecurityScanResult:
-    """Result of a security scan."""
+    """
+    Unified security scan result — Single Source of Truth.
+
+    Used by SecurityScanner, UnifiedExecutionService, BaseAdapter,
+    LangChain/LlamaIndex adapters, and MCP server.
+
+    Other modules should re-export this class rather than defining their own.
+    """
+
+    # Issue types that are HARD BLOCKED in L3 sandbox
+    # (cannot execute even with user confirmation)
+    HARD_BLOCKED_ISSUE_TYPES_L3 = {
+        "Process Execution",
+        "ProcessExecution",
+        "process_execution",
+    }
+
+    # Rule IDs that are specifically hard blocked in L3 sandbox
+    HARD_BLOCKED_RULE_IDS_L3 = {
+        "py-subprocess",
+        "py-os-system",
+        "js-child-process",
+    }
+
+    # Dangerous module imports that lead to hard blocks
+    HARD_BLOCKED_MODULES_L3 = {
+        "py-os-import",
+    }
 
     is_safe: bool
     issues: List[Dict[str, Any]] = field(default_factory=list)
@@ -46,14 +73,43 @@ class SecurityScanResult:
     high_severity_count: int = 0
     medium_severity_count: int = 0
     low_severity_count: int = 0
+    sandbox_level: int = 3
     timestamp: float = field(default_factory=time.time)
+
+    # Computed in __post_init__ — not constructor args
+    hard_blocked_issues: List[Dict[str, Any]] = field(
+        default_factory=list, init=False, repr=False,
+    )
+    has_hard_blocked: bool = field(default=False, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.hard_blocked_issues = self._find_hard_blocked_issues()
+        self.has_hard_blocked = len(self.hard_blocked_issues) > 0
+
+    # ---- computed helpers ------------------------------------------------
+
+    def _find_hard_blocked_issues(self) -> List[Dict[str, Any]]:
+        """Find issues that are hard blocked in the current sandbox level."""
+        if self.sandbox_level < 3:
+            return []
+        blocked = []
+        for issue in self.issues:
+            issue_type = issue.get("issue_type", "")
+            rule_id = issue.get("rule_id", "")
+            if (issue_type in self.HARD_BLOCKED_ISSUE_TYPES_L3
+                    or rule_id in self.HARD_BLOCKED_RULE_IDS_L3):
+                blocked.append(issue)
+        return blocked
 
     @property
     def requires_confirmation(self) -> bool:
-        """Check if user confirmation is required."""
-        return self.high_severity_count > 0
+        """Check if user confirmation is required (high severity, not hard-blocked)."""
+        return self.high_severity_count > 0 and not self.has_hard_blocked
+
+    # ---- serialisation ---------------------------------------------------
 
     def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary representation."""
         return {
             "is_safe": self.is_safe,
             "issues": self.issues,
@@ -63,15 +119,23 @@ class SecurityScanResult:
             "medium_severity_count": self.medium_severity_count,
             "low_severity_count": self.low_severity_count,
             "requires_confirmation": self.requires_confirmation,
+            "has_hard_blocked": self.has_hard_blocked,
+            "hard_blocked_count": len(self.hard_blocked_issues),
+            "sandbox_level": self.sandbox_level,
+            "timestamp": self.timestamp,
         }
+
+    # ---- reporting -------------------------------------------------------
 
     def format_report(self) -> str:
         """Format a human-readable security report."""
         if not self.issues:
             return "✅ Security scan passed. No issues found."
 
+        scan_id_display = self.scan_id[:8] if self.scan_id else "N/A"
         lines = [
-            f"📋 Security Scan Report (ID: {self.scan_id[:8]})",
+            f"📋 Security Scan Report (ID: {scan_id_display})",
+            f"   Sandbox Level: L{self.sandbox_level}",
             f"   Found {len(self.issues)} item(s) for review:",
             "",
         ]
@@ -86,19 +150,74 @@ class SecurityScanResult:
         for idx, issue in enumerate(self.issues, 1):
             severity = issue.get("severity", "Medium")
             icon = severity_icons.get(severity, "⚪")
-            lines.append(f"  {icon} #{idx} [{severity}] {issue.get('issue_type', 'Unknown')}")
+
+            # Mark hard blocked issues
+            is_hard_blocked = issue in self.hard_blocked_issues
+            block_marker = " 🚫 [HARD BLOCKED]" if is_hard_blocked else ""
+
+            lines.append(f"  {icon} #{idx} [{severity}] {issue.get('issue_type', 'Unknown')}{block_marker}")
             lines.append(f"     ├─ Rule: {issue.get('rule_id', 'N/A')}")
             lines.append(f"     ├─ Line {issue.get('line_number', '?')}: {issue.get('description', '')}")
             snippet = issue.get('code_snippet', '')
             lines.append(f"     └─ Code: {snippet[:60]}{'...' if len(snippet) > 60 else ''}")
             lines.append("")
 
-        if self.high_severity_count > 0:
+        # Different messages based on hard-blocked status
+        if self.has_hard_blocked:
+            lines.append("🚫 HARD BLOCKED: This code contains operations that CANNOT be executed")
+            lines.append(f"   in the current L{self.sandbox_level} sandbox environment.")
+            lines.append("")
+            lines.append("   The following operations are permanently blocked at runtime:")
+            for issue in self.hard_blocked_issues:
+                lines.append(f"   • {issue.get('issue_type', 'Unknown')}: {issue.get('description', '')}")
+            lines.append("")
+            lines.append("   ⚠️  Even with confirmation, this code will fail to execute.")
+            lines.append("   Options:")
+            lines.append("   1. Modify the code to remove blocked operations")
+            lines.append("   2. Use a lower sandbox level (L1 or L2) if permitted")
+        elif self.high_severity_count > 0:
             lines.append("⚠️  High severity issues found. Confirmation required to execute.")
+            lines.append(f"   To proceed, call execute_code with confirmed=true and scan_id=\"{self.scan_id}\"")
         else:
             lines.append("ℹ️  Only low/medium severity issues found. Safe to execute.")
 
         return "\n".join(lines)
+
+    # ---- factory methods -------------------------------------------------
+
+    @classmethod
+    def safe(cls, scan_id: str = "", code_hash: str = "") -> "SecurityScanResult":
+        """Create a safe (no issues) scan result."""
+        return cls(
+            is_safe=True,
+            issues=[],
+            scan_id=scan_id,
+            code_hash=code_hash,
+        )
+
+    @classmethod
+    def from_issues(
+        cls,
+        issues: List[Dict[str, Any]],
+        scan_id: str = "",
+        code_hash: str = "",
+        sandbox_level: int = 3,
+    ) -> "SecurityScanResult":
+        """Create a scan result from a list of issues."""
+        high_count = sum(1 for i in issues if i.get("severity") in ["Critical", "High"])
+        medium_count = sum(1 for i in issues if i.get("severity") == "Medium")
+        low_count = sum(1 for i in issues if i.get("severity") == "Low")
+
+        return cls(
+            is_safe=high_count == 0,
+            issues=issues,
+            scan_id=scan_id,
+            code_hash=code_hash,
+            high_severity_count=high_count,
+            medium_severity_count=medium_count,
+            low_severity_count=low_count,
+            sandbox_level=sandbox_level,
+        )
 
 
 def parse_scan_json_output(output: str) -> Dict[str, Any]:
