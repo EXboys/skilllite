@@ -113,13 +113,16 @@ print(result)
 ### Environment Configuration
 
 ```bash
-# Create .env file with your LLM API configuration
-cat > .env << EOF
-BASE_URL=https://api.deepseek.com/v1
-API_KEY=your_api_key_here
-MODEL=deepseek-chat
-EOF
+# Copy the template and fill in your LLM API credentials
+cp .env.example .env
+# Edit .env: BASE_URL, API_KEY, MODEL
 ```
+
+| File | Description |
+|------|-------------|
+| [.env.example](./.env.example) | Quick start template (5-8 common variables) |
+| [.env.example.full](./.env.example.full) | Full variable list (advanced users) |
+| [docs/ENV_REFERENCE.md](./docs/ENV_REFERENCE.md) | Complete reference: defaults, usage scenarios |
 
 
 
@@ -455,5 +458,6 @@ This project includes third-party dependencies with various licenses. See [THIRD
 ## 📚 Documentation
 
 - [Getting Started](./docs/en/GETTING_STARTED.md) - Installation and quick start guide
+- [Environment Variables Reference](./docs/ENV_REFERENCE.md) - Complete env var documentation
 - [Architecture](./docs/en/ARCHITECTURE.md) - Project architecture and design
 - [Contributing Guide](./docs/en/CONTRIBUTING.md) - How to contribute

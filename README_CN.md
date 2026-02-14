@@ -130,14 +130,16 @@ skillbox --help
 ### 2. 环境配置
 
 ```bash
-# 复制环境变量模板
+# 复制环境变量模板并填入 API 配置
 cp .env.example .env
-
-# 编辑 .env 填入你的 API 配置
-# BASE_URL=https://api.deepseek.com/v1
-# API_KEY=your_api_key_here
-# MODEL=deepseek-chat
+# 编辑 .env: BASE_URL, API_KEY, MODEL
 ```
+
+| 文件 | 说明 |
+|------|------|
+| [.env.example](./.env.example) | 快速开始模板（5-8 个常用变量） |
+| [.env.example.full](./.env.example.full) | 完整变量列表（高级用户） |
+| [docs/ENV_REFERENCE.md](./docs/ENV_REFERENCE.md) | 完整变量说明、默认值、使用场景 |
 
 ### 3. 运行示例
 
@@ -299,5 +301,6 @@ MIT
 ## 📚 文档
 
 - [快速入门](./docs/zh/GETTING_STARTED.md) - 安装和快速入门指南
+- [环境变量参考](./docs/ENV_REFERENCE.md) - 完整环境变量说明
 - [项目架构](./docs/zh/ARCHITECTURE.md) - 项目架构和设计
 - [贡献指南](./docs/zh/CONTRIBUTING.md) - 如何贡献代码
