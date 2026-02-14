@@ -863,21 +863,21 @@ mod tests {
     #[test]
     fn test_http_proxy_creation() {
         let config = ProxyConfig::default();
-        let proxy = HttpProxy::new(config).unwrap();
+        let proxy = HttpProxy::new(config).expect("test HTTP proxy creation should succeed");
         assert!(proxy.port() > 0);
     }
 
     #[test]
     fn test_socks5_proxy_creation() {
         let config = ProxyConfig::default();
-        let proxy = Socks5Proxy::new(config).unwrap();
+        let proxy = Socks5Proxy::new(config).expect("test SOCKS5 proxy creation should succeed");
         assert!(proxy.port() > 0);
     }
 
     #[test]
     fn test_proxy_manager() {
         let config = ProxyConfig::with_allowed_domains(vec!["github.com".to_string()]);
-        let manager = ProxyManager::new(config).unwrap();
+        let manager = ProxyManager::new(config).expect("test proxy manager creation should succeed");
         
         assert!(manager.http_port().is_some());
         assert!(manager.socks5_port().is_some());

@@ -387,7 +387,8 @@ compatibility: Requires Python 3.x with requests library, network access
 This is a test skill.
 "#;
 
-        let metadata = extract_yaml_front_matter(content).unwrap();
+        let metadata = extract_yaml_front_matter(content)
+            .expect("test YAML parsing should succeed");
         assert_eq!(metadata.name, "test-skill");
         assert_eq!(metadata.language, Some("python".to_string()));
         assert!(metadata.network.enabled);
@@ -428,7 +429,8 @@ description: A simple skill
 ---
 "#;
 
-        let metadata = extract_yaml_front_matter(content).unwrap();
+        let metadata = extract_yaml_front_matter(content)
+            .expect("test YAML parsing should succeed");
         assert!(!metadata.network.enabled);
         assert!(metadata.network.outbound.is_empty());
     }

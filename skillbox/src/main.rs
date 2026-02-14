@@ -16,32 +16,45 @@ use clap::Parser;
 use cli::{Cli, Commands};
 use serde_json::{json, Value};
 
-/// Validate skill_dir is within allowed root. Prevents path traversal.
-fn validate_skill_path(skill_dir: &str) -> Result<PathBuf> {
+/// Guard that removes an env var on drop. Ensures no stale value between requests.
+struct ScopedEnvGuard(&'static str);
+impl Drop for ScopedEnvGuard {
+    fn drop(&mut self) {
+        std::env::remove_var(self.0);
+    }
+}
+
+/// Get the allowed root directory for path validation.
+fn get_allowed_root() -> Result<PathBuf> {
     let allowed_root = std::env::var("SKILLBOX_SKILLS_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-
-    let allowed_root = allowed_root
+    allowed_root
         .canonicalize()
-        .map_err(|e| anyhow::anyhow!("Invalid SKILLBOX_SKILLS_ROOT: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Invalid SKILLBOX_SKILLS_ROOT: {}", e))
+}
 
-    let input = Path::new(skill_dir);
+/// Validate path is within allowed root. Prevents path traversal.
+fn validate_path_under_root(path: &str, path_type: &str) -> Result<PathBuf> {
+    let allowed_root = get_allowed_root()?;
+    let input = Path::new(path);
     let full = if input.is_absolute() {
         input.to_path_buf()
     } else {
         allowed_root.join(input)
     };
-
     let canonical = full
         .canonicalize()
-        .map_err(|_| anyhow::anyhow!("Skill path does not exist: {}", skill_dir))?;
-
+        .map_err(|_| anyhow::anyhow!("{} does not exist: {}", path_type, path))?;
     if !canonical.starts_with(&allowed_root) {
-        anyhow::bail!("Skill path escapes allowed root: {}", skill_dir);
+        anyhow::bail!("{} escapes allowed root: {}", path_type, path);
     }
-
     Ok(canonical)
+}
+
+/// Validate skill_dir is within allowed root. Prevents path traversal.
+fn validate_skill_path(skill_dir: &str) -> Result<PathBuf> {
+    validate_path_under_root(skill_dir, "Skill path")
 }
 
 fn main() -> Result<()> {
@@ -436,14 +449,15 @@ fn exec_script(
         effective_metadata.network.enabled = true;
     }
 
-    // Store args in metadata for the executor to use
-    if let Some(ref args_str) = args {
-        // Parse args and pass them through environment variable
-        // SAFETY: We are setting an environment variable before spawning any threads
-        unsafe {
-            std::env::set_var("SKILLBOX_SCRIPT_ARGS", args_str);
-        }
-    }
+    // Pass script args via env for executor. Use guard to clear on drop so no stale
+    // value leaks to subsequent requests (IPC mode processes one request at a time).
+    let _args_guard = if let Some(ref args_str) = args {
+        std::env::set_var("SKILLBOX_SCRIPT_ARGS", args_str);
+        Some(ScopedEnvGuard("SKILLBOX_SCRIPT_ARGS"))
+    } else {
+        std::env::remove_var("SKILLBOX_SCRIPT_ARGS");
+        None
+    };
 
     // Execute in sandbox
     let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
@@ -499,15 +513,10 @@ fn security_scan_script(
     allow_process_exec: bool,
     json_output: bool,
 ) -> Result<()> {
-    use std::path::Path;
-    use crate::sandbox::security::{ScriptScanner, format_scan_result, format_scan_result_json};
+    use crate::sandbox::security::{format_scan_result, format_scan_result_json, ScriptScanner};
 
-    let path = Path::new(script_path);
-
-    // Validate script exists
-    if !path.exists() {
-        anyhow::bail!("Script not found: {}", path.display());
-    }
+    // Validate script path is within allowed root (prevents path traversal)
+    let path = validate_path_under_root(script_path, "Script path")?;
 
     // Create scanner with specified permissions
     let scanner = ScriptScanner::new()
@@ -516,7 +525,7 @@ fn security_scan_script(
         .allow_process_exec(allow_process_exec);
 
     // Scan the script
-    let scan_result = scanner.scan_file(path)?;
+    let scan_result = scanner.scan_file(&path)?;
 
     // Display results
     if json_output {

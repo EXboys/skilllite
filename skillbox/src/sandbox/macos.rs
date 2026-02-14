@@ -860,7 +860,8 @@ mod tests {
             resolved_packages: None,
         };
 
-        let profile = generate_sandbox_profile(skill_dir, env_path, &metadata, work_dir).unwrap();
+        let profile = generate_sandbox_profile(skill_dir, env_path, &metadata, work_dir)
+            .expect("test sandbox profile generation should succeed");
 
         assert!(profile.contains("(version 1)"));
         // The sandbox profile uses allow-default mode with explicit deny rules
