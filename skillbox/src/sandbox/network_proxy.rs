@@ -321,7 +321,7 @@ impl HttpProxy {
 
         // Check if domain is allowed
         {
-            let cfg = config.read().unwrap();
+            let cfg = config.read().expect("proxy config lock");
             if !cfg.is_domain_allowed(&host) {
                 eprintln!("[HTTP Proxy] Blocked CONNECT to: {}", host);
                 return Self::send_error(client, 403, "Forbidden - Domain not in allowlist");
@@ -386,7 +386,7 @@ impl HttpProxy {
 
         // Check if domain is allowed
         {
-            let cfg = config.read().unwrap();
+            let cfg = config.read().expect("proxy config lock");
             if !cfg.is_domain_allowed(&host) {
                 eprintln!("[HTTP Proxy] Blocked HTTP request to: {}", host);
                 return Self::send_error(client, 403, "Forbidden - Domain not in allowlist");
@@ -659,7 +659,7 @@ impl Socks5Proxy {
 
         // Check if domain is allowed
         {
-            let cfg = config.read().unwrap();
+            let cfg = config.read().expect("proxy config lock");
             if !cfg.is_domain_allowed(&host) {
                 eprintln!("[SOCKS5 Proxy] Blocked connection to: {}:{}", host, port);
                 Self::send_reply(&mut client, 0x02)?; // Connection not allowed

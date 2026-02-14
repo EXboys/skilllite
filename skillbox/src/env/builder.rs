@@ -149,7 +149,7 @@ fn install_python_packages(env_path: &Path, packages: &[String]) -> Result<()> {
 /// Create a Python virtual environment
 fn create_python_venv(env_path: &Path) -> Result<()> {
     let output = Command::new("python3")
-        .args(["-m", "venv", env_path.to_str().unwrap()])
+        .args(["-m", "venv", env_path.to_str().expect("env path must be valid UTF-8")])
         .output()
         .with_context(|| "Failed to execute python3 -m venv")?;
 

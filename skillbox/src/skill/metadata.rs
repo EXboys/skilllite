@@ -239,7 +239,8 @@ fn extract_yaml_front_matter_with_detection(content: &str, skill_dir: &Path) -> 
 /// Extract YAML front matter from markdown content
 fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Result<SkillMetadata> {
     // Match YAML front matter between --- delimiters
-    let re = Regex::new(r"(?s)^---\s*\n(.*?)\n---").unwrap();
+    let re = Regex::new(r"(?s)^---\s*\n(.*?)\n---")
+        .expect("SKILL.md front matter regex is valid");
 
     let captures = re
         .captures(content)

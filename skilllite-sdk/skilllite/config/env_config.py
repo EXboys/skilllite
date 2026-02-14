@@ -78,3 +78,35 @@ def get_timeout_from_env() -> int:
 def get_memory_from_env() -> int:
     """Max memory in MB. SKILLBOX_MAX_MEMORY_MB or MAX_MEMORY_MB."""
     return get_int_env("SKILLBOX_MAX_MEMORY_MB", 512, "MAX_MEMORY_MB")
+
+
+# --- Long text / summarization config ---
+
+def get_long_text_chunk_size() -> int:
+    """Chunk size for long text summarization (~1.5k tokens). SKILLLITE_CHUNK_SIZE."""
+    return get_int_env("SKILLLITE_CHUNK_SIZE", 6000)
+
+
+def get_long_text_head_chunks() -> int:
+    """Number of head chunks for head+tail summarization. SKILLLITE_HEAD_CHUNKS."""
+    return get_int_env("SKILLLITE_HEAD_CHUNKS", 3)
+
+
+def get_long_text_tail_chunks() -> int:
+    """Number of tail chunks for head+tail summarization. SKILLLITE_TAIL_CHUNKS."""
+    return get_int_env("SKILLLITE_TAIL_CHUNKS", 3)
+
+
+def get_long_text_max_output_chars() -> int:
+    """Max output length for summarization (~2k tokens). SKILLLITE_MAX_OUTPUT_CHARS."""
+    return get_int_env("SKILLLITE_MAX_OUTPUT_CHARS", 8000)
+
+
+def get_long_text_summarize_threshold() -> int:
+    """Threshold above which chunked summarization is used instead of truncation. SKILLLITE_SUMMARIZE_THRESHOLD."""
+    return get_int_env("SKILLLITE_SUMMARIZE_THRESHOLD", 15000)
+
+
+def get_tool_result_max_chars() -> int:
+    """Max chars per tool result (~2k tokens). SKILLLITE_TOOL_RESULT_MAX_CHARS."""
+    return get_int_env("SKILLLITE_TOOL_RESULT_MAX_CHARS", 8000)

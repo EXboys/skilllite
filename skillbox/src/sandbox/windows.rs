@@ -92,7 +92,10 @@ fn windows_to_wsl_path(path: &Path) -> Result<String> {
     // Handle drive letter paths (C:\...)
     let chars: Vec<char> = path_str.chars().collect();
     if chars.len() >= 2 && chars[1] == ':' {
-        let drive = chars[0].to_lowercase().next().unwrap();
+        let drive = chars[0]
+            .to_lowercase()
+            .next()
+            .expect("drive letter must be valid");
         let rest = &path_str[2..].replace('\\', "/");
         return Ok(format!("/mnt/{}{}", drive, rest));
     }

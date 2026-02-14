@@ -167,10 +167,13 @@ fn request_user_authorization(issues_count: usize, severity: &str) -> bool {
     
     loop {
         eprint!("  👉 Continue execution? [y/N]: ");
-        io::stderr().flush().unwrap();
-        
+        let _ = io::stderr().flush();
+
         let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
+        if io::stdin().read_line(&mut input).is_err() {
+            eprintln!("\n  ⏹️  Input error, cancelling");
+            return false;
+        }
         
         let input = input.trim().to_lowercase();
         match input.as_str() {

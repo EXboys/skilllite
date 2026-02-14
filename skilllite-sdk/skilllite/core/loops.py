@@ -9,15 +9,16 @@ import json
 from typing import Any, List, Optional, TYPE_CHECKING, Dict, Callable
 
 from ..logger import get_logger
-from ..extensions.long_text import summarize_long_content, truncate_content, SUMMARIZE_THRESHOLD
+from ..config.env_config import get_long_text_summarize_threshold, get_tool_result_max_chars
+from ..extensions.long_text import summarize_long_content, truncate_content
 from .task_planner import ApiFormat, TaskPlanner
 from .tools import ToolResult
 
 if TYPE_CHECKING:
     from .manager import SkillManager
 
-# Max chars per tool result (~2k tokens). Prevents context overflow from huge HTTP/HTML responses.
-TOOL_RESULT_MAX_CHARS = 8000
+# Max chars per tool result (~2k tokens). Configurable via SKILLLITE_TOOL_RESULT_MAX_CHARS.
+TOOL_RESULT_MAX_CHARS = get_tool_result_max_chars()
 
 # Max chars for context-overflow recovery retry (more aggressive truncation)
 TOOL_RESULT_RECOVERY_MAX_CHARS = 3000
@@ -154,10 +155,12 @@ class AgenticLoop:
 
     def _process_tool_result_content(self, content: str) -> str:
         """Process long tool result: chunked summarization if very long, else truncate."""
-        if len(content) <= TOOL_RESULT_MAX_CHARS:
+        max_chars = get_tool_result_max_chars()
+        threshold = get_long_text_summarize_threshold()
+        if len(content) <= max_chars:
             return content
-        if len(content) <= SUMMARIZE_THRESHOLD:
-            return truncate_content(content, TOOL_RESULT_MAX_CHARS)
+        if len(content) <= threshold:
+            return truncate_content(content, max_chars)
         self._log(f"📝 Long content ({len(content)} chars), summarize 开头+结尾 (head+tail)...")
         api_fmt = self.api_format.value if hasattr(self.api_format, "value") else "openai"
         return summarize_long_content(
@@ -165,7 +168,7 @@ class AgenticLoop:
             self.model,
             content,
             api_format=api_fmt,
-            max_output_chars=TOOL_RESULT_MAX_CHARS,
+            max_output_chars=max_chars,
             logger=self._log,
         )
 

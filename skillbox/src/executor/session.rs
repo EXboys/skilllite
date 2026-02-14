@@ -84,7 +84,10 @@ impl SessionStore {
             };
             self.sessions.insert(session_key.to_string(), entry);
         }
-        let entry = self.sessions.get_mut(session_key).unwrap();
+        let entry = self
+            .sessions
+            .get_mut(session_key)
+            .expect("session entry must exist after insert");
         entry.updated_at = now;
         entry
     }
