@@ -11,9 +11,38 @@ mod executor;
 
 use anyhow::{Context, Result};
 use std::io::{self, BufRead, BufReader, Read, Write};
+use std::path::{Path, PathBuf};
 use clap::Parser;
 use cli::{Cli, Commands};
 use serde_json::{json, Value};
+
+/// Validate skill_dir is within allowed root. Prevents path traversal.
+fn validate_skill_path(skill_dir: &str) -> Result<PathBuf> {
+    let allowed_root = std::env::var("SKILLBOX_SKILLS_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+    let allowed_root = allowed_root
+        .canonicalize()
+        .map_err(|e| anyhow::anyhow!("Invalid SKILLBOX_SKILLS_ROOT: {}", e))?;
+
+    let input = Path::new(skill_dir);
+    let full = if input.is_absolute() {
+        input.to_path_buf()
+    } else {
+        allowed_root.join(input)
+    };
+
+    let canonical = full
+        .canonicalize()
+        .map_err(|_| anyhow::anyhow!("Skill path does not exist: {}", skill_dir))?;
+
+    if !canonical.starts_with(&allowed_root) {
+        anyhow::bail!("Skill path escapes allowed root: {}", skill_dir);
+    }
+
+    Ok(canonical)
+}
 
 fn main() -> Result<()> {
     observability::init_tracing();
@@ -255,12 +284,10 @@ fn run_skill(
     limits: sandbox::executor::ResourceLimits,
     sandbox_level: sandbox::executor::SandboxLevel,
 ) -> Result<String> {
-    use std::path::Path;
-
-    let skill_path = Path::new(skill_dir);
+    let skill_path = validate_skill_path(skill_dir)?;
 
     // 1. Parse SKILL.md metadata
-    let metadata = skill::metadata::parse_skill_metadata(skill_path)?;
+    let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
 
     // Check if this is a prompt-only skill (no entry_point)
     if metadata.entry_point.is_empty() {
@@ -273,7 +300,7 @@ fn run_skill(
 
     // 3. Setup environment (venv/node_modules)
     info_log!("[INFO] ensure_environment start...");
-    let env_path = env::builder::ensure_environment(skill_path, &metadata, cache_dir.map(|s| s.as_str()))?;
+    let env_path = env::builder::ensure_environment(&skill_path, &metadata, cache_dir.map(|s| s.as_str()))?;
     info_log!("[INFO] ensure_environment done");
 
     // 4. Apply CLI overrides and execute in sandbox
@@ -285,7 +312,7 @@ fn run_skill(
     }
 
     let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
-        skill_path,
+        &skill_path,
         &env_path,
         &effective_metadata,
         input_json,
@@ -297,10 +324,10 @@ fn run_skill(
 }
 
 fn validate_skill(skill_dir: &str) -> Result<()> {
-    let skill_path = std::path::Path::new(skill_dir);
+    let skill_path = validate_skill_path(skill_dir)?;
 
     // Parse and validate metadata
-    let metadata = skill::metadata::parse_skill_metadata(skill_path)?;
+    let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
 
     // Check entry point exists (only if entry_point is specified)
     if !metadata.entry_point.is_empty() {
@@ -310,17 +337,15 @@ fn validate_skill(skill_dir: &str) -> Result<()> {
         }
 
         // Check dependencies file if language specified
-        skill::deps::validate_dependencies(skill_path, &metadata)?;
+        skill::deps::validate_dependencies(&skill_path, &metadata)?;
     }
 
     Ok(())
 }
 
 fn show_skill_info(skill_dir: &str) -> Result<()> {
-    use std::path::Path;
-
-    let skill_path = Path::new(skill_dir);
-    let metadata = skill::metadata::parse_skill_metadata(skill_path)?;
+    let skill_path = validate_skill_path(skill_dir)?;
+    let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
 
     println!("Skill Information:");
     println!("  Name: {}", metadata.name);
@@ -355,14 +380,20 @@ fn exec_script(
     limits: sandbox::executor::ResourceLimits,
     sandbox_level: sandbox::executor::SandboxLevel,
 ) -> Result<String> {
-    use std::path::Path;
-
-    let skill_path = Path::new(skill_dir);
+    let skill_path = validate_skill_path(skill_dir)?;
     let full_script_path = skill_path.join(script_path);
 
     // Validate script exists
     if !full_script_path.exists() {
         anyhow::bail!("Script not found: {}", full_script_path.display());
+    }
+
+    // Prevent script_path from escaping skill_dir (e.g. ../../../etc/passwd)
+    let full_canonical = full_script_path
+        .canonicalize()
+        .map_err(|_| anyhow::anyhow!("Script path does not exist: {}", script_path))?;
+    if !full_canonical.starts_with(&skill_path) {
+        anyhow::bail!("Script path escapes skill directory: {}", script_path);
     }
 
     // Detect language from script extension
@@ -374,13 +405,13 @@ fn exec_script(
 
     // Try to parse SKILL.md for network policy and dependencies (optional)
     let (metadata, env_path) = if skill_path.join("SKILL.md").exists() {
-        let mut meta = skill::metadata::parse_skill_metadata(skill_path)?;
+        let mut meta = skill::metadata::parse_skill_metadata(&skill_path)?;
         // Override entry_point with the specified script
         meta.entry_point = script_path.to_string();
         meta.language = Some(language.clone());
         
         // Setup environment based on skill dependencies
-        let env = env::builder::ensure_environment(skill_path, &meta, cache_dir.map(|s| s.as_str()))?;
+        let env = env::builder::ensure_environment(&skill_path, &meta, cache_dir.map(|s| s.as_str()))?;
         (meta, env)
     } else {
         // No SKILL.md, create minimal metadata
@@ -416,7 +447,7 @@ fn exec_script(
 
     // Execute in sandbox
     let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
-        skill_path,
+        &skill_path,
         &env_path,
         &effective_metadata,
         input_json,
@@ -500,13 +531,7 @@ fn security_scan_script(
 
 /// Scan skill directory and return JSON with all executable scripts
 fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
-    use std::path::Path;
-
-    let skill_path = Path::new(skill_dir);
-
-    if !skill_path.exists() {
-        anyhow::bail!("Skill directory not found: {}", skill_dir);
-    }
+    let skill_path = validate_skill_path(skill_dir)?;
 
     let mut result = serde_json::json!({
         "skill_dir": skill_dir,
@@ -524,7 +549,7 @@ fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
     let skill_md_path = skill_path.join("SKILL.md");
     if skill_md_path.exists() {
         result["has_skill_md"] = serde_json::json!(true);
-        if let Ok(metadata) = skill::metadata::parse_skill_metadata(skill_path) {
+        if let Ok(metadata) = skill::metadata::parse_skill_metadata(&skill_path) {
             result["skill_metadata"] = serde_json::json!({
                 "name": metadata.name,
                 "description": metadata.description,
@@ -543,7 +568,7 @@ fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
 
     // Scan for executable scripts
     let mut scripts = Vec::new();
-    scan_scripts_recursive(skill_path, skill_path, &mut scripts, preview_lines)?;
+    scan_scripts_recursive(&skill_path, &skill_path, &mut scripts, preview_lines)?;
 
     result["scripts"] = serde_json::json!(scripts);
 
