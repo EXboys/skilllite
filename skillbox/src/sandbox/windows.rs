@@ -180,6 +180,10 @@ fn execute_with_job_object(
 
     eprintln!("[WARN] Using Job Object fallback - limited security isolation");
     eprintln!("[WARN] For full security, install WSL2: wsl --install");
+    crate::observability::security_sandbox_fallback(
+        &metadata.name,
+        "windows_job_object_limited_isolation",
+    );
 
     let language = detect_language(skill_dir, metadata);
     let entry_point = skill_dir.join(&metadata.entry_point);

@@ -11,6 +11,7 @@
 //! On macOS: Seatbelt profile allows only localhost:proxy_port
 //! On Linux: Network namespace removed, traffic routed via Unix socket
 
+use crate::observability;
 use std::io::{Read, Write, BufRead, BufReader};
 use std::net::{TcpListener, TcpStream, SocketAddr, ToSocketAddrs, Shutdown};
 use std::sync::{Arc, RwLock, atomic::{AtomicBool, Ordering}};
@@ -323,7 +324,12 @@ impl HttpProxy {
         {
             let cfg = config.read().expect("proxy config lock");
             if !cfg.is_domain_allowed(&host) {
-                eprintln!("[HTTP Proxy] Blocked CONNECT to: {}", host);
+                let blocked_target = format!("{}:{}", host, port);
+                observability::security_blocked_network(
+                    "unknown",
+                    &blocked_target,
+                    "domain_not_in_allowlist",
+                );
                 return Self::send_error(client, 403, "Forbidden - Domain not in allowlist");
             }
         }
@@ -388,7 +394,11 @@ impl HttpProxy {
         {
             let cfg = config.read().expect("proxy config lock");
             if !cfg.is_domain_allowed(&host) {
-                eprintln!("[HTTP Proxy] Blocked HTTP request to: {}", host);
+                observability::security_blocked_network(
+                    "unknown",
+                    &host,
+                    "domain_not_in_allowlist",
+                );
                 return Self::send_error(client, 403, "Forbidden - Domain not in allowlist");
             }
         }
@@ -661,7 +671,12 @@ impl Socks5Proxy {
         {
             let cfg = config.read().expect("proxy config lock");
             if !cfg.is_domain_allowed(&host) {
-                eprintln!("[SOCKS5 Proxy] Blocked connection to: {}:{}", host, port);
+                let blocked_target = format!("{}:{}", host, port);
+                observability::security_blocked_network(
+                    "unknown",
+                    &blocked_target,
+                    "domain_not_in_allowlist",
+                );
                 Self::send_reply(&mut client, 0x02)?; // Connection not allowed
                 return Ok(());
             }

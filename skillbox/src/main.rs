@@ -1,6 +1,7 @@
 mod cli;
 mod config;
 mod env;
+mod observability;
 // mod protocol;
 mod sandbox;
 mod skill;
@@ -15,6 +16,7 @@ use cli::{Cli, Commands};
 use serde_json::{json, Value};
 
 fn main() -> Result<()> {
+    observability::init_tracing();
     let cli = Cli::parse();
 
     match cli.command {

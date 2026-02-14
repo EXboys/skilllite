@@ -1,3 +1,4 @@
+use crate::observability;
 use crate::sandbox::common::{DEFAULT_MAX_MEMORY_MB, DEFAULT_TIMEOUT_SECS};
 use crate::sandbox::security::{format_scan_result, ScriptScanner, SecuritySeverity};
 use crate::skill::metadata::SkillMetadata;
@@ -5,6 +6,7 @@ use anyhow::Result;
 use std::env;
 use std::io::{self, Write};
 use std::path::Path;
+use std::time::Instant;
 
 /// Execution result from sandbox
 #[derive(Debug)]
@@ -41,7 +43,7 @@ impl SandboxLevel {
                 2 => Self::Level2,
                 3 => Self::Level3,
                 _ => {
-                    eprintln!("[WARN] Invalid sandbox level: {}, using default (3)", level);
+                    tracing::warn!("Invalid sandbox level: {}, using default (3)", level);
                     Self::Level3
                 }
             };
@@ -55,7 +57,10 @@ impl SandboxLevel {
                     2 => Self::Level2,
                     3 => Self::Level3,
                     _ => {
-                        eprintln!("[WARN] Invalid SKILLBOX_SANDBOX_LEVEL: {}, using default (3)", level);
+                        tracing::warn!(
+                            "Invalid SKILLBOX_SANDBOX_LEVEL: {}, using default (3)",
+                            level
+                        );
                         Self::Level3
                     }
                 };
@@ -134,7 +139,7 @@ impl ResourceLimits {
 
 /// Request user authorization to continue execution despite security issues
 /// Returns true if user authorizes, false otherwise
-fn request_user_authorization(issues_count: usize, severity: &str) -> bool {
+fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &str) -> bool {
     eprintln!();
     eprintln!("┌─────────────────────────────────────────────────────────────┐");
     eprintln!("│  🔐 Security Review Required                                │");
@@ -153,14 +158,13 @@ fn request_user_authorization(issues_count: usize, severity: &str) -> bool {
     eprintln!("│                                                             │");
     eprintln!("└─────────────────────────────────────────────────────────────┘");
     eprintln!();
-    
+
     // Check if auto-approve is enabled via environment variable
-    // Only auto-approve if the value is "1", "true", or "yes" (case-insensitive)
     if let Ok(val) = env::var("SKILLBOX_AUTO_APPROVE") {
         let val_lower = val.to_lowercase();
         if val_lower == "1" || val_lower == "true" || val_lower == "yes" {
-            eprintln!("  ✨ Auto-approved via SKILLBOX_AUTO_APPROVE={}", val);
-            eprintln!();
+            tracing::info!("Auto-approved via SKILLBOX_AUTO_APPROVE={}", val);
+            observability::audit_confirmation_response(skill_id, true, "auto");
             return true;
         }
     }
@@ -181,12 +185,14 @@ fn request_user_authorization(issues_count: usize, severity: &str) -> bool {
                 eprintln!();
                 eprintln!("  ✅ Approved - proceeding with execution...");
                 eprintln!();
+                observability::audit_confirmation_response(skill_id, true, "user");
                 return true;
             }
             "n" | "no" | "" => {
                 eprintln!();
                 eprintln!("  ⏹️  Cancelled by user");
                 eprintln!();
+                observability::audit_confirmation_response(skill_id, false, "user");
                 return false;
             }
             _ => {
@@ -206,12 +212,15 @@ pub fn run_in_sandbox_with_limits_and_level(
     limits: ResourceLimits,
     level: SandboxLevel,
 ) -> Result<String> {
-    crate::info_log!("[INFO] Sandbox Level: {:?} ({})", level, match level {
-        SandboxLevel::Level1 => "No sandbox - direct execution",
-        SandboxLevel::Level2 => "Sandbox isolation only",
-        SandboxLevel::Level3 => "Sandbox isolation + static code scanning",
-    });
-    crate::info_log!("[INFO] execute_sandbox start...");
+    tracing::info!(
+        level = ?level,
+        mode = %match level {
+            SandboxLevel::Level1 => "No sandbox - direct execution",
+            SandboxLevel::Level2 => "Sandbox isolation only",
+            SandboxLevel::Level3 => "Sandbox isolation + static code scanning",
+        },
+        "Sandbox execution start"
+    );
 
     // Level 3: Perform static code scanning
     if level.use_code_scanning() {
@@ -235,18 +244,47 @@ pub fn run_in_sandbox_with_limits_and_level(
             // If critical or high severity issues are found, request user authorization
             if !critical_issues.is_empty() || !high_issues.is_empty() {
                 eprintln!("{}", format_scan_result(&scan_result));
-                
-                let severity = if !critical_issues.is_empty() {
+
+                let severity_str = if !critical_issues.is_empty() {
                     "CRITICAL"
                 } else {
                     "HIGH"
                 };
-                
+
                 let issues_count = critical_issues.len() + high_issues.len();
-                
+
+                // Audit & security event
+                let code_hash = ""; // Not computed here; Python side has it
+                observability::audit_confirmation_requested(
+                    &metadata.name,
+                    code_hash,
+                    issues_count,
+                    severity_str,
+                );
+                let issues_json: Vec<serde_json::Value> = scan_result
+                    .issues
+                    .iter()
+                    .map(|i| {
+                        serde_json::json!({
+                            "rule_id": i.rule_id,
+                            "line_number": i.line_number,
+                            "code_snippet": i.code_snippet,
+                            "description": i.description,
+                        })
+                    })
+                    .collect();
+                observability::security_scan_high(
+                    &metadata.name,
+                    severity_str,
+                    &serde_json::Value::Array(issues_json),
+                );
+
                 // Request user authorization
-                if !request_user_authorization(issues_count, severity) {
-                    anyhow::bail!("Script execution blocked: User denied authorization for {} severity issues", severity);
+                if !request_user_authorization(&metadata.name, issues_count, severity_str) {
+                    anyhow::bail!(
+                        "Script execution blocked: User denied authorization for {} severity issues",
+                        severity_str
+                    );
                 }
             }
             
@@ -259,7 +297,14 @@ pub fn run_in_sandbox_with_limits_and_level(
 
     // Level 1: Execute without sandbox
     if !level.use_sandbox() {
-        eprintln!("[WARN] Running without sandbox (Level 1) - no isolation, but with resource limits");
+        tracing::warn!("Running without sandbox (Level 1) - no isolation, but with resource limits");
+        observability::audit_command_invoked(
+            &metadata.name,
+            &metadata.entry_point,
+            &[],
+            skill_dir.to_string_lossy().as_ref(),
+        );
+        let start = Instant::now();
         let result = execute_simple_without_sandbox(skill_dir, env_path, metadata, input_json, limits)?;
         
         if result.exit_code != 0 {
@@ -275,10 +320,23 @@ pub fn run_in_sandbox_with_limits_and_level(
         let _: serde_json::Value = serde_json::from_str(output)
             .map_err(|e| anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output))?;
 
+        observability::audit_execution_completed(
+            &metadata.name,
+            result.exit_code,
+            start.elapsed().as_millis() as u64,
+            result.stdout.len(),
+        );
         return Ok(output.to_string());
     }
 
     // Level 2 & 3: Execute with sandbox
+    observability::audit_command_invoked(
+        &metadata.name,
+        &metadata.entry_point,
+        &[] as &[&str],
+        skill_dir.to_string_lossy().as_ref(),
+    );
+    let start = Instant::now();
     let result = execute_platform_sandbox_with_limits(
         skill_dir,
         env_path,
@@ -300,6 +358,12 @@ pub fn run_in_sandbox_with_limits_and_level(
     let _: serde_json::Value = serde_json::from_str(output)
         .map_err(|e| anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output))?;
 
+    observability::audit_execution_completed(
+        &metadata.name,
+        result.exit_code,
+        start.elapsed().as_millis() as u64,
+        result.stdout.len(),
+    );
     Ok(output.to_string())
 }
 

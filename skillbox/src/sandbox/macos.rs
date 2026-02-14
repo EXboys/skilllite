@@ -55,6 +55,10 @@ pub fn execute_with_limits(
         Ok(_) | Err(_) => {
             // Sandbox failed, fall back to simple execution with warning
             eprintln!("[WARN] Sandbox execution failed, falling back to simple execution");
+            crate::observability::security_sandbox_fallback(
+                &metadata.name,
+                "seatbelt_exec_failed",
+            );
             execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits)
         }
     }
