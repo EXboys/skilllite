@@ -302,37 +302,3 @@ class ToolBuilder:
             "required": required
         }
     
-    def infer_all_schemas(self, force: bool = False) -> Dict[str, Dict[str, Any]]:
-        """
-        Infer schemas for all skills that don't have one defined.
-        
-        Args:
-            force: Force re-inference even if cached
-            
-        Returns:
-            Dict mapping skill name to inferred schema
-        """
-        if not self._schema_inferrer:
-            raise RuntimeError("Schema inferrer not configured.")
-        
-        results = {}
-        for info in self._registry.list_skills():
-            name = info.name
-            if info.metadata.input_schema:
-                results[name] = info.metadata.input_schema
-                continue
-            if not force and name in self._inferred_schemas:
-                results[name] = self._inferred_schemas[name]
-                continue
-            
-            schema = self._infer_skill_schema(info)
-            if schema:
-                self._inferred_schemas[name] = schema
-                results[name] = schema
-        
-        return results
-    
-    @property
-    def inferred_schemas(self) -> Dict[str, Dict[str, Any]]:
-        """Access to inferred schemas cache."""
-        return self._inferred_schemas

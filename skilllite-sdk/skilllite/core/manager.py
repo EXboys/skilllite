@@ -181,10 +181,6 @@ class SkillManager:
         """Get tool definitions in Claude's native API format."""
         return self._tool_builder.get_tools_claude_native()
     
-    def infer_all_schemas(self, force: bool = False) -> Dict[str, Dict[str, Any]]:
-        """Infer schemas for all skills that don't have one defined."""
-        return self._tool_builder.infer_all_schemas(force)
-    
     # ==================== System Prompt (delegated to prompt_builder) ====================
     
     def get_system_prompt_context(
@@ -539,7 +535,3 @@ class SkillManager:
         """Direct access to multi-script tools dict (for backward compatibility)."""
         return self._registry.multi_script_tools
     
-    @property
-    def _inferred_schemas(self) -> Dict[str, Dict[str, Any]]:
-        """Direct access to inferred schemas (for backward compatibility)."""
-        return self._tool_builder.inferred_schemas
