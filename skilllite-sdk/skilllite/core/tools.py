@@ -4,6 +4,7 @@ Tool definitions and protocol adapters for Claude/OpenAI integration.
 This is a CORE module - do not modify without explicit permission.
 """
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -49,6 +50,67 @@ class ToolDefinition:
         else:
             raise ValueError(f"Unsupported format: {format}")
 
+def _unescape_json_string(s: str) -> str:
+    """Unescape a JSON string value (handles \\n, \\\", \\\\, etc.)."""
+    result = []
+    i = 0
+    while i < len(s):
+        if s[i] == "\\" and i + 1 < len(s):
+            nxt = s[i + 1]
+            if nxt == "n":
+                result.append("\n")
+            elif nxt == "t":
+                result.append("\t")
+            elif nxt == "r":
+                result.append("\r")
+            elif nxt == '"':
+                result.append('"')
+            elif nxt == "\\":
+                result.append("\\")
+            else:
+                result.append(s[i : i + 2])
+            i += 2
+        else:
+            result.append(s[i])
+            i += 1
+    return "".join(result)
+
+
+def _parse_truncated_json_for_file_tools(arguments_str: str) -> Dict[str, Any]:
+    """
+    Attempt to extract file_path and content from truncated JSON.
+    When LLM hits max_tokens (finish_reason: length), tool arguments may be cut off.
+    This tries to recover file_path and content for write_output/write_file.
+    """
+    result: Dict[str, Any] = {}
+    if not arguments_str or not isinstance(arguments_str, str):
+        return result
+
+    # Extract file_path: "file_path": "value"
+    fp_match = re.search(r'"file_path"\s*:\s*"((?:[^"\\]|\\.)*)"', arguments_str)
+    if fp_match:
+        result["file_path"] = _unescape_json_string(fp_match.group(1))
+
+    # Extract content: try complete JSON string first, then truncated
+    content_match = re.search(r'"content"\s*:\s*"((?:[^"\\]|\\.)*)"', arguments_str, re.DOTALL)
+    if content_match:
+        raw = content_match.group(1)
+        result["content"] = _unescape_json_string(raw)
+    else:
+        # Truncated: match from "content": " to end of string
+        content_match = re.search(r'"content"\s*:\s*"(.*)$', arguments_str, re.DOTALL)
+        if content_match:
+            raw = content_match.group(1).rstrip()
+            # Strip trailing "}" or " that may be from truncated JSON structure
+            if raw.endswith('"}'):
+                raw = raw[:-2]
+            elif raw.endswith('"') and not raw.endswith('\\"'):
+                raw = raw[:-1]
+            result["content"] = _unescape_json_string(raw)
+
+    return result
+
+
 @dataclass
 class ToolUseRequest:
     """Parsed tool use request from LLM response."""
@@ -73,11 +135,19 @@ class ToolUseRequest:
         """Parse from OpenAI API tool_calls."""
         function = tool_call.get("function", {})
         arguments_str = function.get("arguments", "{}")
-        
+        if not isinstance(arguments_str, str):
+            arguments_str = str(arguments_str) if arguments_str else "{}"
+
         try:
             arguments = json.loads(arguments_str)
         except json.JSONDecodeError:
-            arguments = {}
+            # LLM may hit max_tokens (finish_reason: length), truncating JSON.
+            # Try to recover file_path/content for write_output, write_file.
+            tool_name = function.get("name", "")
+            if tool_name in ("write_output", "write_file"):
+                arguments = _parse_truncated_json_for_file_tools(arguments_str)
+            else:
+                arguments = {}
         
         return cls(
             id=tool_call.get("id", ""),
@@ -149,16 +219,21 @@ class ToolUseRequest:
                 req = cls.from_openai_response(tool_call)
             else:
                 # Handle object-style tool_call
+                tool_name = getattr(tool_call.function, 'name', '')
+                arguments_str = tool_call.function.arguments or "{}"
+                if not isinstance(arguments_str, str):
+                    arguments_str = str(arguments_str) if arguments_str else "{}"
                 try:
-                    arguments = tool_call.function.arguments or "{}"
-                    if isinstance(arguments, str):
-                        arguments = json.loads(arguments)
+                    arguments = json.loads(arguments_str)
                 except (json.JSONDecodeError, AttributeError):
-                    arguments = {}
+                    if tool_name in ("write_output", "write_file"):
+                        arguments = _parse_truncated_json_for_file_tools(arguments_str)
+                    else:
+                        arguments = {}
                 
                 req = cls(
                     id=getattr(tool_call, 'id', ''),
-                    name=getattr(tool_call.function, 'name', ''),
+                    name=tool_name,
                     input=arguments
                 )
             if req:

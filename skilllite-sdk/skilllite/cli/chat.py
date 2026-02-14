@@ -73,7 +73,8 @@ def cmd_chat(args: argparse.Namespace) -> int:
             workspace_path=workspace_path,
             system_prompt="You are a helpful assistant with access to memory and file tools. "
                          "Memory: use memory_search(keywords) to recall; use memory_list when user asks to 'read/see memory' or when memory_search returns nothing, then read_file('memory/<path>') to read content; use memory_write to store important info. "
-                         "File paths in list_directory/read_file are relative to workspace (e.g. '.' or 'memory' for memory dir).",
+                         "File paths in list_directory/read_file are relative to workspace (e.g. '.' or 'memory' for memory dir). "
+                         "HTML/PPT preview: When user asks for HTML content, web page, or PPT that can be rendered, you MUST use write_output to save the HTML file (e.g. output/index.html) and then call preview_server(directory_path='output') to start a local server and open it in browser. Never just return HTML as text—always write and preview.",
             enable_builtin_tools=True,
             enable_memory_tools=True,
             verbose=verbose,

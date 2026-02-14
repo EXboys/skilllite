@@ -357,7 +357,7 @@ class ChatSession:
         builtin_executor = None
         memory_executor = None
 
-        builtin_names = {"read_file", "write_file", "write_output", "list_directory", "file_exists", "run_command"}
+        builtin_names = {"read_file", "write_file", "write_output", "list_directory", "file_exists", "run_command", "preview_server"}
         memory_names = {"memory_search", "memory_write", "memory_list"}
 
         if self.enable_builtin_tools:

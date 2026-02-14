@@ -201,7 +201,7 @@ In addition to the above Skills, you have the following built-in file operation 
 - Translating text
 - Answering knowledge-based questions (EXCEPT 天气/气象 - see below, EXCEPT when user asks for 实时/最新 - see below)
 - Code explanation, code review suggestions
-- Creative generation, brainstorming (EXCEPT 小红书 - see below)
+- Creative generation, brainstorming (EXCEPT 小红书 - see below, EXCEPT HTML/PPT rendering - see below)
 - Summarizing, rewriting, polishing text
 
 ## CRITICAL: When user explicitly requests a Skill, ALWAYS use it
@@ -216,6 +216,8 @@ In addition to the above Skills, you have the following built-in file operation 
 
 **小红书/种草/图文笔记**: When the task involves 小红书、种草文案、小红书图文、小红书笔记, you MUST use **xiaohongshu-writer** skill. It generates structured content + thumbnail image. Return a task with tool_hint: "xiaohongshu-writer".
 
+**HTML/PPT/网页渲染/预览**: When the user asks for HTML content, web page, PPT, or explicitly says "通过html渲染" / "渲染出来" / "预览" / "在浏览器中打开" / "html呈现", you MUST use **write_output** + **preview_server**. The LLM cannot provide a live browser preview—only tools can. Return tasks with tool_hint: "file_operation" (e.g. write_output to save HTML, then preview_server to open in browser).
+
 ## Examples of tasks that NEED tools
 
 - **Complex or high-precision calculations** (use calculator only for: complex formulas, large numbers, scientific calculations, or when explicit precision is required)
@@ -226,12 +228,13 @@ In addition to the above Skills, you have the following built-in file operation 
 - Querying real-time weather (use weather)
 - Creating new Skills (use skill-creator)
 - **小红书/种草/图文笔记** (use xiaohongshu-writer - generates structured content + cover image)
+- **HTML/PPT/网页渲染** (use write_output to save HTML file, then preview_server to open in browser)
 
 ## Available Resources
 
 **Available Skills**: {skills_info}
 
-**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, file_exists, run_command (execute shell command, requires user confirmation - use when skill suggests e.g. pip install)
+**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, file_exists, run_command (execute shell command, requires user confirmation - use when skill suggests e.g. pip install), preview_server (start HTTP server to preview HTML in browser - use after write_output)
 
 ## Planning Principles
 
@@ -287,6 +290,10 @@ Example 6 - User says "继续" with context (MUST use context to infer task):
 User request: "继续为我呐未完成的任务"
 Conversation context: [assistant previously said: "要完成西安交大与清迈大学的对比，最关键的是获取实时信息... 需要您行动: 获取2024年最新排名数据（需访问QS官网）..."]
 Return: [{{"id": 1, "description": "Use http-request to fetch QS rankings and university official data for Xi'an Jiaotong vs Chiang Mai comparison", "tool_hint": "http-request", "completed": false}}, {{"id": 2, "description": "Analyze and present comparison based on fetched data", "tool_hint": "analysis", "completed": false}}]
+
+Example 7 - HTML/PPT rendering (MUST use write_output + preview_server, user wants browser preview):
+User request: "帮我设计一个关于skilllite的介绍和分析的ppt，你可以通过html渲染出来给我"
+Return: [{{"id": 1, "description": "Use write_output to save HTML presentation to output/index.html", "tool_hint": "file_operation", "completed": false}}, {{"id": 2, "description": "Use preview_server to start local server and open in browser", "tool_hint": "file_operation", "completed": false}}]
 
 Return only JSON, no other content."""
 
