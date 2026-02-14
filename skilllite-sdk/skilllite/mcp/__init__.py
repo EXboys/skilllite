@@ -32,7 +32,7 @@ def __getattr__(name):
         from .server import MCPServer
         return MCPServer
     elif name == "SandboxExecutor":
-        from .server import SandboxExecutor
+        from .handlers import SandboxExecutor
         return SandboxExecutor
     elif name == "MCP_AVAILABLE":
         return MCP_AVAILABLE
