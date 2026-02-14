@@ -110,3 +110,8 @@ def get_long_text_summarize_threshold() -> int:
 def get_tool_result_max_chars() -> int:
     """Max chars per tool result (~2k tokens). SKILLLITE_TOOL_RESULT_MAX_CHARS."""
     return get_int_env("SKILLLITE_TOOL_RESULT_MAX_CHARS", 8000)
+
+
+def get_planning_rules_path() -> Optional[str]:
+    """Path to planning_rules.json override. SKILLLITE_PLANNING_RULES_PATH."""
+    return os.environ.get("SKILLLITE_PLANNING_RULES_PATH")

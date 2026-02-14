@@ -397,6 +397,8 @@ class SkillManager:
             enable_task_planning=enable_task_planning,
             verbose=verbose,
             confirmation_callback=confirmation_callback,
+            planning_rules=kwargs.pop("planning_rules", None),
+            planning_rules_path=kwargs.pop("planning_rules_path", None),
             **kwargs
         )
     
@@ -520,6 +522,8 @@ class SkillManager:
             enable_task_planning=enable_task_planning,
             verbose=verbose,
             confirmation_callback=confirmation_callback,
+            planning_rules=kwargs.pop("planning_rules", None),
+            planning_rules_path=kwargs.pop("planning_rules_path", None),
             **kwargs
         )
     

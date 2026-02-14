@@ -450,6 +450,8 @@ class ChatSession:
 
         # Create loop with custom tools
         custom_tools, tool_executor = self._build_custom_tools_and_executor()
+        from ..config.env_config import get_planning_rules_path
+        rules_path = get_planning_rules_path()
         loop = self.manager.create_enhanced_agentic_loop(
             client=self.client,
             model=self.model,
@@ -461,6 +463,7 @@ class ChatSession:
             enable_task_planning=True,
             verbose=self.verbose,
             confirmation_callback=self.confirmation_callback,
+            planning_rules_path=Path(rules_path) if rules_path else None,
         )
 
         response = loop.run(

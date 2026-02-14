@@ -8,10 +8,12 @@ This module handles:
 """
 
 import json
+from pathlib import Path
 from enum import Enum
 from typing import Any, List, Optional, Dict, TYPE_CHECKING
 
 from ..logger import get_logger
+from ..config.planning_rules import get_rules, build_rules_section, merge_rules
 
 if TYPE_CHECKING:
     from .manager import SkillManager
@@ -39,7 +41,9 @@ class TaskPlanner:
         model: str,
         api_format: ApiFormat = ApiFormat.OPENAI,
         verbose: bool = True,
-        extra_kwargs: Optional[Dict] = None
+        extra_kwargs: Optional[Dict] = None,
+        planning_rules: Optional[List[Dict[str, Any]]] = None,
+        planning_rules_path: Optional[Path] = None,
     ):
         self.client = client
         self.model = model
@@ -47,7 +51,9 @@ class TaskPlanner:
         self.verbose = verbose
         self.extra_kwargs = extra_kwargs or {}
         self.task_list: List[Dict] = []
-        
+        self._planning_rules = planning_rules
+        self._planning_rules_path = planning_rules_path
+
         # Initialize logger
         self._logger = get_logger("skilllite.core.task_planner", verbose=verbose)
     
@@ -55,6 +61,14 @@ class TaskPlanner:
         """Log message if verbose mode is enabled."""
         if self.verbose:
             self._logger.info(message)
+
+    def _resolve_planning_rules(self) -> List[Dict[str, Any]]:
+        """Resolve planning rules: custom > path > default config."""
+        if self._planning_rules is not None:
+            return merge_rules(extra=self._planning_rules) if self._planning_rules else []
+        if self._planning_rules_path is not None:
+            return get_rules(path=self._planning_rules_path, use_cache=False)
+        return get_rules()
 
     def build_execution_prompt(self, manager: "SkillManager") -> str:
         """
@@ -186,6 +200,8 @@ In addition to the above Skills, you have the following built-in file operation 
 
     def _build_planning_prompt(self, skills_info: str) -> str:
         """Build the planning prompt for task generation."""
+        rules = self._resolve_planning_rules()
+        rules_section = build_rules_section(rules)
         return f"""You are a task planning assistant. Based on user requirements, determine whether tools are needed and generate a task list.
 
 ## Core Principle: Minimize Tool Usage
@@ -204,19 +220,7 @@ In addition to the above Skills, you have the following built-in file operation 
 - Creative generation, brainstorming (EXCEPT 小红书 - see below, EXCEPT HTML/PPT rendering - see below)
 - Summarizing, rewriting, polishing text
 
-## CRITICAL: When user explicitly requests a Skill, ALWAYS use it
-
-**If user says "使用 XX skill" / "用 XX 技能" / "use XX skills"**, you MUST add that skill to the task list. Do NOT return empty list.
-
-**天气/气象/天气预报**: When the user asks about weather (天气、气温、气象、今天天气、明天天气、某地天气、适合出行吗、适合出去玩吗 etc.), you MUST use **weather** skill. The LLM cannot provide real-time weather data; only the weather skill can. Return a task with tool_hint: "weather".
-
-**实时/最新/实时信息**: When the user explicitly asks for 实时、最新、实时信息、最新数据、实时数据、最新排名、实时查询、抓取网页、获取最新、fetch live data etc., you MUST use **http-request** skill. The LLM's knowledge has a cutoff; only HTTP requests can fetch current information. Return a task with tool_hint: "http-request".
-
-**继续/继续未完成的任务**: When the user says 继续、继续未完成、继续之前、继续任务 etc., you MUST use the **conversation context** (if provided) to understand what task to continue. If the context mentions: real-time data, rankings, university comparison, fees, QS ranking, 实时、最新、需要用户自行查询、请访问官网 etc., you MUST plan **http-request** to fetch the data. The AI must DO the work using tools, NOT ask the user to do it. Only return empty list [] when the continued task is truly LLM-only (e.g. creative writing).
-
-**小红书/种草/图文笔记**: When the task involves 小红书、种草文案、小红书图文、小红书笔记, you MUST use **xiaohongshu-writer** skill. It generates structured content + thumbnail image. Return a task with tool_hint: "xiaohongshu-writer".
-
-**HTML/PPT/网页渲染/预览**: When the user asks for HTML content, web page, PPT, or explicitly says "通过html渲染" / "渲染出来" / "预览" / "在浏览器中打开" / "html呈现", you MUST use **write_output** + **preview_server**. The LLM cannot provide a live browser preview—only tools can. Return tasks with tool_hint: "file_operation" (e.g. write_output to save HTML, then preview_server to open in browser).
+{rules_section}
 
 ## Examples of tasks that NEED tools
 

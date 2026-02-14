@@ -83,6 +83,8 @@ class AgenticLoop:
         enable_task_planning: bool = True,
         verbose: bool = True,
         confirmation_callback: Optional[Callable[[str, str], bool]] = None,
+        planning_rules: Optional[List[Dict[str, Any]]] = None,
+        planning_rules_path: Optional[Any] = None,
         **kwargs
     ):
         """
@@ -105,6 +107,8 @@ class AgenticLoop:
             confirmation_callback: Callback for security confirmation (sandbox_level=3).
                 Signature: (security_report: str, scan_id: str) -> bool
                 If None and sandbox_level=3, will use interactive terminal confirmation.
+            planning_rules: Optional custom planning rules (merged with defaults by id).
+            planning_rules_path: Optional path to planning_rules.json (overrides default).
             **kwargs: Additional arguments passed to the LLM
         """
         self.manager = manager
@@ -130,7 +134,9 @@ class AgenticLoop:
             model=model,
             api_format=api_format,
             verbose=verbose,
-            extra_kwargs=kwargs
+            extra_kwargs=kwargs,
+            planning_rules=planning_rules,
+            planning_rules_path=planning_rules_path,
         )
         
         # Initialize logger
