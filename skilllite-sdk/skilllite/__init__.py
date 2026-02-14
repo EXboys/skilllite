@@ -106,6 +106,14 @@ from .builtin_tools import (
     execute_builtin_file_tool,
     create_builtin_tool_executor,
 )
+from .extensions import ExtensionsContext, register_extensions
+from .extensions.long_text import (
+    MAX_OUTPUT_CHARS,
+    SUMMARIZE_THRESHOLD,
+    summarize_long_content,
+    truncate_content,
+)
+from .extensions.memory import build_memory_context
 
 # Try to import MCP module (optional dependency)
 try:
@@ -152,6 +160,14 @@ __all__ = [
     "get_builtin_file_tools",
     "execute_builtin_file_tool",
     "create_builtin_tool_executor",
+    # Extensions
+    "ExtensionsContext",
+    "register_extensions",
+    "build_memory_context",
+    "summarize_long_content",
+    "truncate_content",
+    "MAX_OUTPUT_CHARS",
+    "SUMMARIZE_THRESHOLD",
     # MCP Integration (optional)
     "MCPServer",
     "SandboxExecutor",

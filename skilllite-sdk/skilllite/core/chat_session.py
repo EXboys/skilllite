@@ -173,15 +173,6 @@ class ChatSession:
             workspace_path=self.workspace_path,
         )
 
-    def _memory_search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Search memory (BM25)."""
-        ipc = self._get_ipc()
-        return ipc.memory_search(
-            query=query,
-            limit=limit,
-            workspace_path=self.workspace_path,
-        )
-
     def _check_and_compact(self, entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Check if compaction is needed and perform it if so.
 
@@ -324,15 +315,14 @@ class ChatSession:
 
     def _build_memory_context(self, user_message: str, limit: int = 5) -> str:
         """Get relevant memory context for the user message."""
-        hits = self._memory_search(query=user_message, limit=limit)
-        if not hits:
-            return ""
-        parts = ["## Relevant Memory\n"]
-        for h in hits:
-            c = h.get("content", "")
-            if c:
-                parts.append(f"- {c[:300]}{'...' if len(c) > 300 else ''}")
-        return "\n".join(parts) if len(parts) > 1 else ""
+        from ..extensions.memory import build_memory_context
+
+        return build_memory_context(
+            ipc=self._get_ipc(),
+            workspace_path=self.workspace_path,
+            user_message=user_message,
+            limit=limit,
+        )
 
     def _build_planner_context(self, history: List[Dict[str, Any]], keep_last: int = 6, max_per_msg: int = 600) -> str:
         """Build conversation context for task planner (e.g. when user says '继续未完成任务')."""
@@ -350,41 +340,33 @@ class ChatSession:
         return "\n".join(lines) if lines else ""
 
     def _build_custom_tools_and_executor(self):
-        """Build custom tools (builtin + memory) and combined executor."""
-        from .chat_tools import get_memory_tools, create_memory_tool_executor
+        """Build custom tools via extensions (ToolRegistry + centralized registration)."""
+        from .tool_registry import ToolRegistry
+        from ..builtin_tools import resolve_output_dir
+        from ..extensions import ExtensionsContext, register_extensions
 
-        custom_tools: List[Dict[str, Any]] = []
-        builtin_executor = None
-        memory_executor = None
+        registry = ToolRegistry()
+        workspace_root = Path(self.workspace_path).resolve()
+        output_root = resolve_output_dir(workspace_root)
+        output_root.mkdir(parents=True, exist_ok=True)
 
-        builtin_names = {"read_file", "write_file", "write_output", "list_directory", "file_exists", "run_command", "preview_server"}
-        memory_names = {"memory_search", "memory_write", "memory_list"}
-
-        if self.enable_builtin_tools:
-            from ..builtin_tools import get_builtin_file_tools, create_builtin_tool_executor, resolve_output_dir
-            workspace_root = Path(self.workspace_path).resolve()
-            output_root = resolve_output_dir(workspace_root)
-            output_root.mkdir(parents=True, exist_ok=True)
-            custom_tools.extend(get_builtin_file_tools())
-            builtin_executor = create_builtin_tool_executor(
-                run_command_confirmation=self.confirmation_callback,
-                workspace_root=workspace_root,
-                output_root=output_root,
-            )
-
-        if self.enable_memory_tools:
-            custom_tools.extend(get_memory_tools())
-            memory_executor = create_memory_tool_executor(workspace_path=self.workspace_path)
+        ctx = ExtensionsContext(
+            workspace_root=workspace_root,
+            output_root=output_root,
+            workspace_path=self.workspace_path,
+            confirmation_callback=self.confirmation_callback,
+        )
+        register_extensions(
+            registry,
+            ctx,
+            enable_file_tools=self.enable_builtin_tools,
+            enable_memory_tools=self.enable_memory_tools,
+        )
 
         def combined_executor(tool_input: Dict[str, Any]) -> str:
-            tool_name = tool_input.get("tool_name", "")
-            if tool_name in builtin_names and builtin_executor:
-                return builtin_executor(tool_input)
-            if tool_name in memory_names and memory_executor:
-                return memory_executor(tool_input)
-            return f"Error: No executor for tool: {tool_name}"
+            return registry.execute(tool_input.get("tool_name", ""), tool_input)
 
-        return custom_tools, combined_executor
+        return registry.get_tool_definitions(), combined_executor
 
     def run_turn(self, user_message: str) -> str:
         """

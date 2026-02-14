@@ -9,7 +9,7 @@ import json
 from typing import Any, List, Optional, TYPE_CHECKING, Dict, Callable
 
 from ..logger import get_logger
-from .long_text import summarize_long_content, truncate_content, SUMMARIZE_THRESHOLD
+from ..extensions.long_text import summarize_long_content, truncate_content, SUMMARIZE_THRESHOLD
 from .task_planner import ApiFormat, TaskPlanner
 from .tools import ToolResult
 

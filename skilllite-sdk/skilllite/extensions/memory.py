@@ -1,8 +1,7 @@
 """
-Chat tools - memory_search, memory_write, memory_list for LLM.
+Memory extension - memory_search, memory_write, memory_list + memory context building.
 
-These tools allow the LLM to store and retrieve information from the
-persistent memory (BM25 index). Requires skillbox built with --features executor.
+Requires skillbox built with --features executor.
 """
 
 from pathlib import Path
@@ -10,12 +9,7 @@ from typing import Any, Dict, List, Optional
 
 
 def get_memory_tools() -> List[Dict[str, Any]]:
-    """
-    Get memory tool definitions in OpenAI-compatible format.
-
-    Returns:
-        List of tool definitions for memory_search and memory_write
-    """
+    """Get memory tool definitions in OpenAI-compatible format."""
     return [
         {
             "type": "function",
@@ -25,19 +19,12 @@ def get_memory_tools() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "Search query (keywords or natural language)"
-                        },
-                        "limit": {
-                            "type": "integer",
-                            "description": "Maximum number of results (default: 10)",
-                            "default": 10
-                        }
+                        "query": {"type": "string", "description": "Search query (keywords or natural language)"},
+                        "limit": {"type": "integer", "description": "Maximum number of results (default: 10)", "default": 10},
                     },
-                    "required": ["query"]
-                }
-            }
+                    "required": ["query"],
+                },
+            },
         },
         {
             "type": "function",
@@ -47,48 +34,27 @@ def get_memory_tools() -> List[Dict[str, Any]]:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "rel_path": {
-                            "type": "string",
-                            "description": "Logical path/category (e.g. MEMORY.md, preferences/theme.md)"
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "Content to store"
-                        },
-                        "append": {
-                            "type": "boolean",
-                            "description": "If true, append to existing content; otherwise overwrite",
-                            "default": False
-                        }
+                        "rel_path": {"type": "string", "description": "Logical path/category (e.g. MEMORY.md, preferences/theme.md)"},
+                        "content": {"type": "string", "description": "Content to store"},
+                        "append": {"type": "boolean", "description": "If true, append to existing content; otherwise overwrite", "default": False},
                     },
-                    "required": ["rel_path", "content"]
-                }
-            }
+                    "required": ["rel_path", "content"],
+                },
+            },
         },
         {
             "type": "function",
             "function": {
                 "name": "memory_list",
                 "description": "List all memory files. Use when user asks to 'read/see current memory' or when memory_search returns nothing. Returns file paths (use read_file with path 'memory/<path>' to read content).",
-                "parameters": {
-                    "type": "object",
-                    "properties": {}
-                }
-            }
+                "parameters": {"type": "object", "properties": {}},
+            },
         },
     ]
 
 
 def create_memory_tool_executor(workspace_path: Optional[str] = None):
-    """
-    Create executor for memory tools. Calls skillbox IPC.
-
-    Args:
-        workspace_path: Workspace path for memory storage
-
-    Returns:
-        Executor function: (tool_input) -> str
-    """
+    """Create executor for memory tools. Calls skillbox IPC."""
     def executor(tool_input: Dict[str, Any]) -> str:
         tool_name = tool_input.get("tool_name", "")
         if tool_name not in ("memory_search", "memory_write", "memory_list"):
@@ -125,11 +91,7 @@ def create_memory_tool_executor(workspace_path: Optional[str] = None):
             if tool_name == "memory_search":
                 query = tool_input.get("query", "")
                 limit = tool_input.get("limit", 10)
-                hits = client.memory_search(
-                    query=query,
-                    limit=limit,
-                    workspace_path=workspace_path,
-                )
+                hits = client.memory_search(query=query, limit=limit, workspace_path=workspace_path)
                 if not hits:
                     return "No relevant memory found."
                 parts = [f"Found {len(hits)} result(s):\n"]
@@ -144,12 +106,7 @@ def create_memory_tool_executor(workspace_path: Optional[str] = None):
                 rel_path = tool_input.get("rel_path", "MEMORY.md")
                 content = tool_input.get("content", "")
                 append = tool_input.get("append", False)
-                client.memory_write(
-                    rel_path=rel_path,
-                    content=content,
-                    append=append,
-                    workspace_path=workspace_path,
-                )
+                client.memory_write(rel_path=rel_path, content=content, append=append, workspace_path=workspace_path)
                 return f"Successfully stored in {rel_path} ({len(content)} chars)"
         except Exception as e:
             return f"Error: {e}"
@@ -157,3 +114,40 @@ def create_memory_tool_executor(workspace_path: Optional[str] = None):
             client.close()
 
     return executor
+
+
+def build_memory_context(
+    ipc: Any,
+    workspace_path: str,
+    user_message: str,
+    limit: int = 5,
+) -> str:
+    """
+    Build relevant memory context for the user message.
+    Used by ChatSession to inject memory into system prompt.
+    """
+    try:
+        hits = ipc.memory_search(
+            query=user_message,
+            limit=limit,
+            workspace_path=workspace_path,
+        )
+    except Exception:
+        return ""
+    if not hits:
+        return ""
+    parts = ["## Relevant Memory\n"]
+    for h in hits:
+        c = h.get("content", "")
+        if c:
+            parts.append(f"- {c[:300]}{'...' if len(c) > 300 else ''}")
+    return "\n".join(parts) if len(parts) > 1 else ""
+
+
+def register(registry, ctx) -> None:
+    """Register memory tools to the registry."""
+    executor = create_memory_tool_executor(workspace_path=ctx.workspace_path)
+    for tool_def in get_memory_tools():
+        name = tool_def.get("function", {}).get("name", "")
+        if name:
+            registry.register(name, tool_def, executor)

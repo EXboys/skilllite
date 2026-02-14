@@ -110,13 +110,23 @@ def _resolve_within_workspace(
         )
 
 
-def get_builtin_file_tools() -> List[Dict[str, Any]]:
-    """
-    Get built-in file operation tools.
-    
-    Returns:
-        List of tool definitions in OpenAI-compatible format
-    """
+# File ops vs command tools (for extensions split)
+FILE_TOOL_NAMES = {"read_file", "write_file", "write_output", "list_directory", "file_exists"}
+COMMAND_TOOL_NAMES = {"run_command", "preview_server"}
+
+
+def get_file_tools() -> List[Dict[str, Any]]:
+    """Get file operation tools only (read, write, list, exists)."""
+    return [t for t in _get_all_builtin_tools() if t.get("function", {}).get("name") in FILE_TOOL_NAMES]
+
+
+def get_command_tools() -> List[Dict[str, Any]]:
+    """Get command tools only (run_command, preview_server)."""
+    return [t for t in _get_all_builtin_tools() if t.get("function", {}).get("name") in COMMAND_TOOL_NAMES]
+
+
+def _get_all_builtin_tools() -> List[Dict[str, Any]]:
+    """Internal: all builtin tool definitions."""
     return [
         {
             "type": "function",
@@ -261,6 +271,11 @@ def get_builtin_file_tools() -> List[Dict[str, Any]]:
             }
         }
     ]
+
+
+def get_builtin_file_tools() -> List[Dict[str, Any]]:
+    """Get all built-in tools (file + command). Alias for backward compatibility."""
+    return _get_all_builtin_tools()
 
 
 def execute_builtin_file_tool(
