@@ -141,28 +141,39 @@ class SkillRegistry:
         Includes:
         - Skills with a single entry_point
         - Multi-script tools (skill-name:script-name format)
+        - Bash-tool skills (allowed-tools: Bash(...))
         """
         if name in self._multi_script_tools:
             return True
         info = self._skills.get(name)
-        return info is not None and bool(info.metadata.entry_point)
+        if info is None:
+            return False
+        return bool(info.metadata.entry_point) or info.is_bash_tool_skill
     
     def list_executable_skills(self) -> List[SkillInfo]:
-        """Get all executable skills (with entry_point or multi-script tools)."""
+        """Get all executable skills (with entry_point, multi-script tools, or bash-tool skills)."""
         executable = []
         for info in self._skills.values():
             if info.metadata.entry_point:
+                executable.append(info)
+            elif info.is_bash_tool_skill:
                 executable.append(info)
             elif info.name in [t["skill_name"] for t in self._multi_script_tools.values()]:
                 executable.append(info)
         return executable
     
+    def list_bash_tool_skills(self) -> List[SkillInfo]:
+        """Get all bash-tool skills (with allowed-tools: Bash(...) and no entry_point)."""
+        return [info for info in self._skills.values() if info.is_bash_tool_skill]
+    
     def list_prompt_only_skills(self) -> List[SkillInfo]:
-        """Get all prompt-only skills (without entry_point and no multi-script tools)."""
+        """Get all prompt-only skills (without entry_point, no multi-script tools, and not bash-tool)."""
         prompt_only = []
         multi_script_skill_names = set(t["skill_name"] for t in self._multi_script_tools.values())
         for info in self._skills.values():
-            if not info.metadata.entry_point and info.name not in multi_script_skill_names:
+            if (not info.metadata.entry_point
+                    and not info.is_bash_tool_skill
+                    and info.name not in multi_script_skill_names):
                 prompt_only.append(info)
         return prompt_only
     

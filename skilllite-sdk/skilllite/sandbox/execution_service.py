@@ -170,6 +170,36 @@ class UnifiedExecutionService:
             entry_point=entry_point,
         )
 
+    def execute_bash(
+        self,
+        skill_info: "SkillInfo",
+        command: str,
+        timeout: Optional[int] = None,
+    ) -> ExecutionResult:
+        """Execute a bash command for a bash-tool skill.
+
+        Security validation (chain operator detection, prefix matching, blocked
+        prefixes) is performed entirely in the Rust ``skillbox bash`` layer and
+        cannot be bypassed from Python.
+
+        Args:
+            skill_info: SkillInfo for the bash-tool skill (must have allowed-tools).
+            command: The bash command string (e.g. "agent-browser open https://...").
+            timeout: Override timeout (default 120s for browser automation).
+
+        Returns:
+            ExecutionResult with stdout/stderr from the command.
+        """
+        context = ExecutionContext.from_current_env()
+        if timeout is not None:
+            context = context.with_override(timeout=timeout)
+
+        return self._executor.execute_bash(
+            context=context,
+            skill_dir=skill_info.path,
+            command=command,
+        )
+
     def execute_with_context(
         self,
         context: ExecutionContext,

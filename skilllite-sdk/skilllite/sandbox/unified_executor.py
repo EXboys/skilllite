@@ -126,6 +126,110 @@ class UnifiedExecutor:
         cmd = self._build_exec_command(context, skill_dir, script_path, input_data, args)
         return self._run_subprocess(cmd, context, skill_dir)
     
+    # ==================== Bash Tool Skill Execution ====================
+
+    def execute_bash(
+        self,
+        context: ExecutionContext,
+        skill_dir: Path,
+        command: str,
+    ) -> ExecutionResult:
+        """Execute a bash command for a bash-tool skill via ``skillbox bash``.
+
+        Security validation is handled entirely by the Rust binary. This method
+        only routes the command to ``skillbox bash`` via IPC or subprocess.
+
+        Args:
+            context: Execution context with configuration.
+            skill_dir: Path to the skill directory.
+            command: The bash command string.
+
+        Returns:
+            ExecutionResult with stdout/stderr.
+        """
+        if _use_ipc():
+            result = self._execute_via_ipc_bash(context, skill_dir, command)
+            if result is not None:
+                return result
+
+        cmd = self._build_bash_command(context, skill_dir, command)
+        return self._run_subprocess(cmd, context, skill_dir)
+
+    def _build_bash_command(
+        self,
+        context: ExecutionContext,
+        skill_dir: Path,
+        command: str,
+    ) -> list:
+        """Build command for ``skillbox bash``."""
+        abs_skill_dir = Path(skill_dir).resolve()
+        cmd = [
+            self._binary_path,
+            "bash",
+            str(abs_skill_dir),
+            command,
+        ]
+        cmd.extend(["--timeout", str(context.timeout or 120)])
+        # Pass working directory so output files are saved relative to the user's workspace
+        cmd.extend(["--cwd", os.getcwd()])
+        return cmd
+
+    def _execute_via_ipc_bash(
+        self,
+        context: ExecutionContext,
+        skill_dir: Path,
+        command: str,
+    ) -> Optional[ExecutionResult]:
+        """Execute bash via IPC. Returns None on failure to fall back to subprocess."""
+        try:
+            pool = self._get_ipc_client()
+            client = pool._get_client(timeout=context.timeout or 120)
+            try:
+                result = client._send_request(
+                    method="bash",
+                    params={
+                        "skill_dir": str(Path(skill_dir).resolve()),
+                        "command": command,
+                        "timeout": context.timeout or 120,
+                        "cwd": os.getcwd(),
+                    },
+                )
+            finally:
+                pool._return_client(client)
+
+            # skillbox bash returns JSON string; parse it
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except (json.JSONDecodeError, TypeError):
+                    return self._parse_output(result, "", 0)
+
+            if isinstance(result, dict):
+                stdout = result.get("stdout", "")
+                stderr = result.get("stderr", "")
+                exit_code = result.get("exit_code", 0)
+                if exit_code == 0:
+                    return ExecutionResult(
+                        success=True,
+                        output={"stdout": stdout, "stderr": stderr},
+                        exit_code=exit_code,
+                        stdout=stdout,
+                        stderr=stderr,
+                    )
+                else:
+                    return ExecutionResult(
+                        success=False,
+                        error=stderr or stdout or f"Command failed with exit code {exit_code}",
+                        exit_code=exit_code,
+                        stdout=stdout,
+                        stderr=stderr,
+                    )
+            return self._parse_output(str(result), "", 0)
+        except Exception:
+            return None
+
+    # ==================== Run / Exec Execution ====================
+
     def _build_run_command(
         self,
         context: ExecutionContext,

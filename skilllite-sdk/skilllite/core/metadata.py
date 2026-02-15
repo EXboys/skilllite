@@ -27,6 +27,34 @@ class NetworkPolicy:
     outbound: List[str] = field(default_factory=list)
 
 @dataclass
+class BashToolPattern:
+    """Parsed pattern from `allowed-tools: Bash(agent-browser:*)`."""
+    command_prefix: str  # e.g. "agent-browser"
+    raw_pattern: str     # e.g. "agent-browser:*"
+
+
+def parse_allowed_tools(raw: str) -> List[BashToolPattern]:
+    """Parse the `allowed-tools` field into a list of bash tool patterns.
+
+    Examples:
+        - ``"Bash(agent-browser:*)"`` -> ``[BashToolPattern("agent-browser", "agent-browser:*")]``
+        - ``"Bash(agent-browser:*), Bash(npm:*)"`` -> two patterns
+        - ``"Read, Edit, Bash(mycli:*)"`` -> one BashToolPattern (non-Bash items ignored)
+    """
+    patterns: List[BashToolPattern] = []
+    for match in re.finditer(r"Bash\(([^)]+)\)", raw):
+        inner = match.group(1).strip()
+        # Extract command prefix: everything before first ':'
+        if ":" in inner:
+            command_prefix = inner[:inner.index(":")].strip()
+        else:
+            command_prefix = inner
+        if command_prefix:
+            patterns.append(BashToolPattern(command_prefix=command_prefix, raw_pattern=inner))
+    return patterns
+
+
+@dataclass
 class SkillMetadata:
     """Skill metadata parsed from SKILL.md YAML front matter."""
     name: str
@@ -40,6 +68,7 @@ class SkillMetadata:
     output_schema: Optional[Dict[str, Any]] = None
     requires_elevated_permissions: bool = False  # For skills that need to write outside their directory
     resolved_packages: Optional[List[str]] = None  # Cached from .skilllite.lock
+    allowed_tools: Optional[str] = None  # Raw `allowed-tools` field, e.g. "Bash(agent-browser:*)"
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], skill_dir: Optional[Path] = None) -> "SkillMetadata":
@@ -73,6 +102,9 @@ class SkillMetadata:
         # Read resolved_packages from .skilllite.lock if available
         resolved_packages = _read_resolved_packages(skill_dir, compatibility)
 
+        # Parse allowed-tools (YAML key uses hyphen, Python field uses underscore)
+        allowed_tools = data.get("allowed-tools") or data.get("allowed_tools")
+
         return cls(
             name=data.get("name", ""),
             entry_point=entry_point,
@@ -85,6 +117,7 @@ class SkillMetadata:
             output_schema=data.get("output_schema"),
             requires_elevated_permissions=bool(requires_elevated),
             resolved_packages=resolved_packages,
+            allowed_tools=allowed_tools,
         )
 
 

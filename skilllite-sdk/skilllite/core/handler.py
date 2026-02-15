@@ -98,7 +98,7 @@ class ToolCallHandler:
                 timeout=timeout,
             )
 
-        # Regular skill execution
+        # Lookup skill
         info = self._registry.get_skill(skill_name)
         if not info:
             return ExecutionResult(
@@ -106,6 +106,21 @@ class ToolCallHandler:
                 error=f"Skill not found: {skill_name}"
             )
 
+        # Bash-tool skill: extract command and route to skillbox bash
+        if info.is_bash_tool_skill:
+            command = input_data.get("command", "")
+            if not command:
+                return ExecutionResult(
+                    success=False,
+                    error="Bash tool skill requires a 'command' parameter"
+                )
+            return self._execution_service.execute_bash(
+                skill_info=info,
+                command=command,
+                timeout=timeout,
+            )
+
+        # Regular skill execution
         return self._execution_service.execute_skill(
             skill_info=info,
             input_data=input_data,

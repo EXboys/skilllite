@@ -106,6 +106,16 @@ fn main() -> Result<()> {
             let result = exec_script(&skill_dir, &script_path, &input_json, args.as_ref(), allow_network, cache_dir.as_ref(), limits, sandbox_level)?;
             println!("{}", result);
         }
+        Commands::Bash {
+            skill_dir,
+            command,
+            cache_dir,
+            timeout,
+            cwd,
+        } => {
+            let result = bash_command(&skill_dir, &command, cache_dir.as_ref(), timeout.unwrap_or(120), cwd.as_ref())?;
+            println!("{}", result);
+        }
         Commands::Scan {
             skill_dir,
             preview_lines,
@@ -174,6 +184,7 @@ fn serve_stdio() -> Result<()> {
         let result = match method {
             "run" => handle_run(&params),
             "exec" => handle_exec(&params),
+            "bash" => handle_bash(&params),
             #[cfg(feature = "executor")]
             "session_create" => executor::rpc::handle_session_create(&params),
             #[cfg(feature = "executor")]
@@ -287,6 +298,141 @@ fn handle_exec(params: &Value) -> Result<Value> {
         "output": output,
         "exit_code": 0
     }))
+}
+
+fn handle_bash(params: &Value) -> Result<Value> {
+    let p = params.as_object().context("params must be object")?;
+    let skill_dir = p.get("skill_dir").and_then(|v| v.as_str()).context("skill_dir required")?;
+    let command = p.get("command").and_then(|v| v.as_str()).context("command required")?;
+    let cache_dir = p.get("cache_dir").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let timeout = p.get("timeout").and_then(|v| v.as_u64()).unwrap_or(120);
+    let cwd = p.get("cwd").and_then(|v| v.as_str()).map(|s| s.to_string());
+
+    let output = bash_command(skill_dir, command, cache_dir.as_ref(), timeout, cwd.as_ref())?;
+    Ok(serde_json::from_str(&output).unwrap_or_else(|_| json!({
+        "output": output,
+        "exit_code": 0
+    })))
+}
+
+/// Execute a bash command for a bash-tool skill.
+///
+/// 1. Validates the skill is a bash-tool skill (has allowed-tools, no entry_point)
+/// 2. Parses allowed patterns from SKILL.md
+/// 3. Validates the command against patterns (security — Rust layer, cannot be bypassed)
+/// 4. Ensures CLI dependencies are installed (npm)
+/// 5. Executes the command with PATH pointing to node_modules/.bin/
+fn bash_command(
+    skill_dir: &str,
+    command: &str,
+    cache_dir: Option<&String>,
+    timeout_secs: u64,
+    cwd: Option<&String>,
+) -> Result<String> {
+    let skill_path = validate_skill_path(skill_dir)?;
+
+    // 1. Parse SKILL.md metadata
+    let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
+
+    // 2. Verify this is a bash-tool skill
+    if !metadata.is_bash_tool_skill() {
+        anyhow::bail!(
+            "Skill '{}' is not a bash-tool skill (missing allowed-tools or has entry_point)",
+            metadata.name
+        );
+    }
+
+    // 3. Parse allowed patterns and validate command (SECURITY: Rust layer)
+    let patterns = metadata.get_bash_patterns();
+    if patterns.is_empty() {
+        anyhow::bail!("Skill '{}' has allowed-tools but no Bash(...) patterns found", metadata.name);
+    }
+
+    sandbox::bash_validator::validate_bash_command(command, &patterns)
+        .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
+
+    // 4. Ensure CLI dependencies are installed
+    info_log!("[INFO] bash: ensure_environment start...");
+    let env_path = env::builder::ensure_environment(
+        &skill_path,
+        &metadata,
+        cache_dir.map(|s| s.as_str()),
+    )?;
+    info_log!("[INFO] bash: ensure_environment done");
+
+    // 5. Execute command with PATH injection
+    info_log!("[INFO] bash: executing command: {}", command);
+    let output = execute_bash_with_env(command, &skill_path, &env_path, timeout_secs, cwd)?;
+
+    Ok(output)
+}
+
+/// Execute a bash command in the context of a skill's environment.
+///
+/// - Uses `sh -c` to run the command
+/// - Injects `node_modules/.bin/` into PATH so CLI tools are found
+/// - Applies timeout via `wait_with_timeout()`
+/// - Sets working directory to `cwd` if provided, otherwise inherits parent cwd
+/// - Returns JSON with stdout, stderr, and exit_code
+fn execute_bash_with_env(
+    command: &str,
+    _skill_dir: &std::path::Path,
+    env_path: &std::path::Path,
+    timeout_secs: u64,
+    cwd: Option<&String>,
+) -> Result<String> {
+    use std::process::{Command, Stdio};
+
+    let mut cmd = Command::new("sh");
+    cmd.arg("-c").arg(command);
+
+    // Set working directory so files (e.g. screenshots) are saved relative to the
+    // user's workspace. In IPC mode the daemon's cwd is fixed at startup, so
+    // the caller (Python SDK) passes the real workspace path via `cwd`.
+    if let Some(dir) = cwd {
+        let p = std::path::Path::new(dir);
+        if p.is_dir() {
+            cmd.current_dir(p);
+        }
+    }
+
+    // Pipe stdout and stderr for capture
+    cmd.stdin(Stdio::null());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    // Inject node_modules/.bin/ into PATH so CLI tools (e.g. agent-browser) are found
+    if !env_path.as_os_str().is_empty() && env_path.exists() {
+        let bin_dir = env_path.join("node_modules").join(".bin");
+        if bin_dir.exists() {
+            let current_path = std::env::var("PATH").unwrap_or_default();
+            cmd.env("PATH", format!("{}:{}", bin_dir.display(), current_path));
+        }
+    }
+
+    // Spawn the process
+    let mut child = cmd.spawn()
+        .with_context(|| format!("Failed to spawn bash command: {}", command))?;
+
+    // Wait with timeout and memory monitoring (reuse existing infrastructure)
+    let memory_limit = sandbox::executor::ResourceLimits::from_env().max_memory_bytes();
+    let (stdout, stderr, exit_code, was_killed, kill_reason) =
+        sandbox::common::wait_with_timeout(&mut child, timeout_secs, memory_limit, true)?;
+
+    if was_killed {
+        if let Some(ref reason) = kill_reason {
+            info_log!("[WARN] bash command killed: {}", reason);
+        }
+    }
+
+    // Return structured JSON result
+    let result = json!({
+        "stdout": stdout.trim(),
+        "stderr": stderr.trim(),
+        "exit_code": exit_code,
+    });
+
+    Ok(result.to_string())
 }
 
 fn run_skill(
@@ -439,6 +585,7 @@ fn exec_script(
             compatibility: None,
             network: skill::metadata::NetworkPolicy::default(),
             resolved_packages: None,
+            allowed_tools: None,
         };
         (meta, std::path::PathBuf::new())
     };

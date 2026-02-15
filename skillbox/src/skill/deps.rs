@@ -24,23 +24,44 @@ pub enum DependencyType {
     None,
 }
 
-/// Detect dependencies from compatibility field in metadata
+/// Detect dependencies from compatibility field or allowed-tools in metadata
 /// 
 /// The compatibility field follows Claude Agent Skills specification:
 /// Examples:
 ///   - "Requires Python 3.x with requests library"
 ///   - "Requires Python 3.x, pandas, numpy"
 ///   - "Requires Node.js with axios"
+///
+/// For bash-tool skills (no compatibility, but has allowed-tools):
+///   - "Bash(agent-browser:*)" -> npm package "agent-browser"
+///   - Command prefix is assumed to be the npm package name
 pub fn detect_dependencies(_skill_dir: &Path, metadata: &SkillMetadata) -> Result<DependencyInfo> {
     let language = crate::skill::metadata::detect_language(_skill_dir, metadata);
 
     // Priority 1: Use resolved_packages from .skilllite.lock if available
     // Priority 2: Fallback to parsing compatibility field with hardcoded whitelist
-    let packages = if let Some(ref resolved) = metadata.resolved_packages {
+    let mut packages = if let Some(ref resolved) = metadata.resolved_packages {
         resolved.clone()
     } else {
         parse_compatibility_for_packages(metadata.compatibility.as_deref())
     };
+
+    // Priority 3: For bash-tool skills, infer CLI packages from allowed-tools
+    // Command prefix is assumed to be the npm package name (e.g. "agent-browser" -> npm:agent-browser)
+    if packages.is_empty() {
+        if let Some(ref allowed) = metadata.allowed_tools {
+            let patterns = crate::skill::metadata::parse_allowed_tools(allowed);
+            if !patterns.is_empty() {
+                packages = patterns.iter().map(|p| p.command_prefix.clone()).collect();
+                let hash = compute_packages_hash(&packages);
+                return Ok(DependencyInfo {
+                    dep_type: DependencyType::Node, // CLI tools default to npm
+                    packages,
+                    content_hash: hash,
+                });
+            }
+        }
+    }
 
     if packages.is_empty() {
         return Ok(DependencyInfo {

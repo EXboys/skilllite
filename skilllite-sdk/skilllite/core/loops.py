@@ -200,6 +200,40 @@ class AgenticLoop:
         if self.verbose:
             self._logger.info(message)
 
+    def _get_bash_tool_skills_context(self) -> str:
+        """Build system prompt section with full SKILL.md for all bash-tool skills.
+
+        Bash-tool skills need their full documentation injected at startup
+        (not progressively), because the SKILL.md *is* the operational manual
+        that tells the LLM how to use the CLI commands.
+
+        Returns:
+            Formatted context string, or empty string if no bash-tool skills.
+        """
+        registry = self.manager._registry
+        bash_skills = registry.list_bash_tool_skills()
+        if not bash_skills:
+            return ""
+
+        parts = ["\n# Bash Tool Skills — Full Documentation\n"]
+        parts.append("The following skills are CLI tools. Use the tool function to send bash commands.\n")
+
+        for info in bash_skills:
+            content = info.get_full_content()
+            if content:
+                parts.append(f"\n## {info.name}\n")
+                parts.append(content)
+
+                # Include references if available
+                refs = info.get_references()
+                if refs:
+                    parts.append(f"\n### References for {info.name}\n")
+                    for ref_name, ref_content in refs.items():
+                        parts.append(f"\n#### {ref_name}\n")
+                        parts.append(ref_content)
+
+        return "\n".join(parts)
+
     def _interactive_confirmation(self, report: str, scan_id: str) -> bool:
         """Default interactive terminal confirmation."""
         self._log(f"\n{report}")
@@ -449,6 +483,11 @@ Based on the documentation, call the tools with correct parameters.
 
         if self.system_prompt:
             messages.append({"role": "system", "content": self.system_prompt})
+
+        # Inject full SKILL.md for bash-tool skills (they need docs upfront, not progressive)
+        bash_ctx = self._get_bash_tool_skills_context()
+        if bash_ctx:
+            messages.append({"role": "system", "content": bash_ctx})
 
         if self.enable_task_planning and self._planner.task_list:
             messages.append({"role": "system", "content": self._planner.build_task_system_prompt(self.manager)})
@@ -735,6 +774,12 @@ Based on the documentation, call the tools with correct parameters.
 
         # Build system prompt
         system = self.system_prompt or ""
+
+        # Inject full SKILL.md for bash-tool skills (they need docs upfront, not progressive)
+        bash_ctx = self._get_bash_tool_skills_context()
+        if bash_ctx:
+            system = (system + "\n\n" if system else "") + bash_ctx
+
         if self.enable_task_planning and self._planner.task_list:
             system = (system + "\n\n" if system else "") + self._planner.build_task_system_prompt(self.manager)
         

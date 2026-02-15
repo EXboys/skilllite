@@ -35,6 +35,50 @@ struct FrontMatter {
     pub allowed_tools: Option<String>,
 }
 
+/// Parsed pattern from `allowed-tools: Bash(agent-browser:*)`
+#[derive(Debug, Clone)]
+pub struct BashToolPattern {
+    /// Command prefix, e.g. "agent-browser"
+    pub command_prefix: String,
+    /// Raw pattern string, e.g. "agent-browser:*"
+    /// Used in validation error messages and audit logging.
+    pub raw_pattern: String,
+}
+
+/// Parse the `allowed-tools` field value into a list of bash tool patterns.
+///
+/// Examples:
+///   - `"Bash(agent-browser:*)"` -> `[BashToolPattern { command_prefix: "agent-browser", .. }]`
+///   - `"Bash(agent-browser:*), Bash(npm:*)"` -> two patterns
+///   - `"Read, Edit, Bash(mycli:*)"` -> one BashToolPattern (non-Bash tools ignored)
+pub fn parse_allowed_tools(raw: &str) -> Vec<BashToolPattern> {
+    let re = Regex::new(r"Bash\(([^)]+)\)").expect("allowed-tools regex is valid");
+    let mut patterns = Vec::new();
+
+    for cap in re.captures_iter(raw) {
+        if let Some(inner) = cap.get(1) {
+            let pattern_str = inner.as_str().trim();
+            // Extract command prefix: everything before the first ':'
+            // e.g. "agent-browser:*" -> "agent-browser"
+            // e.g. "agent-browser" -> "agent-browser" (no colon = entire string is prefix)
+            let command_prefix = if let Some(idx) = pattern_str.find(':') {
+                pattern_str[..idx].trim().to_string()
+            } else {
+                pattern_str.to_string()
+            };
+
+            if !command_prefix.is_empty() {
+                patterns.push(BashToolPattern {
+                    command_prefix,
+                    raw_pattern: pattern_str.to_string(),
+                });
+            }
+        }
+    }
+
+    patterns
+}
+
 /// Skill metadata parsed from SKILL.md YAML front matter
 #[derive(Debug, Clone)]
 pub struct SkillMetadata {
@@ -59,9 +103,30 @@ pub struct SkillMetadata {
     /// Resolved package list from .skilllite.lock (written by `skilllite init`).
     /// When present, this takes priority over parsing the compatibility field.
     pub resolved_packages: Option<Vec<String>>,
+
+    /// Raw `allowed-tools` field value from SKILL.md front matter.
+    /// Example: "Bash(agent-browser:*)"
+    pub allowed_tools: Option<String>,
 }
 
 impl SkillMetadata {
+    /// Returns true if this is a bash-tool skill (has allowed-tools but no script entry point).
+    ///
+    /// Bash-tool skills provide a SKILL.md with `allowed-tools: Bash(...)` and no
+    /// `scripts/` directory. The LLM reads the documentation and issues bash commands.
+    pub fn is_bash_tool_skill(&self) -> bool {
+        self.allowed_tools.is_some() && self.entry_point.is_empty()
+    }
+
+    /// Parse the `allowed-tools` field into structured `BashToolPattern` items.
+    /// Returns an empty vec if `allowed_tools` is None or contains no Bash patterns.
+    pub fn get_bash_patterns(&self) -> Vec<BashToolPattern> {
+        match &self.allowed_tools {
+            Some(raw) => parse_allowed_tools(raw),
+            None => Vec::new(),
+        }
+    }
+
     /// Returns true if this skill depends on Playwright (requires spawn/subprocess, blocked in sandbox).
     pub fn uses_playwright(&self) -> bool {
         if let Some(ref packages) = self.resolved_packages {
@@ -288,6 +353,7 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         compatibility: front_matter.compatibility.clone(),
         network,
         resolved_packages,
+        allowed_tools: front_matter.allowed_tools.clone(),
     };
 
     // Validate required fields
@@ -446,5 +512,81 @@ description: A simple skill
             .expect("test YAML parsing should succeed");
         assert!(!metadata.network.enabled);
         assert!(metadata.network.outbound.is_empty());
+    }
+
+    #[test]
+    fn test_parse_allowed_tools_single() {
+        let patterns = parse_allowed_tools("Bash(agent-browser:*)");
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].command_prefix, "agent-browser");
+        assert_eq!(patterns[0].raw_pattern, "agent-browser:*");
+    }
+
+    #[test]
+    fn test_parse_allowed_tools_multiple() {
+        let patterns = parse_allowed_tools("Bash(agent-browser:*), Bash(npm:*)");
+        assert_eq!(patterns.len(), 2);
+        assert_eq!(patterns[0].command_prefix, "agent-browser");
+        assert_eq!(patterns[1].command_prefix, "npm");
+    }
+
+    #[test]
+    fn test_parse_allowed_tools_mixed() {
+        // Non-Bash tools should be ignored
+        let patterns = parse_allowed_tools("Read, Edit, Bash(mycli:*)");
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].command_prefix, "mycli");
+    }
+
+    #[test]
+    fn test_parse_allowed_tools_no_colon() {
+        let patterns = parse_allowed_tools("Bash(simple-tool)");
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].command_prefix, "simple-tool");
+    }
+
+    #[test]
+    fn test_parse_allowed_tools_empty() {
+        let patterns = parse_allowed_tools("Read, Edit");
+        assert!(patterns.is_empty());
+    }
+
+    #[test]
+    fn test_bash_tool_skill_yaml() {
+        let content = r#"---
+name: agent-browser
+description: Headless browser automation for AI agents
+allowed-tools: Bash(agent-browser:*)
+---
+
+# Agent Browser
+
+Use agent-browser CLI to automate web browsing.
+"#;
+
+        let metadata = extract_yaml_front_matter(content)
+            .expect("bash tool skill YAML should parse");
+        assert_eq!(metadata.name, "agent-browser");
+        assert!(metadata.entry_point.is_empty());
+        assert_eq!(metadata.allowed_tools, Some("Bash(agent-browser:*)".to_string()));
+        assert!(metadata.is_bash_tool_skill());
+
+        let patterns = metadata.get_bash_patterns();
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].command_prefix, "agent-browser");
+    }
+
+    #[test]
+    fn test_not_bash_tool_skill_with_entry_point() {
+        let content = r#"---
+name: regular-skill
+description: A regular skill with scripts
+compatibility: Requires Python 3.x
+---
+"#;
+        // This skill has no allowed-tools, so it's not a bash tool skill
+        let metadata = extract_yaml_front_matter(content)
+            .expect("regular skill YAML should parse");
+        assert!(!metadata.is_bash_tool_skill());
     }
 }

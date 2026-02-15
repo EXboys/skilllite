@@ -129,6 +129,34 @@ pub enum Commands {
         json: bool,
     },
 
+    /// Execute a bash command for a bash-tool skill (validates against allowed-tools pattern)
+    ///
+    /// Bash-tool skills declare `allowed-tools: Bash(prefix:*)` in SKILL.md and have
+    /// no script entry point. The LLM issues bash commands which are validated and
+    /// executed by this subcommand.
+    Bash {
+        /// Path to the skill directory (must contain SKILL.md with allowed-tools)
+        #[arg(value_name = "SKILL_DIR")]
+        skill_dir: String,
+
+        /// The bash command to execute (must match an allowed-tools pattern)
+        #[arg(value_name = "COMMAND")]
+        command: String,
+
+        /// Custom cache directory for environments
+        #[arg(long, value_name = "DIR")]
+        cache_dir: Option<String>,
+
+        /// Execution timeout in seconds (default: 120, higher for browser automation)
+        #[arg(long)]
+        timeout: Option<u64>,
+
+        /// Working directory for command execution (default: current directory).
+        /// Files created by the command (e.g. screenshots) are saved relative to this path.
+        #[arg(long, value_name = "DIR")]
+        cwd: Option<String>,
+    },
+
     /// Run as IPC daemon - read JSON-RPC requests from stdin, write responses to stdout
     /// Used by Python SDK when SKILLBOX_USE_IPC=1. One JSON-RPC request per line.
     Serve {

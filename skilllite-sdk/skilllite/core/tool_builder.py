@@ -67,6 +67,10 @@ class ToolBuilder:
             if info.metadata.entry_point:
                 definition = self._create_tool_definition(info)
                 definitions.append(definition)
+            elif info.is_bash_tool_skill:
+                # Bash-tool skill: generate a tool accepting a 'command' string
+                definition = self._create_bash_tool_definition(info)
+                definitions.append(definition)
             elif info.name in multi_script_skill_names:
                 # Skip - will be handled by multi-script tools below
                 pass
@@ -119,6 +123,39 @@ class ToolBuilder:
             input_schema=input_schema
         )
     
+    def _create_bash_tool_definition(self, info: SkillInfo) -> ToolDefinition:
+        """Create a tool definition for a bash-tool skill.
+
+        Bash-tool skills use ``allowed-tools: Bash(prefix:*)`` and have no script
+        entry point.  The LLM sends a ``command`` string which is validated and
+        executed by ``skillbox bash``.
+        """
+        description = info.description or f"Execute {info.name} CLI commands"
+        # Append allowed patterns hint so the LLM knows which commands are valid
+        patterns = info.get_bash_patterns()
+        if patterns:
+            prefixes = ", ".join(p.command_prefix for p in patterns)
+            description += f" (allowed commands: {prefixes})"
+
+        input_schema = {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string",
+                    "description": f"The bash command to execute (must start with one of: {prefixes})"
+                    if patterns
+                    else "The bash command to execute",
+                }
+            },
+            "required": ["command"],
+        }
+
+        return ToolDefinition(
+            name=info.name,
+            description=description,
+            input_schema=input_schema,
+        )
+
     def _create_multi_script_tool_definition(
         self,
         tool_name: str,

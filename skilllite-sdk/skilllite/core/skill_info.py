@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .metadata import SkillMetadata, detect_language, detect_all_scripts
+from .metadata import BashToolPattern, SkillMetadata, detect_language, detect_all_scripts, parse_allowed_tools
 
 class SkillInfo:
     """Information about a registered skill."""
@@ -32,6 +32,17 @@ class SkillInfo:
     @property
     def language(self) -> str:
         return detect_language(self.path, self.metadata)
+
+    @property
+    def is_bash_tool_skill(self) -> bool:
+        """True if this skill uses `allowed-tools: Bash(...)` and has no script entry point."""
+        return bool(self.metadata.allowed_tools) and not self.metadata.entry_point
+
+    def get_bash_patterns(self) -> List[BashToolPattern]:
+        """Parse the `allowed-tools` field into structured BashToolPattern items."""
+        if self.metadata.allowed_tools:
+            return parse_allowed_tools(self.metadata.allowed_tools)
+        return []
     
     def get_full_content(self) -> str:
         """

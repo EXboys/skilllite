@@ -1,3 +1,4 @@
+pub mod bash_validator;
 pub mod common;
 pub mod log;
 pub mod executor;
