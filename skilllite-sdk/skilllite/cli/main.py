@@ -12,6 +12,7 @@ from ..sandbox.skillbox import BINARY_VERSION
 from .binary import cmd_install, cmd_uninstall, cmd_status, cmd_version
 from .mcp import cmd_mcp_server
 from .integrations.opencode import cmd_init_opencode
+from .integrations.cursor import cmd_init_cursor
 from .init import cmd_init
 from .add import cmd_add
 from .repo import cmd_list, cmd_remove
@@ -35,6 +36,7 @@ Examples:
   skilllite mcp              Start MCP server (requires pip install skilllite[mcp])
   skilllite init             Initialize SkillLite project (binary + .skills + deps)
   skilllite init-opencode    Initialize OpenCode integration
+  skilllite init-cursor      Initialize Cursor IDE integration
   skilllite add owner/repo   Add skills from a remote repository
   skilllite list             List installed skills
   skilllite remove <name>    Remove an installed skill
@@ -145,6 +147,36 @@ For more information, visit: https://github.com/skilllite/skilllite
         help="Force overwrite existing opencode.json"
     )
     init_opencode_parser.set_defaults(func=cmd_init_opencode)
+
+    # init-cursor command
+    init_cursor_parser = subparsers.add_parser(
+        "init-cursor",
+        help="Initialize SkillLite integration for Cursor IDE"
+    )
+    init_cursor_parser.add_argument(
+        "--project-dir", "-p",
+        dest="project_dir",
+        default=None,
+        help="Project directory (default: current directory)"
+    )
+    init_cursor_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default="./.skills",
+        help="Skills directory path (default: ./.skills)"
+    )
+    init_cursor_parser.add_argument(
+        "--global", "-g",
+        dest="global_mode",
+        action="store_true",
+        help="Install globally to ~/.cursor/mcp.json (available in all Cursor projects)"
+    )
+    init_cursor_parser.add_argument(
+        "--force", "-f",
+        action="store_true",
+        help="Force overwrite existing .cursor/mcp.json"
+    )
+    init_cursor_parser.set_defaults(func=cmd_init_cursor)
 
     # init command
     init_parser = subparsers.add_parser(

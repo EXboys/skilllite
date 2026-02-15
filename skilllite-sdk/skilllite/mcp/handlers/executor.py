@@ -57,8 +57,73 @@ class SandboxExecutor:
         for scan_id in expired_ids:
             del self._scan_cache[scan_id]
 
-    def _create_temp_skill(self, language: str, code: str) -> Tuple[str, str]:
-        """Create a temporary skill directory with the code file."""
+    def _wrap_code_for_json_output(self, language: str, code: str) -> str:
+        """Wrap user code to produce JSON output (required by skillbox).
+
+        skillbox requires all skill output to be valid JSON.
+        This wraps arbitrary user code to capture stdout/stderr
+        and output them as a JSON object.
+        """
+        if language == "python":
+            # Escape the code for embedding in a triple-quoted string
+            # Use a unique delimiter to avoid conflicts with user code
+            return f'''import json as __j__, sys as __s__, io as __io__, traceback as __tb__
+__out__ = __io__.StringIO()
+__err__ = __io__.StringIO()
+__old_out__ = __s__.stdout
+__old_err__ = __s__.stderr
+__s__.stdout = __out__
+__s__.stderr = __err__
+__ok__ = True
+try:
+    exec(compile({repr(code)}, "<mcp>", "exec"))
+except SystemExit:
+    pass
+except:
+    __ok__ = False
+    __err__.write(__tb__.format_exc())
+finally:
+    __s__.stdout = __old_out__
+    __s__.stderr = __old_err__
+    print(__j__.dumps({{"stdout": __out__.getvalue(), "stderr": __err__.getvalue(), "success": __ok__}}))
+'''
+        elif language == "javascript":
+            escaped_code = code.replace('\\', '\\\\').replace('`', '\\`').replace('$', '\\$')
+            return f'''const __origLog = console.log;
+const __origErr = console.error;
+let __stdout = [];
+let __stderr = [];
+console.log = (...a) => __stdout.push(a.map(String).join(" "));
+console.error = (...a) => __stderr.push(a.map(String).join(" "));
+let __ok = true;
+try {{
+    eval(`{escaped_code}`);
+}} catch(e) {{
+    __ok = false;
+    __stderr.push(String(e.stack || e));
+}} finally {{
+    console.log = __origLog;
+    console.error = __origErr;
+    console.log(JSON.stringify({{stdout: __stdout.join("\\n"), stderr: __stderr.join("\\n"), success: __ok}}));
+}}
+'''
+        elif language == "bash":
+            escaped_code = code.replace("'", "'\\''")
+            return f'''__out__=$(eval '{escaped_code}' 2>&1) ; __rc__=$?
+if [ $__rc__ -eq 0 ]; then __ok__=true; else __ok__=false; fi
+printf '{{"stdout": "%s", "stderr": "", "success": %s}}' "$(echo "$__out__" | sed 's/"/\\\\"/g' | tr '\\n' ' ')" "$__ok__"
+'''
+        else:
+            return code
+
+    def _create_temp_skill(self, language: str, code: str, wrap_json: bool = False) -> Tuple[str, str]:
+        """Create a temporary skill directory with the code file.
+
+        Args:
+            language: Programming language
+            code: User code to execute
+            wrap_json: If True, wrap the code to produce JSON output (for execute_code)
+        """
         skill_dir = tempfile.mkdtemp(prefix="mcp_skill_")
 
         # Create scripts subdirectory (required by skillbox)
@@ -67,6 +132,8 @@ class SandboxExecutor:
 
         ext = self.get_file_extension(language)
         entry_point = f"scripts/main.{ext}"
+
+        final_code = self._wrap_code_for_json_output(language, code) if wrap_json else code
 
         skill_md_content = f"""---
 name: mcp-execution
@@ -84,7 +151,7 @@ This skill executes code from MCP.
 
         code_file = os.path.join(scripts_dir, f"main.{ext}")
         with open(code_file, "w") as f:
-            f.write(code)
+            f.write(final_code)
         os.chmod(code_file, 0o755)
 
         return skill_dir, code_file
@@ -121,11 +188,15 @@ This skill executes code from MCP.
             skill_dir, code_file = self._create_temp_skill(language, code)
 
             try:
+                scan_env = os.environ.copy()
+                scan_env["SKILLBOX_SKILLS_ROOT"] = os.path.dirname(skill_dir)
+
                 result = subprocess.run(
                     [self.skillbox_path, "security-scan", "--json", code_file],
                     capture_output=True,
                     text=True,
-                    timeout=30
+                    timeout=30,
+                    env=scan_env,
                 )
 
                 # Parse structured JSON output
@@ -294,11 +365,14 @@ This skill executes code from MCP.
                 }
 
         try:
-            skill_dir, _ = self._create_temp_skill(language, code)
+            # Wrap user code to produce JSON output (skillbox requires JSON stdout)
+            skill_dir, _ = self._create_temp_skill(language, code, wrap_json=True)
 
             try:
                 env = os.environ.copy()
                 env["SKILLBOX_AUTO_APPROVE"] = "true"
+                # Allow skillbox to access temp skill directories
+                env["SKILLBOX_SKILLS_ROOT"] = os.path.dirname(skill_dir)
 
                 cmd = [self.skillbox_path, "run"]
                 if sandbox_level in [1, 2, 3]:
@@ -312,6 +386,20 @@ This skill executes code from MCP.
                     timeout=self.timeout,
                     env=env,
                 )
+
+                # Try to parse the JSON output from our wrapper
+                if result.returncode == 0 and result.stdout.strip():
+                    try:
+                        import json
+                        parsed = json.loads(result.stdout.strip())
+                        return {
+                            "success": parsed.get("success", True),
+                            "stdout": parsed.get("stdout", ""),
+                            "stderr": parsed.get("stderr", ""),
+                            "exit_code": 0 if parsed.get("success", True) else 1
+                        }
+                    except (json.JSONDecodeError, KeyError):
+                        pass
 
                 return {
                     "success": result.returncode == 0,
