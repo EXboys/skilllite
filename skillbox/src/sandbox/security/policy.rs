@@ -271,11 +271,27 @@ pub enum ResolvedNetworkPolicy {
     ProxyFiltered { domains: Vec<String> },
 }
 
+/// Extract domain part from an outbound rule, stripping optional `:port` suffix.
+/// e.g. "*:80" → "*", "*.github.com:443" → "*.github.com", "example.com" → "example.com"
+fn strip_port_suffix(rule: &str) -> &str {
+    if let Some(colon_pos) = rule.rfind(':') {
+        let after_colon = &rule[colon_pos + 1..];
+        if !after_colon.is_empty() && after_colon.chars().all(|c| c.is_ascii_digit()) {
+            return &rule[..colon_pos];
+        }
+    }
+    rule
+}
+
 /// Resolve network policy from metadata
 pub fn resolve_network_policy(network_enabled: bool, outbound: &[String]) -> ResolvedNetworkPolicy {
     if !network_enabled {
         return ResolvedNetworkPolicy::BlockAll;
     }
+    // Only exact "*" (without port) bypasses proxy entirely (AllowAll).
+    // "*:80" / "*:443" still go through the proxy — the domain part "*" is
+    // handled by ProxyConfig::domain_matches which allows all domains, but
+    // traffic remains observable and controllable through the proxy layer.
     let has_wildcard = outbound.iter().any(|d| d.trim() == "*");
     if has_wildcard {
         return ResolvedNetworkPolicy::AllowAll;
@@ -283,8 +299,10 @@ pub fn resolve_network_policy(network_enabled: bool, outbound: &[String]) -> Res
     if outbound.is_empty() {
         return ResolvedNetworkPolicy::BlockAll;
     }
+    // Extract domain parts (strip :port if present) for proxy filtering.
+    // e.g. "*:80" → "*", "*.github.com:443" → "*.github.com"
     ResolvedNetworkPolicy::ProxyFiltered {
-        domains: outbound.iter().map(|s| s.trim().to_string()).collect(),
+        domains: outbound.iter().map(|s| strip_port_suffix(s.trim()).to_string()).collect(),
     }
 }
 

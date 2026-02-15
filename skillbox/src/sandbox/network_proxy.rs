@@ -91,21 +91,35 @@ impl ProxyConfig {
     }
 
     /// Check if a domain matches a pattern (supports wildcards)
+    /// Pattern may include an optional `:port` suffix which is stripped before matching.
+    /// e.g. "*:80" matches all domains, "*.github.com:443" matches sub.github.com
     fn domain_matches(domain: &str, pattern: &str) -> bool {
         let pattern_lower = pattern.to_lowercase().trim().to_string();
         
+        // Strip :port suffix if present (e.g. "*:80" → "*", "*.example.com:443" → "*.example.com")
+        let pattern_clean = if let Some(colon_pos) = pattern_lower.rfind(':') {
+            let after_colon = &pattern_lower[colon_pos + 1..];
+            if !after_colon.is_empty() && after_colon.chars().all(|c| c.is_ascii_digit()) {
+                &pattern_lower[..colon_pos]
+            } else {
+                &pattern_lower
+            }
+        } else {
+            &pattern_lower
+        };
+
         // Single "*" matches all domains
-        if pattern_lower == "*" {
+        if pattern_clean == "*" {
             return true;
         }
         
-        if pattern_lower.starts_with("*.") {
+        if pattern_clean.starts_with("*.") {
             // Wildcard pattern: *.example.com matches sub.example.com and example.com
-            let suffix = &pattern_lower[1..]; // .example.com
-            let base = &pattern_lower[2..];   // example.com
+            let suffix = &pattern_clean[1..]; // .example.com
+            let base = &pattern_clean[2..];   // example.com
             domain.ends_with(suffix) || domain == base
         } else {
-            domain == pattern_lower
+            domain == pattern_clean
         }
     }
 }

@@ -96,6 +96,7 @@ pub struct NetworkPolicy {
 /// Examples:
 ///   - "Requires network access" -> enabled=true
 ///   - "Requires Python 3.x, internet" -> enabled=true
+///   - "需网络权限" -> enabled=true
 ///   - "Requires git, docker" -> enabled=false
 fn parse_compatibility_for_network(compatibility: Option<&str>) -> NetworkPolicy {
     let Some(compat) = compatibility else {
@@ -104,12 +105,17 @@ fn parse_compatibility_for_network(compatibility: Option<&str>) -> NetworkPolicy
 
     let compat_lower = compat.to_lowercase();
     
-    // Check for network/internet keywords
+    // Check for network/internet keywords (English and Chinese)
     let needs_network = compat_lower.contains("network")
         || compat_lower.contains("internet")
         || compat_lower.contains("http")
         || compat_lower.contains("api")
-        || compat_lower.contains("web");
+        || compat_lower.contains("web")
+        // Chinese keywords: 网络(network), 联网(internet), 网页(web page), 在线(online)
+        || compat_lower.contains("网络")
+        || compat_lower.contains("联网")
+        || compat_lower.contains("网页")
+        || compat_lower.contains("在线");
 
     if needs_network {
         NetworkPolicy {
@@ -398,12 +404,19 @@ This is a test skill.
 
     #[test]
     fn test_parse_compatibility_for_network() {
-        // Network enabled cases
+        // Network enabled cases (English)
         assert!(parse_compatibility_for_network(Some("Requires network access")).enabled);
         assert!(parse_compatibility_for_network(Some("Requires internet")).enabled);
         assert!(parse_compatibility_for_network(Some("Requires http client")).enabled);
         assert!(parse_compatibility_for_network(Some("Requires API access")).enabled);
         assert!(parse_compatibility_for_network(Some("Requires web access")).enabled);
+
+        // Network enabled cases (Chinese)
+        assert!(parse_compatibility_for_network(Some("需网络权限")).enabled);
+        assert!(parse_compatibility_for_network(Some("Python 3.x，需网络权限")).enabled);
+        assert!(parse_compatibility_for_network(Some("需要联网")).enabled);
+        assert!(parse_compatibility_for_network(Some("需要网页访问")).enabled);
+        assert!(parse_compatibility_for_network(Some("在线服务")).enabled);
 
         // Network disabled cases
         assert!(!parse_compatibility_for_network(Some("Requires git, docker")).enabled);
