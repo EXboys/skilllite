@@ -368,12 +368,24 @@ Based on the documentation, call the tools with correct parameters.
                         task_list_str = json.dumps(
                             self._planner.task_list, ensure_ascii=False, indent=2
                         )
-                        nudge = (
-                            f"Task progress update:\n{task_list_str}\n\n"
-                            f"Current task to execute: Task {current_task['id']} - "
-                            f"{current_task['description']}\n\n"
-                            "Please use the available tools to complete this task."
-                        ) if current_task else "Please continue to complete the remaining tasks."
+                        if current_task:
+                            tool_hint = current_task.get("tool_hint", "")
+                            if tool_hint and tool_hint not in ("file_operation", "analysis"):
+                                nudge = (
+                                    f"Task progress update:\n{task_list_str}\n\n"
+                                    f"Current task to execute: Task {current_task['id']} - "
+                                    f"{current_task['description']}\n\n"
+                                    f"⚡ Call `{tool_hint}` DIRECTLY now. Do NOT call list_directory or read_file first."
+                                )
+                            else:
+                                nudge = (
+                                    f"Task progress update:\n{task_list_str}\n\n"
+                                    f"Current task to execute: Task {current_task['id']} - "
+                                    f"{current_task['description']}\n\n"
+                                    "Please use the available tools to complete this task."
+                                )
+                        else:
+                            nudge = "Please continue to complete the remaining tasks."
                         messages.append({"role": "user", "content": nudge})
                         continue
                 else:
@@ -491,9 +503,22 @@ Based on the documentation, call the tools with correct parameters.
                 current_task = next((t for t in self._planner.task_list if not t["completed"]), None)
                 if current_task:
                     task_list_str = json.dumps(self._planner.task_list, ensure_ascii=False, indent=2)
+                    tool_hint = current_task.get("tool_hint", "")
+                    if tool_hint and tool_hint not in ("file_operation", "analysis"):
+                        focus_msg = (
+                            f"Task progress update:\n{task_list_str}\n\n"
+                            f"Current task to execute: Task {current_task['id']} - {current_task['description']}\n\n"
+                            f"⚡ Call `{tool_hint}` DIRECTLY. Do NOT explore files first."
+                        )
+                    else:
+                        focus_msg = (
+                            f"Task progress update:\n{task_list_str}\n\n"
+                            f"Current task to execute: Task {current_task['id']} - {current_task['description']}\n\n"
+                            "Please continue to focus on completing the current task."
+                        )
                     messages.append({
                         "role": "system",
-                        "content": f"Task progress update:\n{task_list_str}\n\nCurrent task to execute: Task {current_task['id']} - {current_task['description']}\n\nPlease continue to focus on completing the current task."
+                        "content": focus_msg
                     })
         
         self._log(f"\n⚠️  Reached maximum iterations ({effective_max}), stopping execution")

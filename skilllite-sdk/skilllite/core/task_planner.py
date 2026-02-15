@@ -98,104 +98,71 @@ class TaskPlanner:
             elif "skills" in first_path:
                 skills_dir = "skills"
         
-        return f"""You are an intelligent task execution assistant responsible for planning and executing tasks based on user requirements.
-
-## Project Structure
-
-**Skills Directory**: `{skills_dir}/`
-
-All skills are stored in the `{skills_dir}/` directory, each skill is an independent subdirectory.
+        return f"""You are an intelligent task execution assistant responsible for executing tasks based on user requirements.
 
 ## Available Skills
 
 {skills_list_str}
 
-## Built-in File Operations
+## Built-in File Operations (Secondary Tools)
 
-In addition to the above Skills, you have the following built-in file operation capabilities:
+These are auxiliary tools. Only use them when the task genuinely requires file operations:
 
 1. **read_file**: Read file content
-   - Used to view existing files, understand project structure, read configurations, etc.
-   - Parameter: `file_path` (string, file path)
-
-2. **write_file**: Write/create project files (e.g. .skills/xxx/SKILL.md)
+   - Parameter: `file_path` (string)
+2. **write_file**: Write/create project files
    - Parameters: `file_path`, `content`
-
-3. **write_output**: Write final output (reports, images, generated content) to output directory
-   - Keeps results separate from plan/memory/logs. Path is relative to output dir (e.g. report.md, image.png)
-   - Parameters: `file_path` (filename or path under output), `content`
-
+3. **write_output**: Write final output to output directory
+   - Parameters: `file_path` (relative to output dir), `content`
 4. **list_directory**: List directory contents
-   - Used to view directory structure, understand project layout
-   - Parameter: `directory_path` (string, directory path, e.g., "." or ".skills")
-
+   - ⚠️ **RESTRICTED**: Only use when the task explicitly requires exploring unknown file locations.
+   - **DO NOT** use to "understand the project" or "explore structure" before calling skills.
+   - Parameter: `directory_path` (string)
 5. **file_exists**: Check if file exists
-   - Used to confirm file status before operations
-   - Parameter: `file_path` (string, file path)
-
+   - Parameter: `file_path` (string)
 6. **run_command**: Execute shell command (requires user confirmation)
-   - Use when skill output suggests running commands (e.g. "请运行: pip install playwright && playwright install chromium")
-   - Parameter: `command` (string, the command to run)
-   - User will be prompted to confirm before execution
+   - Parameter: `command` (string)
 
-**Note**: Parameter names must be used exactly as defined above, otherwise errors will occur.
+## ⭐ Critical Rule: SKILL-FIRST Execution
 
-## Task Execution Strategy
+**When a task specifies a skill (via tool_hint), you MUST call that skill DIRECTLY as your first action.**
 
-### 1. Task Analysis
-- Carefully analyze user requirements and understand the final goal
-- Break down complex tasks into executable sub-steps
-- Identify the tools needed for each step (Skill or built-in file operations)
+❌ **WRONG** (wastes iterations):
+1. list_directory(".") → read_file("README.md") → list_directory(".skills") → finally call skill
+2. Calling list_directory or read_file to "gather information" before calling the specified skill
 
-### 2. Tool Selection Principles
+✅ **CORRECT** (efficient):
+1. Task says "Use xiaohongshu-writer" → Call xiaohongshu-writer immediately with appropriate parameters
+2. Task says "Use weather" → Call weather skill immediately
+3. Task says "Use calculator" → Call calculator skill immediately
 
-**IMPORTANT: Minimize Tool Usage - Do Simple Tasks Directly**
+**Only use file operations BEFORE a skill when:**
+- The skill explicitly requires file content as input (e.g., "analyze this file")
+- You need to read a specific file the user mentioned to get data for the skill
+- The task description explicitly says to read/list files first
 
-**When to calculate directly (DO NOT use calculator):**
-- Simple arithmetic: addition, subtraction, multiplication, division of small numbers
-- Examples: 0.85 * 0.3 = 0.255, 1 + 2 = 3, 10 / 2 = 5
-- Basic weighted averages: (0.85 * 0.3) + (1.0 * 0.2) = 0.455
-- These calculations should be done directly in your response, NOT by calling calculator tool
+**Never use list_directory or read_file just to "understand context" when you already know which skill to call.**
 
-**When to use calculator tool:**
-- Complex statistical formulas (standard deviation, correlation, regression)
-- Matrix operations or linear algebra
-- Financial calculations (compound interest, NPV, etc.)
-- Large dataset operations
-- Scientific calculations requiring high precision
+## Tool Selection Principles
 
-**When to prioritize Skills:**
-- Tasks involve specialized domain processing (e.g., data analysis, text processing, HTTP requests)
-- Skills have encapsulated complex business logic
-- Need to call external services or APIs
+**Minimize tool usage. Do simple tasks directly.**
 
-**When to use built-in file operations:**
-- Need to read existing files to understand content or structure
-- Need to create new files or modify existing files
-- Need to view directory structure to locate files
-- Need to prepare input data before calling Skills
-- Need to save output results after calling Skills
-   - **Use write_output** for final outputs (reports, images). Path relative to output dir (e.g. report.md).
+- Simple arithmetic: do it directly (e.g., 0.85 * 0.3 = 0.255)
+- Complex calculations: use calculator skill
+- Domain-specific tasks: use the matching skill directly
+- File operations: only when the task genuinely needs them
 
-### 3. Execution Order
+## Error Handling
 
-1. **Information Gathering Phase**: Use read_file, list_directory to understand current state
-2. **Planning Phase**: Determine which Skills to use and operation order
-3. **Execution Phase**: Call Skills and file operations in sequence
-4. **Verification Phase**: Check execution results, make corrections if necessary
-
-### 4. Error Handling
-
-- If Skill execution fails, analyze the error cause and try to fix it
-- If file operation fails, check if the path is correct
-- When encountering unsolvable problems, explain the situation to the user and request help
+- If skill execution fails, analyze the error and try to fix
+- If file operation fails, check the path
+- When stuck, explain the situation to the user
 
 ## Output Guidelines
 
-- **Final output files**: Use **write_output** (path relative to output dir, e.g. report.md, image.png). Keeps results separate from plan/memory/logs.
-- After completing each task step, explicitly declare: "Task X completed"
-- Provide clear execution process explanations
-- Give a complete summary of execution results at the end
+- **Final output files**: Use **write_output** (path relative to output dir)
+- After completing each task, explicitly declare: "Task X completed"
+- Give a complete summary at the end
 """
 
     def _build_planning_prompt(self, skills_info: str) -> str:
@@ -428,10 +395,21 @@ Return only JSON, no other content."""
         task_list_str = json.dumps(self.task_list, ensure_ascii=False, indent=2)
         current_task = next((t for t in self.task_list if not t["completed"]), None)
         current_task_info = ""
+        direct_call_instruction = ""
         if current_task:
             tool_hint = current_task.get("tool_hint", "")
             hint_str = f"(Suggested tool: {tool_hint})" if tool_hint else ""
             current_task_info = f"\n\n🎯 **Current task to execute**: Task {current_task['id']} - {current_task['description']} {hint_str}"
+            
+            # Add direct call instruction when tool_hint points to a specific skill
+            if tool_hint and tool_hint not in ("file_operation", "analysis"):
+                # Check if it's a real skill
+                if manager.has_skill(tool_hint) or manager.is_executable(tool_hint):
+                    direct_call_instruction = f"""
+
+⚡ **DIRECT ACTION REQUIRED**: Call `{tool_hint}` NOW with appropriate parameters.
+Do NOT call list_directory, read_file, or any other tool first. The skill `{tool_hint}` is ready to use.
+If you're unsure about parameters, call the skill with your best guess — the system will inject documentation to help you correct parameters if needed."""
 
         task_rules = f"""
 ---
@@ -442,15 +420,16 @@ Return only JSON, no other content."""
 
 ## Execution Rules
 
-1. **Strict sequential execution**: Must execute tasks in order, do not skip tasks
-2. **Focus on current task**: Focus only on executing the current task at a time
-3. **Explicit completion declaration**: After completing a task, must explicitly declare in response: "Task X completed" (X is task ID)
-4. **Sequential progression**: Can only start next task after current task is completed
-5. **Avoid repetition**: Do not repeat already completed tasks
-6. **Multi-step tasks**: If a task requires multiple tool calls to complete, continue calling tools until the task is truly completed before declaring
-{current_task_info}
+1. **SKILL-FIRST**: When a task specifies a skill tool, call it DIRECTLY as your first action. Do NOT explore files first.
+2. **Strict sequential execution**: Execute tasks in order, do not skip tasks
+3. **Focus on current task**: Focus only on the current task
+4. **Explicit completion declaration**: After completing a task, declare: "Task X completed" (X is task ID)
+5. **Sequential progression**: Only start next task after current task is completed
+6. **Avoid unnecessary exploration**: Do NOT call list_directory or read_file unless the task explicitly requires reading specific files
+7. **Multi-step tasks**: If a task requires multiple tool calls, continue until truly completed
+{current_task_info}{direct_call_instruction}
 
-⚠️ **Important**: You must explicitly declare after completing each task so the system can track progress and know when to end.
+⚠️ **Important**: You must explicitly declare after completing each task so the system can track progress.
 """
 
         return execution_prompt + task_rules

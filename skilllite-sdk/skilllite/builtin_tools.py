@@ -191,7 +191,7 @@ def _get_all_builtin_tools() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "list_directory",
-                "description": "List files and directories in a given path",
+                "description": "List files and directories in a given path. CAUTION: Only use when you need to find a specific file whose location is unknown. Do NOT use to 'explore' or 'understand the project' before calling skills — call skills directly instead.",
                 "parameters": {
                     "type": "object",
                     "properties": {

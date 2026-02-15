@@ -225,21 +225,20 @@ class SkillRunner:
             tool_guidance = """
 # Tool Calling Guidelines
 
-When calling tools, follow these rules:
+## ⭐ SKILL-FIRST Principle
+When a task specifies a skill to use, call that skill DIRECTLY as your first action.
+Do NOT call list_directory, read_file, or other file operations first to "explore" or "gather context".
+Skills are self-contained — just call them with appropriate parameters.
 
-1. **Sequential Dependencies**: If a task depends on the result of a previous task, you MUST wait for the previous tool call to complete before making the next one. Do NOT use placeholders like `<result_of_xxx>` - always use actual values.
+## Sequential vs Parallel
+1. **Sequential Dependencies**: Wait for previous tool results before calling dependent tools. Do NOT use placeholders.
+2. **Parallel Independence**: Independent tasks can run in parallel in a single turn.
+3. **Always Use Real Values**: Tool parameters must be concrete values, never references to other results.
 
-2. **Parallel Independence**: If multiple tasks are independent of each other, you can call them in parallel in a single turn.
-
-3. **Always Use Real Values**: Tool parameters must be concrete values (numbers, strings, etc.), never references to other tool results.
-
-Example of WRONG approach (don't do this):
-- Task: "Calculate 100+200, then multiply by 3"
-- Wrong: Call calculator(add, 100, 200) AND calculator(multiply, <result>, 3) in same turn
-
-Example of CORRECT approach:
-- Turn 1: Call calculator(add, 100, 200) → get result 300
-- Turn 2: Call calculator(multiply, 300, 3) → get result 900
+## Avoid Unnecessary File Operations
+- Do NOT call list_directory just to "understand the project" — call the required skill directly.
+- Only use read_file when you need specific file content as input for a skill.
+- Only use list_directory when you need to find a file whose location is unknown.
 
 """
             self._system_context = tool_guidance + skill_context
