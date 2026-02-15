@@ -166,12 +166,9 @@ class SkillRunner:
         # Read sandbox security level (from .env or default to 3)
         self.sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3")
         
-        # Merge built-in tools and custom tools
+        # Store user-provided custom tools only (builtins are added in
+        # _prepare_tools_and_executor to keep definitions + executor in sync)
         self.custom_tools = custom_tools or []
-        if enable_builtin_tools:
-            from .builtin_tools import get_builtin_file_tools
-            builtin_tools = get_builtin_file_tools()
-            self.custom_tools = builtin_tools + self.custom_tools
         
         self.custom_tool_executor = custom_tool_executor
         self.use_enhanced_loop = use_enhanced_loop
@@ -255,8 +252,64 @@ Skills are self-contained — just call them with appropriate parameters.
     
     @property
     def tools(self) -> List[Dict[str, Any]]:
-        """Get tool definitions list"""
-        return self.manager.get_tools()
+        """Get tool definitions list (skill tools + builtin tools + user custom tools)."""
+        all_tools = self.manager.get_tools()
+        if self.enable_builtin_tools:
+            from .builtin_tools import get_builtin_file_tools
+            all_tools = all_tools + get_builtin_file_tools()
+        if self.custom_tools:
+            all_tools = all_tools + self.custom_tools
+        return all_tools
+
+    def _prepare_tools_and_executor(
+        self, workspace_root: Path, output_root: Path
+    ) -> tuple:
+        """Build tool definitions and executor together, keeping them in sync.
+
+        Returns:
+            (all_custom_tools, tool_executor) where *all_custom_tools*
+            contains builtin + user custom tool definitions, and
+            *tool_executor* handles execution for all of them.
+        """
+        all_custom_tools: List[Dict[str, Any]] = []
+        tool_executor = self.custom_tool_executor
+
+        if self.enable_builtin_tools:
+            from .builtin_tools import get_builtin_file_tools, create_builtin_tool_executor
+
+            builtin_tool_defs = get_builtin_file_tools()
+            all_custom_tools.extend(builtin_tool_defs)
+
+            # Derive builtin names from actual definitions (no hardcoded set)
+            builtin_names = {
+                t["function"]["name"]
+                for t in builtin_tool_defs
+                if "function" in t and "name" in t["function"]
+            }
+
+            if tool_executor is None:
+                builtin_executor = create_builtin_tool_executor(
+                    run_command_confirmation=self.confirmation_callback,
+                    workspace_root=workspace_root,
+                    output_root=output_root,
+                )
+
+                def combined_executor(tool_input: Dict[str, Any]) -> str:
+                    tool_name = tool_input.get("tool_name")
+                    if tool_name in builtin_names:
+                        return builtin_executor(tool_input)
+                    elif self.custom_tool_executor:
+                        return self.custom_tool_executor(tool_input)
+                    else:
+                        return f"Error: No executor found for tool: {tool_name}"
+
+                tool_executor = combined_executor
+
+        # Append user-provided custom tools
+        if self.custom_tools:
+            all_custom_tools.extend(self.custom_tools)
+
+        return all_custom_tools or None, tool_executor
     
     def run(self, user_message: str, stream: bool = False,
             stream_callback: Optional[Callable[[str], None]] = None) -> str:
@@ -293,29 +346,10 @@ Skills are self-contained — just call them with appropriate parameters.
         output_root.mkdir(parents=True, exist_ok=True)
         os.environ["SKILLLITE_OUTPUT_DIR"] = str(output_root)  # Skills (e.g. xiaohongshu-writer) inherit this
         
-        # Prepare tool executor
-        tool_executor = self.custom_tool_executor
-        if self.enable_builtin_tools and tool_executor is None:
-            # Create a combined executor (uses create_builtin_tool_executor for sandbox support)
-            from .builtin_tools import create_builtin_tool_executor
-
-            builtin_executor = create_builtin_tool_executor(
-                run_command_confirmation=self.confirmation_callback,
-                workspace_root=workspace_root,
-                output_root=output_root,
-            )
-            builtin_names = {"read_file", "write_file", "write_output", "list_directory", "file_exists", "run_command"}
-
-            def combined_executor(tool_input: Dict[str, Any]) -> str:
-                tool_name = tool_input.get("tool_name")
-                if tool_name in builtin_names:
-                    return builtin_executor(tool_input)
-                elif self.custom_tool_executor:
-                    return self.custom_tool_executor(tool_input)
-                else:
-                    return f"Error: No executor found for tool: {tool_name}"
-
-            tool_executor = combined_executor
+        # Build tool definitions + executor together (single source of truth)
+        all_custom_tools, tool_executor = self._prepare_tools_and_executor(
+            workspace_root, output_root
+        )
         
         # Use enhanced AgenticLoop to handle complete conversation flow
         if self.use_enhanced_loop:
@@ -324,7 +358,7 @@ Skills are self-contained — just call them with appropriate parameters.
                 model=self.model,
                 max_iterations=self.max_iterations,
                 max_tool_calls_per_task=self.max_tool_calls_per_task,
-                custom_tools=self.custom_tools if self.custom_tools else None,
+                custom_tools=all_custom_tools,
                 custom_tool_executor=tool_executor,
                 confirmation_callback=self.confirmation_callback
             )
@@ -354,59 +388,82 @@ Skills are self-contained — just call them with appropriate parameters.
     def run_with_details(self, user_message: str) -> Dict[str, Any]:
         """
         Run Skill and return detailed results (including intermediate process).
-        
+
+        Uses the same secure execution path as ``run()`` (enhanced agentic loop
+        with sandbox confirmation), so sandbox_level=3 security checks are
+        **not** bypassed.
+
         Args:
             user_message: User input message
             
         Returns:
-            Dictionary containing complete information
+            Dictionary containing complete information including:
+                - content: Final response text
+                - iterations: Number of LLM round-trips
+                - tool_calls: List of tool call records
+                - final_response: Raw LLM response object
         """
-        messages = []
-        if self.system_context:
-            messages.append({"role": "system", "content": self.system_context})
-        messages.append({"role": "user", "content": user_message})
-        
-        tools = self.tools
-        tool_calls_history = []
-        iterations = 0
-        
-        for _ in range(self.max_iterations):
-            iterations += 1
-            response = self.client.chat.completions.create(
+        # Resolve output dir (same as run())
+        workspace_root = Path(self.skills_dir).resolve().parent
+        from .builtin_tools import resolve_output_dir
+        output_root = resolve_output_dir(workspace_root)
+        output_root.mkdir(parents=True, exist_ok=True)
+        os.environ["SKILLLITE_OUTPUT_DIR"] = str(output_root)
+
+        # Build tool definitions + executor together (same as run())
+        all_custom_tools, tool_executor = self._prepare_tools_and_executor(
+            workspace_root, output_root
+        )
+
+        # Build the same secure agentic loop used by run()
+        if self.use_enhanced_loop:
+            loop = self.manager.create_enhanced_agentic_loop(
+                client=self.client,
                 model=self.model,
-                tools=tools if tools else None,
-                messages=messages
+                max_iterations=self.max_iterations,
+                max_tool_calls_per_task=self.max_tool_calls_per_task,
+                custom_tools=all_custom_tools,
+                custom_tool_executor=tool_executor,
+                confirmation_callback=self.confirmation_callback
             )
-            
-            message = response.choices[0].message
-            
-            if not message.tool_calls:
-                return {
-                    "content": message.content,
-                    "iterations": iterations,
-                    "tool_calls": tool_calls_history,
-                    "final_response": response
-                }
-            
-            # Record tool calls
-            messages.append(message)
-            results = self.manager.handle_tool_calls(response)
-            
-            for tc, result in zip(message.tool_calls, results):
-                tool_calls_history.append({
-                    "name": tc.function.name,
-                    "arguments": tc.function.arguments,
-                    "result": result.content
-                })
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tc.id,
-                    "content": result.content
-                })
-        
+        else:
+            loop = self.manager.create_agentic_loop(
+                client=self.client,
+                model=self.model,
+                system_prompt=self.system_context,
+                max_iterations=self.max_iterations,
+                max_tool_calls_per_task=self.max_tool_calls_per_task,
+                confirmation_callback=self.confirmation_callback
+            )
+
+        response = loop.run(user_message)
+        message = response.choices[0].message
+
+        # Extract tool call history from loop's conversation log
+        tool_calls_history = []
+        if hasattr(loop, 'messages'):
+            for msg in loop.messages:
+                # Collect assistant tool_calls
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        tool_calls_history.append({
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
+                            "result": None  # will be filled below
+                        })
+                # Match tool results back
+                if isinstance(msg, dict) and msg.get("role") == "tool":
+                    tool_call_id = msg.get("tool_call_id")
+                    content = msg.get("content", "")
+                    # Find matching entry (last one with result=None)
+                    for entry in reversed(tool_calls_history):
+                        if entry["result"] is None:
+                            entry["result"] = content
+                            break
+
         return {
-            "content": message.content if message else None,
-            "iterations": iterations,
+            "content": message.content or "",
+            "iterations": getattr(loop, '_iteration_count', 0),
             "tool_calls": tool_calls_history,
             "final_response": response
         }

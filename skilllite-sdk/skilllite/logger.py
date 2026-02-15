@@ -8,7 +8,7 @@ for consistent logging across the entire SkillLite SDK.
 import logging
 import re
 import sys
-from typing import Optional
+from typing import Dict, Optional
 
 # ---------------------------------------------------------------------------
 # ANSI style codes for terminal output
@@ -38,8 +38,8 @@ def step_header(step: int, total: int) -> str:
 # Default logger name
 DEFAULT_LOGGER_NAME = "skilllite"
 
-# Logger instance cache
-_logger_cache: Optional[logging.Logger] = None
+# Logger instance cache — keyed by name so multiple loggers can coexist
+_logger_cache: Dict[str, logging.Logger] = {}
 
 
 def get_logger(name: Optional[str] = None, verbose: bool = True) -> logging.Logger:
@@ -53,13 +53,11 @@ def get_logger(name: Optional[str] = None, verbose: bool = True) -> logging.Logg
     Returns:
         Configured logger instance
     """
-    global _logger_cache
-    
     logger_name = name or DEFAULT_LOGGER_NAME
     
-    # Return cached logger if exists and name matches
-    if _logger_cache is not None and _logger_cache.name == logger_name:
-        return _logger_cache
+    # Return cached logger if exists
+    if logger_name in _logger_cache:
+        return _logger_cache[logger_name]
     
     # Create new logger
     logger = logging.getLogger(logger_name)
@@ -87,8 +85,8 @@ def get_logger(name: Optional[str] = None, verbose: bool = True) -> logging.Logg
         # Prevent propagation to root logger
         logger.propagate = False
     
-    # Update cache
-    _logger_cache = logger
+    # Cache by name
+    _logger_cache[logger_name] = logger
     
     return logger
 
