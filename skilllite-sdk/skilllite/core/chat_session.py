@@ -447,10 +447,8 @@ class ChatSession:
                 )
 
         def _on_plan_generated(task_list: List[Dict[str, Any]]) -> None:
-            """When task plan is generated: write to plan.json, show to user."""
-            plan_text = _write_plan(task_list)
-            if self.verbose and plan_text:
-                print(f"\n📋 任务计划:\n{plan_text}\n")
+            """When task plan is generated: write to plan.json."""
+            _write_plan(task_list)
 
         def _on_plan_updated(task_list: List[Dict[str, Any]]) -> None:
             """When step completes: overwrite plan.json with updated state."""

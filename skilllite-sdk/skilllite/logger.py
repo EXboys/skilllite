@@ -6,8 +6,34 @@ for consistent logging across the entire SkillLite SDK.
 """
 
 import logging
+import re
 import sys
 from typing import Optional
+
+# ---------------------------------------------------------------------------
+# ANSI style codes for terminal output
+# ---------------------------------------------------------------------------
+ANSI_DIM = "\033[2m"
+ANSI_BOLD = "\033[1m"
+ANSI_RESET = "\033[0m"
+ANSI_GREEN = "\033[32m"
+ANSI_YELLOW = "\033[33m"
+ANSI_CYAN = "\033[36m"
+
+_ANSI_ESCAPE_RE = re.compile(r'\033\[[0-9;]*m')
+
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    return _ANSI_ESCAPE_RE.sub('', text)
+
+
+def step_header(step: int, total: int) -> str:
+    """Format a visual step separator/header line."""
+    label = f" Step {step}/{total} "
+    width = 50
+    side = max(1, (width - len(label)) // 2)
+    return "─" * side + label + "─" * side
 
 # Default logger name
 DEFAULT_LOGGER_NAME = "skilllite"

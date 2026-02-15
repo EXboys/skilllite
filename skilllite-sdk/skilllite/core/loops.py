@@ -8,7 +8,7 @@ both OpenAI-compatible APIs and Claude's native API through a single interface.
 import json
 from typing import Any, List, Optional, TYPE_CHECKING, Dict, Callable
 
-from ..logger import get_logger
+from ..logger import get_logger, strip_ansi, step_header, ANSI_DIM, ANSI_RESET
 from ..config.env_config import get_long_text_summarize_threshold, get_tool_result_max_chars
 from ..extensions.long_text import summarize_long_content, truncate_content
 from .task_planner import ApiFormat, TaskPlanner
@@ -199,6 +199,43 @@ class AgenticLoop:
         """Log message if verbose mode is enabled."""
         if self.verbose:
             self._logger.info(message)
+
+    # ---- Formatting helpers for clean log output ----
+
+    @staticmethod
+    def _fmt_tool_args(args_json: str) -> str:
+        """Format tool arguments for compact display."""
+        try:
+            args = json.loads(args_json)
+            if isinstance(args, dict):
+                parts = []
+                for k, v in args.items():
+                    v_str = str(v)
+                    if len(v_str) > 100:
+                        v_str = v_str[:100] + "..."
+                    parts.append(f"{k}={v_str}")
+                return ", ".join(parts)
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return args_json[:200] + ("..." if len(args_json) > 200 else "")
+
+    @staticmethod
+    def _fmt_tool_result(content: str, max_len: int = 300) -> str:
+        """Format tool result for compact one-line display."""
+        content = strip_ansi(content)
+        # Try to extract stdout from JSON envelope
+        try:
+            data = json.loads(content)
+            if isinstance(data, dict) and "stdout" in data:
+                content = data["stdout"]
+                if data.get("stderr"):
+                    content += f" [stderr: {data['stderr']}]"
+        except (json.JSONDecodeError, TypeError):
+            pass
+        content = content.strip().replace('\n', ' ↵ ')
+        if len(content) > max_len:
+            content = content[:max_len] + "..."
+        return content
 
     def _get_bash_tool_skills_context(self) -> str:
         """Build system prompt section with full SKILL.md for all bash-tool skills.
@@ -514,9 +551,8 @@ Based on the documentation, call the tools with correct parameters.
             effective_max = self.max_iterations
 
         for iteration in range(effective_max):
-            self._log(f"\n🔄 Iteration #{iteration + 1}/{effective_max}")
+            self._log(f"\n{step_header(iteration + 1, effective_max)}")
 
-            self._log("⏳ Calling LLM...")
             try:
                 response = self._call_openai(
                     stream_callback,
@@ -548,11 +584,12 @@ Based on the documentation, call the tools with correct parameters.
             message = response.choices[0].message
             finish_reason = response.choices[0].finish_reason
 
-            self._log(f"✅ LLM response completed (finish_reason: {finish_reason})")
+            # Ensure newline after streamed text so logs don't collide
+            if stream_callback and message.content:
+                print()
 
             # No tool calls
             if not message.tool_calls:
-                self._log("📝 LLM did not call any tools")
 
                 if self.enable_task_planning:
                     completed_id = self._planner.check_completion_in_content(message.content)
@@ -571,12 +608,12 @@ Based on the documentation, call the tools with correct parameters.
                         if not completed_id:
                             consecutive_no_tool += 1
                         if consecutive_no_tool >= self._max_no_tool_retries:
-                            self._log(f"⚠️  LLM failed to call tools or make progress after {self._max_no_tool_retries} consecutive attempts, returning current response")
+                            self._log(f"⚠️  LLM failed to make progress after {self._max_no_tool_retries} attempts, stopping")
                             return response
 
                         # Tasks not complete and no tool calls — nudge the LLM
                         # to continue working (mirror Claude-native behaviour).
-                        self._log("⏳ There are still pending tasks, continuing execution...")
+                        self._log(f"  {ANSI_DIM}↳ pending tasks remain, continuing...{ANSI_RESET}")
                         messages.append(self._message_to_dict(message))
 
                         current_task = next(
@@ -613,10 +650,10 @@ Based on the documentation, call the tools with correct parameters.
             consecutive_no_tool = 0  # Reset: LLM is calling tools
             tool_calls_count_current_task += 1
 
-            self._log(f"\n🔧 LLM decided to call {len(message.tool_calls)} tools:")
-            for idx, tc in enumerate(message.tool_calls, 1):
-                self._log(f"   {idx}. {tc.function.name}")
-                self._log(f"      Arguments: {tc.function.arguments}")
+            for tc in message.tool_calls:
+                args_display = self._fmt_tool_args(tc.function.arguments)
+                self._log(f"  🔧 {tc.function.name}")
+                self._log(f"     {ANSI_DIM}{args_display}{ANSI_RESET}")
 
             # Get full SKILL.md content for tools that haven't been documented yet
             skill_docs = self._get_skill_docs_for_tools(message.tool_calls)
@@ -624,7 +661,7 @@ Based on the documentation, call the tools with correct parameters.
             # If we have new skill docs, inject them into the prompt first
             # and ask LLM to re-call with correct parameters
             if skill_docs:
-                self._log(f"\n📖 Injecting Skill documentation into prompt...")
+                self._log(f"  📖 Injecting Skill docs...")
                 messages.append({
                     "role": "system", 
                     "content": skill_docs
@@ -637,17 +674,12 @@ Based on the documentation, call the tools with correct parameters.
             
             messages.append(self._message_to_dict(message))
 
-            # Execute tools using unified execution service
-            self._log(f"\n⚙️  Executing tools...")
-
+            # Execute tools
             if self.custom_tool_handler:
-                # Custom tool handler takes precedence
                 tool_results = self.custom_tool_handler(
                     response, self.manager, allow_network, timeout
                 )
             else:
-                # Use unified execution service with confirmation callback
-                # This handles security scanning, confirmation, and sandbox level management
                 tool_results = self.manager.handle_tool_calls(
                     response,
                     confirmation_callback=self.confirmation_callback or self._interactive_confirmation,
@@ -655,13 +687,10 @@ Based on the documentation, call the tools with correct parameters.
                     timeout=timeout
                 )
 
-            self._log(f"\n📊 Tool execution results:")
-            for idx, (result, tc) in enumerate(zip(tool_results, message.tool_calls), 1):
-                output = result.content
-                if len(output) > 500:
-                    output = output[:500] + "... (truncated)"
-                self._log(f"   {idx}. {tc.function.name}")
-                self._log(f"      Result: {output}")
+            for result, tc in zip(tool_results, message.tool_calls):
+                icon = "❌" if result.is_error else "✅"
+                output = self._fmt_tool_result(result.content)
+                self._log(f"  {icon} {tc.function.name} → {output}")
 
             for result in tool_results:
                 processed = self._process_tool_result_content(result.content)
@@ -795,9 +824,7 @@ Based on the documentation, call the tools with correct parameters.
             effective_max = self.max_iterations
 
         for iteration in range(effective_max):
-            self._log(f"\n🔄 Iteration #{iteration + 1}/{effective_max}")
-
-            self._log("⏳ Calling LLM...")
+            self._log(f"\n{step_header(iteration + 1, effective_max)}")
 
             kwargs = {
                 "model": self.model,
@@ -816,11 +843,13 @@ Based on the documentation, call the tools with correct parameters.
                     self._log(f"⚠️  Context overflow detected (Claude), cannot auto-recover. Use /clear to reset.")
                 raise
 
-            self._log(f"✅ LLM response completed (stop_reason: {response.stop_reason})")
+            # Ensure newline after streamed text so logs don't collide
+            text_content_blocks = [b for b in response.content if hasattr(b, 'text')]
+            if stream_callback and text_content_blocks:
+                print()
 
             # No tool use
             if response.stop_reason != "tool_use":
-                self._log("📝 LLM did not call any tools")
 
                 if self.enable_task_planning:
                     # Extract text content
@@ -844,10 +873,10 @@ Based on the documentation, call the tools with correct parameters.
                         if not completed_id:
                             consecutive_no_tool += 1
                         if consecutive_no_tool >= self._max_no_tool_retries:
-                            self._log(f"⚠️  LLM failed to call tools or make progress after {self._max_no_tool_retries} consecutive attempts, returning current response")
+                            self._log(f"⚠️  LLM failed to make progress after {self._max_no_tool_retries} attempts, stopping")
                             return response
 
-                        self._log("⏳ There are still pending tasks, continuing execution...")
+                        self._log(f"  {ANSI_DIM}↳ pending tasks remain, continuing...{ANSI_RESET}")
                         messages.append({"role": "assistant", "content": response.content})
                         messages.append({"role": "user", "content": "Please continue to complete the remaining tasks."})
                         continue
@@ -858,18 +887,14 @@ Based on the documentation, call the tools with correct parameters.
             consecutive_no_tool = 0
             tool_calls_count_current_task += 1
             tool_use_blocks = [b for b in response.content if hasattr(b, 'type') and b.type == 'tool_use']
-            self._log(f"\n🔧 LLM decided to call {len(tool_use_blocks)} tools:")
-            for idx, block in enumerate(tool_use_blocks, 1):
-                self._log(f"   {idx}. {block.name}")
-                self._log(f"      Arguments: {json.dumps(block.input, ensure_ascii=False)}")
+            for block in tool_use_blocks:
+                args_display = self._fmt_tool_args(json.dumps(block.input, ensure_ascii=False))
+                self._log(f"  🔧 {block.name}")
+                self._log(f"     {ANSI_DIM}{args_display}{ANSI_RESET}")
             
             messages.append({"role": "assistant", "content": response.content})
 
-            # Execute tools using unified execution service
-            self._log(f"\n⚙️  Executing tools...")
-
-            # Use unified execution service with confirmation callback
-            # This handles security scanning, confirmation, and sandbox level management
+            # Execute tools
             tool_results = self.manager.handle_tool_calls_claude_native(
                 response,
                 confirmation_callback=self.confirmation_callback or self._interactive_confirmation,
@@ -877,12 +902,11 @@ Based on the documentation, call the tools with correct parameters.
                 timeout=timeout
             )
 
-            self._log(f"\n📊 Tool execution results:")
-            for idx, result in enumerate(tool_results, 1):
-                output = result.content
-                if len(output) > 500:
-                    output = output[:500] + "... (truncated)"
-                self._log(f"   {idx}. Result: {output}")
+            for idx, result in enumerate(tool_results):
+                icon = "❌" if result.is_error else "✅"
+                output = self._fmt_tool_result(result.content)
+                tool_name = tool_use_blocks[idx].name if idx < len(tool_use_blocks) else "tool"
+                self._log(f"  {icon} {tool_name} → {output}")
 
             # Process long content (summarize or truncate) before adding to context
             processed_results = [

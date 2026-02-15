@@ -346,10 +346,11 @@ Return only JSON, no other content."""
                 })
                 self._log(f"\n💡 Detected skill creation task, automatically adding SKILL.md writing task")
 
-            self._log(f"\n📋 Generated task list ({len(task_list)} tasks):")
+            self._log(f"\n📋 Task plan ({len(task_list)} tasks):")
             for task in task_list:
-                status = "✅" if task["completed"] else "⬜"
-                self._log(f"   {status} [{task['id']}] {task['description']}")
+                status = "✅" if task["completed"] else "○"
+                hint = f" [{task.get('tool_hint', '')}]" if task.get('tool_hint') else ""
+                self._log(f"   {task['id']}. {status} {task['description']}{hint}")
 
             self.task_list = task_list
             return task_list
@@ -368,10 +369,10 @@ Return only JSON, no other content."""
                     break
 
         completed = sum(1 for t in self.task_list if t["completed"])
-        self._log(f"\n📋 Current task progress ({completed}/{len(self.task_list)}):")
+        self._log(f"\n  📋 Progress [{completed}/{len(self.task_list)}]:")
         for task in self.task_list:
-            status = "✅" if task["completed"] else "⬜"
-            self._log(f"   {status} [{task['id']}] {task['description']}")
+            status = "✅" if task["completed"] else "○"
+            self._log(f"     {status} {task['description']}")
 
     def check_all_completed(self) -> bool:
         """Check if all tasks are completed."""

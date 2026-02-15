@@ -277,7 +277,6 @@ Skills are self-contained — just call them with appropriate parameters.
         """
         if self.verbose:
             self._logger.info(f"👤 User: {user_message}")
-            self._logger.info(f"⏳ Calling LLM...")
 
         # Resolve streaming callback
         effective_callback = stream_callback
