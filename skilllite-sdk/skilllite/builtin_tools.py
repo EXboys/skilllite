@@ -19,6 +19,7 @@ import socketserver
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -247,13 +248,13 @@ def _get_all_builtin_tools() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "preview_server",
-                "description": "Start a local HTTP server to preview HTML files in browser. Serves the given directory at http://127.0.0.1:PORT. Use after writing HTML to output/ with write_output. Server runs in background until process exits.",
+                "description": "Start a local HTTP server to preview HTML files in browser. Use after writing HTML with write_output. IMPORTANT: When you want to preview a specific file, pass the FILE PATH (e.g. 'output/my_page.html') — the browser will open that file directly. Passing just a directory (e.g. 'output') opens the directory root which defaults to index.html.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "directory_path": {
                             "type": "string",
-                            "description": "Path relative to workspace (e.g. output, output/preview). If a file path (e.g. output/index.html), serves its parent directory."
+                            "description": "Path to preview. Can be a file (e.g. 'output/report.html') to open that file directly, or a directory (e.g. 'output') to open directory root (defaults to index.html)."
                         },
                         "port": {
                             "type": "integer",
@@ -484,34 +485,118 @@ def _file_exists(file_path: str, workspace_root: Optional[Union[str, Path]] = No
         return f"Path does not exist: {file_path}"
 
 
+# Global state for preview server reuse (shutdown old before starting new)
+_active_preview_server: Optional["socketserver.TCPServer"] = None
+_active_preview_port: Optional[int] = None
+_active_preview_dir: Optional[str] = None
+
+
 def _start_preview_server(
     directory_path: str,
     port: int = 8765,
     open_browser: bool = True,
     workspace_root: Optional[Union[str, Path]] = None,
 ) -> str:
-    """Start a local HTTP server to preview HTML. Binds to 127.0.0.1 only. Runs in daemon thread."""
+    """Start a local HTTP server to preview HTML. Binds to 127.0.0.1 only. Runs in daemon thread.
+
+    If a preview server is already running:
+      - Same directory → reuse the existing server (just re-open browser).
+      - Different directory → shut down the old server, start a new one.
+
+    Sends ``Cache-Control: no-store`` headers so the browser always fetches
+    the latest version of files.
+    """
+    global _active_preview_server, _active_preview_port, _active_preview_dir
+
     path, err = _resolve_within_workspace(directory_path, workspace_root)
     if err:
         return f"Error: {err}"
     if not path.exists():
         return f"Error: Path not found: {directory_path}"
-    serve_dir = path.parent if path.is_file() else path
+
+    # If a file path was given, serve its parent directory and remember the
+    # filename so the browser opens the correct URL (not just index.html).
+    target_filename: Optional[str] = None
+    if path.is_file():
+        target_filename = path.name
+        serve_dir = path.parent
+    else:
+        serve_dir = path
+    serve_dir_str = str(serve_dir)
 
     port = int(port) if port else 8765
-    server = None
-    used_port = None
 
-    # Handler that serves from serve_dir (Python 3.9+ has directory param; else chdir in thread)
+    def _build_url(p: int, cache_bust: bool = False) -> str:
+        """Build URL with optional cache-busting query param.
+
+        A ``?_t=<timestamp>`` suffix forces the browser to treat the URL as
+        new, so it opens a fresh tab / navigates instead of just focusing an
+        existing tab that still shows stale content.
+        """
+        base = f"http://127.0.0.1:{p}"
+        if target_filename:
+            base = f"{base}/{target_filename}"
+        if cache_bust:
+            base = f"{base}?_t={int(time.time() * 1000)}"
+        return base
+
+    # If a server is already running for the same directory, reuse it
+    if (
+        _active_preview_server is not None
+        and _active_preview_dir == serve_dir_str
+        and _active_preview_port is not None
+    ):
+        # Use cache-busting URL so the browser opens a fresh page instead of
+        # focusing an old tab with stale content.
+        url = _build_url(_active_preview_port, cache_bust=True)
+        display_url = _build_url(_active_preview_port)
+        if open_browser:
+            try:
+                import webbrowser
+                webbrowser.open(url)
+            except Exception:
+                pass
+        return (
+            f"Preview server already running at {display_url}\n\n"
+            f"Open in browser: {display_url}\n"
+            f"Serving directory: {serve_dir}\n"
+            f"(Browser opened with fresh page. Refresh if needed.)"
+        )
+
+    # Shut down previous server if it was serving a different directory
+    if _active_preview_server is not None:
+        try:
+            _active_preview_server.shutdown()
+        except Exception:
+            pass
+        _active_preview_server = None
+        _active_preview_port = None
+        _active_preview_dir = None
+
+    # Handler that serves from serve_dir with no-cache headers
     class _Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             if sys.version_info >= (3, 9):
-                kwargs["directory"] = str(serve_dir)
+                kwargs["directory"] = serve_dir_str
             super().__init__(*args, **kwargs)
 
+        def end_headers(self):
+            # Prevent browser from caching, so refreshing always gives latest
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
+            super().end_headers()
+
+        def log_message(self, format, *args):
+            # Silence request logs to avoid cluttering the terminal
+            pass
+
+    server = None
+    used_port = None
     for p in range(port, min(port + 20, 65536)):
         try:
-            server = socketserver.TCPServer(("127.0.0.1", p), _Handler)
+            srv = socketserver.TCPServer(("127.0.0.1", p), _Handler)
+            server = srv
             used_port = p
             break
         except OSError:
@@ -519,6 +604,9 @@ def _start_preview_server(
 
     if server is None or used_port is None:
         return f"Error: Could not bind to port {port} (tried {port}-{port + 19})"
+
+    # Allow port reuse so that restarting quickly doesn't fail
+    server.allow_reuse_address = True
 
     def serve():
         if sys.version_info < (3, 9):
@@ -528,7 +616,12 @@ def _start_preview_server(
     t = threading.Thread(target=serve, daemon=True)
     t.start()
 
-    url = f"http://127.0.0.1:{used_port}"
+    # Track active server
+    _active_preview_server = server
+    _active_preview_port = used_port
+    _active_preview_dir = serve_dir_str
+
+    url = _build_url(used_port)
     if open_browser:
         try:
             import webbrowser
