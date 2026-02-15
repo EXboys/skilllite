@@ -16,6 +16,7 @@ from .init import cmd_init
 from .add import cmd_add
 from .repo import cmd_list, cmd_remove
 from .chat import cmd_chat
+from .quickstart import cmd_quickstart
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -26,6 +27,7 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  skilllite quickstart       Zero-config quickstart (recommended for first use!)
   skilllite install          Install the sandbox binary
   skilllite install --force  Force reinstall
   skilllite status           Check installation status
@@ -49,6 +51,25 @@ For more information, visit: https://github.com/skilllite/skilllite
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # quickstart command (recommended for first use)
+    quickstart_parser = subparsers.add_parser(
+        "quickstart",
+        help="Zero-config quickstart: auto-detect LLM, install binary, launch chat"
+    )
+    quickstart_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default=".skills",
+        help="Skills directory path (default: .skills)"
+    )
+    quickstart_parser.add_argument(
+        "--skills-repo",
+        dest="skills_repo",
+        default=None,
+        help="Remote skills repo to download from (e.g. owner/repo, default: auto)"
+    )
+    quickstart_parser.set_defaults(func=cmd_quickstart)
 
     # install command
     install_parser = subparsers.add_parser(
