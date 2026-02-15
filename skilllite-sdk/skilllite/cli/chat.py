@@ -128,8 +128,24 @@ def cmd_chat(args: argparse.Namespace) -> int:
                 continue
 
             try:
-                reply = session.run_turn(user_input)
-                print(f"\nAssistant: {reply}\n")
+                # Streaming output: print chunks in real-time
+                _streamed = False
+
+                def _stream_print(chunk: str) -> None:
+                    nonlocal _streamed
+                    if not _streamed:
+                        print("\nAssistant: ", end="", flush=True)
+                        _streamed = True
+                    print(chunk, end="", flush=True)
+
+                reply = session.run_turn(user_input, stream_callback=_stream_print)
+
+                if _streamed:
+                    # Streaming already printed content; just add trailing newlines
+                    print("\n")
+                else:
+                    # Fallback: no streaming happened (e.g. empty response)
+                    print(f"\nAssistant: {reply}\n")
             except Exception as e:
                 if "Method not found" in str(e):
                     print("\nError: Chat feature not enabled in skillbox.")

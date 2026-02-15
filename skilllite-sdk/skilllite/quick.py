@@ -14,6 +14,7 @@ Example:
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -257,13 +258,19 @@ Skills are self-contained — just call them with appropriate parameters.
         """Get tool definitions list"""
         return self.manager.get_tools()
     
-    def run(self, user_message: str, stream: bool = False) -> str:
+    def run(self, user_message: str, stream: bool = False,
+            stream_callback: Optional[Callable[[str], None]] = None) -> str:
         """
         Run Skill and return final result.
         
         Args:
             user_message: User input message
-            stream: Whether to use streaming output (not supported yet)
+            stream: Whether to use streaming output. When True and no
+                *stream_callback* is provided, text chunks are printed to
+                stdout in real-time.
+            stream_callback: Optional callback for streaming text output.
+                Signature: ``callback(chunk: str) -> None``.
+                When provided, *stream* is implicitly True.
             
         Returns:
             Final response content from LLM
@@ -271,6 +278,14 @@ Skills are self-contained — just call them with appropriate parameters.
         if self.verbose:
             self._logger.info(f"👤 User: {user_message}")
             self._logger.info(f"⏳ Calling LLM...")
+
+        # Resolve streaming callback
+        effective_callback = stream_callback
+        if effective_callback is None and stream:
+            def _default_stream(chunk: str) -> None:
+                sys.stdout.write(chunk)
+                sys.stdout.flush()
+            effective_callback = _default_stream
         
         # Resolve output dir (SKILLLITE_OUTPUT_DIR or workspace_root/output) and ensure it exists
         workspace_root = Path(self.skills_dir).resolve().parent
@@ -328,6 +343,7 @@ Skills are self-contained — just call them with appropriate parameters.
         response = loop.run(
             user_message,
             timeout=self.execution_timeout,
+            stream_callback=effective_callback,
         )
         result = response.choices[0].message.content or ""
         

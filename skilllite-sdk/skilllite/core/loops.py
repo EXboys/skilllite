@@ -24,6 +24,59 @@ TOOL_RESULT_MAX_CHARS = get_tool_result_max_chars()
 TOOL_RESULT_RECOVERY_MAX_CHARS = 3000
 
 
+# ---------------------------------------------------------------------------
+# Streaming support: lightweight mock objects that mimic OpenAI SDK types
+# so accumulated streaming chunks can be consumed by the same code path.
+# ---------------------------------------------------------------------------
+
+class _MockFunction:
+    """Mock for ChatCompletionMessageToolCall.function."""
+    __slots__ = ('name', 'arguments')
+
+    def __init__(self, name: str, arguments: str):
+        self.name = name
+        self.arguments = arguments
+
+
+class _MockToolCall:
+    """Mock for ChatCompletionMessageToolCall."""
+    __slots__ = ('id', 'type', 'function', 'index')
+
+    def __init__(self, id: str, function: "_MockFunction"):
+        self.id = id
+        self.type = "function"
+        self.function = function
+        self.index = 0
+
+
+class _MockMessage:
+    """Mock for ChatCompletionMessage."""
+    __slots__ = ('role', 'content', 'tool_calls')
+
+    def __init__(self, role: str = "assistant", content: Optional[str] = None,
+                 tool_calls: Optional[list] = None):
+        self.role = role
+        self.content = content
+        self.tool_calls = tool_calls
+
+
+class _MockChoice:
+    """Mock for Choice."""
+    __slots__ = ('message', 'finish_reason')
+
+    def __init__(self, message: "_MockMessage", finish_reason: str):
+        self.message = message
+        self.finish_reason = finish_reason
+
+
+class _MockResponse:
+    """Mock for ChatCompletion."""
+    __slots__ = ('choices',)
+
+    def __init__(self, choices: list):
+        self.choices = choices
+
+
 def _is_context_overflow_error(exc: Exception) -> bool:
     """Check if exception is due to context length overflow."""
     msg = str(exc).lower()
@@ -180,6 +233,129 @@ class AgenticLoop:
 
     # Task planning is delegated to self._planner (TaskPlanner)
 
+    # ==================== Streaming helpers ====================
+
+    @staticmethod
+    def _message_to_dict(message: Any) -> Dict[str, Any]:
+        """Convert a ChatCompletionMessage (or mock) to a plain dict.
+
+        This is safe for both real SDK objects and _MockMessage instances,
+        and produces a dict that the OpenAI SDK accepts in the messages list.
+        """
+        if isinstance(message, dict):
+            return message
+        d: Dict[str, Any] = {
+            "role": getattr(message, "role", "assistant"),
+            "content": message.content,
+        }
+        if message.tool_calls:
+            d["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in message.tool_calls
+            ]
+        return d
+
+    def _call_openai(
+        self,
+        stream_callback: Optional[Callable[[str], None]],
+        **api_kwargs: Any,
+    ) -> Any:
+        """Call OpenAI-compatible API. Streams text to *stream_callback* when provided.
+
+        All keyword arguments are forwarded directly to
+        ``client.chat.completions.create``.  Returns a response object
+        (real ``ChatCompletion`` or ``_MockResponse``) whose interface is
+        identical for downstream code.
+        """
+        if stream_callback:
+            api_kwargs["stream"] = True
+            stream_iter = self.client.chat.completions.create(**api_kwargs)
+            return self._accumulate_openai_stream(stream_iter, stream_callback)
+        api_kwargs.pop("stream", None)
+        return self.client.chat.completions.create(**api_kwargs)
+
+    @staticmethod
+    def _accumulate_openai_stream(stream, stream_callback: Callable[[str], None]) -> "_MockResponse":
+        """Iterate over a streaming response, forward text chunks, return accumulated mock."""
+        content_parts: List[str] = []
+        tool_calls_acc: Dict[int, Dict[str, str]] = {}
+        finish_reason: Optional[str] = None
+
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            delta = choice.delta
+
+            if choice.finish_reason:
+                finish_reason = choice.finish_reason
+
+            # --- text content ---
+            if hasattr(delta, "content") and delta.content:
+                content_parts.append(delta.content)
+                stream_callback(delta.content)
+
+            # --- tool calls (accumulated across chunks) ---
+            if hasattr(delta, "tool_calls") and delta.tool_calls:
+                for tc_delta in delta.tool_calls:
+                    idx = tc_delta.index
+                    if idx not in tool_calls_acc:
+                        tool_calls_acc[idx] = {"id": "", "name": "", "arguments": ""}
+                    if tc_delta.id:
+                        tool_calls_acc[idx]["id"] = tc_delta.id
+                    if tc_delta.function:
+                        if tc_delta.function.name:
+                            tool_calls_acc[idx]["name"] += tc_delta.function.name
+                        if tc_delta.function.arguments:
+                            tool_calls_acc[idx]["arguments"] += tc_delta.function.arguments
+
+        content = "".join(content_parts) if content_parts else None
+
+        mock_tcs: Optional[List[_MockToolCall]] = None
+        if tool_calls_acc:
+            mock_tcs = [
+                _MockToolCall(
+                    id=tool_calls_acc[i]["id"],
+                    function=_MockFunction(
+                        name=tool_calls_acc[i]["name"],
+                        arguments=tool_calls_acc[i]["arguments"],
+                    ),
+                )
+                for i in sorted(tool_calls_acc.keys())
+            ]
+
+        msg = _MockMessage(content=content, tool_calls=mock_tcs)
+        ch = _MockChoice(message=msg, finish_reason=finish_reason or "stop")
+        return _MockResponse(choices=[ch])
+
+    def _call_claude(
+        self,
+        stream_callback: Optional[Callable[[str], None]],
+        **api_kwargs: Any,
+    ) -> Any:
+        """Call Claude native API. Streams text to *stream_callback* when provided.
+
+        Uses the Anthropic SDK ``messages.stream()`` context manager which
+        yields the full ``Message`` object via ``get_final_message()``, so
+        no mock is needed.
+        """
+        if stream_callback:
+            try:
+                with self.client.messages.stream(**api_kwargs) as stream_obj:
+                    for text in stream_obj.text_stream:
+                        stream_callback(text)
+                    return stream_obj.get_final_message()
+            except AttributeError:
+                # Fallback: older SDK without streaming support
+                return self.client.messages.create(**api_kwargs)
+        return self.client.messages.create(**api_kwargs)
 
     def _get_skill_docs_for_tools(self, tool_calls: List[Any]) -> Optional[str]:
         """
@@ -266,6 +442,7 @@ Based on the documentation, call the tools with correct parameters.
         allow_network: Optional[bool] = None,
         timeout: Optional[int] = None,
         initial_messages: Optional[List[Dict[str, Any]]] = None,
+        stream_callback: Optional[Callable[[str], None]] = None,
     ) -> Any:
         """Run loop using OpenAI-compatible API."""
         messages = []
@@ -302,7 +479,8 @@ Based on the documentation, call the tools with correct parameters.
 
             self._log("⏳ Calling LLM...")
             try:
-                response = self.client.chat.completions.create(
+                response = self._call_openai(
+                    stream_callback,
                     model=self.model,
                     messages=messages,
                     tools=tools if tools else None,
@@ -313,7 +491,8 @@ Based on the documentation, call the tools with correct parameters.
                     self._log(f"⚠️  Context overflow detected, attempting recovery...")
                     _truncate_tool_messages_in_place(messages, TOOL_RESULT_RECOVERY_MAX_CHARS)
                     try:
-                        response = self.client.chat.completions.create(
+                        response = self._call_openai(
+                            stream_callback,
                             model=self.model,
                             messages=messages,
                             tools=tools if tools else None,
@@ -359,7 +538,7 @@ Based on the documentation, call the tools with correct parameters.
                         # Tasks not complete and no tool calls — nudge the LLM
                         # to continue working (mirror Claude-native behaviour).
                         self._log("⏳ There are still pending tasks, continuing execution...")
-                        messages.append(message)
+                        messages.append(self._message_to_dict(message))
 
                         current_task = next(
                             (t for t in self._planner.task_list if not t["completed"]),
@@ -417,7 +596,7 @@ Based on the documentation, call the tools with correct parameters.
                 })
                 continue
             
-            messages.append(message)
+            messages.append(self._message_to_dict(message))
 
             # Execute tools using unified execution service
             self._log(f"\n⚙️  Executing tools...")
@@ -480,7 +659,8 @@ Based on the documentation, call the tools with correct parameters.
                 if self._planner.check_all_completed():
                     self._log("🎯 All tasks completed, ending iteration")
                     try:
-                        final_response = self.client.chat.completions.create(
+                        final_response = self._call_openai(
+                            stream_callback,
                             model=self.model, messages=messages, tools=None
                         )
                     except Exception as e:
@@ -488,7 +668,8 @@ Based on the documentation, call the tools with correct parameters.
                             self._log(f"⚠️  Context overflow on final response, attempting recovery...")
                             _truncate_tool_messages_in_place(messages, TOOL_RESULT_RECOVERY_MAX_CHARS)
                             try:
-                                final_response = self.client.chat.completions.create(
+                                final_response = self._call_openai(
+                                    stream_callback,
                                     model=self.model, messages=messages, tools=None
                                 )
                             except Exception as retry_e:
@@ -532,6 +713,7 @@ Based on the documentation, call the tools with correct parameters.
         allow_network: Optional[bool] = None,
         timeout: Optional[int] = None,
         initial_messages: Optional[List[Dict[str, Any]]] = None,
+        stream_callback: Optional[Callable[[str], None]] = None,
     ) -> Any:
         """Run loop using Claude's native API."""
         messages: List[Dict[str, Any]] = []
@@ -583,7 +765,7 @@ Based on the documentation, call the tools with correct parameters.
                 kwargs["system"] = system
 
             try:
-                response = self.client.messages.create(**kwargs)
+                response = self._call_claude(stream_callback, **kwargs)
             except Exception as e:
                 if _is_context_overflow_error(e):
                     self._log(f"⚠️  Context overflow detected (Claude), cannot auto-recover. Use /clear to reset.")
@@ -700,7 +882,8 @@ Based on the documentation, call the tools with correct parameters.
                 if self._planner.check_all_completed():
                     self._log("🎯 All tasks completed, ending iteration")
                     try:
-                        final_response = self.client.messages.create(
+                        final_response = self._call_claude(
+                            stream_callback,
                             model=self.model,
                             max_tokens=self.extra_kwargs.get("max_tokens", 4096),
                             system=system if system else None,
@@ -726,6 +909,7 @@ Based on the documentation, call the tools with correct parameters.
         conversation_context: Optional[str] = None,
         on_plan_generated: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
         on_plan_updated: Optional[Callable[[List[Dict[str, Any]]], None]] = None,
+        stream_callback: Optional[Callable[[str], None]] = None,
     ) -> Any:
         """
         Run the agentic loop until completion.
@@ -738,12 +922,18 @@ Based on the documentation, call the tools with correct parameters.
             conversation_context: Optional recent conversation summary for planner (for "继续" etc.)
             on_plan_generated: Optional callback when task plan is generated (task_list)
             on_plan_updated: Optional callback when task list is updated (e.g. step completed)
+            stream_callback: Optional callback for streaming text output.
+                When provided, LLM text responses are forwarded chunk-by-chunk
+                via ``stream_callback(chunk: str)``.  Internal calls (task
+                planning, compaction) remain non-streaming so that complete
+                content is available for JSON parsing / decision logic.
 
         Returns:
             The final LLM response
         """
         self._on_plan_updated = on_plan_updated
         # Generate task list if enabled (every turn, so user always sees plan when tasks are needed)
+        # NOTE: Task planning LLM call remains non-streaming (needs complete JSON for parsing).
         if self.enable_task_planning:
             self._planner.generate_task_list(user_message, self.manager, conversation_context=conversation_context)
 
@@ -758,9 +948,9 @@ Based on the documentation, call the tools with correct parameters.
 
         # Dispatch to appropriate implementation
         if self.api_format == ApiFormat.OPENAI:
-            return self._run_openai(user_message, allow_network, timeout, initial_messages)
+            return self._run_openai(user_message, allow_network, timeout, initial_messages, stream_callback)
         else:
-            return self._run_claude_native(user_message, allow_network, timeout, initial_messages)
+            return self._run_claude_native(user_message, allow_network, timeout, initial_messages, stream_callback)
 
 
 # Backward compatibility alias

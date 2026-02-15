@@ -368,7 +368,8 @@ class ChatSession:
 
         return registry.get_tool_definitions(), combined_executor
 
-    def run_turn(self, user_message: str) -> str:
+    def run_turn(self, user_message: str,
+                 stream_callback: Optional[Callable[[str], None]] = None) -> str:
         """
         Run one turn of conversation.
 
@@ -377,6 +378,13 @@ class ChatSession:
         3. Search memory for context
         4. Build messages and run AgenticLoop
         5. Append user + assistant messages to transcript
+
+        Args:
+            user_message: The user's input text.
+            stream_callback: Optional callback for streaming LLM text output.
+                When provided, text chunks are forwarded in real-time via
+                ``stream_callback(chunk)``.  Internal calls (compaction,
+                task planning) remain non-streaming.
 
         Returns:
             Assistant response text
@@ -473,6 +481,7 @@ class ChatSession:
             timeout=None,
             on_plan_generated=_on_plan_generated,
             on_plan_updated=_on_plan_updated,
+            stream_callback=stream_callback,
         )
 
         content = ""
