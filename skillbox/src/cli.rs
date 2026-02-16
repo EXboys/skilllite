@@ -216,4 +216,139 @@ pub enum Commands {
         #[arg(long)]
         no_plan: bool,
     },
+
+    // ─── Phase 3: CLI Migration Commands (flat, no nesting) ────────────
+
+    /// Add skills from a remote repository or local path
+    ///
+    /// Examples:
+    ///   skillbox add owner/repo
+    ///   skillbox add https://github.com/owner/repo
+    ///   skillbox add ./local/path
+    Add {
+        /// Skill source: owner/repo, GitHub URL, git URL, or local path
+        #[arg(value_name = "SOURCE")]
+        source: String,
+
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+
+        /// Force overwrite existing skills
+        #[arg(long, short)]
+        force: bool,
+
+        /// List available skills without installing
+        #[arg(long, short)]
+        list: bool,
+    },
+
+    /// Remove an installed skill
+    Remove {
+        /// Name of the skill to remove
+        #[arg(value_name = "SKILL_NAME")]
+        skill_name: String,
+
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+
+        /// Skip confirmation prompt
+        #[arg(long, short)]
+        force: bool,
+    },
+
+    /// List all installed skills
+    #[command(name = "list", alias = "ls")]
+    List {
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Show detailed information about a skill
+    Show {
+        /// Name of the skill to show
+        #[arg(value_name = "SKILL_NAME")]
+        skill_name: String,
+
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Initialize Cursor IDE integration (.cursor/mcp.json + rules)
+    #[command(name = "init-cursor")]
+    InitCursor {
+        /// Project directory (default: current directory)
+        #[arg(long, short = 'p')]
+        project_dir: Option<String>,
+
+        /// Skills directory path (default: ./.skills)
+        #[arg(long, short = 's', default_value = "./.skills")]
+        skills_dir: String,
+
+        /// Install globally to ~/.cursor/mcp.json
+        #[arg(long, short = 'g')]
+        global: bool,
+
+        /// Force overwrite existing config
+        #[arg(long, short)]
+        force: bool,
+    },
+
+    /// Initialize OpenCode integration (opencode.json + SKILL.md)
+    #[command(name = "init-opencode")]
+    InitOpencode {
+        /// Project directory (default: current directory)
+        #[arg(long, short = 'p')]
+        project_dir: Option<String>,
+
+        /// Skills directory path (default: ./.skills)
+        #[arg(long, short = 's', default_value = "./.skills")]
+        skills_dir: String,
+
+        /// Force overwrite existing config
+        #[arg(long, short)]
+        force: bool,
+    },
+
+    /// Clean cached virtual environments
+    #[command(name = "clean-env")]
+    CleanEnv {
+        /// Dry run — show what would be removed without deleting
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Force removal without confirmation
+        #[arg(long, short)]
+        force: bool,
+    },
+
+    /// Reindex skills — rescan skills directory and rebuild metadata cache
+    Reindex {
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+
+        /// Verbose output
+        #[arg(long, short)]
+        verbose: bool,
+    },
+
+    /// Run agent_chat RPC server over stdio (JSON-Lines event stream)
+    ///
+    /// Used by Python/TypeScript SDKs to call the Rust agent engine.
+    /// Reads JSON-Lines requests from stdin, streams events to stdout.
+    #[cfg(feature = "agent")]
+    #[command(name = "agent-rpc")]
+    AgentRpc,
 }

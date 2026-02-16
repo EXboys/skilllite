@@ -431,14 +431,63 @@ async fn run_with_task_planning(
             messages.push(ChatMessage::assistant(content));
         }
 
-        // ── No tool calls: check plan progress, nudge if needed ─────────
-        // Matches Python SDK lines 592-645.
+        // ── No tool calls: anti-hallucination + nudge ─────────────────────
+        //
+        // Anti-hallucination guard: on the FIRST iteration (iterations == 1),
+        // if the LLM returns text-only (no tool calls) and hasn't executed
+        // anything yet (total_tool_calls == 0), this is the classic
+        // "plan → instant completion" hallucination.  We pop the message
+        // and force a nudge so the LLM actually executes.
+        //
+        // After the first iteration (iterations > 1 OR total_tool_calls > 0),
+        // text-based completion is accepted normally — the LLM has had at
+        // least one work iteration and may legitimately declare completion.
         let has_tool_calls = tool_calls
             .as_ref()
             .map_or(false, |tc| !tc.is_empty());
 
         if !has_tool_calls {
-            // Check if tasks were completed (text-based, per plan)
+            // ── First-iteration hallucination guard ──────────────────────
+            // Plan was JUST generated.  The LLM must go through at least
+            // one execution iteration before we accept any completion claim.
+            if iterations == 1 && total_tool_calls == 0 {
+                // Pop the hallucinated message to keep history clean
+                if let Some(last) = messages.last() {
+                    if last.role == "assistant" {
+                        messages.pop();
+                    }
+                }
+                tracing::info!(
+                    "Anti-hallucination: rejected first-iteration text-only response \
+                     (plan just generated, no execution yet)"
+                );
+                consecutive_no_tool += 1;
+
+                if consecutive_no_tool >= max_no_tool_retries {
+                    tracing::warn!(
+                        "LLM failed to start execution after {} attempts, stopping",
+                        max_no_tool_retries
+                    );
+                    break;
+                }
+
+                // Send a strong nudge forcing actual execution
+                if let Some(nudge) = planner.build_nudge_message() {
+                    messages.push(ChatMessage::user(&format!(
+                        "CRITICAL: You just described what you would do but did NOT \
+                         actually execute anything. The task plan has been generated — \
+                         now you must EXECUTE each task step by step. Call the required \
+                         tools NOW.\n\n{}",
+                        nudge
+                    )));
+                    continue;
+                }
+                break;
+            }
+
+            // ── Normal completion check (post first iteration) ──────────
+            // LLM has been through at least one work iteration — accept
+            // text-based "Task X completed" claims normally.
             let mut made_progress = false;
             if let Some(ref content) = assistant_content {
                 let completed_ids = planner.check_completion_in_content(content);
@@ -478,9 +527,7 @@ async fn run_with_task_planning(
                 break;
             }
 
-            // If progress was made (some tasks completed), skip the nudge —
-            // the task focus message at the end of the loop will guide the LLM
-            // to the next task without risking redundant re-execution.
+            // If progress was made (some tasks completed), skip the nudge
             if made_progress {
                 continue;
             }
@@ -495,7 +542,7 @@ async fn run_with_task_planning(
                 continue;
             }
 
-            // No nudge available (shouldn't happen), emit and break
+            // No nudge available, emit and break
             if let Some(ref content) = assistant_content {
                 event_sink.on_text(content);
             }

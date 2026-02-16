@@ -1,4 +1,5 @@
 mod cli;
+mod commands;
 mod config;
 mod env;
 mod observability;
@@ -171,6 +172,37 @@ fn main() -> Result<()> {
                 plan,
                 no_plan,
             )?;
+        }
+
+        // ─── Phase 3: CLI Migration Commands (flat) ─────────────────────
+
+        Commands::Add { source, skills_dir, force, list } => {
+            commands::skill::cmd_add(&source, &skills_dir, force, list)?;
+        }
+        Commands::Remove { skill_name, skills_dir, force } => {
+            commands::skill::cmd_remove(&skill_name, &skills_dir, force)?;
+        }
+        Commands::List { skills_dir, json } => {
+            commands::skill::cmd_list(&skills_dir, json)?;
+        }
+        Commands::Show { skill_name, skills_dir, json } => {
+            commands::skill::cmd_show(&skill_name, &skills_dir, json)?;
+        }
+        Commands::InitCursor { project_dir, skills_dir, global, force } => {
+            commands::ide::cmd_cursor(project_dir.as_deref(), &skills_dir, global, force)?;
+        }
+        Commands::InitOpencode { project_dir, skills_dir, force } => {
+            commands::ide::cmd_opencode(project_dir.as_deref(), &skills_dir, force)?;
+        }
+        Commands::CleanEnv { dry_run, force } => {
+            commands::env::cmd_clean(dry_run, force)?;
+        }
+        Commands::Reindex { skills_dir, verbose } => {
+            commands::reindex::cmd_reindex(&skills_dir, verbose)?;
+        }
+        #[cfg(feature = "agent")]
+        Commands::AgentRpc => {
+            agent::rpc::serve_agent_rpc()?;
         }
     }
 

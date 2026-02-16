@@ -466,6 +466,16 @@ These are auxiliary tools. Only use them when the task genuinely requires file o
 
 - After completing each task, explicitly declare: "Task X completed"
 - Give a complete summary at the end
+
+## ANTI-HALLUCINATION — ABSOLUTE RULE
+
+**You MUST actually EXECUTE each task before declaring "Task X completed".**
+
+- Execute tasks ONE BY ONE in order. Do NOT skip ahead.
+- Your FIRST response after seeing the task plan must be an ACTION (tool call or actual work), NOT a completion summary.
+- NEVER declare multiple tasks completed in your first response — execute them step by step.
+- If a task requires a tool (e.g. agent-browser, calculator), call it FIRST, get the result, THEN declare completed.
+- If a task is pure analysis/text, produce the actual output FIRST, THEN declare completed.
 "#
         )
     }
@@ -525,8 +535,10 @@ These are auxiliary tools. Only use them when the task genuinely requires file o
              5. **Sequential progression**: Only start next task after current task is completed\n\
              6. **Avoid unnecessary exploration**: Do NOT call list_directory or read_file unless the task explicitly requires it\n\
              7. **Multi-step tasks**: If a task requires multiple tool calls, continue until truly completed\n\
+             8. **🚫 EXECUTE BEFORE COMPLETING**: Your first response after seeing the plan must be actual execution (tool calls or real work), NOT a completion summary. The system will REJECT instant-completion claims.\n\
              {}{}\n\n\
-             ⚠️ **Important**: You must explicitly declare after completing each task so the system can track progress.",
+             ⚠️ **Important**: You must explicitly declare after completing each task so the system can track progress. \
+             The system enforces: completion claims without actual tool calls will be REJECTED and you will be asked to retry.",
             execution_prompt,
             task_list_json,
             current_task_info,
@@ -586,6 +598,7 @@ These are auxiliary tools. Only use them when the task genuinely requires file o
     pub fn current_task(&self) -> Option<&Task> {
         self.task_list.iter().find(|t| !t.completed)
     }
+
 
     /// Build a nudge message to push the LLM to continue working on tasks.
     /// Ported from Python auto-nudge logic in `_run_openai`.
