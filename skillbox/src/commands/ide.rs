@@ -42,8 +42,33 @@ fn get_available_skills(skills_dir: &Path) -> Vec<(String, String)> {
 
 /// Detect the best command to start the MCP server.
 /// Returns (command_args, description).
+///
+/// Priority:
+///   1. `skillbox mcp-serve` (Rust native — fastest, no Python needed)
+///   2. `uvx skilllite mcp` (Python SDK via uvx)
+///   3. `skilllite mcp` (Python SDK in PATH)
+///   4. `python3 -m skilllite.mcp.server` (fallback)
 fn detect_best_mcp_command() -> (Vec<String>, String) {
-    // Check if uvx is available
+    // Priority 1: skillbox native MCP server (Rust)
+    if which("skillbox") {
+        return (
+            vec!["skillbox".into(), "mcp".into()],
+            "skillbox (Rust native MCP)".into(),
+        );
+    }
+
+    // Also check current binary path as fallback for skillbox
+    if let Ok(exe) = std::env::current_exe() {
+        if exe.exists() {
+            let exe_str = exe.to_string_lossy().to_string();
+            return (
+                vec![exe_str, "mcp".into()],
+                "skillbox (current binary)".into(),
+            );
+        }
+    }
+
+    // Priority 2: uvx (auto-managed Python)
     if which("uvx") {
         return (
             vec!["uvx".into(), "skilllite".into(), "mcp".into()],
@@ -51,7 +76,7 @@ fn detect_best_mcp_command() -> (Vec<String>, String) {
         );
     }
 
-    // Check if skilllite command is directly available in PATH
+    // Priority 3: skilllite command in PATH
     if which("skilllite") {
         return (
             vec!["skilllite".into(), "mcp".into()],
@@ -59,7 +84,7 @@ fn detect_best_mcp_command() -> (Vec<String>, String) {
         );
     }
 
-    // Check if python3 has skilllite installed
+    // Priority 4: python3 with skilllite installed
     if which("python3") {
         if let Ok(output) = Command::new("python3")
             .args(["-c", "import skilllite; print('ok')"])

@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod config;
 mod env;
+mod mcp;
 mod observability;
 // mod protocol;
 mod sandbox;
@@ -210,6 +211,9 @@ fn main() -> Result<()> {
         #[cfg(feature = "agent")]
         Commands::AgentRpc => {
             agent::rpc::serve_agent_rpc()?;
+        }
+        Commands::Mcp { skills_dir } => {
+            mcp::serve_mcp_stdio(&skills_dir)?;
         }
     }
 

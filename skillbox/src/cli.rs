@@ -378,4 +378,21 @@ pub enum Commands {
     #[cfg(feature = "agent")]
     #[command(name = "agent-rpc")]
     AgentRpc,
+
+    /// Run MCP (Model Context Protocol) server over stdio
+    ///
+    /// Implements the standard MCP JSON-RPC 2.0 protocol for IDE integration.
+    /// Provides 5 tools: list_skills, get_skill_info, run_skill, scan_code, execute_code.
+    ///
+    /// Used by Cursor, VSCode, and other MCP-compatible IDEs.
+    ///
+    /// Examples:
+    ///   skillbox mcp
+    ///   skillbox mcp --skills-dir ./my-skills
+    #[command(name = "mcp")]
+    Mcp {
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+    },
 }
