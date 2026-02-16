@@ -164,4 +164,56 @@ pub enum Commands {
         #[arg(long, default_value = "true")]
         stdio: bool,
     },
+
+    /// Interactive chat with an LLM agent (requires 'agent' feature)
+    #[cfg(feature = "agent")]
+    Chat {
+        /// OpenAI-compatible API base URL
+        #[arg(long, env = "OPENAI_API_BASE")]
+        api_base: Option<String>,
+
+        /// API key
+        #[arg(long, env = "OPENAI_API_KEY")]
+        api_key: Option<String>,
+
+        /// Model name (e.g. gpt-4o, claude-3-5-sonnet-20241022)
+        #[arg(long, short, env = "SKILLLITE_MODEL")]
+        model: Option<String>,
+
+        /// Workspace directory (default: current directory)
+        #[arg(long, short)]
+        workspace: Option<String>,
+
+        /// Skills directories to load (can be specified multiple times)
+        #[arg(long, short = 's')]
+        skill_dir: Vec<String>,
+
+        /// Session key for persistent conversation
+        #[arg(long, default_value = "default")]
+        session: String,
+
+        /// Maximum agent loop iterations
+        #[arg(long, default_value = "50")]
+        max_iterations: usize,
+
+        /// Custom system prompt
+        #[arg(long)]
+        system_prompt: Option<String>,
+
+        /// Verbose output
+        #[arg(long, short)]
+        verbose: bool,
+
+        /// Single-shot message (non-interactive mode)
+        #[arg(long)]
+        message: Option<String>,
+
+        /// Enable task planning (default: true when skills are available)
+        #[arg(long)]
+        plan: bool,
+
+        /// Disable task planning
+        #[arg(long)]
+        no_plan: bool,
+    },
 }

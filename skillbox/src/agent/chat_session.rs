@@ -1,0 +1,392 @@
+//! Chat session: persistent conversation with transcript and memory.
+//!
+//! Ported from Python `ChatSession`. Directly calls executor module
+//! (same process, no IPC). Handles transcript persistence, auto-compaction,
+//! and memory integration.
+
+use anyhow::Result;
+use std::path::PathBuf;
+
+use crate::executor::{self, session, transcript};
+
+use super::agent_loop;
+use super::llm::LlmClient;
+use super::skills::LoadedSkill;
+use super::types::*;
+
+/// Compaction threshold: compact when message count exceeds this.
+const COMPACTION_THRESHOLD: usize = 30;
+/// Number of recent messages to keep after compaction.
+const COMPACTION_KEEP_RECENT: usize = 10;
+
+/// Persistent chat session.
+///
+/// Storage layout (matching Python SDK, stored in `~/.skilllite/`):
+///   sessions.json            — session metadata
+///   transcripts/{key}-{date}.jsonl — append-only transcript
+pub struct ChatSession {
+    config: AgentConfig,
+    session_key: String,
+    session_id: Option<String>,
+    /// Data root for sessions/transcripts/memory — always `~/.skilllite/`.
+    /// NOT the user's workspace directory.
+    data_root: PathBuf,
+    skills: Vec<LoadedSkill>,
+}
+
+impl ChatSession {
+    pub fn new(config: AgentConfig, session_key: &str, skills: Vec<LoadedSkill>) -> Self {
+        // Data storage goes to ~/.skilllite/chat/ (matching Python SDK layout).
+        // ~/.skilllite/ is the root for all skilllite data:
+        //   bin/          — binary
+        //   chat/         — sessions, transcripts, plans, memory, output
+        let data_root = executor::workspace_root(None)
+            .unwrap_or_else(|_| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".skilllite")
+            })
+            .join("chat");
+        Self {
+            config,
+            session_key: session_key.to_string(),
+            session_id: None,
+            data_root,
+            skills,
+        }
+    }
+
+    /// Ensure session and transcript exist, return session_id.
+    fn ensure_session(&mut self) -> Result<String> {
+        if let Some(ref id) = self.session_id {
+            return Ok(id.clone());
+        }
+
+        // Ensure data_root directory exists
+        if !self.data_root.exists() {
+            std::fs::create_dir_all(&self.data_root)?;
+        }
+
+        let sessions_path = self.data_root.join("sessions.json");
+        let mut store = session::SessionStore::load(&sessions_path)?;
+
+        let session_id = if let Some(entry) = store.sessions.get(&self.session_key) {
+            entry.session_id.clone()
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            let entry = session::SessionEntry {
+                session_id: id.clone(),
+                session_key: self.session_key.clone(),
+                updated_at: chrono::Utc::now().to_rfc3339(),
+                input_tokens: 0,
+                output_tokens: 0,
+                total_tokens: 0,
+                context_tokens: 0,
+                compaction_count: 0,
+                memory_flush_at: None,
+                memory_flush_compaction_count: None,
+                extra: Default::default(),
+            };
+            store.sessions.insert(self.session_key.clone(), entry);
+            store.save(&sessions_path)?;
+            id
+        };
+
+        // Ensure transcript
+        let transcripts_dir = self.data_root.join("transcripts");
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        transcript::ensure_session_header(&t_path, &session_id, Some(&self.config.workspace))?;
+
+        self.session_id = Some(session_id.clone());
+        Ok(session_id)
+    }
+
+    /// Read transcript entries and convert to ChatMessages.
+    fn read_history(&self) -> Result<Vec<ChatMessage>> {
+        let transcripts_dir = self.data_root.join("transcripts");
+        let entries = transcript::read_entries_for_session(&transcripts_dir, &self.session_key)?;
+
+        let mut messages = Vec::new();
+        let mut use_from_compaction = false;
+        let mut compaction_summary: Option<String> = None;
+
+        // Check for compaction — if present, use summary + entries after it
+        for entry in entries.iter().rev() {
+            if let transcript::TranscriptEntry::Compaction { summary, .. } = entry {
+                use_from_compaction = true;
+                compaction_summary = summary.clone();
+                break;
+            }
+        }
+
+        if use_from_compaction {
+            // Add compaction summary as system context
+            if let Some(summary) = compaction_summary {
+                messages.push(ChatMessage::system(&format!(
+                    "[Previous conversation summary]\n{}",
+                    summary
+                )));
+            }
+
+            // Find the compaction entry and take entries after it
+            let mut past_compaction = false;
+            for entry in &entries {
+                if let transcript::TranscriptEntry::Compaction { .. } = entry {
+                    past_compaction = true;
+                    continue;
+                }
+                if past_compaction {
+                    if let Some(msg) = transcript_entry_to_message(entry) {
+                        messages.push(msg);
+                    }
+                }
+            }
+        } else {
+            // No compaction, use all message entries
+            for entry in &entries {
+                if let Some(msg) = transcript_entry_to_message(entry) {
+                    messages.push(msg);
+                }
+            }
+        }
+
+        Ok(messages)
+    }
+
+    /// Run one conversation turn.
+    pub async fn run_turn(
+        &mut self,
+        user_message: &str,
+        event_sink: &mut dyn EventSink,
+    ) -> Result<String> {
+        let _session_id = self.ensure_session()?;
+
+        // Read history
+        let history = self.read_history()?;
+
+        // Check if compaction is needed
+        let history = if history.len() >= COMPACTION_THRESHOLD {
+            self.compact_history(history).await?
+        } else {
+            history
+        };
+
+        // Append user message to transcript
+        self.append_message("user", user_message)?;
+
+        // Run the agent loop
+        let result = agent_loop::run_agent_loop(
+            &self.config,
+            history,
+            user_message,
+            &self.skills,
+            event_sink,
+        )
+        .await?;
+
+        // Append assistant response to transcript
+        self.append_message("assistant", &result.response)?;
+
+        Ok(result.response)
+    }
+
+    /// Append a message entry to the transcript.
+    fn append_message(&self, role: &str, content: &str) -> Result<()> {
+        let transcripts_dir = self.data_root.join("transcripts");
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let entry = transcript::TranscriptEntry::Message {
+            id: uuid::Uuid::new_v4().to_string(),
+            parent_id: None,
+            role: role.to_string(),
+            content: Some(content.to_string()),
+            tool_calls: None,
+        };
+        transcript::append_entry(&t_path, &entry)
+    }
+
+    /// Compact old messages: summarize via LLM, write compaction entry.
+    /// Ported from Python `_check_and_compact`.
+    async fn compact_history(
+        &mut self,
+        history: Vec<ChatMessage>,
+    ) -> Result<Vec<ChatMessage>> {
+        if history.len() < COMPACTION_THRESHOLD {
+            return Ok(history);
+        }
+
+        let keep_count = COMPACTION_KEEP_RECENT;
+        let split_point = history.len().saturating_sub(keep_count);
+        let old_messages = &history[..split_point];
+        let recent_messages = &history[split_point..];
+
+        // Build summary of old messages via LLM
+        let client = LlmClient::new(&self.config.api_base, &self.config.api_key);
+        let summary_prompt = format!(
+            "Please summarize the following conversation concisely, preserving key context, decisions, and results:\n\n{}",
+            old_messages
+                .iter()
+                .filter_map(|m| {
+                    let content = m.content.as_deref().unwrap_or("");
+                    if content.is_empty() { None }
+                    else { Some(format!("[{}] {}", m.role, content)) }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+
+        let summary = match client
+            .chat_completion(
+                &self.config.model,
+                &[ChatMessage::user(&summary_prompt)],
+                None,
+                Some(0.3),
+            )
+            .await
+        {
+            Ok(resp) => resp
+                .choices
+                .first()
+                .and_then(|c| c.message.content.clone())
+                .unwrap_or_else(|| "[Compaction summary unavailable]".to_string()),
+            Err(e) => {
+                tracing::warn!("Compaction summary failed: {}, keeping all messages", e);
+                return Ok(history);
+            }
+        };
+
+        // Write compaction entry to transcript
+        let transcripts_dir = self.data_root.join("transcripts");
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let compaction_entry = transcript::TranscriptEntry::Compaction {
+            id: uuid::Uuid::new_v4().to_string(),
+            parent_id: None,
+            first_kept_entry_id: String::new(),
+            tokens_before: (old_messages.len() * 100) as u64, // rough estimate
+            summary: Some(summary.clone()),
+        };
+        transcript::append_entry(&t_path, &compaction_entry)?;
+
+        // Update session compaction count
+        let sessions_path = self.data_root.join("sessions.json");
+        if let Ok(mut store) = session::SessionStore::load(&sessions_path) {
+            if let Some(entry) = store.sessions.get_mut(&self.session_key) {
+                entry.compaction_count += 1;
+                entry.updated_at = chrono::Utc::now().to_rfc3339();
+                let _ = store.save(&sessions_path);
+            }
+        }
+
+        // Return summary + recent messages
+        let mut result = Vec::new();
+        result.push(ChatMessage::system(&format!(
+            "[Previous conversation summary]\n{}",
+            summary
+        )));
+        result.extend(recent_messages.to_vec());
+
+        Ok(result)
+    }
+
+    /// Clear session: summarize conversation to memory, then reset.
+    /// Phase 2: generates a summary of the conversation before clearing.
+    pub async fn clear(&mut self) -> Result<()> {
+        // If we have a session, summarize the conversation before clearing
+        if self.session_id.is_some() {
+            if let Ok(history) = self.read_history() {
+                if !history.is_empty() {
+                    let _ = self.summarize_for_memory(&history).await;
+                }
+            }
+        }
+        self.session_id = None;
+        Ok(())
+    }
+
+    /// Summarize conversation history and write to memory.
+    /// Called before clearing a session to preserve key context.
+    async fn summarize_for_memory(&self, history: &[ChatMessage]) -> Result<()> {
+        let client = LlmClient::new(&self.config.api_base, &self.config.api_key);
+
+        let conversation: Vec<String> = history
+            .iter()
+            .filter_map(|m| {
+                let content = m.content.as_deref().unwrap_or("");
+                if content.is_empty() {
+                    None
+                } else {
+                    Some(format!("[{}] {}", m.role, content))
+                }
+            })
+            .collect();
+
+        if conversation.is_empty() {
+            return Ok(());
+        }
+
+        let summary_prompt = format!(
+            "Please summarize this conversation concisely for long-term memory. \
+             Preserve key decisions, results, file paths, and important context:\n\n{}",
+            conversation.join("\n")
+        );
+
+        let summary = match client
+            .chat_completion(
+                &self.config.model,
+                &[ChatMessage::user(&summary_prompt)],
+                None,
+                Some(0.3),
+            )
+            .await
+        {
+            Ok(resp) => resp
+                .choices
+                .first()
+                .and_then(|c| c.message.content.clone())
+                .unwrap_or_default(),
+            Err(e) => {
+                tracing::warn!("Memory summarization failed: {}", e);
+                return Ok(());
+            }
+        };
+
+        if summary.is_empty() {
+            return Ok(());
+        }
+
+        // Write summary as a compaction entry in the transcript
+        let transcripts_dir = self.data_root.join("transcripts");
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let entry = transcript::TranscriptEntry::Compaction {
+            id: uuid::Uuid::new_v4().to_string(),
+            parent_id: None,
+            first_kept_entry_id: String::new(),
+            tokens_before: 0,
+            summary: Some(format!("[Session cleared — memory summary]\n{}", summary)),
+        };
+        transcript::append_entry(&t_path, &entry)?;
+
+        tracing::info!("Session memory summary written to transcript");
+        Ok(())
+    }
+}
+
+/// Convert a transcript entry to a ChatMessage.
+fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<ChatMessage> {
+    match entry {
+        transcript::TranscriptEntry::Message {
+            role, content, ..
+        } => Some(ChatMessage {
+            role: role.clone(),
+            content: content.clone(),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }),
+        transcript::TranscriptEntry::Compaction { summary, .. } => {
+            summary.as_ref().map(|s| {
+                ChatMessage::system(&format!("[Previous conversation summary]\n{}", s))
+            })
+        }
+        _ => None,
+    }
+}
