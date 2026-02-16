@@ -385,30 +385,70 @@ async fn run_with_task_planning(
         }
         iterations += 1;
 
+        // ── Suppress streaming for hallucination-prone iterations ────
+        // When no tools have been called yet and the plan requires tool
+        // execution, the LLM will very likely hallucinate a "completed"
+        // summary.  Use non-streaming call so the user never sees it.
+        let suppress_stream = total_tool_calls == 0 && {
+            planner.task_list.iter().any(|t| {
+                !t.completed
+                    && t.tool_hint
+                        .as_ref()
+                        .map_or(false, |h| h != "analysis")
+            })
+        };
+
         // Call LLM
-        let response = match client
-            .chat_completion_stream(
-                &config.model,
-                &messages,
-                tools_ref,
-                config.temperature,
-                event_sink,
-            )
-            .await
-        {
-            Ok(resp) => resp,
-            Err(e) => {
-                let err_msg = e.to_string();
-                if llm::is_context_overflow_error(&err_msg) {
-                    let recovery_chars = get_tool_result_recovery_max_chars();
-                    tracing::warn!(
-                        "Context overflow, truncating tool messages to {} chars and retrying",
-                        recovery_chars
-                    );
-                    llm::truncate_tool_messages(&mut messages, recovery_chars);
-                    continue;
+        let response = if suppress_stream {
+            match client
+                .chat_completion(
+                    &config.model,
+                    &messages,
+                    tools_ref,
+                    config.temperature,
+                )
+                .await
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    if llm::is_context_overflow_error(&err_msg) {
+                        let recovery_chars = get_tool_result_recovery_max_chars();
+                        tracing::warn!(
+                            "Context overflow, truncating tool messages to {} chars and retrying",
+                            recovery_chars
+                        );
+                        llm::truncate_tool_messages(&mut messages, recovery_chars);
+                        continue;
+                    }
+                    return Err(e);
                 }
-                return Err(e);
+            }
+        } else {
+            match client
+                .chat_completion_stream(
+                    &config.model,
+                    &messages,
+                    tools_ref,
+                    config.temperature,
+                    event_sink,
+                )
+                .await
+            {
+                Ok(resp) => resp,
+                Err(e) => {
+                    let err_msg = e.to_string();
+                    if llm::is_context_overflow_error(&err_msg) {
+                        let recovery_chars = get_tool_result_recovery_max_chars();
+                        tracing::warn!(
+                            "Context overflow, truncating tool messages to {} chars and retrying",
+                            recovery_chars
+                        );
+                        llm::truncate_tool_messages(&mut messages, recovery_chars);
+                        continue;
+                    }
+                    return Err(e);
+                }
             }
         };
 
@@ -431,35 +471,34 @@ async fn run_with_task_planning(
             messages.push(ChatMessage::assistant(content));
         }
 
-        // ── No tool calls: anti-hallucination + nudge ─────────────────────
-        //
-        // Anti-hallucination guard: on the FIRST iteration (iterations == 1),
-        // if the LLM returns text-only (no tool calls) and hasn't executed
-        // anything yet (total_tool_calls == 0), this is the classic
-        // "plan → instant completion" hallucination.  We pop the message
-        // and force a nudge so the LLM actually executes.
-        //
-        // After the first iteration (iterations > 1 OR total_tool_calls > 0),
-        // text-based completion is accepted normally — the LLM has had at
-        // least one work iteration and may legitimately declare completion.
         let has_tool_calls = tool_calls
             .as_ref()
             .map_or(false, |tc| !tc.is_empty());
 
+        // If streaming was suppressed but the LLM did return tool calls
+        // (not a hallucination), emit the assistant text now so the user
+        // can see it.
+        if suppress_stream && has_tool_calls {
+            if let Some(ref content) = assistant_content {
+                event_sink.on_text(content);
+            }
+        }
+
         if !has_tool_calls {
-            // ── First-iteration hallucination guard ──────────────────────
-            // Plan was JUST generated.  The LLM must go through at least
-            // one execution iteration before we accept any completion claim.
-            if iterations == 1 && total_tool_calls == 0 {
-                // Pop the hallucinated message to keep history clean
+            // ── Hallucination guard: no tools executed yet ───────────────
+            // If no tool calls have been made AT ALL and the plan contains
+            // pending tasks that require tool execution, reject silently.
+            // Since we used non-streaming above, the user saw nothing.
+            if suppress_stream {
+                // Pop the hallucinated assistant message from history
                 if let Some(last) = messages.last() {
                     if last.role == "assistant" {
                         messages.pop();
                     }
                 }
                 tracing::info!(
-                    "Anti-hallucination: rejected first-iteration text-only response \
-                     (plan just generated, no execution yet)"
+                    "Anti-hallucination: silently rejected text-only response \
+                     (no tools executed yet, plan requires tool tasks)"
                 );
                 consecutive_no_tool += 1;
 
@@ -487,18 +526,36 @@ async fn run_with_task_planning(
 
             // ── Normal completion check (post first iteration) ──────────
             // LLM has been through at least one work iteration — accept
-            // text-based "Task X completed" claims normally.
+            // text-based "Task X completed" claims, but validate each one.
             let mut made_progress = false;
             if let Some(ref content) = assistant_content {
                 let completed_ids = planner.check_completion_in_content(content);
                 for completed_id in completed_ids {
+                    // Anti-hallucination: reject completion claims for tasks
+                    // that require tool execution when no tool calls were made
+                    // for the current task since the last completion.
+                    let task_needs_tool = planner.task_list.iter()
+                        .find(|t| t.id == completed_id)
+                        .map_or(false, |t| {
+                            t.tool_hint.as_ref().map_or(false, |h| h != "analysis")
+                        });
+                    if task_needs_tool && tool_calls_current_task == 0 {
+                        tracing::info!(
+                            "Anti-hallucination: rejected text-only completion for task {} \
+                             (requires tool but no tool calls made for current task)",
+                            completed_id
+                        );
+                        continue;
+                    }
                     planner.mark_completed(completed_id);
                     event_sink.on_task_progress(completed_id, true);
                     made_progress = true;
+                    // Reset counter so the NEXT task also needs its own
+                    // tool calls before it can be marked complete.
+                    tool_calls_current_task = 0;
                 }
                 if made_progress {
                     consecutive_no_tool = 0;
-                    tool_calls_current_task = 0;
                 }
             }
 
@@ -596,12 +653,30 @@ async fn run_with_task_planning(
 
         // ── Check task completion after tool execution ───────────────────
         // Matches Python SDK lines 718-771.
+        // Anti-hallucination: only allow completing the current task (or
+        // earlier). Prevent LLM from skipping ahead to mark future tasks.
         if let Some(ref content) = assistant_content {
             let completed_ids = planner.check_completion_in_content(content);
+            let current_task_id = planner.current_task().map(|t| t.id);
             for completed_id in completed_ids {
+                if let Some(cid) = current_task_id {
+                    if completed_id > cid {
+                        tracing::info!(
+                            "Anti-hallucination: ignoring premature completion for task {} \
+                             (current task is {})",
+                            completed_id, cid
+                        );
+                        continue;
+                    }
+                }
                 planner.mark_completed(completed_id);
                 event_sink.on_task_progress(completed_id, true);
-                tool_calls_current_task = 0;
+                // NOTE: do NOT reset tool_calls_current_task here.
+                // This iteration's tool calls may span multiple tasks
+                // (e.g., open + screenshot in one batch). Resetting would
+                // erase evidence that the next task's tool was already called.
+                // The counter is only reset in the text-only completion
+                // check, where we need each task to prove its own tool work.
             }
         }
 
