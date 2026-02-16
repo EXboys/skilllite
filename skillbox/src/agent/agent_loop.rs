@@ -251,7 +251,7 @@ async fn run_simple_loop(
         }
     }
 
-    Ok(build_agent_result(messages, total_tool_calls, iterations))
+    Ok(build_agent_result(messages, total_tool_calls, iterations, Vec::new()))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -356,7 +356,7 @@ async fn run_with_task_planning(
             choice.message.content.as_deref().unwrap_or(""),
         ));
 
-        return Ok(build_agent_result(messages, 0, 1));
+        return Ok(build_agent_result(messages, 0, 1, Vec::new()));
     }
 
     // ── Non-empty plan: plan-driven execution ───────────────────────────
@@ -751,7 +751,7 @@ async fn run_with_task_planning(
         }
     }
 
-    Ok(build_agent_result(messages, total_tool_calls, iterations))
+    Ok(build_agent_result(messages, total_tool_calls, iterations, planner.task_list.clone()))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -931,6 +931,7 @@ fn build_agent_result(
     messages: Vec<ChatMessage>,
     tool_calls_count: usize,
     iterations: usize,
+    task_plan: Vec<Task>,
 ) -> AgentResult {
     let final_response = messages
         .iter()
@@ -944,5 +945,6 @@ fn build_agent_result(
         messages,
         tool_calls_count,
         iterations,
+        task_plan,
     }
 }

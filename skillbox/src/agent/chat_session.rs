@@ -193,6 +193,13 @@ impl ChatSession {
         )
         .await?;
 
+        // Persist task plan to plans/ directory (if non-empty)
+        if !result.task_plan.is_empty() {
+            if let Err(e) = self.persist_plan(user_message, &result.task_plan) {
+                tracing::warn!("Failed to persist task plan: {}", e);
+            }
+        }
+
         // Append assistant response to transcript
         self.append_message("assistant", &result.response)?;
 
@@ -211,6 +218,58 @@ impl ChatSession {
             tool_calls: None,
         };
         transcript::append_entry(&t_path, &entry)
+    }
+
+    /// Persist the task plan to plans/{session_key}-{date}.json.
+    /// Matches the format used by the RPC `plan_write` handler.
+    fn persist_plan(&self, user_message: &str, tasks: &[super::types::Task]) -> Result<()> {
+        let plans_dir = self.data_root.join("plans");
+        if !plans_dir.exists() {
+            std::fs::create_dir_all(&plans_dir)?;
+        }
+
+        let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let plan_path = plans_dir.join(format!("{}-{}.json", self.session_key, date_str));
+
+        // Convert tasks to plan steps with status
+        let mut steps = Vec::with_capacity(tasks.len());
+        let mut current_step_id: u32 = 0;
+        let mut found_running = false;
+        for task in tasks {
+            let status = if task.completed {
+                "completed"
+            } else if !found_running {
+                found_running = true;
+                current_step_id = task.id;
+                "running"
+            } else {
+                "pending"
+            };
+            steps.push(serde_json::json!({
+                "id": task.id,
+                "description": task.description,
+                "tool_hint": task.tool_hint,
+                "status": status,
+            }));
+        }
+        if current_step_id == 0 {
+            if let Some(last) = tasks.last() {
+                current_step_id = last.id;
+            }
+        }
+
+        let plan_json = serde_json::json!({
+            "session_key": self.session_key,
+            "task": user_message,
+            "steps": steps,
+            "current_step_id": current_step_id,
+            "updated_at": chrono::Utc::now().to_rfc3339(),
+        });
+
+        let pretty = serde_json::to_string_pretty(&plan_json)?;
+        std::fs::write(&plan_path, pretty)?;
+        tracing::info!("Task plan persisted to {}", plan_path.display());
+        Ok(())
     }
 
     /// Compact old messages: summarize via LLM, write compaction entry.
