@@ -534,24 +534,31 @@ These are auxiliary tools. Only use them when the task genuinely requires file o
         )
     }
 
-    /// Check if a task was completed based on LLM response content.
-    /// Looks for "Task X completed" pattern.
+    /// Check if tasks were completed based on LLM response content.
+    /// Looks for "Task X completed" pattern. Returns ALL matching task IDs.
     /// Ported from Python `TaskPlanner.check_completion_in_content`.
-    pub fn check_completion_in_content(&self, content: &str) -> Option<u32> {
+    pub fn check_completion_in_content(&self, content: &str) -> Vec<u32> {
         if content.is_empty() {
-            return None;
+            return Vec::new();
         }
         let content_lower = content.to_lowercase();
+        let mut completed_ids = Vec::new();
         for task in &self.task_list {
             if !task.completed {
                 let pattern1 = format!("task {} completed", task.id);
                 let pattern2 = format!("task{} completed", task.id);
-                if content_lower.contains(&pattern1) || content_lower.contains(&pattern2) {
-                    return Some(task.id);
+                let pattern3 = format!("task {} complete", task.id);
+                let pattern4 = format!("✅ task {}", task.id);
+                if content_lower.contains(&pattern1)
+                    || content_lower.contains(&pattern2)
+                    || content_lower.contains(&pattern3)
+                    || content_lower.contains(&pattern4)
+                {
+                    completed_ids.push(task.id);
                 }
             }
         }
-        None
+        completed_ids
     }
 
     /// Mark a task as completed and return whether it was found.

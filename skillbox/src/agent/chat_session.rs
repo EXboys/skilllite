@@ -11,6 +11,7 @@ use crate::executor::{self, session, transcript};
 
 use super::agent_loop;
 use super::llm::LlmClient;
+use super::memory;
 use super::skills::LoadedSkill;
 use super::types::*;
 
@@ -165,11 +166,19 @@ impl ChatSession {
         let history = self.read_history()?;
 
         // Check if compaction is needed
-        let history = if history.len() >= COMPACTION_THRESHOLD {
+        let mut history = if history.len() >= COMPACTION_THRESHOLD {
             self.compact_history(history).await?
         } else {
             history
         };
+
+        // Build memory context (if enabled) — inject relevant memories as system context
+        if self.config.enable_memory {
+            let workspace = std::path::Path::new(&self.config.workspace);
+            if let Some(mem_ctx) = memory::build_memory_context(workspace, "default", user_message) {
+                history.push(ChatMessage::system(&mem_ctx));
+            }
+        }
 
         // Append user message to transcript
         self.append_message("user", user_message)?;

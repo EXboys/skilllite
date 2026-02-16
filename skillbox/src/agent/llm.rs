@@ -129,11 +129,12 @@ impl LlmClient {
     }
 
     /// Parse SSE stream and accumulate into a complete response.
-    /// Tool call deltas arrive spread across chunks by index.
+    /// Text chunks are streamed to event_sink immediately (matching Python SDK
+    /// `_accumulate_openai_stream`). Tool call deltas are accumulated silently.
     async fn accumulate_stream(
         &self,
         resp: reqwest::Response,
-        _event_sink: &mut dyn EventSink,
+        event_sink: &mut dyn EventSink,
     ) -> Result<ChatCompletionResponse> {
         let mut content = String::new();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
@@ -199,16 +200,14 @@ impl LlmClient {
                             None => continue,
                         };
 
-                        // Accumulate text content.
-                        // Text is buffered (not streamed immediately) because
-                        // some models emit a premature "completion" text before
-                        // tool-call deltas.  We flush the buffer after the stream
-                        // ends — only if no tool calls are present.
+                        // Stream text content to user immediately.
+                        // Matches Python SDK: stream_callback(delta.content)
                         if let Some(text) = delta.get("content").and_then(|v| v.as_str()) {
                             content.push_str(text);
+                            event_sink.on_text_chunk(text);
                         }
 
-                        // Accumulate tool calls (deltas arrive by index)
+                        // Accumulate tool calls silently (deltas arrive by index)
                         if let Some(tc_deltas) =
                             delta.get("tool_calls").and_then(|v| v.as_array())
                         {
@@ -251,11 +250,11 @@ impl LlmClient {
             }
         }
 
-        // Build the accumulated response.
-        // Text is always buffered — the agent loop decides when to display it
-        // via explicit `event_sink.on_text()` calls. This prevents premature
-        // "completion" text from showing before the agent loop evaluates
-        // whether to nudge, continue, or finish.
+        // Ensure newline after streamed text so logs don't collide.
+        // Matches Python SDK: `if stream_callback and message.content: print()`
+        if !content.is_empty() {
+            event_sink.on_text_chunk("\n");
+        }
 
         let message_content = if content.is_empty() {
             None

@@ -216,12 +216,42 @@ pub struct FunctionCall {
     pub arguments: String,
 }
 
+/// Supported LLM tool formats.
+/// Ported from Python `core/tools.py` ToolFormat enum.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ToolFormat {
+    /// OpenAI function calling format (GPT-4, DeepSeek, Qwen, etc.)
+    OpenAI,
+    /// Claude native tool format (Anthropic SDK)
+    Claude,
+}
+
 /// OpenAI-compatible tool definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
     #[serde(rename = "type")]
     pub tool_type: String,
     pub function: FunctionDef,
+}
+
+impl ToolDefinition {
+    /// Convert to Claude API format.
+    /// Claude expects: { name, description, input_schema }
+    pub fn to_claude_format(&self) -> serde_json::Value {
+        serde_json::json!({
+            "name": self.function.name,
+            "description": self.function.description,
+            "input_schema": self.function.parameters
+        })
+    }
+
+    /// Convert to the specified format.
+    pub fn to_format(&self, format: &ToolFormat) -> serde_json::Value {
+        match format {
+            ToolFormat::OpenAI => serde_json::to_value(self).unwrap_or_default(),
+            ToolFormat::Claude => self.to_claude_format(),
+        }
+    }
 }
 
 /// Function definition within a tool.
@@ -239,6 +269,68 @@ pub struct ToolResult {
     pub tool_name: String,
     pub content: String,
     pub is_error: bool,
+}
+
+impl ToolResult {
+    /// Convert to Claude API tool_result format.
+    pub fn to_claude_format(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "tool_result",
+            "tool_use_id": self.tool_call_id,
+            "content": self.content,
+            "is_error": self.is_error
+        })
+    }
+
+    /// Convert to OpenAI API tool result message.
+    pub fn to_openai_format(&self) -> serde_json::Value {
+        serde_json::json!({
+            "role": "tool",
+            "tool_call_id": self.tool_call_id,
+            "content": self.content
+        })
+    }
+
+    /// Convert to the specified format.
+    pub fn to_format(&self, format: &ToolFormat) -> serde_json::Value {
+        match format {
+            ToolFormat::OpenAI => self.to_openai_format(),
+            ToolFormat::Claude => self.to_claude_format(),
+        }
+    }
+}
+
+/// Parse tool calls from a Claude native API response.
+/// Claude returns content blocks with type "tool_use".
+/// Ported from Python `ToolUseRequest.parse_from_claude_response`.
+pub fn parse_claude_tool_calls(content_blocks: &[serde_json::Value]) -> Vec<ToolCall> {
+    let mut calls = Vec::new();
+    for block in content_blocks {
+        if block.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
+            let id = block
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let name = block
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let input = block
+                .get("input")
+                .cloned()
+                .unwrap_or(serde_json::json!({}));
+            let arguments = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
+
+            calls.push(ToolCall {
+                id,
+                call_type: "function".to_string(),
+                function: FunctionCall { name, arguments },
+            });
+        }
+    }
+    calls
 }
 
 /// Agent loop result.
@@ -273,27 +365,39 @@ pub trait EventSink: Send {
 /// Simple terminal event sink for CLI chat.
 pub struct TerminalEventSink {
     pub verbose: bool,
+    /// Tracks whether text was streamed via `on_text_chunk` during the current
+    /// LLM response. When true, `on_text` becomes a no-op to avoid duplicating
+    /// already-displayed content. Reset when `on_text` is called.
+    streamed_text: bool,
 }
 
 impl TerminalEventSink {
     pub fn new(verbose: bool) -> Self {
-        Self { verbose }
+        Self {
+            verbose,
+            streamed_text: false,
+        }
     }
 }
 
 impl EventSink for TerminalEventSink {
     fn on_text(&mut self, text: &str) {
-        // Display the final text from the agent loop.
-        // The agent loop decides WHEN to show text — this ensures
-        // premature/fabricated text doesn't leak to the user before
-        // the loop has evaluated the response.
+        if self.streamed_text {
+            // Text was already displayed chunk-by-chunk via on_text_chunk.
+            // The trailing newline was also added by accumulate_stream.
+            // Just reset the flag for the next response.
+            self.streamed_text = false;
+            return;
+        }
+        // Non-streaming path: display full text + newline
         use std::io::Write;
         print!("{}", text);
         let _ = std::io::stdout().flush();
-        println!(); // newline after text block
+        println!();
     }
 
     fn on_text_chunk(&mut self, chunk: &str) {
+        self.streamed_text = true;
         use std::io::Write;
         print!("{}", chunk);
         let _ = std::io::stdout().flush();

@@ -16,6 +16,7 @@ use std::path::Path;
 
 use super::llm::{self, LlmClient};
 use super::long_text;
+use super::memory;
 use super::prompt;
 use super::skills::{self, LoadedSkill};
 use super::task_planner::TaskPlanner;
@@ -59,8 +60,11 @@ async fn run_simple_loop(
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
 
-    // Collect all tool definitions: built-in + skills
+    // Collect all tool definitions: built-in + memory (if enabled) + skills
     let mut all_tools = tools::get_builtin_tool_definitions();
+    if config.enable_memory {
+        all_tools.extend(memory::get_memory_tool_definitions());
+    }
     for skill in skills {
         all_tools.extend(skill.tool_definitions.clone());
     }
@@ -213,7 +217,7 @@ async fn run_simple_loop(
             event_sink.on_tool_call(tool_name, arguments);
 
             let mut result =
-                execute_tool_call(tool_name, arguments, workspace, skills, event_sink).await;
+                execute_tool_call(tool_name, arguments, workspace, skills, event_sink, config.enable_memory).await;
             result.tool_call_id = tc.id.clone();
 
             // Process long content (sync fast path → async LLM summarization fallback)
@@ -252,8 +256,11 @@ async fn run_with_task_planning(
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
 
-    // Collect all tool definitions: built-in + skills
+    // Collect all tool definitions: built-in + memory (if enabled) + skills
     let mut all_tools = tools::get_builtin_tool_definitions();
+    if config.enable_memory {
+        all_tools.extend(memory::get_memory_tool_definitions());
+    }
     for skill in skills {
         all_tools.extend(skill.tool_definitions.clone());
     }
@@ -431,15 +438,18 @@ async fn run_with_task_planning(
             .map_or(false, |tc| !tc.is_empty());
 
         if !has_tool_calls {
-            // Check if a task was completed (text-based, per plan)
+            // Check if tasks were completed (text-based, per plan)
             let mut made_progress = false;
             if let Some(ref content) = assistant_content {
-                if let Some(completed_id) = planner.check_completion_in_content(content) {
+                let completed_ids = planner.check_completion_in_content(content);
+                for completed_id in completed_ids {
                     planner.mark_completed(completed_id);
                     event_sink.on_task_progress(completed_id, true);
+                    made_progress = true;
+                }
+                if made_progress {
                     consecutive_no_tool = 0;
                     tool_calls_current_task = 0;
-                    made_progress = true;
                 }
             }
 
@@ -466,6 +476,13 @@ async fn run_with_task_planning(
                     event_sink.on_text(content);
                 }
                 break;
+            }
+
+            // If progress was made (some tasks completed), skip the nudge —
+            // the task focus message at the end of the loop will guide the LLM
+            // to the next task without risking redundant re-execution.
+            if made_progress {
+                continue;
             }
 
             // Auto-nudge: pending tasks remain, push LLM to continue
@@ -507,7 +524,7 @@ async fn run_with_task_planning(
             event_sink.on_tool_call(tool_name, arguments);
 
             let mut result =
-                execute_tool_call(tool_name, arguments, workspace, skills, event_sink).await;
+                execute_tool_call(tool_name, arguments, workspace, skills, event_sink, config.enable_memory).await;
             result.tool_call_id = tc.id.clone();
 
             result.content =
@@ -533,7 +550,8 @@ async fn run_with_task_planning(
         // ── Check task completion after tool execution ───────────────────
         // Matches Python SDK lines 718-771.
         if let Some(ref content) = assistant_content {
-            if let Some(completed_id) = planner.check_completion_in_content(content) {
+            let completed_ids = planner.check_completion_in_content(content);
+            for completed_id in completed_ids {
                 planner.mark_completed(completed_id);
                 event_sink.on_task_progress(completed_id, true);
                 tool_calls_current_task = 0;
@@ -604,13 +622,14 @@ async fn run_with_task_planning(
 // Shared helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Execute a single tool call (built-in sync, built-in async, or skill).
+/// Execute a single tool call (built-in sync, built-in async, memory, or skill).
 async fn execute_tool_call(
     tool_name: &str,
     arguments: &str,
     workspace: &Path,
     skills: &[LoadedSkill],
     event_sink: &mut dyn EventSink,
+    enable_memory: bool,
 ) -> ToolResult {
     if tools::is_builtin_tool(tool_name) {
         if tools::is_async_builtin_tool(tool_name) {
@@ -620,6 +639,9 @@ async fn execute_tool_call(
             // Sync built-in (read_file, write_file, etc.)
             tools::execute_builtin_tool(tool_name, arguments, workspace)
         }
+    } else if enable_memory && memory::is_memory_tool(tool_name) {
+        // Memory tool (memory_search, memory_write, memory_list)
+        memory::execute_memory_tool(tool_name, arguments, workspace, "default")
     } else if let Some(skill) = skills::find_skill_by_tool_name(skills, tool_name) {
         // Skill tool
         skills::execute_skill(skill, tool_name, arguments, workspace, event_sink)

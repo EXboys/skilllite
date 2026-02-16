@@ -57,7 +57,7 @@ fn resolve_within_workspace(path: &str, workspace: &Path) -> Result<PathBuf> {
 }
 
 /// Normalize a path by resolving `.` and `..` components without filesystem access.
-fn normalize_path(path: &Path) -> PathBuf {
+pub(crate) fn normalize_path(path: &Path) -> PathBuf {
     let mut components = Vec::new();
     for component in path.components() {
         match component {
@@ -245,13 +245,37 @@ pub fn execute_builtin_tool(
 ) -> ToolResult {
     let args: Value = match serde_json::from_str(arguments) {
         Ok(v) => v,
-        Err(e) => {
-            return ToolResult {
-                tool_call_id: String::new(),
-                tool_name: tool_name.to_string(),
-                content: format!("Invalid arguments JSON: {}", e),
-                is_error: true,
-            };
+        Err(_e) => {
+            // Truncated JSON recovery: when LLM hits max_tokens (finish_reason: "length"),
+            // tool arguments may be cut off mid-string. Try to recover file_path + content
+            // for write_file and write_output. Ported from Python `_parse_truncated_json_for_file_tools`.
+            if tool_name == "write_file" || tool_name == "write_output" {
+                match parse_truncated_json_for_file_tools(arguments) {
+                    Some(recovered) if recovered.as_object().map_or(false, |o| !o.is_empty()) => {
+                        tracing::warn!(
+                            "Recovered truncated JSON for {} ({} fields)",
+                            tool_name,
+                            recovered.as_object().map_or(0, |o| o.len())
+                        );
+                        recovered
+                    }
+                    _ => {
+                        return ToolResult {
+                            tool_call_id: String::new(),
+                            tool_name: tool_name.to_string(),
+                            content: format!("Invalid arguments JSON: {}", _e),
+                            is_error: true,
+                        };
+                    }
+                }
+            } else {
+                return ToolResult {
+                    tool_call_id: String::new(),
+                    tool_name: tool_name.to_string(),
+                    content: format!("Invalid arguments JSON: {}", _e),
+                    is_error: true,
+                };
+            }
         }
     };
 
@@ -504,6 +528,90 @@ fn format_size(bytes: u64) -> String {
     }
 }
 
+// ─── Truncated JSON recovery ─────────────────────────────────────────────────
+
+/// Attempt to extract file_path/path and content from truncated JSON.
+/// When LLM hits max_tokens (finish_reason: "length"), tool arguments may be cut off.
+/// Ported from Python `_parse_truncated_json_for_file_tools` in `core/tools.py`.
+fn parse_truncated_json_for_file_tools(arguments: &str) -> Option<Value> {
+    if arguments.is_empty() {
+        return None;
+    }
+
+    let mut result = serde_json::Map::new();
+
+    // Extract "path" or "file_path": "value"
+    let path_re = regex::Regex::new(r#""(?:file_)?path"\s*:\s*"((?:[^"\\]|\\.)*)""#).ok()?;
+    if let Some(caps) = path_re.captures(arguments) {
+        let key = if arguments.contains("\"file_path\"") {
+            "file_path"
+        } else {
+            "path"
+        };
+        result.insert(
+            key.to_string(),
+            Value::String(unescape_json_string(caps.get(1)?.as_str())),
+        );
+    }
+
+    // Extract "content": try complete JSON string first
+    let content_complete_re =
+        regex::Regex::new(r#""content"\s*:\s*"((?:[^"\\]|\\.)*)""#).ok()?;
+    if let Some(caps) = content_complete_re.captures(arguments) {
+        result.insert(
+            "content".to_string(),
+            Value::String(unescape_json_string(caps.get(1)?.as_str())),
+        );
+    } else {
+        // Truncated: match from "content": " to end of string
+        let content_trunc_re = regex::Regex::new(r#""content"\s*:\s*"(.*)$"#).ok()?;
+        if let Some(caps) = content_trunc_re.captures(arguments) {
+            let mut raw = caps.get(1)?.as_str().to_string();
+            // Strip trailing "}" or " that may be from truncated JSON structure
+            if raw.ends_with("\"}") {
+                raw = raw[..raw.len() - 2].to_string();
+            } else if raw.ends_with('"') && !raw.ends_with("\\\"") {
+                raw = raw[..raw.len() - 1].to_string();
+            }
+            result.insert(
+                "content".to_string(),
+                Value::String(unescape_json_string(&raw)),
+            );
+        }
+    }
+
+    if result.is_empty() {
+        None
+    } else {
+        Some(Value::Object(result))
+    }
+}
+
+/// Unescape a JSON string value (handles \n, \", \\, \t, \r).
+fn unescape_json_string(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('"') => result.push('"'),
+                Some('\\') => result.push('\\'),
+                Some(other) => {
+                    result.push('\\');
+                    result.push(other);
+                }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 // ─── Phase 2: run_command ────────────────────────────────────────────────────
 
 /// Dangerous command regex patterns.
@@ -695,19 +803,293 @@ fn execute_write_output(args: &Value, workspace: &Path) -> Result<String> {
     ))
 }
 
-// ─── Phase 2: preview_server (stub) ─────────────────────────────────────────
+// ─── Phase 2.5: preview_server ──────────────────────────────────────────────
 
-/// Execute `preview_server` — currently a stub that suggests alternative.
-/// Full implementation deferred to Phase 2+ / Phase 3.
-fn execute_preview_server(_args: &Value, _workspace: &Path) -> Result<String> {
-    Ok(
-        "preview_server is not yet available in the Rust agent. \
-         As an alternative, you can use `run_command` with:\n  \
-         python -m http.server 8765 --directory <dir>\n\
-         or:\n  \
-         npx serve <dir> -l 8765"
-            .to_string(),
-    )
+use std::sync::Mutex;
+
+/// Global state for active preview server (reuse / shutdown).
+static ACTIVE_PREVIEW: Mutex<Option<PreviewServerState>> = Mutex::new(None);
+
+struct PreviewServerState {
+    serve_dir: String,
+    port: u16,
+}
+
+/// Execute `preview_server`: start a local HTTP file server in a daemon thread.
+/// Ported from Python `_start_preview_server` in builtin_tools.py.
+///
+/// Features:
+/// - Binds to 127.0.0.1 only
+/// - Auto-scans ports (default 8765, tries +19)
+/// - Reuses server if same directory
+/// - Shuts down old server if different directory
+/// - Sends no-cache headers
+/// - Opens browser via `open` / `xdg-open`
+fn execute_preview_server(args: &Value, workspace: &Path) -> Result<String> {
+    let dir_path = args
+        .get("directory_path")
+        .and_then(|v| v.as_str())
+        .context("'directory_path' is required")?;
+    let requested_port = args
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(8765) as u16;
+
+    let resolved = resolve_within_workspace(dir_path, workspace)?;
+
+    // If a file path was given, serve its parent directory
+    let (serve_dir, target_file) = if resolved.is_file() {
+        let fname = resolved.file_name().map(|f| f.to_string_lossy().to_string());
+        (resolved.parent().unwrap_or(&resolved).to_path_buf(), fname)
+    } else {
+        (resolved.clone(), None)
+    };
+
+    if !serve_dir.exists() {
+        anyhow::bail!("Path not found: {}", dir_path);
+    }
+
+    let serve_dir_str = serve_dir.to_string_lossy().to_string();
+
+    // Check if server already running for this directory
+    {
+        let guard = ACTIVE_PREVIEW.lock().unwrap();
+        if let Some(ref state) = *guard {
+            if state.serve_dir == serve_dir_str {
+                let url = build_preview_url(state.port, target_file.as_deref());
+                open_browser(&url);
+                return Ok(format!(
+                    "Preview server already running at {}\n\n\
+                     Open in browser: {}\n\
+                     Serving directory: {}\n\
+                     (Browser opened with fresh page.)",
+                    url, url, serve_dir_str
+                ));
+            }
+        }
+    }
+
+    // Try to bind to a port
+    let listener = {
+        let mut bound = None;
+        for p in requested_port..requested_port.saturating_add(20).min(65535) {
+            match std::net::TcpListener::bind(("127.0.0.1", p)) {
+                Ok(l) => {
+                    bound = Some((l, p));
+                    break;
+                }
+                Err(_) => continue,
+            }
+        }
+        bound
+    };
+
+    let (listener, used_port) = match listener {
+        Some((l, p)) => (l, p),
+        None => anyhow::bail!(
+            "Could not bind to port {} (tried {}-{})",
+            requested_port,
+            requested_port,
+            requested_port + 19
+        ),
+    };
+
+    // Update global state
+    {
+        let mut guard = ACTIVE_PREVIEW.lock().unwrap();
+        *guard = Some(PreviewServerState {
+            serve_dir: serve_dir_str.clone(),
+            port: used_port,
+        });
+    }
+
+    // Spawn daemon thread for the HTTP file server
+    let serve_dir_clone = serve_dir.clone();
+    std::thread::Builder::new()
+        .name("preview-server".to_string())
+        .spawn(move || {
+            run_file_server(listener, &serve_dir_clone);
+        })
+        .context("Failed to spawn preview server thread")?;
+
+    let url = build_preview_url(used_port, target_file.as_deref());
+    open_browser(&url);
+
+    Ok(format!(
+        "Preview server started at {}\n\n\
+         Open in browser: {}\n\
+         Serving directory: {}\n\
+         (Server runs in background. Stops when you exit.)",
+        url, url, serve_dir_str
+    ))
+}
+
+/// Build the preview URL with optional filename.
+fn build_preview_url(port: u16, filename: Option<&str>) -> String {
+    match filename {
+        Some(f) => format!("http://127.0.0.1:{}/{}", port, f),
+        None => format!("http://127.0.0.1:{}", port),
+    }
+}
+
+/// Open a URL in the default browser.
+fn open_browser(url: &str) {
+    let _ = if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(url).spawn()
+    } else if cfg!(target_os = "linux") {
+        std::process::Command::new("xdg-open").arg(url).spawn()
+    } else if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", url])
+            .spawn()
+    } else {
+        Ok(std::process::Command::new("true").spawn().unwrap())
+    };
+}
+
+/// Minimal HTTP file server loop. Handles GET requests, serves static files
+/// with no-cache headers. Runs in a daemon thread.
+fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {
+    use std::io::{BufRead, BufReader, Write};
+
+    for stream in listener.incoming() {
+        let mut stream = match stream {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let reader = BufReader::new(&stream);
+        let request_line = match reader.lines().next() {
+            Some(Ok(line)) => line,
+            _ => continue,
+        };
+
+        // Parse "GET /path HTTP/1.x"
+        let parts: Vec<&str> = request_line.split_whitespace().collect();
+        if parts.len() < 2 || parts[0] != "GET" {
+            let _ = stream.write_all(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n");
+            continue;
+        }
+
+        let request_path = parts[1];
+        // Strip query string
+        let clean_path = request_path.split('?').next().unwrap_or("/");
+        // URL decode %XX sequences (basic)
+        let decoded = url_decode(clean_path);
+        // Remove leading slash, default to index.html
+        let rel = decoded.trim_start_matches('/');
+        let rel = if rel.is_empty() { "index.html" } else { rel };
+
+        let file_path = serve_dir.join(rel);
+        let normalized = normalize_path(&file_path);
+
+        // Security: path must stay within serve_dir
+        if !normalized.starts_with(serve_dir) {
+            let body = "403 Forbidden";
+            let resp = format!(
+                "HTTP/1.1 403 Forbidden\r\n\
+                 Content-Length: {}\r\n\
+                 Connection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(resp.as_bytes());
+            continue;
+        }
+
+        if normalized.is_file() {
+            match std::fs::read(&normalized) {
+                Ok(content) => {
+                    let mime = guess_mime(&normalized);
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\n\
+                         Content-Type: {}\r\n\
+                         Content-Length: {}\r\n\
+                         Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n\
+                         Pragma: no-cache\r\n\
+                         Connection: close\r\n\r\n",
+                        mime,
+                        content.len()
+                    );
+                    let _ = stream.write_all(resp.as_bytes());
+                    let _ = stream.write_all(&content);
+                }
+                Err(_) => {
+                    let body = "500 Internal Server Error";
+                    let resp = format!(
+                        "HTTP/1.1 500 Internal Server Error\r\n\
+                         Content-Length: {}\r\n\
+                         Connection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    let _ = stream.write_all(resp.as_bytes());
+                }
+            }
+        } else {
+            let body = "404 Not Found";
+            let resp = format!(
+                "HTTP/1.1 404 Not Found\r\n\
+                 Content-Length: {}\r\n\
+                 Connection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = stream.write_all(resp.as_bytes());
+        }
+    }
+}
+
+/// Basic URL decoding for %XX sequences.
+fn url_decode(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut chars = s.bytes();
+    while let Some(b) = chars.next() {
+        if b == b'%' {
+            let hi = chars.next().and_then(|c| hex_val(c));
+            let lo = chars.next().and_then(|c| hex_val(c));
+            if let (Some(h), Some(l)) = (hi, lo) {
+                result.push((h << 4 | l) as char);
+            } else {
+                result.push('%');
+            }
+        } else {
+            result.push(b as char);
+        }
+    }
+    result
+}
+
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Guess MIME type from file extension.
+fn guess_mime(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("html") | Some("htm") => "text/html; charset=utf-8",
+        Some("css") => "text/css; charset=utf-8",
+        Some("js") => "application/javascript; charset=utf-8",
+        Some("json") => "application/json; charset=utf-8",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("webp") => "image/webp",
+        Some("pdf") => "application/pdf",
+        Some("txt") | Some("md") => "text/plain; charset=utf-8",
+        Some("csv") => "text/csv; charset=utf-8",
+        Some("xml") => "application/xml; charset=utf-8",
+        Some("woff2") => "font/woff2",
+        Some("woff") => "font/woff",
+        Some("ico") => "image/x-icon",
+        _ => "application/octet-stream",
+    }
 }
 
 // ─── Long content handling ──────────────────────────────────────────────────
