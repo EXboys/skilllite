@@ -741,10 +741,23 @@ fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> Result<Stri
                 matches!(i.severity, SecuritySeverity::Critical)
             });
             if has_critical {
+                crate::observability::security_scan_rejected(
+                    "execute_code",
+                    sid,
+                    cached.scan_result.issues.len(),
+                );
                 anyhow::bail!(
                     "Execution blocked: Critical security issues cannot be overridden even with confirmation."
                 );
             }
+
+            // Audit: execution approved
+            crate::observability::audit_confirmation_response("execute_code", true, "user");
+            crate::observability::security_scan_approved(
+                "execute_code",
+                sid,
+                cached.scan_result.issues.len(),
+            );
         } else {
             // Auto-scan
             let (scan_result, new_scan_id, code_hash) = perform_scan(server, language, code)?;
@@ -877,6 +890,14 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
                     }
                 }
 
+                // Audit: scan approved
+                crate::observability::audit_confirmation_response(skill_name, true, "user");
+                crate::observability::security_scan_approved(
+                    skill_name,
+                    sid,
+                    server.scan_cache.get(sid).map_or(0, |c| c.scan_result.issues.len()),
+                );
+
                 // Cache confirmation
                 server.confirmed_skills.insert(
                     skill_name.to_string(),
@@ -908,6 +929,24 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
                     });
 
                     if has_high {
+                        // Audit: confirmation requested
+                        crate::observability::audit_confirmation_requested(
+                            skill_name,
+                            &new_code_hash,
+                            scan_result.issues.len(),
+                            "High",
+                        );
+                        crate::observability::security_scan_high(
+                            skill_name,
+                            "High",
+                            &serde_json::json!(scan_result.issues.iter().map(|i| {
+                                serde_json::json!({
+                                    "rule": i.rule_id,
+                                    "severity": format!("{:?}", i.severity),
+                                    "description": i.description,
+                                })
+                            }).collect::<Vec<_>>()),
+                        );
                         return format_scan_response(&scan_result, &new_scan_id, &new_code_hash);
                     }
                 }

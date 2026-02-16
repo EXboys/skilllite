@@ -74,12 +74,26 @@ fn builtin_rules() -> Vec<PlanningRule> {
             instruction: "**小红书/种草/图文笔记**: When the task involves 小红书 content, you MUST use **xiaohongshu-writer** skill.".into(),
         },
         PlanningRule {
-            id: "html_preview".into(),
-            priority: 90,
-            keywords: vec!["html渲染".into(), "渲染出来".into(), "预览".into(), "在浏览器中打开".into(), "html呈现".into(), "网页".into(), "PPT".into()],
+            id: "frontend_design".into(),
+            priority: 92,
+            keywords: vec![
+                "官网".into(), "网站".into(), "网站设计".into(), "设计网页".into(),
+                "设计页面".into(), "前端设计".into(), "页面设计".into(), "landing page".into(),
+                "website".into(), "web page".into(), "homepage".into(), "首页".into(),
+                "网站首页".into(), "官方网站".into(), "做个网站".into(), "做一个网站".into(),
+                "生成网站".into(), "生成页面".into(), "生成网页".into(),
+            ],
             context_keywords: vec![],
             tool_hint: Some("file_operation".into()),
-            instruction: "**HTML/PPT/网页渲染/预览**: When the user asks for HTML rendering or browser preview, use **write_output** + **preview_server**.".into(),
+            instruction: "**官网/网站/网页设计**: When the user asks to design or generate a website, landing page, or web page, you MUST plan exactly TWO tasks: (1) Generate the complete HTML/CSS/JS and use **write_output** to save to index.html (tool_hint: file_operation); (2) Use **preview_server** to start local server and open in browser (tool_hint: file_operation). If a frontend-design skill exists, it is reference-only — use its design guidelines but output via write_output. Do NOT call the frontend-design skill directly. Do NOT return empty list — website generation requires file output + preview.".into(),
+        },
+        PlanningRule {
+            id: "html_preview".into(),
+            priority: 90,
+            keywords: vec!["html渲染".into(), "渲染出来".into(), "预览".into(), "在浏览器中打开".into(), "html呈现".into(), "网页渲染".into(), "PPT".into()],
+            context_keywords: vec![],
+            tool_hint: Some("file_operation".into()),
+            instruction: "**HTML/PPT/渲染/预览**: When the user asks for HTML rendering or browser preview, use **write_output** + **preview_server**.".into(),
         },
     ]
 }
@@ -309,7 +323,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 - Translating text
 - Answering knowledge-based questions (EXCEPT 天气/气象 - see below, EXCEPT when user asks for 实时/最新 - see below)
 - Code explanation, code review suggestions
-- Creative generation, brainstorming (EXCEPT 小红书 - see below, EXCEPT HTML/PPT rendering - see below)
+- Creative generation, brainstorming (EXCEPT 小红书 - see below, EXCEPT HTML/PPT rendering - see below, EXCEPT 网站/官网/网页设计 - see below)
 - Summarizing, rewriting, polishing text
 
 {rules_section}
@@ -325,6 +339,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 - Creating new Skills (use skill-creator)
 - **小红书/种草/图文笔记** (use xiaohongshu-writer - generates structured content + cover image)
 - **HTML/PPT/网页渲染** (use write_output to save HTML file, then preview_server to open in browser)
+- **官网/网站/网页设计** (use write_output to save HTML + preview_server to open in browser; if frontend-design skill available, use it)
 - **Browser automation / screenshots / visiting websites** (use agent-browser or any matching skill)
 
 ## Available Resources
@@ -396,6 +411,11 @@ Example 7 - HTML/PPT rendering (MUST use write_output + preview_server, user wan
 User request: "帮我设计一个关于skilllite的介绍和分析的ppt，你可以通过html渲染出来给我"
 Return: [{{"id": 1, "description": "Use write_output to save HTML presentation to output/index.html", "tool_hint": "file_operation", "completed": false}}, {{"id": 2, "description": "Use preview_server to start local server and open in browser", "tool_hint": "file_operation", "completed": false}}]
 
+Example 8 - Website / landing page design (MUST use write_output + preview_server, exactly 2 tasks):
+User request: "生成一个关于skilllite 的官网"
+Return: [{{"id": 1, "description": "Design and generate a complete Skillite official website (HTML/CSS/JS) and save to output/index.html using write_output", "tool_hint": "file_operation", "completed": false}}, {{"id": 2, "description": "Use preview_server to start local HTTP server and open the website in browser for preview", "tool_hint": "file_operation", "completed": false}}]
+Note: Do NOT add a separate task for a frontend-design skill — it is reference-only. Generate HTML directly and use write_output.
+
 Return only JSON, no other content."#
         )
     }
@@ -411,12 +431,12 @@ Return only JSON, no other content."#
                     .description
                     .as_deref()
                     .unwrap_or("No description");
-                let executable = if s.metadata.entry_point.is_empty() {
-                    "[Reference Only]"
+                if s.metadata.entry_point.is_empty() && !s.metadata.is_bash_tool_skill() {
+                    // Reference-only: make it very clear this is NOT callable
+                    format!("  - **{}**: {} ⛔ [Reference Only — NOT a callable tool, do NOT call it]", s.name, desc)
                 } else {
-                    "[Executable]"
-                };
-                format!("  - **{}**: {} {}", s.name, desc, executable)
+                    format!("  - **{}**: {}", s.name, desc)
+                }
             })
             .collect();
         let skills_list_str = skills_list.join("\n");
@@ -425,41 +445,37 @@ Return only JSON, no other content."#
         format!(
 r#"You are an intelligent task execution assistant responsible for executing tasks based on user requirements.
 
-## Available Skills
+## CRITICAL: How to choose tools based on task tool_hint
+
+**Read the task's `tool_hint` field and follow STRICTLY:**
+
+- **tool_hint = "file_operation"** → Use ONLY built-in tools: `write_output`, `write_file`, `preview_server`, `read_file`, `list_directory`, `file_exists`, `run_command`. ⛔ Do NOT call ANY skill tools. Generate the content yourself and save with write_output.
+- **tool_hint = "analysis"** → No tools needed, produce text analysis directly.
+- **tool_hint = "<skill_name>"** (e.g. "calculator", "weather") → Call that specific skill tool directly.
+
+## Built-in Tools
+
+1. **write_output**: Write final deliverables (HTML, reports, etc.) to the output directory `{output_dir}`. Path is relative to output dir.
+2. **write_file**: Write/create files within the workspace
+3. **preview_server**: Start local HTTP server to preview files in browser
+4. **read_file**: Read file content
+5. **list_directory**: List directory contents
+6. **file_exists**: Check if file exists
+7. **run_command**: Execute shell command (requires user confirmation)
+
+## Available Skills (only use when task tool_hint matches a skill name)
 
 {skills_list_str}
-
-## Built-in File Operations (Secondary Tools)
-
-These are auxiliary tools. Only use them when the task genuinely requires file operations:
-
-1. **read_file**: Read file content
-2. **write_file**: Write/create project files
-3. **write_output**: Write final text output to output directory
-4. **list_directory**: List directory contents
-5. **file_exists**: Check if file exists
-6. **run_command**: Execute shell command (requires user confirmation)
-7. **preview_server**: Start local HTTP server for preview
 
 ## Output Directory
 
 **Output directory**: `{output_dir}`
 
-- **Final text output files**: Use **write_output** (path relative to output dir)
-- **File outputs from skills** (screenshots, PDFs, images, etc.): Tell the skill to save directly to the output directory by specifying the full path. For example: `agent-browser screenshot {output_dir}/screenshot.png`
-
-## Critical Rule: SKILL-FIRST Execution
-
-**When a task specifies a skill (via tool_hint), you MUST call that skill DIRECTLY as your first action.**
-
-## Tool Selection Principles
-
-**Minimize tool usage. Do simple tasks directly.**
+- **Final deliverables**: Use **write_output** with file_path relative to output dir (e.g. `index.html`)
 
 ## Error Handling
 
-- If skill execution fails, analyze the error and try to fix
-- If file operation fails, check the path
+- If a tool fails, read the error message and fix the issue
 - When stuck, explain the situation to the user
 
 ## Output Guidelines
@@ -472,10 +488,8 @@ These are auxiliary tools. Only use them when the task genuinely requires file o
 **You MUST actually EXECUTE each task before declaring "Task X completed".**
 
 - Execute tasks ONE BY ONE in order. Do NOT skip ahead.
-- Your FIRST response after seeing the task plan must be an ACTION (tool call or actual work), NOT a completion summary.
-- NEVER declare multiple tasks completed in your first response — execute them step by step.
-- If a task requires a tool (e.g. agent-browser, calculator), call it FIRST, get the result, THEN declare completed.
-- If a task is pure analysis/text, produce the actual output FIRST, THEN declare completed.
+- Your FIRST response must be an ACTION (tool call), NOT a summary.
+- If a task requires a tool, call it FIRST, get the result, THEN declare completed.
 "#
         )
     }
@@ -502,9 +516,17 @@ These are auxiliary tools. Only use them when the task genuinely requires file o
                 task.id, task.description, hint_str
             );
 
-            // Add direct call instruction when tool_hint points to a specific skill
+            // Add direct call instruction based on tool_hint type
             if let Some(ref hint) = task.tool_hint {
-                if hint != "file_operation" && hint != "analysis" {
+                if hint == "file_operation" {
+                    // Explicitly tell LLM to use built-in tools, NOT skills
+                    direct_call_instruction = format!(
+                        "\n\n⚡ **ACTION REQUIRED**: This is a file_operation task. \
+                         Call `write_output` or `preview_server` NOW.\n\
+                         ⛔ Do NOT call any skill tools (skill-creator, frontend-design, etc.). \
+                         Generate the content yourself and save with `write_output`."
+                    );
+                } else if hint != "analysis" {
                     // Check if it's a real skill
                     let is_skill = skills.iter().any(|s| {
                         s.name == *hint
@@ -528,17 +550,14 @@ These are auxiliary tools. Only use them when the task genuinely requires file o
              ## Current Task List\n\n\
              {}\n\n\
              ## Execution Rules\n\n\
-             1. **SKILL-FIRST**: When a task specifies a skill tool, call it DIRECTLY as your first action.\n\
+             1. **MATCH tool_hint**: If tool_hint is \"file_operation\" → use ONLY built-in tools (write_output, preview_server). If tool_hint is a skill name → call that skill.\n\
              2. **Strict sequential execution**: Execute tasks in order, do not skip tasks\n\
              3. **Focus on current task**: Focus only on the current task\n\
              4. **Explicit completion declaration**: After completing a task, declare: \"Task X completed\"\n\
-             5. **Sequential progression**: Only start next task after current task is completed\n\
-             6. **Avoid unnecessary exploration**: Do NOT call list_directory or read_file unless the task explicitly requires it\n\
-             7. **Multi-step tasks**: If a task requires multiple tool calls, continue until truly completed\n\
-             8. **🚫 EXECUTE BEFORE COMPLETING**: Your first response after seeing the plan must be actual execution (tool calls or real work), NOT a completion summary. The system will REJECT instant-completion claims.\n\
+             5. **Avoid unnecessary exploration**: Do NOT call list_directory or read_file unless the task explicitly requires it\n\
+             6. **🚫 EXECUTE BEFORE COMPLETING**: Your first response must be an actual tool call, NOT a completion summary. The system will REJECT instant-completion claims.\n\
              {}{}\n\n\
-             ⚠️ **Important**: You must explicitly declare after completing each task so the system can track progress. \
-             The system enforces: completion claims without actual tool calls will be REJECTED and you will be asked to retry.",
+             ⚠️ **Important**: You must explicitly declare after completing each task so the system can track progress.",
             execution_prompt,
             task_list_json,
             current_task_info,

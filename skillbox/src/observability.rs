@@ -148,12 +148,14 @@ pub fn audit_confirmation_response(skill_id: &str, approved: bool, source: &str)
     }
 }
 
-/// Audit: command_invoked (right before spawn)
-pub fn audit_command_invoked(skill_id: &str, cmd: &str, args: &[&str], cwd: &str) {
+/// Audit: execution_started (right before spawn — Python name: execution_started)
+///
+/// Also emits as "command_invoked" for backward compatibility.
+pub fn audit_execution_started(skill_id: &str, cmd: &str, args: &[&str], cwd: &str) {
     if let Some(path) = get_audit_path() {
         let record = json!({
             "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-            "event": "command_invoked",
+            "event": "execution_started",
             "skill_id": skill_id,
             "cmd": cmd,
             "args": args,
@@ -162,6 +164,11 @@ pub fn audit_command_invoked(skill_id: &str, cmd: &str, args: &[&str], cwd: &str
         });
         append_jsonl(&path, &record);
     }
+}
+
+/// Audit: command_invoked — alias for execution_started (backward compat)
+pub fn audit_command_invoked(skill_id: &str, cmd: &str, args: &[&str], cwd: &str) {
+    audit_execution_started(skill_id, cmd, args, cwd);
 }
 
 /// Audit: execution_completed (Rust-side)
@@ -220,6 +227,54 @@ pub fn security_scan_high(skill_id: &str, severity: &str, issues: &serde_json::V
             "details": {
                 "severity": severity,
                 "issues": issues
+            }
+        });
+        append_jsonl(&path, &record);
+    }
+}
+
+/// Security event: scan approved — user approved after high/critical scan
+pub fn security_scan_approved(skill_id: &str, scan_id: &str, issues_count: usize) {
+    tracing::info!(
+        skill_id = %skill_id,
+        scan_id = %scan_id,
+        issues_count = %issues_count,
+        "Security: scan approved by user"
+    );
+    if let Some(path) = get_security_events_path() {
+        let record = json!({
+            "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "type": "security_scan_approved",
+            "category": "code_scan",
+            "skill_id": skill_id,
+            "details": {
+                "scan_id": scan_id,
+                "issues_count": issues_count,
+                "decision": "approved"
+            }
+        });
+        append_jsonl(&path, &record);
+    }
+}
+
+/// Security event: scan rejected — user rejected after high/critical scan
+pub fn security_scan_rejected(skill_id: &str, scan_id: &str, issues_count: usize) {
+    tracing::info!(
+        skill_id = %skill_id,
+        scan_id = %scan_id,
+        issues_count = %issues_count,
+        "Security: scan rejected by user"
+    );
+    if let Some(path) = get_security_events_path() {
+        let record = json!({
+            "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "type": "security_scan_rejected",
+            "category": "code_scan",
+            "skill_id": skill_id,
+            "details": {
+                "scan_id": scan_id,
+                "issues_count": issues_count,
+                "decision": "rejected"
             }
         });
         append_jsonl(&path, &record);

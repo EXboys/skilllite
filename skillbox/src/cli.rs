@@ -371,6 +371,51 @@ pub enum Commands {
         verbose: bool,
     },
 
+    /// Initialize a SkillLite project — create .skills/, install deps, run audit
+    ///
+    /// Sets up the project structure, creates an example skill if needed,
+    /// resolves and installs dependencies, and runs security audits.
+    ///
+    /// Examples:
+    ///   skillbox init
+    ///   skillbox init --skip-deps
+    ///   skillbox init --strict
+    Init {
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+
+        /// Skip dependency installation
+        #[arg(long)]
+        skip_deps: bool,
+
+        /// Skip security audit
+        #[arg(long)]
+        skip_audit: bool,
+
+        /// Strict mode — fail if security vulnerabilities found
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Quick start — auto-detect LLM, setup skills, and launch chat
+    ///
+    /// Zero-config flow:
+    ///   1. Detect existing .env or probe local Ollama
+    ///   2. Interactive LLM provider selection if needed
+    ///   3. Ensure skills are available
+    ///   4. Launch interactive chat
+    ///
+    /// Examples:
+    ///   skillbox quickstart
+    ///   skillbox quickstart --skills-dir ./my-skills
+    #[command(name = "quickstart")]
+    Quickstart {
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+    },
+
     /// Run agent_chat RPC server over stdio (JSON-Lines event stream)
     ///
     /// Used by Python/TypeScript SDKs to call the Rust agent engine.

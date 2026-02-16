@@ -321,19 +321,64 @@ fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Files and directories to exclude when copying skills.
+const COPY_EXCLUDE_DIRS: &[&str] = &[
+    ".git",
+    "__pycache__",
+    "node_modules",
+    "venv",
+    ".venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    "*.egg-info",
+];
+
+const COPY_EXCLUDE_FILES: &[&str] = &[
+    ".DS_Store",
+    "Thumbs.db",
+];
+
+const COPY_EXCLUDE_EXTENSIONS: &[&str] = &[
+    "pyc",
+    "pyo",
+];
+
 fn copy_dir_filtered(src: &Path, dest: &Path) -> Result<()> {
     fs::create_dir_all(dest)
         .with_context(|| format!("Failed to create directory: {}", dest.display()))?;
     for entry in fs::read_dir(src)?.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-        if name_str == ".git"
-            || name_str == "__pycache__"
-            || name_str == ".DS_Store"
-            || name_str.ends_with(".pyc")
+
+        // Skip excluded directories
+        if COPY_EXCLUDE_DIRS.iter().any(|d| {
+            if d.contains('*') {
+                let prefix = d.trim_end_matches('*').trim_end_matches('.');
+                name_str.ends_with(prefix) || name_str.starts_with(prefix)
+            } else {
+                name_str == *d
+            }
+        }) && entry.path().is_dir()
         {
             continue;
         }
+
+        // Skip excluded files
+        if COPY_EXCLUDE_FILES.contains(&name_str.as_ref()) {
+            continue;
+        }
+
+        // Skip excluded extensions
+        if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+            if COPY_EXCLUDE_EXTENSIONS.contains(&ext) {
+                continue;
+            }
+        }
+
         let src_path = entry.path();
         let dest_path = dest.join(&name);
         if src_path.is_dir() {

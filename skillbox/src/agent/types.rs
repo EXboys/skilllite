@@ -594,13 +594,17 @@ pub fn get_max_output_chars() -> usize {
 
 /// Threshold above which chunked LLM summarization is used instead of simple
 /// truncation. `SKILLLITE_SUMMARIZE_THRESHOLD`.
+/// Default raised from 15000→30000 to avoid summarizing medium-sized HTML/code
+/// files (e.g. 17KB website) which destroys content needed for downstream tasks.
 pub fn get_summarize_threshold() -> usize {
-    env_usize("SKILLLITE_SUMMARIZE_THRESHOLD", 15000)
+    env_usize("SKILLLITE_SUMMARIZE_THRESHOLD", 30000)
 }
 
 /// Max chars per tool result. `SKILLLITE_TOOL_RESULT_MAX_CHARS`.
+/// Default raised from 8000→12000 to better accommodate HTML/code tool results
+/// without triggering unnecessary truncation.
 pub fn get_tool_result_max_chars() -> usize {
-    env_usize("SKILLLITE_TOOL_RESULT_MAX_CHARS", 8000)
+    env_usize("SKILLLITE_TOOL_RESULT_MAX_CHARS", 12000)
 }
 
 /// Max chars for tool messages during context-overflow recovery.

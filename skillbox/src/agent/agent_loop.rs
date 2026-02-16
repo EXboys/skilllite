@@ -235,7 +235,7 @@ async fn run_simple_loop(
 
                 // Process long content (sync fast path → async LLM summarization fallback)
                 result.content =
-                    process_result_content(&client, &config.model, &result.content).await;
+                    process_result_content(&client, &config.model, tool_name, &result.content).await;
 
                 event_sink.on_tool_result(tool_name, &result.content, result.is_error);
                 messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
@@ -532,19 +532,25 @@ async fn run_with_task_planning(
             let mut made_progress = false;
             if let Some(ref content) = assistant_content {
                 let completed_ids = planner.check_completion_in_content(content);
+                // Snapshot the counter BEFORE processing completions so that
+                // ALL tasks in this batch benefit from tool calls made in
+                // previous iterations. The old code reset the counter after
+                // each task, which caused Tasks 2, 3, … in the same response
+                // to be falsely rejected.
+                let had_tool_calls_for_batch = tool_calls_current_task > 0;
                 for completed_id in completed_ids {
                     // Anti-hallucination: reject completion claims for tasks
                     // that require tool execution when no tool calls were made
-                    // for the current task since the last completion.
+                    // since the last batch of completions.
                     let task_needs_tool = planner.task_list.iter()
                         .find(|t| t.id == completed_id)
                         .map_or(false, |t| {
                             t.tool_hint.as_ref().map_or(false, |h| h != "analysis")
                         });
-                    if task_needs_tool && tool_calls_current_task == 0 {
+                    if task_needs_tool && !had_tool_calls_for_batch {
                         tracing::info!(
                             "Anti-hallucination: rejected text-only completion for task {} \
-                             (requires tool but no tool calls made for current task)",
+                             (requires tool but no tool calls made since last completion batch)",
                             completed_id
                         );
                         continue;
@@ -552,11 +558,11 @@ async fn run_with_task_planning(
                     planner.mark_completed(completed_id);
                     event_sink.on_task_progress(completed_id, true);
                     made_progress = true;
-                    // Reset counter so the NEXT task also needs its own
-                    // tool calls before it can be marked complete.
-                    tool_calls_current_task = 0;
                 }
+                // Reset counter AFTER the entire batch so the NEXT iteration
+                // also needs its own tool calls before tasks can be completed.
                 if made_progress {
+                    tool_calls_current_task = 0;
                     consecutive_no_tool = 0;
                 }
             }
@@ -637,7 +643,7 @@ async fn run_with_task_planning(
             result.tool_call_id = tc.id.clone();
 
             result.content =
-                process_result_content(&client, &config.model, &result.content).await;
+                process_result_content(&client, &config.model, tool_name, &result.content).await;
 
             event_sink.on_tool_result(tool_name, &result.content, result.is_error);
             messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
@@ -657,12 +663,13 @@ async fn run_with_task_planning(
         }
 
         // ── Check task completion after tool execution ───────────────────
-        // Matches Python SDK lines 718-771.
-        // Anti-hallucination: only allow completing the current task (or
-        // earlier). Prevent LLM from skipping ahead to mark future tasks.
+        // After tool execution, allow completing consecutive tasks when the
+        // LLM called tools for multiple tasks in a single batch.
+        // Update current_task_id after each completion so the next task
+        // in sequence can also be completed.
         if let Some(ref content) = assistant_content {
             let completed_ids = planner.check_completion_in_content(content);
-            let current_task_id = planner.current_task().map(|t| t.id);
+            let mut current_task_id = planner.current_task().map(|t| t.id);
             for completed_id in completed_ids {
                 if let Some(cid) = current_task_id {
                     if completed_id > cid {
@@ -676,12 +683,9 @@ async fn run_with_task_planning(
                 }
                 planner.mark_completed(completed_id);
                 event_sink.on_task_progress(completed_id, true);
-                // NOTE: do NOT reset tool_calls_current_task here.
-                // This iteration's tool calls may span multiple tasks
-                // (e.g., open + screenshot in one batch). Resetting would
-                // erase evidence that the next task's tool was already called.
-                // The counter is only reset in the text-only completion
-                // check, where we need each task to prove its own tool work.
+                // Update current_task_id so the next consecutive task
+                // can also be completed in this batch.
+                current_task_id = planner.current_task().map(|t| t.id);
             }
         }
 
@@ -714,10 +718,15 @@ async fn run_with_task_planning(
                 serde_json::to_string_pretty(&planner.task_list)
                     .unwrap_or_else(|_| "[]".to_string());
             let tool_hint = current.tool_hint.as_deref().unwrap_or("");
-            let focus_msg = if !tool_hint.is_empty()
-                && tool_hint != "file_operation"
-                && tool_hint != "analysis"
-            {
+            let focus_msg = if tool_hint == "file_operation" {
+                format!(
+                    "Task progress update:\n{}\n\n\
+                     Current task to execute: Task {} - {}\n\n\
+                     ⚡ Use `write_output` or `preview_server` NOW. \
+                     ⛔ Do NOT call any skill tools.",
+                    task_list_json, current.id, current.description
+                )
+            } else if !tool_hint.is_empty() && tool_hint != "analysis" {
                 format!(
                     "Task progress update:\n{}\n\n\
                      Current task to execute: Task {} - {}\n\n\
@@ -772,6 +781,20 @@ async fn execute_tool_call(
     } else if let Some(skill) = skills::find_skill_by_tool_name(skills, tool_name) {
         // Skill tool
         skills::execute_skill(skill, tool_name, arguments, workspace, event_sink)
+    } else if let Some(skill) = skills::find_skill_by_name(skills, tool_name) {
+        // Reference-only skill (no entry_point / no scripts, just SKILL.md guidance).
+        // Return the full documentation so the LLM can use it as instructions.
+        let docs = prompt::get_skill_full_docs(skill)
+            .unwrap_or_else(|| format!("Skill '{}' is reference-only (no executable entry point). Use its guidance to generate content yourself using write_output.", skill.name));
+        ToolResult {
+            tool_call_id: String::new(),
+            tool_name: tool_name.to_string(),
+            content: format!(
+                "Note: '{}' is a reference-only skill (no executable script). Its documentation is provided below — use these guidelines to generate the content yourself, then save with write_output and preview with preview_server.\n\n{}",
+                skill.name, docs
+            ),
+            is_error: false,
+        }
     } else {
         ToolResult {
             tool_call_id: String::new(),
@@ -782,32 +805,52 @@ async fn execute_tool_call(
     }
 }
 
+/// Tools whose results must never be LLM-summarized because the LLM needs the
+/// content verbatim (e.g. for content transfer between files, or re-use).
+/// For these tools, we only do simple truncation as a last resort.
+const CONTENT_PRESERVING_TOOLS: &[&str] = &["read_file"];
+
 /// Process tool result content: sync fast path, then async LLM summarization.
 ///
 /// Returns the processed content string.
 /// - Short content: returned as-is (sync)
 /// - Medium content: truncated (sync)
 /// - Very long content: LLM summarized (async) with sync fallback on error
+///
+/// `tool_name` controls whether LLM summarization is allowed. For content-
+/// preserving tools like `read_file`, only simple truncation is used so the
+/// actual content is never destroyed by summarization.
 async fn process_result_content(
     client: &LlmClient,
     model: &str,
+    tool_name: &str,
     content: &str,
 ) -> String {
     // Try sync fast path first
     match tools::process_tool_result_content(content) {
         Some(processed) => processed,
         None => {
-            // Content exceeds summarize threshold — use LLM summarization
-            tracing::info!(
-                "Tool result {} chars exceeds summarize threshold, using LLM summarization",
-                content.len()
-            );
-            let summary = long_text::summarize_long_content(client, model, content).await;
-            if summary.is_empty() {
-                // Fallback to sync head+tail truncation
+            // Content exceeds summarize threshold.
+            // For content-preserving tools (read_file), never summarize — the
+            // LLM needs the actual content. Use head+tail truncation instead.
+            if CONTENT_PRESERVING_TOOLS.contains(&tool_name) {
+                tracing::info!(
+                    "Tool '{}' result {} chars exceeds threshold, using head+tail truncation (no LLM summarization)",
+                    tool_name, content.len()
+                );
                 tools::process_tool_result_content_fallback(content)
             } else {
-                summary
+                tracing::info!(
+                    "Tool '{}' result {} chars exceeds summarize threshold, using LLM summarization",
+                    tool_name, content.len()
+                );
+                let summary = long_text::summarize_long_content(client, model, content).await;
+                if summary.is_empty() {
+                    // Fallback to sync head+tail truncation
+                    tools::process_tool_result_content_fallback(content)
+                } else {
+                    summary
+                }
             }
         }
     }
@@ -833,11 +876,16 @@ fn inject_progressive_disclosure(
 
     for tc in tool_calls {
         let tool_name = &tc.function.name;
-        if !tools::is_builtin_tool(tool_name) && !documented_skills.contains(tool_name) {
-            if let Some(skill) = skills::find_skill_by_tool_name(skills, tool_name) {
+        // Normalize tool name for dedup (frontend-design == frontend_design)
+        let normalized = tool_name.replace('-', "_").to_lowercase();
+        if !tools::is_builtin_tool(tool_name) && !documented_skills.contains(&normalized) {
+            // Try by tool definition first, then by skill name (for reference-only skills)
+            let skill = skills::find_skill_by_tool_name(skills, tool_name)
+                .or_else(|| skills::find_skill_by_name(skills, tool_name));
+            if let Some(skill) = skill {
                 if let Some(docs) = prompt::get_skill_full_docs(skill) {
                     new_docs.push((tool_name.clone(), docs));
-                    documented_skills.insert(tool_name.clone());
+                    documented_skills.insert(normalized);
                 }
             }
         }

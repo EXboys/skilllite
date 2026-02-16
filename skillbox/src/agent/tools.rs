@@ -46,11 +46,24 @@ fn resolve_within_workspace(path: &str, workspace: &Path) -> Result<PathBuf> {
     let normalized = normalize_path(&resolved);
 
     if !normalized.starts_with(workspace) {
-        anyhow::bail!(
-            "Path escapes workspace: {} (workspace: {})",
-            path,
-            workspace.display()
-        );
+        // Check if the target looks like it's in the output directory
+        let is_output_path = types::get_output_dir()
+            .map_or(false, |od| normalized.starts_with(Path::new(&od)));
+        if is_output_path {
+            anyhow::bail!(
+                "Path escapes workspace: {} (workspace: {}). \
+                 Hint: this path is in the output directory — use **write_output** \
+                 (with file_path relative to the output dir) instead of write_file.",
+                path,
+                workspace.display()
+            );
+        } else {
+            anyhow::bail!(
+                "Path escapes workspace: {} (workspace: {})",
+                path,
+                workspace.display()
+            );
+        }
     }
 
     Ok(normalized)
@@ -353,7 +366,8 @@ fn execute_read_file(args: &Value, workspace: &Path) -> Result<String> {
         .and_then(|v| v.as_str())
         .context("'path' is required")?;
 
-    let resolved = resolve_within_workspace(path_str, workspace)?;
+    // Allow reading from both workspace and output directory
+    let resolved = resolve_within_workspace_or_output(path_str, workspace)?;
 
     if !resolved.exists() {
         anyhow::bail!("File not found: {}", path_str);
@@ -427,7 +441,8 @@ fn execute_list_directory(args: &Value, workspace: &Path) -> Result<String> {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let resolved = resolve_within_workspace(path_str, workspace)?;
+    // Allow listing both workspace and output directory
+    let resolved = resolve_within_workspace_or_output(path_str, workspace)?;
 
     if !resolved.exists() {
         anyhow::bail!("Directory not found: {}", path_str);
@@ -503,7 +518,8 @@ fn execute_file_exists(args: &Value, workspace: &Path) -> Result<String> {
         .and_then(|v| v.as_str())
         .context("'path' is required")?;
 
-    let resolved = resolve_within_workspace(path_str, workspace)?;
+    // Allow checking both workspace and output directory
+    let resolved = resolve_within_workspace_or_output(path_str, workspace)?;
 
     if !resolved.exists() {
         return Ok(format!("{}: does not exist", path_str));
@@ -815,6 +831,37 @@ struct PreviewServerState {
     port: u16,
 }
 
+/// Resolve a path within workspace OR the output directory.
+/// preview_server needs to serve output files written by write_output,
+/// which are in SKILLLITE_OUTPUT_DIR (typically ~/.skilllite/chat/output/).
+fn resolve_within_workspace_or_output(path: &str, workspace: &Path) -> Result<PathBuf> {
+    // First try workspace
+    if let Ok(resolved) = resolve_within_workspace(path, workspace) {
+        return Ok(resolved);
+    }
+
+    // Then try output directory (where write_output saves files)
+    if let Some(output_dir) = types::get_output_dir() {
+        let output_root = PathBuf::from(&output_dir);
+        let input = Path::new(path);
+        let resolved = if input.is_absolute() {
+            input.to_path_buf()
+        } else {
+            output_root.join(input)
+        };
+        let normalized = normalize_path(&resolved);
+        if normalized.starts_with(&output_root) {
+            return Ok(normalized);
+        }
+    }
+
+    anyhow::bail!(
+        "Path escapes workspace: {} (workspace: {})",
+        path,
+        workspace.display()
+    )
+}
+
 /// Execute `preview_server`: start a local HTTP file server in a daemon thread.
 /// Ported from Python `_start_preview_server` in builtin_tools.py.
 ///
@@ -835,7 +882,8 @@ fn execute_preview_server(args: &Value, workspace: &Path) -> Result<String> {
         .and_then(|v| v.as_u64())
         .unwrap_or(8765) as u16;
 
-    let resolved = resolve_within_workspace(dir_path, workspace)?;
+    // Allow both workspace and output directory (where write_output saves files)
+    let resolved = resolve_within_workspace_or_output(dir_path, workspace)?;
 
     // If a file path was given, serve its parent directory
     let (serve_dir, target_file) = if resolved.is_file() {
@@ -978,6 +1026,7 @@ fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {
         let decoded = url_decode(clean_path);
         // Remove leading slash, default to index.html
         let rel = decoded.trim_start_matches('/');
+        let is_root_request = rel.is_empty();
         let rel = if rel.is_empty() { "index.html" } else { rel };
 
         let file_path = serve_dir.join(rel);
@@ -1026,6 +1075,9 @@ fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {
                     let _ = stream.write_all(resp.as_bytes());
                 }
             }
+        } else if is_root_request {
+            // index.html not found — try fallback: find HTML files in the directory
+            serve_directory_fallback(&mut stream, serve_dir);
         } else {
             let body = "404 Not Found";
             let resp = format!(
@@ -1038,6 +1090,100 @@ fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {
             let _ = stream.write_all(resp.as_bytes());
         }
     }
+}
+
+/// Fallback for root URL when index.html is missing:
+/// - If exactly one HTML file exists, redirect to it (302)
+/// - Otherwise, generate a simple directory listing of HTML files
+fn serve_directory_fallback(stream: &mut std::net::TcpStream, serve_dir: &Path) {
+    use std::io::Write;
+
+    // Collect HTML files in the directory
+    let mut html_files: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(serve_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                    if ext == "html" || ext == "htm" {
+                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                            html_files.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    html_files.sort();
+
+    if html_files.len() == 1 {
+        // Single HTML file — redirect to it
+        let redirect_url = format!("/{}", html_files[0]);
+        let resp = format!(
+            "HTTP/1.1 302 Found\r\n\
+             Location: {}\r\n\
+             Content-Length: 0\r\n\
+             Connection: close\r\n\r\n",
+            redirect_url
+        );
+        let _ = stream.write_all(resp.as_bytes());
+    } else if html_files.is_empty() {
+        // No HTML files at all — list all files
+        let mut all_files: Vec<String> = Vec::new();
+        if let Ok(entries) = std::fs::read_dir(serve_dir) {
+            for entry in entries.flatten() {
+                if entry.path().is_file() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        if !name.starts_with('.') {
+                            all_files.push(name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        all_files.sort();
+
+        let body = generate_listing_html("Files", &all_files);
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\n\
+             Content-Type: text/html; charset=utf-8\r\n\
+             Content-Length: {}\r\n\
+             Cache-Control: no-store\r\n\
+             Connection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = stream.write_all(resp.as_bytes());
+    } else {
+        // Multiple HTML files — show listing
+        let body = generate_listing_html("HTML Files", &html_files);
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\n\
+             Content-Type: text/html; charset=utf-8\r\n\
+             Content-Length: {}\r\n\
+             Cache-Control: no-store\r\n\
+             Connection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        let _ = stream.write_all(resp.as_bytes());
+    }
+}
+
+fn generate_listing_html(title: &str, files: &[String]) -> String {
+    let items: Vec<String> = files
+        .iter()
+        .map(|f| format!("<li><a href=\"/{}\">{}</a></li>", f, f))
+        .collect();
+    format!(
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\">\
+         <title>SkillLite Preview - {}</title>\
+         <style>body{{font-family:system-ui,-apple-system,sans-serif;max-width:600px;margin:40px auto;padding:0 20px}}\
+         a{{color:#2563eb;text-decoration:none;font-size:18px}}a:hover{{text-decoration:underline}}\
+         li{{margin:8px 0}}h1{{color:#1e293b}}</style></head>\
+         <body><h1>{}</h1><ul>{}</ul></body></html>",
+        title, title, items.join("")
+    )
 }
 
 /// Basic URL decoding for %XX sequences.

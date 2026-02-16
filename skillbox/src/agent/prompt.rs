@@ -2,9 +2,33 @@
 //!
 //! Ported from Python `PromptBuilder`. Generates system prompt context
 //! from loaded skills, including progressive disclosure support.
+//!
+//! ## Progressive Disclosure Modes
+//!
+//! Four prompt modes control how much skill information is included:
+//!
+//! | Mode        | Content                                       | Usage           |
+//! |-------------|-----------------------------------------------|-----------------|
+//! | Summary     | Skill name + 150-char description              | Compact views   |
+//! | Standard    | Schema + 200-char description                 | Default prompts |
+//! | Progressive | Standard + "more details available" hint       | Agent system    |
+//! | Full        | Complete SKILL.md + references + assets        | First invocation|
 
 use super::skills::LoadedSkill;
-use super::types::get_output_dir;
+use super::types::{get_output_dir, safe_truncate};
+
+/// Progressive disclosure mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptMode {
+    /// 150-char description only.
+    Summary,
+    /// Schema + 200-char description.
+    Standard,
+    /// Standard + "use get_skill_info for full docs" hint.
+    Progressive,
+    /// Complete SKILL.md + reference files.
+    Full,
+}
 
 /// Default system prompt for the agent.
 const DEFAULT_SYSTEM_PROMPT: &str = r#"You are a helpful AI assistant with access to tools.
@@ -56,20 +80,10 @@ pub fn build_system_prompt(
         output_dir
     ));
 
-    // Skills context (progressive disclosure: summary only, full docs on first call)
+    // Skills context — Progressive mode: summary + "more details available" hint.
+    // Full docs are injected on first tool call via inject_progressive_disclosure.
     if !skills.is_empty() {
-        parts.push("\n\n## Available Skills\n".to_string());
-        for skill in skills {
-            let desc = skill.metadata.description.as_deref().unwrap_or("No description");
-            let entry = if skill.metadata.entry_point.is_empty() {
-                "(prompt-only)"
-            } else if skill.metadata.is_bash_tool_skill() {
-                "(bash-tool)"
-            } else {
-                ""
-            };
-            parts.push(format!("- **{}** {}: {}", skill.name, entry, desc));
-        }
+        parts.push(build_skills_context(skills, PromptMode::Progressive));
     }
 
     // Bash-tool skills: inject full SKILL.md content upfront
@@ -90,6 +104,91 @@ pub fn build_system_prompt(
     }
 
     parts.join("")
+}
+
+/// Build skills context section for the system prompt.
+///
+/// Uses the specified `PromptMode` to control verbosity:
+///   - Summary: name + 150-char truncated description
+///   - Standard: name + 200-char description + parameter schema hints
+///   - Progressive: Standard + "more details available" hint
+///   - Full: complete SKILL.md content (rarely used in system prompt)
+pub fn build_skills_context(skills: &[LoadedSkill], mode: PromptMode) -> String {
+    let mut parts = vec!["\n\n## Available Skills\n".to_string()];
+
+    for skill in skills {
+        let raw_desc = skill
+            .metadata
+            .description
+            .as_deref()
+            .unwrap_or("No description");
+        let entry_tag = if skill.metadata.entry_point.is_empty() {
+            if skill.metadata.is_bash_tool_skill() {
+                " (bash-tool)"
+            } else {
+                " (prompt-only)"
+            }
+        } else {
+            ""
+        };
+
+        match mode {
+            PromptMode::Summary => {
+                let truncated = safe_truncate(raw_desc, 150);
+                parts.push(format!("- **{}**{}: {}", skill.name, entry_tag, truncated));
+            }
+            PromptMode::Standard => {
+                let truncated = safe_truncate(raw_desc, 200);
+                let schema_hint = build_schema_hint(skill);
+                parts.push(format!(
+                    "- **{}**{}: {}{}",
+                    skill.name, entry_tag, truncated, schema_hint
+                ));
+            }
+            PromptMode::Progressive => {
+                let truncated = safe_truncate(raw_desc, 200);
+                let schema_hint = build_schema_hint(skill);
+                parts.push(format!(
+                    "- **{}**{}: {}{}",
+                    skill.name, entry_tag, truncated, schema_hint
+                ));
+            }
+            PromptMode::Full => {
+                if let Some(docs) = get_skill_full_docs(skill) {
+                    parts.push(format!("### {}\n\n{}", skill.name, docs));
+                } else {
+                    parts.push(format!("- **{}**{}: {}", skill.name, entry_tag, raw_desc));
+                }
+            }
+        }
+    }
+
+    if mode == PromptMode::Progressive {
+        parts.push(
+            "\n> Tip: Full documentation for each skill will be provided when you first call it."
+                .to_string(),
+        );
+    }
+
+    parts.join("\n")
+}
+
+/// Build a brief schema hint showing required parameters.
+fn build_schema_hint(skill: &LoadedSkill) -> String {
+    if let Some(first_tool) = skill.tool_definitions.first() {
+        if let Some(required) = first_tool.function.parameters.get("required") {
+            if let Some(arr) = required.as_array() {
+                let params: Vec<&str> = arr
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .collect();
+                if !params.is_empty() {
+                    return format!(" (params: {})", params.join(", "));
+                }
+            }
+        }
+    }
+    String::new()
 }
 
 /// Get full skill documentation for progressive disclosure.
@@ -136,4 +235,131 @@ pub fn get_skill_full_docs(skill: &LoadedSkill) -> Option<String> {
     }
 
     Some(parts.join(""))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::skill::metadata::SkillMetadata;
+    use std::collections::HashMap;
+
+    fn make_test_skill(name: &str, desc: &str) -> LoadedSkill {
+        use super::super::types::{ToolDefinition, FunctionDef};
+        LoadedSkill {
+            name: name.to_string(),
+            skill_dir: std::path::PathBuf::from("/tmp/test-skill"),
+            metadata: SkillMetadata {
+                name: name.to_string(),
+                entry_point: "scripts/main.py".to_string(),
+                language: Some("python".to_string()),
+                description: Some(desc.to_string()),
+                compatibility: None,
+                network: Default::default(),
+                resolved_packages: None,
+                allowed_tools: None,
+            },
+            tool_definitions: vec![ToolDefinition {
+                tool_type: "function".to_string(),
+                function: FunctionDef {
+                    name: name.to_string(),
+                    description: desc.to_string(),
+                    parameters: serde_json::json!({
+                        "type": "object",
+                        "properties": {
+                            "input": {"type": "string", "description": "Input text"}
+                        },
+                        "required": ["input"]
+                    }),
+                },
+            }],
+            multi_script_entries: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn test_prompt_mode_summary() {
+        let skills = vec![make_test_skill("calculator", "A very useful calculator skill for mathematical operations and complex computations that can handle everything")];
+        let ctx = build_skills_context(&skills, PromptMode::Summary);
+
+        assert!(ctx.contains("calculator"));
+        assert!(ctx.contains("Available Skills"));
+        // Summary mode truncates to 150 chars
+        assert!(!ctx.contains("Tip:")); // No progressive hint
+    }
+
+    #[test]
+    fn test_prompt_mode_standard() {
+        let skills = vec![make_test_skill("calculator", "Does math")];
+        let ctx = build_skills_context(&skills, PromptMode::Standard);
+
+        assert!(ctx.contains("calculator"));
+        assert!(ctx.contains("Does math"));
+        assert!(ctx.contains("(params: input)")); // Schema hint
+        assert!(!ctx.contains("Tip:")); // No progressive hint
+    }
+
+    #[test]
+    fn test_prompt_mode_progressive() {
+        let skills = vec![make_test_skill("calculator", "Does math")];
+        let ctx = build_skills_context(&skills, PromptMode::Progressive);
+
+        assert!(ctx.contains("calculator"));
+        assert!(ctx.contains("Does math"));
+        assert!(ctx.contains("(params: input)"));
+        assert!(ctx.contains("Tip:")); // Has progressive hint
+        assert!(ctx.contains("Full documentation"));
+    }
+
+    #[test]
+    fn test_build_system_prompt_contains_workspace() {
+        let prompt = build_system_prompt(None, &[], "/home/user/project");
+        assert!(prompt.contains("Workspace: /home/user/project"));
+    }
+
+    #[test]
+    fn test_build_system_prompt_uses_progressive_mode() {
+        let skills = vec![make_test_skill("test-skill", "Test description")];
+        let prompt = build_system_prompt(None, &skills, "/tmp");
+
+        assert!(prompt.contains("test-skill"));
+        assert!(prompt.contains("Test description"));
+        assert!(prompt.contains("Tip:")); // Progressive mode hint
+    }
+
+    #[test]
+    fn test_build_schema_hint() {
+        let skill = make_test_skill("test", "desc");
+        let hint = build_schema_hint(&skill);
+        assert_eq!(hint, " (params: input)");
+    }
+
+    #[test]
+    fn test_build_schema_hint_no_required() {
+        use super::super::types::{ToolDefinition, FunctionDef};
+        let skill = LoadedSkill {
+            name: "test".to_string(),
+            skill_dir: std::path::PathBuf::from("/tmp"),
+            metadata: SkillMetadata {
+                name: "test".to_string(),
+                entry_point: String::new(),
+                language: None,
+                description: None,
+                compatibility: None,
+                network: Default::default(),
+                resolved_packages: None,
+                allowed_tools: None,
+            },
+            tool_definitions: vec![ToolDefinition {
+                tool_type: "function".to_string(),
+                function: FunctionDef {
+                    name: "test".to_string(),
+                    description: "test".to_string(),
+                    parameters: serde_json::json!({"type": "object", "properties": {}}),
+                },
+            }],
+            multi_script_entries: HashMap::new(),
+        };
+        let hint = build_schema_hint(&skill);
+        assert_eq!(hint, "");
+    }
 }

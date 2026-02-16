@@ -454,7 +454,11 @@ fn execute_skill_inner(
 
     // Phase 2.5: Multi-script tool routing
     // If tool_name is in the multi_script_entries map, use that script as entry_point.
-    let multi_script_entry: Option<&String> = skill.multi_script_entries.get(tool_name);
+    // Try exact match first, then normalized match (hyphens → underscores).
+    let multi_script_entry: Option<&String> = skill
+        .multi_script_entries
+        .get(tool_name)
+        .or_else(|| skill.multi_script_entries.get(&sanitize_tool_name(tool_name)));
 
     // For Level 3: security scan + user confirmation
     // Ported from Python `UnifiedExecutionService.execute_skill` L3 flow
@@ -726,13 +730,46 @@ fn rewrite_output_paths(command: &str, output_dir: &Path) -> String {
 }
 
 /// Find a loaded skill by tool name.
+///
+/// Supports fuzzy matching: normalizes both the query and registered names
+/// so that `frontend-design` matches `frontend_design` and vice versa.
+/// This is needed because LLMs sometimes use the original skill name (with hyphens)
+/// instead of the sanitized tool name (with underscores).
 pub fn find_skill_by_tool_name<'a>(
     skills: &'a [LoadedSkill],
     tool_name: &str,
 ) -> Option<&'a LoadedSkill> {
-    skills.iter().find(|s| {
+    // Exact match first (fast path)
+    if let Some(skill) = skills.iter().find(|s| {
         s.tool_definitions.iter().any(|td| td.function.name == tool_name)
+    }) {
+        return Some(skill);
+    }
+
+    // Normalized match: replace hyphens with underscores and compare
+    let normalized = sanitize_tool_name(tool_name);
+    skills.iter().find(|s| {
+        s.tool_definitions.iter().any(|td| td.function.name == normalized)
     })
+}
+
+/// Find a loaded skill by its original name (not tool definition name).
+///
+/// This is useful for finding reference-only skills that have no tool definitions
+/// but are still loaded and available for documentation injection.
+/// Matches both exact name and normalized name (hyphens ↔ underscores).
+pub fn find_skill_by_name<'a>(
+    skills: &'a [LoadedSkill],
+    name: &str,
+) -> Option<&'a LoadedSkill> {
+    // Exact match
+    if let Some(skill) = skills.iter().find(|s| s.name == name) {
+        return Some(skill);
+    }
+    // Normalized: frontend_design matches frontend-design
+    let with_hyphens = name.replace('_', "-");
+    let with_underscores = name.replace('-', "_");
+    skills.iter().find(|s| s.name == with_hyphens || s.name == with_underscores)
 }
 
 // ─── Phase 2.5: Security scanning integration ──────────────────────────────

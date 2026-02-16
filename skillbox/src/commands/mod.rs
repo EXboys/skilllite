@@ -6,8 +6,14 @@
 //! Layer separation:
 //!   commands/ → skill/, env/     ✅ (management layer)
 //!   commands/ → agent/           ❌ (forbidden — use agent/rpc.rs instead)
+//!
+//! Phase 3.5c additions:
+//!   init      — project initialization (binary check + .skills/ + deps + audit)
+//!   quickstart — zero-config LLM setup + chat launch
 
 pub mod skill;
 pub mod ide;
 pub mod env;
 pub mod reindex;
+pub mod init;
+pub mod quickstart;

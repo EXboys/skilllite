@@ -208,6 +208,12 @@ fn main() -> Result<()> {
         Commands::Reindex { skills_dir, verbose } => {
             commands::reindex::cmd_reindex(&skills_dir, verbose)?;
         }
+        Commands::Init { skills_dir, skip_deps, skip_audit, strict } => {
+            commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict)?;
+        }
+        Commands::Quickstart { skills_dir } => {
+            commands::quickstart::cmd_quickstart(&skills_dir)?;
+        }
         #[cfg(feature = "agent")]
         Commands::AgentRpc => {
             agent::rpc::serve_agent_rpc()?;
@@ -830,6 +836,20 @@ fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
     let mut scripts = Vec::new();
     scan_scripts_recursive(&skill_path, &skill_path, &mut scripts, preview_lines)?;
 
+    // Post-process: mark entry_point match and update confidence
+    if let Some(entry_point) = result["skill_metadata"]["entry_point"].as_str() {
+        for script in &mut scripts {
+            if let Some(path) = script.get("path").and_then(|p| p.as_str()) {
+                if path == entry_point {
+                    script["is_entry_point"] = serde_json::json!(true);
+                    script["confidence"] = serde_json::json!(1.0);
+                } else {
+                    script["is_entry_point"] = serde_json::json!(false);
+                }
+            }
+        }
+    }
+
     result["scripts"] = serde_json::json!(scripts);
 
     serde_json::to_string_pretty(&result)
@@ -948,6 +968,19 @@ fn analyze_script_file(
     // Detect stdin/stdout usage
     let uses_stdio = detect_stdio_usage(&content, language);
 
+    // Compute execution recommendation and confidence
+    let in_scripts_dir = relative_path
+        .to_string_lossy()
+        .starts_with("scripts/") || relative_path.to_string_lossy().starts_with("scripts\\");
+
+    let (exec_method, confidence) = compute_execution_recommendation(
+        uses_stdio,
+        uses_argparse,
+        has_main,
+        in_scripts_dir,
+        false, // is_entry_point — determined at skill level
+    );
+
     Some(serde_json::json!({
         "path": relative_path.to_string_lossy(),
         "language": language,
@@ -957,7 +990,10 @@ fn analyze_script_file(
         "has_main_entry": has_main,
         "uses_argparse": uses_argparse,
         "uses_stdio": uses_stdio,
-        "file_size_bytes": fs::metadata(file_path).map(|m| m.len()).unwrap_or(0)
+        "in_scripts_dir": in_scripts_dir,
+        "file_size_bytes": fs::metadata(file_path).map(|m| m.len()).unwrap_or(0),
+        "execution_recommendation": exec_method,
+        "confidence": confidence
     }))
 }
 
@@ -1082,6 +1118,70 @@ fn detect_argparse_usage(content: &str, language: &str) -> bool {
         }
         _ => false,
     }
+}
+
+/// Compute execution recommendation and confidence score.
+///
+/// Execution methods:
+///   - `stdin_json`: Script reads JSON from stdin, writes JSON to stdout
+///   - `argparse`: Script uses CLI argument parsing (argparse, sys.argv, etc.)
+///   - `direct`: Script can be run directly without input
+///
+/// Confidence scoring:
+///   +0.3  uses stdin/stdout I/O
+///   +0.2  uses argparse/CLI args
+///   +0.1  has main entry point
+///   +0.1  located in scripts/ directory
+///   1.0   matches entry_point declaration
+fn compute_execution_recommendation(
+    uses_stdio: bool,
+    uses_argparse: bool,
+    has_main: bool,
+    in_scripts_dir: bool,
+    is_entry_point: bool,
+) -> (&'static str, f64) {
+    if is_entry_point {
+        // Entry point match is highest confidence
+        let method = if uses_stdio && !uses_argparse {
+            "stdin_json"
+        } else if uses_argparse {
+            "argparse"
+        } else {
+            "direct"
+        };
+        return (method, 1.0);
+    }
+
+    let mut confidence: f64 = 0.0;
+
+    if uses_stdio {
+        confidence += 0.3;
+    }
+    if uses_argparse {
+        confidence += 0.2;
+    }
+    if has_main {
+        confidence += 0.1;
+    }
+    if in_scripts_dir {
+        confidence += 0.1;
+    }
+
+    // Determine execution method based on detected patterns
+    let method = if uses_stdio && !uses_argparse {
+        "stdin_json"
+    } else if uses_argparse {
+        "argparse"
+    } else if has_main || in_scripts_dir {
+        "direct"
+    } else {
+        "direct"
+    };
+
+    // Clamp to [0.0, 1.0]
+    confidence = confidence.min(1.0);
+
+    (method, (confidence * 100.0).round() / 100.0)
 }
 
 /// Detect if script uses stdin/stdout for I/O
