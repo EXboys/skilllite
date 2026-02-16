@@ -27,7 +27,9 @@ use std::time::{Duration, Instant};
 
 use crate::sandbox::executor::{ResourceLimits, SandboxLevel};
 use crate::sandbox::security::scanner::ScriptScanner;
-use crate::sandbox::security::types::{ScanResult, SecuritySeverity};
+use crate::sandbox::security::types::{
+    ScanResult, SecurityIssue, SecurityIssueType, SecuritySeverity,
+};
 use crate::skill::metadata;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -598,24 +600,44 @@ fn handle_scan_code(server: &mut McpServer, arguments: &Value) -> Result<String>
     format_scan_response(&scan_result, &scan_id, &code_hash)
 }
 
+/// Build a fail-secure ScanResult when the scan process itself fails.
+/// Returns High severity (requires_confirmation) so user can review and confirm.
+fn scan_error_result(err: &str) -> ScanResult {
+    ScanResult {
+        is_safe: false,
+        issues: vec![SecurityIssue {
+            rule_id: "scan-error".to_string(),
+            severity: SecuritySeverity::High,
+            issue_type: SecurityIssueType::ScanError,
+            line_number: 0,
+            description: format!("Security scan failed: {}. Manual review required.", err),
+            code_snippet: String::new(),
+        }],
+    }
+}
+
 /// Perform a security scan and cache the result.
+/// Fail-secure: on scan exception, returns a ScanResult with requires_confirmation
+/// instead of propagating Err (aligned with Python SDK behavior).
 fn perform_scan(server: &mut McpServer, language: &str, code: &str) -> Result<(ScanResult, String, String)> {
     let code_hash = McpServer::generate_code_hash(language, code);
     let scan_id = McpServer::generate_scan_id(&code_hash);
 
-    // Write code to a temp file for scanning
-    let ext = match language {
-        "python" => ".py",
-        "javascript" | "node" => ".js",
-        "bash" | "shell" => ".sh",
-        _ => ".txt",
+    let scan_result = match do_scan(language, code) {
+        Ok(r) => r,
+        Err(e) => {
+            // Fail-secure: return ScanResult requiring confirmation, not Err
+            let err_result = scan_error_result(&e.to_string());
+            server.scan_cache.insert(scan_id.clone(), CachedScan {
+                scan_result: err_result.clone(),
+                code_hash: code_hash.clone(),
+                language: language.to_string(),
+                code: code.to_string(),
+                created_at: Instant::now(),
+            });
+            return Ok((err_result, scan_id, code_hash));
+        }
     };
-    let temp_dir = tempfile::tempdir()?;
-    let temp_path = temp_dir.path().join(format!("scan{}", ext));
-    std::fs::write(&temp_path, code)?;
-
-    let scanner = ScriptScanner::new();
-    let scan_result = scanner.scan_file(&temp_path)?;
 
     // Cache the result
     server.scan_cache.insert(scan_id.clone(), CachedScan {
@@ -627,6 +649,22 @@ fn perform_scan(server: &mut McpServer, language: &str, code: &str) -> Result<(S
     });
 
     Ok((scan_result, scan_id, code_hash))
+}
+
+/// Inner scan logic — may return Err on temp file or scanner failure.
+fn do_scan(language: &str, code: &str) -> Result<ScanResult> {
+    let ext = match language {
+        "python" => ".py",
+        "javascript" | "node" => ".js",
+        "bash" | "shell" => ".sh",
+        _ => ".txt",
+    };
+    let temp_dir = tempfile::tempdir()?;
+    let temp_path = temp_dir.path().join(format!("scan{}", ext));
+    std::fs::write(&temp_path, code)?;
+
+    let scanner = ScriptScanner::new();
+    scanner.scan_file(&temp_path)
 }
 
 /// Format a scan result as a human-readable response.

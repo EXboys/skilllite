@@ -52,7 +52,7 @@ pub enum Commands {
         #[arg(value_name = "SCRIPT_PATH")]
         script_path: String,
 
-        /// Input JSON string (passed via stdin)
+        /// Input JSON string. Use "-" to read from stdin (for large input > ARG_MAX)
         #[arg(value_name = "INPUT_JSON")]
         input_json: String,
 

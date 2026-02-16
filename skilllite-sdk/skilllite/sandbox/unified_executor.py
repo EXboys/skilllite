@@ -123,8 +123,8 @@ class UnifiedExecutor:
             result = self._execute_via_ipc_exec(context, skill_dir, script_path, input_data, args)
             if result is not None:
                 return result
-        cmd = self._build_exec_command(context, skill_dir, script_path, input_data, args)
-        return self._run_subprocess(cmd, context, skill_dir)
+        cmd, stdin_data = self._build_exec_command(context, skill_dir, script_path, input_data, args)
+        return self._run_subprocess(cmd, context, skill_dir, stdin_data=stdin_data)
     
     # ==================== Bash Tool Skill Execution ====================
 
@@ -262,32 +262,41 @@ class UnifiedExecutor:
         script_path: str,
         input_data: Dict[str, Any],
         args: Optional[List[str]] = None,
-    ) -> List[str]:
-        """Build command for skillbox exec."""
-        # Convert to absolute path to avoid path issues
+    ) -> tuple:
+        """Build command for skillbox exec. Returns (cmd, stdin_data).
+        Uses stdin when input > 100KB to avoid ARG_MAX (same as run)."""
         abs_skill_dir = Path(skill_dir).resolve()
-        cmd = [
-            self._binary_path,
-            "exec",
-            str(abs_skill_dir),
-            script_path,
-            json.dumps(input_data),
-        ]
-        
+        input_str = json.dumps(input_data)
+        if len(input_str) > 100000:
+            cmd = [
+                self._binary_path,
+                "exec",
+                str(abs_skill_dir),
+                script_path,
+                "-",
+            ]
+            stdin_data = input_str.encode("utf-8")
+        else:
+            cmd = [
+                self._binary_path,
+                "exec",
+                str(abs_skill_dir),
+                script_path,
+                input_str,
+            ]
+            stdin_data = None
+
         if args:
             args_str = " ".join(args) if isinstance(args, list) else args
             cmd.extend(["--args", args_str])
-        
-        # Add sandbox level from context (NOT from instance variable)
+
         cmd.extend(["--sandbox-level", context.sandbox_level])
-        
         if context.allow_network:
             cmd.append("--allow-network")
-        
         cmd.extend(["--timeout", str(context.timeout)])
         cmd.extend(["--max-memory", str(context.max_memory_mb)])
 
-        return cmd
+        return cmd, stdin_data
 
     def _get_ipc_client(self):
         """Get or create IPC client pool (lazy init)."""

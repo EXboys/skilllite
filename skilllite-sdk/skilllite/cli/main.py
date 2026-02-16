@@ -15,7 +15,7 @@ from .integrations.opencode import cmd_init_opencode
 from .integrations.cursor import cmd_init_cursor
 from .init import cmd_init
 from .add import cmd_add
-from .repo import cmd_list, cmd_remove
+from .repo import cmd_list, cmd_remove, cmd_reindex
 from .chat import cmd_chat
 from .quickstart import cmd_quickstart
 
@@ -40,6 +40,7 @@ Examples:
   skilllite add owner/repo   Add skills from a remote repository
   skilllite list             List installed skills
   skilllite remove <name>    Remove an installed skill
+  skilllite reindex          Rescan skills directory and rebuild metadata cache
   skilllite chat             Interactive chat (requires skillbox --features executor)
 
 For more information, visit: https://github.com/skilllite/skilllite
@@ -266,6 +267,24 @@ For more information, visit: https://github.com/skilllite/skilllite
         help="Skills directory path (default: .skills)"
     )
     list_parser.set_defaults(func=cmd_list)
+
+    # reindex command
+    reindex_parser = subparsers.add_parser(
+        "reindex",
+        help="Rescan skills directory and rebuild metadata cache (delegates to skillbox)"
+    )
+    reindex_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default=".skills",
+        help="Skills directory path (default: .skills)"
+    )
+    reindex_parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Verbose output"
+    )
+    reindex_parser.set_defaults(func=cmd_reindex)
 
     # chat command
     chat_parser = subparsers.add_parser(

@@ -108,6 +108,13 @@ fn main() -> Result<()> {
             timeout,
             sandbox_level,
         } => {
+            let input_json = if input_json == "-" {
+                let mut s = String::new();
+                std::io::stdin().read_to_string(&mut s)?;
+                s
+            } else {
+                input_json
+            };
             let sandbox_level = sandbox::executor::SandboxLevel::from_env_or_cli(sandbox_level);
             let limits = sandbox::executor::ResourceLimits::from_env()
                 .with_cli_overrides(max_memory, timeout);

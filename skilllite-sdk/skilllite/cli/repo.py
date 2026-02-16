@@ -1,10 +1,11 @@
 """
 Repository management commands for skilllite CLI.
 
-Provides ``skilllite list`` and ``skilllite remove`` commands.
+Provides ``skilllite list``, ``skilllite remove``, and ``skilllite reindex`` commands.
 """
 
 import argparse
+import subprocess
 import os
 import shutil
 from pathlib import Path
@@ -110,4 +111,42 @@ def cmd_remove(args: argparse.Namespace) -> int:
     shutil.rmtree(skill_path)
     print(f"✓ Removed skill '{skill_path.name}'")
     return 0
+
+
+# ---------------------------------------------------------------------------
+# cmd_reindex
+# ---------------------------------------------------------------------------
+
+def cmd_reindex(args: argparse.Namespace) -> int:
+    """Execute the ``skilllite reindex`` command.
+
+    Rescans the skills directory and rebuilds metadata cache.
+    Delegates to skillbox reindex when available; otherwise does a no-op.
+    """
+    from ..sandbox.skillbox import find_binary
+
+    binary = find_binary()
+    if not binary:
+        print("skillbox binary not found. Run `skilllite install` first.")
+        return 1
+
+    skills_dir = Path(args.skills_dir or ".skills")
+    if not skills_dir.is_absolute():
+        skills_dir = Path(os.getcwd()) / skills_dir
+
+    verbose = getattr(args, "verbose", False)
+    cmd = [binary, "reindex", "-s", str(skills_dir)]
+    if verbose:
+        cmd.append("-v")
+
+    try:
+        subprocess.run(cmd, check=True)
+        print("✓ Reindex complete")
+        return 0
+    except subprocess.CalledProcessError as e:
+        print(f"✗ Reindex failed: {e}")
+        return e.returncode
+    except FileNotFoundError:
+        print("skillbox binary not found. Run `skilllite install` first.")
+        return 1
 

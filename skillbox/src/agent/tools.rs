@@ -69,6 +69,17 @@ fn resolve_within_workspace(path: &str, workspace: &Path) -> Result<PathBuf> {
     Ok(normalized)
 }
 
+/// Extract path from tool args. Accepts both `path` and `file_path`/`directory_path` for Python SDK compatibility.
+fn get_path_arg(args: &Value, for_directory: bool) -> Option<String> {
+    let path = args.get("path").and_then(|v| v.as_str());
+    let alt = if for_directory {
+        args.get("directory_path").and_then(|v| v.as_str())
+    } else {
+        args.get("file_path").and_then(|v| v.as_str())
+    };
+    path.or(alt).map(String::from)
+}
+
 /// Normalize a path by resolving `.` and `..` components without filesystem access.
 pub(crate) fn normalize_path(path: &Path) -> PathBuf {
     let mut components = Vec::new();
@@ -214,14 +225,23 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
                     "properties": {
                         "directory_path": {
                             "type": "string",
-                            "description": "Directory to serve (relative to workspace)"
+                            "description": "Directory to serve (relative to workspace). Also accepts 'path'."
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Alias for directory_path"
                         },
                         "port": {
                             "type": "integer",
                             "description": "Port number (default: 8765)"
+                        },
+                        "open_browser": {
+                            "type": "boolean",
+                            "description": "Whether to open browser automatically (default: true)",
+                            "default": true
                         }
                     },
-                    "required": ["directory_path"]
+                    "required": []
                 }),
             },
         },
@@ -361,13 +381,11 @@ pub async fn execute_async_builtin_tool(
 
 /// Read a file's UTF-8 content.
 fn execute_read_file(args: &Value, workspace: &Path) -> Result<String> {
-    let path_str = args
-        .get("path")
-        .and_then(|v| v.as_str())
-        .context("'path' is required")?;
+    let path_str = get_path_arg(args, false)
+        .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
 
     // Allow reading from both workspace and output directory
-    let resolved = resolve_within_workspace_or_output(path_str, workspace)?;
+    let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
 
     if !resolved.exists() {
         anyhow::bail!("File not found: {}", path_str);
@@ -396,23 +414,21 @@ fn execute_read_file(args: &Value, workspace: &Path) -> Result<String> {
 
 /// Write content to a file. Blocks sensitive paths.
 fn execute_write_file(args: &Value, workspace: &Path) -> Result<String> {
-    let path_str = args
-        .get("path")
-        .and_then(|v| v.as_str())
-        .context("'path' is required")?;
+    let path_str = get_path_arg(args, false)
+        .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
     let content = args
         .get("content")
         .and_then(|v| v.as_str())
         .context("'content' is required")?;
 
-    if is_sensitive_write_path(path_str) {
+    if is_sensitive_write_path(&path_str) {
         anyhow::bail!(
             "Blocked: writing to sensitive file '{}' is not allowed",
             path_str
         );
     }
 
-    let resolved = resolve_within_workspace(path_str, workspace)?;
+    let resolved = resolve_within_workspace(&path_str, workspace)?;
 
     // Create parent directories
     if let Some(parent) = resolved.parent() {
@@ -432,17 +448,14 @@ fn execute_write_file(args: &Value, workspace: &Path) -> Result<String> {
 
 /// List directory contents.
 fn execute_list_directory(args: &Value, workspace: &Path) -> Result<String> {
-    let path_str = args
-        .get("path")
-        .and_then(|v| v.as_str())
-        .unwrap_or(".");
+    let path_str = get_path_arg(args, true).unwrap_or_else(|| ".".to_string());
     let recursive = args
         .get("recursive")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
     // Allow listing both workspace and output directory
-    let resolved = resolve_within_workspace_or_output(path_str, workspace)?;
+    let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
 
     if !resolved.exists() {
         anyhow::bail!("Directory not found: {}", path_str);
@@ -513,13 +526,11 @@ fn list_dir_impl(
 
 /// Check if a file or directory exists.
 fn execute_file_exists(args: &Value, workspace: &Path) -> Result<String> {
-    let path_str = args
-        .get("path")
-        .and_then(|v| v.as_str())
-        .context("'path' is required")?;
+    let path_str = get_path_arg(args, false)
+        .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
 
     // Allow checking both workspace and output directory
-    let resolved = resolve_within_workspace_or_output(path_str, workspace)?;
+    let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
 
     if !resolved.exists() {
         return Ok(format!("{}: does not exist", path_str));
@@ -873,17 +884,19 @@ fn resolve_within_workspace_or_output(path: &str, workspace: &Path) -> Result<Pa
 /// - Sends no-cache headers
 /// - Opens browser via `open` / `xdg-open`
 fn execute_preview_server(args: &Value, workspace: &Path) -> Result<String> {
-    let dir_path = args
-        .get("directory_path")
-        .and_then(|v| v.as_str())
-        .context("'directory_path' is required")?;
+    let dir_path = get_path_arg(args, true)
+        .ok_or_else(|| anyhow::anyhow!("'directory_path' or 'path' is required"))?;
     let requested_port = args
         .get("port")
         .and_then(|v| v.as_u64())
         .unwrap_or(8765) as u16;
+    let should_open_browser = args
+        .get("open_browser")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     // Allow both workspace and output directory (where write_output saves files)
-    let resolved = resolve_within_workspace_or_output(dir_path, workspace)?;
+    let resolved = resolve_within_workspace_or_output(&dir_path, workspace)?;
 
     // If a file path was given, serve its parent directory
     let (serve_dir, target_file) = if resolved.is_file() {
@@ -905,7 +918,9 @@ fn execute_preview_server(args: &Value, workspace: &Path) -> Result<String> {
         if let Some(ref state) = *guard {
             if state.serve_dir == serve_dir_str {
                 let url = build_preview_url(state.port, target_file.as_deref());
-                open_browser(&url);
+                if should_open_browser {
+                    open_browser(&url);
+                }
                 return Ok(format!(
                     "Preview server already running at {}\n\n\
                      Open in browser: {}\n\
@@ -961,7 +976,9 @@ fn execute_preview_server(args: &Value, workspace: &Path) -> Result<String> {
         .context("Failed to spawn preview server thread")?;
 
     let url = build_preview_url(used_port, target_file.as_deref());
-    open_browser(&url);
+    if should_open_browser {
+        open_browser(&url);
+    }
 
     Ok(format!(
         "Preview server started at {}\n\n\
