@@ -5,42 +5,99 @@ use serde::{Deserialize, Serialize};
 /// Load `.env` file from current directory into environment variables.
 /// Simple parser: supports `KEY=VALUE`, `# comments`, and quoted values.
 /// Does NOT override existing env vars.
+///
+/// Uses `Once` to ensure this is called exactly once (safe for multi-threaded contexts).
+/// SAFETY: `set_var` is only called inside `call_once`, which guarantees single-threaded
+/// execution for the critical section. Subsequent calls to `load_dotenv()` are no-ops.
 fn load_dotenv() {
-    let path = std::env::current_dir()
-        .map(|d| d.join(".env"))
-        .unwrap_or_else(|_| std::path::PathBuf::from(".env"));
+    use std::sync::Once;
+    static DOTENV_INIT: Once = Once::new();
 
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return, // .env not found, that's fine
-    };
+    DOTENV_INIT.call_once(|| {
+        let path = std::env::current_dir()
+            .map(|d| d.join(".env"))
+            .unwrap_or_else(|_| std::path::PathBuf::from(".env"));
 
-    for line in content.lines() {
-        let line = line.trim();
-        // Skip empty lines and comments
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        // Parse KEY=VALUE
-        if let Some(eq_pos) = line.find('=') {
-            let key = line[..eq_pos].trim();
-            let mut value = line[eq_pos + 1..].trim();
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
 
-            // Strip surrounding quotes
-            if (value.starts_with('"') && value.ends_with('"'))
-                || (value.starts_with('\'') && value.ends_with('\''))
-            {
-                value = &value[1..value.len() - 1];
-            }
-
-            // Don't override existing env vars
-            if key.is_empty() || std::env::var(key).is_ok() {
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
                 continue;
             }
+            if let Some(eq_pos) = line.find('=') {
+                let key = line[..eq_pos].trim();
+                let mut value = line[eq_pos + 1..].trim();
 
-            std::env::set_var(key, value);
+                if (value.starts_with('"') && value.ends_with('"'))
+                    || (value.starts_with('\'') && value.ends_with('\''))
+                {
+                    value = &value[1..value.len() - 1];
+                }
+
+                if key.is_empty() || std::env::var(key).is_ok() {
+                    continue;
+                }
+
+                // SAFETY: Inside `call_once`, guaranteed single-threaded execution.
+                // No other thread can be reading env vars concurrently here.
+                unsafe { std::env::set_var(key, value) };
+            }
         }
+    });
+}
+
+// ─── UTF-8 safe string helpers ──────────────────────────────────────────────
+
+/// Truncate a string at a safe UTF-8 char boundary (from the start).
+/// Returns a &str of at most `max_bytes` bytes, never splitting a multi-byte character.
+pub fn safe_truncate(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
     }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// Get a &str starting from approximately `start_pos`, adjusted forward to a safe UTF-8 boundary.
+pub fn safe_slice_from(s: &str, start_pos: usize) -> &str {
+    if start_pos >= s.len() {
+        return "";
+    }
+    let mut start = start_pos;
+    while start < s.len() && !s.is_char_boundary(start) {
+        start += 1;
+    }
+    &s[start..]
+}
+
+/// Split a string into chunks of approximately `chunk_size` bytes,
+/// ensuring each split occurs at a valid UTF-8 char boundary.
+pub fn chunk_str(s: &str, chunk_size: usize) -> Vec<&str> {
+    let mut chunks = Vec::new();
+    let mut start = 0;
+    while start < s.len() {
+        let target_end = (start + chunk_size).min(s.len());
+        let mut safe_end = target_end;
+        while safe_end > start && !s.is_char_boundary(safe_end) {
+            safe_end -= 1;
+        }
+        if safe_end == start && start < s.len() {
+            safe_end = start + 1;
+            while safe_end < s.len() && !s.is_char_boundary(safe_end) {
+                safe_end += 1;
+            }
+        }
+        chunks.push(&s[start..safe_end]);
+        start = safe_end;
+    }
+    chunks
 }
 
 /// Agent configuration.
@@ -415,16 +472,15 @@ impl EventSink for TerminalEventSink {
         let prefix = if is_error { "❌" } else { "✅" };
         if self.verbose {
             let truncated = if result.len() > 500 {
-                format!("{}...", &result[..500])
+                format!("{}...", safe_truncate(result, 500))
             } else {
                 result.to_string()
             };
             eprintln!("  {} {}: {}", prefix, name, truncated);
         } else {
-            // Always show a brief status so users can see if tool succeeded/failed
             let first_line = result.lines().next().unwrap_or("(empty)");
             let brief = if first_line.len() > 120 {
-                format!("{}...", &first_line[..120])
+                format!("{}...", safe_truncate(first_line, 120))
             } else {
                 first_line.to_string()
             };

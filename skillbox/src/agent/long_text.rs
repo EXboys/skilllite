@@ -16,7 +16,7 @@
 use anyhow::Result;
 
 use super::llm::LlmClient;
-use super::types::{self, ChatMessage};
+use super::types::{self, ChatMessage, safe_truncate, safe_slice_from, chunk_str};
 
 /// Simple truncation with notice.
 /// Ported from Python `truncate_content`.
@@ -26,7 +26,7 @@ pub fn truncate_content(content: &str, max_chars: usize) -> String {
     }
     format!(
         "{}\n\n[... 结果已截断，原文共 {} 字符，仅保留前 {} 字符 ...]",
-        &content[..max_chars],
+        safe_truncate(content, max_chars),
         content.len(),
         max_chars
     )
@@ -134,41 +134,30 @@ fn select_chunks(
     total_len: usize,
 ) -> (Vec<String>, String) {
     if total_len <= head_size + tail_size {
-        // Content fits — process all chunks
-        let chunks: Vec<String> = content
-            .as_bytes()
-            .chunks(chunk_size)
-            .filter_map(|bytes| {
-                let s = String::from_utf8_lossy(bytes).to_string();
-                if s.trim().is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
-            })
+        // Content fits — process all chunks (UTF-8 safe via chunk_str)
+        let chunks: Vec<String> = chunk_str(content, chunk_size)
+            .into_iter()
+            .filter(|s| !s.trim().is_empty())
+            .map(|s| s.to_string())
             .collect();
         (chunks, String::new())
     } else {
-        // Take head chunks + tail chunks, skip middle
+        // Take head chunks + tail chunks, skip middle (UTF-8 safe)
         let mut chunks = Vec::new();
 
-        // Head chunks
-        let head_end = head_size.min(total_len);
-        for start in (0..head_end).step_by(chunk_size) {
-            let end = (start + chunk_size).min(head_end).min(total_len);
-            let s = &content[start..end];
-            if !s.trim().is_empty() {
-                chunks.push(s.to_string());
+        // Head chunks: take the first `head_size` bytes (at a safe boundary)
+        let head_content = safe_truncate(content, head_size);
+        for chunk in chunk_str(head_content, chunk_size) {
+            if !chunk.trim().is_empty() {
+                chunks.push(chunk.to_string());
             }
         }
 
-        // Tail chunks
-        let tail_start = total_len.saturating_sub(tail_size);
-        for start in (tail_start..total_len).step_by(chunk_size) {
-            let end = (start + chunk_size).min(total_len);
-            let s = &content[start..end];
-            if !s.trim().is_empty() {
-                chunks.push(s.to_string());
+        // Tail chunks: take the last `tail_size` bytes (at a safe boundary)
+        let tail_content = safe_slice_from(content, total_len.saturating_sub(tail_size));
+        for chunk in chunk_str(tail_content, chunk_size) {
+            if !chunk.trim().is_empty() {
+                chunks.push(chunk.to_string());
             }
         }
 

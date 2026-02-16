@@ -10,7 +10,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-use super::types::{self, EventSink, ToolDefinition, FunctionDef, ToolResult};
+use super::types::{self, EventSink, ToolDefinition, FunctionDef, ToolResult, safe_truncate, safe_slice_from};
 
 // ─── Security helpers (ported from Python) ──────────────────────────────────
 
@@ -1117,10 +1117,10 @@ pub fn process_tool_result_content(content: &str) -> Option<String> {
         return None;
     }
 
-    // Between max_chars and summarize_threshold: simple truncation
+    // Between max_chars and summarize_threshold: simple truncation (UTF-8 safe)
     Some(format!(
         "{}\n\n[... 结果已截断，原文共 {} 字符，仅保留前 {} 字符 ...]",
-        &content[..max_chars],
+        safe_truncate(content, max_chars),
         len,
         max_chars
     ))
@@ -1138,8 +1138,8 @@ pub fn process_tool_result_content_fallback(content: &str) -> String {
 
     let head_size = max_chars.min(len);
     let tail_size = (max_chars / 3).min(len);
-    let head = &content[..head_size];
-    let tail = &content[len.saturating_sub(tail_size)..];
+    let head = safe_truncate(content, head_size);
+    let tail = safe_slice_from(content, len.saturating_sub(tail_size));
     format!(
         "{}\n\n... [content truncated: {} chars total, showing head+tail] ...\n\n{}",
         head, len, tail

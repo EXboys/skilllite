@@ -8,7 +8,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::types::{ChatMessage, EventSink, FunctionCall, ToolCall, ToolDefinition};
+use super::types::{ChatMessage, EventSink, FunctionCall, ToolCall, ToolDefinition, safe_truncate};
 
 /// LLM client wrapping an OpenAI-compatible chat/completions endpoint.
 pub struct LlmClient {
@@ -338,7 +338,7 @@ pub fn truncate_tool_messages(messages: &mut [ChatMessage], max_chars: usize) {
                 if content.len() > max_chars {
                     let truncated = format!(
                         "{}...\n[truncated: {} chars → {}]",
-                        &content[..max_chars],
+                        safe_truncate(content, max_chars),
                         content.len(),
                         max_chars
                     );

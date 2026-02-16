@@ -23,6 +23,9 @@ use super::task_planner::TaskPlanner;
 use super::tools;
 use super::types::*;
 
+/// Maximum number of context overflow recovery retries before giving up.
+const MAX_CONTEXT_OVERFLOW_RETRIES: usize = 3;
+
 /// Run the agent loop.
 ///
 /// Dispatches to either the simple loop (Phase 1) or the task-planning loop
@@ -89,6 +92,7 @@ async fn run_simple_loop(
     let mut iterations = 0usize;
     let mut no_tool_retries = 0usize;
     let max_no_tool_retries = 3;
+    let mut context_overflow_retries = 0usize;
 
     let tools_ref = if all_tools.is_empty() {
         None
@@ -114,15 +118,25 @@ async fn run_simple_loop(
             )
             .await
         {
-            Ok(resp) => resp,
+            Ok(resp) => {
+                context_overflow_retries = 0;
+                resp
+            }
             Err(e) => {
                 let err_msg = e.to_string();
                 if llm::is_context_overflow_error(&err_msg) {
-                    // Context overflow recovery: truncate tool messages and retry
+                    context_overflow_retries += 1;
+                    if context_overflow_retries >= MAX_CONTEXT_OVERFLOW_RETRIES {
+                        tracing::error!(
+                            "Context overflow persists after {} retries, giving up",
+                            MAX_CONTEXT_OVERFLOW_RETRIES
+                        );
+                        return Err(e);
+                    }
                     let recovery_chars = get_tool_result_recovery_max_chars();
                     tracing::warn!(
-                        "Context overflow, truncating tool messages to {} chars and retrying",
-                        recovery_chars
+                        "Context overflow (attempt {}/{}), truncating tool messages to {} chars",
+                        context_overflow_retries, MAX_CONTEXT_OVERFLOW_RETRIES, recovery_chars
                     );
                     llm::truncate_tool_messages(&mut messages, recovery_chars);
                     continue;
@@ -197,37 +211,37 @@ async fn run_simple_loop(
 
         // Process tool calls
         no_tool_retries = 0;
-        let tool_calls = tool_calls.unwrap();
+        if let Some(tool_calls) = tool_calls {
+            // Progressive disclosure
+            if inject_progressive_disclosure(
+                &tool_calls,
+                skills,
+                &mut documented_skills,
+                &mut messages,
+            ) {
+                continue;
+            }
 
-        // Progressive disclosure
-        if inject_progressive_disclosure(
-            &tool_calls,
-            skills,
-            &mut documented_skills,
-            &mut messages,
-        ) {
-            continue;
-        }
+            // Execute each tool call
+            for tc in &tool_calls {
+                let tool_name = &tc.function.name;
+                let arguments = &tc.function.arguments;
 
-        // Execute each tool call
-        for tc in &tool_calls {
-            let tool_name = &tc.function.name;
-            let arguments = &tc.function.arguments;
+                event_sink.on_tool_call(tool_name, arguments);
 
-            event_sink.on_tool_call(tool_name, arguments);
+                let mut result =
+                    execute_tool_call(tool_name, arguments, workspace, skills, event_sink, config.enable_memory).await;
+                result.tool_call_id = tc.id.clone();
 
-            let mut result =
-                execute_tool_call(tool_name, arguments, workspace, skills, event_sink, config.enable_memory).await;
-            result.tool_call_id = tc.id.clone();
+                // Process long content (sync fast path → async LLM summarization fallback)
+                result.content =
+                    process_result_content(&client, &config.model, &result.content).await;
 
-            // Process long content (sync fast path → async LLM summarization fallback)
-            result.content =
-                process_result_content(&client, &config.model, &result.content).await;
+                event_sink.on_tool_result(tool_name, &result.content, result.is_error);
+                messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
 
-            event_sink.on_tool_result(tool_name, &result.content, result.is_error);
-            messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
-
-            total_tool_calls += 1;
+                total_tool_calls += 1;
+            }
         }
 
         // Check tool call depth limit
@@ -362,6 +376,7 @@ async fn run_with_task_planning(
     let mut consecutive_no_tool = 0usize;
     let max_no_tool_retries = 3;
     let mut tool_calls_current_task = 0usize;
+    let mut context_overflow_retries = 0usize;
 
     // Plan-based budget: effective_max = min(global, num_tasks * per_task)
     let num_tasks = planner.task_list.len();
@@ -398,57 +413,44 @@ async fn run_with_task_planning(
             })
         };
 
-        // Call LLM
-        let response = if suppress_stream {
-            match client
-                .chat_completion(
-                    &config.model,
-                    &messages,
-                    tools_ref,
-                    config.temperature,
-                )
+        // Call LLM (with shared context overflow recovery for both paths)
+        let llm_result = if suppress_stream {
+            client
+                .chat_completion(&config.model, &messages, tools_ref, config.temperature)
                 .await
-            {
-                Ok(resp) => resp,
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    if llm::is_context_overflow_error(&err_msg) {
-                        let recovery_chars = get_tool_result_recovery_max_chars();
-                        tracing::warn!(
-                            "Context overflow, truncating tool messages to {} chars and retrying",
-                            recovery_chars
-                        );
-                        llm::truncate_tool_messages(&mut messages, recovery_chars);
-                        continue;
-                    }
-                    return Err(e);
-                }
-            }
         } else {
-            match client
+            client
                 .chat_completion_stream(
-                    &config.model,
-                    &messages,
-                    tools_ref,
-                    config.temperature,
-                    event_sink,
+                    &config.model, &messages, tools_ref, config.temperature, event_sink,
                 )
                 .await
-            {
-                Ok(resp) => resp,
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    if llm::is_context_overflow_error(&err_msg) {
-                        let recovery_chars = get_tool_result_recovery_max_chars();
-                        tracing::warn!(
-                            "Context overflow, truncating tool messages to {} chars and retrying",
-                            recovery_chars
+        };
+
+        let response = match llm_result {
+            Ok(resp) => {
+                context_overflow_retries = 0;
+                resp
+            }
+            Err(e) => {
+                let err_msg = e.to_string();
+                if llm::is_context_overflow_error(&err_msg) {
+                    context_overflow_retries += 1;
+                    if context_overflow_retries >= MAX_CONTEXT_OVERFLOW_RETRIES {
+                        tracing::error!(
+                            "Context overflow persists after {} retries, giving up",
+                            MAX_CONTEXT_OVERFLOW_RETRIES
                         );
-                        llm::truncate_tool_messages(&mut messages, recovery_chars);
-                        continue;
+                        return Err(e);
                     }
-                    return Err(e);
+                    let recovery_chars = get_tool_result_recovery_max_chars();
+                    tracing::warn!(
+                        "Context overflow (attempt {}/{}), truncating tool messages to {} chars",
+                        context_overflow_retries, MAX_CONTEXT_OVERFLOW_RETRIES, recovery_chars
+                    );
+                    llm::truncate_tool_messages(&mut messages, recovery_chars);
+                    continue;
                 }
+                return Err(e);
             }
         };
 
@@ -608,7 +610,10 @@ async fn run_with_task_planning(
 
         // ── Process tool calls ─────────────────────────────────────────────
         consecutive_no_tool = 0;
-        let tool_calls = tool_calls.unwrap();
+        let tool_calls = match tool_calls {
+            Some(tc) => tc,
+            None => continue,
+        };
 
         // Progressive disclosure
         if inject_progressive_disclosure(

@@ -21,10 +21,13 @@ use cli::{Cli, Commands};
 use serde_json::{json, Value};
 
 /// Guard that removes an env var on drop. Ensures no stale value between requests.
+/// SAFETY: Only used in single-threaded IPC contexts (serve_stdio processes one request
+/// at a time on the main thread, no tokio runtime active).
 struct ScopedEnvGuard(&'static str);
 impl Drop for ScopedEnvGuard {
     fn drop(&mut self) {
-        std::env::remove_var(self.0);
+        // SAFETY: serve_stdio is single-threaded; no concurrent env access.
+        unsafe { std::env::remove_var(self.0) };
     }
 }
 
@@ -214,8 +217,12 @@ fn main() -> Result<()> {
 /// Response: {"jsonrpc":"2.0","id":1,"result":{...}} or {"jsonrpc":"2.0","id":1,"error":{...}}
 fn serve_stdio() -> Result<()> {
     // Suppress info logs in daemon mode (benchmark, etc.)
-    std::env::set_var("SKILLBOX_AUTO_APPROVE", "1");
-    std::env::set_var("SKILLBOX_QUIET", "1");
+    // SAFETY: Called at the start of serve_stdio before any multi-threading.
+    // serve_stdio is a synchronous blocking loop with no tokio runtime.
+    unsafe {
+        std::env::set_var("SKILLBOX_AUTO_APPROVE", "1");
+        std::env::set_var("SKILLBOX_QUIET", "1");
+    }
 
     let stdin = io::stdin();
     let mut stdout = io::stdout();
@@ -663,11 +670,13 @@ fn exec_script(
 
     // Pass script args via env for executor. Use guard to clear on drop so no stale
     // value leaks to subsequent requests (IPC mode processes one request at a time).
+    // SAFETY: exec_script is called from single-threaded contexts only (CLI or
+    // serve_stdio IPC loop). No concurrent threads access env vars.
     let _args_guard = if let Some(ref args_str) = args {
-        std::env::set_var("SKILLBOX_SCRIPT_ARGS", args_str);
+        unsafe { std::env::set_var("SKILLBOX_SCRIPT_ARGS", args_str) };
         Some(ScopedEnvGuard("SKILLBOX_SCRIPT_ARGS"))
     } else {
-        std::env::remove_var("SKILLBOX_SCRIPT_ARGS");
+        unsafe { std::env::remove_var("SKILLBOX_SCRIPT_ARGS") };
         None
     };
 
@@ -1110,17 +1119,19 @@ fn run_chat(
 
     // Set default output directory to ~/.skilllite/chat/output/ (matching Python SDK)
     // Only if SKILLLITE_OUTPUT_DIR is not already set by user
+    // SAFETY: Called before tokio::runtime::Runtime::new() below, so no other
+    // threads exist yet. All env var mutations happen in the single main thread.
     if std::env::var("SKILLLITE_OUTPUT_DIR").is_err() {
         let chat_output = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".skilllite")
             .join("chat")
             .join("output");
-        std::env::set_var("SKILLLITE_OUTPUT_DIR", chat_output.to_string_lossy().as_ref());
+        unsafe { std::env::set_var("SKILLLITE_OUTPUT_DIR", chat_output.to_string_lossy().as_ref()) };
     }
 
     // Ensure output directory exists so skills can write files there immediately
-    if let Some(output_dir) = std::env::var("SKILLLITE_OUTPUT_DIR").ok() {
+    if let Ok(output_dir) = std::env::var("SKILLLITE_OUTPUT_DIR") {
         let p = PathBuf::from(&output_dir);
         if !p.exists() {
             let _ = std::fs::create_dir_all(&p);

@@ -135,6 +135,23 @@ impl EventSink for RpcEventSink {
 /// Reads JSON-Lines from stdin, processes agent_chat requests,
 /// streams events as JSON-Lines to stdout.
 pub fn serve_agent_rpc() -> Result<()> {
+    // Set default output directory BEFORE creating the tokio runtime (multi-threaded).
+    // SAFETY: No other threads exist at this point.
+    if std::env::var("SKILLLITE_OUTPUT_DIR").is_err() {
+        let chat_output = dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".skilllite")
+            .join("chat")
+            .join("output");
+        unsafe { std::env::set_var("SKILLLITE_OUTPUT_DIR", chat_output.to_string_lossy().as_ref()) };
+    }
+    if let Ok(output_dir) = std::env::var("SKILLLITE_OUTPUT_DIR") {
+        let p = PathBuf::from(&output_dir);
+        if !p.exists() {
+            let _ = std::fs::create_dir_all(&p);
+        }
+    }
+
     let stdin = io::stdin();
     let stdout = io::stdout();
     let writer = Arc::new(Mutex::new(stdout));
@@ -264,15 +281,6 @@ async fn handle_agent_chat(
 
     if config.api_key.is_empty() {
         anyhow::bail!("API key required. Set OPENAI_API_KEY env var.");
-    }
-
-    if std::env::var("SKILLLITE_OUTPUT_DIR").is_err() {
-        let chat_output = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".skilllite")
-            .join("chat")
-            .join("output");
-        std::env::set_var("SKILLLITE_OUTPUT_DIR", chat_output.to_string_lossy().as_ref());
     }
 
     let skill_dirs: Vec<String> = if let Some(dirs) = params.get("skill_dirs").and_then(|v| v.as_array()) {
