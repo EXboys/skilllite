@@ -197,6 +197,10 @@ fn main() -> Result<()> {
         Commands::InitOpencode { project_dir, skills_dir, force } => {
             commands::ide::cmd_opencode(project_dir.as_deref(), &skills_dir, force)?;
         }
+        #[cfg(feature = "audit")]
+        Commands::DependencyAudit { skill_dir, json } => {
+            dependency_audit_skill(&skill_dir, json)?;
+        }
         Commands::CleanEnv { dry_run, force } => {
             commands::env::cmd_clean(dry_run, force)?;
         }
@@ -754,6 +758,28 @@ fn security_scan_script(
     } else {
         println!("Security Scan Results for: {}\n", path.display());
         println!("{}", format_scan_result(&scan_result));
+    }
+
+    Ok(())
+}
+
+/// Audit skill dependencies for known vulnerabilities via OSV.dev
+#[cfg(feature = "audit")]
+fn dependency_audit_skill(skill_dir: &str, json_output: bool) -> Result<()> {
+    use crate::sandbox::security::dependency_audit;
+
+    let path = validate_path_under_root(skill_dir, "Skill directory")?;
+    let result = dependency_audit::audit_skill_dependencies(&path)?;
+
+    if json_output {
+        println!("{}", dependency_audit::format_audit_result_json(&result));
+    } else {
+        println!("{}", dependency_audit::format_audit_result(&result));
+    }
+
+    // Exit with code 1 if vulnerabilities found (useful for CI)
+    if result.vulnerable_count > 0 {
+        std::process::exit(1);
     }
 
     Ok(())

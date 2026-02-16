@@ -1,9 +1,13 @@
 //! Security module for skillbox
 //!
-//! Two complementary layers:
+//! Three complementary layers:
 //!
 //! - **Static scanning** (scanner, rules, default_rules): Pre-execution analysis
 //!   of script source to detect dangerous patterns (eval, subprocess, etc.)
+//!
+//! - **Supply chain audit** (dependency_audit, feature `audit`): Checks
+//!   dependencies declared in requirements.txt / package.json against the
+//!   OSV.dev vulnerability database.
 //!
 //! - **Runtime policy** (policy): Sandbox isolation rules — deny paths, process
 //!   denylist, network policy — translated by macOS/Linux into Seatbelt/bwrap
@@ -13,6 +17,7 @@
 //! - **rules**: Rule definitions and configuration loading
 //! - **default_rules**: Built-in security rules for Python and JavaScript
 //! - **scanner**: The main ScriptScanner implementation
+//! - **dependency_audit**: Supply chain vulnerability scanning via OSV API
 //! - **policy**: Canonical sandbox runtime policy (paths, processes, network)
 //!
 //! # Example
@@ -47,6 +52,8 @@
 //! ```
 
 pub mod default_rules;
+#[cfg(feature = "audit")]
+pub mod dependency_audit;
 pub mod policy;
 pub mod rules;
 pub mod scanner;

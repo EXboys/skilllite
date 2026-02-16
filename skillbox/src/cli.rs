@@ -321,6 +321,33 @@ pub enum Commands {
         force: bool,
     },
 
+    /// Audit skill dependencies for known vulnerabilities
+    ///
+    /// Parses requirements.txt / package.json and queries vulnerability databases.
+    /// Python packages use PyPI JSON API; npm packages use OSV.dev batch API.
+    ///
+    /// Environment variables:
+    ///   SKILLLITE_AUDIT_API  — Custom security API (overrides all backends)
+    ///   PYPI_MIRROR_URL     — PyPI mirror (default: https://pypi.org)
+    ///   OSV_API_URL         — OSV API for npm (default: https://api.osv.dev)
+    ///
+    /// Examples:
+    ///   skillbox dependency-audit ./my-skill
+    ///   skillbox dependency-audit ./my-skill --json
+    ///   PYPI_MIRROR_URL=https://pypi.tuna.tsinghua.edu.cn skillbox dependency-audit ./my-skill
+    ///   SKILLLITE_AUDIT_API=https://api.mycompany.com skillbox dependency-audit ./my-skill
+    #[cfg(feature = "audit")]
+    #[command(name = "dependency-audit")]
+    DependencyAudit {
+        /// Path to the skill directory containing requirements.txt or package.json
+        #[arg(value_name = "SKILL_DIR")]
+        skill_dir: String,
+
+        /// Output results as structured JSON
+        #[arg(long, default_value = "false")]
+        json: bool,
+    },
+
     /// Clean cached virtual environments
     #[command(name = "clean-env")]
     CleanEnv {

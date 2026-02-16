@@ -94,7 +94,7 @@ pub fn detect_dependencies(_skill_dir: &Path, metadata: &SkillMetadata) -> Resul
 ///
 /// NOTE: Single source of truth is skilllite/packages_whitelist.json.
 /// Keep this list in sync when adding packages (or run sync script).
-fn parse_compatibility_for_packages(compatibility: Option<&str>) -> Vec<String> {
+pub(crate) fn parse_compatibility_for_packages(compatibility: Option<&str>) -> Vec<String> {
     let Some(compat) = compatibility else {
         return vec![];
     };

@@ -9,6 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::sandbox::security::ScriptScanner;
 use crate::skill::metadata;
 
 // ─── Source Parsing ─────────────────────────────────────────────────────────
@@ -378,6 +379,210 @@ fn install_skill_deps(skills_dir: &Path, installed: &[String]) -> Vec<String> {
     messages
 }
 
+// ─── Security Scanning (on add) ─────────────────────────────────────────────
+
+/// Collect all scannable script files from a skill directory.
+///
+/// Sources:
+/// 1. Entry point (if declared)
+/// 2. All .py / .js / .ts / .sh files in `scripts/` directory
+/// Deduplicates so the entry point isn't scanned twice.
+fn collect_script_files(skill_path: &Path, meta: &metadata::SkillMetadata) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    // Entry point
+    if !meta.entry_point.is_empty() {
+        let ep = skill_path.join(&meta.entry_point);
+        if ep.exists() {
+            if let Ok(canonical) = ep.canonicalize() {
+                seen.insert(canonical);
+            }
+            files.push(ep);
+        }
+    }
+
+    // All scripts in scripts/ directory
+    let scripts_dir = skill_path.join("scripts");
+    if scripts_dir.is_dir() {
+        if let Ok(entries) = fs::read_dir(&scripts_dir) {
+            let mut entries: Vec<_> = entries.flatten().collect();
+            entries.sort_by_key(|e| e.file_name());
+            for entry in entries {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                let dominated = path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|ext| matches!(ext, "py" | "js" | "ts" | "sh"))
+                    .unwrap_or(false);
+                if !dominated {
+                    continue;
+                }
+                // Skip test files and __init__.py
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                if name.starts_with("test_")
+                    || name.ends_with("_test.py")
+                    || name == "__init__.py"
+                    || name.starts_with('.')
+                {
+                    continue;
+                }
+                // Deduplicate (entry point might be in scripts/)
+                let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+                if seen.insert(canonical) {
+                    files.push(path);
+                }
+            }
+        }
+    }
+
+    files
+}
+
+/// Run security scans on newly installed skills:
+/// 1. Static code analysis on all script files
+/// 2. Supply chain vulnerability audit on dependencies (requires `audit` feature)
+///
+/// Returns (messages, has_high_risk) where has_high_risk is true if any
+/// high/critical code issues or vulnerable dependencies were found.
+fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String>, bool) {
+    let mut messages = Vec::new();
+    let mut has_high_risk = false;
+
+    for name in installed {
+        let skill_path = skills_dir.join(name);
+        if !skill_path.join("SKILL.md").exists() {
+            continue;
+        }
+
+        // ── Code security scan ──
+        let meta = match metadata::parse_skill_metadata(&skill_path) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        // ── Collect all scannable scripts ──
+        let script_files = collect_script_files(&skill_path, &meta);
+
+        // Check if there are dependencies (explicit files, lock, or inferrable from metadata)
+        let has_deps = skill_path.join("requirements.txt").exists()
+            || skill_path.join("package.json").exists()
+            || skill_path.join(".skilllite.lock").exists()
+            || meta.resolved_packages.is_some()
+            || meta.compatibility.as_ref().map_or(false, |c| !c.is_empty());
+
+        // Nothing to scan at all
+        if script_files.is_empty() && !has_deps {
+            let skill_type = if meta.is_bash_tool_skill() {
+                "bash-tool"
+            } else {
+                "prompt-only"
+            };
+            messages.push(format!(
+                "   ✅ {} ({}): no scripts or dependencies to scan",
+                name, skill_type
+            ));
+            continue;
+        }
+
+        // ── Code security scan (all scripts) ──
+        if !script_files.is_empty() {
+            let scanner = ScriptScanner::new();
+            let mut total_issues = 0usize;
+            let mut total_high = 0usize;
+            let mut worst_file: Option<String> = None;
+
+            for script_path in &script_files {
+                if let Ok(result) = scanner.scan_file(script_path) {
+                    let high = result.issues.iter().filter(|i| {
+                        matches!(
+                            i.severity,
+                            crate::sandbox::security::types::SecuritySeverity::High
+                                | crate::sandbox::security::types::SecuritySeverity::Critical
+                        )
+                    }).count();
+                    total_issues += result.issues.len();
+                    total_high += high;
+                    if high > 0 && worst_file.is_none() {
+                        worst_file = Some(script_path.display().to_string());
+                    }
+                }
+            }
+
+            if total_issues > 0 {
+                if total_high > 0 {
+                    has_high_risk = true;
+                }
+                messages.push(format!(
+                    "   🔒 {} code scan: {} issue(s) across {} file(s) ({} high/critical)",
+                    name, total_issues, script_files.len(), total_high
+                ));
+                if let Some(ref path) = worst_file {
+                    messages.push(format!(
+                        "      ⚠ Run `skillbox security-scan {}` for details",
+                        path
+                    ));
+                }
+            } else {
+                messages.push(format!(
+                    "   🔒 {} code scan: ✅ {} file(s) clean",
+                    name, script_files.len()
+                ));
+            }
+        }
+
+        // ── Supply chain audit ──
+        #[cfg(feature = "audit")]
+        if has_deps {
+            use crate::sandbox::security::dependency_audit;
+
+            match dependency_audit::audit_skill_dependencies(&skill_path) {
+                Ok(result) => {
+                    if result.vulnerable_count > 0 {
+                        has_high_risk = true;
+                        messages.push(format!(
+                            "   🛡 {} dependency audit: ⚠ {}/{} packages vulnerable ({} vulns)",
+                            name, result.vulnerable_count, result.scanned, result.total_vulns
+                        ));
+                        for entry in result.entries.iter().filter(|e| !e.vulns.is_empty()).take(3) {
+                            let vuln_ids: Vec<_> = entry.vulns.iter().take(2).map(|v| v.id.as_str()).collect();
+                            let more = if entry.vulns.len() > 2 {
+                                format!(" +{}", entry.vulns.len() - 2)
+                            } else {
+                                String::new()
+                            };
+                            messages.push(format!(
+                                "      - {} {}: {}{}",
+                                entry.name, entry.version, vuln_ids.join(", "), more
+                            ));
+                        }
+                        messages.push(format!(
+                            "      Run `skillbox dependency-audit {}` for full report",
+                            skill_path.display()
+                        ));
+                    } else if result.scanned > 0 {
+                        messages.push(format!(
+                            "   🛡 {} dependency audit: ✅ {} packages clean",
+                            name, result.scanned
+                        ));
+                    }
+                }
+                Err(e) => {
+                    messages.push(format!(
+                        "   🛡 {} dependency audit: ⚠ error: {}",
+                        name, e
+                    ));
+                }
+            }
+        }
+    }
+
+    (messages, has_high_risk)
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Public command handlers
 // ═══════════════════════════════════════════════════════════════════════════
@@ -484,6 +689,31 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
             return Ok(());
         }
 
+        // ── Step 1: Security scans BEFORE installing dependencies ──
+        // This is critical: pip install / npm install can execute arbitrary
+        // code (setup.py, postinstall scripts). Scan first, warn early.
+        eprintln!();
+        eprintln!("🔍 Running security scans (pre-install)...");
+        let (scan_messages, has_high_risk) = scan_installed_skills(&skills_path, &installed);
+        for msg in &scan_messages {
+            eprintln!("{}", msg);
+        }
+
+        // ── Step 2: If high-risk issues found, ask for confirmation ──
+        if has_high_risk && !force {
+            eprintln!();
+            eprintln!("⚠️  High-risk issues detected. Installing dependencies may execute untrusted code.");
+            eprint!("   Continue with dependency installation? [y/N] ");
+            let mut answer = String::new();
+            std::io::stdin().read_line(&mut answer)?;
+            if !matches!(answer.trim().to_lowercase().as_str(), "y" | "yes") {
+                eprintln!("   Cancelled. Skills copied but dependencies NOT installed.");
+                eprintln!("   You can review the code and run `skillbox dependency-audit <skill_dir>` manually.");
+                return Ok(());
+            }
+        }
+
+        // ── Step 3: Install dependencies (only after scan approval) ──
         eprintln!();
         eprintln!("📦 Installing dependencies...");
         let dep_messages = install_skill_deps(&skills_path, &installed);
