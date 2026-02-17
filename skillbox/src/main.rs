@@ -848,13 +848,14 @@ fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
     let mut scripts = Vec::new();
     scan_scripts_recursive(&skill_path, &skill_path, &mut scripts, preview_lines)?;
 
-    // Post-process: mark entry_point match and update confidence
+    // Post-process: mark entry_point match and update confidence/reasoning
     if let Some(entry_point) = result["skill_metadata"]["entry_point"].as_str() {
         for script in &mut scripts {
             if let Some(path) = script.get("path").and_then(|p| p.as_str()) {
                 if path == entry_point {
                     script["is_entry_point"] = serde_json::json!(true);
                     script["confidence"] = serde_json::json!(1.0);
+                    script["reasoning"] = serde_json::json!("Matches skill entry_point");
                 } else {
                     script["is_entry_point"] = serde_json::json!(false);
                 }
@@ -864,8 +865,68 @@ fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
 
     result["scripts"] = serde_json::json!(scripts);
 
+    // Generate llm_prompt_hint for LLM consumption
+    result["llm_prompt_hint"] = serde_json::json!(build_llm_prompt_hint(&result));
+
     serde_json::to_string_pretty(&result)
         .map_err(|e| anyhow::anyhow!("Failed to serialize scan result: {}", e))
+}
+
+/// Build llm_prompt_hint from scan result (skill metadata + scripts summary).
+fn build_llm_prompt_hint(result: &serde_json::Value) -> String {
+    let mut hints = Vec::new();
+
+    if let Some(meta) = result["skill_metadata"].as_object() {
+        if let Some(desc) = meta.get("description").and_then(|v| v.as_str()) {
+            hints.push(format!("Skill purpose: {}", desc));
+        }
+        if let Some(ep) = meta.get("entry_point").and_then(|v| v.as_str()) {
+            hints.push(format!("Primary entry point: {}", ep));
+        }
+    }
+
+    let scripts = match result["scripts"].as_array() {
+        Some(s) => s,
+        None => return hints.join("\n"),
+    };
+    if scripts.is_empty() {
+        hints.push("No executable scripts found. This may be a prompt-only skill.".to_string());
+    } else {
+        let mut script_types: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for s in scripts {
+            if let Some(lang) = s.get("language").and_then(|v| v.as_str()) {
+                *script_types.entry(lang).or_insert(0) += 1;
+            }
+        }
+        let type_str: Vec<String> = script_types
+            .iter()
+            .map(|(lang, count)| format!("{} {}", count, lang))
+            .collect();
+        hints.push(format!("Available scripts: {}", type_str.join(", ")));
+
+        let described: Vec<_> = scripts
+            .iter()
+            .filter_map(|s| {
+                let desc = s.get("description")?.as_str()?;
+                let path = s.get("path")?.as_str()?;
+                Some((path, desc))
+            })
+            .take(3)
+            .collect();
+        if !described.is_empty() {
+            hints.push("Scripts with descriptions:".to_string());
+            for (path, desc) in described {
+                let truncated = if desc.len() > 100 {
+                    format!("{}...", &desc[..100])
+                } else {
+                    desc.to_string()
+                };
+                hints.push(format!("  - {}: {}", path, truncated));
+            }
+        }
+    }
+
+    hints.join("\n")
 }
 
 /// Recursively scan for executable scripts
@@ -981,20 +1042,22 @@ fn analyze_script_file(
     let uses_stdio = detect_stdio_usage(&content, language);
 
     // Compute execution recommendation and confidence
-    let in_scripts_dir = relative_path
-        .to_string_lossy()
-        .starts_with("scripts/") || relative_path.to_string_lossy().starts_with("scripts\\");
+    let path_str = relative_path.to_string_lossy();
+    let in_scripts_dir = path_str.starts_with("scripts/") || path_str.starts_with("scripts\\");
 
-    let (exec_method, confidence) = compute_execution_recommendation(
+    let rec = compute_execution_recommendation_full(
         uses_stdio,
         uses_argparse,
         has_main,
         in_scripts_dir,
         false, // is_entry_point — determined at skill level
+        None,
+        &preview,
     );
+    let suggested_command = generate_suggested_command(&path_str, language, rec.method);
 
     Some(serde_json::json!({
-        "path": relative_path.to_string_lossy(),
+        "path": path_str,
         "language": language,
         "total_lines": total_lines,
         "preview": preview,
@@ -1004,8 +1067,12 @@ fn analyze_script_file(
         "uses_stdio": uses_stdio,
         "in_scripts_dir": in_scripts_dir,
         "file_size_bytes": fs::metadata(file_path).map(|m| m.len()).unwrap_or(0),
-        "execution_recommendation": exec_method,
-        "confidence": confidence
+        "execution_recommendation": rec.method,
+        "confidence": rec.confidence,
+        "reasoning": rec.reasoning,
+        "suggested_command": suggested_command,
+        "input_format": rec.input_format,
+        "output_format": rec.output_format
     }))
 }
 
@@ -1132,6 +1199,15 @@ fn detect_argparse_usage(content: &str, language: &str) -> bool {
     }
 }
 
+/// Extended execution recommendation for LLM consumption.
+struct ExecutionRecommendation {
+    method: &'static str,
+    confidence: f64,
+    reasoning: String,
+    input_format: &'static str,
+    output_format: &'static str,
+}
+
 /// Compute execution recommendation and confidence score.
 ///
 /// Execution methods:
@@ -1145,55 +1221,116 @@ fn detect_argparse_usage(content: &str, language: &str) -> bool {
 ///   +0.1  has main entry point
 ///   +0.1  located in scripts/ directory
 ///   1.0   matches entry_point declaration
-fn compute_execution_recommendation(
+fn compute_execution_recommendation_full(
     uses_stdio: bool,
     uses_argparse: bool,
     has_main: bool,
     in_scripts_dir: bool,
     is_entry_point: bool,
-) -> (&'static str, f64) {
-    if is_entry_point {
-        // Entry point match is highest confidence
-        let method = if uses_stdio && !uses_argparse {
+    entry_point_reasoning: Option<&'static str>,
+    preview: &str,
+) -> ExecutionRecommendation {
+    let mut reasoning_parts: Vec<&'static str> = Vec::new();
+
+    if let Some(r) = entry_point_reasoning {
+        reasoning_parts.insert(0, r);
+    }
+
+    let (method, confidence, input_format, output_format) = if is_entry_point {
+        let m = if uses_stdio && !uses_argparse {
             "stdin_json"
         } else if uses_argparse {
             "argparse"
         } else {
             "direct"
         };
-        return (method, 1.0);
-    }
-
-    let mut confidence: f64 = 0.0;
-
-    if uses_stdio {
-        confidence += 0.3;
-    }
-    if uses_argparse {
-        confidence += 0.2;
-    }
-    if has_main {
-        confidence += 0.1;
-    }
-    if in_scripts_dir {
-        confidence += 0.1;
-    }
-
-    // Determine execution method based on detected patterns
-    let method = if uses_stdio && !uses_argparse {
-        "stdin_json"
-    } else if uses_argparse {
-        "argparse"
-    } else if has_main || in_scripts_dir {
-        "direct"
+        if reasoning_parts.is_empty() {
+            reasoning_parts.push("Matches skill entry_point");
+        }
+        let (in_fmt, out_fmt) = format_for_method(m, uses_stdio, preview);
+        (m, 1.0, in_fmt, out_fmt)
     } else {
-        "direct"
+        let mut conf: f64 = 0.0;
+        if uses_stdio {
+            conf += 0.3;
+            reasoning_parts.push("Script uses stdin/stdout for I/O");
+        }
+        if uses_argparse {
+            conf += 0.2;
+            reasoning_parts.push("Script uses argument parsing");
+        }
+        if has_main {
+            conf += 0.1;
+            reasoning_parts.push("Has main entry point");
+        }
+        if in_scripts_dir {
+            conf += 0.1;
+            reasoning_parts.push("Located in scripts/ directory");
+        }
+        if !uses_stdio && !uses_argparse {
+            reasoning_parts.push("Script appears to run directly without input");
+        }
+
+        let m = if uses_stdio && !uses_argparse {
+            "stdin_json"
+        } else if uses_argparse {
+            "argparse"
+        } else {
+            "direct"
+        };
+        let (in_fmt, out_fmt) = format_for_method(m, uses_stdio, preview);
+        (m, conf.min(1.0), in_fmt, out_fmt)
     };
 
-    // Clamp to [0.0, 1.0]
-    confidence = confidence.min(1.0);
+    let reasoning = reasoning_parts.join("; ");
+    ExecutionRecommendation {
+        method,
+        confidence: (confidence * 100.0).round() / 100.0,
+        reasoning,
+        input_format,
+        output_format,
+    }
+}
 
-    (method, (confidence * 100.0).round() / 100.0)
+fn format_for_method(method: &str, uses_stdio: bool, preview: &str) -> (&'static str, &'static str) {
+    let input_format = match method {
+        "stdin_json" => "json_stdin",
+        "argparse" => "cli_args",
+        _ => "none",
+    };
+    let output_format = if uses_stdio {
+        if preview.to_lowercase().contains("json") {
+            "json_stdout"
+        } else {
+            "text_stdout"
+        }
+    } else {
+        "text_stdout"
+    };
+    (input_format, output_format)
+}
+
+fn generate_suggested_command(path: &str, language: &str, method: &str) -> String {
+    match method {
+        "stdin_json" => match language {
+            "python" => format!("echo '{{\"input\": \"value\"}}' | python {path}"),
+            "node" | "typescript" => format!("echo '{{\"input\": \"value\"}}' | node {path}"),
+            "shell" => format!("echo '{{\"input\": \"value\"}}' | bash {path}"),
+            _ => format!("# Unknown execution method for {path}"),
+        },
+        "argparse" => match language {
+            "python" => format!("python {path} --help"),
+            "node" | "typescript" => format!("node {path} --help"),
+            "shell" => format!("bash {path} --help"),
+            _ => format!("# Unknown execution method for {path}"),
+        },
+        _ => match language {
+            "python" => format!("python {path}"),
+            "node" | "typescript" => format!("node {path}"),
+            "shell" => format!("bash {path}"),
+            _ => format!("# Unknown execution method for {path}"),
+        },
+    }
 }
 
 /// Detect if script uses stdin/stdout for I/O
