@@ -149,6 +149,8 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: always() && startsWith(github.ref, 'refs/tags/') && !cancelled()
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
@@ -164,8 +166,9 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
+          token: ${{ secrets.GITHUB_TOKEN }}
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -181,8 +184,6 @@ jobs:
             ./artifacts/skilllite-linux-arm64-sandbox/skilllite-linux-arm64-sandbox.tar.gz
             ./artifacts/skilllite-windows-x64/skilllite-windows-x64.zip
             ./artifacts/skilllite-windows-x64-sandbox/skilllite-windows-x64-sandbox.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-pypi:
     name: Publish to PyPI
