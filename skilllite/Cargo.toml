@@ -40,7 +40,7 @@ rusqlite = { version = "0.31", optional = true, features = ["bundled"] }
 
 # Agent feature: LLM HTTP client, async runtime, CLI interaction
 tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "time", "io-util", "process"] }
-reqwest = { version = "0.12", optional = true, features = ["json", "stream"] }
+reqwest = { version = "0.12", optional = true, default-features = false, features = ["json", "stream", "rustls-tls"] }
 futures-util = { version = "0.3", optional = true }
 rustyline = { version = "14", optional = true }
 uuid = { version = "1", features = ["v4"] }
