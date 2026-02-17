@@ -1,6 +1,6 @@
 [package]
 name = "skilllite"
-version = "0.2.0"
+version = "0.1.8"
 edition = "2021"
 authors = ["EX <boyex345@gmail.com>"]
 description = "A lightweight Skills secure execution engine"

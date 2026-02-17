@@ -83,6 +83,13 @@ coverage.xml
 # Temporary files
 *.tmp
 *.temp
+.tmp_exec/
+skilllite_exec_*/
+skilllite_scan_*/
+
+# Bundled binary (built by scripts/build_wheels.sh)
+python-sdk/skilllite/bins/skilllite
+python-sdk/skilllite/bins/skilllite.exe
 
 # Separate repository (langchain-skilllite has its own git repo)
 langchain-skilllite/

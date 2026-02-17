@@ -266,7 +266,10 @@ class SkillBoxExecutor(BaseExecutor):
         if self.measure_memory and self.resource_monitor:
             # Measure memory usage
             try:
-                skilllite_env = {"SKILLBOX_QUIET": "1"}
+                skilllite_env = {
+                    "SKILLBOX_QUIET": "1",
+                    "SKILLBOX_SKILLS_ROOT": str(PROJECT_ROOT),
+                }
                 elapsed_ms, success, stdout, stderr, memory_kb = self.resource_monitor.get_peak_memory_kb(
                     [self.skilllite_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
                     timeout=30,
@@ -293,10 +296,11 @@ class SkillBoxExecutor(BaseExecutor):
             # Original implementation without memory measurement
             start_time = time.perf_counter()
             try:
-                # Set environment variable to pass sandbox level
+                # Set environment variable to pass sandbox level and skills root
                 env = os.environ.copy()
                 env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
                 env["SKILLBOX_QUIET"] = "1"  # Suppress [INFO] to avoid perf impact
+                env["SKILLBOX_SKILLS_ROOT"] = str(PROJECT_ROOT)  # Allow .skills under project root
                 
                 # Use --sandbox-level CLI argument (takes precedence over env var)
                 result = subprocess.run(
@@ -336,78 +340,54 @@ class SkillBoxExecutor(BaseExecutor):
 
 class SkillBoxIPCExecutor(BaseExecutor):
     """
-    SkillBox via python-sdk with IPC (skilllite serve --stdio daemon).
-    
-    Uses the same binary as SkillBoxExecutor but keeps a warm daemon process,
-    communicating via JSON-RPC over stdin/stdout. This avoids cold-start
-    overhead on each request (documented ~120-150ms -> ~10-30ms for IPC).
-    
-    Compare with SkillBoxExecutor (subprocess) to see IPC speedup.
+    SkillBox via IPC (skilllite serve --stdio daemon).
+    Uses ipc.IPCClient to avoid cold-start overhead per request.
     """
 
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, sandbox_level: Optional[int] = None, measure_memory: bool = False):
         self.skill_dir = skill_dir
         self.sandbox_level = sandbox_level or int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
         self.name = f"SkillBox IPC (Level {self.sandbox_level})"
-        self._service = None
-        self._context = None
+        self._client = None
         self.measure_memory = measure_memory
 
     def setup(self) -> None:
-        # Ensure IPC is enabled (default, but explicit for benchmark clarity)
         os.environ["SKILLBOX_USE_IPC"] = "1"
-        # Suppress [INFO] logs from skilllite (daemon and subprocess fallback)
         os.environ["SKILLBOX_QUIET"] = "1"
-        try:
-            from skilllite.sandbox.execution_service import UnifiedExecutionService
-            from skilllite.sandbox.context import ExecutionContext
-            self._service = UnifiedExecutionService()
-            self._context = ExecutionContext.from_current_env().with_override(
-                sandbox_level=str(self.sandbox_level),
-            )
-        except ImportError as e:
+        from skilllite.ipc import _get_client
+        self._client = _get_client()
+        if not self._client:
             raise RuntimeError(
-                f"Cannot import skilllite for IPC benchmark: {e}. "
-                "Ensure python-sdk is in project root and install deps: pip install -e python-sdk"
-            ) from e
+                "IPC client not available. Ensure skilllite binary is installed: pip install skilllite"
+            )
 
     def teardown(self) -> None:
-        if getattr(self, "_service", None):
-            executor = getattr(self._service, "_executor", None)
-            if executor and hasattr(executor, "_ipc_client") and executor._ipc_client:
-                try:
-                    executor._ipc_client.close()
-                except Exception:
-                    pass
-                executor._ipc_client = None
+        from skilllite.ipc import _shutdown_client
+        _shutdown_client()
 
     def execute(self, input_json: str) -> BenchmarkResult:
-        if not hasattr(self, "_service") or self._service is None:
+        if not self._client:
             return BenchmarkResult(
                 executor_name=self.name, success=False, latency_ms=0,
-                error="Executor not initialized (call setup first)"
+                error="IPC client not initialized"
             )
-        input_data = json.loads(input_json)
         start_time = time.perf_counter()
-        memory_kb = 0.0
         try:
-            result = self._service.execute_with_context(
-                context=self._context,
-                skill_dir=Path(self.skill_dir),
-                input_data=input_data,
+            res = self._client.run(
+                str(self.skill_dir),
+                input_json,
+                sandbox_level=self.sandbox_level,
             )
             latency_ms = (time.perf_counter() - start_time) * 1000
-            executor = self._service._executor
-            if self.measure_memory and result.success and getattr(executor, "_ipc_client", None):
-                memory_kb = executor._ipc_client.get_peak_daemon_memory_kb()
+            output = res.get("output", "")
+            exit_code = res.get("exit_code", 0)
             return BenchmarkResult(
                 executor_name=self.name,
-                success=result.success,
+                success=exit_code == 0,
                 latency_ms=latency_ms,
-                stdout=result.stdout or "",
-                stderr=result.stderr or "",
-                error=result.error,
-                memory_kb=memory_kb,
+                stdout=output,
+                stderr="",
+                error=None if exit_code == 0 else f"Exit code: {exit_code}",
             )
         except Exception as e:
             latency_ms = (time.perf_counter() - start_time) * 1000
@@ -1614,7 +1594,7 @@ def main():
                         help="Compare performance across all sandbox levels (1, 2, 3)")
     parser.add_argument("--compare-ipc", action="store_true",
                         help="Include SkillBox IPC (daemon mode) to compare with subprocess. "
-                             "Shows real IPC speedup vs SkillBox subprocess.")
+                             "Requires SKILLBOX_USE_IPC=1 (set automatically).")
     
     args = parser.parse_args()
     

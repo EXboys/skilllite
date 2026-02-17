@@ -49,9 +49,9 @@ pub fn execute_with_limits(
     
     crate::info_log!("[INFO] using sandbox-exec (Seatbelt)...");
     // Use sandbox-exec with Seatbelt for system-level isolation
-    // Falls back to simple execution if sandbox-exec fails
+    // Falls back to simple execution if sandbox-exec fails (e.g. "Operation not permitted" on SIP-restricted macOS)
     match execute_with_sandbox(skill_dir, env_path, metadata, input_json, limits) {
-        Ok(result) if result.exit_code != -1 => Ok(result),
+        Ok(result) if result.exit_code == 0 => Ok(result),
         Ok(_) | Err(_) => {
             // Sandbox failed, fall back to simple execution with warning
             eprintln!("[WARN] Sandbox execution failed, falling back to simple execution");

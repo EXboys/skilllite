@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skilllite"
-version = "0.1.4"
-description = "A lightweight Skills execution engine with LLM integration for LLM agents"
+version = "0.1.8"
+description = "A lightweight Skills secure execution engine - full CLI via bundled binary"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
     {name = "SkillLite Team", email = "skilllite@example.com"}
 ]
-keywords = ["agent", "skills", "llm", "claude", "openai", "sandbox", "tools"]
+keywords = ["agent", "skills", "sandbox", "security", "cli"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -25,35 +25,9 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Libraries :: Python Modules",
-    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 requires-python = ">=3.8"
-dependencies = [
-    "pyyaml>=6.0",
-]
-
-[project.optional-dependencies]
-openai = ["openai>=1.0.0"]
-anthropic = ["anthropic>=0.18.0"]
-mcp = ["mcp>=1.0.0"]
-langchain = ["langchain-core>=0.1.0"]
-llamaindex = ["llama-index-core>=0.10.0"]
-security = ["pip-audit>=2.0.0"]
-all = [
-    "openai>=1.0.0",
-    "anthropic>=0.18.0",
-    "mcp>=1.0.0",
-    "langchain-core>=0.1.0",
-    "llama-index-core>=0.10.0",
-    "pip-audit>=2.0.0",
-]
-dev = [
-    "pytest>=7.0",
-    "pytest-asyncio>=0.21.0",
-    "black>=23.0",
-    "mypy>=1.0",
-    "ruff>=0.1.0",
-]
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/EXboys/skilllite"
@@ -69,7 +43,7 @@ where = ["."]
 include = ["skilllite*"]
 
 [tool.setuptools.package-data]
-skilllite = ["config/*.json"]
+skilllite = ["bins/*"]
 
 [tool.black]
 line-length = 100

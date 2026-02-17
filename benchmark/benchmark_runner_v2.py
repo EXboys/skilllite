@@ -200,11 +200,14 @@ class SkillBoxExecutor(BaseExecutor):
         
         try:
             # Use Popen to monitor resources
+            env = os.environ.copy()
+            env["SKILLBOX_SKILLS_ROOT"] = str(PROJECT_ROOT)  # Allow .skills under project root
             process = subprocess.Popen(
                 [self.skillbox_bin, "run", str(self.skill_dir), input_json],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                env=env
             )
             
             # Start resource monitoring thread
