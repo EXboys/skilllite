@@ -803,8 +803,11 @@ impl LlmClient {
 }
 
 // ─── Response types ─────────────────────────────────────────────────────────
+// Fields id/model/usage/index/finish_reason/role are required for API deserialization
+// but not read by our code.
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct ChatCompletionResponse {
     pub id: String,
     pub model: String,
@@ -813,6 +816,7 @@ pub struct ChatCompletionResponse {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct Choice {
     pub index: u32,
     pub message: ChoiceMessage,
@@ -820,6 +824,7 @@ pub struct Choice {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 pub struct ChoiceMessage {
     pub role: String,
     pub content: Option<String>,

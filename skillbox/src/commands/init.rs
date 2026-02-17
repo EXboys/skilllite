@@ -13,6 +13,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::skill::dependency_resolver;
 use crate::skill::metadata;
 
 const EXAMPLE_SKILL_MD: &str = r#"---
@@ -69,6 +70,7 @@ pub fn cmd_init(
     skip_deps: bool,
     skip_audit: bool,
     strict: bool,
+    use_llm: bool,
 ) -> Result<()> {
     let skills_path = resolve_path(skills_dir);
 
@@ -98,7 +100,7 @@ pub fn cmd_init(
         if skip_deps {
             eprintln!("   ⏭ Skipping dependency installation (--skip-deps)");
         } else {
-            let dep_results = install_all_deps(&skills_path, &skills);
+            let dep_results = install_all_deps(&skills_path, &skills, use_llm);
             for msg in &dep_results {
                 eprintln!("{}", msg);
             }
@@ -207,8 +209,25 @@ fn discover_all_skills(skills_path: &Path) -> Vec<String> {
 }
 
 /// Install dependencies for all skills.
-fn install_all_deps(skills_path: &Path, skills: &[String]) -> Vec<String> {
+fn install_all_deps(skills_path: &Path, skills: &[String], use_llm: bool) -> Vec<String> {
     let mut messages = Vec::new();
+
+    #[cfg(feature = "agent")]
+    let (llm_client, model) = if use_llm {
+        let config = crate::agent::types::AgentConfig::from_env();
+        if config.api_key.is_empty() {
+            tracing::debug!("--use-llm requested but no API key; falling back to whitelist");
+            (None, None)
+        } else {
+            let client = crate::agent::llm::LlmClient::new(&config.api_base, &config.api_key);
+            (Some(client), Some(config.model))
+        }
+    } else {
+        (None, None)
+    };
+
+    #[cfg(not(feature = "agent"))]
+    let _ = use_llm;
 
     for name in skills {
         let skill_path = skills_path.join(name);
@@ -217,13 +236,70 @@ fn install_all_deps(skills_path: &Path, skills: &[String]) -> Vec<String> {
         }
 
         match metadata::parse_skill_metadata(&skill_path) {
-            Ok(meta) => {
+            Ok(mut meta) => {
                 if meta.entry_point.is_empty() && !meta.is_bash_tool_skill() {
                     messages.push(format!("   ✓ {} (prompt-only): no dependencies needed", name));
                     continue;
                 }
 
                 let lang = metadata::detect_language(&skill_path, &meta);
+
+                // Resolve dependencies when lock is missing/stale.
+                // With --use-llm: Lock → LLM → Whitelist. Otherwise: Lock → Whitelist.
+                if meta.resolved_packages.is_none() {
+                    #[cfg(feature = "agent")]
+                    let resolved = {
+                        let client_opt = llm_client.as_ref();
+                        let model_opt = model.as_deref();
+                        if let (Some(client), Some(m)) = (client_opt, model_opt) {
+                            let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+                            rt.block_on(dependency_resolver::resolve_packages(
+                                &skill_path,
+                                meta.compatibility.as_deref(),
+                                &lang,
+                                Some(client),
+                                Some(m),
+                                true,
+                            ))
+                        } else {
+                            dependency_resolver::resolve_packages_sync(
+                                &skill_path,
+                                meta.compatibility.as_deref(),
+                                &lang,
+                                true,
+                            )
+                        }
+                    };
+
+                    #[cfg(not(feature = "agent"))]
+                    let resolved =
+                        dependency_resolver::resolve_packages_sync(
+                            &skill_path,
+                            meta.compatibility.as_deref(),
+                            &lang,
+                            true,
+                        );
+
+                    if let Ok(resolved) = resolved {
+                        if !resolved.packages.is_empty() {
+                            tracing::debug!(
+                                "{}: resolved {} packages via {}",
+                                name,
+                                resolved.packages.len(),
+                                resolved.resolver
+                            );
+                            if !resolved.unknown_packages.is_empty() {
+                                tracing::warn!(
+                                    "{}: packages not in whitelist: {:?}",
+                                    name,
+                                    resolved.unknown_packages
+                                );
+                            }
+                            meta.resolved_packages = Some(resolved.packages);
+                        }
+                    }
+                }
+
                 let cache_dir: Option<&str> = None;
                 match crate::env::builder::ensure_environment(&skill_path, &meta, cache_dir) {
                     Ok(_) => {

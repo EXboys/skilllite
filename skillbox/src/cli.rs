@@ -396,6 +396,11 @@ pub enum Commands {
         /// Strict mode — fail if security vulnerabilities found
         #[arg(long)]
         strict: bool,
+
+        /// Use LLM to resolve dependencies from compatibility string (requires agent feature, API key)
+        #[cfg(feature = "agent")]
+        #[arg(long)]
+        use_llm: bool,
     },
 
     /// Quick start — auto-detect LLM, setup skills, and launch chat

@@ -11,6 +11,9 @@
 //! (`--allow-unknown-packages` bypasses this check).
 //!
 //! Ported from Python `core/dependency_resolver.py`.
+//!
+//! Three-layer resolution for skill dependencies. Used by `skillbox init` when
+//! .skilllite.lock is missing or stale.
 
 use anyhow::Result;
 use std::collections::{HashMap, HashSet};
@@ -25,7 +28,7 @@ pub struct ResolvedDependencies {
     pub packages: Vec<String>,
     /// Which resolver layer produced the result.
     pub resolver: ResolverKind,
-    /// Packages not found in the whitelist (non-empty only when validation runs).
+    /// Packages not found in the whitelist (non-empty only when allow_unknown=false).
     pub unknown_packages: Vec<String>,
 }
 
@@ -33,6 +36,7 @@ pub struct ResolvedDependencies {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolverKind {
     Lock,
+    #[cfg(feature = "agent")]
     Llm,
     Whitelist,
     None,
@@ -42,6 +46,7 @@ impl std::fmt::Display for ResolverKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Lock => write!(f, "lock"),
+            #[cfg(feature = "agent")]
             Self::Llm => write!(f, "llm"),
             Self::Whitelist => write!(f, "whitelist"),
             Self::None => write!(f, "none"),
@@ -626,5 +631,25 @@ mod tests {
         assert!(!is_word_boundary_match("requires request handling", "requests"));
         assert!(is_word_boundary_match("pandas, numpy", "pandas"));
         assert!(is_word_boundary_match("pandas, numpy", "numpy"));
+    }
+
+    #[cfg(feature = "agent")]
+    #[tokio::test]
+    async fn test_resolve_packages_no_llm_falls_to_whitelist() {
+        let td = tempfile::tempdir().unwrap();
+        let skill_dir = td.path();
+        let res = resolve_packages(
+            skill_dir,
+            Some("Requires Python 3.x with requests"),
+            "python",
+            None,
+            None,
+            true,
+        )
+        .await;
+        assert!(res.is_ok());
+        let r = res.unwrap();
+        assert_eq!(r.resolver, ResolverKind::Whitelist);
+        assert!(r.packages.contains(&"requests".to_string()));
     }
 }

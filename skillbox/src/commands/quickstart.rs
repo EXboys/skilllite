@@ -347,7 +347,7 @@ fn ensure_skills(skills_path: &Path) -> Result<()> {
 
     // No skills available — create example
     eprintln!("   No skills found. Creating example skill...");
-    crate::commands::init::cmd_init(&skills_path.to_string_lossy(), true, true, false)?;
+    crate::commands::init::cmd_init(&skills_path.to_string_lossy(), true, true, false, false)?;
 
     Ok(())
 }

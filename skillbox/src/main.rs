@@ -215,8 +215,13 @@ fn main() -> Result<()> {
         Commands::Reindex { skills_dir, verbose } => {
             commands::reindex::cmd_reindex(&skills_dir, verbose)?;
         }
-        Commands::Init { skills_dir, skip_deps, skip_audit, strict } => {
-            commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict)?;
+        #[cfg(feature = "agent")]
+        Commands::Init { skills_dir, skip_deps, skip_audit, strict, use_llm } => {
+            commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict, use_llm)?;
+        }
+        #[cfg(not(feature = "agent"))]
+        Commands::Init { skills_dir, skip_deps, skip_audit, strict, .. } => {
+            commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict, false)?;
         }
         Commands::Quickstart { skills_dir } => {
             commands::quickstart::cmd_quickstart(&skills_dir)?;
