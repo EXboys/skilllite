@@ -5,7 +5,10 @@
 
 # Rust
 target/
+# Cargo.lock - 库可忽略，但 skilllite 是可执行程序需提交 lock 保证可复现构建
+# skilllite/Cargo.lock 通过下方例外纳入版本控制
 Cargo.lock
+!skilllite/Cargo.lock
 
 # Python
 __pycache__/
