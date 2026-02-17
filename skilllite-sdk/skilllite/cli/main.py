@@ -226,6 +226,12 @@ For more information, visit: https://github.com/skilllite/skilllite
         action="store_true",
         help="Allow packages from .skilllite.lock that are not in the security whitelist"
     )
+    init_parser.add_argument(
+        "--use-llm",
+        dest="use_llm",
+        action="store_true",
+        help="Use LLM to resolve dependencies from compatibility string (requires API key)"
+    )
     init_parser.set_defaults(func=cmd_init)
 
     # add command

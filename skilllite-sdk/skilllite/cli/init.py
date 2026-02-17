@@ -3,29 +3,55 @@ Init command for skilllite CLI.
 
 Provides the ``skilllite init`` command to:
 1. Download and install the skillbox binary for the current platform
-2. Initialize a .skills directory with a hello-world example skill
-3. Scan existing skills and install their dependencies (with environment isolation)
+2. Delegate steps 2–4 to ``skillbox init`` (.skills dir, deps, audit, summary)
 
-Dependency resolution strategy (in order):
-1. Read cached results from ``.skilllite.lock`` (fast, deterministic)
-2. Use LLM inference + PyPI/npm registry validation (cold path, ``skilllite init``)
-3. Fallback to hardcoded whitelist matching (offline/no-LLM fallback)
-
-Module structure:
-- init_binary: binary installation step
-- init_deps: lock file, package resolution, venv, security audit
-- init_skills: skill templates and directory setup
+Phase 4.1: Steps 2–4 are delegated to skillbox init. Python retains only run_binary_step.
 """
 
 import argparse
 import os
+import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
 
 from .init_binary import run_binary_step
-from .init_deps import scan_and_install_deps, run_dependency_audits
-from .init_skills import create_skills_directory
+
+
+def run_skillbox_init_for_deps(
+    skills_dir: Path,
+    *,
+    skip_audit: bool = False,
+    skip_deps: bool = False,
+) -> int:
+    """Run skillbox init to install dependencies (Phase 4.2 helper).
+
+    Used by add.py and quickstart.py to delegate dependency installation.
+    Returns exit code (0 = success).
+    """
+    from ..sandbox.skillbox import find_binary
+
+    binary = find_binary()
+    if not binary:
+        return 1
+
+    project_dir = skills_dir.parent
+    skills_dir_rel = skills_dir.name
+
+    cmd = [str(binary), "init", "-s", skills_dir_rel]
+    if skip_deps:
+        cmd.append("--skip-deps")
+    if skip_audit:
+        cmd.append("--skip-audit")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(project_dir),
+            check=False,
+        )
+        return result.returncode
+    except FileNotFoundError:
+        return 1
 
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -47,85 +73,44 @@ def cmd_init(args: argparse.Namespace) -> int:
         # -- Step 1: Binary ------------------------------------------------
         run_binary_step(args)
 
-        # -- Step 2: .skills directory & example skills -------------------
-        force = getattr(args, "force", False)
-        created_files: List[str] = create_skills_directory(
-            skills_dir, skills_dir_rel, force
-        )
+        # -- Steps 2–4: Delegate to skillbox init --------------------------
+        from ..sandbox.skillbox import find_binary
 
-        # -- Step 3: Scan & install dependencies ---------------------------
+        binary = find_binary()
+        if not binary:
+            print("Error: skillbox binary not found. Run `skilllite install` first.", file=sys.stderr)
+            return 1
+
+        cmd = [str(binary), "init", "-s", skills_dir_clean]
+        if getattr(args, "skip_deps", False):
+            cmd.append("--skip-deps")
+        if getattr(args, "skip_audit", False):
+            cmd.append("--skip-audit")
+        if getattr(args, "strict", False):
+            cmd.append("--strict")
+        if getattr(args, "use_llm", False):
+            cmd.append("--use-llm")
+
+        # Pass allow_unknown_packages via env (skillbox defaults to true; set for consistency)
         allow_unknown = getattr(args, "allow_unknown_packages", False) or (
             os.environ.get("SKILLLITE_ALLOW_UNKNOWN_PACKAGES", "").lower()
             in ("1", "true", "yes")
         )
-        dep_results: List[Dict[str, Any]] = []
-        if not getattr(args, "skip_deps", False):
-            print()
-            print("\U0001f4e6 Scanning skills and installing dependencies...")
-            dep_results = scan_and_install_deps(
-                skills_dir, force=force, allow_unknown_packages=allow_unknown
+        env = os.environ.copy()
+        env["SKILLLITE_ALLOW_UNKNOWN_PACKAGES"] = "1" if allow_unknown else "0"
+
+        # Note: --force not yet supported by skillbox init; behavior may differ
+        try:
+            result = subprocess.run(
+                cmd,
+                cwd=str(project_dir),
+                env=env,
+                check=False,
             )
-
-            if not dep_results:
-                print("   (no skills found)")
-            else:
-                for r in dep_results:
-                    pkgs = r.get("packages", [])
-                    pkg_str = ", ".join(pkgs) if pkgs else "none"
-                    status = r.get("status", "unknown")
-                    lang = r.get("language", "")
-                    resolver = r.get("resolver", "")
-                    lang_tag = f" [{lang}]" if lang else ""
-                    resolver_tag = f" (via {resolver})" if resolver and resolver != "none" else ""
-                    if status.startswith("ok"):
-                        print(f"   \u2713 {r['name']}{lang_tag}: {pkg_str}{resolver_tag} \u2014 {status}")
-                    else:
-                        print(f"   \u2717 {r['name']}{lang_tag}: {pkg_str}{resolver_tag} \u2014 {status}")
-                        if r.get("error"):
-                            print(f"      {r['error']}")
-
-            dep_errors = [r for r in dep_results if r.get("status") == "error"]
-            if dep_errors:
-                print()
-                print("Error: Some skills failed. Fix the issues above or run with --allow-unknown-packages.")
-                return 1
-        else:
-            print()
-            print("\u23ed Skipping dependency installation (--skip-deps)")
-
-        # -- Step 3b: Dependency security audit ----------------------------
-        if dep_results and not getattr(args, "skip_audit", False):
-            print()
-            print("\U0001f512 Scanning dependencies for known vulnerabilities...")
-            audit_ok, audit_lines = run_dependency_audits(
-                dep_results,
-                strict=getattr(args, "strict", False),
-                skip_audit=False,
-            )
-            for line in audit_lines:
-                print(line)
-            if not audit_ok:
-                print()
-                print("Error: Dependency audit found vulnerabilities. Fix them or run with --skip-audit.")
-                return 1
-
-        # -- Step 4: Summary -----------------------------------------------
-        print()
-        print("=" * 50)
-        print("\U0001f389 SkillLite project initialized successfully!")
-        print()
-        if created_files:
-            print("Created files:")
-            for f in created_files:
-                print(f"  \u2022 {f}")
-            print()
-        print("Next steps:")
-        print("  \u2022 Add skills to the .skills/ directory")
-        print("  \u2022 Run `skilllite status` to check installation")
-        print("  \u2022 Run `skilllite init` again after adding new skills to install their deps")
-        print("=" * 50)
-
-        return 0
+            return result.returncode
+        except FileNotFoundError:
+            print("Error: skillbox binary not found. Run `skilllite install` first.", file=sys.stderr)
+            return 1
 
     except Exception as e:
         import traceback

@@ -1,8 +1,8 @@
 """
 Package whitelist for skill dependency resolution.
 
-Single source of truth: packages_whitelist.json (same directory)
-Used by cli/init_deps.py for parse_compatibility_for_packages and validation.
+Single source of truth: packages_whitelist.json (same directory).
+Synced with skillbox/src/skill/deps.rs. Dependency resolution is delegated to skillbox.
 """
 
 import json
@@ -41,5 +41,5 @@ def get_node_packages() -> List[str]:
 
 
 def get_all_packages() -> Tuple[List[str], List[str]]:
-    """Return (python_packages, node_packages) for init.py compatibility."""
+    """Return (python_packages, node_packages)."""
     return get_python_packages(), get_node_packages()

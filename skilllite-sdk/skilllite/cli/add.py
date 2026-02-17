@@ -373,26 +373,15 @@ def cmd_add(args: argparse.Namespace) -> int:
             print("   No new skills installed.")
             return 0
 
-        # --- Install dependencies ---
+        # --- Install dependencies (delegate to skillbox init) ---
         print()
         print("📦 Installing dependencies...")
-        from .init_deps import scan_and_install_deps
-        dep_results = scan_and_install_deps(skills_dir, force=force)
-        for r in dep_results:
-            # Only show results for newly-installed skills
-            if r.get("name") not in installed:
-                continue
-            pkgs = r.get("packages", [])
-            pkg_str = ", ".join(pkgs) if pkgs else "none"
-            status = r.get("status", "unknown")
-            lang = r.get("language", "")
-            resolver = r.get("resolver", "")
-            lang_tag = f" [{lang}]" if lang else ""
-            resolver_tag = f" (via {resolver})" if resolver and resolver != "none" else ""
-            if status.startswith("ok"):
-                print(f"   ✓ {r['name']}{lang_tag}: {pkg_str}{resolver_tag}")
-            else:
-                print(f"   ✗ {r['name']}{lang_tag}: {status}")
+        from .init import run_skillbox_init_for_deps
+
+        dep_rc = run_skillbox_init_for_deps(skills_dir, skip_audit=False)
+        if dep_rc != 0:
+            print("   ⚠ Dependency installation had issues (see above)")
+            # Continue to summary — add succeeded, deps are best-effort
 
         # --- Summary ---
         print()

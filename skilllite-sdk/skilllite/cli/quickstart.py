@@ -315,10 +315,10 @@ def _ensure_skills(skills_dir: Path, repo: Optional[str] = None) -> Tuple[int, s
                         installed += 1
                 
                 if installed > 0:
-                    # Try installing dependencies (best effort)
+                    # Try installing dependencies (best effort, delegate to skillbox init)
                     try:
-                        from .init_deps import scan_and_install_deps
-                        scan_and_install_deps(skills_dir, force=False)
+                        from .init import run_skillbox_init_for_deps
+                        run_skillbox_init_for_deps(skills_dir, skip_audit=True)
                     except Exception:
                         pass  # Non-critical
                     
