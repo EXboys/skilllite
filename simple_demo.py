@@ -76,5 +76,9 @@ if __name__ == "__main__":
     
     print()
     print("=" * 60)
-    print(f"🤖 最终结果: {result}")
+    # verbose=True already streams the full response; avoid duplicate
+    if runner.verbose:
+        print("🤖 任务完成")
+    else:
+        print(f"🤖 最终结果: {result}")
     print("=" * 60)

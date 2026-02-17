@@ -29,7 +29,7 @@ _binary_path_cache: Optional[str] = None
 _binary_path_cache_set: bool = False  # distinguish None (not found) from "not cached"
 
 # Version of the binary to download
-BINARY_VERSION = "0.1.0"
+BINARY_VERSION = "0.2.0"
 
 # GitHub repository for releases
 GITHUB_OWNER = "EXboys"

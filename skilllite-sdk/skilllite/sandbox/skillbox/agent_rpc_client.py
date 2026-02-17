@@ -24,6 +24,31 @@ def _get_binary() -> str:
     return ensure_installed(auto_install=True)
 
 
+def _prepare_agent_env(
+    env: Dict[str, str],
+    api_key: Optional[str],
+    api_base: Optional[str],
+    model: Optional[str],
+    confirmation_callback: Optional[Callable[[str, str], bool]],
+) -> None:
+    """Prepare env for agent-rpc subprocess."""
+    if api_key:
+        env["OPENAI_API_KEY"] = api_key
+    if api_base:
+        env["OPENAI_API_BASE"] = api_base
+    if model:
+        env["SKILLLITE_MODEL"] = model
+    # When confirmation_callback is provided, Python handles confirmation via events.
+    # Set SKILLBOX_AUTO_APPROVE so the executor (second confirmation layer) does not
+    # block on stdin.read_line() - that would deadlock since stdin is a pipe.
+    if confirmation_callback:
+        env["SKILLBOX_AUTO_APPROVE"] = "1"
+    # Allow Playwright skills (e.g. xiaohongshu-writer) - sandbox blocks process-exec.
+    # In interactive mode, default allow; set SKILLBOX_ALLOW_PLAYWRIGHT=0 to disable.
+    if confirmation_callback and os.environ.get("SKILLBOX_ALLOW_PLAYWRIGHT", "1").strip().lower() not in ("0", "false", "no"):
+        env["SKILLBOX_ALLOW_PLAYWRIGHT"] = "1"
+
+
 def agent_chat(
     message: str,
     *,
@@ -59,12 +84,7 @@ def agent_chat(
     """
     binary = _get_binary()
     env = os.environ.copy()
-    if api_key:
-        env["OPENAI_API_KEY"] = api_key
-    if api_base:
-        env["OPENAI_API_BASE"] = api_base
-    if model:
-        env["SKILLLITE_MODEL"] = model
+    _prepare_agent_env(env, api_key, api_base, model, confirmation_callback)
 
     params: Dict[str, Any] = {
         "message": message,
@@ -93,7 +113,7 @@ def agent_chat(
         [binary, "agent-rpc"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=None,  # Inherit - skillbox stderr to terminal (avoids executor deadlock debug)
         text=True,
         bufsize=1,
         env=env,
@@ -167,12 +187,7 @@ def agent_chat_stream(
     """
     binary = _get_binary()
     env = os.environ.copy()
-    if api_key:
-        env["OPENAI_API_KEY"] = api_key
-    if api_base:
-        env["OPENAI_API_BASE"] = api_base
-    if model:
-        env["SKILLLITE_MODEL"] = model
+    _prepare_agent_env(env, api_key, api_base, model, confirmation_callback)
 
     params: Dict[str, Any] = {
         "message": message,
@@ -201,7 +216,7 @@ def agent_chat_stream(
         [binary, "agent-rpc"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=None,  # Inherit - skillbox stderr to terminal
         text=True,
         bufsize=1,
         env=env,

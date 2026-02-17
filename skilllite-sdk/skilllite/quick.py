@@ -61,9 +61,20 @@ class SkillRunner:
         self.verbose = verbose
         self.confirmation_callback = confirmation_callback
         self._logger = get_logger("skilllite.quick", verbose=verbose)
+        self._manager = None
         # Ignored (delegated to Rust): include_full_instructions, context_mode, etc.
         if kwargs:
             self._logger.debug("Ignored kwargs (Rust handles): %s", list(kwargs.keys()))
+
+    @property
+    def manager(self):
+        """SkillManager instance (lazy, for skill_names() etc.)."""
+        if self._manager is None:
+            from .core import SkillManager
+            self._manager = SkillManager(skills_dir=self.skills_dir)
+            if self.verbose:
+                self._logger.info("📦 Loaded Skills: %s", self._manager.skill_names())
+        return self._manager
 
     @property
     def workspace(self) -> str:
@@ -79,8 +90,8 @@ class SkillRunner:
         if self.verbose:
             self._logger.info("👤 User: %s", user_message)
 
-        effective_callback = stream_callback if stream_callback else (lambda c: None) if stream else None
-        if stream and not stream_callback:
+        effective_callback = stream_callback
+        if effective_callback is None and (stream or self.verbose):
             import sys
             def _default_stream(chunk: str) -> None:
                 sys.stdout.write(chunk)

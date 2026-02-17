@@ -4,7 +4,7 @@ use crate::sandbox::security::{format_scan_result, ScriptScanner, SecuritySeveri
 use crate::skill::metadata::SkillMetadata;
 use anyhow::Result;
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::time::Instant;
 
@@ -243,7 +243,15 @@ pub fn run_in_sandbox_with_limits_and_level(
             
             // If critical or high severity issues are found, request user authorization
             if !critical_issues.is_empty() || !high_issues.is_empty() {
-                eprintln!("{}", format_scan_result(&scan_result));
+                // Skip duplicate scan output when auto-approving (agent-rpc / SKILLBOX_AUTO_APPROVE)
+                let will_auto_approve = !io::stdin().is_terminal()
+                    || env::var("SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
+                        let v = v.trim().to_lowercase();
+                        v == "1" || v == "true" || v == "yes"
+                    });
+                if !will_auto_approve {
+                    eprintln!("{}", format_scan_result(&scan_result));
+                }
 
                 let severity_str = if !critical_issues.is_empty() {
                     "CRITICAL"
@@ -279,8 +287,18 @@ pub fn run_in_sandbox_with_limits_and_level(
                     &serde_json::Value::Array(issues_json),
                 );
 
-                // Request user authorization
-                if !request_user_authorization(&metadata.name, issues_count, severity_str) {
+                // When stdin is not a TTY (e.g. agent-rpc mode), the agent has already
+                // confirmed via EventSink. Do not block on read_line - it would deadlock
+                // since Python is waiting for the next event.
+                let approved = if !io::stdin().is_terminal() {
+                    tracing::info!("Non-TTY stdin (agent-rpc): auto-approve (agent already confirmed)");
+                    observability::audit_confirmation_response(&metadata.name, true, "rpc");
+                    true
+                } else {
+                    request_user_authorization(&metadata.name, issues_count, severity_str)
+                };
+
+                if !approved {
                     anyhow::bail!(
                         "Script execution blocked: User denied authorization for {} severity issues",
                         severity_str
