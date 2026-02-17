@@ -23,7 +23,7 @@ from .config import (
     DEFAULT_SANDBOX_LEVEL,
     DEFAULT_ALLOW_NETWORK,
 )
-from ..config.env_config import parse_bool_env, get_timeout_from_env, get_memory_from_env
+from ..config import parse_bool_env, get_timeout_from_env, get_memory_from_env
 
 # Alias for consistency with ExecutionContext field names
 DEFAULT_TIMEOUT = DEFAULT_EXECUTION_TIMEOUT

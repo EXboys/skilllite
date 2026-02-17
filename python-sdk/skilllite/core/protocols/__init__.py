@@ -1,22 +1,26 @@
 """
-SkillLite Protocols - Unified type definitions and interfaces.
-
-This module provides the core types and protocols that all adapters
-(LangChain, LlamaIndex, MCP, etc.) should use. This ensures consistency
-across different framework integrations.
-
-Key Components:
-- SecurityScanResult: Unified security scan result
-- ConfirmationCallback: Type alias for confirmation callbacks
-- AdapterProtocol: Abstract base for all adapters
+SkillLite Protocols — unified types for adapters (LangChain, LlamaIndex, MCP).
 """
 
-from .types import (
-    SecurityScanResult,
-    ConfirmationCallback,
-    AsyncConfirmationCallback,
-    ExecutionOptions,
-)
+import asyncio
+from dataclasses import dataclass
+from typing import Callable, Optional
+
+from ..security import SecurityScanResult
+
+ConfirmationCallback = Callable[[str, str], bool]
+AsyncConfirmationCallback = Callable[[str, str], "asyncio.Future[bool]"]
+
+
+@dataclass
+class ExecutionOptions:
+    """Options for skill execution — shared across adapters."""
+    sandbox_level: int = 3
+    allow_network: bool = False
+    timeout: Optional[int] = None
+    confirmation_callback: Optional[ConfirmationCallback] = None
+    async_confirmation_callback: Optional[AsyncConfirmationCallback] = None
+
 
 __all__ = [
     "SecurityScanResult",
@@ -24,4 +28,3 @@ __all__ = [
     "AsyncConfirmationCallback",
     "ExecutionOptions",
 ]
-

@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
-from ..config.env_config import parse_bool_env
+from ..config import parse_bool_env
 
 # Default configuration values (shared with ExecutionContext)
 DEFAULT_EXECUTION_TIMEOUT = 120  # seconds

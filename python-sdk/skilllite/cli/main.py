@@ -10,14 +10,11 @@ from typing import List, Optional
 
 from ..sandbox.core import BINARY_VERSION
 from .binary import cmd_install, cmd_uninstall, cmd_status, cmd_version
-from .mcp import cmd_mcp_server
-from .integrations.opencode import cmd_init_opencode
-from .integrations.cursor import cmd_init_cursor
+from .commands import (
+    cmd_add, cmd_quickstart, cmd_list, cmd_remove, cmd_show, cmd_reindex,
+    cmd_init_cursor, cmd_init_opencode, cmd_chat, cmd_mcp_server,
+)
 from .init import cmd_init
-from .add import cmd_add
-from .repo import cmd_list, cmd_remove, cmd_reindex
-from .chat import cmd_chat
-from .quickstart import cmd_quickstart
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -278,7 +275,34 @@ For more information, visit: https://github.com/skilllite/skilllite
         default=".skills",
         help="Skills directory path (default: .skills)"
     )
+    list_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON"
+    )
     list_parser.set_defaults(func=cmd_list)
+
+    # show command
+    show_parser = subparsers.add_parser(
+        "show",
+        help="Show detailed information about a skill"
+    )
+    show_parser.add_argument(
+        "skill_name",
+        help="Name of the skill to show"
+    )
+    show_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default=".skills",
+        help="Skills directory path (default: .skills)"
+    )
+    show_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON"
+    )
+    show_parser.set_defaults(func=cmd_show)
 
     # reindex command
     reindex_parser = subparsers.add_parser(

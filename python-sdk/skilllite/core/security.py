@@ -253,62 +253,64 @@ def parse_scan_json_output(output: str) -> Dict[str, Any]:
         }
 
 
+def _run_skilllite_scan(binary_path: str, file_path: str) -> Dict[str, Any]:
+    """Run skilllite security-scan --json on a file. Returns parsed data (fail-secure on error)."""
+    fail_data = {
+        "is_safe": False, "issues": [], "high_severity_count": 1,
+        "medium_severity_count": 0, "low_severity_count": 0,
+    }
+    try:
+        result = subprocess.run(
+            [binary_path, "security-scan", "--json", file_path],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            fail_data["issues"] = [{
+                "severity": "High", "issue_type": "Scan Error", "rule_id": "scan-error",
+                "line_number": 0, "description": f"Scan failed (exit {result.returncode})",
+                "code_snippet": (result.stderr or "")[:100],
+            }]
+            return fail_data
+        return parse_scan_json_output(result.stdout)
+    except subprocess.TimeoutExpired:
+        fail_data["issues"] = [{
+            "severity": "High", "issue_type": "Scan Timeout", "rule_id": "scan-timeout",
+            "line_number": 0, "description": "Scan timed out", "code_snippet": "",
+        }]
+        return fail_data
+    except Exception:
+        fail_data["issues"] = [{
+            "severity": "High", "issue_type": "Scan Error", "rule_id": "scan-exception",
+            "line_number": 0, "description": "Scan error", "code_snippet": "",
+        }]
+        return fail_data
+
+
 class SecurityScanner:
     """
-    Security scanner for skill execution.
-
-    Uses skillbox binary to perform static code analysis before execution.
-
-    Usage:
-        scanner = SecurityScanner()
-        result = scanner.scan_skill(skill_info, input_data)
+    Security scanner — delegates to skilllite security-scan binary.
     """
 
     def __init__(self, skillbox_path: Optional[str] = None):
-        """
-        Initialize the security scanner.
-
-        Args:
-            skillbox_path: Path to skillbox binary. If None, will try to find it.
-        """
-        self._skillbox_path = skillbox_path
-        self._scan_cache: Dict[str, SecurityScanResult] = {}
-        self._SCAN_CACHE_TTL = 300  # 5 minutes
+        self._binary = skillbox_path
+        self._cache: Dict[str, SecurityScanResult] = {}
+        self._cache_ttl = 300
 
     @property
     def skillbox_path(self) -> Optional[str]:
-        """Get skillbox binary path (lazy initialization)."""
-        if self._skillbox_path is None:
+        if self._binary is None:
             try:
                 from ..sandbox.core import find_binary
-                self._skillbox_path = find_binary()
+                self._binary = find_binary()
             except Exception:
                 pass
-        return self._skillbox_path
+        return self._binary
 
-    def _generate_input_hash(self, skill_name: str, input_data: Dict[str, Any]) -> str:
-        """Generate a hash of the input data for verification."""
-        import json
-        content = f"{skill_name}:{json.dumps(input_data, sort_keys=True, ensure_ascii=False)}"
-        return hashlib.sha256(content.encode()).hexdigest()[:16]
-
-    def _cleanup_expired_scans(self) -> None:
-        """Remove expired scan results from cache."""
-        current_time = time.time()
-        expired_keys = [
-            k for k, v in self._scan_cache.items()
-            if current_time - v.timestamp > self._SCAN_CACHE_TTL
-        ]
-        for key in expired_keys:
-            del self._scan_cache[key]
-
-    def _parse_scan_output(self, output: str) -> Dict[str, Any]:
-        """Parse skillbox JSON scan output into structured result.
-
-        Returns a dict with keys: is_safe, issues, high_severity_count,
-        medium_severity_count, low_severity_count.
-        """
-        return parse_scan_json_output(output)
+    def _cache_put(self, scan_id: str, result: SecurityScanResult) -> None:
+        self._cache[scan_id] = result
+        now = time.time()
+        for k in [k for k, v in self._cache.items() if now - v.timestamp > self._cache_ttl]:
+            del self._cache[k]
 
     def scan_skill(
         self,
@@ -316,241 +318,71 @@ class SecurityScanner:
         input_data: Dict[str, Any],
         entry_point: Optional[str] = None
     ) -> SecurityScanResult:
-        """
-        Perform a security scan on a skill before execution.
-
-        Args:
-            skill_info: SkillInfo object for the skill
-            input_data: Input data for the skill execution
-            entry_point: Optional specific entry point script
-
-        Returns:
-            SecurityScanResult with any issues found
-        """
-        self._cleanup_expired_scans()
-
-        skill_name = skill_info.name
-        input_hash = self._generate_input_hash(skill_name, input_data)
         scan_id = str(uuid.uuid4())
+        code_hash = hashlib.sha256(
+            f"{skill_info.name}:{json.dumps(input_data, sort_keys=True, ensure_ascii=False)}".encode()
+        ).hexdigest()[:16]
 
-        # Determine entry point
+        entry_script = None
         if entry_point:
             entry_script = skill_info.path / entry_point
         elif skill_info.metadata and skill_info.metadata.entry_point:
             entry_script = skill_info.path / skill_info.metadata.entry_point
         else:
-            # Default entry points
-            for default_entry in ["scripts/main.py", "main.py"]:
-                entry_script = skill_info.path / default_entry
-                if entry_script.exists():
+            for ep in ["scripts/main.py", "main.py"]:
+                p = skill_info.path / ep
+                if p.exists():
+                    entry_script = p
                     break
-            else:
-                # No entry point found, return safe result
-                return SecurityScanResult(
-                    is_safe=True,
-                    issues=[],
-                    scan_id=scan_id,
-                    code_hash=input_hash,
-                )
 
-        if not entry_script.exists():
-            return SecurityScanResult(
-                is_safe=True,
-                issues=[],
-                scan_id=scan_id,
-                code_hash=input_hash,
-            )
+        if not entry_script or not entry_script.exists() or not self.skillbox_path:
+            return SecurityScanResult.safe(scan_id, code_hash)
 
-        # Use skillbox security-scan command
-        if not self.skillbox_path:
-            return SecurityScanResult(
-                is_safe=True,
-                issues=[],
-                scan_id=scan_id,
-                code_hash=input_hash,
-            )
+        data = _run_skilllite_scan(self.skillbox_path, str(entry_script))
+        r = SecurityScanResult(
+            is_safe=data["is_safe"], issues=data["issues"], scan_id=scan_id, code_hash=code_hash,
+            high_severity_count=data.get("high_severity_count", 0),
+            medium_severity_count=data.get("medium_severity_count", 0),
+            low_severity_count=data.get("low_severity_count", 0),
+        )
+        self._cache_put(scan_id, r)
+        return r
 
-        try:
-            result = subprocess.run(
-                [self.skillbox_path, "security-scan", "--json", str(entry_script)],
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            # Check if the command failed (e.g. --json not supported by old binary)
-            if result.returncode != 0:
-                # Fail-secure: if scan command errored, require confirmation
-                # This prevents silently skipping security when binary is outdated
-                return SecurityScanResult(
-                    is_safe=False,
-                    issues=[{
-                        "severity": "High",
-                        "issue_type": "Scan Error",
-                        "rule_id": "scan-error",
-                        "line_number": 0,
-                        "description": f"Security scan failed (exit code {result.returncode}). "
-                                       f"Manual review required.",
-                        "code_snippet": result.stderr.strip()[:100] if result.stderr else "",
-                    }],
-                    scan_id=scan_id,
-                    code_hash=input_hash,
-                    high_severity_count=1,
-                )
-
-            # Parse structured JSON output
-            data = self._parse_scan_output(result.stdout)
-
-            scan_result = SecurityScanResult(
-                is_safe=data["is_safe"],
-                issues=data["issues"],
-                scan_id=scan_id,
-                code_hash=input_hash,
-                high_severity_count=data["high_severity_count"],
-                medium_severity_count=data["medium_severity_count"],
-                low_severity_count=data["low_severity_count"],
-            )
-            self._scan_cache[scan_id] = scan_result
-            return scan_result
-
-        except subprocess.TimeoutExpired:
-            # Scan timed out - fail-secure
-            return SecurityScanResult(
-                is_safe=False,
-                issues=[{
-                    "severity": "High",
-                    "issue_type": "Scan Timeout",
-                    "rule_id": "scan-timeout",
-                    "line_number": 0,
-                    "description": "Security scan timed out. Manual review required.",
-                    "code_snippet": "",
-                }],
-                scan_id=scan_id,
-                code_hash=input_hash,
-                high_severity_count=1,
-            )
-        except Exception:
-            # On unexpected error, fail-secure: require confirmation
-            return SecurityScanResult(
-                is_safe=False,
-                issues=[{
-                    "severity": "High",
-                    "issue_type": "Scan Error",
-                    "rule_id": "scan-exception",
-                    "line_number": 0,
-                    "description": "Security scan encountered an error. Manual review required.",
-                    "code_snippet": "",
-                }],
-                scan_id=scan_id,
-                code_hash=input_hash,
-                high_severity_count=1,
-            )
-
-    def scan_code(
-        self,
-        language: str,
-        code: str,
-        sandbox_level: int = 3
-    ) -> SecurityScanResult:
-        """
-        Perform a security scan on arbitrary code.
-
-        This is used by MCP server to scan code before execution.
-
-        Args:
-            language: Programming language (python, javascript, etc.)
-            code: Code to scan
-            sandbox_level: Sandbox level (1, 2, or 3)
-
-        Returns:
-            SecurityScanResult with any issues found
-        """
+    def scan_code(self, language: str, code: str, sandbox_level: int = 3) -> SecurityScanResult:
         import tempfile
-        import os
-
+        import os as _os
         scan_id = str(uuid.uuid4())
         code_hash = hashlib.sha256(code.encode()).hexdigest()[:16]
-
-        # Skip scanning for level 1/2
-        if sandbox_level < 3:
-            return SecurityScanResult(
-                is_safe=True,
-                issues=[],
-                scan_id=scan_id,
-                code_hash=code_hash,
-            )
-
-        if not self.skillbox_path:
-            return SecurityScanResult(
-                is_safe=True,
-                issues=[],
-                scan_id=scan_id,
-                code_hash=code_hash,
-            )
-
-        # Determine file extension
-        ext_map = {
-            "python": ".py",
-            "py": ".py",
-            "javascript": ".js",
-            "js": ".js",
-            "bash": ".sh",
-            "shell": ".sh",
-        }
-        ext = ext_map.get(language.lower(), ".txt")
-
-        # Write code to temp file and scan
+        if sandbox_level < 3 or not self.skillbox_path:
+            return SecurityScanResult.safe(scan_id, code_hash)
+        ext_map = {"python": ".py", "py": ".py", "javascript": ".js", "js": ".js", "bash": ".sh", "shell": ".sh"}
+        suf = ext_map.get(language.lower(), ".txt")
         try:
-            with tempfile.NamedTemporaryFile(
-                mode='w',
-                suffix=ext,
-                delete=False
-            ) as f:
+            with tempfile.NamedTemporaryFile(mode='w', suffix=suf, delete=False) as f:
                 f.write(code)
-                temp_path = f.name
-
+                tmp = f.name
             try:
-                result = subprocess.run(
-                    [self.skillbox_path, "security-scan", "--json", temp_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=30
+                data = _run_skilllite_scan(self.skillbox_path, tmp)
+                r = SecurityScanResult(
+                    is_safe=data["is_safe"], issues=data["issues"], scan_id=scan_id, code_hash=code_hash,
+                    high_severity_count=data.get("high_severity_count", 0),
+                    medium_severity_count=data.get("medium_severity_count", 0),
+                    low_severity_count=data.get("low_severity_count", 0),
                 )
-
-                # Parse structured JSON output
-                data = self._parse_scan_output(result.stdout)
-
-                scan_result = SecurityScanResult(
-                    is_safe=data["is_safe"],
-                    issues=data["issues"],
-                    scan_id=scan_id,
-                    code_hash=code_hash,
-                    high_severity_count=data["high_severity_count"],
-                    medium_severity_count=data["medium_severity_count"],
-                    low_severity_count=data["low_severity_count"],
-                )
-                self._scan_cache[scan_id] = scan_result
-                return scan_result
+                self._cache_put(scan_id, r)
+                return r
             finally:
-                os.unlink(temp_path)
-
+                _os.unlink(tmp)
         except Exception:
-            return SecurityScanResult(
-                is_safe=True,
-                issues=[],
-                scan_id=scan_id,
-                code_hash=code_hash,
-            )
+            return SecurityScanResult.safe(scan_id, code_hash)
 
     def get_cached_scan(self, scan_id: str) -> Optional[SecurityScanResult]:
-        """Get a cached scan result by ID."""
-        self._cleanup_expired_scans()
-        return self._scan_cache.get(scan_id)
+        now = time.time()
+        for k in [k for k, v in self._cache.items() if now - v.timestamp > self._cache_ttl]:
+            del self._cache[k]
+        return self._cache.get(scan_id)
 
     def verify_scan(self, scan_id: str, code_hash: str) -> bool:
-        """Verify that a scan ID matches the expected code hash."""
-        cached = self.get_cached_scan(scan_id)
-        if cached is None:
-            return False
-        return cached.code_hash == code_hash
+        c = self.get_cached_scan(scan_id)
+        return c is not None and c.code_hash == code_hash
 
