@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build:
+    name: Build both binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build skilllite (full)
+        working-directory: ./skilllite
+        run: cargo build --release --bin skilllite
+
+      - name: Build skilllite-sandbox (sandbox + MCP only)
+        working-directory: ./skilllite
+        run: cargo build --release --bin skilllite-sandbox --no-default-features --features sandbox_binary
+
+      - name: Verify skilllite
+        run: ./skilllite/target/release/skilllite --version
+
+      - name: Verify skilllite-sandbox
+        run: ./skilllite/target/release/skilllite-sandbox --version

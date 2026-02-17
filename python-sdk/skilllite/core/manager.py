@@ -115,7 +115,7 @@ class SkillManager:
 
         # Initialize builders and handler (Phase 4.8: handler uses ipc_executor directly)
         self._tool_builder = ToolBuilder(self._registry)
-        self._prompt_builder = PromptBuilder(self._registry)
+        self._prompt_builder = PromptBuilder(self._registry, skills_dir=self.skills_dir)
         self._handler = ToolCallHandler(self._registry)
         
         # Scan skills directory if provided

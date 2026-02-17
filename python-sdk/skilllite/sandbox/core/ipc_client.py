@@ -290,6 +290,22 @@ class SkillboxIPCClient:
         """Approximate token count (~4 chars per token)."""
         return self._send_request("token_count", {"text": text})
 
+    def build_skills_context(
+        self,
+        skills_dir: str,
+        mode: str = "progressive",
+        skills: Optional[List[str]] = None,
+    ) -> str:
+        """
+        Build skills context string for system prompt. Delegates to skilllite RPC.
+        Requires skilllite built with agent feature.
+        """
+        params: Dict[str, Any] = {"skills_dir": skills_dir, "mode": mode}
+        if skills is not None:
+            params["skills"] = skills
+        result = self._send_request("build_skills_context", params)
+        return result.get("context", "")
+
     def plan_textify(self, plan: List[Dict[str, Any]]) -> str:
         """Convert plan (task list) to human-readable text. Requires skillbox with executor feature."""
         result = self._send_request("plan_textify", {"plan": plan})
@@ -435,6 +451,23 @@ class SkillboxIPCClientPool:
                 timeout=timeout,
                 max_memory=max_memory,
                 sandbox_level=sandbox_level,
+            )
+        finally:
+            self._return_client(client)
+
+    def build_skills_context(
+        self,
+        skills_dir: str,
+        mode: str = "progressive",
+        skills: Optional[List[str]] = None,
+    ) -> str:
+        """Build skills context via RPC. Delegates to skilllite build_skills_context."""
+        client = self._get_client(timeout=30)
+        try:
+            return client.build_skills_context(
+                skills_dir=skills_dir,
+                mode=mode,
+                skills=skills,
             )
         finally:
             self._return_client(client)

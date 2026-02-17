@@ -16,4 +16,5 @@ pub mod ide;
 pub mod env;
 pub mod reindex;
 pub mod init;
+#[cfg(feature = "agent")]
 pub mod quickstart;

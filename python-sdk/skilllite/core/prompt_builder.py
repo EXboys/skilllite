@@ -5,9 +5,13 @@ This module handles:
 - Generating system prompt context for LLM
 - Formatting skill information for different modes
 - Skills status reporting and logging
+
+Phase 4.12: When skilllite binary (with agent feature) is available, delegates
+build_skills_context to RPC. Falls back to local formatting otherwise.
 """
 
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
 from .skill_info import SkillInfo
@@ -27,14 +31,35 @@ class PromptBuilder:
     - full: Complete instructions and references
     """
     
-    def __init__(self, registry: "SkillRegistry"):
+    def __init__(self, registry: "SkillRegistry", skills_dir: Optional[str] = None):
         """
         Initialize the prompt builder.
         
         Args:
             registry: Skill registry for accessing skill info
+            skills_dir: Skills directory path for RPC delegation (optional)
         """
         self._registry = registry
+        self._skills_dir = skills_dir or ".skills"
+    
+    def _try_delegate_build_context(
+        self,
+        mode: str = "progressive",
+        skills: Optional[List[str]] = None,
+    ) -> Optional[str]:
+        """Try to build context via skilllite RPC. Returns None if delegation fails."""
+        try:
+            from ..sandbox.ipc_executor import _get_ipc_pool
+            pool = _get_ipc_pool()
+            resolved = str(Path(self._skills_dir).resolve())
+            ctx = pool.build_skills_context(
+                skills_dir=resolved,
+                mode=mode,
+                skills=skills,
+            )
+            return ctx if ctx else None
+        except Exception:
+            return None
     
     def get_system_prompt_context(
         self,
@@ -61,6 +86,12 @@ class PromptBuilder:
         """
         if not include_full_instructions and mode == "full":
             mode = "standard"
+        
+        # Try RPC delegation first (skilllite with agent feature)
+        if not include_references and not include_assets and max_tokens_per_skill is None:
+            delegated = self._try_delegate_build_context(mode=mode, skills=skills)
+            if delegated is not None:
+                return delegated
         
         lines = ["# Available Skills\n"]
         target_skills = self._registry.list_skills()
@@ -179,6 +210,9 @@ class PromptBuilder:
     
     def get_skill_details(self, skill_name: str) -> Optional[str]:
         """Get full details for a specific skill."""
+        delegated = self._try_delegate_build_context(mode="full", skills=[skill_name])
+        if delegated is not None and skill_name in delegated:
+            return delegated
         info = self._registry.get_skill(skill_name)
         if not info:
             return None
@@ -192,6 +226,9 @@ class PromptBuilder:
     
     def get_skills_summary(self) -> str:
         """Get a compact summary of all available skills."""
+        delegated = self._try_delegate_build_context(mode="summary")
+        if delegated is not None:
+            return delegated
         return self.get_system_prompt_context(mode="summary")
     
     def estimate_context_tokens(

@@ -403,7 +403,7 @@ pub enum Commands {
         use_llm: bool,
     },
 
-    /// Quick start — auto-detect LLM, setup skills, and launch chat
+    /// Quick start — auto-detect LLM, setup skills, and launch chat (requires agent feature)
     ///
     /// Zero-config flow:
     ///   1. Detect existing .env or probe local Ollama
@@ -414,6 +414,7 @@ pub enum Commands {
     /// Examples:
     ///   skilllite quickstart
     ///   skilllite quickstart --skills-dir ./my-skills
+    #[cfg(feature = "agent")]
     #[command(name = "quickstart")]
     Quickstart {
         /// Skills directory path (default: .skills)

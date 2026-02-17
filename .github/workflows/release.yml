@@ -80,41 +80,63 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Build
+      - name: Build skilllite (full)
         working-directory: ./skilllite
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --bin skilllite --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
-      - name: Create tarball (Unix)
+      - name: Build skilllite-sandbox (sandbox + MCP only)
+        working-directory: ./skilllite
+        run: cargo build --release --bin skilllite-sandbox --no-default-features --features sandbox_binary --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Create tarballs (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           cd skilllite/target/${{ matrix.target }}/release
           tar -czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
-          mv ${{ matrix.asset_name }}.tar.gz ../../../../
+          tar -czf ${{ matrix.asset_name }}-sandbox.tar.gz skilllite-sandbox
+          mv *.tar.gz ../../../../
 
-      - name: Create zip (Windows)
+      - name: Create zips (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           cd skilllite/target/${{ matrix.target }}/release
           Compress-Archive -Path ${{ matrix.artifact_name }} -DestinationPath ${{ matrix.asset_name }}.zip
-          Move-Item ${{ matrix.asset_name }}.zip ../../../../
+          Compress-Archive -Path skilllite-sandbox.exe -DestinationPath ${{ matrix.asset_name }}-sandbox.zip
+          Move-Item *.zip ../../../../
 
-      - name: Upload artifact (Unix)
+      - name: Upload skilllite artifact (Unix)
         if: runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}.tar.gz
 
-      - name: Upload artifact (Windows)
+      - name: Upload skilllite-sandbox artifact (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}-sandbox
+          path: ${{ matrix.asset_name }}-sandbox.tar.gz
+
+      - name: Upload skilllite artifact (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}.zip
+
+      - name: Upload skilllite-sandbox artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}-sandbox
+          path: ${{ matrix.asset_name }}-sandbox.zip
 
   release:
     name: Create Release
@@ -144,10 +166,15 @@ jobs:
           fail_on_unmatched_files: false
           files: |
             ./artifacts/skilllite-linux-x64/skilllite-linux-x64.tar.gz
+            ./artifacts/skilllite-linux-x64-sandbox/skilllite-linux-x64-sandbox.tar.gz
             ./artifacts/skilllite-darwin-x64/skilllite-darwin-x64.tar.gz
+            ./artifacts/skilllite-darwin-x64-sandbox/skilllite-darwin-x64-sandbox.tar.gz
             ./artifacts/skilllite-darwin-arm64/skilllite-darwin-arm64.tar.gz
+            ./artifacts/skilllite-darwin-arm64-sandbox/skilllite-darwin-arm64-sandbox.tar.gz
             ./artifacts/skilllite-linux-arm64/skilllite-linux-arm64.tar.gz
+            ./artifacts/skilllite-linux-arm64-sandbox/skilllite-linux-arm64-sandbox.tar.gz
             ./artifacts/skilllite-windows-x64/skilllite-windows-x64.zip
+            ./artifacts/skilllite-windows-x64-sandbox/skilllite-windows-x64-sandbox.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

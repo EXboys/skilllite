@@ -10,11 +10,13 @@ keywords = ["agent", "skills", "sandbox", "security"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = ["sandbox", "audit"]
+default = ["sandbox", "audit", "agent"]
 sandbox = []
 audit = ["dep:ureq"]
 executor = ["sandbox", "rusqlite"]
 agent = ["executor", "dep:tokio", "dep:reqwest", "dep:futures-util", "dep:rustyline"]
+# 仅用于 skilllite-sandbox 构建，含 sandbox+audit，不在 default 中
+sandbox_binary = ["sandbox", "audit"]
 # memory_vector = ["executor", "sqlite-vec"]  # 后续扩展
 
 [dependencies]
@@ -62,6 +64,14 @@ nix = { version = "0.29", features = ["process", "signal"] }
 [[bin]]
 name = "skilllite"
 path = "src/main.rs"
+
+# skilllite-sandbox: 沙箱 + MCP，无 executor/agent。
+# required-features 确保 cargo install 默认只装 skilllite；装 sandbox 需显式指定 feature
+# 构建: cargo build --bin skilllite-sandbox --no-default-features --features sandbox_binary
+[[bin]]
+name = "skilllite-sandbox"
+path = "src/main.rs"
+required-features = ["sandbox_binary"]
 
 [profile.release]
 lto = true

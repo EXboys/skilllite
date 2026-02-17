@@ -216,15 +216,16 @@ fn main() -> Result<()> {
             commands::reindex::cmd_reindex(&skills_dir, verbose)?;
         }
         #[cfg(feature = "agent")]
+        Commands::Quickstart { skills_dir } => {
+            commands::quickstart::cmd_quickstart(&skills_dir)?;
+        }
+        #[cfg(feature = "agent")]
         Commands::Init { skills_dir, skip_deps, skip_audit, strict, use_llm } => {
             commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict, use_llm)?;
         }
         #[cfg(not(feature = "agent"))]
         Commands::Init { skills_dir, skip_deps, skip_audit, strict, .. } => {
             commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict, false)?;
-        }
-        Commands::Quickstart { skills_dir } => {
-            commands::quickstart::cmd_quickstart(&skills_dir)?;
         }
         #[cfg(feature = "agent")]
         Commands::AgentRpc => {
@@ -307,6 +308,8 @@ fn serve_stdio() -> Result<()> {
             "plan_write" => executor::rpc::handle_plan_write(&params),
             #[cfg(feature = "executor")]
             "plan_read" => executor::rpc::handle_plan_read(&params),
+            #[cfg(feature = "agent")]
+            "build_skills_context" => handle_build_skills_context(&params),
             _ => {
                 let err_resp = json!({
                     "jsonrpc": "2.0",
@@ -411,6 +414,47 @@ fn handle_bash(params: &Value) -> Result<Value> {
         "output": output,
         "exit_code": 0
     })))
+}
+
+#[cfg(feature = "agent")]
+fn handle_build_skills_context(params: &Value) -> Result<Value> {
+    use agent::prompt::{build_skills_context, PromptMode};
+    use agent::skills;
+
+    let p = params.as_object().context("params must be object")?;
+    let skills_dir = p.get("skills_dir").and_then(|v| v.as_str()).context("skills_dir required")?;
+    let mode_str = p.get("mode").and_then(|v| v.as_str()).unwrap_or("progressive");
+    let skills_filter: Option<Vec<String>> = p
+        .get("skills")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        });
+
+    let skills_path = validate_path_under_root(skills_dir, "skills_dir")?;
+    let skills_path_str = skills_path.to_string_lossy().to_string();
+
+    let loaded = skills::load_skills(&[skills_path_str]);
+    let loaded: Vec<_> = if let Some(ref filter) = skills_filter {
+        loaded
+            .into_iter()
+            .filter(|s| filter.contains(&s.name))
+            .collect()
+    } else {
+        loaded
+    };
+
+    let mode = match mode_str {
+        "summary" => PromptMode::Summary,
+        "standard" => PromptMode::Standard,
+        "full" => PromptMode::Full,
+        _ => PromptMode::Progressive,
+    };
+
+    let context = build_skills_context(&loaded, mode);
+    Ok(json!({ "context": context }))
 }
 
 /// Execute a bash command for a bash-tool skill.
