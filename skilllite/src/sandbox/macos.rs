@@ -859,6 +859,7 @@ mod tests {
             network: Default::default(),
             resolved_packages: None,
             allowed_tools: None,
+            requires_elevated_permissions: false,
         };
 
         let profile = generate_sandbox_profile(skill_dir, env_path, &metadata, work_dir)

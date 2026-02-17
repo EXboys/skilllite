@@ -259,6 +259,7 @@ mod tests {
                 network: Default::default(),
                 resolved_packages: None,
                 allowed_tools: None,
+                requires_elevated_permissions: false,
             },
             tool_definitions: vec![ToolDefinition {
                 tool_type: "function".to_string(),
@@ -350,6 +351,7 @@ mod tests {
                 network: Default::default(),
                 resolved_packages: None,
                 allowed_tools: None,
+                requires_elevated_permissions: false,
             },
             tool_definitions: vec![ToolDefinition {
                 tool_type: "function".to_string(),

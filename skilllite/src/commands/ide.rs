@@ -44,12 +44,11 @@ fn get_available_skills(skills_dir: &Path) -> Vec<(String, String)> {
 /// Returns (command_args, description).
 ///
 /// Priority:
-///   1. `skilllite mcp-serve` (Rust native — fastest, no Python needed)
-///   2. `uvx skilllite mcp` (Python SDK via uvx)
-///   3. `skilllite mcp` (Python SDK in PATH)
-///   4. `python3 -m skilllite.mcp.server` (fallback)
+///   1. skilllite binary (Rust native MCP)
+///   2. uvx skilllite mcp (Python SDK via uvx)
+///   3. skilllite mcp (Python SDK in PATH, forwards to Rust)
 fn detect_best_mcp_command() -> (Vec<String>, String) {
-    // Priority 1: skilllite native MCP server (Rust)
+    // Priority 1: skilllite native MCP server (Rust) or current binary
     if which("skilllite") {
         return (
             vec!["skilllite".into(), "mcp".into()],
@@ -57,7 +56,6 @@ fn detect_best_mcp_command() -> (Vec<String>, String) {
         );
     }
 
-    // Also check current binary path as fallback for skilllite
     if let Ok(exe) = std::env::current_exe() {
         if exe.exists() {
             let exe_str = exe.to_string_lossy().to_string();
@@ -68,7 +66,7 @@ fn detect_best_mcp_command() -> (Vec<String>, String) {
         }
     }
 
-    // Priority 2: uvx (auto-managed Python)
+    // Priority 2: uvx (auto-managed Python, skilllite mcp forwards to Rust)
     if which("uvx") {
         return (
             vec!["uvx".into(), "skilllite".into(), "mcp".into()],
@@ -76,44 +74,10 @@ fn detect_best_mcp_command() -> (Vec<String>, String) {
         );
     }
 
-    // Priority 3: skilllite command in PATH
-    if which("skilllite") {
-        return (
-            vec!["skilllite".into(), "mcp".into()],
-            "skilllite (in PATH)".into(),
-        );
-    }
-
-    // Priority 4: python3 with skilllite installed
-    if which("python3") {
-        if let Ok(output) = Command::new("python3")
-            .args(["-c", "import skilllite; print('ok')"])
-            .output()
-        {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                if stdout.contains("ok") {
-                    return (
-                        vec![
-                            "python3".into(),
-                            "-m".into(),
-                            "skilllite.mcp.server".into(),
-                        ],
-                        "python3 (skilllite installed)".into(),
-                    );
-                }
-            }
-        }
-    }
-
-    // Fallback: use python3 with full module path
+    // Fallback: skilllite in PATH (Python CLI forwards to Rust)
     (
-        vec![
-            "python3".into(),
-            "-m".into(),
-            "skilllite.mcp.server".into(),
-        ],
-        "python3 -m (fallback)".into(),
+        vec!["skilllite".into(), "mcp".into()],
+        "skilllite (fallback)".into(),
     )
 }
 

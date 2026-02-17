@@ -68,6 +68,11 @@ class SkillMetadata:
         if not compatibility and data.get("network_enabled"):
             network = NetworkPolicy(enabled=True, outbound=["*:80", "*:443"])
         language = data.get("language") or parse_compatibility_for_language(compatibility)
+        req = data.get("requires_elevated_permissions", False)
+        if isinstance(req, str):
+            req = req.lower() in ("true", "yes", "1")
+        else:
+            req = bool(req)
         return cls(
             name=data.get("name", ""),
             entry_point=entry_point,
@@ -78,7 +83,7 @@ class SkillMetadata:
             network=network,
             input_schema=None,
             output_schema=None,
-            requires_elevated_permissions=False,
+            requires_elevated_permissions=req,
             resolved_packages=data.get("resolved_packages"),
             allowed_tools=data.get("allowed_tools"),
         )

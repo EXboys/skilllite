@@ -848,6 +848,7 @@ fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level: SandboxLev
         network: metadata::NetworkPolicy::default(),
         resolved_packages: None,
         allowed_tools: None,
+        requires_elevated_permissions: false,
     };
 
     let limits = ResourceLimits::from_env();

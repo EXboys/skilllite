@@ -33,6 +33,10 @@ struct FrontMatter {
     /// Optional: Pre-approved tools (experimental)
     #[serde(default, rename = "allowed-tools")]
     pub allowed_tools: Option<String>,
+
+    /// Optional: Whether skill requires elevated permissions (e.g. full filesystem)
+    #[serde(default, rename = "requires_elevated_permissions")]
+    pub requires_elevated_permissions: Option<bool>,
 }
 
 /// Parsed pattern from `allowed-tools: Bash(agent-browser:*)`
@@ -107,6 +111,9 @@ pub struct SkillMetadata {
     /// Raw `allowed-tools` field value from SKILL.md front matter.
     /// Example: "Bash(agent-browser:*)"
     pub allowed_tools: Option<String>,
+
+    /// Whether skill requires elevated permissions (e.g. full filesystem access)
+    pub requires_elevated_permissions: bool,
 }
 
 impl SkillMetadata {
@@ -345,6 +352,10 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         read_lock_file_packages(dir, front_matter.compatibility.as_deref())
     });
 
+    let requires_elevated = front_matter
+        .requires_elevated_permissions
+        .unwrap_or(false);
+
     let metadata = SkillMetadata {
         name: front_matter.name.clone(),
         entry_point,
@@ -354,6 +365,7 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         network,
         resolved_packages,
         allowed_tools: front_matter.allowed_tools.clone(),
+        requires_elevated_permissions: requires_elevated,
     };
 
     // Validate required fields

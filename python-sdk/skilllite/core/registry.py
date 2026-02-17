@@ -124,9 +124,9 @@ class SkillRegistry:
                         "skill_name": mt.get("skill_name", metadata.name),
                         "script_path": script_path,
                         "script_name": Path(script_path).stem or "script",
-                        "language": "python",
+                        "language": mt.get("language", "python"),
                         "filename": Path(script_path).name or "script.py",
-                        "input_schema": mt.get("input_schema"),  # From skillbox argparse inference
+                        "input_schema": mt.get("input_schema"),
                     }
                     self._analyzed_skills.add(metadata.name)
         return len(self._skills)

@@ -13,8 +13,8 @@ Edit `~/.config/Claude/claude_desktop_config.json`:
 {
   "mcpServers": {
     "skilllite": {
-      "command": "python",
-      "args": ["-m", "skilllite.mcp.server"],
+      "command": "skilllite",
+      "args": ["mcp"],
       "env": {
         "SKILLBOX_SANDBOX_LEVEL": "3",
         "SKILLLITE_SKILLS_DIR": "/path/to/skills"
@@ -23,6 +23,8 @@ Edit `~/.config/Claude/claude_desktop_config.json`:
   }
 }
 ```
+
+> **Note**: Use `skilllite mcp` (Rust binary). Run `skilllite install` first if needed.
 
 Restart Claude Desktop to use SkillLite tools in conversations.
 

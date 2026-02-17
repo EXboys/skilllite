@@ -6,7 +6,7 @@ This module provides adapters for integrating SkillLite with popular AI framewor
 - LlamaIndex: SkillLiteToolSpec
 - BaseAdapter: Abstract base class for custom adapters
 
-All adapters inherit from BaseAdapter and share common types from the protocols layer:
+All adapters inherit from BaseAdapter and share common types:
 - SecurityScanResult: Contains scan results with severity counts
 - ConfirmationCallback: Type alias for (report: str, scan_id: str) -> bool
 - AsyncConfirmationCallback: Async version of ConfirmationCallback
@@ -52,7 +52,7 @@ __all__ = [
     "SkillLiteToolSpec",
     # Base class for custom adapters (always available)
     "BaseAdapter",
-    # Shared types from protocols layer (always available)
+    # Shared types (always available)
     "SecurityScanResult",
     "ConfirmationCallback",
     "AsyncConfirmationCallback",

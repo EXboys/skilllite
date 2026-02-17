@@ -79,18 +79,19 @@ def check_opencode_config() -> tuple[bool, str]:
         return False, f"Error reading config: {e}"
 
 def test_mcp_server() -> tuple[bool, str]:
-    """Test if MCP server can start."""
+    """Test if MCP server can start (skilllite mcp forwards to Rust binary)."""
     try:
         result = subprocess.run(
-            [sys.executable, "-c", "from skilllite.mcp.server import MCPServer; print('OK')"],
+            ["skilllite", "mcp", "--help"],
             capture_output=True,
             text=True,
             timeout=5
         )
-        if result.returncode == 0 and "OK" in result.stdout:
-            return True, "MCP server can be initialized"
-        else:
-            return False, result.stderr or "Unknown error"
+        if result.returncode == 0:
+            return True, "MCP server command available"
+        return False, result.stderr or "skilllite mcp not found (run: skilllite install)"
+    except FileNotFoundError:
+        return False, "skilllite not in PATH (run: skilllite install)"
     except subprocess.TimeoutExpired:
         return False, "Timeout starting MCP server"
     except Exception as e:
@@ -102,8 +103,8 @@ def generate_config() -> str:
         "mcp": {
             "servers": {
                 "skilllite": {
-                    "command": "python",
-                    "args": ["-m", "skilllite.mcp.server"],
+                    "command": "skilllite",
+                    "args": ["mcp"],
                     "env": {
                         "SKILLBOX_SANDBOX_LEVEL": "3"
                     }

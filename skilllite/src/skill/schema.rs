@@ -12,6 +12,7 @@ pub struct MultiScriptTool {
     pub tool_name: String,
     pub skill_name: String,
     pub script_path: String,
+    pub language: String,
     pub input_schema: Value,
     pub description: String,
 }
@@ -28,7 +29,7 @@ pub fn detect_multi_script_tools(skill_dir: &Path, skill_name: &str) -> Vec<Mult
     let skip_names = ["__init__.py"];
     let mut tools = Vec::new();
 
-    for (ext, _lang) in &extensions {
+    for (ext, lang) in &extensions {
         if let Ok(entries) = std::fs::read_dir(&scripts_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -68,6 +69,7 @@ pub fn detect_multi_script_tools(skill_dir: &Path, skill_name: &str) -> Vec<Mult
                     tool_name,
                     skill_name: skill_name.to_string(),
                     script_path,
+                    language: lang.to_string(),
                     input_schema,
                     description: desc,
                 });

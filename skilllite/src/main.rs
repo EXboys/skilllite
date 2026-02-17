@@ -801,6 +801,7 @@ fn exec_script(
             network: skill::metadata::NetworkPolicy::default(),
             resolved_packages: None,
             allowed_tools: None,
+            requires_elevated_permissions: false,
         };
         (meta, std::path::PathBuf::new())
     };

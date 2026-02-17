@@ -1,15 +1,11 @@
 """
-Tool Builder - Tool definition generation and schema inference.
+Tool Builder - Tool definition generation from skills.
 
-This module handles:
-- Creating tool definitions from skills
-- Schema inference from script content
-- Argparse parsing for Python scripts
-- Multi-script tool definition creation
+Phase 4.12: Primary path uses input_schema from skilllite list --json (Rust API).
+Fallback: flexible schema when API unavailable.
 """
 
 import ast
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
@@ -24,9 +20,9 @@ class ToolBuilder:
     """
     Builder for creating tool definitions from skills.
     
-    Handles tool definition generation and argparse parsing for Python scripts.
     Uses progressive disclosure - tool definitions only contain name and description,
     full SKILL.md content is injected when the tool is actually called.
+    Schema comes from skilllite list --json when available.
     """
     
     def __init__(self, registry: "SkillRegistry"):
@@ -37,8 +33,6 @@ class ToolBuilder:
             registry: Skill registry for accessing skill info
         """
         self._registry = registry
-        # Cache for multi-script tool schemas (argparse-based)
-        self._multi_script_schemas: Dict[str, Dict[str, Any]] = {}
     
     def get_tool_definitions(self, include_prompt_only: bool = False) -> List[ToolDefinition]:
         """
@@ -185,7 +179,7 @@ class ToolBuilder:
             except Exception:
                 pass
         
-        input_schema = self._infer_script_schema(tool_name, skill_info, tool_info)
+        input_schema = self._get_script_schema(tool_info)
         
         return ToolDefinition(
             name=tool_name,
@@ -193,43 +187,15 @@ class ToolBuilder:
             input_schema=input_schema
         )
     
-    def _infer_script_schema(
-        self,
-        tool_name: str,
-        skill_info: SkillInfo,
-        tool_info: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Infer input schema for a multi-script tool.
+    def _get_script_schema(self, tool_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Get input schema for a multi-script tool.
 
-        Phase 4.8: Uses input_schema from skillbox list --json when available.
-        Falls back to argparse parsing for Python scripts.
+        Phase 4.12: Uses input_schema from skilllite list --json when available.
+        Fallback: flexible schema when API unavailable.
         """
-        if tool_name in self._multi_script_schemas:
-            return self._multi_script_schemas[tool_name]
-
-        # Use schema from skillbox delegation when available
-        if tool_info.get("input_schema"):
-            schema = tool_info["input_schema"]
-            if isinstance(schema, dict):
-                self._multi_script_schemas[tool_name] = schema
-                return schema
-
-        script_path = skill_info.path / tool_info.get("script_path", "")
-        script_code = None
-        if script_path.exists():
-            try:
-                script_code = script_path.read_text(encoding="utf-8")
-            except Exception:
-                pass
-
-        # Try argparse parsing for Python scripts
-        if script_code and tool_info.get("language") == "python":
-            schema = self._parse_argparse_schema(script_code)
-            if schema:
-                self._multi_script_schemas[tool_name] = schema
-                return schema
-
-        # Default schema for scripts without argparse
+        schema = tool_info.get("input_schema")
+        if isinstance(schema, dict):
+            return schema
         return {
             "type": "object",
             "properties": {
@@ -249,104 +215,4 @@ class ToolBuilder:
             return ast.get_docstring(tree)
         except Exception:
             return None
-    
-    def _parse_argparse_schema(self, script_code: str) -> Optional[Dict[str, Any]]:
-        """
-        Parse argparse argument definitions from Python script code.
-        
-        Extracts add_argument calls and converts them to JSON schema format.
-        """
-        properties = {}
-        required = []
-        
-        # Pattern to match add_argument calls
-        arg_pattern = re.compile(
-            r'\.add_argument\s*\(\s*["\']([^"\']+)["\']'
-            r'(?:\s*,\s*["\']([^"\']+)["\'])?'
-            r'([^)]*)\)',
-            re.MULTILINE | re.DOTALL
-        )
-        
-        for match in arg_pattern.finditer(script_code):
-            arg_name = match.group(1)
-            second_arg = match.group(2)
-            kwargs_str = match.group(3)
-            
-            # Determine parameter name
-            if arg_name.startswith('--'):
-                param_name = arg_name[2:].replace('-', '_')
-                is_positional = False
-            elif arg_name.startswith('-'):
-                if second_arg and second_arg.startswith('--'):
-                    param_name = second_arg[2:].replace('-', '_')
-                else:
-                    param_name = arg_name[1:]
-                is_positional = False
-            else:
-                param_name = arg_name.replace('-', '_')
-                is_positional = True
-            
-            prop = {"type": "string"}
-            
-            # Extract help text
-            help_match = re.search(r'help\s*=\s*["\']([^"\']+)["\']', kwargs_str)
-            if help_match:
-                prop["description"] = help_match.group(1)
-            
-            # Extract type
-            type_match = re.search(r'type\s*=\s*(\w+)', kwargs_str)
-            if type_match:
-                type_name = type_match.group(1)
-                if type_name == 'int':
-                    prop["type"] = "integer"
-                elif type_name == 'float':
-                    prop["type"] = "number"
-                elif type_name == 'bool':
-                    prop["type"] = "boolean"
-            
-            # Check for action="store_true" or action="store_false"
-            action_match = re.search(r'action\s*=\s*["\'](\w+)["\']', kwargs_str)
-            if action_match:
-                action = action_match.group(1)
-                if action in ('store_true', 'store_false'):
-                    prop["type"] = "boolean"
-            
-            # Check for nargs
-            nargs_match = re.search(r'nargs\s*=\s*["\']?([^,\s\)]+)["\']?', kwargs_str)
-            if nargs_match:
-                nargs = nargs_match.group(1)
-                if nargs in ('*', '+') or nargs.isdigit():
-                    prop["type"] = "array"
-                    prop["items"] = {"type": "string"}
-            
-            # Check for choices
-            choices_match = re.search(r'choices\s*=\s*\[([^\]]+)\]', kwargs_str)
-            if choices_match:
-                choices_str = choices_match.group(1)
-                choices = re.findall(r'["\']([^"\']+)["\']', choices_str)
-                if choices:
-                    prop["enum"] = choices
-            
-            # Check for default
-            default_match = re.search(r'default\s*=\s*([^,\)]+)', kwargs_str)
-            if default_match:
-                default_val = default_match.group(1).strip()
-                if default_val not in ('None', '""', "''"):
-                    prop["default"] = default_val.strip('"\'')
-            
-            # Check if required
-            required_match = re.search(r'required\s*=\s*True', kwargs_str)
-            if required_match or is_positional:
-                required.append(param_name)
-            
-            properties[param_name] = prop
-        
-        if not properties:
-            return None
-        
-        return {
-            "type": "object",
-            "properties": properties,
-            "required": required
-        }
     

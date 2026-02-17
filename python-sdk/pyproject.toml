@@ -63,7 +63,6 @@ Issues = "https://github.com/EXboys/skilllite/issues"
 
 [project.scripts]
 skilllite = "skilllite.cli:main"
-skilllite-mcp = "skilllite.mcp:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

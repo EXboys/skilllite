@@ -1083,6 +1083,7 @@ fn skill_to_json(skill_path: &Path) -> serde_json::Value {
                             "tool_name": t.tool_name,
                             "skill_name": t.skill_name,
                             "script_path": t.script_path,
+                            "language": t.language,
                             "input_schema": t.input_schema,
                             "description": t.description,
                         })
@@ -1096,13 +1097,14 @@ fn skill_to_json(skill_path: &Path) -> serde_json::Value {
                 "name": name,
                 "description": meta.description,
                 "language": lang,
-                "entry_point": if meta.entry_point.is_empty() { None } else { Some(&meta.entry_point) },
+                "entry_point": if meta.entry_point.is_empty() { "" } else { meta.entry_point.as_str() },
                 "network_enabled": meta.network.enabled,
                 "compatibility": meta.compatibility,
                 "resolved_packages": meta.resolved_packages,
                 "allowed_tools": meta.allowed_tools,
                 "path": skill_path.to_string_lossy(),
                 "is_bash_tool": meta.is_bash_tool_skill(),
+                "requires_elevated_permissions": meta.requires_elevated_permissions,
                 "multi_script_tools": multi_script_tools,
             })
         }
