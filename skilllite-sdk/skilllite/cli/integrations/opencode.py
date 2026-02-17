@@ -190,7 +190,7 @@ def _detect_best_command() -> tuple[List[str], str]:
     if shutil.which("skilllite"):
         return (["skilllite", "mcp"], "skilllite (in PATH)")
 
-    # Check if python3 has skilllite installed
+    # Check if python3 has skilllite installed (skilllite mcp forwards to skillbox mcp)
     python3_path = shutil.which("python3")
     if python3_path:
         try:
@@ -201,12 +201,12 @@ def _detect_best_command() -> tuple[List[str], str]:
                 timeout=5
             )
             if result.returncode == 0 and "ok" in result.stdout:
-                return (["python3", "-m", "skilllite.mcp.server"], "python3 (skilllite installed)")
+                return (["python3", "-m", "skilllite.cli", "mcp"], "python3 (skilllite installed)")
         except Exception:
             pass
 
     # Fallback: use current Python's full path
-    return ([sys.executable, "-m", "skilllite.mcp.server"], "full path (fallback)")
+    return ([sys.executable, "-m", "skilllite.cli", "mcp"], "full path (fallback)")
 
 
 def _generate_opencode_config(command: List[str], skills_dir: str) -> Dict[str, Any]:

@@ -1,29 +1,28 @@
 """
 MCP server command for skilllite CLI.
+
+Thin wrapper: forwards to skillbox mcp (Rust implementation).
 """
 
 import argparse
+import os
+import os
+import subprocess
 import sys
+from pathlib import Path
+
+from ..sandbox.skillbox import ensure_installed
 
 
 def cmd_mcp_server(args: argparse.Namespace) -> int:
-    """Start MCP server."""
-    try:
-        import asyncio
-        from ..mcp.server import main as mcp_main
-
-        asyncio.run(mcp_main())
-        return 0
-    except ImportError as e:
-        print("Error: MCP integration not available", file=sys.stderr)
-        print("Please install it with: pip install skilllite[mcp]", file=sys.stderr)
-        return 1
-    except KeyboardInterrupt:
-        print("\nMCP server stopped by user", file=sys.stderr)
-        return 0
-    except Exception as e:
-        import traceback
-        print(f"Error starting MCP server: {e}", file=sys.stderr)
-        traceback.print_exc()
-        return 1
-
+    """Start MCP server — forwards to skillbox mcp."""
+    skills_dir = getattr(args, "skills_dir", None) or os.environ.get("SKILLLITE_SKILLS_DIR", ".skills")
+    binary = ensure_installed()
+    cmd = [binary, "mcp", "--skills-dir", skills_dir]
+    return subprocess.run(
+        cmd,
+        env=os.environ,
+        stdin=sys.stdin,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+    ).returncode

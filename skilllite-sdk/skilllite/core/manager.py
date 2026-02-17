@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from .executor import ExecutionResult
-from .loops import AgenticLoop, AgenticLoopClaudeNative, ApiFormat
+from .agent_proxy import AgenticLoop, AgenticLoopClaudeNative, ApiFormat
 from .registry import SkillRegistry
 from .tool_builder import ToolBuilder
 from .prompt_builder import PromptBuilder
@@ -111,6 +111,7 @@ class SkillManager:
         """
         # Initialize registry
         self._registry = SkillRegistry()
+        self.skills_dir = str(skills_dir) if skills_dir else ".skills"
 
         # Initialize execution service (shared across handlers)
         from ..sandbox.execution_service import UnifiedExecutionService

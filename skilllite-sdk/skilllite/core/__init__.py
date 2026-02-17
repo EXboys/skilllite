@@ -27,7 +27,7 @@ implemented in modules outside this core directory.
 
 from .manager import SkillManager
 from .executor import SkillExecutor, ExecutionResult
-from .loops import AgenticLoop, AgenticLoopClaudeNative, ApiFormat
+from .agent_proxy import AgenticLoop, AgenticLoopClaudeNative, ApiFormat
 from .skill_info import SkillInfo
 from .tools import ToolDefinition, ToolUseRequest, ToolResult, ToolFormat
 from .metadata import SkillMetadata, NetworkPolicy, parse_skill_metadata
@@ -35,7 +35,6 @@ from .registry import SkillRegistry
 from .tool_builder import ToolBuilder
 from .prompt_builder import PromptBuilder
 from .handler import ToolCallHandler
-from .chat_session import ChatSession
 from .tool_registry import ToolRegistry, ToolEntry
 
 __all__ = [
@@ -53,12 +52,10 @@ __all__ = [
     # Execution
     "SkillExecutor",
     "ExecutionResult",
-    # Loops
+    # Loops (proxy to skillbox agent-rpc)
     "AgenticLoop",
     "AgenticLoopClaudeNative",
     "ApiFormat",
-    # Chat
-    "ChatSession",
     # Tools
     "ToolDefinition",
     "ToolUseRequest",

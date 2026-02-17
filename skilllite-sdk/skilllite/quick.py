@@ -1,43 +1,26 @@
 """
 SkillLite Quick Start - Minimal wrapper for running Skills with one line of code.
 
-Provides out-of-the-box convenience functions without manual LLM calls and tool calls handling.
-
-Example:
-    ```python
-    from skilllite import quick_run
-    
-    # Run with one line of code
-    result = quick_run("Calculate 15 times 27 for me")
-    print(result)
-    ```
+Delegates to skillbox agent-rpc (Rust) for agent loop, tools, and execution.
 """
 
 import os
-import sys
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
-from .core import SkillManager, AgenticLoop
-from .config.env_config import parse_bool_env, get_int_env
 from .logger import get_logger
+from .sandbox.skillbox.agent_rpc_client import agent_chat
 
 
 def load_env(env_file: Optional[Union[str, Path]] = None) -> Dict[str, str]:
     """
     Load .env file into environment variables.
-    
-    Args:
-        env_file: Path to .env file, defaults to .env in current directory
-        
-    Returns:
-        Dictionary of loaded environment variables
     """
     if env_file is None:
         env_file = Path.cwd() / ".env"
     else:
         env_file = Path(env_file)
-    
+
     loaded = {}
     if env_file.exists():
         for line in env_file.read_text().splitlines():
@@ -53,27 +36,9 @@ def load_env(env_file: Optional[Union[str, Path]] = None) -> Dict[str, str]:
 
 class SkillRunner:
     """
-    Minimal Skill Runner - Encapsulates all initialization and invocation logic.
-    
-    Example:
-        ```python
-        from skilllite import SkillRunner
-        
-        # Method 1: Use .env configuration
-        runner = SkillRunner()
-        result = runner.run("Calculate 15 times 27 for me")
-        
-        # Method 2: Explicitly pass configuration
-        runner = SkillRunner(
-            base_url="https://api.deepseek.com",
-            api_key="sk-xxx",
-            model="deepseek-chat",
-            skills_dir="./.skills"
-        )
-        result = runner.run("Calculate 15 times 27 for me")
-        ```
+    Minimal Skill Runner - Delegates to skillbox agent-rpc.
     """
-    
+
     def __init__(
         self,
         base_url: Optional[str] = None,
@@ -81,431 +46,119 @@ class SkillRunner:
         model: Optional[str] = None,
         skills_dir: Optional[Union[str, Path]] = None,
         env_file: Optional[Union[str, Path]] = None,
-        include_full_instructions: bool = True,
-        include_references: bool = True,
-        include_assets: bool = True,
-        context_mode: str = "full",
-        max_tokens_per_skill: Optional[int] = None,
         max_iterations: int = 50,
-        max_tool_calls_per_task: int = 30,
         verbose: bool = False,
-        custom_tools: Optional[List[Dict[str, Any]]] = None,
-        custom_tool_executor: Optional[Callable] = None,
-        use_enhanced_loop: bool = True,
         enable_builtin_tools: bool = True,
-        allow_network: Optional[bool] = None,
-        enable_sandbox: Optional[bool] = None,
-        execution_timeout: Optional[int] = None,
-        max_memory_mb: Optional[int] = None,
-        confirmation_callback: Optional[Callable[[str, str], bool]] = None
+        confirmation_callback: Optional[Any] = None,
+        **kwargs: Any,
     ):
-        """
-        Initialize SkillRunner.
-        
-        Args:
-            base_url: LLM API URL, defaults to BASE_URL environment variable
-            api_key: API key, defaults to API_KEY environment variable
-            model: Model name, defaults to MODEL environment variable or "deepseek-chat"
-            skills_dir: Skills directory, defaults to "./.skills"
-            env_file: Path to .env file, defaults to .env in current directory
-            include_full_instructions: Whether to include full SKILL.md in system prompt (legacy)
-            include_references: Whether to include references directory content
-            include_assets: Whether to include assets directory content
-            context_mode: System prompt mode:
-                - "summary": Most minimal, only name, description and brief summary
-                - "standard": Balanced mode, includes input_schema and usage summary
-                - "full": Full mode, includes complete SKILL.md content
-                - "progressive": Progressive, summary + on-demand detail prompts
-            max_tokens_per_skill: Maximum tokens per skill (for truncation)
-            max_iterations: Global max iterations (plan-based budget when task planning enabled)
-            max_tool_calls_per_task: Max tool calls per task (default 30)
-            verbose: Whether to output detailed logs
-            custom_tools: Custom tools list (e.g., file operation tools)
-            custom_tool_executor: Custom tool executor function
-            use_enhanced_loop: Whether to use enhanced AgenticLoop (default: True)
-            enable_builtin_tools: Whether to enable built-in file operation tools (default: True)
-            allow_network: Whether to allow skill network access (defaults from .env or False)
-            enable_sandbox: Whether to enable sandbox protection (defaults from .env or True)
-            execution_timeout: Skill execution timeout in seconds (defaults from .env or 120)
-            max_memory_mb: Maximum memory limit in MB (defaults from .env or 512)
-            confirmation_callback: Callback for security confirmation when sandbox_level=3.
-                Signature: (security_report: str, scan_id: str) -> bool
-                If None and sandbox_level=3, will use interactive terminal confirmation.
-        """
-        # Load .env
         load_env(env_file)
-        
-        # Configuration
-        self.base_url = base_url or os.environ.get("BASE_URL")
-        self.api_key = api_key or os.environ.get("API_KEY")
+        self.base_url = base_url or os.environ.get("BASE_URL") or os.environ.get("OPENAI_API_BASE")
+        self.api_key = api_key or os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY")
         self.model = model or os.environ.get("MODEL", "deepseek-chat")
-        self.skills_dir = skills_dir or "./.skills"
-        self.include_full_instructions = include_full_instructions
-        self.include_references = include_references
-        self.include_assets = include_assets
-        self.context_mode = context_mode
-        self.max_tokens_per_skill = max_tokens_per_skill
+        self.skills_dir = str(skills_dir or "./.skills")
         self.max_iterations = max_iterations
-        self.max_tool_calls_per_task = max_tool_calls_per_task
         self.verbose = verbose
-        self.enable_builtin_tools = enable_builtin_tools
-        
-        # Initialize logger
-        self._logger = get_logger("skilllite.quick", verbose=verbose)
-        
-        # Sandbox and network configuration (read from .env or use defaults)
-        # Use SKILLBOX_* prefix env vars; fall back to legacy names for compatibility
-        self.allow_network = allow_network if allow_network is not None else \
-            parse_bool_env("SKILLBOX_ALLOW_NETWORK", False, "ALLOW_NETWORK")
-        self.enable_sandbox = enable_sandbox if enable_sandbox is not None else \
-            parse_bool_env("SKILLBOX_ENABLE_SANDBOX", True, "ENABLE_SANDBOX")
-        self.execution_timeout = execution_timeout or \
-            get_int_env("SKILLBOX_TIMEOUT_SECS", 120, "EXECUTION_TIMEOUT")
-        self.max_memory_mb = max_memory_mb or \
-            get_int_env("SKILLBOX_MAX_MEMORY_MB", 512, "MAX_MEMORY_MB")
-        # Read sandbox security level (from .env or default to 3)
-        self.sandbox_level = os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3")
-        
-        # Store user-provided custom tools only (builtins are added in
-        # _prepare_tools_and_executor to keep definitions + executor in sync)
-        self.custom_tools = custom_tools or []
-        
-        self.custom_tool_executor = custom_tool_executor
-        self.use_enhanced_loop = use_enhanced_loop
-
-        # Security confirmation callback
-        # If None and sandbox_level=3, will use interactive terminal confirmation
         self.confirmation_callback = confirmation_callback
+        self._logger = get_logger("skilllite.quick", verbose=verbose)
+        # Ignored (delegated to Rust): include_full_instructions, context_mode, etc.
+        if kwargs:
+            self._logger.debug("Ignored kwargs (Rust handles): %s", list(kwargs.keys()))
 
-        # Lazy initialization
-        self._client = None
-        self._manager = None
-        self._system_context = None
-    
     @property
-    def client(self):
-        """Get OpenAI client (lazy initialization)"""
-        if self._client is None:
-            from openai import OpenAI
-            self._client = OpenAI(base_url=self.base_url, api_key=self.api_key)
-        return self._client
-    
-    @property
-    def manager(self) -> SkillManager:
-        """Get SkillManager (lazy initialization)"""
-        if self._manager is None:
-            self._manager = SkillManager(
-                skills_dir=self.skills_dir,
-                allow_network=self.allow_network,
-                enable_sandbox=self.enable_sandbox,
-                execution_timeout=self.execution_timeout,
-                max_memory_mb=self.max_memory_mb,
-                sandbox_level=self.sandbox_level
-            )
-            if self.verbose:
-                self._logger.info(f"📦 Loaded Skills: {self._manager.skill_names()}")
-        return self._manager
-    
-    @property
-    def system_context(self) -> str:
-        """Get system prompt context"""
-        if self._system_context is None:
-            # Basic skill context, using new mode parameter
-            skill_context = self.manager.get_system_prompt_context(
-                include_full_instructions=self.include_full_instructions,
-                include_references=self.include_references,
-                include_assets=self.include_assets,
-                mode=self.context_mode,
-                max_tokens_per_skill=self.max_tokens_per_skill
-            )
-            
-            # Add tool calling guidance
-            tool_guidance = """
-# Tool Calling Guidelines
+    def workspace(self) -> str:
+        return str(Path(self.skills_dir).resolve().parent)
 
-## ⭐ SKILL-FIRST Principle
-When a task specifies a skill to use, call that skill DIRECTLY as your first action.
-Do NOT call list_directory, read_file, or other file operations first to "explore" or "gather context".
-Skills are self-contained — just call them with appropriate parameters.
-
-## Sequential vs Parallel
-1. **Sequential Dependencies**: Wait for previous tool results before calling dependent tools. Do NOT use placeholders.
-2. **Parallel Independence**: Independent tasks can run in parallel in a single turn.
-3. **Always Use Real Values**: Tool parameters must be concrete values, never references to other results.
-
-## Avoid Unnecessary File Operations
-- Do NOT call list_directory just to "understand the project" — call the required skill directly.
-- Only use read_file when you need specific file content as input for a skill.
-- Only use list_directory when you need to find a file whose location is unknown.
-
-"""
-            self._system_context = tool_guidance + skill_context
-            
-            if self.verbose:
-                estimated_tokens = self.manager.estimate_context_tokens(
-                    mode=self.context_mode,
-                    include_references=self.include_references,
-                    include_assets=self.include_assets
-                )
-                self._logger.info(f"📊 System Prompt estimated tokens: ~{estimated_tokens}")
-        return self._system_context
-    
-    @property
-    def tools(self) -> List[Dict[str, Any]]:
-        """Get tool definitions list (skill tools + builtin tools + user custom tools)."""
-        all_tools = self.manager.get_tools()
-        if self.enable_builtin_tools:
-            from .builtin_tools import get_builtin_file_tools
-            all_tools = all_tools + get_builtin_file_tools()
-        if self.custom_tools:
-            all_tools = all_tools + self.custom_tools
-        return all_tools
-
-    def _prepare_tools_and_executor(
-        self, workspace_root: Path, output_root: Path
-    ) -> tuple:
-        """Build tool definitions and executor together, keeping them in sync.
-
-        Returns:
-            (all_custom_tools, tool_executor) where *all_custom_tools*
-            contains builtin + user custom tool definitions, and
-            *tool_executor* handles execution for all of them.
-        """
-        all_custom_tools: List[Dict[str, Any]] = []
-        tool_executor = self.custom_tool_executor
-
-        if self.enable_builtin_tools:
-            from .builtin_tools import get_builtin_file_tools, create_builtin_tool_executor
-
-            builtin_tool_defs = get_builtin_file_tools()
-            all_custom_tools.extend(builtin_tool_defs)
-
-            # Derive builtin names from actual definitions (no hardcoded set)
-            builtin_names = {
-                t["function"]["name"]
-                for t in builtin_tool_defs
-                if "function" in t and "name" in t["function"]
-            }
-
-            if tool_executor is None:
-                builtin_executor = create_builtin_tool_executor(
-                    run_command_confirmation=self.confirmation_callback,
-                    workspace_root=workspace_root,
-                    output_root=output_root,
-                )
-
-                def combined_executor(tool_input: Dict[str, Any]) -> str:
-                    tool_name = tool_input.get("tool_name")
-                    if tool_name in builtin_names:
-                        return builtin_executor(tool_input)
-                    elif self.custom_tool_executor:
-                        return self.custom_tool_executor(tool_input)
-                    else:
-                        return f"Error: No executor found for tool: {tool_name}"
-
-                tool_executor = combined_executor
-
-        # Append user-provided custom tools
-        if self.custom_tools:
-            all_custom_tools.extend(self.custom_tools)
-
-        return all_custom_tools or None, tool_executor
-    
-    def run(self, user_message: str, stream: bool = False,
-            stream_callback: Optional[Callable[[str], None]] = None) -> str:
-        """
-        Run Skill and return final result.
-        
-        Args:
-            user_message: User input message
-            stream: Whether to use streaming output. When True and no
-                *stream_callback* is provided, text chunks are printed to
-                stdout in real-time.
-            stream_callback: Optional callback for streaming text output.
-                Signature: ``callback(chunk: str) -> None``.
-                When provided, *stream* is implicitly True.
-            
-        Returns:
-            Final response content from LLM
-        """
+    def run(
+        self,
+        user_message: str,
+        stream: bool = False,
+        stream_callback: Optional[Any] = None,
+    ) -> str:
+        """Run skill via skillbox agent-rpc."""
         if self.verbose:
-            self._logger.info(f"👤 User: {user_message}")
+            self._logger.info("👤 User: %s", user_message)
 
-        # Resolve streaming callback
-        effective_callback = stream_callback
-        if effective_callback is None and stream:
+        effective_callback = stream_callback if stream_callback else (lambda c: None) if stream else None
+        if stream and not stream_callback:
+            import sys
             def _default_stream(chunk: str) -> None:
                 sys.stdout.write(chunk)
                 sys.stdout.flush()
             effective_callback = _default_stream
-        
-        # Resolve output dir (SKILLLITE_OUTPUT_DIR or workspace_root/output) and ensure it exists
-        workspace_root = Path(self.skills_dir).resolve().parent
-        from .builtin_tools import resolve_output_dir
-        output_root = resolve_output_dir(workspace_root)
-        output_root.mkdir(parents=True, exist_ok=True)
-        os.environ["SKILLLITE_OUTPUT_DIR"] = str(output_root)  # Skills (e.g. xiaohongshu-writer) inherit this
-        
-        # Build tool definitions + executor together (single source of truth)
-        all_custom_tools, tool_executor = self._prepare_tools_and_executor(
-            workspace_root, output_root
-        )
-        
-        # Use enhanced AgenticLoop to handle complete conversation flow
-        if self.use_enhanced_loop:
-            loop = self.manager.create_enhanced_agentic_loop(
-                client=self.client,
-                model=self.model,
-                max_iterations=self.max_iterations,
-                max_tool_calls_per_task=self.max_tool_calls_per_task,
-                custom_tools=all_custom_tools,
-                custom_tool_executor=tool_executor,
-                confirmation_callback=self.confirmation_callback
-            )
-        else:
-            # Use basic AgenticLoop (backward compatible)
-            loop = self.manager.create_agentic_loop(
-                client=self.client,
-                model=self.model,
-                system_prompt=self.system_context,
-                max_iterations=self.max_iterations,
-                max_tool_calls_per_task=self.max_tool_calls_per_task,
-                confirmation_callback=self.confirmation_callback
-            )
-        
-        response = loop.run(
+
+        result = agent_chat(
             user_message,
-            timeout=self.execution_timeout,
+            session_key="default",
+            workspace=self.workspace,
+            model=self.model,
+            api_base=self.base_url,
+            api_key=self.api_key,
+            max_iterations=self.max_iterations,
             stream_callback=effective_callback,
+            confirmation_callback=self.confirmation_callback,
         )
-        result = response.choices[0].message.content or ""
-        
+
         if self.verbose:
-            self._logger.info(f"🤖 Assistant: {result}")
-        
+            self._logger.info("🤖 Assistant: %s", result[:200] + "..." if len(result) > 200 else result)
         return result
-    
+
     def run_with_details(self, user_message: str) -> Dict[str, Any]:
-        """
-        Run Skill and return detailed results (including intermediate process).
+        """Run and return details (content, iterations). Events collected from stream."""
+        content_parts: List[str] = []
+        iterations = 0
+        tool_calls: List[Dict[str, Any]] = []
 
-        Uses the same secure execution path as ``run()`` (enhanced agentic loop
-        with sandbox confirmation), so sandbox_level=3 security checks are
-        **not** bypassed.
+        def _collect(event: Dict[str, Any]) -> None:
+            nonlocal iterations
+            ev = event.get("event")
+            data = event.get("data") or {}
+            if ev == "text" or ev == "text_chunk":
+                content_parts.append(data.get("text", ""))
+            elif ev == "tool_call":
+                tool_calls.append({"name": data.get("name"), "arguments": data.get("arguments"), "result": None})
+                iterations += 1
+            elif ev == "tool_result":
+                for entry in reversed(tool_calls):
+                    if entry.get("result") is None:
+                        entry["result"] = data.get("result", "")
+                        break
 
-        Args:
-            user_message: User input message
-            
-        Returns:
-            Dictionary containing complete information including:
-                - content: Final response text
-                - iterations: Number of LLM round-trips
-                - tool_calls: List of tool call records
-                - final_response: Raw LLM response object
-        """
-        # Resolve output dir (same as run())
-        workspace_root = Path(self.skills_dir).resolve().parent
-        from .builtin_tools import resolve_output_dir
-        output_root = resolve_output_dir(workspace_root)
-        output_root.mkdir(parents=True, exist_ok=True)
-        os.environ["SKILLLITE_OUTPUT_DIR"] = str(output_root)
-
-        # Build tool definitions + executor together (same as run())
-        all_custom_tools, tool_executor = self._prepare_tools_and_executor(
-            workspace_root, output_root
-        )
-
-        # Build the same secure agentic loop used by run()
-        if self.use_enhanced_loop:
-            loop = self.manager.create_enhanced_agentic_loop(
-                client=self.client,
-                model=self.model,
-                max_iterations=self.max_iterations,
-                max_tool_calls_per_task=self.max_tool_calls_per_task,
-                custom_tools=all_custom_tools,
-                custom_tool_executor=tool_executor,
-                confirmation_callback=self.confirmation_callback
-            )
-        else:
-            loop = self.manager.create_agentic_loop(
-                client=self.client,
-                model=self.model,
-                system_prompt=self.system_context,
-                max_iterations=self.max_iterations,
-                max_tool_calls_per_task=self.max_tool_calls_per_task,
-                confirmation_callback=self.confirmation_callback
-            )
-
-        response = loop.run(user_message)
-        message = response.choices[0].message
-
-        # Extract tool call history from loop's conversation log
-        tool_calls_history = []
-        if hasattr(loop, 'messages'):
-            for msg in loop.messages:
-                # Collect assistant tool_calls
-                if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        tool_calls_history.append({
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                            "result": None  # will be filled below
-                        })
-                # Match tool results back
-                if isinstance(msg, dict) and msg.get("role") == "tool":
-                    tool_call_id = msg.get("tool_call_id")
-                    content = msg.get("content", "")
-                    # Find matching entry (last one with result=None)
-                    for entry in reversed(tool_calls_history):
-                        if entry["result"] is None:
-                            entry["result"] = content
-                            break
+        from .sandbox.skillbox.agent_rpc_client import agent_chat_stream
+        final = ""
+        for ev in agent_chat_stream(
+            user_message,
+            session_key="default",
+            workspace=self.workspace,
+            model=self.model,
+            api_base=self.base_url,
+            api_key=self.api_key,
+            max_iterations=self.max_iterations,
+            confirmation_callback=self.confirmation_callback,
+        ):
+            _collect(ev)
+            if ev.get("event") == "done":
+                final = ev.get("data", {}).get("response", "".join(content_parts))
+            elif ev.get("event") == "error":
+                raise RuntimeError(ev.get("data", {}).get("message", "Unknown error"))
 
         return {
-            "content": message.content or "",
-            "iterations": getattr(loop, '_iteration_count', 0),
-            "tool_calls": tool_calls_history,
-            "final_response": response
+            "content": final or "".join(content_parts),
+            "iterations": iterations,
+            "tool_calls": tool_calls,
+            "final_response": {"choices": [{"message": {"content": final}}]},
         }
 
-
-# ==================== Convenience Functions ====================
 
 def quick_run(
     user_message: str,
     skills_dir: Optional[str] = None,
     verbose: bool = False,
-    **kwargs
+    **kwargs: Any,
 ) -> str:
-    """
-    Run Skill with one line of code.
-    
-    Args:
-        user_message: User input message
-        skills_dir: Skills directory, defaults to "./.skills"
-        verbose: Whether to output detailed logs
-        **kwargs: Other parameters passed to SkillRunner
-        
-    Returns:
-        Final response content from LLM
-        
-    Example:
-        ```python
-        from skilllite import quick_run
-        
-        # Simplest usage (requires .env configuration)
-        result = quick_run("Calculate 15 times 27 for me")
-        
-        # With detailed output
-        result = quick_run("Calculate 15 times 27 for me", verbose=True)
-        
-        # Specify skills directory
-        result = quick_run("Calculate 15 times 27 for me", skills_dir="./my_skills")
-        ```
-    """
+    """One-line run via skillbox agent-rpc."""
     if skills_dir:
         kwargs["skills_dir"] = skills_dir
     kwargs["verbose"] = verbose
-    
     runner = SkillRunner(**kwargs)
     return runner.run(user_message)

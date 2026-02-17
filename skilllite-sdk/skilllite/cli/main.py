@@ -121,7 +121,13 @@ For more information, visit: https://github.com/skilllite/skilllite
     # mcp command
     mcp_parser = subparsers.add_parser(
         "mcp",
-        help="Start MCP server for SkillLite"
+        help="Start MCP server (forwards to skillbox mcp)"
+    )
+    mcp_parser.add_argument(
+        "--skills-dir", "-s",
+        dest="skills_dir",
+        default=".skills",
+        help="Skills directory path (default: .skills)"
     )
     mcp_parser.set_defaults(func=cmd_mcp_server)
 
