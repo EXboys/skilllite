@@ -1,13 +1,8 @@
 """
 Skill metadata parsing from SKILL.md files.
 
-This is a CORE module - do not modify without explicit permission.
-
-Follows the official Claude Agent Skills specification:
-https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/specification
-
-Network access and language are derived from the 'compatibility' field.
-Entry point is auto-detected from scripts/ directory.
+Phase 4.12: Minimal parse for fallback; primary path uses skillbox list --json.
+Keeps: get_skill_summary, from_list_json, parse_skill_metadata (slim).
 """
 
 import json
@@ -20,35 +15,27 @@ import yaml
 
 LOCK_FILE_NAME = ".skilllite.lock"
 
+
 @dataclass
 class NetworkPolicy:
     """Network access policy for a skill (derived from compatibility field)."""
     enabled: bool = False
     outbound: List[str] = field(default_factory=list)
 
+
 @dataclass
 class BashToolPattern:
     """Parsed pattern from `allowed-tools: Bash(agent-browser:*)`."""
-    command_prefix: str  # e.g. "agent-browser"
-    raw_pattern: str     # e.g. "agent-browser:*"
+    command_prefix: str
+    raw_pattern: str
 
 
 def parse_allowed_tools(raw: str) -> List[BashToolPattern]:
-    """Parse the `allowed-tools` field into a list of bash tool patterns.
-
-    Examples:
-        - ``"Bash(agent-browser:*)"`` -> ``[BashToolPattern("agent-browser", "agent-browser:*")]``
-        - ``"Bash(agent-browser:*), Bash(npm:*)"`` -> two patterns
-        - ``"Read, Edit, Bash(mycli:*)"`` -> one BashToolPattern (non-Bash items ignored)
-    """
+    """Parse the `allowed-tools` field into bash tool patterns."""
     patterns: List[BashToolPattern] = []
     for match in re.finditer(r"Bash\(([^)]+)\)", raw):
         inner = match.group(1).strip()
-        # Extract command prefix: everything before first ':'
-        if ":" in inner:
-            command_prefix = inner[:inner.index(":")].strip()
-        else:
-            command_prefix = inner
+        command_prefix = inner[:inner.index(":")].strip() if ":" in inner else inner
         if command_prefix:
             patterns.append(BashToolPattern(command_prefix=command_prefix, raw_pattern=inner))
     return patterns
@@ -56,7 +43,7 @@ def parse_allowed_tools(raw: str) -> List[BashToolPattern]:
 
 @dataclass
 class SkillMetadata:
-    """Skill metadata parsed from SKILL.md YAML front matter."""
+    """Skill metadata from SKILL.md or skillbox list --json."""
     name: str
     entry_point: str
     language: Optional[str] = None
@@ -66,75 +53,21 @@ class SkillMetadata:
     network: NetworkPolicy = field(default_factory=NetworkPolicy)
     input_schema: Optional[Dict[str, Any]] = None
     output_schema: Optional[Dict[str, Any]] = None
-    requires_elevated_permissions: bool = False  # For skills that need to write outside their directory
-    resolved_packages: Optional[List[str]] = None  # Cached from .skilllite.lock
-    allowed_tools: Optional[str] = None  # Raw `allowed-tools` field, e.g. "Bash(agent-browser:*)"
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any], skill_dir: Optional[Path] = None) -> "SkillMetadata":
-        """Create SkillMetadata from parsed YAML front matter."""
-        version = data.get("version")
-        if not version and "metadata" in data:
-            version = data["metadata"].get("version")
-
-        compatibility = data.get("compatibility")
-
-        # Parse network policy from compatibility field
-        network = parse_compatibility_for_network(compatibility)
-
-        # Auto-detect entry point
-        entry_point = ""
-        if skill_dir:
-            detected = detect_entry_point(skill_dir)
-            if detected:
-                entry_point = detected
-
-        # Detect language from compatibility or entry point
-        language = parse_compatibility_for_language(compatibility)
-        if not language and entry_point:
-            language = detect_language_from_entry_point(entry_point)
-
-        # Parse requires_elevated_permissions flag
-        requires_elevated = data.get("requires_elevated_permissions", False)
-        if isinstance(requires_elevated, str):
-            requires_elevated = requires_elevated.lower() in ("true", "yes", "1")
-
-        # Read resolved_packages from .skilllite.lock if available
-        resolved_packages = _read_resolved_packages(skill_dir, compatibility)
-
-        # Parse allowed-tools (YAML key uses hyphen, Python field uses underscore)
-        allowed_tools = data.get("allowed-tools") or data.get("allowed_tools")
-
-        return cls(
-            name=data.get("name", ""),
-            entry_point=entry_point,
-            language=language,
-            description=data.get("description"),
-            version=version,
-            compatibility=compatibility,
-            network=network,
-            input_schema=data.get("input_schema"),
-            output_schema=data.get("output_schema"),
-            requires_elevated_permissions=bool(requires_elevated),
-            resolved_packages=resolved_packages,
-            allowed_tools=allowed_tools,
-        )
+    requires_elevated_permissions: bool = False
+    resolved_packages: Optional[List[str]] = None
+    allowed_tools: Optional[str] = None
 
     @classmethod
     def from_list_json(cls, data: Dict[str, Any]) -> "SkillMetadata":
-        """Create SkillMetadata from skillbox list --json output (Phase 4.8 delegation)."""
+        """Create SkillMetadata from skillbox list --json output."""
         entry_point = data.get("entry_point") or ""
-        if isinstance(entry_point, str) and entry_point:
-            pass
-        else:
+        if not isinstance(entry_point, str):
             entry_point = ""
-
         compatibility = data.get("compatibility")
         network = parse_compatibility_for_network(compatibility)
         if not compatibility and data.get("network_enabled"):
             network = NetworkPolicy(enabled=True, outbound=["*:80", "*:443"])
         language = data.get("language") or parse_compatibility_for_language(compatibility)
-
         return cls(
             name=data.get("name", ""),
             entry_point=entry_point,
@@ -151,297 +84,183 @@ class SkillMetadata:
         )
 
 
-def _read_resolved_packages(
-    skill_dir: Optional[Path],
-    compatibility: Optional[str],
-) -> Optional[List[str]]:
-    """Read resolved_packages from ``.skilllite.lock`` if it exists and is fresh.
-
-    Returns ``None`` if the lock file is missing, invalid, or stale
-    (compatibility has changed since the lock was written).
-    """
-    if not skill_dir:
-        return None
-    lock_path = skill_dir / LOCK_FILE_NAME
-    if not lock_path.exists():
-        return None
-    try:
-        lock_data = json.loads(lock_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-
-    # Staleness check: compare compatibility hash
-    import hashlib
-    current_hash = hashlib.sha256((compatibility or "").encode()).hexdigest()
-    if lock_data.get("compatibility_hash") != current_hash:
-        return None
-
-    packages = lock_data.get("resolved_packages")
-    if isinstance(packages, list) and all(isinstance(p, str) for p in packages):
-        return packages
-    return None
-
-
 def parse_compatibility_for_network(compatibility: Optional[str]) -> NetworkPolicy:
-    """
-    Parse compatibility string to extract network policy.
-    
-    Examples:
-        - "Requires network access" -> enabled=True
-        - "Requires Python 3.x, internet" -> enabled=True
-        - "Requires git, docker" -> enabled=False
-    """
+    """Parse compatibility string for network policy."""
     if not compatibility:
         return NetworkPolicy()
-    
     compat_lower = compatibility.lower()
-    
-    # Check for network/internet keywords
-    needs_network = any(keyword in compat_lower for keyword in [
-        "network", "internet", "http", "api", "web"
-    ])
-    
-    if needs_network:
-        return NetworkPolicy(
-            enabled=True,
-            outbound=["*:80", "*:443"]  # Allow all HTTP/HTTPS by default
-        )
-    
-    return NetworkPolicy()
+    needs = any(k in compat_lower for k in ["network", "internet", "http", "api", "web"])
+    return NetworkPolicy(enabled=needs, outbound=["*:80", "*:443"] if needs else [])
 
 
 def parse_compatibility_for_language(compatibility: Optional[str]) -> Optional[str]:
-    """
-    Parse compatibility string to detect language.
-    
-    Examples:
-        - "Requires Python 3.x" -> "python"
-        - "Requires Node.js" -> "node"
-        - "Requires bash" -> "bash"
-    """
+    """Parse compatibility string for language."""
     if not compatibility:
         return None
-    
-    compat_lower = compatibility.lower()
-    
-    if "python" in compat_lower:
+    c = compatibility.lower()
+    if "python" in c:
         return "python"
-    elif "node" in compat_lower or "javascript" in compat_lower or "typescript" in compat_lower:
+    if "node" in c or "javascript" in c or "typescript" in c:
         return "node"
-    elif "bash" in compat_lower or "shell" in compat_lower:
-        return "bash"
-    
-    return None
-
-
-def detect_language_from_entry_point(entry_point: str) -> Optional[str]:
-    """Detect language from entry point file extension."""
-    if entry_point.endswith(".py"):
-        return "python"
-    elif entry_point.endswith(".js") or entry_point.endswith(".ts"):
-        return "node"
-    elif entry_point.endswith(".sh"):
+    if "bash" in c or "shell" in c:
         return "bash"
     return None
 
-def detect_entry_point(skill_dir: Path) -> Optional[str]:
-    """
-    Auto-detect entry point from skill directory.
-    
-    Detection strategy (in order of priority):
-    1. Look for main.* files (main.py, main.js, main.ts, main.sh)
-    2. Look for index.* files (common in Node.js projects)
-    3. Look for run.* or entry.* files
-    4. If only one script file exists, use it as entry point
-    5. If multiple scripts exist, return None (requires explicit config or LLM inference)
-    
-    Returns:
-        Relative path to entry point (e.g., "scripts/main.py"), or None if not detected
-    """
-    scripts_dir = skill_dir / "scripts"
-    if not scripts_dir.exists():
+
+def _detect_entry_point(skill_dir: Path) -> Optional[str]:
+    """Minimal entry point detection: main.*, index.*, or single script."""
+    scripts = skill_dir / "scripts"
+    if not scripts.exists():
         return None
-    
-    supported_extensions = [".py", ".js", ".ts", ".sh"]
-    
-    # Priority 1: Look for main.* files
-    for ext in supported_extensions:
-        main_file = scripts_dir / f"main{ext}"
-        if main_file.exists():
-            return f"scripts/main{ext}"
-    
-    # Priority 2: Look for index.* files (common in Node.js)
-    for ext in supported_extensions:
-        index_file = scripts_dir / f"index{ext}"
-        if index_file.exists():
-            return f"scripts/index{ext}"
-    
-    # Priority 3: Look for run.* or entry.* files
-    for prefix in ["run", "entry", "app", "cli"]:
-        for ext in supported_extensions:
-            candidate = scripts_dir / f"{prefix}{ext}"
-            if candidate.exists():
-                return f"scripts/{prefix}{ext}"
-    
-    # Priority 4: If only one script file exists, use it
-    script_files = []
-    for ext in supported_extensions:
-        script_files.extend(scripts_dir.glob(f"*{ext}"))
-    
-    # Filter out test files and __init__.py
-    script_files = [
-        f for f in script_files 
-        if not f.name.startswith("test_") 
-        and not f.name.endswith("_test.py")
-        and f.name != "__init__.py"
-        and not f.name.startswith(".")
-    ]
-    
-    if len(script_files) == 1:
-        return f"scripts/{script_files[0].name}"
-    
-    # Multiple scripts or no scripts found - return None
-    # This will be handled by LLM inference or explicit configuration
-    return None
+    exts = [".py", ".js", ".ts", ".sh"]
+    for name in ["main", "index", "run", "entry"]:
+        for ext in exts:
+            if (scripts / f"{name}{ext}").exists():
+                return f"scripts/{name}{ext}"
+    files = [f for ext in exts for f in scripts.glob(f"*{ext}")
+             if not f.name.startswith("test_") and f.name != "__init__.py" and not f.name.startswith(".")]
+    return f"scripts/{files[0].name}" if len(files) == 1 else None
 
-def detect_all_scripts(skill_dir: Path) -> List[Dict[str, str]]:
-    """
-    Detect all executable scripts in a skill directory.
-    
-    This is useful for skills with multiple entry points (like skill-creator
-    which has init_skill.py, package_skill.py, etc.)
-    
-    Returns:
-        List of dicts with 'name', 'path', and 'language' for each script
-    """
-    scripts_dir = skill_dir / "scripts"
-    if not scripts_dir.exists():
-        return []
-    
-    extension_to_language = {
-        ".py": "python",
-        ".js": "node",
-        ".ts": "node",
-        ".sh": "bash",
-    }
-    
-    scripts = []
-    for ext, lang in extension_to_language.items():
-        for script_file in scripts_dir.glob(f"*{ext}"):
-            # Skip test files and __init__.py
-            if (script_file.name.startswith("test_") 
-                or script_file.name.endswith("_test.py")
-                or script_file.name == "__init__.py"
-                or script_file.name.startswith(".")):
-                continue
-            
-            # Generate a tool name from the script filename
-            tool_name = script_file.stem.replace("_", "-")
-            
-            scripts.append({
-                "name": tool_name,
-                "path": f"scripts/{script_file.name}",
-                "language": lang,
-                "filename": script_file.name,
-            })
-    
-    return scripts
 
-def detect_language(skill_dir: Path, metadata: Optional[SkillMetadata] = None) -> str:
-    """
-    Detect the programming language of a skill.
-    
-    Args:
-        skill_dir: Path to the skill directory
-        metadata: Optional metadata object (may contain language info)
-        
-    Returns:
-        Language string (e.g., "python", "node", "bash")
-    """
-    # First check metadata
-    if metadata and metadata.language:
-        return metadata.language
-    
-    # Check entry point extension
-    if metadata and metadata.entry_point:
-        entry_ext = Path(metadata.entry_point).suffix
-        ext_map = {".py": "python", ".js": "node", ".ts": "node", ".sh": "bash"}
-        if entry_ext in ext_map:
-            return ext_map[entry_ext]
-    
-    # Scan scripts directory
-    scripts_dir = skill_dir / "scripts"
-    if scripts_dir.exists():
-        for ext, lang in [(".py", "python"), (".js", "node"), (".ts", "node"), (".sh", "bash")]:
-            if any(scripts_dir.glob(f"*{ext}")):
-                return lang
-    
-    return "unknown"
+def _parse_yaml_minimal(content: str, skill_dir: Path) -> Dict[str, Any]:
+    """Extract YAML front matter from SKILL.md content."""
+    m = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+    if not m:
+        return {}
+    try:
+        data = yaml.safe_load(m.group(1))
+        return data if isinstance(data, dict) else {}
+    except yaml.YAMLError:
+        return {}
 
-def extract_yaml_front_matter(content: str, skill_dir: Optional[Path] = None) -> SkillMetadata:
-    """
-    Extract YAML front matter from markdown content.
-    
-    Args:
-        content: Full markdown content
-        skill_dir: Optional skill directory path for auto-detection
-        
-    Returns:
-        SkillMetadata object
-    """
-    # Check for YAML front matter (between --- markers)
-    front_matter_match = re.match(r'^---\n(.*?)\n---', content, re.DOTALL)
-    
-    data = {}
-    if front_matter_match:
-        try:
-            data = yaml.safe_load(front_matter_match.group(1))
-            if not isinstance(data, dict):
-                data = {}
-        except yaml.YAMLError:
-            data = {}
-    
-    return SkillMetadata.from_dict(data, skill_dir)
 
 def parse_skill_metadata(skill_dir: Path) -> SkillMetadata:
-    """Parse SKILL.md file and extract metadata from YAML front matter."""
-    skill_md_path = skill_dir / "SKILL.md"
-    if not skill_md_path.exists():
+    """Parse SKILL.md - minimal fallback when skillbox list --json unavailable."""
+    path = skill_dir / "SKILL.md"
+    if not path.exists():
         raise FileNotFoundError(f"SKILL.md not found in directory: {skill_dir}")
-    content = skill_md_path.read_text(encoding="utf-8")
-    metadata = extract_yaml_front_matter(content, skill_dir)
-    
-    return metadata
+    content = path.read_text(encoding="utf-8")
+    data = _parse_yaml_minimal(content, skill_dir)
+    compatibility = data.get("compatibility")
+    network = parse_compatibility_for_network(compatibility)
+    entry_point = _detect_entry_point(skill_dir) or ""
+    language = parse_compatibility_for_language(compatibility)
+    if not language and entry_point:
+        ext = Path(entry_point).suffix
+        language = {".py": "python", ".js": "node", ".ts": "node", ".sh": "bash"}.get(ext)
+    req = data.get("requires_elevated_permissions", False)
+    if isinstance(req, str):
+        req = req.lower() in ("true", "yes", "1")
+    allowed = data.get("allowed-tools") or data.get("allowed_tools")
+    return SkillMetadata(
+        name=data.get("name", ""),
+        entry_point=entry_point,
+        language=language,
+        description=data.get("description"),
+        version=data.get("version") or (data.get("metadata") or {}).get("version"),
+        compatibility=compatibility,
+        network=network,
+        input_schema=None,
+        output_schema=None,
+        requires_elevated_permissions=bool(req),
+        resolved_packages=_read_resolved_packages(skill_dir, compatibility),
+        allowed_tools=allowed,
+    )
+
+
+def _read_resolved_packages(skill_dir: Path, compatibility: Optional[str]) -> Optional[List[str]]:
+    """Read resolved_packages from .skilllite.lock if fresh."""
+    lock = skill_dir / LOCK_FILE_NAME
+    if not lock.exists():
+        return None
+    try:
+        data = json.loads(lock.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    import hashlib
+    if data.get("compatibility_hash") != hashlib.sha256((compatibility or "").encode()).hexdigest():
+        return None
+    pkg = data.get("resolved_packages")
+    return pkg if isinstance(pkg, list) and all(isinstance(x, str) for x in pkg) else None
+
+
+def detect_all_scripts(skill_dir: Path) -> List[Dict[str, str]]:
+    """Detect executable scripts in skill directory (for multi-script fallback)."""
+    scripts = skill_dir / "scripts"
+    if not scripts.exists():
+        return []
+    ext_lang = {".py": "python", ".js": "node", ".ts": "node", ".sh": "bash"}
+    out = []
+    for ext, lang in ext_lang.items():
+        for f in scripts.glob(f"*{ext}"):
+            if f.name.startswith("test_") or f.name.endswith("_test.py") or f.name == "__init__.py" or f.name.startswith("."):
+                continue
+            out.append({"name": f.stem.replace("_", "-"), "path": f"scripts/{f.name}", "language": lang, "filename": f.name})
+    return out
+
+
+def detect_language(skill_dir: Path, metadata: Optional[SkillMetadata] = None) -> str:
+    """Detect skill language from metadata or scripts."""
+    if metadata and metadata.language:
+        return metadata.language
+    if metadata and metadata.entry_point:
+        ext = Path(metadata.entry_point).suffix
+        m = {".py": "python", ".js": "node", ".ts": "node", ".sh": "bash"}
+        if ext in m:
+            return m[ext]
+    scripts = skill_dir / "scripts"
+    if scripts.exists():
+        for ext, lang in [(".py", "python"), (".js", "node"), (".ts", "node"), (".sh", "bash")]:
+            if any(scripts.glob(f"*{ext}")):
+                return lang
+    return "unknown"
+
 
 def get_skill_summary(content: str, max_length: int = 200) -> str:
-    """
-    Extract a concise summary from SKILL.md content.
-    
-    Removes YAML front matter, code blocks, and headers to extract
-    the main descriptive text.
-    
-    Args:
-        content: Full SKILL.md content
-        max_length: Maximum length of the summary
-        
-    Returns:
-        Extracted summary string
-    """
-    # Remove YAML front matter
-    content_clean = re.sub(r"^---\s*\n.*?\n---\s*\n", "", content, flags=re.DOTALL)
-    # Remove code blocks
-    content_clean = re.sub(r"```[\s\S]*?```", "", content_clean)
-    # Remove headers
-    content_clean = re.sub(r"^#+\s*", "", content_clean, flags=re.MULTILINE)
-    
-    lines = [line.strip() for line in content_clean.split("\n") if line.strip()]
-    summary_lines = []
-    current_length = 0
-    
+    """Extract concise summary from SKILL.md (removes YAML, code blocks, headers)."""
+    content = re.sub(r"^---\s*\n.*?\n---\s*\n", "", content, flags=re.DOTALL)
+    content = re.sub(r"```[\s\S]*?```", "", content)
+    content = re.sub(r"^#+\s*", "", content, flags=re.MULTILINE)
+    lines = [l.strip() for l in content.split("\n") if l.strip()]
+    out, n = [], 0
     for line in lines:
-        if current_length + len(line) > max_length:
+        if n + len(line) > max_length:
             break
-        summary_lines.append(line)
-        current_length += len(line) + 1
-    
-    return " ".join(summary_lines)[:max_length]
+        out.append(line)
+        n += len(line) + 1
+    return " ".join(out)[:max_length]
+
+
+# --- Skill name validation (from validation.py merge) ---
+
+def validate_skill_name(name: str, skill_dir: Optional[Path] = None) -> tuple:
+    """Validate skill name per Agent Skills spec. Returns (is_valid, errors)."""
+    errors = []
+    if not name:
+        errors.append("Skill name cannot be empty")
+    elif len(name) > 64:
+        errors.append(f"Skill name exceeds 64 characters (got {len(name)})")
+    if name and not re.match(r"^[a-z0-9-]+$", name):
+        invalid = set(re.findall(r"[^a-z0-9-]", name))
+        errors.append(f"Skill name contains invalid characters: {invalid}")
+    if name and (name.startswith("-") or name.endswith("-") or "--" in name):
+        errors.append("Skill name must not start/end with hyphen or contain consecutive hyphens")
+    if name and skill_dir and skill_dir.name != name:
+        errors.append(f"Skill name must match directory name (got {name}, dir is {skill_dir.name})")
+    return (len(errors) == 0, errors)
+
+
+def validate_skill_name_strict(name: str, skill_dir: Optional[Path] = None) -> None:
+    """Raise if invalid."""
+    valid, errors = validate_skill_name(name, skill_dir)
+    if not valid:
+        raise ValueError(f"Invalid skill name: {'; '.join(errors)}")
+
+
+def validate_skill_name_warn(name: str, skill_dir: Optional[Path] = None) -> bool:
+    """Warn if invalid. Returns True if valid."""
+    import warnings
+    valid, errors = validate_skill_name(name, skill_dir)
+    if not valid:
+        warnings.warn(f"Skill name validation: {errors[0]}", UserWarning, stacklevel=2)
+    return valid

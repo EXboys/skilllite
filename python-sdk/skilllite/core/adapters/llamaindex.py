@@ -47,9 +47,8 @@ except ImportError as e:
         "Install with: pip install skilllite[llamaindex]"
     ) from e
 
-# Import unified types from protocols layer - Single Source of Truth
-# No longer depends on LangChain adapter
-from ..protocols import (
+# Import unified types from security module
+from ..security import (
     SecurityScanResult,
     ConfirmationCallback,
 )

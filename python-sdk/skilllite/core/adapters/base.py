@@ -22,18 +22,18 @@ import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
-from ..protocols import (
+from ..security import (
     SecurityScanResult,
     ConfirmationCallback,
     AsyncConfirmationCallback,
     ExecutionOptions,
+    parse_scan_json_output,
 )
-from ..security import parse_scan_json_output
 
 if TYPE_CHECKING:
     from ..manager import SkillManager
     from ..skill_info import SkillInfo
-    from ...sandbox.base import ExecutionResult
+    from ...sandbox.context import ExecutionResult
 
 
 class BaseAdapter(ABC):
@@ -103,7 +103,7 @@ class BaseAdapter(ABC):
         Returns:
             ExecutionResult with output or error
         """
-        from ...sandbox.base import ExecutionResult
+        from ...sandbox.context import ExecutionResult
         from ...sandbox.ipc_executor import execute_via_ipc, execute_bash_via_ipc
 
         tool_info = self.manager._registry.get_multi_script_tool_info(skill_name)

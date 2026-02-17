@@ -1,36 +1,85 @@
 """
 Execution Context - Encapsulates all configuration for a single execution.
 
-This module provides the ExecutionContext class which is the single source of truth
-for execution configuration. It reads from environment variables at runtime,
-ensuring that any changes to environment variables are immediately reflected.
-
-Design Principles:
-1. Read configuration at runtime, not at initialization
-2. Never cache configuration values
-3. Support temporary overrides via with_override()
-4. Immutable - create new instances for modifications
+Also includes: ExecutionResult, SandboxConfig, SandboxExecutor (from base/config merge).
 """
 
 import os
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, TYPE_CHECKING
+from pathlib import Path
+from typing import Any, Dict, Optional
 
-# Import default values from config module (single source of truth)
-from .config import (
-    DEFAULT_EXECUTION_TIMEOUT,
-    DEFAULT_MAX_MEMORY_MB,
-    DEFAULT_SANDBOX_LEVEL,
-    DEFAULT_ALLOW_NETWORK,
-)
 from ..config import parse_bool_env, get_timeout_from_env, get_memory_from_env
 
-# Alias for consistency with ExecutionContext field names
+# Default values (single source of truth)
+DEFAULT_EXECUTION_TIMEOUT = 120
+DEFAULT_MAX_MEMORY_MB = 512
+DEFAULT_SANDBOX_LEVEL = "3"
+DEFAULT_ALLOW_NETWORK = False
+DEFAULT_ENABLE_SANDBOX = True
+DEFAULT_AUTO_INSTALL = False
 DEFAULT_TIMEOUT = DEFAULT_EXECUTION_TIMEOUT
-DEFAULT_AUTO_APPROVE = False  # Only used in ExecutionContext, not in SandboxConfig
+DEFAULT_AUTO_APPROVE = False
 
-if TYPE_CHECKING:
-    from .config import SandboxConfig
+
+@dataclass
+class ExecutionResult:
+    """Result of a sandbox execution."""
+    success: bool
+    output: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+    exit_code: int = 0
+    stdout: str = ""
+    stderr: str = ""
+
+
+@dataclass
+class SandboxConfig:
+    """Setup configuration for sandbox (binary path, cache, enable_sandbox, auto_install)."""
+    binary_path: Optional[str] = None
+    cache_dir: Optional[str] = None
+    enable_sandbox: bool = field(default_factory=lambda: parse_bool_env("SKILLBOX_ENABLE_SANDBOX", DEFAULT_ENABLE_SANDBOX))
+    auto_install: bool = field(default_factory=lambda: parse_bool_env("SKILLBOX_AUTO_INSTALL", DEFAULT_AUTO_INSTALL))
+
+    def to_context(self) -> "ExecutionContext":
+        ctx = ExecutionContext.from_current_env()
+        if not self.enable_sandbox:
+            ctx = ctx.with_override(sandbox_level="1")
+        return ctx
+
+    @classmethod
+    def from_env(cls) -> "SandboxConfig":
+        return cls(
+            binary_path=os.environ.get("SKILLBOX_BINARY_PATH"),
+            cache_dir=os.environ.get("SKILLBOX_CACHE_DIR"),
+        )
+
+    def with_overrides(self, binary_path=None, cache_dir=None, enable_sandbox=None, auto_install=None) -> "SandboxConfig":
+        return SandboxConfig(
+            binary_path=binary_path if binary_path is not None else self.binary_path,
+            cache_dir=cache_dir if cache_dir is not None else self.cache_dir,
+            enable_sandbox=enable_sandbox if enable_sandbox is not None else self.enable_sandbox,
+            auto_install=auto_install if auto_install is not None else self.auto_install,
+        )
+
+
+class SandboxExecutor(ABC):
+    """Abstract base class for sandbox implementations."""
+    @abstractmethod
+    def execute(self, skill_dir: Path, input_data: Dict[str, Any], allow_network=None, timeout=None, entry_point=None) -> ExecutionResult:
+        pass
+    @abstractmethod
+    def exec_script(self, skill_dir: Path, script_path: str, input_data: Dict[str, Any], args=None, allow_network=None, timeout=None) -> ExecutionResult:
+        pass
+    @property
+    @abstractmethod
+    def is_available(self) -> bool:
+        pass
+    @property
+    @abstractmethod
+    def name(self) -> str:
+        pass
 
 
 @dataclass(frozen=True)
@@ -61,7 +110,7 @@ class ExecutionContext:
     requires_elevated: bool = False
     
     @classmethod
-    def from_config(cls, config: "SandboxConfig") -> "ExecutionContext":
+    def from_config(cls, config: SandboxConfig) -> "ExecutionContext":
         """Build context from SandboxConfig. Applies enable_sandbox (False -> level 1)."""
         return config.to_context()
 
@@ -148,6 +197,9 @@ class ExecutionContext:
 
 __all__ = [
     "ExecutionContext",
+    "ExecutionResult",
+    "SandboxConfig",
+    "SandboxExecutor",
     "DEFAULT_SANDBOX_LEVEL",
     "DEFAULT_TIMEOUT",
     "DEFAULT_MAX_MEMORY_MB",

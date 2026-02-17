@@ -1,14 +1,49 @@
 """
 Tool definitions and protocol adapters for Claude/OpenAI integration.
 
-This is a CORE module - do not modify without explicit permission.
+Includes ToolRegistry for builtin tools (from tool_registry merge).
 """
 
+import json
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
-import json
+from typing import Any, Callable, Dict, List, Optional
+
+
+@dataclass
+class ToolEntry:
+    """Single tool: schema for LLM + handler for execution."""
+    schema: Dict[str, Any]
+    handler: Callable[[Dict[str, Any]], str]
+
+
+class ToolRegistry:
+    """Registry for builtin tools. Populated per-session when context is available."""
+    def __init__(self) -> None:
+        self._tools: Dict[str, ToolEntry] = {}
+
+    def register(self, name: str, schema: Dict[str, Any], handler: Callable[[Dict[str, Any]], str]) -> None:
+        self._tools[name] = ToolEntry(schema=schema, handler=handler)
+
+    def get(self, name: str) -> Optional[ToolEntry]:
+        return self._tools.get(name)
+
+    def has(self, name: str) -> bool:
+        return name in self._tools
+
+    def get_tool_definitions(self) -> List[Dict[str, Any]]:
+        return [entry.schema for entry in self._tools.values()]
+
+    def execute(self, tool_name: str, tool_input: Dict[str, Any]) -> str:
+        entry = self.get(tool_name)
+        if not entry:
+            return f"Error: No executor for tool: {tool_name}"
+        try:
+            return entry.handler(tool_input)
+        except Exception as e:
+            return f"Error: {e}"
+
 
 class ToolFormat(Enum):
     """Supported LLM tool formats."""

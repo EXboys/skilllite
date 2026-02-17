@@ -17,6 +17,7 @@ Usage:
             pass
 """
 
+import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
@@ -30,9 +31,19 @@ if TYPE_CHECKING:
     from .skill_info import SkillInfo
 
 
-# Type alias for confirmation callback
-# Signature: (security_report: str, scan_id: str) -> bool
+# Protocol types (shared by adapters)
 ConfirmationCallback = Callable[[str, str], bool]
+AsyncConfirmationCallback = Callable[[str, str], "asyncio.Future[bool]"]
+
+
+@dataclass
+class ExecutionOptions:
+    """Options for skill execution — shared across adapters."""
+    sandbox_level: int = 3
+    allow_network: bool = False
+    timeout: Optional[int] = None
+    confirmation_callback: Optional[ConfirmationCallback] = None
+    async_confirmation_callback: Optional[AsyncConfirmationCallback] = None
 
 
 @dataclass
@@ -385,4 +396,92 @@ class SecurityScanner:
     def verify_scan(self, scan_id: str, code_hash: str) -> bool:
         c = self.get_cached_scan(scan_id)
         return c is not None and c.code_hash == code_hash
+
+
+# --- Audit & Security Events (optional, via SKILLLITE_AUDIT_LOG / SKILLLITE_SECURITY_EVENTS_LOG) ---
+
+def _get_audit_path() -> Optional[Path]:
+    path = os.environ.get("SKILLLITE_AUDIT_LOG") or os.environ.get("SKILLBOX_AUDIT_LOG")
+    if not path:
+        return None
+    p = Path(path).expanduser()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _write_audit_event(event: str, **kwargs: Any) -> None:
+    path = _get_audit_path()
+    if not path:
+        return
+    from datetime import datetime, timezone
+    record = {"ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "event": event, **{k: v for k, v in kwargs.items() if v is not None}}
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def audit_confirmation_requested(skill_id: str, code_hash: str, issues_count: int, severity: str, session_id: Optional[str] = None) -> None:
+    _write_audit_event(event="confirmation_requested", skill_id=skill_id, code_hash=code_hash, issues_count=issues_count, severity=severity, session_id=session_id)
+
+
+def audit_confirmation_response(skill_id: str, approved: bool, source: str, session_id: Optional[str] = None) -> None:
+    _write_audit_event(event="confirmation_response", skill_id=skill_id, approved=approved, source=source, session_id=session_id)
+
+
+def audit_execution_started(skill_id: str, entry_point: Optional[str] = None, session_id: Optional[str] = None) -> None:
+    _write_audit_event(event="execution_started", skill_id=skill_id, entry_point=entry_point, session_id=session_id)
+
+
+def audit_execution_completed(skill_id: str, exit_code: int, duration_ms: int, stdout_len: int = 0, success: bool = True, session_id: Optional[str] = None) -> None:
+    _write_audit_event(event="execution_completed", skill_id=skill_id, exit_code=exit_code, duration_ms=duration_ms, stdout_len=stdout_len, success=success, session_id=session_id)
+
+
+def _get_security_events_path() -> Optional[Path]:
+    path = os.environ.get("SKILLLITE_SECURITY_EVENTS_LOG")
+    if not path:
+        return None
+    p = Path(path).expanduser()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def emit_security_scan_high(skill_id: str, severity: str, issues: List[Dict[str, Any]]) -> None:
+    path = _get_security_events_path()
+    if not path:
+        return
+    from datetime import datetime, timezone
+    record = {"ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "type": "security_scan_high", "category": "code_scan", "skill_id": skill_id, "details": {"severity": severity, "issues": issues}}
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def emit_security_scan_approved(skill_id: str, scan_id: str) -> None:
+    path = _get_security_events_path()
+    if not path:
+        return
+    from datetime import datetime, timezone
+    record = {"ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "type": "security_scan_approved", "category": "code_scan", "skill_id": skill_id, "details": {"scan_id": scan_id}}
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def emit_security_scan_rejected(skill_id: str, scan_id: str) -> None:
+    path = _get_security_events_path()
+    if not path:
+        return
+    from datetime import datetime, timezone
+    record = {"ts": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "type": "security_scan_rejected", "category": "code_scan", "skill_id": skill_id, "details": {"scan_id": scan_id}}
+    try:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 

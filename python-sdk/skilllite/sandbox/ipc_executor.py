@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, TYPE_CHECKING
 
-from .base import ExecutionResult
+from .context import ExecutionResult
 from .context import ExecutionContext
 
 if TYPE_CHECKING:

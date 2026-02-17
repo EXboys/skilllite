@@ -34,9 +34,8 @@ Usage:
     )
 """
 
-# Import shared types from protocols layer - Single Source of Truth
-# These types are always available, regardless of which framework adapters are installed
-from ..protocols import (
+# Import shared types from security module
+from ..security import (
     SecurityScanResult,
     ConfirmationCallback,
     AsyncConfirmationCallback,

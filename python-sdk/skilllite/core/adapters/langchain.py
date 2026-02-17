@@ -46,8 +46,8 @@ except ImportError as e:
         "Install with: pip install skilllite[langchain]"
     ) from e
 
-# Import unified types from protocols layer - Single Source of Truth
-from ..protocols import (
+# Import unified types from security module
+from ..security import (
     SecurityScanResult,
     ConfirmationCallback,
     AsyncConfirmationCallback,
@@ -191,7 +191,7 @@ class SkillLiteTool(BaseTool):
             def execute_sync():
                 if skill_info.is_bash_tool_skill:
                     from ...sandbox.ipc_executor import execute_bash_via_ipc
-                    from ...sandbox.base import ExecutionResult
+                    from ...sandbox.context import ExecutionResult
                     cmd = input_data.get("command", "")
                     if not cmd:
                         return ExecutionResult(success=False, error="Bash tool requires 'command'", exit_code=1)

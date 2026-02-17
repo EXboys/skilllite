@@ -95,7 +95,7 @@ class PromptBuilder:
         max_tokens: Optional[int] = None
     ) -> List[str]:
         """Format a single skill's context based on the disclosure mode."""
-        from ..parsing import get_skill_summary
+        from .metadata import get_skill_summary
         
         lines = [f"## {info.name}\n"]
         if info.description:

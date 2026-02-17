@@ -35,7 +35,7 @@ from .registry import SkillRegistry
 from .tool_builder import ToolBuilder
 from .prompt_builder import PromptBuilder
 from .handler import ToolCallHandler
-from .tool_registry import ToolRegistry, ToolEntry
+from .tools import ToolRegistry, ToolEntry
 
 __all__ = [
     # Core Management (Facade)

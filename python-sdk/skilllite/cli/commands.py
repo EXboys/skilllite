@@ -1,7 +1,8 @@
 """
 CLI commands — forward to skilllite binary (CLI 全转发).
 
-Consolidates: add, quickstart, list, remove, show, reindex, init-cursor, init-opencode.
+Consolidates: add, quickstart, list, remove, show, reindex, init-cursor, init-opencode,
+init, install, uninstall, status, version.
 """
 
 import argparse
@@ -116,3 +117,102 @@ def cmd_chat(args: argparse.Namespace) -> int:
 def cmd_mcp_server(args: argparse.Namespace) -> int:
     skills_dir = getattr(args, "skills_dir", None) or os.environ.get("SKILLLITE_SKILLS_DIR", ".skills")
     return forward_to_binary(["mcp", "--skills-dir", skills_dir], ensure_binary=True)
+
+
+# --- Binary commands (install/uninstall/status/version) ---
+
+def _print_status() -> None:
+    from ..sandbox.core import find_binary, get_binary_path, is_installed, get_installed_version
+    print("SkillLite Installation Status")
+    print("=" * 40)
+    if is_installed():
+        print(f"✓ skillbox is installed (v{get_installed_version()})")
+        print(f"  Location: {get_binary_path()}")
+    else:
+        binary = find_binary()
+        if binary:
+            print(f"✓ skillbox found at: {binary}")
+        else:
+            print("✗ skillbox is not installed")
+            print("  Install with: skilllite install")
+
+
+def cmd_install(args: argparse.Namespace) -> int:
+    from ..sandbox.core import install
+    try:
+        install(version=args.version, force=args.force, show_progress=not args.quiet)
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_uninstall(args: argparse.Namespace) -> int:
+    from ..sandbox.core import uninstall
+    try:
+        uninstall()
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    try:
+        _print_status()
+        return 0
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_version(args: argparse.Namespace) -> int:
+    from .. import __version__
+    from ..sandbox.core import BINARY_VERSION, get_platform, get_installed_version
+    print(f"skilllite Python SDK: v{__version__}")
+    print(f"skillbox binary (bundled): v{BINARY_VERSION}")
+    iv = get_installed_version()
+    print(f"skillbox binary (installed): v{iv}" if iv else "skillbox binary (installed): not installed")
+    try:
+        print(f"Platform: {get_platform()}")
+    except RuntimeError as e:
+        print(f"Platform: {e}")
+    return 0
+
+
+# --- Init command ---
+
+def cmd_init(args: argparse.Namespace) -> int:
+    from pathlib import Path
+    from ..sandbox.core import install as install_binary, is_installed, get_installed_version
+    try:
+        project_dir = Path(args.project_dir or os.getcwd())
+        skills_dir_rel = args.skills_dir or ".skills"
+        skills_dir_clean = skills_dir_rel[2:] if skills_dir_rel.startswith("./") else skills_dir_rel
+        print("\U0001f680 Initializing SkillLite project...")
+        print(f"   Project directory: {project_dir}")
+        print(f"   Skills directory:  {project_dir / skills_dir_clean}\n")
+        if not getattr(args, "skip_binary", False):
+            if is_installed():
+                print(f"\u2713 skillbox binary already installed (v{get_installed_version()})")
+            else:
+                print("\u2b07 Installing skillbox binary...")
+                install_binary(show_progress=True)
+        else:
+            print("\u23ed Skipping binary installation (--skip-binary)")
+        cmd = ["init", "-s", skills_dir_clean]
+        if getattr(args, "skip_deps", False): cmd.append("--skip-deps")
+        if getattr(args, "skip_audit", False): cmd.append("--skip-audit")
+        if getattr(args, "strict", False): cmd.append("--strict")
+        if getattr(args, "use_llm", False): cmd.append("--use-llm")
+        env = {}
+        allow = getattr(args, "allow_unknown_packages", False) or (
+            os.environ.get("SKILLLITE_ALLOW_UNKNOWN_PACKAGES", "").lower() in ("1", "true", "yes")
+        )
+        env["SKILLLITE_ALLOW_UNKNOWN_PACKAGES"] = "1" if allow else "0"
+        return forward_to_binary(cmd, cwd=str(project_dir), env=env, ensure_binary=True)
+    except Exception as e:
+        import traceback
+        print(f"Error: {e}", file=sys.stderr)
+        traceback.print_exc()
+        return 1

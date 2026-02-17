@@ -5,8 +5,9 @@ This module abstracts different sandbox implementations, with skilllite
 (Rust-based sandbox) as the primary implementation.
 """
 
-from .base import SandboxExecutor, ExecutionResult
-from .config import (
+from .context import (
+    SandboxExecutor,
+    ExecutionResult,
     SandboxConfig,
     DEFAULT_EXECUTION_TIMEOUT,
     DEFAULT_MAX_MEMORY_MB,

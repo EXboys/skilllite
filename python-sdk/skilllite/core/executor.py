@@ -7,7 +7,7 @@ Thin wrapper around ipc_executor (Phase 4.8 Strategy 7).
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from ..sandbox.base import ExecutionResult
+from ..sandbox.context import ExecutionResult
 from ..sandbox.ipc_executor import execute_with_context
 
 __all__ = ['SkillExecutor', 'ExecutionResult']
