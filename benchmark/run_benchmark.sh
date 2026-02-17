@@ -101,15 +101,15 @@ done
 
 # Check if SkillBox is compiled
 SKILLBOX_BIN=""
-if command -v skillbox &> /dev/null; then
-    SKILLBOX_BIN=$(which skillbox)
-elif [ -f "$PROJECT_ROOT/skillbox/target/release/skillbox" ]; then
-    SKILLBOX_BIN="$PROJECT_ROOT/skillbox/target/release/skillbox"
+if command -v skilllite &> /dev/null; then
+    SKILLBOX_BIN=$(which skilllite)
+elif [ -f "$PROJECT_ROOT/skilllite/target/release/skilllite" ]; then
+    SKILLBOX_BIN="$PROJECT_ROOT/skilllite/target/release/skilllite"
 else
     echo -e "${YELLOW}SkillBox binary not found. Building...${NC}"
-    cd "$PROJECT_ROOT/skillbox"
+    cd "$PROJECT_ROOT/skilllite"
     cargo build --release
-    SKILLBOX_BIN="$PROJECT_ROOT/skillbox/target/release/skillbox"
+    SKILLBOX_BIN="$PROJECT_ROOT/skilllite/target/release/skilllite"
 fi
 
 echo -e "${GREEN}SkillBox binary: $SKILLBOX_BIN${NC}"
@@ -147,7 +147,7 @@ if [ "$COMPARE_IPC" = true ]; then
     CMD_ARGS="$CMD_ARGS --compare-ipc"
 fi
 
-# Suppress skillbox [INFO] logs when running benchmark (IPC daemon mode)
+# Suppress skilllite [INFO] logs when running benchmark (IPC daemon mode)
 export SKILLBOX_QUIET=1
 
 # Run benchmark

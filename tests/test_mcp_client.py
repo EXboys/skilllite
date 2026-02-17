@@ -23,8 +23,8 @@ import json
 import sys
 import os
 
-# Add skilllite-sdk to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'skilllite-sdk'))
+# Add python-sdk to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python-sdk'))
 
 
 class MCPClientTester:
@@ -359,7 +359,7 @@ async def run_tests(test_name: str = None):
     except FileNotFoundError:
         print("❌ skilllite command not found")
         print("\nPlease install skilllite:")
-        print("  pip install -e ./skilllite-sdk")
+        print("  pip install -e ./python-sdk")
         return False
     except Exception as e:
         print(f"❌ Connection error: {e}")

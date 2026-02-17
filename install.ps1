@@ -1,12 +1,12 @@
-# Skillbox Installation Script for Windows
+# SkillLite Installation Script for Windows
 # Usage: iwr -useb https://raw.githubusercontent.com/EXboys/skilllite/main/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
 # Configuration
 $Repo = "EXboys/skilllite"
-$BinaryName = "skillbox"
-$InstallDir = if ($env:SKILLBOX_INSTALL_DIR) { $env:SKILLBOX_INSTALL_DIR } else { "$env:LOCALAPPDATA\Programs\skillbox" }
+$BinaryName = "skilllite"
+$InstallDir = if ($env:SKILLLITE_INSTALL_DIR) { $env:SKILLLITE_INSTALL_DIR } else { "$env:LOCALAPPDATA\Programs\skilllite" }
 
 function Write-ColorOutput($ForegroundColor) {
     $fc = $host.UI.RawUI.ForegroundColor
@@ -35,7 +35,7 @@ function Get-LatestRelease {
 function Get-Architecture {
     $arch = $env:PROCESSOR_ARCHITECTURE
     if ($arch -eq "AMD64" -or $arch -eq "x86_64") {
-        return "x86_64"
+        return "x64"
     }
     elseif ($arch -eq "ARM64") {
         return "arm64"
@@ -47,7 +47,7 @@ function Get-Architecture {
 }
 
 function Download-Binary($version, $arch) {
-    $binaryFile = "$BinaryName-windows-$arch.exe"
+    $binaryFile = "$BinaryName-windows-$arch.zip"
     $downloadUrl = "https://github.com/$Repo/releases/download/$version/$binaryFile"
     $tempFile = "$env:TEMP\$binaryFile"
     
@@ -77,8 +77,9 @@ function Install-Binary($tempFile) {
         Remove-Item $installPath -Force
     }
     
-    # Move binary to install directory
-    Move-Item $tempFile $installPath -Force
+    # Extract zip (release provides skilllite-windows-x64.zip)
+    Expand-Archive -Path $tempFile -DestinationPath $InstallDir -Force
+    Remove-Item $tempFile -Force
     
     Write-ColorOutput Green "Installed to: $installPath"
     
@@ -93,7 +94,7 @@ function Install-Binary($tempFile) {
 
 # Main installation process
 function Main {
-    Write-ColorOutput Green "=== Skillbox Installation ==="
+    Write-ColorOutput Green "=== SkillLite Installation ==="
     
     $arch = Get-Architecture
     Write-ColorOutput Green "Detected architecture: $arch"
@@ -103,7 +104,7 @@ function Main {
     Install-Binary $tempFile
     
     Write-ColorOutput Green "=== Installation Complete ==="
-    Write-ColorOutput Green "Run 'skillbox --help' to get started"
+    Write-ColorOutput Green "Run 'skilllite --help' to get started"
     Write-ColorOutput Yellow "Note: You may need to restart your terminal for PATH changes to take effect"
 }
 

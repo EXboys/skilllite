@@ -1,5 +1,5 @@
 #!/bin/bash
-# Skillbox Installation Script
+# SkillLite Installation Script
 # Usage: curl -fsSL https://raw.githubusercontent.com/EXboys/skilllite/main/install.sh | bash
 
 set -e
@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 REPO="EXboys/skilllite"
-BINARY_NAME="skillbox"
+BINARY_NAME="skilllite"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Detect OS and Architecture
@@ -49,11 +49,22 @@ detect_platform() {
             ;;
     esac
     
-    # Construct binary name
-    if [ "$OS" = "windows" ]; then
-        BINARY_FILE="${BINARY_NAME}-${OS}-${ARCH}.exe"
+    # Construct download asset name (matches GitHub release format)
+    # Release assets: skilllite-linux-x64, skilllite-darwin-arm64, etc.
+    case "$ARCH" in
+        x86_64) ARCH_SUFFIX="x64" ;;
+        arm64) ARCH_SUFFIX="arm64" ;;
+        *) ARCH_SUFFIX="$ARCH" ;;
+    esac
+    if [ "$OS" = "macos" ]; then
+        OS_SUFFIX="darwin"
     else
-        BINARY_FILE="${BINARY_NAME}-${OS}-${ARCH}"
+        OS_SUFFIX="$OS"
+    fi
+    if [ "$OS" = "windows" ]; then
+        BINARY_FILE="${BINARY_NAME}-${OS_SUFFIX}-${ARCH_SUFFIX}.zip"
+    else
+        BINARY_FILE="${BINARY_NAME}-${OS_SUFFIX}-${ARCH_SUFFIX}.tar.gz"
     fi
     
     echo -e "${GREEN}Detected platform: ${OS}-${ARCH}${NC}"
@@ -104,12 +115,19 @@ install_binary() {
     # Create install directory if it doesn't exist
     mkdir -p "$INSTALL_DIR"
     
-    # Move binary to install directory
-    local install_path="${INSTALL_DIR}/${BINARY_NAME}"
-    mv "$temp_file" "$install_path"
-    chmod +x "$install_path"
+    local binary_path="${INSTALL_DIR}/${BINARY_NAME}"
+    if [[ "$temp_file" == *.tar.gz ]]; then
+        tar -xzf "$temp_file" -C "$INSTALL_DIR"
+        rm -f "$temp_file"
+    elif [[ "$temp_file" == *.zip ]]; then
+        unzip -o "$temp_file" -d "$INSTALL_DIR"
+        rm -f "$temp_file"
+    else
+        mv "$temp_file" "$binary_path"
+    fi
+    chmod +x "$binary_path"
     
-    echo -e "${GREEN}Installed to: ${install_path}${NC}"
+    echo -e "${GREEN}Installed to: ${binary_path}${NC}"
     
     # Check if install directory is in PATH
     if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
@@ -121,7 +139,7 @@ install_binary() {
 
 # Main installation process
 main() {
-    echo -e "${GREEN}=== Skillbox Installation ===${NC}"
+    echo -e "${GREEN}=== SkillLite Installation ===${NC}"
     
     detect_platform
     get_latest_release

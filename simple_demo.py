@@ -16,7 +16,7 @@ Usage:
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'skilllite-sdk'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'python-sdk'))
 
 from skilllite import SkillRunner
 

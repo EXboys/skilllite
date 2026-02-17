@@ -1,4 +1,4 @@
-name: Build and Release Skillbox
+name: Build and Release SkillLite
 
 on:
   push:
@@ -20,32 +20,32 @@ jobs:
           # Linux x86_64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact_name: skillbox
-            asset_name: skillbox-linux-x64
+            artifact_name: skilllite
+            asset_name: skilllite-linux-x64
 
           # macOS x86_64 (Intel)
           - os: macos-15-intel
             target: x86_64-apple-darwin
-            artifact_name: skillbox
-            asset_name: skillbox-darwin-x64
+            artifact_name: skilllite
+            asset_name: skilllite-darwin-x64
 
           # macOS ARM64 (Apple Silicon)
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact_name: skillbox
-            asset_name: skillbox-darwin-arm64
+            artifact_name: skilllite
+            asset_name: skilllite-darwin-arm64
 
           # Linux ARM64
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            artifact_name: skillbox
-            asset_name: skillbox-linux-arm64
+            artifact_name: skilllite
+            asset_name: skilllite-linux-arm64
 
           # Windows x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact_name: skillbox.exe
-            asset_name: skillbox-windows-x64
+            artifact_name: skilllite.exe
+            asset_name: skilllite-windows-x64
 
     steps:
       - name: Checkout code
@@ -71,7 +71,7 @@ jobs:
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
-          path: skillbox/target
+          path: skilllite/target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Install cross-compilation tools (Linux ARM64)
@@ -81,7 +81,7 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Build
-        working-directory: ./skillbox
+        working-directory: ./skilllite
         run: cargo build --release --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -90,7 +90,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          cd skillbox/target/${{ matrix.target }}/release
+          cd skilllite/target/${{ matrix.target }}/release
           tar -czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
           mv ${{ matrix.asset_name }}.tar.gz ../../../../
 
@@ -98,7 +98,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cd skillbox/target/${{ matrix.target }}/release
+          cd skilllite/target/${{ matrix.target }}/release
           Compress-Archive -Path ${{ matrix.artifact_name }} -DestinationPath ${{ matrix.asset_name }}.zip
           Move-Item ${{ matrix.asset_name }}.zip ../../../../
 
@@ -143,11 +143,11 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: false
           files: |
-            ./artifacts/skillbox-linux-x64/skillbox-linux-x64.tar.gz
-            ./artifacts/skillbox-darwin-x64/skillbox-darwin-x64.tar.gz
-            ./artifacts/skillbox-darwin-arm64/skillbox-darwin-arm64.tar.gz
-            ./artifacts/skillbox-linux-arm64/skillbox-linux-arm64.tar.gz
-            ./artifacts/skillbox-windows-x64/skillbox-windows-x64.zip
+            ./artifacts/skilllite-linux-x64/skilllite-linux-x64.tar.gz
+            ./artifacts/skilllite-darwin-x64/skilllite-darwin-x64.tar.gz
+            ./artifacts/skilllite-darwin-arm64/skilllite-darwin-arm64.tar.gz
+            ./artifacts/skilllite-linux-arm64/skilllite-linux-arm64.tar.gz
+            ./artifacts/skilllite-windows-x64/skilllite-windows-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -172,11 +172,11 @@ jobs:
           pip install build twine
 
       - name: Build package
-        working-directory: ./skilllite-sdk
+        working-directory: ./python-sdk
         run: python -m build
 
       - name: Publish to PyPI
-        working-directory: ./skilllite-sdk
+        working-directory: ./python-sdk
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}

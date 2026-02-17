@@ -16,7 +16,7 @@
 | Component | Technology |
 |-----------|------------|
 | Sandbox Executor | Rust (skillbox) |
-| Python SDK | Python 3.x (skilllite-sdk) |
+| Python SDK | Python 3.x (python-sdk) |
 | macOS Sandbox | Seatbelt (sandbox-exec) |
 | Linux Sandbox | Namespace + Seccomp |
 
@@ -34,7 +34,7 @@ skillLite/
 │       │   └── security/       # Security scanning module
 │       └── skill/              # Skill metadata parsing
 │
-├── skilllite-sdk/              # Python SDK
+├── python-sdk/              # Python SDK
 │   └── skilllite/
 │       ├── core/               # Core modules
 │       │   ├── manager.py      # SkillManager main interface

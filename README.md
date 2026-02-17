@@ -266,15 +266,15 @@ source ~/.cargo/env
 ### Compile the Sandbox Executor
 
 ```bash
-cd skillbox
+cd skilllite
 cargo build --release
 cargo install --path .
-skillbox --help
+skilllite --help
 ```
 
 After compilation, the binary will be at:
-- `cargo install`: `~/.cargo/bin/skillbox`
-- `cargo build`: `skillbox/target/release/skillbox`
+- `cargo install`: `~/.cargo/bin/skilllite`
+- `cargo build`: `skilllite/target/release/skilllite`
 
 </details>
 

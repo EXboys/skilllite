@@ -43,10 +43,10 @@ SKILLS_DIR = PROJECT_ROOT / ".skills"
 CALCULATOR_SKILL = SKILLS_DIR / "calculator"
 
 # SkillBox binary path
-SKILLBOX_BIN = shutil.which("skillbox") or str(PROJECT_ROOT / "skillbox" / "target" / "release" / "skillbox")
+SKILLBOX_BIN = shutil.which("skilllite") or str(PROJECT_ROOT / "skilllite" / "target" / "release" / "skilllite")
 
-# Add skilllite-sdk for IPC executor (uses skillbox serve --stdio daemon)
-sys.path.insert(0, str(PROJECT_ROOT / "skilllite-sdk"))
+# Add python-sdk for IPC executor (uses skilllite serve --stdio daemon)
+sys.path.insert(0, str(PROJECT_ROOT / "python-sdk"))
 
 # Load .env if available (SKILLBOX_QUIET, etc.)
 try:
@@ -247,7 +247,7 @@ class SkillBoxExecutor(BaseExecutor):
 
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, sandbox_level: Optional[int] = None, measure_memory: bool = True):
         self.skill_dir = skill_dir
-        self.skillbox_bin = SKILLBOX_BIN
+        self.skilllite_bin = SKILLBOX_BIN
         self.measure_memory = measure_memory
         self.resource_monitor = ResourceMonitor() if measure_memory else None
         # Get sandbox level from environment variable or parameter, default is 3
@@ -259,18 +259,18 @@ class SkillBoxExecutor(BaseExecutor):
         self.name = f"SkillBox (Level {self.sandbox_level})"
         
     def setup(self) -> None:
-        if not os.path.exists(self.skillbox_bin):
-            raise RuntimeError(f"SkillBox binary not found at {self.skillbox_bin}")
+        if not os.path.exists(self.skilllite_bin):
+            raise RuntimeError(f"SkillBox binary not found at {self.skilllite_bin}")
     
     def execute(self, input_json: str) -> BenchmarkResult:
         if self.measure_memory and self.resource_monitor:
             # Measure memory usage
             try:
-                skillbox_env = {"SKILLBOX_QUIET": "1"}
+                skilllite_env = {"SKILLBOX_QUIET": "1"}
                 elapsed_ms, success, stdout, stderr, memory_kb = self.resource_monitor.get_peak_memory_kb(
-                    [self.skillbox_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
+                    [self.skilllite_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
                     timeout=30,
-                    env=skillbox_env
+                    env=skilllite_env
                 )
                 return BenchmarkResult(
                     executor_name=self.name,
@@ -300,7 +300,7 @@ class SkillBoxExecutor(BaseExecutor):
                 
                 # Use --sandbox-level CLI argument (takes precedence over env var)
                 result = subprocess.run(
-                    [self.skillbox_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
+                    [self.skilllite_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
                     capture_output=True,
                     text=True,
                     timeout=30,
@@ -336,7 +336,7 @@ class SkillBoxExecutor(BaseExecutor):
 
 class SkillBoxIPCExecutor(BaseExecutor):
     """
-    SkillBox via skilllite-sdk with IPC (skillbox serve --stdio daemon).
+    SkillBox via python-sdk with IPC (skilllite serve --stdio daemon).
     
     Uses the same binary as SkillBoxExecutor but keeps a warm daemon process,
     communicating via JSON-RPC over stdin/stdout. This avoids cold-start
@@ -356,7 +356,7 @@ class SkillBoxIPCExecutor(BaseExecutor):
     def setup(self) -> None:
         # Ensure IPC is enabled (default, but explicit for benchmark clarity)
         os.environ["SKILLBOX_USE_IPC"] = "1"
-        # Suppress [INFO] logs from skillbox (daemon and subprocess fallback)
+        # Suppress [INFO] logs from skilllite (daemon and subprocess fallback)
         os.environ["SKILLBOX_QUIET"] = "1"
         try:
             from skilllite.sandbox.execution_service import UnifiedExecutionService
@@ -368,7 +368,7 @@ class SkillBoxIPCExecutor(BaseExecutor):
         except ImportError as e:
             raise RuntimeError(
                 f"Cannot import skilllite for IPC benchmark: {e}. "
-                "Ensure skilllite-sdk is in project root and install deps: pip install -e skilllite-sdk"
+                "Ensure python-sdk is in project root and install deps: pip install -e python-sdk"
             ) from e
 
     def teardown(self) -> None:
@@ -426,7 +426,7 @@ class DockerExecutor(BaseExecutor):
     
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, measure_memory: bool = False):
         self.skill_dir = skill_dir
-        self.image_name = "skillbox-benchmark-python"
+        self.image_name = "skilllite-benchmark-python"
         self.docker_available = False
         self.measure_memory = measure_memory
         self.resource_monitor = ResourceMonitor() if measure_memory else None
@@ -658,7 +658,7 @@ class GvisorExecutor(BaseExecutor):
     
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, measure_memory: bool = False):
         self.skill_dir = skill_dir
-        self.image_name = "skillbox-benchmark-python"
+        self.image_name = "skilllite-benchmark-python"
         self.gvisor_available = False
         self.docker_available = False
         self.setup_error = None

@@ -113,19 +113,19 @@ cargo --version
 
 ```bash
 # 进入 Rust 项目目录并编译
-cd skillbox
+cd skilllite
 cargo build --release
 
 # 可选：安装到系统路径（推荐）
 cargo install --path .
 
 # 验证安装
-skillbox --help
+skilllite --help
 ```
 
 编译完成后，`skillbox` 二进制文件会位于：
-- 如果使用 `cargo install`：`~/.cargo/bin/skillbox`
-- 如果仅 `cargo build`：`skillbox/target/release/skillbox`
+- 如果使用 `cargo install`：`~/.cargo/bin/skilllite`
+- 如果仅 `cargo build`：`skilllite/target/release/skilllite`
 
 ### 2. 环境配置
 
@@ -151,7 +151,7 @@ python3 simple_demo.py
 
 ```
 skillLite/
-├── skillbox/              # Rust 沙箱执行器
+├── skilllite/              # Rust 沙箱执行器
 ├── skilllite/             # Python SDK
 │   └── skilllite/
 │       ├── manager.py     # SkillManager 核心管理器

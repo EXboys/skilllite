@@ -16,7 +16,7 @@
 | 组件 | 技术 |
 |------|------|
 | 沙箱执行器 | Rust (skillbox) |
-| Python SDK | Python 3.x (skilllite-sdk) |
+| Python SDK | Python 3.x (python-sdk) |
 | macOS 沙箱 | Seatbelt (sandbox-exec) |
 | Linux 沙箱 | Namespace + Seccomp |
 
@@ -58,7 +58,7 @@ skillLite/
 │               ├── default_rules.rs   # 默认规则实现
 │               └── default_rules.yaml # 默认规则配置
 │
-├── skilllite-sdk/              # Python SDK
+├── python-sdk/              # Python SDK
 │   ├── setup.py                # 包配置
 │   ├── pyproject.toml          # 现代 Python 包配置
 │   ├── README.md               # SDK 文档
@@ -321,7 +321,7 @@ fn detect_entry_point(skill_dir: &Path) -> Option<String> {
 
 ---
 
-### 2. Python SDK (skilllite-sdk)
+### 2. Python SDK (python-sdk)
 
 #### 2.1 SkillManager (`core/manager.py`)
 

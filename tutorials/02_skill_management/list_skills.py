@@ -9,7 +9,7 @@ Quick Start:
 import sys
 import os
 from pathlib import Path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../skilllite-sdk'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
 from skilllite import SkillManager
 

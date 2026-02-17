@@ -37,7 +37,7 @@ MANIFEST
 venv/
 ENV/
 env/
-!skillbox/src/env/
+!skilllite/src/env/
 .venv
 
 # IDEs

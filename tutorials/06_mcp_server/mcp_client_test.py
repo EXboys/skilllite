@@ -11,7 +11,7 @@ Prerequisites:
 import sys
 import os
 import json
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../skilllite-sdk'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
 # ========== Test Cases ==========
 

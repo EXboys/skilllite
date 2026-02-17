@@ -10,7 +10,7 @@ import sys
 import os
 import json
 from pathlib import Path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../skilllite-sdk'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
 from skilllite import SkillManager
 from openai import OpenAI

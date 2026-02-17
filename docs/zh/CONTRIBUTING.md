@@ -26,12 +26,12 @@ git clone https://github.com/EXboys/skilllite.git
 cd skilllite
 
 # 构建 Rust 沙箱
-cd skillbox
+cd skilllite
 cargo build --release
 cargo install --path .
 
 # 设置 Python SDK
-cd ../skilllite-sdk
+cd ../python-sdk
 pip install -e ".[dev]"
 
 # 配置环境
@@ -43,7 +43,7 @@ cp .env.example .env
 1. Fork 仓库
 2. 从 `main` 创建分支：`git checkout -b feature/your-feature`
 3. 提交清晰的 commit
-4. 测试：`cd skillbox && cargo test` 和 `cd skilllite-sdk && pytest`
+4. 测试：`cd skilllite && cargo test` 和 `cd python-sdk && pytest`
 5. 提交 PR 并附上清晰的描述
 
 ### 指南
@@ -81,8 +81,8 @@ cp .env.example .env
 
 ```
 skillLite/
-├── skillbox/          # Rust 沙箱执行器
-├── skilllite-sdk/     # Python SDK
+├── skilllite/          # Rust 沙箱执行器
+├── python-sdk/     # Python SDK
 ├── .skills/           # 内置 Skills（示例）
 ├── benchmark/         # 性能测试
 └── docs/              # 文档

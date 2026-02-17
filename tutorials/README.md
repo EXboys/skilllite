@@ -22,7 +22,7 @@ Complete SkillLite usage examples to quickly get started with all core features 
 # Install SkillLite
 pip install skilllite
 
-# Install skillbox sandbox
+# Install skilllite sandbox
 skilllite install
 
 # Create .env configuration file
@@ -169,7 +169,7 @@ A: All OpenAI-compatible APIs + Claude native API
 
 ## 📚 More Resources
 
-- [SkillLite SDK Documentation](../skilllite-sdk/README.md)
+- [SkillLite SDK Documentation](../python-sdk/README.md)
 - [Framework Integration Analysis](../docs/Framework_Integration_Analysis.md)
 - [GitHub Repository](https://github.com/EXboys/skilllite)
 

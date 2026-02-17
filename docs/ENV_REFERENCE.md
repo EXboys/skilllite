@@ -120,7 +120,7 @@
 |------|------|--------|------|
 | `SKILLBOX_DEBUG` | bool | `false` | 设为 `1` 打印沙箱调试信息 |
 | `SKILLBOX_USE_IPC` | bool | 自动 | 是否使用 IPC 模式（通常更快） |
-| `SKILLBOX_PATH` | string | - | skillbox 二进制路径 |
+| `SKILLLITE_PATH` | string | - | skilllite 二进制路径 |
 | `SKILLBOX_BINARY_PATH` | string | - | 同上（别名） |
 | `SKILLBOX_CACHE_DIR` | string | - | 沙箱缓存目录 |
 | `SKILLBOX_IPC_POOL_SIZE` | int | `10` | IPC 连接池大小 |

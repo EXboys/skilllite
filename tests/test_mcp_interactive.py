@@ -25,8 +25,8 @@ import os
 import re
 from pathlib import Path
 
-# Add skilllite-sdk to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'skilllite-sdk'))
+# Add python-sdk to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'python-sdk'))
 
 
 def load_dotenv():
@@ -236,7 +236,7 @@ The two-phase security model works as follows:
                 
     except FileNotFoundError:
         print(colorize("❌ skilllite command not found", "red"))
-        print("   Install with: pip install -e ./skilllite-sdk")
+        print("   Install with: pip install -e ./python-sdk")
         return False
     except Exception as e:
         print(colorize(f"❌ Error: {e}", "red"))

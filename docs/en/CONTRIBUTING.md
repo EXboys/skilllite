@@ -26,12 +26,12 @@ git clone https://github.com/EXboys/skilllite.git
 cd skilllite
 
 # Build Rust sandbox
-cd skillbox
+cd skilllite
 cargo build --release
 cargo install --path .
 
 # Setup Python SDK
-cd ../skilllite-sdk
+cd ../python-sdk
 pip install -e ".[dev]"
 
 # Configure
@@ -43,7 +43,7 @@ cp .env.example .env
 1. Fork the repository
 2. Create branch from `main`: `git checkout -b feature/your-feature`
 3. Make changes with clear commits
-4. Test: `cd skillbox && cargo test` and `cd skilllite-sdk && pytest`
+4. Test: `cd skilllite && cargo test` and `cd python-sdk && pytest`
 5. Submit PR with clear description
 
 ### Guidelines
@@ -81,8 +81,8 @@ By contributing, you agree that your contributions will be licensed under the MI
 
 ```
 skillLite/
-├── skillbox/          # Rust sandbox executor
-├── skilllite-sdk/     # Python SDK
+├── skilllite/          # Rust sandbox executor
+├── python-sdk/     # Python SDK
 ├── .skills/           # Built-in Skills (examples)
 ├── benchmark/         # Performance benchmarks
 └── docs/              # Documentation
