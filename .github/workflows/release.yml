@@ -80,15 +80,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
+      - name: Verify Cargo.lock (required for rustls, no OpenSSL)
+        working-directory: ./skilllite
+        run: |
+          test -f Cargo.lock || (echo "ERROR: Cargo.lock missing - ensure skilllite/Cargo.lock is committed" && exit 1)
+          grep -q openssl Cargo.lock && (echo "ERROR: Cargo.lock contains openssl - run 'cargo update' locally and commit" && exit 1) || true
+
       - name: Build skilllite (full)
         working-directory: ./skilllite
-        run: cargo build --release --bin skilllite --target ${{ matrix.target }}
+        run: cargo build --release --locked --bin skilllite --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Build skilllite-sandbox (sandbox + MCP only)
         working-directory: ./skilllite
-        run: cargo build --release --bin skilllite-sandbox --no-default-features --features sandbox_binary --target ${{ matrix.target }}
+        run: cargo build --release --locked --bin skilllite-sandbox --no-default-features --features sandbox_binary --target ${{ matrix.target }}
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
