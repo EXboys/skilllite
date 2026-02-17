@@ -18,11 +18,17 @@ def forward_to_binary(
     cwd: Optional[str] = None,
     env: Optional[dict] = None,
     ensure_binary: bool = True,
+    use_sandbox_binary: bool = False,
 ) -> int:
-    """Run skilllite binary with args. Returns exit code."""
-    from ..sandbox.core import find_binary, ensure_installed
+    """Run skilllite binary with args. Returns exit code.
+    use_sandbox_binary: use find_sandbox_binary() for sandbox-only commands (mcp, add, list, etc).
+    """
+    from ..sandbox.core import find_binary, find_sandbox_binary, ensure_installed
 
-    binary = ensure_installed() if ensure_binary else find_binary()
+    if ensure_binary:
+        ensure_installed()
+    find_fn = find_sandbox_binary if use_sandbox_binary else find_binary
+    binary = find_fn()
     if not binary:
         print("skilllite binary not found. Run `skilllite install` first.", file=sys.stderr)
         return 1
@@ -49,7 +55,7 @@ def cmd_add(args: argparse.Namespace) -> int:
     cmd = ["add", args.source, "-s", args.skills_dir or ".skills"]
     if getattr(args, "force", False): cmd.append("-f")
     if getattr(args, "list", False): cmd.append("-l")
-    return forward_to_binary(cmd, ensure_binary=True)
+    return forward_to_binary(cmd, ensure_binary=True, use_sandbox_binary=True)
 
 
 def cmd_quickstart(args: argparse.Namespace) -> int:
@@ -57,31 +63,31 @@ def cmd_quickstart(args: argparse.Namespace) -> int:
     env = os.environ.copy()
     if getattr(args, "skills_repo", None):
         env["SKILLLITE_SKILLS_REPO"] = args.skills_repo
-    return forward_to_binary(cmd, env=env, ensure_binary=True)
+    return forward_to_binary(cmd, env=env, ensure_binary=True, use_sandbox_binary=True)
 
 
 def cmd_list(args: argparse.Namespace) -> int:
     cmd = ["list", "-s", args.skills_dir or ".skills"]
     if getattr(args, "json", False): cmd.append("--json")
-    return forward_to_binary(cmd, ensure_binary=True)
+    return forward_to_binary(cmd, ensure_binary=True, use_sandbox_binary=True)
 
 
 def cmd_remove(args: argparse.Namespace) -> int:
     cmd = ["remove", args.skill_name, "-s", args.skills_dir or ".skills"]
     if getattr(args, "force", False): cmd.append("-f")
-    return forward_to_binary(cmd, ensure_binary=True)
+    return forward_to_binary(cmd, ensure_binary=True, use_sandbox_binary=True)
 
 
 def cmd_show(args: argparse.Namespace) -> int:
     cmd = ["show", args.skill_name, "-s", args.skills_dir or ".skills"]
     if getattr(args, "json", False): cmd.append("--json")
-    return forward_to_binary(cmd, ensure_binary=True)
+    return forward_to_binary(cmd, ensure_binary=True, use_sandbox_binary=True)
 
 
 def cmd_reindex(args: argparse.Namespace) -> int:
     cmd = ["reindex", "-s", args.skills_dir or ".skills"]
     if getattr(args, "verbose", False): cmd.append("-v")
-    return forward_to_binary(cmd, ensure_binary=True)
+    return forward_to_binary(cmd, ensure_binary=True, use_sandbox_binary=True)
 
 
 def cmd_init_cursor(args: argparse.Namespace) -> int:
@@ -89,14 +95,14 @@ def cmd_init_cursor(args: argparse.Namespace) -> int:
     if getattr(args, "project_dir", None): cmd.extend(["-p", args.project_dir])
     if getattr(args, "global_mode", False): cmd.append("-g")
     if getattr(args, "force", False): cmd.append("-f")
-    return forward_to_binary(cmd, ensure_binary=True)
+    return forward_to_binary(cmd, ensure_binary=True, use_sandbox_binary=True)
 
 
 def cmd_init_opencode(args: argparse.Namespace) -> int:
     cmd = ["init-opencode", "-s", args.skills_dir or "./.skills"]
     if getattr(args, "project_dir", None): cmd.extend(["-p", args.project_dir])
     if getattr(args, "force", False): cmd.append("-f")
-    return forward_to_binary(cmd, ensure_binary=True)
+    return forward_to_binary(cmd, ensure_binary=True, use_sandbox_binary=True)
 
 
 def cmd_chat(args: argparse.Namespace) -> int:
@@ -116,20 +122,20 @@ def cmd_chat(args: argparse.Namespace) -> int:
 
 def cmd_mcp_server(args: argparse.Namespace) -> int:
     skills_dir = getattr(args, "skills_dir", None) or os.environ.get("SKILLLITE_SKILLS_DIR", ".skills")
-    return forward_to_binary(["mcp", "--skills-dir", skills_dir], ensure_binary=True)
+    return forward_to_binary(["mcp", "--skills-dir", skills_dir], ensure_binary=True, use_sandbox_binary=True)
 
 
 # --- Binary commands (install/uninstall/status/version) ---
 
 def _print_status() -> None:
-    from ..sandbox.core import find_binary, get_binary_path, is_installed, get_installed_version
+    from ..sandbox.core import find_binary, find_sandbox_binary, get_binary_path, is_installed, get_installed_version
     print("SkillLite Installation Status")
     print("=" * 40)
     if is_installed():
         print(f"✓ skillbox is installed (v{get_installed_version()})")
         print(f"  Location: {get_binary_path()}")
     else:
-        binary = find_binary()
+        binary = find_sandbox_binary() or find_binary()
         if binary:
             print(f"✓ skillbox found at: {binary}")
         else:
@@ -210,7 +216,7 @@ def cmd_init(args: argparse.Namespace) -> int:
             os.environ.get("SKILLLITE_ALLOW_UNKNOWN_PACKAGES", "").lower() in ("1", "true", "yes")
         )
         env["SKILLLITE_ALLOW_UNKNOWN_PACKAGES"] = "1" if allow else "0"
-        return forward_to_binary(cmd, cwd=str(project_dir), env=env, ensure_binary=True)
+        return forward_to_binary(cmd, cwd=str(project_dir), env=env, ensure_binary=True, use_sandbox_binary=True)
     except Exception as e:
         import traceback
         print(f"Error: {e}", file=sys.stderr)

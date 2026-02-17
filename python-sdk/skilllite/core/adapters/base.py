@@ -210,9 +210,9 @@ class BaseAdapter(ABC):
             if skill_info and entry_point:
                 entry_script = skill_info.path / entry_point
                 if entry_script.exists():
-                    from ...sandbox.core import find_binary
+                    from ...sandbox.core import find_sandbox_binary
 
-                    skillbox_path = find_binary()
+                    skillbox_path = find_sandbox_binary()
                     if skillbox_path:
                         result = subprocess.run(
                             [skillbox_path, "security-scan", "--json", str(entry_script)],

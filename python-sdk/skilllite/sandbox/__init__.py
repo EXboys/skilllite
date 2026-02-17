@@ -15,7 +15,7 @@ from .context import (
     DEFAULT_ALLOW_NETWORK,
     DEFAULT_ENABLE_SANDBOX,
 )
-from .core import install, uninstall, find_binary, ensure_installed
+from .core import install, uninstall, find_binary, find_sandbox_binary, ensure_installed
 from .utils import (
     convert_json_to_cli_args,
     extract_json_from_output,
@@ -38,6 +38,7 @@ __all__ = [
     "install",
     "uninstall", 
     "find_binary",
+    "find_sandbox_binary",
     "ensure_installed",
     # Utilities
     "convert_json_to_cli_args",

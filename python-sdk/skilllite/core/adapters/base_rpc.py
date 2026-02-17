@@ -59,7 +59,7 @@ class RpcAdapter(ABC):
 
     def _load_tools(self) -> None:
         """Load tools and tool_meta via list_tools_with_meta RPC."""
-        from ...sandbox.core import find_binary
+        from ...sandbox.core import find_binary, find_sandbox_binary
         from ...sandbox.core.ipc_client import SkillboxIPCClientPool
 
         binary = find_binary()
@@ -84,7 +84,7 @@ class RpcAdapter(ABC):
     ) -> "ExecutionResult":
         """Execute tool via run/exec/bash RPC using tool_meta."""
         from ...sandbox.context import ExecutionResult
-        from ...sandbox.core import find_binary
+        from ...sandbox.core import find_sandbox_binary
         from ...sandbox.core.ipc_client import SkillboxIPCClientPool
         from ...sandbox.utils import extract_json_from_output, format_sandbox_error
 
@@ -122,7 +122,7 @@ class RpcAdapter(ABC):
                         exit_code=2,
                     )
 
-        binary = find_binary()
+        binary = find_sandbox_binary()
         if not binary:
             return ExecutionResult(success=False, error="skilllite binary not found", exit_code=1)
 
@@ -224,8 +224,8 @@ class RpcAdapter(ABC):
             return SecurityScanResult.safe(str(uuid.uuid4()), "no-script")
 
         try:
-            from ...sandbox.core import find_binary
-            binary = find_binary()
+            from ...sandbox.core import find_sandbox_binary
+            binary = find_sandbox_binary()
             if not binary:
                 return None
             result = subprocess.run(

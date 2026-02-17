@@ -8,6 +8,7 @@ Download/install logic is in _install.py (Phase 4.10 slim).
 import os
 import shutil
 import subprocess
+import sys
 import warnings
 from pathlib import Path
 from typing import Optional
@@ -25,13 +26,23 @@ from ._install import (
     get_platform,
 )
 
+# Sandbox-only binary name (skilllite-sandbox / skilllite-sandbox.exe)
+SANDBOX_BINARY_NAME = "skilllite-sandbox.exe" if sys.platform == "win32" else "skilllite-sandbox"
+
 _binary_path_cache: Optional[str] = None
 _binary_path_cache_set: bool = False
+_sandbox_binary_path_cache: Optional[str] = None
+_sandbox_binary_path_cache_set: bool = False
 
 
 def get_binary_path() -> Path:
     """Path to ~/.skilllite/bin/skilllite"""
     return get_install_dir() / BINARY_NAME
+
+
+def get_sandbox_binary_path() -> Path:
+    """Path to ~/.skilllite/bin/skilllite-sandbox"""
+    return get_install_dir() / SANDBOX_BINARY_NAME
 
 
 def get_version_file() -> Path:
@@ -61,9 +72,11 @@ def needs_update(target_version: Optional[str] = None) -> bool:
 
 def invalidate_binary_cache() -> None:
     """Clear cached binary path (after install/uninstall)."""
-    global _binary_path_cache, _binary_path_cache_set
+    global _binary_path_cache, _binary_path_cache_set, _sandbox_binary_path_cache, _sandbox_binary_path_cache_set
     _binary_path_cache = None
     _binary_path_cache_set = False
+    _sandbox_binary_path_cache = None
+    _sandbox_binary_path_cache_set = False
 
 
 def _get_search_locations() -> list:
@@ -134,6 +147,87 @@ def find_binary() -> Optional[str]:
 
     _binary_path_cache = found
     _binary_path_cache_set = True
+    return found
+
+
+def _is_valid_binary(path: Path) -> bool:
+    """Check if path exists and is executable."""
+    return path.exists() and os.access(path, os.X_OK)
+
+
+def find_sandbox_binary() -> Optional[str]:
+    """
+    Find the skilllite-sandbox binary for sandbox-only operations (run, exec, bash, list, security-scan, mcp).
+
+    Auto-detection (no config needed):
+    - Both skilllite and skilllite-sandbox in ~/.skilllite/bin → use skilllite-sandbox (lighter)
+    - Only skilllite-sandbox → use skilllite-sandbox
+    - Only skilllite → use skilllite (fallback, full binary has all sandbox capabilities)
+
+    Search order: SKILLLITE_SANDBOX_PATH → ~/.skilllite/bin/skilllite-sandbox → cargo → PATH → system → dev → find_binary()
+    """
+    global _sandbox_binary_path_cache, _sandbox_binary_path_cache_set
+    if _sandbox_binary_path_cache_set:
+        return _sandbox_binary_path_cache
+
+    found: Optional[str] = None
+
+    # 1. Explicit env override
+    env_path = (
+        os.environ.get("SKILLLITE_SANDBOX_PATH")
+        or os.environ.get("SKILLLITE_SANDBOX_BINARY")
+    )
+    if env_path and _is_valid_binary(Path(env_path)):
+        found = str(Path(env_path).resolve())
+
+    # 2. ~/.skilllite/bin/skilllite-sandbox
+    if found is None:
+        sandbox_installed = get_install_dir() / SANDBOX_BINARY_NAME
+        if _is_valid_binary(sandbox_installed):
+            found = str(sandbox_installed)
+
+    # 3. ~/.cargo/bin/skilllite-sandbox
+    if found is None:
+        cargo_sandbox = Path.home() / ".cargo" / "bin" / SANDBOX_BINARY_NAME
+        if _is_valid_binary(cargo_sandbox):
+            found = str(cargo_sandbox)
+
+    # 4. PATH
+    if found is None:
+        path_bin = shutil.which(SANDBOX_BINARY_NAME)
+        if path_bin:
+            found = path_bin
+
+    # 5. System paths
+    if found is None:
+        for loc in [
+            Path("/usr/local/bin") / SANDBOX_BINARY_NAME,
+            Path("/usr/bin") / SANDBOX_BINARY_NAME,
+        ]:
+            if _is_valid_binary(loc):
+                found = str(loc)
+                break
+
+    # 6. Dev builds
+    if found is None:
+        for loc in [
+            Path("skilllite/target/release") / SANDBOX_BINARY_NAME,
+            Path("skilllite/target/debug") / SANDBOX_BINARY_NAME,
+            Path("../skilllite/target/release") / SANDBOX_BINARY_NAME,
+            Path("../skilllite/target/debug") / SANDBOX_BINARY_NAME,
+            Path("../../skilllite/target/release") / SANDBOX_BINARY_NAME,
+            Path("../../skilllite/target/debug") / SANDBOX_BINARY_NAME,
+        ]:
+            if _is_valid_binary(loc):
+                found = str(loc.resolve())
+                break
+
+    # 7. Fallback: skilllite (full) has all sandbox capabilities
+    if found is None:
+        found = find_binary()
+
+    _sandbox_binary_path_cache = found
+    _sandbox_binary_path_cache_set = True
     return found
 
 

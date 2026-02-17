@@ -213,12 +213,15 @@ _ipc_pool = None
 
 
 def _get_ipc_pool():
-    """Get IPC client pool (lazy init, module singleton)."""
+    """Get IPC client pool (lazy init, module singleton).
+    Uses find_sandbox_binary() for run/exec/bash. Single-binary fallback: find_sandbox_binary() returns find_binary().
+    Note: build_skills_context (agent) needs find_binary(); when using skilllite-sandbox, prompt_builder falls back to local.
+    """
     global _ipc_pool
     if _ipc_pool is None:
-        from .core import find_binary
+        from .core import find_sandbox_binary
         from .core.ipc_client import SkillboxIPCClientPool
-        binary_path = find_binary()
+        binary_path = find_sandbox_binary()
         if not binary_path:
             raise RuntimeError("skilllite binary not found")
         _ipc_pool = SkillboxIPCClientPool(binary_path=binary_path, cache_dir=None)

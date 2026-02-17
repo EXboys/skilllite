@@ -77,8 +77,8 @@ class SkillRegistry:
         # Phase 4.8: Try skillbox list --json first
         if use_skillbox:
             try:
-                from ..sandbox.core import find_binary
-                binary_path = find_binary()
+                from ..sandbox.core import find_sandbox_binary
+                binary_path = find_sandbox_binary()
                 if binary_path:
                     skills_json = _load_skills_via_skillbox(directory, binary_path)
                     if skills_json:

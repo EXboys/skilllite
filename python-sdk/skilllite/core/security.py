@@ -311,8 +311,8 @@ class SecurityScanner:
     def skillbox_path(self) -> Optional[str]:
         if self._binary is None:
             try:
-                from ..sandbox.core import find_binary
-                self._binary = find_binary()
+                from ..sandbox.core import find_sandbox_binary
+                self._binary = find_sandbox_binary()
             except Exception:
                 pass
         return self._binary
