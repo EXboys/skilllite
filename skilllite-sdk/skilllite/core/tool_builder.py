@@ -159,7 +159,7 @@ class ToolBuilder:
     def _create_multi_script_tool_definition(
         self,
         tool_name: str,
-        tool_info: Dict[str, str],
+        tool_info: Dict[str, Any],
         skill_info: SkillInfo
     ) -> ToolDefinition:
         """Create a tool definition for a multi-script tool."""
@@ -197,27 +197,38 @@ class ToolBuilder:
         self,
         tool_name: str,
         skill_info: SkillInfo,
-        tool_info: Dict[str, str]
+        tool_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Infer input schema for a multi-script tool using argparse parsing."""
+        """Infer input schema for a multi-script tool.
+
+        Phase 4.8: Uses input_schema from skillbox list --json when available.
+        Falls back to argparse parsing for Python scripts.
+        """
         if tool_name in self._multi_script_schemas:
             return self._multi_script_schemas[tool_name]
-        
-        script_path = skill_info.path / tool_info["script_path"]
+
+        # Use schema from skillbox delegation when available
+        if tool_info.get("input_schema"):
+            schema = tool_info["input_schema"]
+            if isinstance(schema, dict):
+                self._multi_script_schemas[tool_name] = schema
+                return schema
+
+        script_path = skill_info.path / tool_info.get("script_path", "")
         script_code = None
         if script_path.exists():
             try:
                 script_code = script_path.read_text(encoding="utf-8")
             except Exception:
                 pass
-        
+
         # Try argparse parsing for Python scripts
         if script_code and tool_info.get("language") == "python":
             schema = self._parse_argparse_schema(script_code)
             if schema:
                 self._multi_script_schemas[tool_name] = schema
                 return schema
-        
+
         # Default schema for scripts without argparse
         return {
             "type": "object",

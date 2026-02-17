@@ -6,13 +6,36 @@ This module handles:
 - Registering individual skills
 - Skill lookup and listing
 - Multi-script tool detection
+
+Phase 4.8: When skillbox is available, delegates to `skillbox list --json` for
+metadata/schema (Metadata 委托), eliminating Python-side parsing of SKILL.md
+and argparse schema inference.
 """
 
+import json
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from .metadata import SkillMetadata, parse_skill_metadata, detect_all_scripts
 from .skill_info import SkillInfo
+
+
+def _load_skills_via_skillbox(skills_dir: Path, binary_path: str) -> Optional[List[Dict]]:
+    """Load skills via skillbox list --json. Returns None if skillbox unavailable."""
+    try:
+        result = subprocess.run(
+            [binary_path, "list", "-s", str(skills_dir), "--json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        data = json.loads(result.stdout)
+        return data if isinstance(data, list) else None
+    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+        return None
 
 
 class SkillRegistry:
@@ -30,28 +53,44 @@ class SkillRegistry:
         # Track which skills have been analyzed for multi-script tools
         self._analyzed_skills: Set[str] = set()
     
-    def scan_directory(self, directory: Path) -> int:
+    def scan_directory(self, directory: Path, use_skillbox: bool = True) -> int:
         """
         Scan a directory for skills.
-        
+
+        Phase 4.8: When use_skillbox=True and skillbox binary is available,
+        delegates to `skillbox list --json` for full schema (metadata + multi_script_tools).
+        Falls back to local parsing if skillbox fails.
+
         Args:
             directory: Directory to scan
-            
+            use_skillbox: If True, try skillbox list --json first (default: True)
+
         Returns:
             Number of skills registered
-            
+
         Raises:
             FileNotFoundError: If directory does not exist
         """
         if not directory.exists():
             raise FileNotFoundError(f"Skills directory does not exist: {directory}")
-        
-        # Check if directory itself is a skill
+
+        # Phase 4.8: Try skillbox list --json first
+        if use_skillbox:
+            try:
+                from ..sandbox.skillbox import find_binary
+                binary_path = find_binary()
+                if binary_path:
+                    skills_json = _load_skills_via_skillbox(directory, binary_path)
+                    if skills_json:
+                        return self._load_from_list_json(skills_json)
+            except ImportError:
+                pass
+
+        # Fallback: local parsing
         if (directory / "SKILL.md").exists():
             self.register_skill(directory)
             return 1
-        
-        # Scan subdirectories
+
         count = 0
         for path in directory.iterdir():
             if path.is_dir() and (path / "SKILL.md").exists():
@@ -61,6 +100,36 @@ class SkillRegistry:
                 except Exception as e:
                     print(f"Warning: Failed to register skill at {path}: {e}")
         return count
+
+    def _load_from_list_json(self, skills_json: List[Dict]) -> int:
+        """Load skills from skillbox list --json output."""
+        for item in skills_json:
+            if "error" in item:
+                continue
+            path_str = item.get("path")
+            if not path_str:
+                continue
+            path = Path(path_str)
+            if not path.exists():
+                continue
+            metadata = SkillMetadata.from_list_json(item)
+            info = SkillInfo(metadata, path)
+            self._skills[metadata.name] = info
+            # Multi-script tools from JSON (includes input_schema from skillbox)
+            for mt in item.get("multi_script_tools", []):
+                tool_name = mt.get("tool_name")
+                if tool_name:
+                    script_path = mt.get("script_path", "")
+                    self._multi_script_tools[tool_name] = {
+                        "skill_name": mt.get("skill_name", metadata.name),
+                        "script_path": script_path,
+                        "script_name": Path(script_path).stem or "script",
+                        "language": "python",
+                        "filename": Path(script_path).name or "script.py",
+                        "input_schema": mt.get("input_schema"),  # From skillbox argparse inference
+                    }
+                    self._analyzed_skills.add(metadata.name)
+        return len(self._skills)
     
     def register_skill(self, skill_dir: Path) -> SkillInfo:
         """

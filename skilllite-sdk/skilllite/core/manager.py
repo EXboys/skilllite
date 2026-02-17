@@ -113,14 +113,10 @@ class SkillManager:
         self._registry = SkillRegistry()
         self.skills_dir = str(skills_dir) if skills_dir else ".skills"
 
-        # Initialize execution service (shared across handlers)
-        from ..sandbox.execution_service import UnifiedExecutionService
-        self._execution_service = UnifiedExecutionService()
-
-        # Initialize builders and handler
+        # Initialize builders and handler (Phase 4.8: handler uses ipc_executor directly)
         self._tool_builder = ToolBuilder(self._registry)
         self._prompt_builder = PromptBuilder(self._registry)
-        self._handler = ToolCallHandler(self._registry, self._execution_service)
+        self._handler = ToolCallHandler(self._registry)
         
         # Scan skills directory if provided
         if skills_dir:
@@ -482,8 +478,7 @@ class SkillManager:
 
             for request in requests:
                 if request.name in skill_tool_names:
-                    # Execute as skill tool using UnifiedExecutionService
-                    # This handles security scanning, confirmation, and proper sandbox level
+                    # Execute as skill tool via handler (ipc_executor, Strategy 7)
                     result = self._handler.execute_tool_call(
                         request,
                         confirmation_callback=confirmation_callback,

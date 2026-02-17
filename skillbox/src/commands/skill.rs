@@ -1063,8 +1063,37 @@ fn skill_to_json(skill_path: &Path) -> serde_json::Value {
     match metadata::parse_skill_metadata(skill_path) {
         Ok(meta) => {
             let lang = metadata::detect_language(skill_path, &meta);
+            let name = if meta.name.is_empty() {
+                skill_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string()
+            } else {
+                meta.name.clone()
+            };
+
+            // Multi-script tools: when no entry_point, detect scripts and their schemas
+            let multi_script_tools = if meta.entry_point.is_empty() && !meta.is_bash_tool_skill() {
+                let tools = crate::skill::schema::detect_multi_script_tools(skill_path, &name);
+                tools
+                    .into_iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "tool_name": t.tool_name,
+                            "skill_name": t.skill_name,
+                            "script_path": t.script_path,
+                            "input_schema": t.input_schema,
+                            "description": t.description,
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                vec![]
+            };
+
             serde_json::json!({
-                "name": meta.name,
+                "name": name,
                 "description": meta.description,
                 "language": lang,
                 "entry_point": if meta.entry_point.is_empty() { None } else { Some(&meta.entry_point) },
@@ -1074,6 +1103,7 @@ fn skill_to_json(skill_path: &Path) -> serde_json::Value {
                 "allowed_tools": meta.allowed_tools,
                 "path": skill_path.to_string_lossy(),
                 "is_bash_tool": meta.is_bash_tool_skill(),
+                "multi_script_tools": multi_script_tools,
             })
         }
         Err(e) => {

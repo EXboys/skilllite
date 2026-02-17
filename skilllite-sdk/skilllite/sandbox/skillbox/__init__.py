@@ -2,7 +2,7 @@
 Skillbox sandbox implementation.
 
 This module provides the Rust-based skillbox binary management and IPC client.
-Execution is handled by UnifiedExecutor (sandbox/unified_executor.py).
+Execution is handled by ipc_executor (sandbox/ipc_executor.py).
 """
 
 from .binary import (

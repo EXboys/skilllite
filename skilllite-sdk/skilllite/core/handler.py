@@ -3,11 +3,8 @@ Handler - LLM response handling and tool call execution.
 
 This module handles:
 - Parsing tool calls from LLM responses
-- Executing tool calls via UnifiedExecutionService
+- Executing tool calls via ipc_executor (Phase 4.8 thin layer)
 - Formatting tool results
-
-All execution goes through UnifiedExecutionService for consistent
-security scanning, confirmation, and sandbox level handling.
 """
 
 import json
@@ -18,9 +15,7 @@ from .tools import ToolResult, ToolUseRequest
 
 if TYPE_CHECKING:
     from .registry import SkillRegistry
-    from ..sandbox.execution_service import UnifiedExecutionService
 
-# Type alias for confirmation callback
 ConfirmationCallback = Callable[[str, str], bool]
 
 
@@ -28,28 +23,18 @@ class ToolCallHandler:
     """
     Handler for LLM tool calls.
 
-    Parses tool calls from LLM responses and executes them
-    using the UnifiedExecutionService.
+    Executes tool calls via ipc_executor (direct ipc_client, Strategy 7).
     """
 
-    def __init__(
-        self,
-        registry: "SkillRegistry",
-        execution_service: Optional["UnifiedExecutionService"] = None,
-    ):
+    def __init__(self, registry: "SkillRegistry", execution_service=None):
         """
         Initialize the handler.
 
         Args:
             registry: Skill registry for accessing skill info
-            execution_service: Optional UnifiedExecutionService instance.
-                             If None, creates a new one.
+            execution_service: Deprecated, ignored for backward compat.
         """
         self._registry = registry
-        if execution_service is None:
-            from ..sandbox.execution_service import UnifiedExecutionService
-            execution_service = UnifiedExecutionService()
-        self._execution_service = execution_service
 
     # ==================== Skill Execution ====================
 
@@ -62,25 +47,10 @@ class ToolCallHandler:
         timeout: Optional[int] = None
     ) -> ExecutionResult:
         """
-        Execute a skill or multi-script tool with the given input.
-
-        Uses the UnifiedExecutionService which:
-        1. Reads sandbox level at runtime (not from instance variables)
-        2. Handles security scanning and confirmation
-        3. Properly downgrades sandbox level after confirmation
-
-        Args:
-            skill_name: Name of the skill or multi-script tool
-                       (e.g., "calculator" or "skill-creator__init-skill")
-            input_data: Input data for the skill
-            confirmation_callback: Callback for security confirmation
-            allow_network: Whether to allow network access
-            timeout: Execution timeout in seconds
-
-        Returns:
-            ExecutionResult with output or error
+        Execute a skill or multi-script tool via ipc_executor (direct ipc_client).
         """
-        # Check if it's a multi-script tool
+        from ..sandbox.ipc_executor import execute_via_ipc, execute_bash_via_ipc
+
         tool_info = self._registry.get_multi_script_tool_info(skill_name)
         if tool_info:
             parent_skill = self._registry.get_skill(tool_info["skill_name"])
@@ -89,16 +59,15 @@ class ToolCallHandler:
                     success=False,
                     error=f"Parent skill not found: {tool_info['skill_name']}"
                 )
-            return self._execution_service.execute_skill(
+            return execute_via_ipc(
                 skill_info=parent_skill,
                 input_data=input_data,
-                entry_point=tool_info["script_path"],
+                entry_point=tool_info.get("script_path"),
                 confirmation_callback=confirmation_callback,
                 allow_network=allow_network,
                 timeout=timeout,
             )
 
-        # Lookup skill
         info = self._registry.get_skill(skill_name)
         if not info:
             return ExecutionResult(
@@ -106,7 +75,6 @@ class ToolCallHandler:
                 error=f"Skill not found: {skill_name}"
             )
 
-        # Bash-tool skill: extract command and route to skillbox bash
         if info.is_bash_tool_skill:
             command = input_data.get("command", "")
             if not command:
@@ -114,14 +82,9 @@ class ToolCallHandler:
                     success=False,
                     error="Bash tool skill requires a 'command' parameter"
                 )
-            return self._execution_service.execute_bash(
-                skill_info=info,
-                command=command,
-                timeout=timeout,
-            )
+            return execute_bash_via_ipc(info, command, timeout=timeout)
 
-        # Regular skill execution
-        return self._execution_service.execute_skill(
+        return execute_via_ipc(
             skill_info=info,
             input_data=input_data,
             confirmation_callback=confirmation_callback,
@@ -205,7 +168,7 @@ class ToolCallHandler:
         """
         Parse and execute all tool calls from an OpenAI-compatible LLM response.
 
-        Uses the UnifiedExecutionService which:
+        Uses ipc_executor which:
         1. Reads sandbox level at runtime
         2. Handles security scanning and confirmation per-skill
         3. Properly downgrades sandbox level after confirmation
@@ -239,7 +202,7 @@ class ToolCallHandler:
         timeout: Optional[int] = None
     ) -> List[ToolResult]:
         """
-        Parse and execute all Claude tool calls via UnifiedExecutionService.
+        Parse and execute all Claude tool calls via ipc_executor.
 
         Args:
             response: Response from Claude's native API

@@ -8,7 +8,7 @@ All adapters should inherit from BaseAdapter to ensure consistent behavior
 and reduce code duplication.
 
 Key Features:
-1. Unified execution through UnifiedExecutionService
+1. Unified execution through ipc_executor
 2. Shared security scanning logic
 3. Common confirmation flow
 4. Consistent error handling
@@ -41,7 +41,7 @@ class BaseAdapter(ABC):
     Base class for all framework adapters.
     
     Implements common logic for:
-    - Skill execution via UnifiedExecutionService
+    - Skill execution via ipc_executor
     - Security scanning
     - Confirmation flow
     - Caching
@@ -91,7 +91,7 @@ class BaseAdapter(ABC):
         input_data: Dict[str, Any],
     ) -> "ExecutionResult":
         """
-        Execute a skill using UnifiedExecutionService.
+        Execute a skill using ipc_executor.
         
         This is the unified execution entry point that all adapters should use.
         It handles security scanning, confirmation, and execution.
@@ -103,22 +103,38 @@ class BaseAdapter(ABC):
         Returns:
             ExecutionResult with output or error
         """
-        from ...sandbox.execution_service import UnifiedExecutionService
         from ...sandbox.base import ExecutionResult
-        
-        skill_info = self.manager.get_skill(skill_name)
+        from ...sandbox.ipc_executor import execute_via_ipc, execute_bash_via_ipc
+
+        tool_info = self.manager._registry.get_multi_script_tool_info(skill_name)
+        if tool_info:
+            skill_info = self.manager.get_skill(tool_info["skill_name"])
+            entry_point = tool_info.get("script_path")
+        else:
+            skill_info = self.manager.get_skill(skill_name)
+            entry_point = None
+
         if not skill_info:
             return ExecutionResult(
                 success=False,
                 error=f"Skill '{skill_name}' not found",
                 exit_code=1,
             )
-        
-        # Get execution service from manager (shared instance)
-        service = self.manager._execution_service
-        return service.execute_skill(
+
+        if skill_info.is_bash_tool_skill:
+            cmd = input_data.get("command", "")
+            if not cmd:
+                return ExecutionResult(
+                    success=False,
+                    error="Bash tool requires 'command' parameter",
+                    exit_code=1,
+                )
+            return execute_bash_via_ipc(skill_info, cmd, timeout=self.timeout)
+
+        return execute_via_ipc(
             skill_info=skill_info,
             input_data=input_data,
+            entry_point=entry_point,
             confirmation_callback=self.confirmation_callback,
             allow_network=self.allow_network,
             timeout=self.timeout,

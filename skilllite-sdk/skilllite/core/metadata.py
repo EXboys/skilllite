@@ -120,6 +120,36 @@ class SkillMetadata:
             allowed_tools=allowed_tools,
         )
 
+    @classmethod
+    def from_list_json(cls, data: Dict[str, Any]) -> "SkillMetadata":
+        """Create SkillMetadata from skillbox list --json output (Phase 4.8 delegation)."""
+        entry_point = data.get("entry_point") or ""
+        if isinstance(entry_point, str) and entry_point:
+            pass
+        else:
+            entry_point = ""
+
+        compatibility = data.get("compatibility")
+        network = parse_compatibility_for_network(compatibility)
+        if not compatibility and data.get("network_enabled"):
+            network = NetworkPolicy(enabled=True, outbound=["*:80", "*:443"])
+        language = data.get("language") or parse_compatibility_for_language(compatibility)
+
+        return cls(
+            name=data.get("name", ""),
+            entry_point=entry_point,
+            language=language,
+            description=data.get("description"),
+            version=None,
+            compatibility=compatibility,
+            network=network,
+            input_schema=None,
+            output_schema=None,
+            requires_elevated_permissions=False,
+            resolved_packages=data.get("resolved_packages"),
+            allowed_tools=data.get("allowed_tools"),
+        )
+
 
 def _read_resolved_packages(
     skill_dir: Optional[Path],

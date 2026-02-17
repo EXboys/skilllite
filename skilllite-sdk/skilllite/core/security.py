@@ -40,7 +40,7 @@ class SecurityScanResult:
     """
     Unified security scan result — Single Source of Truth.
 
-    Used by SecurityScanner, UnifiedExecutionService, BaseAdapter,
+    Used by SecurityScanner, ipc_executor, BaseAdapter,
     LangChain/LlamaIndex adapters, and MCP server.
 
     Other modules should re-export this class rather than defining their own.

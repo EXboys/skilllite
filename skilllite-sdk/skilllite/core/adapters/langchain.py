@@ -108,7 +108,7 @@ class SkillLiteTool(BaseTool):
         **kwargs: Any
     ) -> str:
         """
-        Execute the skill synchronously using UnifiedExecutionService.
+        Execute the skill synchronously using ipc_executor.
 
         This method uses the unified execution layer which:
         1. Reads sandbox level at runtime
@@ -116,27 +116,40 @@ class SkillLiteTool(BaseTool):
         3. Properly downgrades sandbox level after confirmation
         """
         try:
-            # Get skill info
-            skill_info = self.manager._registry.get_skill(self.skill_name)
-            if not skill_info:
-                return f"Error: Skill '{self.skill_name}' not found"
-
-            # Extract actual input data from kwargs
-            # LangChain may wrap arguments in a 'kwargs' key
             if 'kwargs' in kwargs and isinstance(kwargs['kwargs'], dict) and len(kwargs) == 1:
                 input_data = kwargs['kwargs']
             else:
                 input_data = kwargs
 
-            # Use execution service from manager
-            service = self.manager._execution_service
-            result = service.execute_skill(
-                skill_info=skill_info,
-                input_data=input_data,
-                confirmation_callback=self.confirmation_callback,
-                allow_network=self.allow_network,
-                timeout=self.timeout,
-            )
+            # Resolve skill_info (handle multi-script tools)
+            tool_info = self.manager._registry.get_multi_script_tool_info(self.skill_name)
+            if tool_info:
+                skill_info = self.manager._registry.get_skill(tool_info["skill_name"])
+                entry_point = tool_info.get("script_path")
+            else:
+                skill_info = self.manager._registry.get_skill(self.skill_name)
+                entry_point = None
+
+            if not skill_info:
+                return f"Error: Skill '{self.skill_name}' not found"
+
+            # Bash-tool: extract command
+            if skill_info.is_bash_tool_skill:
+                from ...sandbox.ipc_executor import execute_bash_via_ipc
+                cmd = input_data.get("command", "")
+                if not cmd:
+                    return "Error: Bash tool requires 'command' parameter"
+                result = execute_bash_via_ipc(skill_info, cmd, timeout=self.timeout)
+            else:
+                from ...sandbox.ipc_executor import execute_via_ipc
+                result = execute_via_ipc(
+                    skill_info=skill_info,
+                    input_data=input_data,
+                    entry_point=entry_point,
+                    confirmation_callback=self.confirmation_callback,
+                    allow_network=self.allow_network,
+                    timeout=self.timeout,
+                )
 
             if result.success:
                 return result.output or "Execution completed successfully"
@@ -151,7 +164,7 @@ class SkillLiteTool(BaseTool):
         **kwargs: Any
     ) -> str:
         """
-        Execute the skill asynchronously using UnifiedExecutionService.
+        Execute the skill asynchronously using ipc_executor.
 
         This method uses the unified execution layer which:
         1. Reads sandbox level at runtime
@@ -159,27 +172,36 @@ class SkillLiteTool(BaseTool):
         3. Properly downgrades sandbox level after confirmation
         """
         try:
-            # Get skill info
-            skill_info = self.manager._registry.get_skill(self.skill_name)
-            if not skill_info:
-                return f"Error: Skill '{self.skill_name}' not found"
-
-            # Extract actual input data from kwargs
-            # LangChain may wrap arguments in a 'kwargs' key
             if 'kwargs' in kwargs and isinstance(kwargs['kwargs'], dict) and len(kwargs) == 1:
                 input_data = kwargs['kwargs']
             else:
                 input_data = kwargs
 
-            # Use execution service from manager in thread pool
+            tool_info = self.manager._registry.get_multi_script_tool_info(self.skill_name)
+            if tool_info:
+                skill_info = self.manager._registry.get_skill(tool_info["skill_name"])
+                entry_point = tool_info.get("script_path")
+            else:
+                skill_info = self.manager._registry.get_skill(self.skill_name)
+                entry_point = None
+
+            if not skill_info:
+                return f"Error: Skill '{self.skill_name}' not found"
+
             def execute_sync():
-                service = self.manager._execution_service
-                # Use async confirmation callback if available, otherwise sync
-                callback = self.confirmation_callback
-                return service.execute_skill(
+                if skill_info.is_bash_tool_skill:
+                    from ...sandbox.ipc_executor import execute_bash_via_ipc
+                    from ...sandbox.base import ExecutionResult
+                    cmd = input_data.get("command", "")
+                    if not cmd:
+                        return ExecutionResult(success=False, error="Bash tool requires 'command'", exit_code=1)
+                    return execute_bash_via_ipc(skill_info, cmd, timeout=self.timeout)
+                from ...sandbox.ipc_executor import execute_via_ipc
+                return execute_via_ipc(
                     skill_info=skill_info,
                     input_data=input_data,
-                    confirmation_callback=callback,
+                    entry_point=entry_point,
+                    confirmation_callback=self.confirmation_callback,
                     allow_network=self.allow_network,
                     timeout=self.timeout,
                 )
@@ -202,7 +224,7 @@ class SkillLiteToolkit(BaseAdapter):
     registered in a SkillManager.
 
     This class inherits common functionality from BaseAdapter:
-    - Unified execution through UnifiedExecutionService
+    - Unified execution through ipc_executor
     - Shared security scanning logic
     - Common confirmation flow
 

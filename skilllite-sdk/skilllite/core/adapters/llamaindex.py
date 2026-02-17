@@ -66,7 +66,7 @@ class SkillLiteToolSpec(BaseAdapter):
     Provides a way to create LlamaIndex tools from SkillLite skills.
 
     This class inherits common functionality from BaseAdapter:
-    - Unified execution through UnifiedExecutionService
+    - Unified execution through ipc_executor
     - Shared security scanning logic
     - Common confirmation flow
 
@@ -126,7 +126,7 @@ class SkillLiteToolSpec(BaseAdapter):
         """
         Create a callable function for a skill.
 
-        Uses BaseAdapter.execute_skill() which delegates to UnifiedExecutionService.
+        Uses BaseAdapter.execute_skill() which delegates to ipc_executor.
         """
         def skill_fn(**kwargs) -> str:
             try:
