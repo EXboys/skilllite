@@ -1,48 +1,64 @@
 """
-Skill Management: List, inspect, and execute skills
+Skill Management: List and execute skills
 
 Quick Start:
-1. python list_skills.py - List all skills
-2. python execute_skill.py - Execute a specific skill
+  python list_skills.py
+
+Uses skilllite list + run via subprocess (no SkillManager).
 """
 
 import sys
 import os
+import json
+import subprocess
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
-from skilllite import SkillManager
+from skilllite.sandbox.core import find_binary
 
-# Initialize
-skills_dir = Path(__file__).parent / "../../.skills"
-manager = SkillManager(skills_dir=str(skills_dir))
+skills_dir = str(Path(__file__).parent.resolve() / "../../.skills")
+binary = find_binary()
+if not binary:
+    print("❌ skilllite not found. Run: skilllite install")
+    exit(1)
 
 # ========== List All Skills ==========
 
-skills = manager.list_skills()
+result = subprocess.run(
+    [binary, "list", "-s", skills_dir, "--json"],
+    capture_output=True, text=True, timeout=30,
+)
+if result.returncode != 0:
+    print("❌ Failed to list skills")
+    exit(1)
+
+skills = json.loads(result.stdout) if result.stdout.strip() else []
 print(f"Found {len(skills)} skills:\n")
 
 for skill in skills:
-    print(f"📌 {skill.name}")
-    print(f"   Description: {skill.description}")
-    print(f"   Language: {skill.language}")
-    print(f"   Entry Point: {skill.metadata.entry_point}")
+    print(f"📌 {skill.get('name', '')}")
+    print(f"   Description: {skill.get('description', '')}")
+    print(f"   Language: {skill.get('language', '')}")
+    print(f"   Entry Point: {skill.get('entry_point', '')}")
     print()
 
 # ========== Execute a Skill ==========
 
 if skills:
-    skill = skills[0]
-    print(f"Executing skill: {skill.name}")
+    # Pick first runnable skill (has entry_point)
+    runnable = [s for s in skills if s.get("entry_point")]
+    skill = runnable[0] if runnable else skills[0]
+    skill_path = skill.get("path", "")
+    skill_name = skill.get("name", "unknown")
+    print(f"Executing skill: {skill_name}")
     print("-" * 40)
 
-    # Prepare parameters
-    input_data = {}
+    run_result = subprocess.run(
+        [binary, "run", skill_path, "{}"],
+        capture_output=True, text=True, timeout=60,
+    )
 
-    # Execute
-    result = manager.execute(skill.name, input_data)
-
-    if result.success:
-        print(f"✅ Output: {result.output}")
+    if run_result.returncode == 0:
+        print(f"✅ Output: {run_result.stdout.strip()}")
     else:
-        print(f"❌ Error: {result.error}")
+        print(f"❌ Error: {run_result.stderr or run_result.stdout}")

@@ -2,7 +2,9 @@
 View Tool Definitions (Claude and OpenAI formats)
 
 Quick Start:
-1. python tool_definitions.py
+  python tool_definitions.py
+
+Uses list_tools RPC (no SkillManager).
 """
 
 import sys
@@ -11,23 +13,27 @@ import json
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
-from skilllite import SkillManager
+from skilllite.sandbox.core import find_binary
+from skilllite.sandbox.core.ipc_client import SkillboxIPCClientPool
 
-# Initialize
-skills_dir = Path(__file__).parent / "../../.skills"
-manager = SkillManager(skills_dir=str(skills_dir))
+skills_dir = str(Path(__file__).parent.resolve() / "../../.skills")
+binary = find_binary()
+if not binary:
+    print("❌ skilllite not found. Run: skilllite install")
+    exit(1)
 
-# Get tool definitions
-tools = manager.get_tools()
-if not tools:
+pool = SkillboxIPCClientPool(binary_path=binary)
+tools_openai = pool.list_tools(skills_dir, format="openai")
+tools_claude = pool.list_tools(skills_dir, format="claude")
+pool.close()
+
+if not tools_openai:
     print("❌ No skills found")
     exit(1)
 
-tool = tools[0]
+# OpenAI format (first tool)
+print("=== OpenAI Format ===")
+print(json.dumps(tools_openai[0], indent=2, ensure_ascii=False))
 
-# Claude format
-print("=== Claude Format ===")
-print(json.dumps(tool.to_claude_format(), indent=2, ensure_ascii=False))
-
-print("\n=== OpenAI Format ===")
-print(json.dumps(tool.to_openai_format(), indent=2, ensure_ascii=False))
+print("\n=== Claude Format ===")
+print(json.dumps(tools_claude[0], indent=2, ensure_ascii=False))

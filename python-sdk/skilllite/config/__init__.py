@@ -34,34 +34,6 @@ def get_memory_from_env() -> int:
     return get_int_env("SKILLBOX_MAX_MEMORY_MB", 512, "MAX_MEMORY_MB")
 
 
-def get_long_text_chunk_size() -> int:
-    return get_int_env("SKILLLITE_CHUNK_SIZE", 6000)
-
-
-def get_long_text_head_chunks() -> int:
-    return get_int_env("SKILLLITE_HEAD_CHUNKS", 3)
-
-
-def get_long_text_tail_chunks() -> int:
-    return get_int_env("SKILLLITE_TAIL_CHUNKS", 3)
-
-
-def get_long_text_max_output_chars() -> int:
-    return get_int_env("SKILLLITE_MAX_OUTPUT_CHARS", 8000)
-
-
-def get_long_text_summarize_threshold() -> int:
-    return get_int_env("SKILLLITE_SUMMARIZE_THRESHOLD", 15000)
-
-
-def get_tool_result_max_chars() -> int:
-    return get_int_env("SKILLLITE_TOOL_RESULT_MAX_CHARS", 8000)
-
-
-def get_planning_rules_path() -> Optional[str]:
-    return os.environ.get("SKILLLITE_PLANNING_RULES_PATH")
-
-
 # --- Package whitelist ---
 
 _WHITELIST_PATH = Path(__file__).parent / "packages_whitelist.json"

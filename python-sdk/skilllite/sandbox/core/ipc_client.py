@@ -178,6 +178,21 @@ class SkillboxIPCClient:
             params["sandbox_level"] = int(sandbox_level)
         return self._send_request("exec", params, timeout)
 
+    def bash(
+        self,
+        skill_dir: str,
+        command: str,
+        timeout: Optional[int] = None,
+        cwd: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Execute bash command for bash-tool skill via IPC."""
+        params: Dict[str, Any] = {"skill_dir": skill_dir, "command": command}
+        if timeout is not None:
+            params["timeout"] = timeout
+        if cwd is not None:
+            params["cwd"] = cwd
+        return self._send_request("bash", params, timeout=timeout or 120)
+
     # --- Chat feature (session, transcript, memory) ---
 
     def session_create(
@@ -305,6 +320,37 @@ class SkillboxIPCClient:
             params["skills"] = skills
         result = self._send_request("build_skills_context", params)
         return result.get("context", "")
+
+    def list_tools(
+        self,
+        skills_dir: str,
+        skills: Optional[List[str]] = None,
+        format: str = "openai",
+    ) -> List[Dict[str, Any]]:
+        """
+        List tool definitions via skilllite RPC. Returns OpenAI or Claude format.
+        Requires skilllite built with agent feature.
+        """
+        params: Dict[str, Any] = {"skills_dir": skills_dir, "format": format}
+        if skills is not None:
+            params["skills"] = skills
+        result = self._send_request("list_tools", params)
+        return result.get("tools", [])
+
+    def list_tools_with_meta(
+        self,
+        skills_dir: str,
+        skills: Optional[List[str]] = None,
+        format: str = "openai",
+    ) -> Dict[str, Any]:
+        """
+        List tools with execution metadata (skill_dir, script_path per tool).
+        For adapter use: execute via run/exec RPC using tool_meta.
+        """
+        params: Dict[str, Any] = {"skills_dir": skills_dir, "format": format}
+        if skills is not None:
+            params["skills"] = skills
+        return self._send_request("list_tools", params)
 
     def plan_textify(self, plan: List[Dict[str, Any]]) -> str:
         """Convert plan (task list) to human-readable text. Requires skillbox with executor feature."""
@@ -455,6 +501,25 @@ class SkillboxIPCClientPool:
         finally:
             self._return_client(client)
 
+    def bash(
+        self,
+        skill_dir: str,
+        command: str,
+        timeout: Optional[int] = None,
+        cwd: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Execute bash command for bash-tool skill."""
+        client = self._get_client(timeout=timeout or 120)
+        try:
+            return client.bash(
+                skill_dir=skill_dir,
+                command=command,
+                timeout=timeout,
+                cwd=cwd,
+            )
+        finally:
+            self._return_client(client)
+
     def build_skills_context(
         self,
         skills_dir: str,
@@ -468,6 +533,40 @@ class SkillboxIPCClientPool:
                 skills_dir=skills_dir,
                 mode=mode,
                 skills=skills,
+            )
+        finally:
+            self._return_client(client)
+
+    def list_tools(
+        self,
+        skills_dir: str,
+        skills: Optional[List[str]] = None,
+        format: str = "openai",
+    ) -> List[Dict[str, Any]]:
+        """List tool definitions via RPC. Delegates to skilllite list_tools."""
+        client = self._get_client(timeout=30)
+        try:
+            return client.list_tools(
+                skills_dir=skills_dir,
+                skills=skills,
+                format=format,
+            )
+        finally:
+            self._return_client(client)
+
+    def list_tools_with_meta(
+        self,
+        skills_dir: str,
+        skills: Optional[List[str]] = None,
+        format: str = "openai",
+    ) -> Dict[str, Any]:
+        """List tools with execution metadata. For adapter use."""
+        client = self._get_client(timeout=30)
+        try:
+            return client.list_tools_with_meta(
+                skills_dir=skills_dir,
+                skills=skills,
+                format=format,
             )
         finally:
             self._return_client(client)

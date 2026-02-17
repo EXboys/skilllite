@@ -287,26 +287,22 @@ tools = SkillLiteToolkit.from_directory(
 
 For more details, see the [langchain-skilllite documentation](../langchain-skilllite/README.md).
 
-**Alternative**: You can also use the built-in adapter:
+**Alternative**: You can also use the built-in adapter (recommended: `from_skills_dir`):
 
 ```python
-from skilllite import SkillManager
 from skilllite.core.adapters.langchain import SkillLiteToolkit
 
-manager = SkillManager(skills_dir="./skills")
-tools = SkillLiteToolkit.from_manager(manager).get_tools()
+# Recommended: RPC-based, no SkillManager
+tools = SkillLiteToolkit.from_skills_dir("./skills")
 ```
 
 ### LlamaIndex Integration
 
 ```python
-from skilllite import SkillManager
 from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
 
-manager = SkillManager(skills_dir="./skills")
-
-# Basic usage
-tool_spec = SkillLiteToolSpec.from_manager(manager)
+# Recommended: RPC-based, no SkillManager
+tool_spec = SkillLiteToolSpec.from_skills_dir("./skills")
 tools = tool_spec.to_tool_list()
 
 # With security confirmation
@@ -314,8 +310,8 @@ def confirm(report: str, scan_id: str) -> bool:
     print(report)
     return input("Continue? [y/N]: ").lower() == 'y'
 
-tool_spec = SkillLiteToolSpec.from_manager(
-    manager,
+tool_spec = SkillLiteToolSpec.from_skills_dir(
+    "./skills",
     sandbox_level=3,
     confirmation_callback=confirm
 )
@@ -324,6 +320,8 @@ tool_spec = SkillLiteToolSpec.from_manager(
 from llama_index.core.agent import ReActAgent
 agent = ReActAgent.from_tools(tools, llm=llm)
 ```
+
+> **Legacy**: `SkillLiteToolkit.from_manager(manager)` and `SkillLiteToolSpec.from_manager(manager)` are still supported for backward compatibility but are deprecated. Prefer `from_skills_dir`.
 
 ### Security Levels
 

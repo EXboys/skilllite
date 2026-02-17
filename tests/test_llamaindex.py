@@ -1,23 +1,20 @@
 import os
 from dotenv import load_dotenv
-from skilllite import SkillManager
 from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
 from llama_index.llms.openai_like import OpenAILike
 
 # 加载环境变量
 load_dotenv()
 
-manager = SkillManager(skills_dir="./.skills")
-
-# With security confirmation
+# RPC-based (recommended): no SkillManager
 def confirm(report: str, scan_id: str) -> bool:
     print(report)
     return input("Continue? [y/N]: ").lower() == 'y'
 
-tool_spec = SkillLiteToolSpec.from_manager(
-    manager,
+tool_spec = SkillLiteToolSpec.from_skills_dir(
+    "./.skills",
     sandbox_level=3,
-    confirmation_callback=confirm
+    confirmation_callback=confirm,
 )
 tools = tool_spec.to_tool_list()
 

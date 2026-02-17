@@ -357,24 +357,21 @@ SkillLite provides adapters for popular AI frameworks with security confirmation
 ### LangChain Integration
 
 ```python
-from skilllite import SkillManager
 from skilllite.core.adapters.langchain import SkillLiteToolkit
 
-manager = SkillManager(skills_dir="./skills")
-
-# Basic usage
-tools = SkillLiteToolkit.from_manager(manager).get_tools()
+# Recommended: RPC-based, no SkillManager
+tools = SkillLiteToolkit.from_skills_dir("./skills")
 
 # With security confirmation (sandbox_level=3)
 def confirm_execution(report: str, scan_id: str) -> bool:
     print(report)
     return input("Continue? [y/N]: ").lower() == 'y'
 
-tools = SkillLiteToolkit.from_manager(
-    manager,
+tools = SkillLiteToolkit.from_skills_dir(
+    "./skills",
     sandbox_level=3,  # 1=no sandbox, 2=sandbox only, 3=sandbox+scan
     confirmation_callback=confirm_execution
-).get_tools()
+)
 
 # Use with LangChain agent
 from langchain.agents import AgentExecutor, create_openai_tools_agent
@@ -384,13 +381,10 @@ agent = create_openai_tools_agent(llm, tools, prompt)
 ### LlamaIndex Integration
 
 ```python
-from skilllite import SkillManager
 from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
 
-manager = SkillManager(skills_dir="./skills")
-
-# Basic usage
-tool_spec = SkillLiteToolSpec.from_manager(manager)
+# Recommended: RPC-based, no SkillManager
+tool_spec = SkillLiteToolSpec.from_skills_dir("./skills")
 tools = tool_spec.to_tool_list()
 
 # With security confirmation
@@ -398,8 +392,8 @@ def confirm(report: str, scan_id: str) -> bool:
     print(report)
     return input("Continue? [y/N]: ").lower() == 'y'
 
-tool_spec = SkillLiteToolSpec.from_manager(
-    manager,
+tool_spec = SkillLiteToolSpec.from_skills_dir(
+    "./skills",
     sandbox_level=3,
     confirmation_callback=confirm
 )
@@ -408,6 +402,8 @@ tool_spec = SkillLiteToolSpec.from_manager(
 from llama_index.core.agent import ReActAgent
 agent = ReActAgent.from_tools(tools, llm=llm)
 ```
+
+> **Legacy**: `from_manager(manager)` is deprecated. Prefer `from_skills_dir`.
 
 ### Security Levels
 

@@ -196,6 +196,15 @@ fn main() -> Result<()> {
         Commands::List { skills_dir, json } => {
             commands::skill::cmd_list(&skills_dir, json)?;
         }
+        #[cfg(feature = "agent")]
+        Commands::ListTools { skills_dir, format } => {
+            let params = serde_json::json!({
+                "skills_dir": skills_dir,
+                "format": format
+            });
+            let result = handle_list_tools(&params)?;
+            println!("{}", serde_json::to_string_pretty(&result)?);
+        }
         Commands::Show { skill_name, skills_dir, json } => {
             commands::skill::cmd_show(&skill_name, &skills_dir, json)?;
         }
@@ -310,6 +319,8 @@ fn serve_stdio() -> Result<()> {
             "plan_read" => executor::rpc::handle_plan_read(&params),
             #[cfg(feature = "agent")]
             "build_skills_context" => handle_build_skills_context(&params),
+            #[cfg(feature = "agent")]
+            "list_tools" => handle_list_tools(&params),
             _ => {
                 let err_resp = json!({
                     "jsonrpc": "2.0",
@@ -455,6 +466,68 @@ fn handle_build_skills_context(params: &Value) -> Result<Value> {
 
     let context = build_skills_context(&loaded, mode);
     Ok(json!({ "context": context }))
+}
+
+#[cfg(feature = "agent")]
+fn handle_list_tools(params: &Value) -> Result<Value> {
+    use agent::skills;
+
+    let p = params.as_object().context("params must be object")?;
+    let skills_dir = p.get("skills_dir").and_then(|v| v.as_str()).context("skills_dir required")?;
+    let skills_filter: Option<Vec<String>> = p
+        .get("skills")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        });
+    let format_str = p.get("format").and_then(|v| v.as_str()).unwrap_or("openai");
+
+    let skills_path = validate_path_under_root(skills_dir, "skills_dir")?;
+    let skills_path_str = skills_path.to_string_lossy().to_string();
+
+    let loaded = skills::load_skills(&[skills_path_str]);
+    let loaded: Vec<_> = if let Some(ref filter) = skills_filter {
+        loaded
+            .into_iter()
+            .filter(|s| filter.contains(&s.name))
+            .collect()
+    } else {
+        loaded
+    };
+
+    let mut tools: Vec<Value> = Vec::new();
+    let mut tool_meta: serde_json::Map<String, Value> = serde_json::Map::new();
+    for skill in &loaded {
+        let skill_dir_str = skill.skill_dir.to_string_lossy().to_string();
+        for td in &skill.tool_definitions {
+            let tool_name = &td.function.name;
+            let formatted = match format_str {
+                "claude" => td.to_claude_format(),
+                _ => serde_json::to_value(td).unwrap_or_default(),
+            };
+            tools.push(formatted);
+            let script_path = skill.multi_script_entries.get(tool_name).cloned();
+            let entry_point = if script_path.is_none() && !skill.metadata.entry_point.is_empty() {
+                Some(skill.metadata.entry_point.clone())
+            } else {
+                script_path.clone()
+            };
+            let is_bash = skill.metadata.is_bash_tool_skill();
+            tool_meta.insert(
+                tool_name.clone(),
+                json!({
+                    "skill_dir": skill_dir_str,
+                    "script_path": script_path,
+                    "entry_point": entry_point,
+                    "is_bash": is_bash
+                }),
+            );
+        }
+    }
+
+    Ok(json!({ "tools": tools, "tool_meta": tool_meta }))
 }
 
 /// Execute a bash command for a bash-tool skill.

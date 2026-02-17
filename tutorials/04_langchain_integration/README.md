@@ -11,15 +11,13 @@ pip install skilllite[langchain] langchain-openai
 ## Quick Start (Recommended)
 
 ```python
-from skilllite import SkillManager
 from skilllite.core.adapters.langchain import SkillLiteToolkit
 from langchain.agents import create_openai_tools_agent, AgentExecutor
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 
-# 1. Create LangChain tools from SkillManager
-manager = SkillManager(skills_dir="./skills")
-tools = SkillLiteToolkit.from_manager(manager)
+# 1. Create LangChain tools from skills_dir (RPC-based, no SkillManager)
+tools = SkillLiteToolkit.from_skills_dir("./skills")
 
 # 2. Create Agent
 llm = ChatOpenAI(model="gpt-4")
@@ -39,13 +37,15 @@ result = executor.invoke({"input": "Your request"})
 
 ```python
 # Filter specific skills and configure options
-tools = SkillLiteToolkit.from_manager(
-    manager,
+tools = SkillLiteToolkit.from_skills_dir(
+    "./skills",
     skill_names=["calculator", "web_search"],  # Only specific skills
-    allow_network=True,                         # Allow network access
-    timeout=60                                  # Execution timeout in seconds
+    allow_network=True,                        # Allow network access
+    timeout=60                                 # Execution timeout in seconds
 )
 ```
+
+> **Legacy**: `SkillLiteToolkit.from_manager(manager)` is deprecated. Prefer `from_skills_dir`.
 
 ## Examples
 
@@ -67,14 +67,15 @@ Includes three implementation approaches:
 
 ### SkillLiteToolkit
 
-Factory class to create LangChain tools from SkillManager.
+Factory class to create LangChain tools from skills directory.
 
 ```python
-SkillLiteToolkit.from_manager(
-    manager: SkillManager,
+# Recommended
+SkillLiteToolkit.from_skills_dir(
+    skills_dir: str,
     skill_names: Optional[List[str]] = None,  # Filter skills
-    allow_network: bool = False,               # Network access
-    timeout: Optional[int] = None              # Timeout in seconds
+    allow_network: bool = False,              # Network access
+    timeout: Optional[int] = None            # Timeout in seconds
 ) -> List[SkillLiteTool]
 ```
 

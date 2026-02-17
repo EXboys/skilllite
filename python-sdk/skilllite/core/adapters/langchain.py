@@ -4,17 +4,15 @@ LangChain adapter for SkillLite.
 Provides SkillLiteTool and SkillLiteToolkit for integrating SkillLite
 skills into LangChain agents.
 
-Usage:
+Usage (RPC-based, no SkillManager):
+    from skilllite.core.adapters.langchain import SkillLiteToolkit
+    tools = SkillLiteToolkit.from_skills_dir("./skills")
+
+Usage (SkillManager-based, backward compatible):
     from skilllite import SkillManager
     from skilllite.core.adapters.langchain import SkillLiteToolkit
-
     manager = SkillManager(skills_dir="./skills")
     tools = SkillLiteToolkit.from_manager(manager)
-
-    # Use with LangChain agent
-    from langchain.agents import create_openai_tools_agent, AgentExecutor
-    agent = create_openai_tools_agent(llm, tools, prompt)
-    executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=tools)
 
 Security Confirmation:
     For sandbox level 3, the adapter supports security confirmation callbacks:
@@ -23,8 +21,8 @@ Security Confirmation:
         print(security_report)
         return input("Continue? [y/N]: ").lower() == 'y'
 
-    tools = SkillLiteToolkit.from_manager(
-        manager,
+    tools = SkillLiteToolkit.from_skills_dir(
+        "./skills",
         sandbox_level=3,
         confirmation_callback=my_confirmation_callback
     )
@@ -33,6 +31,7 @@ Requirements:
     pip install skilllite[langchain]
 """
 
+import json
 from typing import Any, Dict, List, Optional, Type, TYPE_CHECKING
 import asyncio
 
@@ -53,6 +52,7 @@ from ..security import (
     AsyncConfirmationCallback,
 )
 from .base import BaseAdapter
+from .base_rpc import RpcAdapter
 
 if TYPE_CHECKING:
     from ..manager import SkillManager
@@ -297,7 +297,9 @@ class SkillLiteToolkit(BaseAdapter):
         """
         Create LangChain tools from a SkillManager.
 
-        This is a convenience factory method that maintains backward compatibility.
+        .. deprecated::
+            Use :meth:`from_skills_dir` instead. This method is legacy and only
+            needed for backward compatibility with SkillManager-based workflows.
 
         Args:
             manager: SkillManager instance with registered skills
@@ -340,6 +342,102 @@ class SkillLiteToolkit(BaseAdapter):
             skill_names=skill_names,
         )
         return toolkit.to_tools()
+
+    @classmethod
+    def from_skills_dir(
+        cls,
+        skills_dir: str,
+        skill_names: Optional[List[str]] = None,
+        allow_network: bool = False,
+        timeout: Optional[int] = None,
+        sandbox_level: int = 3,
+        confirmation_callback: Optional[ConfirmationCallback] = None,
+        async_confirmation_callback: Optional[AsyncConfirmationCallback] = None,
+    ) -> List[SkillLiteTool]:
+        """
+        Create LangChain tools from skills_dir via RPC (no SkillManager).
+
+        Uses list_tools_with_meta + run/exec/bash RPC. No ToolBuilder/PromptBuilder.
+        """
+        toolkit = SkillLiteToolkitRpc(
+            skills_dir=skills_dir,
+            sandbox_level=sandbox_level,
+            allow_network=allow_network,
+            timeout=timeout,
+            confirmation_callback=confirmation_callback,
+            async_confirmation_callback=async_confirmation_callback,
+            skill_names=skill_names,
+        )
+        return toolkit.to_tools()
+
+
+class SkillLiteToolkitRpc(RpcAdapter):
+    """LangChain toolkit via RPC. Use from_skills_dir on SkillLiteToolkit instead."""
+
+    def to_tools(self) -> List[SkillLiteTool]:
+        return self._to_tools_impl()
+
+    def _to_tools_impl(self) -> List[SkillLiteTool]:
+        tools = []
+        for t in self._tools:
+            fn = t.get("function") or t
+            name = fn.get("name", "") if isinstance(fn, dict) else getattr(fn, "name", "")
+            desc = fn.get("description", "") if isinstance(fn, dict) else getattr(fn, "description", "")
+            if not name:
+                continue
+            tool = SkillLiteToolRpc(
+                name=name,
+                description=desc or f"Execute {name}",
+                adapter=self,
+                tool_name=name,
+                allow_network=self.allow_network,
+                timeout=self.timeout,
+                sandbox_level=self.sandbox_level,
+                confirmation_callback=self.confirmation_callback,
+                async_confirmation_callback=self.async_confirmation_callback,
+            )
+            tools.append(tool)
+        return tools
+
+
+class SkillLiteToolRpc(BaseTool):
+    """LangChain tool that executes via RpcAdapter."""
+
+    name: str = Field(description="Tool name")
+    description: str = Field(description="Tool description")
+    adapter: Any = Field(exclude=True)
+    tool_name: str = Field(description="Tool name for execution")
+    allow_network: bool = Field(default=False)
+    timeout: Optional[int] = Field(default=None)
+    sandbox_level: int = Field(default=3)
+    confirmation_callback: Optional[Any] = Field(default=None, exclude=True)
+    async_confirmation_callback: Optional[Any] = Field(default=None, exclude=True)
+    args_schema: Optional[Type[BaseModel]] = Field(default=None)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def _run(self, run_manager: Optional[CallbackManagerForToolRun] = None, **kwargs: Any) -> str:
+        return self._run_impl(kwargs)
+
+    async def _arun(
+        self, run_manager: Optional[AsyncCallbackManagerForToolRun] = None, **kwargs: Any
+    ) -> str:
+        return await asyncio.to_thread(self._run_impl, kwargs)
+
+    def _run_impl(self, input_data: Dict[str, Any]) -> str:
+        if "kwargs" in input_data and isinstance(input_data["kwargs"], dict) and len(input_data) == 1:
+            input_data = input_data["kwargs"]
+        try:
+            result = self.adapter.execute_tool(self.tool_name, input_data)
+            if result.success:
+                out = result.output
+                if out is None:
+                    return "Execution completed successfully"
+                if isinstance(out, dict):
+                    return json.dumps(out, ensure_ascii=False)
+                return str(out)
+            return f"Error: {result.error}"
+        except Exception as e:
+            return f"Execution failed: {str(e)}"
 
 
 __all__ = [

@@ -1,6 +1,11 @@
 """
 Handler - LLM response handling and tool call execution.
 
+.. note::
+    This module is **legacy** and only used by SkillManager (from_manager path).
+    For new code, prefer SkillLiteToolkit.from_skills_dir / SkillLiteToolSpec.from_skills_dir
+    which use RPC directly without SkillManager or ToolCallHandler.
+
 This module handles:
 - Parsing tool calls from LLM responses
 - Executing tool calls via ipc_executor (Phase 4.8 thin layer)

@@ -4,17 +4,12 @@ LlamaIndex Practical Example: Using SkillLite with LlamaIndex Agents
 Prerequisites:
   pip install skilllite[llamaindex] llama-index-llms-openai
 
-Usage with SkillLiteToolSpec (Recommended):
-  from skilllite import SkillManager
+Usage with SkillLiteToolSpec (RPC-based, no SkillManager):
   from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
   from llama_index.core.agent import ReActAgent
-  from llama_index.llms.openai import OpenAI
 
-  manager = SkillManager(skills_dir="./skills")
-  tool_spec = SkillLiteToolSpec.from_manager(manager)
+  tool_spec = SkillLiteToolSpec.from_skills_dir("./skills")
   tools = tool_spec.to_tool_list()
-
-  llm = OpenAI(model="gpt-4")
   agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
   response = agent.chat("Your query")
 """
@@ -24,26 +19,22 @@ import os
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
-from skilllite import SkillManager
-
-# ========== Initialize ==========
-skills_dir = Path(__file__).parent / "../../.skills"
-manager = SkillManager(skills_dir=str(skills_dir))
+skills_dir = str(Path(__file__).parent / "../../.skills")
 
 
-# ========== Approach 1: Using SkillLiteToolSpec (Recommended) ==========
+# ========== Approach 1: Using SkillLiteToolSpec.from_skills_dir (Recommended) ==========
 
 def llamaindex_agent_with_toolspec(query: str):
     """
-    Using LlamaIndex Agent with SkillLiteToolSpec (recommended approach)
+    Using LlamaIndex Agent with SkillLiteToolSpec (RPC-based)
     """
     try:
         from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
         from llama_index.core.agent import ReActAgent
         from llama_index.llms.openai import OpenAI as LlamaOpenAI
 
-        # Create LlamaIndex tools using SkillLiteToolSpec
-        tool_spec = SkillLiteToolSpec.from_manager(manager)
+        # Create LlamaIndex tools via RPC (no SkillManager)
+        tool_spec = SkillLiteToolSpec.from_skills_dir(skills_dir)
         tools = tool_spec.to_tool_list()
 
         print(f"✅ Created {len(tools)} LlamaIndex tools")
@@ -77,11 +68,11 @@ def llamaindex_agent_with_options(query: str):
         from llama_index.llms.openai import OpenAI as LlamaOpenAI
 
         # Create tools with options
-        tool_spec = SkillLiteToolSpec.from_manager(
-            manager,
-            skill_names=["calculator"],  # Only specific skills
-            allow_network=True,           # Allow network access
-            timeout=60                    # Execution timeout
+        tool_spec = SkillLiteToolSpec.from_skills_dir(
+            skills_dir,
+            skill_names=["calculator"],
+            allow_network=True,
+            timeout=60,
         )
         tools = tool_spec.to_tool_list()
 
@@ -112,7 +103,7 @@ def rag_with_skills(documents: list, query: str):
         query_engine = index.as_query_engine()
 
         # 2. Create skill tools
-        tool_spec = SkillLiteToolSpec.from_manager(manager)
+        tool_spec = SkillLiteToolSpec.from_skills_dir(skills_dir)
         skill_tools = tool_spec.to_tool_list()
 
         # 3. Create agent with both RAG and skills

@@ -270,6 +270,19 @@ pub enum Commands {
         json: bool,
     },
 
+    /// List tool definitions (OpenAI/Claude format) for LLM/adapters
+    #[cfg(feature = "agent")]
+    #[command(name = "list-tools")]
+    ListTools {
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+
+        /// Output format: openai (default) or claude
+        #[arg(long, default_value = "openai")]
+        format: String,
+    },
+
     /// Show detailed information about a skill
     Show {
         /// Name of the skill to show

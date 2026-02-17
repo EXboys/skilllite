@@ -1,6 +1,5 @@
 import os
 from dotenv import load_dotenv
-from skilllite import SkillManager
 from skilllite.core.adapters.langchain import SkillLiteToolkit
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
@@ -8,17 +7,15 @@ from langgraph.prebuilt import create_react_agent
 # 加载环境变量
 load_dotenv()
 
-manager = SkillManager(skills_dir="./.skills")
-
-# With security confirmation
+# RPC-based (recommended): no SkillManager
 def confirm(report: str, scan_id: str) -> bool:
     print(report)
     return input("Continue? [y/N]: ").lower() == 'y'
 
-tools = SkillLiteToolkit.from_manager(
-    manager,
+tools = SkillLiteToolkit.from_skills_dir(
+    "./.skills",
     sandbox_level=3,
-    confirmation_callback=confirm
+    confirmation_callback=confirm,
 )
 
 # 使用环境变量配置 LLM

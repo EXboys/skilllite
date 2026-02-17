@@ -11,14 +11,12 @@ pip install skilllite[llamaindex] llama-index-llms-openai
 ## Quick Start (Recommended)
 
 ```python
-from skilllite import SkillManager
 from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
 from llama_index.core.agent import ReActAgent
 from llama_index.llms.openai import OpenAI
 
-# 1. Create LlamaIndex tools from SkillManager
-manager = SkillManager(skills_dir="./skills")
-tool_spec = SkillLiteToolSpec.from_manager(manager)
+# 1. Create LlamaIndex tools from skills_dir (RPC-based, no SkillManager)
+tool_spec = SkillLiteToolSpec.from_skills_dir("./skills")
 tools = tool_spec.to_tool_list()
 
 # 2. Create Agent
@@ -33,14 +31,16 @@ response = agent.chat("Your query")
 
 ```python
 # Filter specific skills and configure options
-tool_spec = SkillLiteToolSpec.from_manager(
-    manager,
+tool_spec = SkillLiteToolSpec.from_skills_dir(
+    "./skills",
     skill_names=["calculator", "web_search"],  # Only specific skills
-    allow_network=True,                         # Allow network access
-    timeout=60                                  # Execution timeout in seconds
+    allow_network=True,                        # Allow network access
+    timeout=60                                 # Execution timeout in seconds
 )
 tools = tool_spec.to_tool_list()
 ```
+
+> **Legacy**: `SkillLiteToolSpec.from_manager(manager)` is deprecated. Prefer `from_skills_dir`.
 
 ## Examples
 
@@ -60,14 +60,15 @@ python basic_usage.py
 
 ### SkillLiteToolSpec
 
-Factory class to create LlamaIndex tools from SkillManager.
+Factory class to create LlamaIndex tools from skills directory.
 
 ```python
-tool_spec = SkillLiteToolSpec.from_manager(
-    manager: SkillManager,
+# Recommended
+tool_spec = SkillLiteToolSpec.from_skills_dir(
+    skills_dir: str,
     skill_names: Optional[List[str]] = None,  # Filter skills
-    allow_network: bool = False,               # Network access
-    timeout: Optional[int] = None              # Timeout in seconds
+    allow_network: bool = False,              # Network access
+    timeout: Optional[int] = None             # Timeout in seconds
 )
 
 # Convert to LlamaIndex tools
