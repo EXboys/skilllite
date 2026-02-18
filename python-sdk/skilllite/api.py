@@ -205,6 +205,8 @@ def run_skill(
     env = dict(os.environ)
     if auto_approve:
         env["SKILLBOX_AUTO_APPROVE"] = "1"
+    # Suppress tracing when run programmatically (e.g. from langchain-skilllite)
+    env.setdefault("SKILLLITE_QUIET", "1")
 
     result = subprocess.run(
         cmd,
