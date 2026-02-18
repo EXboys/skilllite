@@ -1,13 +1,16 @@
-# SkillBox Benchmark Suite
+# SkillLite Benchmark Suite
 
-High-concurrency performance comparison test suite for comparing SkillBox with other sandbox solutions.
+High-concurrency performance comparison test suite for comparing SkillLite with other sandbox solutions.
+
+> **Note**: SkillLite 二进制位于 `skilllite/` 目录，名称为 `skilllite`。历史曾用名 SkillBox，环境变量仍为 `SKILLBOX_*`。
 
 ## Test Targets
 
 | Executor | Description | Isolation Level | Installation |
 |----------|-------------|-----------------|--------------|
-| **SkillBox (Native Sandbox)** | Native sandbox using Seatbelt/Namespace | System Level | Built-in |
-| **SkillBox (No Sandbox)** | SkillBox with sandbox disabled | None | Built-in |
+| **SkillLite (Level 1)** | 无沙箱，直接执行 | None | Built-in |
+| **SkillLite (Level 2)** | 沙箱隔离 (Seatbelt/Namespace) | System Level | Built-in |
+| **SkillLite (Level 3)** | 沙箱 + 静态代码扫描 | System Level | Built-in |
 | **Direct Python** | Direct Python script execution | None | Built-in |
 | **Subprocess (Resource Limits)** | Subprocess with resource limits | Process Level | Built-in |
 | **SRT (Anthropic Sandbox)** | Anthropic open-source sandbox tool | System Level | Requires Installation |
@@ -27,14 +30,14 @@ High-concurrency performance comparison test suite for comparing SkillBox with o
 
 | Script | Description |
 |--------|-------------|
-| `benchmark_runner.py` | Performance comparison: cold start, high concurrency (SkillBox, Docker, SRT, Pyodide) |
-| `security_vs.py` | Security comparison test |
+| `benchmark_runner.py` | Performance comparison: cold start, high concurrency (SkillLite, Docker, SRT, Pyodide) |
+| `security_vs.py` | Security comparison test (默认测试 Level 2 和 Level 3) |
 | `security_detailed_vs.py` | Detailed security behavior (blocked vs limited vs allowed) |
 
 ## Test Environment
 
 - **Operating System**: macOS
-- **SkillBox**: Rust Native Sandbox (Seatbelt)
+- **SkillLite**: Rust Native Sandbox (Seatbelt)，二进制位于 `skilllite/target/release/skilllite`
 - **Docker**: python:3.11-slim image (~150MB)
 - **Network**: Download 28 Mbps / Upload 28 Mbps
 
@@ -42,7 +45,7 @@ High-concurrency performance comparison test suite for comparing SkillBox with o
 
 ### Required Dependencies
 - Python 3.8+
-- SkillBox (Built-in to project, auto-compiled on first run)
+- SkillLite (Built-in to project, `cargo build --release` in `skilllite/` directory)
 
 ### Optional Dependencies (for complete comparison testing)
 
@@ -114,16 +117,16 @@ Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50
 
 ### [INFO] Logging
 
-- **CMD (SkillBox subprocess)**: Uses `capture_output=True`, skillbox stderr is captured so [INFO] does not appear in terminal; benchmark also passes `SKILLBOX_QUIET=1` to reduce logging and syscall overhead.
-- **IPC (skillbox serve)**: Daemon sets `SKILLBOX_QUIET=1` at startup; `serve_stdio` enforces it, so no [INFO] during runs to avoid affecting performance tests.
+- **CMD (SkillLite subprocess)**: Uses `capture_output=True`, skilllite stderr is captured so [INFO] does not appear in terminal; benchmark also passes `SKILLBOX_QUIET=1` to reduce logging and syscall overhead.
+- **IPC (skilllite serve)**: Daemon sets `SKILLBOX_QUIET=1` at startup; `serve_stdio` enforces it, so no [INFO] during runs to avoid affecting performance tests.
 
 ---
 
 ## Test Results
 
-### SkillBox vs Docker Warm Start Comparison (Image Cached)
+### SkillLite vs Docker Warm Start Comparison (Image Cached)
 
-| Test Item | Native Python | SkillBox | Docker | SkillBox Advantage |
+| Test Item | Native Python | SkillLite | Docker | SkillLite Advantage |
 |--------|-------------|----------|--------|---------------|
 | **startup** | 17.44 ms | 40.14 ms | 194.23 ms | **4.8x faster** |
 | simple_print | 17.05 ms | 33.45 ms | 226.56 ms | 6.8x faster |
@@ -135,18 +138,18 @@ Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50
 | **concurrent_5** | - | 60.63 ms | 417.40 ms | **6.9x faster** |
 
 **Key Conclusions:**
-- SkillBox Sandbox Overhead: +22.7 ms (+130%)
-- SkillBox vs Docker Startup Speed: **4.8x faster**
-- SkillBox vs Docker Concurrent Performance: **6.9x faster**
+- SkillLite Sandbox Overhead: +22.7 ms (+130%)
+- SkillLite vs Docker Startup Speed: **4.8x faster**
+- SkillLite vs Docker Concurrent Performance: **6.9x faster**
 
 ### Cold Start Comparison (No Cache)
 
 | Environment | Cold Start Time | Description |
 |------|-----------|------|
-| **SkillBox** | **492 ms** | Local binary loading (~1.6MB) |
+| **SkillLite** | **492 ms** | Local binary loading (~1.6MB) |
 | **Docker** | 120,618 ms (2 minutes) | Need to download image (~150MB) |
 
-**🚀 SkillBox cold start is 245x faster than Docker**
+**🚀 SkillLite cold start is 245x faster than Docker**
 
 ## Command Line Arguments
 
@@ -157,7 +160,7 @@ Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50
 | `--cold-start` | - | Run cold start test (outputs comparison table) | false |
 | `--cold-iterations` | - | Cold start iterations | 10 |
 | `--compare-levels` | - | Compare all sandbox levels (1, 2, 3) | false |
-| `--compare-ipc` | - | Include SkillBox IPC (daemon mode) vs subprocess | false |
+| `--compare-ipc` | - | Include SkillLite IPC (daemon mode) vs subprocess | false |
 | `--skip-docker` | - | Skip Docker test | false |
 | `--output` | `-o` | Output JSON file (includes cold_start_results) | - |
 
@@ -177,7 +180,7 @@ Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50
 
 ## Conclusion
 
-| Scenario | SkillBox Advantage | Applicable Situation |
+| Scenario | SkillLite Advantage | Applicable Situation |
 |------|--------------|----------|
 | **Cold Start** | 245x faster | First deployment, no cache environment |
 | **Warm Start** | 5-7x faster | Daily operation, frequent calls |
@@ -185,7 +188,7 @@ Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50
 | **Resource Usage** | Very low | Edge devices, resource-limited environments |
 | **Deployment Complexity** | Single binary | No Docker daemon required |
 
-SkillBox's core advantages: **zero dependencies, local execution, millisecond-level startup**.
+SkillLite's core advantages: **zero dependencies, local execution, millisecond-level startup**.
 
 ---
 
@@ -193,7 +196,7 @@ SkillBox's core advantages: **zero dependencies, local execution, millisecond-le
 
 ### Test Results
 
-| Test Item | SkillBox (ms) | Pyodide (ms) | SkillBox Advantage |
+| Test Item | SkillLite (ms) | Pyodide (ms) | SkillLite Advantage |
 |--------|---------------|--------------|---------------|
 | **startup** | 37.41 | 672.16 | **18x faster** |
 | simple_print | 32.60 | 668.08 | 20x faster |
@@ -201,9 +204,9 @@ SkillBox's core advantages: **zero dependencies, local execution, millisecond-le
 | fibonacci | 32.91 | 673.59 | 20x faster |
 
 **Key Conclusions:**
-- SkillBox Startup Time: **37 ms**
+- SkillLite Startup Time: **37 ms**
 - Pyodide Startup Time: **672 ms** (need to load ~50MB WebAssembly)
-- **SkillBox is 18-20x faster than Pyodide**
+- **SkillLite is 18-20x faster than Pyodide**
 
 ### Running Tests
 
@@ -215,7 +218,7 @@ python benchmark/benchmark_runner.py --compare-levels --compare-ipc -n 1 -c 1
 
 Pyodide is a Python sandbox solution used by frameworks like LangChain:
 
-| Dimension | SkillBox | Pyodide |
+| Dimension | SkillLite | Pyodide |
 |------|----------|---------|
 | **Runtime** | Native Python | WebAssembly Interpretation |
 | **Startup Overhead** | ~40 ms | ~700 ms (loading WASM) |
@@ -231,7 +234,7 @@ SRT is Anthropic's open-source sandbox runtime that uses the same underlying tec
 
 ### Test Results
 
-| Test Item | SkillBox (ms) | SRT (ms) | SkillBox Advantage |
+| Test Item | SkillLite (ms) | SRT (ms) | SkillLite Advantage |
 |--------|---------------|----------|---------------|
 | **startup** | 119.91 | 596.00 | **5.0x faster** |
 | simple_print | 121.50 | 717.36 | 5.9x faster |
@@ -241,13 +244,13 @@ SRT is Anthropic's open-source sandbox runtime that uses the same underlying tec
 | dict_operations | 120.63 | 720.52 | 6.0x faster |
 
 **Key Conclusions:**
-- SkillBox Startup Time: **120 ms**
+- SkillLite Startup Time: **120 ms**
 - SRT Startup Time: **596 ms**
-- **SkillBox is approximately 5-6x faster than SRT**
+- **SkillLite is approximately 5-6x faster than SRT**
 
 ### Memory Usage Comparison
 
-| Test Item | SkillBox (KB) | SRT (KB) | SkillBox Advantage |
+| Test Item | SkillLite (KB) | SRT (KB) | SkillLite Advantage |
 |--------|---------------|----------|---------------|
 | startup | 12,208 | 84,416 | **6.9x lower** |
 | simple_print | 12,192 | 84,304 | 6.9x lower |
@@ -256,7 +259,7 @@ SRT is Anthropic's open-source sandbox runtime that uses the same underlying tec
 
 ### Security Comparison
 
-| Security Test Item | SkillBox | SRT |
+| Security Test Item | SkillLite | SRT |
 |-----------|----------|-----|
 | Read /etc/passwd | ✅ Blocked | ❌ Allowed |
 | Network Access | ✅ Blocked | ✅ Blocked |
@@ -298,7 +301,7 @@ In addition to performance tests, we provide security comparison tests to evalua
 
 ### Security Comparison Results
 
-| Test Item               |    SkillBox    |     Docker     |    Pyodide     |   Claude SRT   |
+| Test Item               | SkillLite (L3) |     Docker     |    Pyodide     |   Claude SRT   |
 |----------------------|----------------|----------------|----------------|----------------|
 | **File System** | | | | |
 | Read /etc/passwd       |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
@@ -331,7 +334,7 @@ In addition to performance tests, we provide security comparison tests to evalua
 
 | Platform | Blocked | Partially Blocked | Allowed | Security Score |
 |------|------|----------|------|----------|
-| SkillBox | 18 | 0 | 2 | 90.0% |
+| SkillLite (Level 3) | 18 | 0 | 2 | 90.0% |
 | Docker | 2 | 0 | 18 | 10.0% |
 | Pyodide | 7 | 0 | 13 | 35.0% |
 | Claude SRT | 6 | 1 | 13 | 32.5% |
@@ -339,11 +342,17 @@ In addition to performance tests, we provide security comparison tests to evalua
 ### Running Security Tests
 
 ```bash
-# Complete test (SkillBox + Docker + Pyodide)
+# 默认测试 SkillLite Level 2 和 Level 3 + Docker + Pyodide + Claude SRT
 python3 benchmark/security_vs.py
 
-# Test SkillBox only
-python3 benchmark/security_vs.py --skip-docker --skip-pyodide
+# 仅测试 SkillLite
+python3 benchmark/security_vs.py --skip-docker --skip-pyodide --skip-claude-srt
+
+# 测试所有 Level (1, 2, 3)
+python3 benchmark/security_vs.py --test-all-levels
+
+# 仅测试 Level 3
+python3 benchmark/security_vs.py --skillbox-level 3
 
 # Output JSON results
 python3 benchmark/security_vs.py --output security_results.json
@@ -353,10 +362,13 @@ python3 benchmark/security_vs.py --output security_results.json
 
 | Argument | Description | Default |
 |------|------|--------|
-| `--skillbox` | SkillBox executable path | Auto-detect |
+| `--skilllite` / `--skillbox` | SkillLite executable path (binary in `skilllite/`) | Auto-detect |
+| `--skillbox-level` | Sandbox level (1/2/3). 默认 2 时会同时测试 Level 2 和 3 | 2 |
+| `--test-all-levels` | Test all levels (1, 2, 3) | false |
 | `--docker-image` | Docker image name | python:3.11-slim |
 | `--skip-docker` | Skip Docker test | false |
 | `--skip-pyodide` | Skip Pyodide test | false |
+| `--skip-claude-srt` | Skip Claude SRT test | false |
 | `--output` | Output JSON result file path | - |
 
 ### Result Description
@@ -372,7 +384,7 @@ python3 benchmark/security_vs.py --output security_results.json
 
 ## Comprehensive Comparison Summary
 
-| Dimension | SkillBox | Docker | Pyodide | SRT |
+| Dimension | SkillLite | Docker | Pyodide | SRT |
 |------|----------|--------|---------|-----|
 | **Warm Start Latency** | 40 ms | 194 ms | 672 ms | 596 ms |
 | **Cold Start Latency** | 492 ms | 120s | ~5s | ~1s |
@@ -410,7 +422,7 @@ class MyCustomExecutor(BaseExecutor):
 
 1. **Docker Test**: Requires Docker installation and user permission to run Docker commands
 2. **gVisor**: gVisor runs ON TOP OF Docker (using `--runtime=runsc`), so its performance will always be worse than Docker. It's only useful for security isolation comparison, not performance benchmarking. Use `security_vs.py` for security comparison tests.
-3. **SkillBox Compilation**: Auto-compiled on first run (requires Rust environment)
+3. **SkillLite Compilation**: `cd skilllite && cargo build --release` (requires Rust environment)
 4. **Resource Limits**: `Subprocess (Resource Limits)` uses `resource` module, only available on Unix systems
 5. **Result Fluctuation**: Recommended to run multiple times and take average to avoid system load impact
 
@@ -422,7 +434,7 @@ Higher scores indicate better sandbox security. Native Python has no sandbox pro
 
 **macOS Platform Limitations**:
 
-Due to macOS System Integrity Protection (SIP) limitations, `sandbox-exec` may not work properly on modern macOS versions. SkillBox uses the following strategy:
+Due to macOS System Integrity Protection (SIP) limitations, `sandbox-exec` may not work properly on modern macOS versions. SkillLite uses the following strategy:
 
 1. **Try sandbox-exec first**: Use Seatbelt profile for sandbox isolation
 2. **Fall back to restricted execution**: If sandbox-exec fails, use environment isolation:

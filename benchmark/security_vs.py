@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SkillLite Security Benchmark: Skillbox (Rust Sandbox) vs Docker vs Pyodide
+SkillLite Security Benchmark: SkillLite (Rust Sandbox in skilllite/) vs Docker vs Pyodide
 
 Test Dimensions:
 1. File System Isolation - Read/write sensitive files, directory traversal
@@ -10,8 +10,9 @@ Test Dimensions:
 5. Code Injection - Dynamic imports, eval/exec protection
 
 cd ./benchmark
-python3 security_vs.py
-python3 benchmark/security_vs.py --skillbox-level 0
+python3 security_vs.py                    # 默认测试 Level 2 和 Level 3
+python3 security_vs.py --test-all-levels # 测试 Level 1、2、3
+python3 security_vs.py --skillbox-level 3 # 仅测试 Level 3
 
 Level 1: No Sandbox - Direct execution
 Level 2: Sandbox isolation only
@@ -459,39 +460,48 @@ def check_docker_available() -> bool:
         return False
 
 
-def check_skillbox_available(binary_path: str = None) -> tuple:
-    """Check if skillbox is available, returns (is_available, actual_path)"""
+def check_skilllite_available(binary_path: str = None) -> tuple:
+    """Check if skilllite binary is available, returns (is_available, actual_path)
+    Binary lives in skilllite/ directory (not skillbox). Fallback to skillbox for backward compat.
+    """
     if binary_path and os.path.exists(binary_path):
         try:
             subprocess.run([binary_path, "--help"], capture_output=True, timeout=10)
             return True, binary_path
         except Exception:
             pass
-    
-    system_path = shutil.which("skillbox")
-    if system_path:
-        return True, system_path
-    
+
+    # Primary: skilllite (current project structure)
+    for name in ("skilllite", "skillbox"):
+        system_path = shutil.which(name)
+        if system_path:
+            return True, system_path
+
+    # Project paths: skilllite/ directory (see docs/zh/ARCHITECTURE.md)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
     project_paths = [
-        "./skillbox/target/release/skillbox",
-        "../skillbox/target/release/skillbox",
+        os.path.join(project_root, "skilllite", "target", "release", "skilllite"),
+        os.path.join(script_dir, "..", "skilllite", "target", "release", "skilllite"),
+        os.path.expanduser("~/.cargo/bin/skilllite"),
         os.path.expanduser("~/.cargo/bin/skillbox"),
     ]
     for path in project_paths:
-        if os.path.exists(path):
-            return True, path
-    
+        abs_path = os.path.abspath(path)
+        if os.path.exists(abs_path):
+            return True, abs_path
+
     return False, ""
 
 
-class SkillboxSecurityTest:
-    """Skillbox security test"""
+class SkillLiteSecurityTest:
+    """SkillLite security test (Rust sandbox executor in skilllite/ directory)"""
     
     def __init__(self, binary_path: str, sandbox_level: int = 2):
         # Convert to absolute path to avoid issues when running from different directories
         self.binary_path = os.path.abspath(binary_path)
         self.sandbox_level = sandbox_level
-        self.work_dir = tempfile.mkdtemp(prefix="skillbox_security_")
+        self.work_dir = tempfile.mkdtemp(prefix="skilllite_security_")
         self._setup_test_skill()
     
     def _setup_test_skill(self):
@@ -518,7 +528,7 @@ entry_point: scripts/main.py
             f.write(test.code)
         
         try:
-            # Set environment variables for skillbox
+            # Set environment variables for skilllite (SKILLBOX_* for backward compat)
             # Use specified sandbox level
             env = os.environ.copy()
             env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
@@ -629,13 +639,14 @@ class PyodideSecurityTest:
         
         # Pyodide runs in WebAssembly, naturally isolating most system calls
         # Here we simulate its behavior
+        escaped_code = test.code.replace('`', '\\`')
         js_code = f'''
 const {{ loadPyodide }} = require("pyodide");
 
 async function main() {{
     try {{
         const pyodide = await loadPyodide();
-        const result = await pyodide.runPythonAsync(`{test.code.replace('`', '\\`')}`);
+        const result = await pyodide.runPythonAsync(`{escaped_code}`);
         console.log(result);
     }} catch (e) {{
         console.log(JSON.stringify({{"result": "BLOCKED", "error": e.message}}));
@@ -831,7 +842,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="SkillLite Security Benchmark")
-    parser.add_argument("--skillbox", type=str, help="Skillbox executable path")
+    parser.add_argument("--skilllite", "--skillbox", type=str, dest="skilllite", help="SkillLite executable path (binary in skilllite/ directory)")
     parser.add_argument("--docker-image", type=str, default="python:3.11-slim", help="Docker image")
     parser.add_argument("--skip-docker", action="store_true", help="Skip Docker test")
     parser.add_argument("--skip-pyodide", action="store_true", help="Skip Pyodide test")
@@ -839,9 +850,9 @@ def main():
     parser.add_argument("--output", type=str, help="Output JSON result to file")
     parser.add_argument("--skillbox-level", type=int, default=2,
                        choices=[1, 2, 3],
-                       help="Skillbox sandbox security level (1=No sandbox, 2=Sandbox only, 3=Sandbox+static check)")
+                       help="SkillLite sandbox level (1=No sandbox, 2=Sandbox only, 3=Sandbox+static check)")
     parser.add_argument("--test-all-levels", action="store_true",
-                       help="Test all Skillbox security levels (1, 2, 3)")
+                       help="Test all SkillLite security levels (1, 2, 3)")
     args = parser.parse_args()
     
     print("=" * 60)
@@ -852,12 +863,15 @@ def main():
     results = {}
     platforms = []
     
-    # Skillbox Test
-    skillbox_available, skillbox_path = check_skillbox_available(args.skillbox)
-    if skillbox_available:
+    # SkillLite Test (Rust binary in skilllite/ directory)
+    skilllite_available, skilllite_path = check_skilllite_available(args.skilllite)
+    if skilllite_available:
         # Determine security levels to test
         if args.test_all_levels:
             test_levels = [1, 2, 3]
+        elif args.skillbox_level == 2:
+            # Default: test both Level 2 and 3 for comprehensive security comparison
+            test_levels = [2, 3]
         else:
             test_levels = [args.skillbox_level]
 
@@ -868,21 +882,21 @@ def main():
         }
 
         for level in test_levels:
-            platform_name = f"Skillbox (Level {level})"
-            print(f"🦀 Testing {platform_name} - {level_names[level]} ({skillbox_path})...")
-            skillbox_tester = SkillboxSecurityTest(skillbox_path, sandbox_level=level)
+            platform_name = f"SkillLite (Level {level})"
+            print(f"🦀 Testing {platform_name} - {level_names[level]} ({skilllite_path})...")
+            skilllite_tester = SkillLiteSecurityTest(skilllite_path, sandbox_level=level)
             results[platform_name] = {}
             platforms.append(platform_name)
             
             for test in SECURITY_TESTS:
-                result = skillbox_tester.run_test(test)
+                result = skilllite_tester.run_test(test)
                 results[platform_name][test.name] = result
                 print(f"  {test.description}: {result.value}")
             
-            skillbox_tester.cleanup()
+            skilllite_tester.cleanup()
             print()
     else:
-        print("⚠️  Skillbox not available, skipping test")
+        print("⚠️  SkillLite not available, skipping test")
         print()
     
     # Docker Test
