@@ -121,7 +121,7 @@ cp .env.example .env
 |------|-------------|
 | [.env.example](./.env.example) | Quick start template (5-8 common variables) |
 | [.env.example.full](./.env.example.full) | Full variable list (advanced users) |
-| [docs/ENV_REFERENCE.md](./docs/ENV_REFERENCE.md) | Complete reference: defaults, usage scenarios |
+| [docs/en/ENV_REFERENCE.md](./docs/en/ENV_REFERENCE.md) | Complete reference: defaults, usage scenarios |
 
 
 
@@ -436,6 +436,6 @@ This project includes third-party dependencies with various licenses. See [THIRD
 ## 📚 Documentation
 
 - [Getting Started](./docs/en/GETTING_STARTED.md) - Installation and quick start guide
-- [Environment Variables Reference](./docs/ENV_REFERENCE.md) - Complete env var documentation
+- [Environment Variables Reference](./docs/en/ENV_REFERENCE.md) - Complete env var documentation
 - [Architecture](./docs/en/ARCHITECTURE.md) - Project architecture and design
 - [Contributing Guide](./docs/en/CONTRIBUTING.md) - How to contribute

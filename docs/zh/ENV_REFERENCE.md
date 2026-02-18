@@ -3,7 +3,7 @@
 本文档列出 SkillLite 支持的所有环境变量，包含默认值、类型说明及使用场景。
 
 - **快速开始**：只需配置 `BASE_URL`、`API_KEY`、`MODEL` 即可运行
-- **完整模板**：见 [.env.example.full](../.env.example.full)
+- **完整模板**：见 [.env.example.full](../../.env.example.full)
 
 ---
 
