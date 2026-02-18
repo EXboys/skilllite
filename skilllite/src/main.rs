@@ -406,8 +406,9 @@ async fn run_interactive_chat(
                 }
             }
             Err(rustyline::error::ReadlineError::Interrupted) => {
-                eprintln!("^C");
-                continue;
+                eprintln!("\n^C");
+                eprintln!("👋 Bye!");
+                break;
             }
             Err(rustyline::error::ReadlineError::Eof) => {
                 eprintln!("👋 Bye!");
