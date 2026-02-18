@@ -158,6 +158,73 @@ def execute_code(
     }
 
 
+def run_skill(
+    skill_dir: str,
+    input_json: str,
+    *,
+    sandbox_level: int = 3,
+    allow_network: bool = False,
+    auto_approve: bool = False,
+) -> Dict[str, Any]:
+    """
+    Run a skill with the given input JSON.
+
+    Args:
+        skill_dir: Path to the skill directory (must contain SKILL.md with entry_point)
+        input_json: JSON string for skill input (e.g. '{"name": "Alice"}')
+        sandbox_level: 1=no sandbox, 2=sandbox only, 3=sandbox+scan
+        allow_network: Whether to allow network access
+        auto_approve: If True, set SKILLBOX_AUTO_APPROVE=1 (skip security confirmation prompt)
+
+    Returns:
+        Dict with success, stdout, stderr, exit_code, text
+    """
+    from .binary import get_binary
+
+    binary = get_binary()
+    if not binary:
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": "skilllite binary not found. Run: pip install skilllite",
+            "exit_code": 1,
+            "text": "skilllite binary not found. Run: pip install skilllite",
+        }
+
+    cmd = [
+        binary,
+        "run",
+        skill_dir,
+        input_json,
+        "--sandbox-level",
+        str(sandbox_level),
+    ]
+    if allow_network:
+        cmd.append("--allow-network")
+
+    env = dict(os.environ)
+    if auto_approve:
+        env["SKILLBOX_AUTO_APPROVE"] = "1"
+
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=os.getcwd(),
+        env=env,
+    )
+
+    text = (result.stdout or "") + (result.stderr or "")
+    return {
+        "success": result.returncode == 0,
+        "stdout": result.stdout or "",
+        "stderr": result.stderr or "",
+        "exit_code": result.returncode,
+        "text": text.strip(),
+    }
+
+
 def chat(
     message: str,
     *,

@@ -7,8 +7,8 @@ pip install skilllite → full CLI + sandbox API
 - API (Python ↔ binary bridge): scan_code, execute_code, chat
 """
 
-from .api import scan_code, execute_code, chat
+from .api import scan_code, execute_code, chat, run_skill
 from .binary import get_binary
 
 __version__ = "0.1.8"
-__all__ = ["scan_code", "execute_code", "chat", "get_binary"]
+__all__ = ["scan_code", "execute_code", "chat", "run_skill", "get_binary"]
