@@ -4,6 +4,7 @@ mod config;
 mod env;
 mod mcp;
 mod observability;
+mod path_validation;
 // mod protocol;
 mod sandbox;
 mod skill;
@@ -17,59 +18,11 @@ mod agent;
 use anyhow::{Context, Result};
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Mutex};
+use std::sync::mpsc;
 use std::thread;
 use clap::Parser;
 use cli::{Cli, Commands};
 use serde_json::{json, Value};
-
-/// Mutex for exec_script: it uses process-global SKILLBOX_SCRIPT_ARGS env var,
-/// so concurrent exec calls must be serialized. run and bash do not need this.
-static EXEC_ENV_MUTEX: Mutex<()> = Mutex::new(());
-
-/// Guard that removes an env var on drop. Ensures no stale value between requests.
-/// SAFETY: Only used in single-threaded IPC contexts (serve_stdio processes one request
-/// at a time on the main thread, no tokio runtime active).
-struct ScopedEnvGuard(&'static str);
-impl Drop for ScopedEnvGuard {
-    fn drop(&mut self) {
-        // SAFETY: serve_stdio is single-threaded; no concurrent env access.
-        unsafe { std::env::remove_var(self.0) };
-    }
-}
-
-/// Get the allowed root directory for path validation.
-fn get_allowed_root() -> Result<PathBuf> {
-    let allowed_root = std::env::var("SKILLBOX_SKILLS_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    allowed_root
-        .canonicalize()
-        .map_err(|e| anyhow::anyhow!("Invalid SKILLBOX_SKILLS_ROOT: {}", e))
-}
-
-/// Validate path is within allowed root. Prevents path traversal.
-fn validate_path_under_root(path: &str, path_type: &str) -> Result<PathBuf> {
-    let allowed_root = get_allowed_root()?;
-    let input = Path::new(path);
-    let full = if input.is_absolute() {
-        input.to_path_buf()
-    } else {
-        allowed_root.join(input)
-    };
-    let canonical = full
-        .canonicalize()
-        .map_err(|_| anyhow::anyhow!("{} does not exist: {}", path_type, path))?;
-    if !canonical.starts_with(&allowed_root) {
-        anyhow::bail!("{} escapes allowed root: {}", path_type, path);
-    }
-    Ok(canonical)
-}
-
-/// Validate skill_dir is within allowed root. Prevents path traversal.
-fn validate_skill_path(skill_dir: &str) -> Result<PathBuf> {
-    validate_path_under_root(skill_dir, "Skill path")
-}
 
 fn main() -> Result<()> {
     observability::init_tracing();
@@ -100,7 +53,7 @@ fn main() -> Result<()> {
             let sandbox_level = sandbox::executor::SandboxLevel::from_env_or_cli(sandbox_level);
             let limits = sandbox::executor::ResourceLimits::from_env()
                 .with_cli_overrides(max_memory, timeout);
-            let result = run_skill(&skill_dir, &input_json, allow_network, cache_dir.as_ref(), limits, sandbox_level)?;
+            let result = commands::execute::run_skill(&skill_dir, &input_json, allow_network, cache_dir.as_ref(), limits, sandbox_level)?;
             println!("{}", result);
         }
         Commands::Exec {
@@ -124,7 +77,7 @@ fn main() -> Result<()> {
             let sandbox_level = sandbox::executor::SandboxLevel::from_env_or_cli(sandbox_level);
             let limits = sandbox::executor::ResourceLimits::from_env()
                 .with_cli_overrides(max_memory, timeout);
-            let result = exec_script(&skill_dir, &script_path, &input_json, args.as_ref(), allow_network, cache_dir.as_ref(), limits, sandbox_level)?;
+            let result = commands::execute::exec_script(&skill_dir, &script_path, &input_json, args.as_ref(), allow_network, cache_dir.as_ref(), limits, sandbox_level)?;
             println!("{}", result);
         }
         Commands::Bash {
@@ -134,22 +87,22 @@ fn main() -> Result<()> {
             timeout,
             cwd,
         } => {
-            let result = bash_command(&skill_dir, &command, cache_dir.as_ref(), timeout.unwrap_or(120), cwd.as_ref())?;
+            let result = commands::execute::bash_command(&skill_dir, &command, cache_dir.as_ref(), timeout.unwrap_or(120), cwd.as_ref())?;
             println!("{}", result);
         }
         Commands::Scan {
             skill_dir,
             preview_lines,
         } => {
-            let result = scan_skill(&skill_dir, preview_lines)?;
+            let result = commands::scan::scan_skill(&skill_dir, preview_lines)?;
             println!("{}", result);
         }
         Commands::Validate { skill_dir } => {
-            validate_skill(&skill_dir)?;
+            commands::execute::validate_skill(&skill_dir)?;
             println!("Skill validation passed!");
         }
         Commands::Info { skill_dir } => {
-            show_skill_info(&skill_dir)?;
+            commands::execute::show_skill_info(&skill_dir)?;
         }
         Commands::SecurityScan {
             script_path,
@@ -158,7 +111,7 @@ fn main() -> Result<()> {
             allow_process_exec,
             json,
         } => {
-            security_scan_script(&script_path, allow_network, allow_file_ops, allow_process_exec, json)?;
+            commands::security::security_scan_script(&script_path, allow_network, allow_file_ops, allow_process_exec, json)?;
         }
         #[cfg(feature = "agent")]
         Commands::Chat {
@@ -222,7 +175,7 @@ fn main() -> Result<()> {
         }
         #[cfg(feature = "audit")]
         Commands::DependencyAudit { skill_dir, json } => {
-            dependency_audit_skill(&skill_dir, json)?;
+            commands::security::dependency_audit_skill(&skill_dir, json)?;
         }
         Commands::CleanEnv { dry_run, force } => {
             commands::env::cmd_clean(dry_run, force)?;
@@ -400,7 +353,7 @@ fn handle_run(params: &Value) -> Result<Value> {
     let limits = sandbox::executor::ResourceLimits::from_env()
         .with_cli_overrides(max_memory, timeout);
 
-    let output = run_skill(skill_dir, input_json, allow_network, cache_dir_ref, limits, sandbox_level)?;
+    let output = commands::execute::run_skill(skill_dir, input_json, allow_network, cache_dir_ref, limits, sandbox_level)?;
     Ok(json!({
         "output": output,
         "exit_code": 0
@@ -424,9 +377,7 @@ fn handle_exec(params: &Value) -> Result<Value> {
     let limits = sandbox::executor::ResourceLimits::from_env()
         .with_cli_overrides(max_memory, timeout);
 
-    // exec_script uses process-global SKILLBOX_SCRIPT_ARGS; serialize to avoid races
-    let _guard = EXEC_ENV_MUTEX.lock().map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
-    let output = exec_script(
+    let output = commands::execute::exec_script(
         skill_dir,
         script_path,
         input_json,
@@ -450,7 +401,7 @@ fn handle_bash(params: &Value) -> Result<Value> {
     let timeout = p.get("timeout").and_then(|v| v.as_u64()).unwrap_or(120);
     let cwd = p.get("cwd").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-    let output = bash_command(skill_dir, command, cache_dir.as_ref(), timeout, cwd.as_ref())?;
+    let output = commands::execute::bash_command(skill_dir, command, cache_dir.as_ref(), timeout, cwd.as_ref())?;
     Ok(serde_json::from_str(&output).unwrap_or_else(|_| json!({
         "output": output,
         "exit_code": 0
@@ -474,7 +425,7 @@ fn handle_build_skills_context(params: &Value) -> Result<Value> {
                 .collect()
         });
 
-    let skills_path = validate_path_under_root(skills_dir, "skills_dir")?;
+    let skills_path = path_validation::validate_path_under_root(skills_dir, "skills_dir")?;
     let skills_path_str = skills_path.to_string_lossy().to_string();
 
     let loaded = skills::load_skills(&[skills_path_str]);
@@ -514,7 +465,7 @@ fn handle_list_tools(params: &Value) -> Result<Value> {
         });
     let format_str = p.get("format").and_then(|v| v.as_str()).unwrap_or("openai");
 
-    let skills_path = validate_path_under_root(skills_dir, "skills_dir")?;
+    let skills_path = path_validation::validate_path_under_root(skills_dir, "skills_dir")?;
     let skills_path_str = skills_path.to_string_lossy().to_string();
 
     let loaded = skills::load_skills(&[skills_path_str]);
@@ -558,952 +509,6 @@ fn handle_list_tools(params: &Value) -> Result<Value> {
     }
 
     Ok(json!({ "tools": tools, "tool_meta": tool_meta }))
-}
-
-/// Execute a bash command for a bash-tool skill.
-///
-/// 1. Validates the skill is a bash-tool skill (has allowed-tools, no entry_point)
-/// 2. Parses allowed patterns from SKILL.md
-/// 3. Validates the command against patterns (security — Rust layer, cannot be bypassed)
-/// 4. Ensures CLI dependencies are installed (npm)
-/// 5. Executes the command with PATH pointing to node_modules/.bin/
-fn bash_command(
-    skill_dir: &str,
-    command: &str,
-    cache_dir: Option<&String>,
-    timeout_secs: u64,
-    cwd: Option<&String>,
-) -> Result<String> {
-    let skill_path = validate_skill_path(skill_dir)?;
-
-    // 1. Parse SKILL.md metadata
-    let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
-
-    // 2. Verify this is a bash-tool skill
-    if !metadata.is_bash_tool_skill() {
-        anyhow::bail!(
-            "Skill '{}' is not a bash-tool skill (missing allowed-tools or has entry_point)",
-            metadata.name
-        );
-    }
-
-    // 3. Parse allowed patterns and validate command (SECURITY: Rust layer)
-    let patterns = metadata.get_bash_patterns();
-    if patterns.is_empty() {
-        anyhow::bail!("Skill '{}' has allowed-tools but no Bash(...) patterns found", metadata.name);
-    }
-
-    sandbox::bash_validator::validate_bash_command(command, &patterns)
-        .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
-
-    // 4. Ensure CLI dependencies are installed
-    info_log!("[INFO] bash: ensure_environment start...");
-    let env_path = env::builder::ensure_environment(
-        &skill_path,
-        &metadata,
-        cache_dir.map(|s| s.as_str()),
-    )?;
-    info_log!("[INFO] bash: ensure_environment done");
-
-    // 5. Execute command with PATH injection
-    info_log!("[INFO] bash: executing command: {}", command);
-    let output = execute_bash_with_env(command, &skill_path, &env_path, timeout_secs, cwd)?;
-
-    Ok(output)
-}
-
-/// Execute a bash command in the context of a skill's environment.
-///
-/// - Uses `sh -c` to run the command
-/// - Injects `node_modules/.bin/` into PATH so CLI tools are found
-/// - Applies timeout via `wait_with_timeout()`
-/// - Sets working directory to `cwd` if provided, otherwise inherits parent cwd
-/// - Returns JSON with stdout, stderr, and exit_code
-fn execute_bash_with_env(
-    command: &str,
-    _skill_dir: &std::path::Path,
-    env_path: &std::path::Path,
-    timeout_secs: u64,
-    cwd: Option<&String>,
-) -> Result<String> {
-    use std::process::{Command, Stdio};
-
-    let mut cmd = Command::new("sh");
-    cmd.arg("-c").arg(command);
-
-    // Set working directory so files (e.g. screenshots) are saved relative to the
-    // user's workspace. In IPC mode the daemon's cwd is fixed at startup, so
-    // the caller (Python SDK) passes the real workspace path via `cwd`.
-    if let Some(dir) = cwd {
-        let p = std::path::Path::new(dir);
-        if p.is_dir() {
-            cmd.current_dir(p);
-        }
-    }
-
-    // Pipe stdout and stderr for capture
-    cmd.stdin(Stdio::null());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    // Inject node_modules/.bin/ into PATH so CLI tools (e.g. agent-browser) are found
-    if !env_path.as_os_str().is_empty() && env_path.exists() {
-        let bin_dir = env_path.join("node_modules").join(".bin");
-        if bin_dir.exists() {
-            let current_path = std::env::var("PATH").unwrap_or_default();
-            cmd.env("PATH", format!("{}:{}", bin_dir.display(), current_path));
-        }
-    }
-
-    // Spawn the process
-    let mut child = cmd.spawn()
-        .with_context(|| format!("Failed to spawn bash command: {}", command))?;
-
-    // Wait with timeout and memory monitoring (reuse existing infrastructure)
-    let memory_limit = sandbox::executor::ResourceLimits::from_env().max_memory_bytes();
-    let (stdout, stderr, exit_code, was_killed, kill_reason) =
-        sandbox::common::wait_with_timeout(&mut child, timeout_secs, memory_limit, true)?;
-
-    if was_killed {
-        if let Some(ref reason) = kill_reason {
-            info_log!("[WARN] bash command killed: {}", reason);
-        }
-    }
-
-    // Return structured JSON result
-    let result = json!({
-        "stdout": stdout.trim(),
-        "stderr": stderr.trim(),
-        "exit_code": exit_code,
-    });
-
-    Ok(result.to_string())
-}
-
-fn run_skill(
-    skill_dir: &str,
-    input_json: &str,
-    allow_network: bool,
-    cache_dir: Option<&String>,
-    limits: sandbox::executor::ResourceLimits,
-    sandbox_level: sandbox::executor::SandboxLevel,
-) -> Result<String> {
-    let skill_path = validate_skill_path(skill_dir)?;
-
-    // 1. Parse SKILL.md metadata
-    let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
-
-    // Check if this is a prompt-only skill (no entry_point)
-    if metadata.entry_point.is_empty() {
-        anyhow::bail!("This skill has no entry point and cannot be executed. It is a prompt-only skill.");
-    }
-
-    // 2. Validate input JSON
-    let _input: serde_json::Value = serde_json::from_str(input_json)
-        .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
-
-    // 3. Setup environment (venv/node_modules)
-    info_log!("[INFO] ensure_environment start...");
-    let env_path = env::builder::ensure_environment(&skill_path, &metadata, cache_dir.map(|s| s.as_str()))?;
-    info_log!("[INFO] ensure_environment done");
-
-    // 4. Apply CLI overrides and execute in sandbox
-    let mut effective_metadata = metadata;
-    
-    // CLI --allow-network flag takes precedence
-    if allow_network {
-        effective_metadata.network.enabled = true;
-    }
-
-    let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
-        &skill_path,
-        &env_path,
-        &effective_metadata,
-        input_json,
-        limits,
-        sandbox_level,
-    )?;
-
-    Ok(output)
-}
-
-fn validate_skill(skill_dir: &str) -> Result<()> {
-    let skill_path = validate_skill_path(skill_dir)?;
-
-    // Parse and validate metadata
-    let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
-
-    // Check entry point exists (only if entry_point is specified)
-    if !metadata.entry_point.is_empty() {
-        let entry_path = skill_path.join(&metadata.entry_point);
-        if !entry_path.exists() {
-            anyhow::bail!("Entry point not found: {}", metadata.entry_point);
-        }
-
-        // Check dependencies file if language specified
-        skill::deps::validate_dependencies(&skill_path, &metadata)?;
-    }
-
-    Ok(())
-}
-
-fn show_skill_info(skill_dir: &str) -> Result<()> {
-    let skill_path = validate_skill_path(skill_dir)?;
-    let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
-
-    println!("Skill Information:");
-    println!("  Name: {}", metadata.name);
-    if metadata.entry_point.is_empty() {
-        println!("  Entry Point: (none - prompt-only skill)");
-    } else {
-        println!("  Entry Point: {}", metadata.entry_point);
-    }
-    println!(
-        "  Language: {}",
-        metadata.language.as_deref().unwrap_or("auto-detect")
-    );
-    println!("  Network Enabled: {}", metadata.network.enabled);
-    if !metadata.network.outbound.is_empty() {
-        println!("  Outbound Whitelist:");
-        for host in &metadata.network.outbound {
-            println!("    - {}", host);
-        }
-    }
-
-    Ok(())
-}
-
-/// Execute a specific script directly in sandbox
-fn exec_script(
-    skill_dir: &str,
-    script_path: &str,
-    input_json: &str,
-    args: Option<&String>,
-    allow_network: bool,
-    cache_dir: Option<&String>,
-    limits: sandbox::executor::ResourceLimits,
-    sandbox_level: sandbox::executor::SandboxLevel,
-) -> Result<String> {
-    let skill_path = validate_skill_path(skill_dir)?;
-    let full_script_path = skill_path.join(script_path);
-
-    // Validate script exists
-    if !full_script_path.exists() {
-        anyhow::bail!("Script not found: {}", full_script_path.display());
-    }
-
-    // Prevent script_path from escaping skill_dir (e.g. ../../../etc/passwd)
-    let full_canonical = full_script_path
-        .canonicalize()
-        .map_err(|_| anyhow::anyhow!("Script path does not exist: {}", script_path))?;
-    if !full_canonical.starts_with(&skill_path) {
-        anyhow::bail!("Script path escapes skill directory: {}", script_path);
-    }
-
-    // Detect language from script extension
-    let language = detect_script_language(&full_script_path)?;
-
-    // Validate input JSON
-    let _input: serde_json::Value = serde_json::from_str(input_json)
-        .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
-
-    // Try to parse SKILL.md for network policy and dependencies (optional)
-    let (metadata, env_path) = if skill_path.join("SKILL.md").exists() {
-        let mut meta = skill::metadata::parse_skill_metadata(&skill_path)?;
-        // Override entry_point with the specified script
-        meta.entry_point = script_path.to_string();
-        meta.language = Some(language.clone());
-        
-        // Setup environment based on skill dependencies
-        let env = env::builder::ensure_environment(&skill_path, &meta, cache_dir.map(|s| s.as_str()))?;
-        (meta, env)
-    } else {
-        // No SKILL.md, create minimal metadata
-        let meta = skill::metadata::SkillMetadata {
-            name: skill_path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("unknown")
-                .to_string(),
-            entry_point: script_path.to_string(),
-            language: Some(language.clone()),
-            description: None,
-            compatibility: None,
-            network: skill::metadata::NetworkPolicy::default(),
-            resolved_packages: None,
-            allowed_tools: None,
-            requires_elevated_permissions: false,
-        };
-        (meta, std::path::PathBuf::new())
-    };
-
-    // Apply network settings
-    let mut effective_metadata = metadata;
-    if allow_network {
-        effective_metadata.network.enabled = true;
-    }
-
-    // Pass script args via env for executor. Use guard to clear on drop so no stale
-    // value leaks to subsequent requests (IPC mode processes one request at a time).
-    // SAFETY: exec_script is called from single-threaded contexts only (CLI or
-    // serve_stdio IPC loop). No concurrent threads access env vars.
-    let _args_guard = if let Some(ref args_str) = args {
-        unsafe { std::env::set_var("SKILLBOX_SCRIPT_ARGS", args_str) };
-        Some(ScopedEnvGuard("SKILLBOX_SCRIPT_ARGS"))
-    } else {
-        unsafe { std::env::remove_var("SKILLBOX_SCRIPT_ARGS") };
-        None
-    };
-
-    // Execute in sandbox
-    let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
-        &skill_path,
-        &env_path,
-        &effective_metadata,
-        input_json,
-        limits,
-        sandbox_level,
-    )?;
-
-    Ok(output)
-}
-
-/// Detect script language from file extension
-fn detect_script_language(script_path: &std::path::Path) -> Result<String> {
-    let extension = script_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
-
-    match extension {
-        "py" => Ok("python".to_string()),
-        "js" | "mjs" | "cjs" => Ok("node".to_string()),
-        "ts" => Ok("node".to_string()),
-        "sh" | "bash" => Ok("shell".to_string()),
-        "" => {
-            // Check shebang for scripts without extension
-            if let Ok(content) = std::fs::read_to_string(script_path) {
-                if let Some(first_line) = content.lines().next() {
-                    if first_line.starts_with("#!") {
-                        if first_line.contains("python") {
-                            return Ok("python".to_string());
-                        } else if first_line.contains("node") {
-                            return Ok("node".to_string());
-                        } else if first_line.contains("bash") || first_line.contains("sh") {
-                            return Ok("shell".to_string());
-                        }
-                    }
-                }
-            }
-            anyhow::bail!("Cannot detect language for script: {}", script_path.display())
-        }
-        _ => anyhow::bail!("Unsupported script extension: .{}", extension),
-    }
-}
-
-/// Perform security scan on a script
-fn security_scan_script(
-    script_path: &str,
-    allow_network: bool,
-    allow_file_ops: bool,
-    allow_process_exec: bool,
-    json_output: bool,
-) -> Result<()> {
-    use crate::sandbox::security::{format_scan_result, format_scan_result_json, ScriptScanner};
-
-    // Validate script path is within allowed root (prevents path traversal)
-    let path = validate_path_under_root(script_path, "Script path")?;
-
-    // Create scanner with specified permissions
-    let scanner = ScriptScanner::new()
-        .allow_network(allow_network)
-        .allow_file_ops(allow_file_ops)
-        .allow_process_exec(allow_process_exec);
-
-    // Scan the script
-    let scan_result = scanner.scan_file(&path)?;
-
-    // Display results
-    if json_output {
-        println!("{}", format_scan_result_json(&scan_result));
-    } else {
-        println!("Security Scan Results for: {}\n", path.display());
-        println!("{}", format_scan_result(&scan_result));
-    }
-
-    Ok(())
-}
-
-/// Audit skill dependencies for known vulnerabilities via OSV.dev
-#[cfg(feature = "audit")]
-fn dependency_audit_skill(skill_dir: &str, json_output: bool) -> Result<()> {
-    use crate::sandbox::security::dependency_audit;
-
-    let path = validate_path_under_root(skill_dir, "Skill directory")?;
-    let result = dependency_audit::audit_skill_dependencies(&path)?;
-
-    if json_output {
-        println!("{}", dependency_audit::format_audit_result_json(&result));
-    } else {
-        println!("{}", dependency_audit::format_audit_result(&result));
-    }
-
-    // Exit with code 1 if vulnerabilities found (useful for CI)
-    if result.vulnerable_count > 0 {
-        std::process::exit(1);
-    }
-
-    Ok(())
-}
-
-/// Scan skill directory and return JSON with all executable scripts
-fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
-    let skill_path = validate_skill_path(skill_dir)?;
-
-    let mut result = serde_json::json!({
-        "skill_dir": skill_dir,
-        "has_skill_md": false,
-        "skill_metadata": null,
-        "scripts": [],
-        "directories": {
-            "scripts": false,
-            "references": false,
-            "assets": false
-        }
-    });
-
-    // Check for SKILL.md and parse metadata
-    let skill_md_path = skill_path.join("SKILL.md");
-    if skill_md_path.exists() {
-        result["has_skill_md"] = serde_json::json!(true);
-        if let Ok(metadata) = skill::metadata::parse_skill_metadata(&skill_path) {
-            result["skill_metadata"] = serde_json::json!({
-                "name": metadata.name,
-                "description": metadata.description,
-                "entry_point": if metadata.entry_point.is_empty() { None } else { Some(&metadata.entry_point) },
-                "language": metadata.language,
-                "network_enabled": metadata.network.enabled,
-                "compatibility": metadata.compatibility
-            });
-        }
-    }
-
-    // Check standard directories
-    result["directories"]["scripts"] = serde_json::json!(skill_path.join("scripts").exists());
-    result["directories"]["references"] = serde_json::json!(skill_path.join("references").exists());
-    result["directories"]["assets"] = serde_json::json!(skill_path.join("assets").exists());
-
-    // Scan for executable scripts
-    let mut scripts = Vec::new();
-    scan_scripts_recursive(&skill_path, &skill_path, &mut scripts, preview_lines)?;
-
-    // Post-process: mark entry_point match and update confidence/reasoning
-    if let Some(entry_point) = result["skill_metadata"]["entry_point"].as_str() {
-        for script in &mut scripts {
-            if let Some(path) = script.get("path").and_then(|p| p.as_str()) {
-                if path == entry_point {
-                    script["is_entry_point"] = serde_json::json!(true);
-                    script["confidence"] = serde_json::json!(1.0);
-                    script["reasoning"] = serde_json::json!("Matches skill entry_point");
-                } else {
-                    script["is_entry_point"] = serde_json::json!(false);
-                }
-            }
-        }
-    }
-
-    result["scripts"] = serde_json::json!(scripts);
-
-    // Generate llm_prompt_hint for LLM consumption
-    result["llm_prompt_hint"] = serde_json::json!(build_llm_prompt_hint(&result));
-
-    serde_json::to_string_pretty(&result)
-        .map_err(|e| anyhow::anyhow!("Failed to serialize scan result: {}", e))
-}
-
-/// Build llm_prompt_hint from scan result (skill metadata + scripts summary).
-fn build_llm_prompt_hint(result: &serde_json::Value) -> String {
-    let mut hints = Vec::new();
-
-    if let Some(meta) = result["skill_metadata"].as_object() {
-        if let Some(desc) = meta.get("description").and_then(|v| v.as_str()) {
-            hints.push(format!("Skill purpose: {}", desc));
-        }
-        if let Some(ep) = meta.get("entry_point").and_then(|v| v.as_str()) {
-            hints.push(format!("Primary entry point: {}", ep));
-        }
-    }
-
-    let scripts = match result["scripts"].as_array() {
-        Some(s) => s,
-        None => return hints.join("\n"),
-    };
-    if scripts.is_empty() {
-        hints.push("No executable scripts found. This may be a prompt-only skill.".to_string());
-    } else {
-        let mut script_types: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-        for s in scripts {
-            if let Some(lang) = s.get("language").and_then(|v| v.as_str()) {
-                *script_types.entry(lang).or_insert(0) += 1;
-            }
-        }
-        let type_str: Vec<String> = script_types
-            .iter()
-            .map(|(lang, count)| format!("{} {}", count, lang))
-            .collect();
-        hints.push(format!("Available scripts: {}", type_str.join(", ")));
-
-        let described: Vec<_> = scripts
-            .iter()
-            .filter_map(|s| {
-                let desc = s.get("description")?.as_str()?;
-                let path = s.get("path")?.as_str()?;
-                Some((path, desc))
-            })
-            .take(3)
-            .collect();
-        if !described.is_empty() {
-            hints.push("Scripts with descriptions:".to_string());
-            for (path, desc) in described {
-                let truncated = if desc.len() > 100 {
-                    format!("{}...", &desc[..100])
-                } else {
-                    desc.to_string()
-                };
-                hints.push(format!("  - {}: {}", path, truncated));
-            }
-        }
-    }
-
-    hints.join("\n")
-}
-
-/// Recursively scan for executable scripts
-fn scan_scripts_recursive(
-    base_path: &std::path::Path,
-    current_path: &std::path::Path,
-    scripts: &mut Vec<serde_json::Value>,
-    preview_lines: usize,
-) -> Result<()> {
-    use std::fs;
-
-    let entries = fs::read_dir(current_path)
-        .map_err(|e| anyhow::anyhow!("Failed to read directory: {}", e))?;
-
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        let file_name = entry.file_name().to_string_lossy().to_string();
-
-        // Skip hidden files and directories
-        if file_name.starts_with('.') {
-            continue;
-        }
-
-        // Skip common non-script directories
-        if path.is_dir() {
-            let skip_dirs = ["node_modules", "__pycache__", ".git", "venv", ".venv", "assets", "references"];
-            if skip_dirs.contains(&file_name.as_str()) {
-                continue;
-            }
-            scan_scripts_recursive(base_path, &path, scripts, preview_lines)?;
-            continue;
-        }
-
-        // Check if it's an executable script
-        if let Some(script_info) = analyze_script_file(&path, base_path, preview_lines) {
-            scripts.push(script_info);
-        }
-    }
-
-    Ok(())
-}
-
-/// Analyze a single script file and return its metadata
-fn analyze_script_file(
-    file_path: &std::path::Path,
-    base_path: &std::path::Path,
-    preview_lines: usize,
-) -> Option<serde_json::Value> {
-    use std::fs;
-
-    let extension = file_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    
-    // Supported script extensions
-    let (language, is_script) = match extension {
-        "py" => ("python", true),
-        "js" | "mjs" | "cjs" => ("node", true),
-        "ts" => ("typescript", true),
-        "sh" | "bash" => ("shell", true),
-        "" => {
-            // Check shebang for files without extension
-            if let Ok(content) = fs::read_to_string(file_path) {
-                if let Some(first_line) = content.lines().next() {
-                    if first_line.starts_with("#!") {
-                        if first_line.contains("python") {
-                            ("python", true)
-                        } else if first_line.contains("node") {
-                            ("node", true)
-                        } else if first_line.contains("bash") || first_line.contains("sh") {
-                            ("shell", true)
-                        } else {
-                            return None;
-                        }
-                    } else {
-                        return None;
-                    }
-                } else {
-                    return None;
-                }
-            } else {
-                return None;
-            }
-        }
-        _ => return None,
-    };
-
-    if !is_script {
-        return None;
-    }
-
-    let relative_path = file_path.strip_prefix(base_path).ok()?;
-    let content = fs::read_to_string(file_path).ok()?;
-    let lines: Vec<&str> = content.lines().collect();
-    let total_lines = lines.len();
-
-    // Extract preview (first N lines)
-    let preview: String = lines.iter()
-        .take(preview_lines)
-        .cloned()
-        .collect::<Vec<&str>>()
-        .join("\n");
-
-    // Extract docstring/description
-    let description = extract_script_description(&content, language);
-
-    // Detect if script has main entry point
-    let has_main = detect_main_entry(&content, language);
-
-    // Detect CLI arguments usage
-    let uses_argparse = detect_argparse_usage(&content, language);
-
-    // Detect stdin/stdout usage
-    let uses_stdio = detect_stdio_usage(&content, language);
-
-    // Compute execution recommendation and confidence
-    let path_str = relative_path.to_string_lossy();
-    let in_scripts_dir = path_str.starts_with("scripts/") || path_str.starts_with("scripts\\");
-
-    let rec = compute_execution_recommendation_full(
-        uses_stdio,
-        uses_argparse,
-        has_main,
-        in_scripts_dir,
-        false, // is_entry_point — determined at skill level
-        None,
-        &preview,
-    );
-    let suggested_command = generate_suggested_command(&path_str, language, rec.method);
-
-    Some(serde_json::json!({
-        "path": path_str,
-        "language": language,
-        "total_lines": total_lines,
-        "preview": preview,
-        "description": description,
-        "has_main_entry": has_main,
-        "uses_argparse": uses_argparse,
-        "uses_stdio": uses_stdio,
-        "in_scripts_dir": in_scripts_dir,
-        "file_size_bytes": fs::metadata(file_path).map(|m| m.len()).unwrap_or(0),
-        "execution_recommendation": rec.method,
-        "confidence": rec.confidence,
-        "reasoning": rec.reasoning,
-        "suggested_command": suggested_command,
-        "input_format": rec.input_format,
-        "output_format": rec.output_format
-    }))
-}
-
-/// Extract script description from docstring or comments
-fn extract_script_description(content: &str, language: &str) -> Option<String> {
-    match language {
-        "python" => {
-            // Look for module docstring
-            let trimmed = content.trim_start();
-            if trimmed.starts_with("\"\"\"") || trimmed.starts_with("'''") {
-                let quote = if trimmed.starts_with("\"\"\"") { "\"\"\"" } else { "'''" };
-                if let Some(start) = trimmed.find(quote) {
-                    let rest = &trimmed[start + 3..];
-                    if let Some(end) = rest.find(quote) {
-                        return Some(rest[..end].trim().to_string());
-                    }
-                }
-            }
-            // Look for leading comments
-            let mut desc_lines = Vec::new();
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if trimmed.starts_with('#') && !trimmed.starts_with("#!") {
-                    desc_lines.push(trimmed.trim_start_matches('#').trim());
-                } else if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                    break;
-                }
-            }
-            if !desc_lines.is_empty() {
-                return Some(desc_lines.join(" "));
-            }
-            None
-        }
-        "node" | "typescript" => {
-            // Look for JSDoc or leading comments
-            let trimmed = content.trim_start();
-            if trimmed.starts_with("/**") {
-                if let Some(end) = trimmed.find("*/") {
-                    let doc = &trimmed[3..end];
-                    let cleaned: Vec<&str> = doc.lines()
-                        .map(|l| l.trim().trim_start_matches('*').trim())
-                        .filter(|l| !l.is_empty())
-                        .collect();
-                    return Some(cleaned.join(" "));
-                }
-            }
-            // Look for // comments
-            let mut desc_lines = Vec::new();
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if trimmed.starts_with("//") {
-                    desc_lines.push(trimmed.trim_start_matches('/').trim());
-                } else if !trimmed.is_empty() {
-                    break;
-                }
-            }
-            if !desc_lines.is_empty() {
-                return Some(desc_lines.join(" "));
-            }
-            None
-        }
-        "shell" => {
-            // Look for leading comments (skip shebang)
-            let mut desc_lines = Vec::new();
-            let mut skip_shebang = true;
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if skip_shebang && trimmed.starts_with("#!") {
-                    skip_shebang = false;
-                    continue;
-                }
-                if trimmed.starts_with('#') {
-                    desc_lines.push(trimmed.trim_start_matches('#').trim());
-                } else if !trimmed.is_empty() {
-                    break;
-                }
-            }
-            if !desc_lines.is_empty() {
-                return Some(desc_lines.join(" "));
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
-/// Detect if script has a main entry point
-fn detect_main_entry(content: &str, language: &str) -> bool {
-    match language {
-        "python" => content.contains("if __name__") && content.contains("__main__"),
-        "node" | "typescript" => {
-            content.contains("require.main === module") || 
-            content.contains("import.meta.main") ||
-            // Check for top-level execution patterns
-            (!content.contains("module.exports") && !content.contains("export "))
-        }
-        "shell" => true, // Shell scripts are always executable
-        _ => false,
-    }
-}
-
-/// Detect if script uses argument parsing
-fn detect_argparse_usage(content: &str, language: &str) -> bool {
-    match language {
-        "python" => {
-            content.contains("argparse") || 
-            content.contains("sys.argv") || 
-            content.contains("click") ||
-            content.contains("typer")
-        }
-        "node" | "typescript" => {
-            content.contains("process.argv") || 
-            content.contains("yargs") || 
-            content.contains("commander") ||
-            content.contains("minimist")
-        }
-        "shell" => {
-            content.contains("$1") || 
-            content.contains("$@") || 
-            content.contains("getopts") ||
-            content.contains("${1")
-        }
-        _ => false,
-    }
-}
-
-/// Extended execution recommendation for LLM consumption.
-struct ExecutionRecommendation {
-    method: &'static str,
-    confidence: f64,
-    reasoning: String,
-    input_format: &'static str,
-    output_format: &'static str,
-}
-
-/// Compute execution recommendation and confidence score.
-///
-/// Execution methods:
-///   - `stdin_json`: Script reads JSON from stdin, writes JSON to stdout
-///   - `argparse`: Script uses CLI argument parsing (argparse, sys.argv, etc.)
-///   - `direct`: Script can be run directly without input
-///
-/// Confidence scoring:
-///   +0.3  uses stdin/stdout I/O
-///   +0.2  uses argparse/CLI args
-///   +0.1  has main entry point
-///   +0.1  located in scripts/ directory
-///   1.0   matches entry_point declaration
-fn compute_execution_recommendation_full(
-    uses_stdio: bool,
-    uses_argparse: bool,
-    has_main: bool,
-    in_scripts_dir: bool,
-    is_entry_point: bool,
-    entry_point_reasoning: Option<&'static str>,
-    preview: &str,
-) -> ExecutionRecommendation {
-    let mut reasoning_parts: Vec<&'static str> = Vec::new();
-
-    if let Some(r) = entry_point_reasoning {
-        reasoning_parts.insert(0, r);
-    }
-
-    let (method, confidence, input_format, output_format) = if is_entry_point {
-        let m = if uses_stdio && !uses_argparse {
-            "stdin_json"
-        } else if uses_argparse {
-            "argparse"
-        } else {
-            "direct"
-        };
-        if reasoning_parts.is_empty() {
-            reasoning_parts.push("Matches skill entry_point");
-        }
-        let (in_fmt, out_fmt) = format_for_method(m, uses_stdio, preview);
-        (m, 1.0, in_fmt, out_fmt)
-    } else {
-        let mut conf: f64 = 0.0;
-        if uses_stdio {
-            conf += 0.3;
-            reasoning_parts.push("Script uses stdin/stdout for I/O");
-        }
-        if uses_argparse {
-            conf += 0.2;
-            reasoning_parts.push("Script uses argument parsing");
-        }
-        if has_main {
-            conf += 0.1;
-            reasoning_parts.push("Has main entry point");
-        }
-        if in_scripts_dir {
-            conf += 0.1;
-            reasoning_parts.push("Located in scripts/ directory");
-        }
-        if !uses_stdio && !uses_argparse {
-            reasoning_parts.push("Script appears to run directly without input");
-        }
-
-        let m = if uses_stdio && !uses_argparse {
-            "stdin_json"
-        } else if uses_argparse {
-            "argparse"
-        } else {
-            "direct"
-        };
-        let (in_fmt, out_fmt) = format_for_method(m, uses_stdio, preview);
-        (m, conf.min(1.0), in_fmt, out_fmt)
-    };
-
-    let reasoning = reasoning_parts.join("; ");
-    ExecutionRecommendation {
-        method,
-        confidence: (confidence * 100.0).round() / 100.0,
-        reasoning,
-        input_format,
-        output_format,
-    }
-}
-
-fn format_for_method(method: &str, uses_stdio: bool, preview: &str) -> (&'static str, &'static str) {
-    let input_format = match method {
-        "stdin_json" => "json_stdin",
-        "argparse" => "cli_args",
-        _ => "none",
-    };
-    let output_format = if uses_stdio {
-        if preview.to_lowercase().contains("json") {
-            "json_stdout"
-        } else {
-            "text_stdout"
-        }
-    } else {
-        "text_stdout"
-    };
-    (input_format, output_format)
-}
-
-fn generate_suggested_command(path: &str, language: &str, method: &str) -> String {
-    match method {
-        "stdin_json" => match language {
-            "python" => format!("echo '{{\"input\": \"value\"}}' | python {path}"),
-            "node" | "typescript" => format!("echo '{{\"input\": \"value\"}}' | node {path}"),
-            "shell" => format!("echo '{{\"input\": \"value\"}}' | bash {path}"),
-            _ => format!("# Unknown execution method for {path}"),
-        },
-        "argparse" => match language {
-            "python" => format!("python {path} --help"),
-            "node" | "typescript" => format!("node {path} --help"),
-            "shell" => format!("bash {path} --help"),
-            _ => format!("# Unknown execution method for {path}"),
-        },
-        _ => match language {
-            "python" => format!("python {path}"),
-            "node" | "typescript" => format!("node {path}"),
-            "shell" => format!("bash {path}"),
-            _ => format!("# Unknown execution method for {path}"),
-        },
-    }
-}
-
-/// Detect if script uses stdin/stdout for I/O
-fn detect_stdio_usage(content: &str, language: &str) -> bool {
-    match language {
-        "python" => {
-            content.contains("sys.stdin") || 
-            content.contains("input()") || 
-            content.contains("json.load(sys.stdin)") ||
-            content.contains("print(") ||
-            content.contains("json.dumps")
-        }
-        "node" | "typescript" => {
-            content.contains("process.stdin") || 
-            content.contains("readline") ||
-            content.contains("console.log") ||
-            content.contains("JSON.stringify")
-        }
-        "shell" => {
-            content.contains("read ") || 
-            content.contains("echo ") ||
-            content.contains("cat ")
-        }
-        _ => false,
-    }
 }
 
 // ─── Agent Chat (feature = "agent") ─────────────────────────────────────────

@@ -1041,10 +1041,15 @@ fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {
         let clean_path = request_path.split('?').next().unwrap_or("/");
         // URL decode %XX sequences (basic)
         let decoded = url_decode(clean_path);
-        // Remove leading slash, default to index.html
         let rel = decoded.trim_start_matches('/');
         let is_root_request = rel.is_empty();
-        let rel = if rel.is_empty() { "index.html" } else { rel };
+
+        // Root: always serve fresh directory listing (never default to index.html).
+        // This ensures newly written files are visible instead of stale index from previous sessions.
+        if is_root_request {
+            serve_directory_fallback(&mut stream, serve_dir);
+            continue;
+        }
 
         let file_path = serve_dir.join(rel);
         let normalized = normalize_path(&file_path);
@@ -1092,9 +1097,6 @@ fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {
                     let _ = stream.write_all(resp.as_bytes());
                 }
             }
-        } else if is_root_request {
-            // index.html not found — try fallback: find HTML files in the directory
-            serve_directory_fallback(&mut stream, serve_dir);
         } else {
             let body = "404 Not Found";
             let resp = format!(
@@ -1109,33 +1111,38 @@ fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {
     }
 }
 
-/// Fallback for root URL when index.html is missing:
-/// - If exactly one HTML file exists, redirect to it (302)
-/// - Otherwise, generate a simple directory listing of HTML files
+/// Fallback for root URL: redirect to the most recently modified HTML file
+/// so users see the latest result directly instead of a file list.
 fn serve_directory_fallback(stream: &mut std::net::TcpStream, serve_dir: &Path) {
     use std::io::Write;
 
-    // Collect HTML files in the directory
-    let mut html_files: Vec<String> = Vec::new();
+    // Collect HTML files with mtime (newest first)
+    let mut html_with_mtime: Vec<(String, std::time::SystemTime)> = Vec::new();
     if let Ok(entries) = std::fs::read_dir(serve_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     if ext == "html" || ext == "htm" {
-                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                            html_files.push(name.to_string());
+                        if let (Some(name), Ok(meta)) = (
+                            path.file_name().and_then(|n| n.to_str()),
+                            path.metadata(),
+                        ) {
+                            if let Ok(mtime) = meta.modified() {
+                                html_with_mtime.push((name.to_string(), mtime));
+                            }
                         }
                     }
                 }
             }
         }
     }
-    html_files.sort();
 
-    if html_files.len() == 1 {
-        // Single HTML file — redirect to it
-        let redirect_url = format!("/{}", html_files[0]);
+    if !html_with_mtime.is_empty() {
+        // Sort by mtime descending (newest first), then by name for ties
+        html_with_mtime.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let newest = &html_with_mtime[0].0;
+        let redirect_url = format!("/{}", newest);
         let resp = format!(
             "HTTP/1.1 302 Found\r\n\
              Location: {}\r\n\
@@ -1144,8 +1151,8 @@ fn serve_directory_fallback(stream: &mut std::net::TcpStream, serve_dir: &Path) 
             redirect_url
         );
         let _ = stream.write_all(resp.as_bytes());
-    } else if html_files.is_empty() {
-        // No HTML files at all — list all files
+    } else {
+        // No HTML files — list all files
         let mut all_files: Vec<String> = Vec::new();
         if let Ok(entries) = std::fs::read_dir(serve_dir) {
             for entry in entries.flatten() {
@@ -1161,19 +1168,6 @@ fn serve_directory_fallback(stream: &mut std::net::TcpStream, serve_dir: &Path) 
         all_files.sort();
 
         let body = generate_listing_html("Files", &all_files);
-        let resp = format!(
-            "HTTP/1.1 200 OK\r\n\
-             Content-Type: text/html; charset=utf-8\r\n\
-             Content-Length: {}\r\n\
-             Cache-Control: no-store\r\n\
-             Connection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        let _ = stream.write_all(resp.as_bytes());
-    } else {
-        // Multiple HTML files — show listing
-        let body = generate_listing_html("HTML Files", &html_files);
         let resp = format!(
             "HTTP/1.1 200 OK\r\n\
              Content-Type: text/html; charset=utf-8\r\n\
