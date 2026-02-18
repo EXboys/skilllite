@@ -1,8 +1,15 @@
 //! Agent Chat RPC: JSON-Lines event stream protocol over stdio.
 //!
-//! This module belongs to the agent layer (Layer 3), NOT the CLI commands layer.
-//! It provides a transport-agnostic RPC interface for Python/TypeScript SDKs
-//! to call the Rust agent engine.
+//! **Entry**: `skilllite agent-rpc`
+//!
+//! **Scope**: Agent chat streaming only. One request → many event lines (text_chunk, tool_call,
+//! done, etc.). Supports confirmation round-trips. Uses tokio for async execution.
+//!
+//! **Not this module**: For skill execution (run/exec/bash) and executor RPC (JSON-RPC 2.0,
+//! one request → one response), see [`crate::stdio_rpc`]. That uses `skilllite serve --stdio`.
+//!
+//! This module belongs to the agent layer (Layer 3). It provides a transport-agnostic RPC
+//! interface for Python/TypeScript SDKs to call the Rust agent engine.
 //!
 //! Protocol:
 //!

@@ -1,6 +1,6 @@
 # SkillLite 项目架构文档
 
-> **注意**：本文档部分内容描述旧版 Python 结构（core/、sandbox/、SkillManager、SkillRunner 等已移除）。当前架构请参阅 [ARCHITECTURE_ANALYSIS_REPORT.md](../../todo/ARCHITECTURE_ANALYSIS_REPORT.md)。当前 Python SDK 为薄桥接层（~200 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`，逻辑集中在 Rust 二进制。
+> **注意**：本文档已同步当前架构。Python SDK 为薄桥接层（~600 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`，逻辑集中在 Rust 二进制。详见 [ARCHITECTURE_ANALYSIS_REPORT.md](../../todo/ARCHITECTURE_ANALYSIS_REPORT.md)。
 
 ## 📋 项目概述
 
@@ -297,113 +297,24 @@ class SkillManager:
 - `handle_tool_calls(response)`: 处理 LLM 工具调用
 - `get_system_prompt_context()`: 生成系统提示词
 
-#### 2.2 SkillRegistry (`core/registry.py`)
+#### 2.2 当前 Python SDK 架构（薄桥接层）
 
-**职责**: Skill 注册、发现和查找
+> **说明**：`core/`、`sandbox/`、`cli/` 等旧结构已移除。当前 Python SDK 为薄桥接层（~600 行），逻辑集中在 Rust 二进制。
 
-```python
-class SkillRegistry:
-    def __init__(self):
-        self._skills: Dict[str, SkillInfo] = {}
-        self._multi_script_tools: Dict[str, Dict] = {}  # 多脚本工具
-        self._analyzed_skills: Set[str] = set()
-```
+**模块与职责**：
 
-**多脚本工具支持**：
-- 一个 Skill 可以有多个脚本入口
-- 工具名格式: `skill-name:script-name`
-- 例如: `skill-creator:init-skill`, `skill-creator:package-skill`
+| 模块 | 职责 |
+|------|------|
+| `api.py` | `scan_code`、`execute_code`、`chat`、`run_skill`，通过 subprocess 调用 skilllite 二进制 |
+| `binary.py` | 二进制管理：`get_binary`、bundled/PATH 解析 |
+| `cli.py` | CLI 入口，转发到 binary |
+| `ipc.py` | IPC 客户端，与 `skilllite serve` 守护进程通信 |
 
-#### 2.3 ToolBuilder (`core/tool_builder.py`)
+**导出 API**：`scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`
 
-**职责**: 生成 LLM 工具定义
+**程序化 Agent**：使用 `skilllite chat --message` 或 `api.chat()` 调用 Rust Agent 循环。
 
-**渐进式披露策略**：
-1. 工具定义只包含 name 和 description
-2. 使用灵活的 schema 接受任意参数
-3. 调用时注入完整 SKILL.md 内容
-
-**Argparse 解析**：
-```python
-def _parse_argparse_schema(self, script_code: str) -> Dict:
-    # 从 Python 脚本中提取 argparse 参数定义
-    # 转换为 JSON Schema 格式
-```
-
-#### 2.4 ToolCallHandler (`core/handler.py`)
-
-**职责**: 解析和执行 LLM 工具调用
-
-```python
-class ToolCallHandler:
-    def execute(self, skill_name, input_data, ...):
-        # 检查是否是多脚本工具
-        tool_info = self._registry.get_multi_script_tool_info(skill_name)
-        if tool_info:
-            # 执行特定脚本
-            return self._executor.execute(..., entry_point=tool_info["script_path"])
-        # 常规 Skill 执行
-        return self._executor.execute(...)
-```
-
-#### 2.5 AgenticLoop (`core/loops.py`)
-
-**职责**: 处理 LLM-工具交互循环
-
-**支持的 API 格式**：
-```python
-class ApiFormat(Enum):
-    OPENAI = "openai"           # OpenAI 兼容格式
-    CLAUDE_NATIVE = "claude_native"  # Claude 原生格式
-```
-
-**任务规划系统**：
-```python
-def _generate_task_list(self, user_message: str) -> List[Dict]:
-    # 使用 LLM 分析用户需求
-    # 判断是否需要工具
-    # 生成任务列表
-```
-
-**核心原则**：
-- 简单任务直接由 LLM 完成，不使用工具
-- 只有真正需要外部能力时才规划工具调用
-
-#### 2.6 Tools 协议适配 (`core/tools.py`)
-
-**工具定义**：
-```python
-@dataclass
-class ToolDefinition:
-    name: str
-    description: str
-    input_schema: Dict[str, Any]
-    
-    def to_openai_format(self) -> Dict:
-        return {"type": "function", "function": {...}}
-    
-    def to_claude_format(self) -> Dict:
-        return {"name": ..., "description": ..., "input_schema": ...}
-```
-
-**工具调用请求**：
-```python
-@dataclass
-class ToolUseRequest:
-    id: str
-    name: str
-    input: Dict[str, Any]
-    
-    @classmethod
-    def parse_from_openai_response(cls, response) -> List["ToolUseRequest"]:
-        # 解析 OpenAI 格式响应
-    
-    @classmethod
-    def parse_from_claude_response(cls, response) -> List["ToolUseRequest"]:
-        # 解析 Claude 格式响应
-```
-
-#### 2.7 SkillRunner（已移除）
+#### 2.3 SkillRunner（已移除）
 
 > **已移除**：请使用 `simple_demo.py` + `skilllite chat` 或 `skilllite chat --message`。
 
@@ -436,22 +347,22 @@ class SkillRunner:
 ```
 用户输入
     ↓
-SkillRunner.run()
+skilllite chat / api.chat() / skilllite chat --message
     ↓
-AgenticLoop.run()
+Rust Agent (skilllite 二进制)
     ↓
 ┌─────────────────────────────────────┐
 │ 1. 生成系统提示词 (含 Skill 信息)    │
 │ 2. 调用 LLM                         │
 │ 3. 解析工具调用                      │
-│ 4. 执行工具 (SkillExecutor)         │
+│ 4. 执行工具 (Rust Executor)         │
 │ 5. 返回结果给 LLM                   │
 │ 6. 重复直到完成或达到最大迭代次数    │
 └─────────────────────────────────────┘
     ↓
-SkillExecutor.execute()
+Rust Executor.execute()
     ↓
-调用 skilllite 二进制
+skilllite 二进制内部调用
     ↓
 ┌─────────────────────────────────────┐
 │ Rust Sandbox:                       │
@@ -1067,56 +978,9 @@ pub fn get_mandatory_deny_rules() -> Vec<MandatoryDenyRule>;
 pub fn generate_seatbelt_mandatory_deny_patterns() -> Vec<String>;
 ```
 
-### Python SDK sandbox/config.py
-
-沙箱配置管理模块，提供 `SandboxConfig` 数据类：
-
-```python
-@dataclass
-class SandboxConfig:
-    binary_path: Optional[str] = None      # skilllite 二进制路径
-    cache_dir: Optional[str] = None        # 虚拟环境缓存目录
-    allow_network: bool = False            # 允许网络访问
-    enable_sandbox: bool = True            # 启用沙箱保护
-    execution_timeout: int = 120           # 执行超时 (秒)
-    max_memory_mb: int = 512               # 内存限制 (MB)
-    sandbox_level: str = "3"               # 沙箱级别 (1/2/3)
-    auto_install: bool = False             # 自动安装二进制
-    auto_approve: bool = False             # 自动批准安全提示
-```
-
-**配置优先级**：构造函数参数 > 环境变量 > 默认值
-
-**支持的环境变量**：
-- `SKILLBOX_BINARY_PATH`, `SKILLBOX_CACHE_DIR`
-- `SKILLBOX_SANDBOX_LEVEL`, `SKILLBOX_MAX_MEMORY_MB`, `SKILLBOX_TIMEOUT_SECS`
-- `SKILLBOX_ALLOW_NETWORK`, `SKILLBOX_ENABLE_SANDBOX`, `SKILLBOX_AUTO_APPROVE`
-
-### Python SDK sandbox/utils.py
-
-CLI 参数转换工具：
-
-```python
-def convert_json_to_cli_args(
-    input_data: Dict[str, Any],
-    positional_keys: set = None
-) -> List[str]:
-    """
-    将 JSON 输入转换为命令行参数列表
-    
-    示例:
-        >>> convert_json_to_cli_args({"name": "test", "verbose": True, "count": 5})
-        ['test', '--verbose', '--count', '5']
-    """
-```
-
-**转换规则**：
-- 位置参数：`skill_name`, `name`, `input` 等 → 直接作为值
-- 命名参数：`path` → `--path value`
-- 布尔标志：`True` → `--flag`，`False` → 省略
-- 数组：`["a", "b"]` → `--key a,b`
+> **已移除**：Python SDK 的 `sandbox/config.py`、`sandbox/utils.py` 等模块已删除。沙箱配置通过环境变量 `SKILLBOX_*` 或 skilllite 二进制参数传递。
 
 ---
 
-*文档版本: 1.1.0*
+*文档版本: 1.2.0*
 *最后更新: 2026-01-31*
