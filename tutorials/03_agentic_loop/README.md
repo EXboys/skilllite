@@ -17,42 +17,14 @@ python basic_loop.py
 
 ### Simplest Approach (Recommended)
 ```python
-from skilllite import SkillRunner
+from skilllite import chat
 
-runner = SkillRunner()
-result = runner.run("Your request")
+result = chat("Your request", skills_dir=".skills")
+print(result)
 ```
 
-### Manual Agent Loop Implementation
-```python
-from skilllite import SkillManager
-from openai import OpenAI
-
-manager = SkillManager(skills_dir="./skills")
-client = OpenAI()
-
-tools = manager.get_tools()
-
-# Message history
-messages = [{"role": "user", "content": "Your request"}]
-
-# Loop: LLM → Tool Call → Execute → Continue
-for _ in range(max_iterations):
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        tools=[t.to_openai_format() for t in tools]
-    )
-
-    # Handle tool calls
-    if response.choices[0].message.tool_calls:
-        for tool_call in response.choices[0].message.tool_calls:
-            result = manager.execute(
-                tool_call.function.name,
-                json.loads(tool_call.function.arguments)
-            )
-            # Add result to message history
-```
+### LangChain Agent
+如需更灵活的 Agent 控制，请使用 [langchain-skilllite](../04_langchain_integration/README.md)。
 
 ## Next Steps
 

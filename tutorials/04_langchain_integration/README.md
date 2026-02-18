@@ -1,51 +1,44 @@
 # 04. LangChain Integration
 
-SkillLite provides official LangChain adapters through `SkillLiteToolkit` and `SkillLiteTool`.
+SkillLite provides LangChain integration through the [langchain-skilllite](https://pypi.org/project/langchain-skilllite/) package.
 
 ## Prerequisites
 
 ```bash
-pip install skilllite[langchain] langchain-openai
+pip install langchain-skilllite langchain-openai
 ```
 
 ## Quick Start (Recommended)
 
 ```python
-from skilllite.core.adapters.langchain import SkillLiteToolkit
-from langchain.agents import create_openai_tools_agent, AgentExecutor
+from langchain_skilllite import SkillLiteToolkit
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langgraph.prebuilt import create_react_agent
 
-# 1. Create LangChain tools from skills_dir (RPC-based, no SkillManager)
-tools = SkillLiteToolkit.from_skills_dir("./skills")
+# 1. Create LangChain tools from skills directory
+tools = SkillLiteToolkit.from_directory("./skills")
 
 # 2. Create Agent
 llm = ChatOpenAI(model="gpt-4")
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant."),
-    ("human", "{input}"),
-    ("placeholder", "{agent_scratchpad}")
-])
-agent = create_openai_tools_agent(llm, tools, prompt)
+agent = create_react_agent(llm, tools)
 
 # 3. Execute
-executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=tools)
-result = executor.invoke({"input": "Your request"})
+result = agent.invoke({"messages": [("user", "Your request")]})
 ```
 
 ## Advanced Options
 
 ```python
 # Filter specific skills and configure options
-tools = SkillLiteToolkit.from_skills_dir(
+tools = SkillLiteToolkit.from_directory(
     "./skills",
     skill_names=["calculator", "web_search"],  # Only specific skills
-    allow_network=True,                        # Allow network access
-    timeout=60                                 # Execution timeout in seconds
+    allow_network=True,                         # Allow network access
+    timeout=60,                                 # Execution timeout in seconds
+    sandbox_level=3,                            # 1/2/3
+    confirmation_callback=confirm_execution    # For sandbox_level=3
 )
 ```
-
-> **Legacy**: `SkillLiteToolkit.from_manager(manager)` is deprecated. Prefer `from_skills_dir`.
 
 ## Examples
 
@@ -70,29 +63,17 @@ Includes three implementation approaches:
 Factory class to create LangChain tools from skills directory.
 
 ```python
-# Recommended
-SkillLiteToolkit.from_skills_dir(
+SkillLiteToolkit.from_directory(
     skills_dir: str,
     skill_names: Optional[List[str]] = None,  # Filter skills
     allow_network: bool = False,              # Network access
-    timeout: Optional[int] = None            # Timeout in seconds
-) -> List[SkillLiteTool]
-```
-
-### SkillLiteTool
-
-LangChain BaseTool wrapper for a single SkillLite skill.
-
-```python
-tool = SkillLiteTool(
-    name="skill_name",
-    description="Skill description",
-    manager=manager,
-    skill_name="skill_name",
-    allow_network=False,
-    timeout=None
+    timeout: Optional[int] = None,            # Timeout in seconds
+    sandbox_level: int = 3,                    # 1/2/3
+    confirmation_callback: Optional[Callable] = None  # For sandbox_level=3
 )
 ```
+
+See [langchain-skilllite README](../../langchain-skilllite/README.md) for full API documentation.
 
 ## Next Steps
 

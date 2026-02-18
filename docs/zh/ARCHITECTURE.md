@@ -15,7 +15,7 @@
 
 | 组件 | 技术 |
 |------|------|
-| 沙箱执行器 | Rust (skillbox) |
+| 沙箱执行器 | Rust (skilllite 二进制) |
 | Python SDK | Python 3.x (python-sdk) |
 | macOS 沙箱 | Seatbelt (sandbox-exec) |
 | Linux 沙箱 | Namespace + Seccomp |
@@ -26,74 +26,29 @@
 
 ```
 skillLite/
-├── skillbox/                    # Rust 沙箱执行器 (核心)
-│   ├── Cargo.toml              # Rust 依赖配置
-│   ├── README.md               # Skillbox 文档
+├── skilllite/                  # Rust 沙箱执行器 (核心)
+│   ├── Cargo.toml             # Rust 依赖配置
 │   └── src/
-│       ├── main.rs             # CLI 入口和命令处理
-│       ├── cli.rs              # 命令行参数定义
-│       ├── config.rs           # 全局配置管理
-│       ├── env/                # 环境构建器
-│       │   ├── mod.rs          # 模块导出
-│       │   └── builder.rs      # Python/Node 虚拟环境管理
-│       ├── skill/              # Skill 元数据解析
-│       │   ├── mod.rs          # 模块导出
-│       │   ├── metadata.rs     # SKILL.md YAML 解析
-│       │   └── deps.rs         # 依赖管理
-│       └── sandbox/            # 沙箱实现 (核心安全模块)
-│           ├── mod.rs          # 模块导出
-│           ├── executor.rs     # 沙箱执行器和安全级别
-│           ├── common.rs       # 跨平台通用功能
-│           ├── macos.rs        # macOS 沙箱主逻辑
-│           ├── seatbelt.rs     # macOS Seatbelt 配置生成
-│           ├── linux.rs        # Linux Namespace 沙箱
-│           ├── seccomp.rs      # Linux Seccomp 过滤器
-│           ├── network_proxy.rs # 网络代理控制
-│           ├── move_protection.rs # 文件移动保护
-│           └── security/       # 安全扫描子模块
-│               ├── mod.rs      # 模块导出
-│               ├── scanner.rs  # 静态代码安全扫描
-│               ├── rules.rs    # 安全规则定义
-│               ├── types.rs    # 安全类型定义
-│               ├── default_rules.rs   # 默认规则实现
-│               └── default_rules.yaml # 默认规则配置
+│       ├── main.rs            # CLI 入口 (chat/add/list/mcp/run/exec)
+│       ├── cli.rs             # 命令行参数定义
+│       ├── commands/           # 命令实现
+│       ├── skill/             # Skill 元数据解析
+│       ├── sandbox/           # 沙箱实现 (核心安全模块)
+│       │   ├── executor.rs    # 沙箱执行器和安全级别
+│       │   ├── macos.rs       # macOS Seatbelt 沙箱
+│       │   ├── linux.rs       # Linux Namespace 沙箱
+│       │   └── security/      # 安全扫描子模块
+│       └── agent/             # Agent 循环 (chat 命令)
 │
-├── python-sdk/              # Python SDK
-│   ├── setup.py                # 包配置
-│   ├── pyproject.toml          # 现代 Python 包配置
-│   ├── README.md               # SDK 文档
+├── python-sdk/                 # Python SDK
 │   └── skilllite/
-│       ├── __init__.py         # 包导出
-│       ├── quick.py            # 快速启动 (SkillRunner)
-│       ├── builtin_tools.py    # 内置文件操作工具
-│       ├── analyzer.py         # 脚本分析器
-│       ├── validation.py       # 验证工具
-│       ├── cli.py              # CLI 命令
-│       ├── core/               # 核心模块 (受保护，不可随意修改)
-│       │   ├── __init__.py     # 核心导出
-│       │   ├── manager.py      # SkillManager 主接口
-│       │   ├── executor.py     # Skill 执行器
-│       │   ├── registry.py     # Skill 注册表
-│       │   ├── metadata.py     # 元数据解析
-│       │   ├── skill_info.py   # Skill 信息容器
-│       │   ├── tools.py        # 工具定义和协议适配
-│       │   ├── tool_builder.py # 工具定义生成
-│       │   ├── prompt_builder.py # 系统提示词生成
-│       │   ├── handler.py      # 工具调用处理
-│       │   └── loops.py        # Agentic Loop 实现
-│       ├── sandbox/            # 沙箱接口
-│       │   ├── __init__.py     # 模块导出
-│       │   ├── base.py         # 沙箱基类
-│       │   ├── config.py       # 沙箱配置管理
-│       │   ├── utils.py        # 沙箱工具函数
-│       │   └── skillbox/       # Skillbox 执行器
-│       │       ├── __init__.py # 模块导出
-│       │       ├── binary.py   # 二进制管理
-│       │       └── executor.py # 执行器实现
-│       └── mcp/                # MCP 协议支持
-│           ├── __init__.py
-│           └── server.py       # MCP 服务器
+│       ├── __init__.py         # 导出 chat, run_skill, scan_code, execute_code
+│       ├── api.py              # chat, run_skill, scan_code, execute_code
+│       ├── binary.py           # 二进制管理
+│       ├── cli.py              # CLI 入口 (转发到 binary)
+│       └── ipc.py              # IPC 客户端
 │
+├── langchain-skilllite/        # LangChain 适配器 (独立包)
 ├── benchmark/                  # 性能测试
 │   ├── README.md               # 测试说明
 │   ├── benchmark_runner.py     # 基准测试运行器
@@ -129,7 +84,7 @@ skillLite/
 
 ## 🔐 核心模块详解
 
-### 1. Rust 沙箱执行器 (skillbox)
+### 1. Rust 沙箱执行器 (skilllite)
 
 #### 1.1 沙箱安全级别 (`sandbox/executor.rs`)
 
@@ -494,7 +449,7 @@ AgenticLoop.run()
     ↓
 SkillExecutor.execute()
     ↓
-调用 skillbox 二进制
+调用 skilllite 二进制
     ↓
 ┌─────────────────────────────────────┐
 │ Rust Sandbox:                       │
@@ -514,19 +469,19 @@ SkillExecutor.execute()
 
 ```bash
 # 运行 Skill
-skillbox run <skill_dir> '<input_json>' [options]
+skilllite run <skill_dir> '<input_json>' [options]
 
 # 直接执行脚本
-skillbox exec <skill_dir> <script_path> '<input_json>' [options]
+skilllite exec <skill_dir> <script_path> '<input_json>' [options]
 
 # 扫描 Skill
-skillbox scan <skill_dir>
+skilllite scan <skill_dir>
 
 # 验证 Skill
-skillbox validate <skill_dir>
+skilllite validate <skill_dir>
 
 # 安全扫描
-skillbox security-scan <script_path> [options]
+skilllite security-scan <script_path> [options]
 ```
 
 ---
@@ -999,7 +954,7 @@ AgenticLoop._run_openai() / _run_claude_native()
 │      ↓                                          │
 │  SkillExecutor.execute()                        │
 │      ↓                                          │
-│  skillbox run/exec                              │
+│  skilllite run/exec                              │
 │      ↓                                          │
 │  沙箱执行 → 结果                                 │
 │      ↓                                          │
@@ -1041,23 +996,23 @@ SkillMetadata {
 
 ```bash
 # 验证 Skill 元数据和入口点
-skillbox validate ./.skills/calculator
+skilllite validate ./.skills/calculator
 
 # 查看 Skill 信息
-skillbox info ./.skills/calculator
+skilllite info ./.skills/calculator
 
 # 安全扫描脚本
-skillbox security-scan ./.skills/calculator/scripts/main.py
+skilllite security-scan ./.skills/calculator/scripts/main.py
 ```
 
 ### 测试执行
 
 ```bash
 # 运行 Skill
-skillbox run ./.skills/calculator '{"operation": "add", "a": 1, "b": 2}'
+skilllite run ./.skills/calculator '{"operation": "add", "a": 1, "b": 2}'
 
 # 直接执行脚本
-skillbox exec ./.skills/skill-creator scripts/init_skill.py '{"name": "test"}'
+skilllite exec ./.skills/skill-creator scripts/init_skill.py '{"name": "test"}'
 ```
 
 ---
@@ -1117,7 +1072,7 @@ pub fn generate_seatbelt_mandatory_deny_patterns() -> Vec<String>;
 ```python
 @dataclass
 class SandboxConfig:
-    binary_path: Optional[str] = None      # skillbox 二进制路径
+    binary_path: Optional[str] = None      # skilllite 二进制路径
     cache_dir: Optional[str] = None        # 虚拟环境缓存目录
     allow_network: bool = False            # 允许网络访问
     enable_sandbox: bool = True            # 启用沙箱保护

@@ -1,4 +1,4 @@
-# SkillBox
+# SkillLite
 
 A lightweight Skills secure execution engine for Linux and macOS.
 
@@ -26,7 +26,7 @@ cargo install --path .
 ### Run a Skill
 
 ```bash
-skillbox run <SKILL_DIR> '<INPUT_JSON>' [OPTIONS]
+skilllite run <SKILL_DIR> '<INPUT_JSON>' [OPTIONS]
 ```
 
 **Options:**
@@ -38,13 +38,13 @@ skillbox run <SKILL_DIR> '<INPUT_JSON>' [OPTIONS]
 
 **Example:**
 ```bash
-skillbox run ./examples/python_skill '{"message": "Hello, World!"}'
+skilllite run ./examples/python_skill '{"message": "Hello, World!"}'
 ```
 
 ### Execute a Script Directly
 
 ```bash
-skillbox exec <SKILL_DIR> <SCRIPT_PATH> '<INPUT_JSON>' [OPTIONS]
+skilllite exec <SKILL_DIR> <SCRIPT_PATH> '<INPUT_JSON>' [OPTIONS]
 ```
 
 Execute a specific script without requiring an entry_point in SKILL.md.
@@ -57,7 +57,7 @@ Execute a specific script without requiring an entry_point in SKILL.md.
 ### Scan a Skill
 
 ```bash
-skillbox scan <SKILL_DIR> [--preview-lines <N>]
+skilllite scan <SKILL_DIR> [--preview-lines <N>]
 ```
 
 List all executable scripts in a skill directory (JSON output for LLM analysis).
@@ -65,19 +65,19 @@ List all executable scripts in a skill directory (JSON output for LLM analysis).
 ### Validate a Skill
 
 ```bash
-skillbox validate <SKILL_DIR>
+skilllite validate <SKILL_DIR>
 ```
 
 ### Show Skill Info
 
 ```bash
-skillbox info <SKILL_DIR>
+skilllite info <SKILL_DIR>
 ```
 
 ### Security Scan a Script
 
 ```bash
-skillbox security-scan <SCRIPT_PATH> [OPTIONS]
+skilllite security-scan <SCRIPT_PATH> [OPTIONS]
 ```
 
 **Options:**
@@ -87,7 +87,7 @@ skillbox security-scan <SCRIPT_PATH> [OPTIONS]
 
 ## SKILL.md Format
 
-SkillBox follows the [Claude Agent Skills Specification](https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/specification).
+SkillLite follows the [Claude Agent Skills Specification](https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/specification).
 
 ```yaml
 ---
@@ -129,7 +129,7 @@ Description of the skill...
 
 ## Custom Security Rules
 
-Create a `.skillbox-rules.yaml` file in your skill directory:
+Create a `.skilllite-rules.yaml` file in your skill directory:
 
 ```yaml
 use_default_rules: true
@@ -152,7 +152,7 @@ import json
 
 def run_skill(skill_dir: str, input_data: dict) -> dict:
     result = subprocess.run(
-        ["skillbox", "run", skill_dir, json.dumps(input_data)],
+        ["skilllite", "run", skill_dir, json.dumps(input_data)],
         capture_output=True,
         text=True
     )

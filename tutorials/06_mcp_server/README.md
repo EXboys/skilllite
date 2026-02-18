@@ -24,7 +24,7 @@ Edit `~/.config/Claude/claude_desktop_config.json`:
 }
 ```
 
-> **Note**: Use `skilllite mcp` (Rust binary). Run `skilllite install` first if needed.
+> **Note**: Use `skilllite mcp` (Rust binary). Run `skilllite init` first if needed.
 
 Restart Claude Desktop to use SkillLite tools in conversations.
 

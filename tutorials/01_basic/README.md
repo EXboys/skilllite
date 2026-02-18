@@ -22,21 +22,23 @@ python tool_definitions.py
 
 ## Core Concepts
 
-### SkillRunner
+### chat API (Agent 对话)
 ```python
-from skilllite import SkillRunner
+from skilllite import chat
 
-runner = SkillRunner()
-result = runner.run("Your request")
+result = chat("Your request", skills_dir=".skills")
+print(result)
 ```
 
-### SkillManager
+### 直接执行 Skill (无 LLM)
 ```python
-from skilllite import SkillManager
+from skilllite import run_skill
 
-manager = SkillManager(skills_dir="./skills")
-result = manager.execute("skill_name", {"param": "value"})
+result = run_skill("./.skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
+print(result["text"])
 ```
+
+> 如需 LangChain 集成，请使用 `pip install langchain-skilllite`，参见 [04. LangChain Integration](../04_langchain_integration/README.md)。
 
 ## Next Steps
 

@@ -8,15 +8,18 @@
 pip install skilllite
 ```
 
-### 2. 安装沙箱二进制文件
-
-SkillLite 使用基于 Rust 的沙箱来安全执行代码。
+### 2. 初始化项目
 
 ```bash
-# 通过 CLI 自动安装
-skilllite install
+# 安装沙箱二进制并创建 .skills/ 目录
+skilllite init
 
-# 或手动安装
+# 验证安装
+skilllite status
+```
+
+或手动安装：
+```bash
 curl -fsSL https://raw.githubusercontent.com/EXboys/skilllite/main/install.sh | bash
 ```
 
@@ -35,26 +38,16 @@ skilllite status
 ### 基础示例
 
 ```python
-from skilllite import SkillManager
-from openai import OpenAI
+from skilllite import chat
 
-# 初始化
-client = OpenAI(base_url="https://api.deepseek.com/v1", api_key="your_key")
-manager = SkillManager(skills_dir="./.skills")
+# 单次 Agent 对话（使用 .env 中的 API 配置）
+result = chat("计算 15 乘以 23", skills_dir=".skills")
+print(result)
+```
 
-# 获取工具定义
-tools = manager.get_tools()
-
-# 调用 LLM
-response = client.chat.completions.create(
-    model="deepseek-chat",
-    tools=tools,
-    messages=[{"role": "user", "content": "计算 15 乘以 23"}]
-)
-
-# 处理工具调用
-if response.choices[0].message.tool_calls:
-    results = manager.handle_tool_calls(response)
+LangChain/LlamaIndex 集成请使用 `langchain-skilllite`：
+```bash
+pip install langchain-skilllite
 ```
 
 ### 支持的 LLM 提供商
@@ -70,11 +63,12 @@ if response.choices[0].message.tool_calls:
 ## CLI 命令
 
 ```bash
-skilllite install          # 安装沙箱二进制文件
-skilllite install --force  # 强制重新安装
+skilllite init             # 初始化项目（沙箱 + .skills/）
+skilllite init --skip-deps # 跳过依赖安装
 skilllite status           # 检查安装状态
-skilllite version          # 显示版本信息
-skilllite uninstall        # 卸载二进制文件
+skilllite add owner/repo   # 从 GitHub 添加 skills
+skilllite list             # 列出已安装的 skills
+skilllite chat             # 交互式 Agent 对话
 skilllite mcp              # 启动 MCP 服务器 (需要 pip install skilllite[mcp])
 ```
 
@@ -109,7 +103,7 @@ license: MIT
 ### 找不到二进制文件
 
 ```bash
-echo 'export PATH="$HOME/.skillbox/bin:$PATH"' >> ~/.bashrc
+echo 'export PATH="$HOME/.skilllite/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -121,7 +115,7 @@ source ~/.bashrc
 
 ```bash
 git clone https://github.com/EXboys/skilllite.git
-cd skilllite/skillbox
+cd skilllite/skilllite
 cargo build --release
 cargo install --path .
 ```

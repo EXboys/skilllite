@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skilllite"
-version = "0.1.8"
+version = "0.1.9"
 description = "A lightweight Skills secure execution engine - full CLI via bundled binary"
 readme = "README.md"
 license = {text = "MIT"}

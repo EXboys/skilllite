@@ -15,7 +15,7 @@
 
 | Component | Technology |
 |-----------|------------|
-| Sandbox Executor | Rust (skillbox) |
+| Sandbox Executor | Rust (skilllite binary) |
 | Python SDK | Python 3.x (python-sdk) |
 | macOS Sandbox | Seatbelt (sandbox-exec) |
 | Linux Sandbox | Namespace + Seccomp |
@@ -24,9 +24,9 @@
 
 ```
 skillLite/
-├── skillbox/                    # Rust sandbox executor (core)
+├── skilllite/                  # Rust sandbox executor (core)
 │   └── src/
-│       ├── main.rs             # CLI entry
+│       ├── main.rs             # CLI entry (chat/add/list/mcp/run/exec)
 │       ├── sandbox/            # Sandbox implementation
 │       │   ├── executor.rs     # Sandbox executor and security levels
 │       │   ├── macos.rs        # macOS Seatbelt sandbox
@@ -34,15 +34,14 @@ skillLite/
 │       │   └── security/       # Security scanning module
 │       └── skill/              # Skill metadata parsing
 │
-├── python-sdk/              # Python SDK
+├── python-sdk/                 # Python SDK
 │   └── skilllite/
-│       ├── core/               # Core modules
-│       │   ├── manager.py      # SkillManager main interface
-│       │   ├── executor.py     # Skill executor
-│       │   ├── loops.py        # Agentic Loop implementation
-│       │   └── tools.py        # Tool definitions
-│       └── sandbox/            # Sandbox interface
+│       ├── api.py              # chat, run_skill, scan_code, execute_code
+│       ├── binary.py           # Binary management
+│       ├── cli.py              # CLI entry (forwards to binary)
+│       └── ipc.py              # IPC client
 │
+├── langchain-skilllite/        # LangChain adapter (separate package)
 ├── benchmark/                  # Performance tests
 └── .skills/                    # Skills directory (examples)
 ```
@@ -107,22 +106,20 @@ metadata:
 ```
 User Input
     ↓
-SkillRunner.run()
+chat() or skilllite chat
     ↓
-AgenticLoop.run()
+Rust agent loop (skilllite binary)
     ↓
 ┌─────────────────────────────────────┐
 │ 1. Generate system prompt           │
 │ 2. Call LLM                         │
 │ 3. Parse tool calls                 │
-│ 4. Execute tools (SkillExecutor)    │
+│ 4. Execute tools (run/exec)          │
 │ 5. Return results to LLM            │
 │ 6. Repeat until complete            │
 └─────────────────────────────────────┘
     ↓
-SkillExecutor.execute()
-    ↓
-Call skillbox binary
+skilllite run/exec
     ↓
 ┌─────────────────────────────────────┐
 │ Rust Sandbox:                       │
@@ -139,11 +136,14 @@ Call skillbox binary
 ## CLI Commands
 
 ```bash
-skillbox run <skill_dir> '<input_json>'      # Run Skill
-skillbox exec <skill_dir> <script> '<json>'  # Execute script directly
-skillbox scan <skill_dir>                    # Scan Skill
-skillbox validate <skill_dir>                # Validate Skill
-skillbox security-scan <script_path>         # Security scan
+skilllite run <skill_dir> '<input_json>'      # Run Skill
+skilllite exec <skill_dir> <script> '<json>'  # Execute script directly
+skilllite scan <skill_dir>                   # Scan Skill
+skilllite validate <skill_dir>               # Validate Skill
+skilllite security-scan <script_path>        # Security scan
+skilllite chat                               # Interactive agent chat
+skilllite add owner/repo                     # Add skills from GitHub
+skilllite list                               # List installed skills
 ```
 
 ---

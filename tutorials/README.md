@@ -22,8 +22,8 @@ Complete SkillLite usage examples to quickly get started with all core features 
 # Install SkillLite
 pip install skilllite
 
-# Install skilllite sandbox
-skilllite install
+# Initialize project (sandbox + .skills/)
+skilllite init
 
 # Create .env configuration file
 cp .env.example .env
@@ -64,49 +64,35 @@ python hello_world.py
 
 ### Simplest Usage
 ```python
-from skilllite import SkillRunner
+from skilllite import chat
 
-runner = SkillRunner()
-result = runner.run("Help me with this task")
+result = chat("Help me with this task", skills_dir=".skills")
 print(result)
 ```
 
 ### Direct Skill Execution (No LLM)
 ```python
-from skilllite import SkillManager
+from skilllite import run_skill
 
-manager = SkillManager(skills_dir="./skills")
-result = manager.execute("skill_name", {"param": "value"})
+result = run_skill("./.skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
+print(result["text"])
 ```
 
 ### LangChain Integration
+```bash
+pip install langchain-skilllite
+```
 ```python
-from skilllite import SkillManager
-from langchain.agents import create_openai_tools_agent, AgentExecutor
+from langchain_skilllite import SkillLiteToolkit
+from langgraph.prebuilt import create_react_agent
 
-manager = SkillManager(skills_dir="./skills")
-tools = manager.get_tools()
-
-# Create agent and execute
-agent = create_openai_tools_agent(llm, tools, prompt)
-executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=tools)
-result = executor.invoke({"input": "Your request"})
+tools = SkillLiteToolkit.from_directory("./skills")
+agent = create_react_agent(llm, tools)
+result = agent.invoke({"messages": [("user", "Your request")]})
 ```
 
 ### LlamaIndex Integration
-```python
-from skilllite import SkillManager
-from llama_index.core.agent import ReActAgent
-
-manager = SkillManager(skills_dir="./skills")
-tools = manager.get_tools()
-
-agent = ReActAgent.from_tools(
-    tools=[t.to_openai_format() for t in tools],
-    llm=llm
-)
-response = agent.chat("Your query")
-```
+See [05. LlamaIndex Integration](./05_llamaindex_integration/README.md) for details.
 
 ## 🔧 All Example Files
 
@@ -156,7 +142,7 @@ SKILLBOX_SANDBOX_LEVEL=3                        # Sandbox level (1/2/3)
 ## ❓ FAQ
 
 **Q: Do I need to install Rust?**
-A: No, `skilllite install` will automatically download pre-compiled binaries.
+A: No, `skilllite init` will automatically download pre-compiled binaries.
 
 **Q: Can I execute skills without an LLM?**
 A: Yes, see [01_basic/direct_execution.py](./01_basic/direct_execution.py)

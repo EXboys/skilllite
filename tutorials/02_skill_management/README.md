@@ -24,22 +24,20 @@ python execute_skill.py
 ## Basic Code Template
 
 ```python
-from skilllite import SkillManager
+from skilllite import run_skill
 
-manager = SkillManager(skills_dir="./skills")
-
-# List all skills
-skills = manager.list_skills()
-for skill in skills:
-    print(f"{skill.name}: {skill.description}")
-
-# Execute a skill
-result = manager.execute("skill_name", {"param": "value"})
-if result.success:
-    print(result.output)
-else:
-    print(f"Error: {result.error}")
+# Execute a skill directly (CLI: skilllite list, skilllite run)
+result = run_skill("./.skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
+print(result["text"])
 ```
+
+> 如需 SkillManager（列出、执行等），请使用 `pip install langchain-skilllite`：
+> ```python
+> from langchain_skilllite import SkillManager
+> manager = SkillManager(skills_dir="./skills")
+> for skill in manager.list_skills(): ...
+> result = manager.execute("calculator", {...})
+> ```
 
 ## Next Steps
 

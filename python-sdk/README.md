@@ -21,11 +21,14 @@ skilllite init-cursor       # Initialize Cursor IDE integration
 ## API (Python ↔ binary bridge)
 
 ```python
-from skilllite import scan_code, execute_code, chat
+from skilllite import scan_code, execute_code, chat, run_skill
 
 # Sandbox: security scan + execute (IDE/MCP integration)
 result = scan_code("python", "print(1+1)")
 result = execute_code("python", "print(sum(range(101)))")
+
+# Direct skill execution
+result = run_skill("./.skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
 
 # Agent chat (single-shot, hides binary CLI)
 result = chat("帮我分析这个项目", skills_dir=".skills", stream=True)

@@ -90,44 +90,42 @@ SkillLite 使用 **Rust 实现的原生系统级沙箱**，而非 Docker 或 Web
 
 ## 🚀 快速开始
 
-### 1. 安装 Rust 沙箱执行器
+### 安装（推荐：pip）
 
-本项目使用 Rust 编写的隔离沙箱来安全执行 Skills 脚本，需要先安装 Rust 环境并编译沙箱。
+```bash
+# 安装 SkillLite SDK
+pip install skilllite
+
+# 安装沙箱二进制和初始化 skills 目录
+skilllite init
+
+# 验证安装
+skilllite status
+```
+
+### Skills 仓库管理
+
+```bash
+# 从远程仓库添加 skills
+skilllite add owner/repo                    # 添加 GitHub 仓库中的所有 skills
+skilllite add owner/repo/skill-name         # 按路径添加指定 skill
+skilllite add owner/repo@skill-name          # 按名称过滤添加
+skilllite add https://github.com/owner/repo # 从完整 GitHub URL 添加
+skilllite add ./local-path                  # 从本地目录添加
+skilllite add owner/repo --list             # 列出可用 skills 但不安装
+skilllite add owner/repo --force             # 强制覆盖已存在的 skills
+
+# 管理已安装的 skills
+skilllite list                              # 列出所有已安装 skills
+skilllite remove <skill-name>                # 移除已安装的 skill
+skilllite remove <skill-name> --force        # 无需确认直接移除
+```
+
+无需 Rust、Docker 或复杂配置。
 
 > ⚠️ **平台支持**：目前仅支持 **macOS** 和 **Linux**，暂不支持 Windows。
 
-#### 安装 Rust（如果尚未安装）
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# 安装完成后，重新加载环境变量
-source ~/.cargo/env
-
-# 验证安装
-rustc --version
-cargo --version
-```
-
-#### 编译沙箱执行器
-
-```bash
-# 进入 Rust 项目目录并编译
-cd skilllite
-cargo build --release
-
-# 可选：安装到系统路径（推荐）
-cargo install --path .
-
-# 验证安装
-skilllite --help
-```
-
-编译完成后，`skillbox` 二进制文件会位于：
-- 如果使用 `cargo install`：`~/.cargo/bin/skilllite`
-- 如果仅 `cargo build`：`skilllite/target/release/skilllite`
-
-### 2. 环境配置
+### 环境配置
 
 ```bash
 # 复制环境变量模板并填入 API 配置
@@ -141,7 +139,7 @@ cp .env.example .env
 | [.env.example.full](./.env.example.full) | 完整变量列表（高级用户） |
 | [docs/ENV_REFERENCE.md](./docs/ENV_REFERENCE.md) | 完整变量说明、默认值、使用场景 |
 
-### 3. 运行示例
+### 运行示例
 
 ```bash
 python3 simple_demo.py
@@ -151,58 +149,50 @@ python3 simple_demo.py
 
 ```
 skillLite/
-├── skilllite/              # Rust 沙箱执行器
-├── skilllite/             # Python SDK
+├── skilllite/              # Rust 沙箱执行器（CLI: chat/add/list/mcp/run/exec）
+├── python-sdk/             # Python SDK
 │   └── skilllite/
-│       ├── manager.py     # SkillManager 核心管理器
-│       ├── executor.py    # Skill 执行器
-│       ├── loops.py       # Agentic Loop 实现
-│       ├── tools.py       # 工具定义
-│       └── ...
-├── .skills/               # Skills 目录
-│   ├── calculator/        # 计算器 Skill
-│   ├── data-analyzer/     # 数据分析 Skill
-│   ├── http-request/      # HTTP 请求 Skill
-│   ├── text-processor/    # 文本处理 Skill
-│   ├── weather/           # 天气查询 Skill
-│   └── writing-helper/    # 写作助手 Skill
-├── simple_demo.py         # 完整示例
-├── simple_demo_v2.py      # 简化示例
-└── simple_demo_minimal.py # 最小示例
+│       ├── api.py         # chat, run_skill, scan_code, execute_code
+│       ├── binary.py      # 二进制管理
+│       ├── cli.py         # CLI 入口（转发到 binary）
+│       └── ipc.py         # IPC 客户端
+├── langchain-skilllite/    # LangChain 适配器（独立包）
+├── .skills/                # Skills 目录
+├── simple_demo.py          # 完整示例（使用 chat API）
+└── tutorials/             # 教程
 ```
 
 ## 💡 使用方法
 
-### 基础用法
+### 基础用法（chat API）
 
 ```python
-from openai import OpenAI
-from skilllite import SkillManager
+from skilllite import chat
 
-# 初始化 OpenAI 兼容客户端
-client = OpenAI(base_url="https://api.deepseek.com/v1", api_key="your_key")
-
-# 初始化 SkillManager
-manager = SkillManager(
-    skills_dir="./.skills",
-    llm_client=client,
-    llm_model="deepseek-chat"
-)
-
-# 获取工具定义（OpenAI 格式）
-tools = manager.get_tools()
-
-# 调用 LLM
-response = client.chat.completions.create(
-    model="deepseek-chat",
-    tools=tools,
-    messages=[{"role": "user", "content": "帮我计算 15 乘以 27"}]
-)
-
-# 处理工具调用
-if response.choices[0].message.tool_calls:
-    results = manager.handle_tool_calls(response)
+# 单次 Agent 对话（使用 .env 中的 API 配置）
+result = chat("帮我计算 15 乘以 27", skills_dir=".skills")
+print(result)
 ```
+
+### 直接执行 Skill
+
+```python
+from skilllite import run_skill
+
+result = run_skill("./.skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
+print(result["text"])
+```
+
+### 框架集成（LangChain / LlamaIndex）
+
+如需与 LangChain 或 LlamaIndex Agent 集成，请使用对应适配器：
+
+```bash
+pip install langchain-skilllite   # LangChain
+pip install skilllite[llamaindex] # LlamaIndex（可选）
+```
+
+详见 [04. LangChain 集成](./tutorials/04_langchain_integration) 和 [05. LlamaIndex 集成](./tutorials/05_llamaindex_integration)。
 
 ### 支持的 LLM 提供商
 
@@ -244,11 +234,10 @@ entry_point: scripts/main.py
 
 ## 📦 核心组件
 
-- **SkillManager** - 管理 Skills 的发现、注册和执行
-- **SkillInfo** - 单个 Skill 的信息封装
-- **AgenticLoop** - 自动化的 Agent 循环执行
-- **ToolDefinition** - OpenAI 兼容的工具定义
-- **SchemaInferrer** - 智能参数 Schema 推断
+- **skilllite**（Rust 二进制）- 沙箱执行器、CLI（chat/add/list/mcp/run/exec）、MCP 服务器
+- **chat** - Python API，用于单次 Agent 对话
+- **run_skill** / **execute_code** / **scan_code** - Python API，用于直接执行
+- **langchain-skilllite** - LangChain 适配器（SkillLiteToolkit、SkillManager）
 
 ## 🔌 OpenCode 集成
 

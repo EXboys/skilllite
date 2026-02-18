@@ -103,10 +103,9 @@ That's it! No Rust, no Docker, no complex setup required.
 ### Run Your First Example
 
 ```python
-from skilllite import SkillRunner
+from skilllite import chat
 
-runner = SkillRunner()
-result = runner.run("Calculate 15 * 27")
+result = chat("Calculate 15 * 27", skills_dir=".skills")
 print(result)
 ```
 
@@ -281,36 +280,35 @@ After compilation, the binary will be at:
 
 ## 💡 Usage
 
-### Basic Usage
+### Basic Usage (chat API)
 
 ```python
-from openai import OpenAI
-from skilllite import SkillManager
+from skilllite import chat
 
-# Initialize OpenAI-compatible client
-client = OpenAI(base_url="https://api.deepseek.com/v1", api_key="your_key")
-
-# Initialize SkillManager
-manager = SkillManager(
-    skills_dir="./.skills",
-    llm_client=client,
-    llm_model="deepseek-chat"
-)
-
-# Get tool definitions (OpenAI format)
-tools = manager.get_tools()
-
-# Call LLM
-response = client.chat.completions.create(
-    model="deepseek-chat",
-    tools=tools,
-    messages=[{"role": "user", "content": "Calculate 15 times 27"}]
-)
-
-# Handle tool calls
-if response.choices[0].message.tool_calls:
-    results = manager.handle_tool_calls(response)
+# Single-shot agent chat (uses .env for API config)
+result = chat("Calculate 15 times 27", skills_dir=".skills")
+print(result)
 ```
+
+### Direct Skill Execution
+
+```python
+from skilllite import run_skill
+
+result = run_skill("./.skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
+print(result["text"])
+```
+
+### Framework Integration (LangChain / LlamaIndex)
+
+For LangChain or LlamaIndex agents, use the dedicated adapters:
+
+```bash
+pip install langchain-skilllite   # LangChain
+pip install skilllite[llamaindex]  # LlamaIndex (optional extra)
+```
+
+See [Framework Adapters](#framework-adapters) below.
 
 ### Supported LLM Providers
 
@@ -356,54 +354,39 @@ SkillLite provides adapters for popular AI frameworks with security confirmation
 
 ### LangChain Integration
 
-```python
-from skilllite.core.adapters.langchain import SkillLiteToolkit
+Install the [langchain-skilllite](https://pypi.org/project/langchain-skilllite/) package:
 
-# Recommended: RPC-based, no SkillManager
-tools = SkillLiteToolkit.from_skills_dir("./skills")
+```bash
+pip install langchain-skilllite
+```
+
+```python
+from langchain_skilllite import SkillLiteToolkit
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+
+# Load skills as LangChain tools
+tools = SkillLiteToolkit.from_directory("./skills")
 
 # With security confirmation (sandbox_level=3)
 def confirm_execution(report: str, scan_id: str) -> bool:
     print(report)
     return input("Continue? [y/N]: ").lower() == 'y'
 
-tools = SkillLiteToolkit.from_skills_dir(
+tools = SkillLiteToolkit.from_directory(
     "./skills",
     sandbox_level=3,  # 1=no sandbox, 2=sandbox only, 3=sandbox+scan
     confirmation_callback=confirm_execution
 )
 
 # Use with LangChain agent
-from langchain.agents import AgentExecutor, create_openai_tools_agent
-agent = create_openai_tools_agent(llm, tools, prompt)
+agent = create_react_agent(ChatOpenAI(model="gpt-4"), tools)
+result = agent.invoke({"messages": [("user", "Calculate 15 * 27")]})
 ```
 
 ### LlamaIndex Integration
 
-```python
-from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
-
-# Recommended: RPC-based, no SkillManager
-tool_spec = SkillLiteToolSpec.from_skills_dir("./skills")
-tools = tool_spec.to_tool_list()
-
-# With security confirmation
-def confirm(report: str, scan_id: str) -> bool:
-    print(report)
-    return input("Continue? [y/N]: ").lower() == 'y'
-
-tool_spec = SkillLiteToolSpec.from_skills_dir(
-    "./skills",
-    sandbox_level=3,
-    confirmation_callback=confirm
-)
-
-# Use with LlamaIndex agent
-from llama_index.core.agent import ReActAgent
-agent = ReActAgent.from_tools(tools, llm=llm)
-```
-
-> **Legacy**: `from_manager(manager)` is deprecated. Prefer `from_skills_dir`.
+See [05. LlamaIndex Integration](./tutorials/05_llamaindex_integration/README.md) for setup and usage.
 
 ### Security Levels
 
@@ -439,11 +422,10 @@ The `init-opencode` command automatically:
 
 ## 📦 Core Components
 
-- **SkillManager** - Manages Skill discovery, registration, and execution
-- **SkillInfo** - Single Skill information encapsulation
-- **AgenticLoop** - Automated Agent loop execution
-- **ToolDefinition** - OpenAI-compatible tool definition
-- **SchemaInferrer** - Smart parameter Schema inference
+- **skilllite** (Rust binary) - Sandbox executor, CLI (chat/add/list/mcp/run/exec), MCP server
+- **chat** - Python API for single-shot agent chat
+- **run_skill** / **execute_code** / **scan_code** - Python APIs for direct execution
+- **langchain-skilllite** - LangChain adapter (SkillLiteToolkit, SkillManager)
 
 ## 📄 License
 

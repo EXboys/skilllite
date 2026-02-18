@@ -27,12 +27,12 @@ output_schema:
 
 # Example Python Skill
 
-This is a simple example skill that demonstrates the SkillBox protocol.
+This is a simple example skill that demonstrates the SkillLite protocol.
 
 ## Usage
 
 ```bash
-skillbox run ./examples/python_skill '{"message": "Hello, World!"}'
+skilllite run ./examples/python_skill '{"message": "Hello, World!"}'
 ```
 
 ## Input

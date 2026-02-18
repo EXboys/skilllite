@@ -27,7 +27,7 @@ opencode
 ![OpenCode Init](../../docs/images/opencode-init.png)
 
 That's it! The `init-opencode` command automatically:
-- Installs the skillbox sandbox binary
+- Installs the skilllite sandbox binary
 - Detects the best way to start the MCP server
 - Creates `opencode.json` with optimal configuration
 - Generates `.opencode/skills/skilllite/SKILL.md` with usage instructions
@@ -190,7 +190,7 @@ You should see 5 tools: `skilllite_list_skills`, `skilllite_get_skill_info`, `sk
 # Test MCP server manually
 skilllite mcp
 
-# Check skillbox is installed
+# Check skilllite is installed
 skilllite status
 ```
 

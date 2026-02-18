@@ -4,7 +4,7 @@ Agentic Loop: Multi-turn conversations and tool calls
 Quick Start:
   python basic_loop.py
 
-Uses SkillRunner (agent_chat RPC) — no SkillManager.
+Uses chat() API — bridges to skilllite chat (Rust binary).
 """
 
 import sys
@@ -12,14 +12,14 @@ import os
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
-from skilllite import SkillRunner
+from skilllite import chat
 
-# ========== Using SkillLite Built-in Agent (agent_chat RPC) ==========
+# ========== Using SkillLite chat API ==========
 
 def skilllite_agent(user_request: str):
-    """Run agent via skilllite agent-rpc (Rust)."""
-    runner = SkillRunner(skills_dir=str(Path(__file__).parent / "../../.skills"))
-    return runner.run(user_request)
+    """Run agent via chat() API (skilllite binary)."""
+    skills_dir = str(Path(__file__).parent / "../../.skills")
+    return chat(user_request, skills_dir=skills_dir)
 
 
 # ========== Test ==========

@@ -2,16 +2,16 @@
 LangChain Practical Example: Building an Agent with SkillLite
 
 Prerequisites:
-  pip install skilllite[langchain] langchain-openai
-  Configure OPENAI_API_KEY environment variable
+  pip install langchain-skilllite langchain-openai
+  Configure OPENAI_API_KEY in .env
 
-Usage (RPC-based, no SkillManager):
-  from skilllite.core.adapters.langchain import SkillLiteToolkit
-  from skilllite import SkillRunner
+Usage:
+  from langchain_skilllite import SkillLiteToolkit
+  from skilllite import chat
 
-  tools = SkillLiteToolkit.from_skills_dir("./skills")
-  # Or use SkillRunner for built-in agent (no LangChain)
-  result = SkillRunner().run("Your request")
+  tools = SkillLiteToolkit.from_directory("./skills")
+  # Or use chat() for built-in agent (no LangChain)
+  result = chat("Your request", skills_dir="./skills")
 """
 
 import sys
@@ -21,17 +21,17 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
 skills_dir = str(Path(__file__).parent / "../../.skills")
 
-# ========== Approach 1: LangChain with SkillLiteToolkit.from_skills_dir ==========
+# ========== Approach 1: LangChain with SkillLiteToolkit.from_directory ==========
 
 def langchain_agent_with_toolkit(user_request: str):
-    """Using LangChain Agent with SkillLiteToolkit (RPC-based)."""
+    """Using LangChain Agent with SkillLiteToolkit."""
     try:
-        from skilllite.core.adapters.langchain import SkillLiteToolkit
+        from langchain_skilllite import SkillLiteToolkit
         from langchain.agents import create_openai_tools_agent, AgentExecutor
         from langchain_openai import ChatOpenAI
         from langchain.prompts import ChatPromptTemplate
 
-        tools = SkillLiteToolkit.from_skills_dir(skills_dir)
+        tools = SkillLiteToolkit.from_directory(skills_dir)
         llm = ChatOpenAI(model="gpt-4")
 
         prompt = ChatPromptTemplate.from_messages([
@@ -45,17 +45,17 @@ def langchain_agent_with_toolkit(user_request: str):
         result = executor.invoke({"input": user_request})
         return result["output"]
     except ImportError as e:
-        print(f"❌ pip install skilllite[langchain] langchain-openai")
+        print(f"❌ pip install langchain-skilllite langchain-openai")
         print(f"   Error: {e}")
         return None
 
 
-# ========== Approach 2: SkillRunner (Built-in, No LangChain) ==========
+# ========== Approach 2: chat() (Built-in, No LangChain) ==========
 
 def skilllite_agent(user_request: str):
-    """Using SkillRunner (agent_chat RPC) — no LangChain."""
-    from skilllite import SkillRunner
-    return SkillRunner(skills_dir=skills_dir).run(user_request)
+    """Using chat() API — no LangChain."""
+    from skilllite import chat
+    return chat(user_request, skills_dir=skills_dir)
 
 
 # ========== Test ==========
@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
     print("Available approaches:")
     print("1. langchain_agent_with_toolkit() - LangChain with SkillLiteToolkit")
-    print("2. skilllite_agent() - SkillRunner (built-in agent)")
+    print("2. skilllite_agent() - chat() (built-in agent)")
     print()
 
     # Uncomment to test:
