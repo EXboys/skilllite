@@ -51,13 +51,9 @@ skillLite/
 ├── langchain-skilllite/        # LangChain 适配器 (独立包)
 ├── benchmark/                  # 性能测试
 │   ├── README.md               # 测试说明
-│   ├── benchmark_runner.py     # 基准测试运行器
-│   ├── benchmark_runner_v2.py  # 基准测试运行器 v2
-│   ├── docker_vs.py            # Docker 对比测试
-│   ├── pyodide_vs.py           # Pyodide 对比测试
+│   ├── benchmark_runner.py     # 性能基准 (冷启动/高并发)
 │   ├── security_vs.py          # 安全性对比测试
-│   ├── security_detailed_vs.py # 详细安全对比
-│   └── srt_vs_skillbox_benchmark.py # SRT 对比测试
+│   └── security_detailed_vs.py # 详细安全对比
 │
 ├── .skills/                    # Skills 目录 (示例技能)
 │   ├── calculator/             # 计算器

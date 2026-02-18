@@ -25,13 +25,11 @@ High-concurrency performance comparison test suite for comparing SkillBox with o
 
 ## Test Scripts
 
-| Script | Comparison Target | Description |
-|--------|------------------|-------------|
-| `benchmark_runner.py` | All Executors | High-concurrency performance comparison |
-| `docker_vs.py` | Docker | Container vs Native Sandbox |
-| `pyodide_vs.py` | Pyodide (WebAssembly) | WASM vs Native Sandbox |
-| `srt_vs_skillbox_benchmark.py` | SRT (Anthropic) | Anthropic Sandbox Comparison |
-| `security_vs.py` | All | Security Comparison Test |
+| Script | Description |
+|--------|-------------|
+| `benchmark_runner.py` | Performance comparison: cold start, high concurrency (SkillBox, Docker, SRT, Pyodide) |
+| `security_vs.py` | Security comparison test |
+| `security_detailed_vs.py` | Detailed security behavior (blocked vs limited vs allowed) |
 
 ## Test Environment
 
@@ -210,7 +208,7 @@ SkillBox's core advantages: **zero dependencies, local execution, millisecond-le
 ### Running Tests
 
 ```bash
-python3 benchmark/pyodide_vs.py
+python benchmark/benchmark_runner.py --compare-levels --compare-ipc -n 1 -c 1
 ```
 
 ### Pyodide Limitations
@@ -268,7 +266,7 @@ SRT is Anthropic's open-source sandbox runtime that uses the same underlying tec
 ### Running Tests
 
 ```bash
-python3 benchmark/srt_vs_skillbox_benchmark.py
+python benchmark/benchmark_runner.py --compare-levels --compare-ipc -n 1 -c 1
 ```
 
 > Reference: [Anthropic Sandbox Runtime](https://github.com/anthropics/anthropic-quickstarts)
