@@ -32,7 +32,7 @@ All other dependencies in this project are licensed under permissive licenses (M
 To view the complete list of dependencies and their licenses, run:
 
 ```bash
-cd skillbox && cargo license
+cd skilllite && cargo license
 ```
 
 ---

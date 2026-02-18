@@ -82,13 +82,22 @@ By contributing, you agree that your contributions will be licensed under the MI
 ```
 skillLite/
 ├── skilllite/          # Rust sandbox executor
-├── python-sdk/     # Python SDK
-├── .skills/           # Built-in Skills (examples)
-├── benchmark/         # Performance benchmarks
-└── docs/              # Documentation
-    ├── en/            # English docs
-    └── zh/            # Chinese docs
+├── python-sdk/         # Python SDK
+├── .skills/            # Built-in Skills (examples)
+├── benchmark/          # Performance benchmarks
+├── test/               # LangChain integration tests (run_tests.py, .gitignore)
+├── tests/              # Pytest unit tests (test_core, test_mcp, test_langchain, etc.)
+└── docs/               # Documentation
+    ├── en/             # English docs
+    └── zh/             # Chinese docs
 ```
+
+### Test Directories
+
+| Directory | Purpose | Run Command |
+|-----------|---------|-------------|
+| `test/` | LangChain/SkillLite integration tests, requires skills | `cd test && python run_tests.py` |
+| `tests/` | Pytest unit tests for core/SDK | `cd python-sdk && pytest` or `pytest tests/` |
 
 ## Code of Conduct
 

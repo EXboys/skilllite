@@ -82,13 +82,22 @@ cp .env.example .env
 ```
 skillLite/
 ├── skilllite/          # Rust 沙箱执行器
-├── python-sdk/     # Python SDK
-├── .skills/           # 内置 Skills（示例）
-├── benchmark/         # 性能测试
-└── docs/              # 文档
-    ├── en/            # 英文文档
-    └── zh/            # 中文文档
+├── python-sdk/         # Python SDK
+├── .skills/            # 内置 Skills（示例）
+├── benchmark/          # 性能测试
+├── test/               # LangChain 集成测试（run_tests.py，.gitignore）
+├── tests/              # Pytest 单元测试（test_core、test_mcp 等）
+└── docs/               # 文档
+    ├── en/             # 英文文档
+    └── zh/             # 中文文档
 ```
+
+### 测试目录说明
+
+| 目录 | 用途 | 运行命令 |
+|------|------|----------|
+| `test/` | LangChain/SkillLite 集成测试，需 skills | `cd test && python run_tests.py` |
+| `tests/` | 核心/SDK 的 Pytest 单元测试 | `cd python-sdk && pytest` 或 `pytest tests/` |
 
 ## 行为准则
 

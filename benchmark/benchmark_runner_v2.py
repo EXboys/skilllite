@@ -41,8 +41,8 @@ SKILLS_DIR = PROJECT_ROOT / ".skills"
 CALCULATOR_SKILL = SKILLS_DIR / "calculator"
 DATA_ANALYZER_SKILL = SKILLS_DIR / "data-analyzer"
 
-# SkillBox binary path
-SKILLBOX_BIN = shutil.which("skillbox") or str(PROJECT_ROOT / "skillbox" / "target" / "release" / "skillbox")
+# SkillLite binary path
+SKILLBOX_BIN = shutil.which("skilllite") or str(PROJECT_ROOT / "skilllite" / "target" / "release" / "skilllite")
 
 
 @dataclass
