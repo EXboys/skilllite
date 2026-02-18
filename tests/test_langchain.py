@@ -1,18 +1,23 @@
+"""
+LangChain + SkillLite integration demo.
+
+Requires: pip install langchain-skilllite langchain-openai
+"""
 import os
 from dotenv import load_dotenv
-from skilllite.core.adapters.langchain import SkillLiteToolkit
+from langchain_skilllite import SkillLiteToolkit
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
 # 加载环境变量
 load_dotenv()
 
-# RPC-based (recommended): no SkillManager
+# Uses langchain-skilllite (SkillLiteToolkit)
 def confirm(report: str, scan_id: str) -> bool:
     print(report)
     return input("Continue? [y/N]: ").lower() == 'y'
 
-tools = SkillLiteToolkit.from_skills_dir(
+tools = SkillLiteToolkit.from_directory(
     "./.skills",
     sandbox_level=3,
     confirmation_callback=confirm,

@@ -31,13 +31,7 @@ result = run_skill("./.skills/calculator", '{"operation": "add", "a": 15, "b": 2
 print(result["text"])
 ```
 
-> 如需 SkillManager（列出、执行等），请使用 `pip install langchain-skilllite`：
-> ```python
-> from langchain_skilllite import SkillManager
-> manager = SkillManager(skills_dir="./skills")
-> for skill in manager.list_skills(): ...
-> result = manager.execute("calculator", {...})
-> ```
+> 如需 LangChain 集成，请使用 `pip install langchain-skilllite`，参见 [04. LangChain Integration](../04_langchain_integration/README.md)。
 
 ## Next Steps
 

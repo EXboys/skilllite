@@ -1,136 +1,36 @@
 """
-LlamaIndex Practical Example: Using SkillLite with LlamaIndex Agents
+LlamaIndex + SkillLite Integration
 
-Prerequisites:
-  pip install skilllite[llamaindex] llama-index-llms-openai
+Note: SkillLiteToolSpec has been removed from the main skilllite package.
+For LlamaIndex integration, consider:
+  1. Using langchain-skilllite with LangChain (see 04_langchain_integration)
+  2. Using SkillLite MCP Server (see 06_mcp_server)
+  3. Calling skilllite CLI directly via subprocess
 
-Usage with SkillLiteToolSpec (RPC-based, no SkillManager):
-  from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
-  from llama_index.core.agent import ReActAgent
-
-  tool_spec = SkillLiteToolSpec.from_skills_dir("./skills")
-  tools = tool_spec.to_tool_list()
-  agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
-  response = agent.chat("Your query")
+Example - Direct CLI call:
 """
-
+import subprocess
+from pathlib import Path
 import sys
 import os
-from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
+from skilllite import get_binary
+
 skills_dir = str(Path(__file__).parent / "../../.skills")
+binary = get_binary()
+if not binary:
+    print("❌ skilllite not found. Run: pip install skilllite")
+    sys.exit(1)
 
-
-# ========== Approach 1: Using SkillLiteToolSpec.from_skills_dir (Recommended) ==========
-
-def llamaindex_agent_with_toolspec(query: str):
-    """
-    Using LlamaIndex Agent with SkillLiteToolSpec (RPC-based)
-    """
-    try:
-        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
-        from llama_index.core.agent import ReActAgent
-        from llama_index.llms.openai import OpenAI as LlamaOpenAI
-
-        # Create LlamaIndex tools via RPC (no SkillManager)
-        tool_spec = SkillLiteToolSpec.from_skills_dir(skills_dir)
-        tools = tool_spec.to_tool_list()
-
-        print(f"✅ Created {len(tools)} LlamaIndex tools")
-        for tool in tools:
-            print(f"   - {tool.metadata.name}: {tool.metadata.description}")
-
-        # Initialize LLM
-        llm = LlamaOpenAI(model="gpt-4")
-
-        # Create Agent
-        agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
-
-        # Execute
-        response = agent.chat(query)
-        return str(response)
-    except ImportError as e:
-        print(f"❌ Please install dependencies: pip install skilllite[llamaindex] llama-index-llms-openai")
-        print(f"   Error: {e}")
-        return None
-
-
-# ========== Approach 2: With Options ==========
-
-def llamaindex_agent_with_options(query: str):
-    """
-    Using SkillLiteToolSpec with custom options
-    """
-    try:
-        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
-        from llama_index.core.agent import ReActAgent
-        from llama_index.llms.openai import OpenAI as LlamaOpenAI
-
-        # Create tools with options
-        tool_spec = SkillLiteToolSpec.from_skills_dir(
-            skills_dir,
-            skill_names=["calculator"],
-            allow_network=True,
-            timeout=60,
-        )
-        tools = tool_spec.to_tool_list()
-
-        llm = LlamaOpenAI(model="gpt-4")
-        agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
-
-        response = agent.chat(query)
-        return str(response)
-    except ImportError as e:
-        print(f"❌ Missing dependencies: {e}")
-        return None
-
-
-# ========== Approach 3: RAG + Skills Pipeline ==========
-
-def rag_with_skills(documents: list, query: str):
-    """
-    Complete RAG + skill execution pipeline
-    """
-    try:
-        from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
-        from llama_index.core import VectorStoreIndex
-        from llama_index.core.agent import ReActAgent
-        from llama_index.llms.openai import OpenAI as LlamaOpenAI
-
-        # 1. Build RAG index
-        index = VectorStoreIndex.from_documents(documents)
-        query_engine = index.as_query_engine()
-
-        # 2. Create skill tools
-        tool_spec = SkillLiteToolSpec.from_skills_dir(skills_dir)
-        skill_tools = tool_spec.to_tool_list()
-
-        # 3. Create agent with both RAG and skills
-        llm = LlamaOpenAI(model="gpt-4")
-        agent = ReActAgent.from_tools(
-            skill_tools,  # Add skill tools
-            llm=llm,
-            verbose=True
-        )
-
-        # 4. Execute query
-        response = agent.chat(query)
-        return str(response)
-    except ImportError as e:
-        print(f"❌ Missing dependencies: {e}")
-        return None
-
-
-# ========== Test ==========
-
-if __name__ == "__main__":
-    print("Available approaches:")
-    print("1. llamaindex_agent_with_toolspec() - SkillLiteToolSpec (recommended)")
-    print("2. llamaindex_agent_with_options() - With custom options")
-    print("3. rag_with_skills() - RAG + Skills pipeline")
-    print()
-
-    # Uncomment to test:
-    # result = llamaindex_agent_with_toolspec("Calculate 15 * 23")
-    # print(result)
+# List skills
+result = subprocess.run(
+    [binary, "list", "-s", skills_dir, "--json"],
+    capture_output=True, text=True, timeout=30,
+)
+if result.returncode == 0 and result.stdout.strip():
+    import json
+    skills = json.loads(result.stdout)
+    print(f"Available skills: {[s.get('name') for s in skills]}")
+else:
+    print("No skills found. Add skills with: skilllite add <source>")

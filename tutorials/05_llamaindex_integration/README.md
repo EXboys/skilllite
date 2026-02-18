@@ -1,86 +1,33 @@
 # 05. LlamaIndex Integration
 
-SkillLite provides official LlamaIndex adapters through `SkillLiteToolSpec`.
+> **Note**: LlamaIndex 适配器已从主仓库移除。当前推荐使用 [langchain-skilllite](https://pypi.org/project/langchain-skilllite/) 进行 Agent 集成，或通过 SkillLite MCP Server（参见 [06. MCP Server](../06_mcp_server/README.md)）与支持 MCP 的 IDE 配合使用。
 
-## Prerequisites
+## 替代方案
 
-```bash
-pip install skilllite[llamaindex] llama-index-llms-openai
-```
-
-## Quick Start (Recommended)
-
-```python
-from skilllite.core.adapters.llamaindex import SkillLiteToolSpec
-from llama_index.core.agent import ReActAgent
-from llama_index.llms.openai import OpenAI
-
-# 1. Create LlamaIndex tools from skills_dir (RPC-based, no SkillManager)
-tool_spec = SkillLiteToolSpec.from_skills_dir("./skills")
-tools = tool_spec.to_tool_list()
-
-# 2. Create Agent
-llm = OpenAI(model="gpt-4")
-agent = ReActAgent.from_tools(tools, llm=llm, verbose=True)
-
-# 3. Execute
-response = agent.chat("Your query")
-```
-
-## Advanced Options
-
-```python
-# Filter specific skills and configure options
-tool_spec = SkillLiteToolSpec.from_skills_dir(
-    "./skills",
-    skill_names=["calculator", "web_search"],  # Only specific skills
-    allow_network=True,                        # Allow network access
-    timeout=60                                 # Execution timeout in seconds
-)
-tools = tool_spec.to_tool_list()
-```
-
-> **Legacy**: `SkillLiteToolSpec.from_manager(manager)` is deprecated. Prefer `from_skills_dir`.
-
-## Examples
-
-### basic_usage.py
-LlamaIndex Agent + SkillLite skill execution
-
-Includes three implementation approaches:
-- Approach 1: SkillLiteToolSpec (recommended)
-- Approach 2: With custom options
-- Approach 3: RAG + Skills pipeline
+### 方案 1：使用 LangChain 集成
 
 ```bash
-python basic_usage.py
+pip install langchain-skilllite langchain-openai
 ```
 
-## API Reference
+参见 [04. LangChain Integration](../04_langchain_integration/README.md)。
 
-### SkillLiteToolSpec
+### 方案 2：使用 MCP Server
 
-Factory class to create LlamaIndex tools from skills directory.
+SkillLite 提供 MCP 协议支持，可与 Cursor、OpenCode 等 IDE 集成。参见 [06. MCP Server](../06_mcp_server/README.md)。
+
+### 方案 3：直接调用 skilllite CLI
 
 ```python
-# Recommended
-tool_spec = SkillLiteToolSpec.from_skills_dir(
-    skills_dir: str,
-    skill_names: Optional[List[str]] = None,  # Filter skills
-    allow_network: bool = False,              # Network access
-    timeout: Optional[int] = None             # Timeout in seconds
+import subprocess
+from skilllite import get_binary
+
+binary = get_binary()
+result = subprocess.run(
+    [binary, "run", "./.skills/calculator", '{"operation": "add", "a": 15, "b": 27}'],
+    capture_output=True, text=True,
 )
-
-# Convert to LlamaIndex tools
-tools = tool_spec.to_tool_list()  # Returns List[FunctionTool]
 ```
-
-## Use Cases
-
-1. **RAG + Tool Execution**: Retrieve documents + execute data processing skills
-2. **Data Analysis**: Extract information from documents + execute analysis skills
-3. **Multi-step Workflows**: Complex tasks combining retrieval and execution
-4. **ReAct Agents**: Reasoning + Acting with SkillLite skills
 
 ## Next Steps
 

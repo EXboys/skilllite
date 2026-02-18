@@ -1,6 +1,6 @@
 # SkillLite Project Architecture
 
-> This document records the core architecture, design philosophy, and key implementation details of the SkillLite project.
+> **Note**: Parts of this document describe legacy Python structure (core/, sandbox/, SkillManager, SkillRunner removed). For current architecture see [ARCHITECTURE_ANALYSIS_REPORT.md](../../todo/ARCHITECTURE_ANALYSIS_REPORT.md). Current Python SDK is a thin bridge (~200 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`; logic lives in the Rust binary.
 
 ## Overview
 

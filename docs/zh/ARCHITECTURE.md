@@ -1,6 +1,6 @@
 # SkillLite 项目架构文档
 
-> 本文档用于记录 SkillLite 项目的核心架构、设计理念和关键实现细节，方便后续 AI 进行快速重构和复刻。
+> **注意**：本文档部分内容描述旧版 Python 结构（core/、sandbox/、SkillManager、SkillRunner 等已移除）。当前架构请参阅 [ARCHITECTURE_ANALYSIS_REPORT.md](../../todo/ARCHITECTURE_ANALYSIS_REPORT.md)。当前 Python SDK 为薄桥接层（~200 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`，逻辑集中在 Rust 二进制。
 
 ## 📋 项目概述
 
@@ -278,11 +278,14 @@ fn detect_entry_point(skill_dir: &Path) -> Option<String> {
 
 ### 2. Python SDK (python-sdk)
 
-#### 2.1 SkillManager (`core/manager.py`)
+#### 2.1 SkillManager（已移除 → langchain-skilllite）
 
-**设计模式**: Facade 模式，组合多个子组件
+> **已移除**：主仓库不再包含 SkillManager。LangChain 集成请使用 `pip install langchain-skilllite`，参见 [langchain-skilllite](https://pypi.org/project/langchain-skilllite/)。
+
+**原设计模式**: Facade 模式，组合多个子组件
 
 ```python
+# 历史参考（已移除）
 class SkillManager:
     def __init__(self, skills_dir, ...):
         self._executor = SkillExecutor(...)      # 执行器
@@ -404,11 +407,14 @@ class ToolUseRequest:
         # 解析 Claude 格式响应
 ```
 
-#### 2.7 SkillRunner (`quick.py`)
+#### 2.7 SkillRunner（已移除）
 
-**职责**: 一行代码运行 Skills
+> **已移除**：请使用 `simple_demo.py` + `skilllite chat` 或 `skilllite chat --message`。
+
+**原职责**: 一行代码运行 Skills
 
 ```python
+# 历史参考（已移除）
 class SkillRunner:
     def __init__(self, base_url=None, api_key=None, model=None, ...):
         # 自动加载 .env 配置

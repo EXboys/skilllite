@@ -14,12 +14,12 @@ import subprocess
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../python-sdk'))
 
-from skilllite.sandbox.core import find_binary
+from skilllite import get_binary
 
 skills_dir = str(Path(__file__).parent.resolve() / "../../.skills")
-binary = find_binary()
+binary = get_binary()
 if not binary:
-    print("❌ skilllite not found. Run: skilllite install")
+    print("❌ skilllite not found. Run: pip install skilllite")
     exit(1)
 
 # ========== List All Skills ==========

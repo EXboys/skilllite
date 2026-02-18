@@ -73,7 +73,7 @@ SkillLiteToolkit.from_directory(
 )
 ```
 
-See [langchain-skilllite README](../../langchain-skilllite/README.md) for full API documentation.
+See [langchain-skilllite on PyPI](https://pypi.org/project/langchain-skilllite/) for full API documentation.
 
 ## Next Steps
 

@@ -35,11 +35,11 @@ def check_mcp_installed() -> bool:
     except ImportError:
         return False
 
-def check_skillbox_installed() -> bool:
-    """Check if skillbox binary is installed."""
+def check_skilllite_binary() -> bool:
+    """Check if skilllite binary is available."""
     try:
-        from skilllite.sandbox.skillbox import find_binary, is_installed
-        return is_installed()
+        from skilllite import get_binary
+        return get_binary() is not None
     except Exception:
         return False
 
@@ -89,9 +89,9 @@ def test_mcp_server() -> tuple[bool, str]:
         )
         if result.returncode == 0:
             return True, "MCP server command available"
-        return False, result.stderr or "skilllite mcp not found (run: skilllite install)"
+        return False, result.stderr or "skilllite mcp not found (run: pip install skilllite[mcp])"
     except FileNotFoundError:
-        return False, "skilllite not in PATH (run: skilllite install)"
+        return False, "skilllite not in PATH (run: pip install skilllite)"
     except subprocess.TimeoutExpired:
         return False, "Timeout starting MCP server"
     except Exception as e:
@@ -131,10 +131,10 @@ def main():
     if not mcp_ok:
         print("     → Run: pip install skilllite[mcp]")
     
-    skillbox_ok = check_skillbox_installed()
-    print(f"  {check_mark(skillbox_ok)} Skillbox binary installed")
-    if not skillbox_ok:
-        print("     → Run: skilllite install")
+    skilllite_bin_ok = check_skilllite_binary()
+    print(f"  {check_mark(skilllite_bin_ok)} SkillLite binary available")
+    if not skilllite_bin_ok:
+        print("     → Run: pip install skilllite")
     
     opencode_ok = check_opencode_installed()
     print(f"  {check_mark(opencode_ok)} OpenCode installed")
@@ -167,7 +167,7 @@ def main():
         print("  ⏭️  Skipped (missing dependencies)")
     
     print()
-    all_ok = skilllite_ok and mcp_ok and skillbox_ok and opencode_ok and config_ok
+    all_ok = skilllite_ok and mcp_ok and skilllite_bin_ok and opencode_ok and config_ok
     if all_ok:
         print("✅ All checks passed! You can now use SkillLite with OpenCode.")
         print()
