@@ -538,6 +538,10 @@ async fn run_with_task_planning(
                 // each task, which caused Tasks 2, 3, … in the same response
                 // to be falsely rejected.
                 let had_tool_calls_for_batch = tool_calls_current_task > 0;
+                // Fallback: if we've executed any tools in this session, trust completion
+                // claims for tool-requiring tasks (avoids false rejection when counter
+                // was reset but tools were run in a prior iteration).
+                let session_had_tools = total_tool_calls > 0;
                 for completed_id in completed_ids {
                     // Anti-hallucination: reject completion claims for tasks
                     // that require tool execution when no tool calls were made
@@ -547,7 +551,7 @@ async fn run_with_task_planning(
                         .map_or(false, |t| {
                             t.tool_hint.as_ref().map_or(false, |h| h != "analysis")
                         });
-                    if task_needs_tool && !had_tool_calls_for_batch {
+                    if task_needs_tool && !had_tool_calls_for_batch && !session_had_tools {
                         tracing::info!(
                             "Anti-hallucination: rejected text-only completion for task {} \
                              (requires tool but no tool calls made since last completion batch)",
