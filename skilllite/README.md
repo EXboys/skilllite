@@ -21,7 +21,55 @@ A lightweight Skills secure execution engine for Linux and macOS.
 cargo install --path .
 ```
 
-## Usage
+## CLI Commands
+
+### Skill Management
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `skilllite list` | List installed skills | `skilllite list -s .skills --json` |
+| `skilllite add` | Add skill from GitHub/local | `skilllite add owner/repo` |
+| `skilllite remove` | Remove installed skill | `skilllite remove my-skill` |
+| `skilllite show` | Show skill details | `skilllite show my-skill -s .skills` |
+| `skilllite init` | Initialize project (sandbox + .skills/) | `skilllite init` |
+| `skilllite reindex` | Rescan skills directory | `skilllite reindex -s .skills` |
+
+### Skill Execution
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `skilllite run` | Run skill (requires entry_point) | `skilllite run ./.skills/calculator '{"a": 1, "b": 2}'` |
+| `skilllite exec` | Execute script directly (no entry_point) | `skilllite exec ./.skills/my-skill scripts/main.py '{}'` |
+| `skilllite bash` | Execute bash-tool skill command | `skilllite bash ./.skills/browser-tool 'agent-browser --help'` |
+
+### Tools & Adapters
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `skilllite list-tools` | Output OpenAI/Claude tool definitions | `skilllite list-tools -s .skills --format openai` |
+| `skilllite mcp` | Run MCP server (Cursor/Claude) | `skilllite mcp` |
+| `skilllite init-cursor` | Initialize Cursor IDE integration | `skilllite init-cursor` |
+| `skilllite init-opencode` | Initialize OpenCode integration | `skilllite init-opencode` |
+
+### Agent & Chat
+
+| Command | Description |
+|---------|-------------|
+| `skilllite chat` | Interactive chat with LLM agent |
+| `skilllite quickstart` | Auto-detect LLM, setup skills, launch chat |
+
+### Other Commands
+
+| Command | Description |
+|---------|-------------|
+| `skilllite scan` | Scan skill dir, list executable scripts (JSON) |
+| `skilllite validate` | Validate skill structure |
+| `skilllite info` | Show skill metadata |
+| `skilllite security-scan` | Security scan a script |
+| `skilllite dependency-audit` | Audit skill dependencies for vulnerabilities |
+| `skilllite clean-env` | Clean cached virtual environments |
+
+## Usage Details
 
 ### Run a Skill
 
@@ -125,7 +173,9 @@ Description of the skill...
 | `SKILLBOX_MAX_MEMORY_MB` | Maximum memory in MB | 512 |
 | `SKILLBOX_TIMEOUT_SECS` | Execution timeout in seconds | 30 |
 | `SKILLBOX_AUTO_APPROVE` | Auto-approve security prompts (1/true/yes) | - |
-| `AGENTSKILL_CACHE_DIR` | Custom cache directory | System cache |
+| `SKILLBOX_CACHE_DIR` | Custom cache directory | System cache |
+
+> 完整环境变量列表见 [ENV_REFERENCE](../docs/en/ENV_REFERENCE.md) / [ENV_REFERENCE 中文](../docs/zh/ENV_REFERENCE.md)。
 
 ## Custom Security Rules
 
