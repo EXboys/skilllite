@@ -1,3 +1,4 @@
+use crate::config::env_keys;
 use crate::skill::deps::{detect_dependencies, get_cache_key, DependencyType};
 use crate::skill::metadata::SkillMetadata;
 use anyhow::{Context, Result};
@@ -5,27 +6,43 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Get the default cache directory for environments
+/// Subdirectory name for cached skill environments (under cache root).
+const ENV_CACHE_SUBDIR: &str = "skilllite";
+const ENV_CACHE_ENVS: &str = "envs";
+
+/// Marker file indicating environment setup is complete.
+const ENV_MARKER_FILE: &str = ".skilllite_complete";
+/// Legacy marker (backward compatibility with agentskill).
+const ENV_MARKER_LEGACY: &str = ".agentskill_complete";
+
+/// Get the default cache directory for environments.
+/// - `custom_cache_dir`: CLI override (full path)
+/// - `SKILLLITE_CACHE_DIR` / `AGENTSKILL_CACHE_DIR`: env override (full path)
+/// - Default: `{system_cache}/skilllite/envs`
 pub fn get_cache_dir(custom_cache_dir: Option<&str>) -> Result<PathBuf> {
     if let Some(dir) = custom_cache_dir {
         return Ok(PathBuf::from(dir));
     }
+    if let Ok(dir) = std::env::var(env_keys::SKILLLITE_CACHE_DIR) {
+        return Ok(PathBuf::from(dir));
+    }
+    if let Ok(dir) = std::env::var(env_keys::AGENTSKILL_CACHE_DIR) {
+        return Ok(PathBuf::from(dir));
+    }
 
-    let cache_dir = get_system_cache_dir()
-        .ok_or_else(|| anyhow::anyhow!("Could not determine cache directory. Please set AGENTSKILL_CACHE_DIR or XDG_CACHE_HOME environment variable."))?
-        .join("agentskill")
-        .join("envs");
-
-    Ok(cache_dir)
+    let base = get_system_cache_dir()
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Could not determine cache directory. Please set {} or XDG_CACHE_HOME environment variable.",
+                env_keys::SKILLLITE_CACHE_DIR
+            )
+        })?;
+    Ok(base.join(ENV_CACHE_SUBDIR).join(ENV_CACHE_ENVS))
 }
 
-/// Get the system cache directory without external dependencies
-/// Follows XDG Base Directory Specification on Unix-like systems
+/// Get the system cache directory without external dependencies.
+/// Follows XDG Base Directory Specification on Unix-like systems.
 fn get_system_cache_dir() -> Option<PathBuf> {
-    // First, check for explicit override
-    if let Ok(dir) = std::env::var("AGENTSKILL_CACHE_DIR") {
-        return Some(PathBuf::from(dir));
-    }
 
     #[cfg(target_os = "macos")]
     {
@@ -93,9 +110,10 @@ pub fn ensure_environment(
 /// Ensure Python virtual environment exists and has dependencies installed
 /// Packages are parsed from the compatibility field
 fn ensure_python_env(env_path: &Path, packages: &[String]) -> Result<()> {
-    // Check if environment already exists and is complete
-    let marker_file = env_path.join(".agentskill_complete");
-    if env_path.exists() && marker_file.exists() {
+    // Check if environment already exists and is complete (accept both new and legacy marker)
+    let marker = env_path.join(ENV_MARKER_FILE);
+    let marker_legacy = env_path.join(ENV_MARKER_LEGACY);
+    if env_path.exists() && (marker.exists() || marker_legacy.exists()) {
         return Ok(());
     }
 
@@ -113,7 +131,7 @@ fn ensure_python_env(env_path: &Path, packages: &[String]) -> Result<()> {
     }
 
     // Create marker file to indicate completion
-    fs::write(&marker_file, "")?;
+    fs::write(&marker, "")?;
 
     Ok(())
 }
@@ -185,8 +203,9 @@ pub fn get_python_executable(env_path: &Path) -> PathBuf {
 /// Ensure Node.js environment exists and has dependencies installed
 /// Packages are parsed from the compatibility field
 fn ensure_node_env(env_path: &Path, _skill_dir: &Path, packages: &[String]) -> Result<()> {
-    let marker_file = env_path.join(".agentskill_complete");
-    if env_path.exists() && marker_file.exists() {
+    let marker = env_path.join(ENV_MARKER_FILE);
+    let marker_legacy = env_path.join(ENV_MARKER_LEGACY);
+    if env_path.exists() && (marker.exists() || marker_legacy.exists()) {
         return Ok(());
     }
 
@@ -216,7 +235,7 @@ fn ensure_node_env(env_path: &Path, _skill_dir: &Path, packages: &[String]) -> R
     }
 
     // Create marker file
-    fs::write(&marker_file, "")?;
+    fs::write(&marker, "")?;
 
     Ok(())
 }

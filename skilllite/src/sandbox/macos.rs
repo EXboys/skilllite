@@ -600,7 +600,7 @@ fn generate_sandbox_profile_with_proxy(
         ));
     }
     // L2 relaxed: runtime env dirs (Python/Node/Playwright etc.)
-    // macOS: ~/Library/Caches (agentskill/envs, pip, playwright, npm)
+    // macOS: ~/Library/Caches (skilllite/envs, pip, playwright, npm)
     // Covers env_path parent and sibling runtime caches
     if relaxed {
         profile.push_str("; L2: runtime env dirs (venv, node_modules, pip, playwright, npm)\n");

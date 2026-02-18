@@ -123,6 +123,7 @@
 | `SKILLLITE_PATH` | string | - | skilllite 二进制路径 |
 | `SKILLBOX_BINARY_PATH` | string | - | 同上（别名） |
 | `SKILLBOX_CACHE_DIR` | string | - | 沙箱缓存目录 |
+| `SKILLLITE_CACHE_DIR` | string | `{cache}/skilllite/envs` | 技能环境缓存目录（Python venv / Node），`skilllite env clean` 清理此目录；兼容 `AGENTSKILL_CACHE_DIR` |
 | `SKILLBOX_IPC_POOL_SIZE` | int | `10` | IPC 连接池大小 |
 | `MCP_SANDBOX_TIMEOUT` | int | `30` | MCP 沙箱超时（秒） |
 

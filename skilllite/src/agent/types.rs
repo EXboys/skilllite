@@ -145,8 +145,8 @@ impl Default for AgentConfig {
             system_prompt: None,
             temperature: None,
             skill_dirs: Vec::new(),
-            enable_task_planning: false,
-            enable_memory: false,
+            enable_task_planning: true,
+            enable_memory: true,
             verbose: false,
         }
     }
@@ -180,11 +180,21 @@ impl AgentConfig {
                     .to_string()
             });
 
+        let enable_memory = std::env::var("SKILLLITE_ENABLE_MEMORY")
+            .map(|v| v != "0" && v != "false" && v != "no")
+            .unwrap_or(true);
+
+        let enable_task_planning = std::env::var("SKILLLITE_ENABLE_TASK_PLANNING")
+            .map(|v| v != "0" && v != "false" && v != "no")
+            .unwrap_or(true);
+
         Self {
             api_base,
             api_key,
             model,
             workspace,
+            enable_memory,
+            enable_task_planning,
             ..Default::default()
         }
     }

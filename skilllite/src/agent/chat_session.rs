@@ -162,8 +162,15 @@ impl ChatSession {
     ) -> Result<String> {
         let _session_id = self.ensure_session()?;
 
-        // Read history
+        // Read history from transcript
         let history = self.read_history()?;
+        if !history.is_empty() {
+            tracing::debug!(
+                session_key = %self.session_key,
+                history_len = history.len(),
+                "Loaded conversation history from transcript"
+            );
+        }
 
         // Check if compaction is needed
         let mut history = if history.len() >= COMPACTION_THRESHOLD {

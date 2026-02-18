@@ -1,6 +1,6 @@
 //! Environment management commands: clean cached virtual environments.
 //!
-//! Cached environments live in `~/.cache/agentskill/envs/` (or `$AGENTSKILL_CACHE_DIR`).
+//! Cached environments live in `~/.cache/skilllite/envs/` (or `$SKILLLITE_CACHE_DIR`).
 //! Each subdirectory is a hash-keyed environment created by `ensure_environment()`.
 
 use anyhow::Result;
@@ -8,15 +8,14 @@ use std::fs;
 use std::path::PathBuf;
 
 /// Get the cache directory for skill environments.
+/// Uses `env::builder::get_cache_dir` for consistency.
 fn get_cache_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("AGENTSKILL_CACHE_DIR") {
-        PathBuf::from(dir)
-    } else {
+    crate::env::builder::get_cache_dir(None).unwrap_or_else(|_| {
         dirs::cache_dir()
             .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".cache"))
-            .join("agentskill")
+            .join("skilllite")
             .join("envs")
-    }
+    })
 }
 
 /// `skilllite env clean`

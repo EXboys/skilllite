@@ -200,8 +200,8 @@ pub enum Commands {
         #[arg(long)]
         system_prompt: Option<String>,
 
-        /// Verbose output
-        #[arg(long, short)]
+        /// Verbose output (default: true for agent chat)
+        #[arg(long, short, default_value = "true")]
         verbose: bool,
 
         /// Single-shot message (non-interactive mode)
@@ -215,6 +215,10 @@ pub enum Commands {
         /// Disable task planning
         #[arg(long)]
         no_plan: bool,
+
+        /// Disable memory tools (default: memory enabled)
+        #[arg(long)]
+        no_memory: bool,
     },
 
     // ─── Phase 3: CLI Migration Commands (flat, no nesting) ────────────

@@ -123,6 +123,7 @@ This document lists all environment variables supported by SkillLite, including 
 | `SKILLLITE_PATH` | string | - | skilllite binary path |
 | `SKILLBOX_BINARY_PATH` | string | - | Same as above (alias) |
 | `SKILLBOX_CACHE_DIR` | string | - | Sandbox cache directory |
+| `SKILLLITE_CACHE_DIR` | string | `{cache}/skilllite/envs` | Skill environment cache (Python venv / Node); `skilllite env clean` cleans this dir; fallback: `AGENTSKILL_CACHE_DIR` |
 | `SKILLBOX_IPC_POOL_SIZE` | int | `10` | IPC connection pool size |
 | `MCP_SANDBOX_TIMEOUT` | int | `30` | MCP sandbox timeout (seconds) |
 

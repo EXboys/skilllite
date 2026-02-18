@@ -454,7 +454,7 @@ async fn run_interactive_quickstart(
     eprintln!();
 
     let mut session = ChatSession::new(config, "quickstart", skills);
-    let mut sink = TerminalEventSink::new(false);
+    let mut sink = TerminalEventSink::new(true);
 
     let mut rl = rustyline::DefaultEditor::new()
         .map_err(|e| anyhow::anyhow!("Failed to create line editor: {}", e))?;

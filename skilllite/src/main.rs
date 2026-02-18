@@ -125,6 +125,7 @@ fn main() -> Result<()> {
             message,
             plan,
             no_plan,
+            no_memory,
         } => {
             run_chat(
                 api_base,
@@ -139,6 +140,7 @@ fn main() -> Result<()> {
                 message,
                 plan,
                 no_plan,
+                no_memory,
             )?;
         }
 
@@ -218,10 +220,11 @@ fn run_chat(
     max_iterations: usize,
     system_prompt: Option<String>,
     verbose: bool,
-    single_message: Option<String>,
-    plan: bool,
-    no_plan: bool,
-) -> Result<()> {
+        single_message: Option<String>,
+        plan: bool,
+        no_plan: bool,
+        no_memory: bool,
+    ) -> Result<()> {
     use agent::types::*;
     use agent::{chat_session::ChatSession, skills};
 
@@ -264,16 +267,14 @@ fn run_chat(
         }
     }
 
-    // Enable task planning: --plan > --no-plan > env var > default (true)
-    config.enable_task_planning = if plan {
-        true
+    // Enable task planning: --plan > --no-plan > config (default true)
+    if plan {
+        config.enable_task_planning = true;
     } else if no_plan {
-        false
-    } else {
-        std::env::var("SKILLLITE_ENABLE_TASK_PLANNING")
-            .map(|v| v == "1" || v.to_lowercase() == "true")
-            .unwrap_or(true) // Default to true when skills are available
-    };
+        config.enable_task_planning = false;
+    }
+
+    config.enable_memory = !no_memory;
 
     // Validate API key
     if config.api_key.is_empty() {
