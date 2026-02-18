@@ -476,7 +476,7 @@ const PYTHON_PACKAGES: &[&str] = &[
     "sanic", "tornado", "bottle", "pyramid",
     // Scraping / Parsing
     "beautifulsoup4", "lxml", "scrapy", "selenium", "playwright",
-    "html5lib", "cssselect",
+    "html5lib", "cssselect", "html2text",
     // Image / Media
     "pillow", "opencv-python", "imageio", "scikit-image",
     // YAML / Config

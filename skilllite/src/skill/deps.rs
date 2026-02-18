@@ -104,7 +104,7 @@ pub(crate) fn parse_compatibility_for_packages(compatibility: Option<&str>) -> V
         "requests", "pandas", "numpy", "scipy", "matplotlib", "seaborn",
         "sklearn", "scikit-learn", "tensorflow", "torch", "pytorch",
         "flask", "django", "fastapi", "aiohttp", "httpx",
-        "beautifulsoup", "bs4", "lxml", "selenium",
+        "beautifulsoup", "bs4", "lxml", "selenium", "html2text",
         "pillow", "opencv", "cv2", "pyyaml", "yaml",
         "sqlalchemy", "psycopg2", "pymysql", "redis", "pymongo",
         "boto3", "google-cloud", "azure",

@@ -2,7 +2,7 @@
 name: http-request
 description: 发起 HTTP 网络请求，支持 GET、POST、PUT、DELETE、PATCH 方法。当用户需要调用 API、获取网页内容、发送数据到服务器时使用。
 license: MIT
-compatibility: Python 3.x，推荐 requests 库（无则 fallback 到 urllib），需网络权限
+compatibility: Python 3.x，推荐 requests + html2text（无 html2text 时 HTML 退化为纯文本），需网络权限
 metadata:
   author: skillLite
   version: "1.0"
@@ -22,6 +22,7 @@ metadata:
 - **旧版 SSL 兼容**：支持连接使用旧版 TLS 的服务器（如部分政府/教育网站）
 - **浏览器级 User-Agent**：减少 503/反爬拦截
 - **自动重试**：对 502/503/504 自动重试 2 次
+- **HTML→Markdown**：网页响应自动转为 Markdown（默认），降低 token 消耗
 
 ## 使用示例
 
@@ -91,6 +92,14 @@ input_schema:
       type: boolean
       description: 是否启用旧版 SSL 兼容（连接 cscse.edu.cn、lxgz.org.cn 等旧服务器时需 true）
       default: true
+    extract_mode:
+      type: string
+      description: HTML 响应提取模式，markdown=转为 Markdown（默认），text=纯文本，raw=原始 HTML
+      enum:
+        - markdown
+        - text
+        - raw
+      default: markdown
   required:
     - url
 ```

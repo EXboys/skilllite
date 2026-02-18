@@ -70,6 +70,7 @@ pub fn cmd_init(
     skip_deps: bool,
     skip_audit: bool,
     strict: bool,
+    force: bool,
     use_llm: bool,
 ) -> Result<()> {
     let skills_path = resolve_path(skills_dir);
@@ -100,7 +101,10 @@ pub fn cmd_init(
         if skip_deps {
             eprintln!("   ⏭ Skipping dependency installation (--skip-deps)");
         } else {
-            let dep_results = install_all_deps(&skills_path, &skills, use_llm);
+            if force {
+                eprintln!("   🔄 --force: re-resolving dependencies (ignoring .skilllite.lock)");
+            }
+            let dep_results = install_all_deps(&skills_path, &skills, force, use_llm);
             for msg in &dep_results {
                 eprintln!("{}", msg);
             }
@@ -209,7 +213,12 @@ fn discover_all_skills(skills_path: &Path) -> Vec<String> {
 }
 
 /// Install dependencies for all skills.
-fn install_all_deps(skills_path: &Path, skills: &[String], use_llm: bool) -> Vec<String> {
+fn install_all_deps(
+    skills_path: &Path,
+    skills: &[String],
+    force: bool,
+    use_llm: bool,
+) -> Vec<String> {
     let mut messages = Vec::new();
 
     #[cfg(feature = "agent")]
@@ -244,9 +253,9 @@ fn install_all_deps(skills_path: &Path, skills: &[String], use_llm: bool) -> Vec
 
                 let lang = metadata::detect_language(&skill_path, &meta);
 
-                // Resolve dependencies when lock is missing/stale.
+                // Resolve dependencies when lock is missing/stale, or --force.
                 // With --use-llm: Lock → LLM → Whitelist. Otherwise: Lock → Whitelist.
-                if meta.resolved_packages.is_none() {
+                if meta.resolved_packages.is_none() || force {
                     #[cfg(feature = "agent")]
                     let resolved = {
                         let client_opt = llm_client.as_ref();

@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 """
 HTTP Request Skill - 发起 HTTP 网络请求
-优化版：支持旧版 SSL 服务器、浏览器级 User-Agent、重试逻辑
+优化版：支持旧版 SSL 服务器、浏览器级 User-Agent、重试逻辑、HTML→Markdown 转换
 """
 
 import json
+import re
 import sys
 import ssl
+
+# html2text：HTML 转 Markdown，默认用于网页内容，降低 token 消耗
+try:
+    import html2text
+    HAS_HTML2TEXT = True
+except ImportError:
+    HAS_HTML2TEXT = False
 
 # 优先使用 requests（更稳健），fallback 到 urllib
 try:
@@ -32,6 +40,39 @@ DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
+
+
+def _looks_like_html(body: str, headers: dict) -> bool:
+    """判断响应是否为 HTML"""
+    if not body or not isinstance(body, str):
+        return False
+    ct = ""
+    for k, v in (headers or {}).items():
+        if k.lower() == "content-type":
+            ct = str(v).lower()
+            break
+    if "text/html" in ct or "application/xhtml" in ct:
+        return True
+    stripped = body.strip()
+    return stripped.startswith("<!") or stripped.lower().startswith("<html")
+
+
+def _convert_html(body: str, extract_mode: str) -> str:
+    """将 HTML 转为 Markdown 或纯文本"""
+    if extract_mode == "raw":
+        return body
+    if extract_mode == "text":
+        # 纯文本：去除标签
+        return re.sub(r"<[^>]+>", "", body).strip()
+    # extract_mode == "markdown"（默认）
+    if HAS_HTML2TEXT:
+        h = html2text.HTML2Text()
+        h.ignore_links = False
+        h.ignore_images = False
+        h.body_width = 0  # 不自动换行
+        return h.handle(body).strip()
+    # 无 html2text 时退化为纯文本
+    return re.sub(r"<[^>]+>", "", body).strip()
 
 
 def _create_ssl_context_legacy():
@@ -218,6 +259,17 @@ def main():
         result = _request_with_requests(input_data)
     else:
         result = _request_with_urllib(input_data)
+
+    # HTML 响应时转换为 Markdown（默认）或纯文本，降低 token 消耗
+    extract_mode = input_data.get("extract_mode", "markdown")
+    if (
+        result.get("success")
+        and not result.get("is_json")
+        and isinstance(result.get("body"), str)
+        and _looks_like_html(result["body"], result.get("headers", {}))
+    ):
+        result["body"] = _convert_html(result["body"], extract_mode)
+        result["extract_mode"] = extract_mode
 
     print(json.dumps(result, ensure_ascii=False))
 

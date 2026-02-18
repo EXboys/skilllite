@@ -397,6 +397,7 @@ pub enum Commands {
     ///   skilllite init
     ///   skilllite init --skip-deps
     ///   skilllite init --strict
+    ///   skilllite init --force
     Init {
         /// Skills directory path (default: .skills)
         #[arg(long, short = 's', default_value = ".skills")]
@@ -413,6 +414,10 @@ pub enum Commands {
         /// Strict mode — fail if security vulnerabilities found
         #[arg(long)]
         strict: bool,
+
+        /// Force re-resolve and update dependencies (ignore .skilllite.lock)
+        #[arg(long)]
+        force: bool,
 
         /// Use LLM to resolve dependencies from compatibility string (requires agent feature, API key)
         #[cfg(feature = "agent")]
