@@ -48,6 +48,9 @@ uuid = { version = "1", features = ["v4"] }
 # Audit feature: lightweight sync HTTP client for OSV API queries
 ureq = { version = "2", optional = true, features = ["json"] }
 
+# IPC daemon: thread pool for concurrent request handling
+rayon = "1.10"
+
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { version = "0.29", features = ["process", "mount", "sched", "signal"] }
 libc = "0.2"

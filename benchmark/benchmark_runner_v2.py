@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-SkillBox Benchmark Runner V2 - High Concurrency Performance Comparison Test (Enhanced Version)
+SkillLite Benchmark Runner V2 - High Concurrency Performance Comparison Test (Enhanced Version)
 
-Comparing SkillBox with other sandbox solutions under high concurrency scenarios:
-1. SkillBox Native Sandbox (Seatbelt/Namespace)
+Comparing SkillLite with other sandbox solutions under high concurrency scenarios:
+1. SkillLite Native Sandbox (Seatbelt/Namespace)
 2. Docker Container Sandbox
 3. SRT (Anthropic Sandbox Runtime)
 4. Pyodide (WebAssembly)
@@ -42,7 +42,7 @@ CALCULATOR_SKILL = SKILLS_DIR / "calculator"
 DATA_ANALYZER_SKILL = SKILLS_DIR / "data-analyzer"
 
 # SkillLite binary path
-SKILLBOX_BIN = shutil.which("skilllite") or str(PROJECT_ROOT / "skilllite" / "target" / "release" / "skilllite")
+SKILLLITE_BIN = shutil.which("skilllite") or str(PROJECT_ROOT / "skilllite" / "target" / "release" / "skilllite")
 
 
 @dataclass
@@ -181,18 +181,18 @@ class BaseExecutor:
         return self.execute(input_json)
 
 
-class SkillBoxExecutor(BaseExecutor):
-    """SkillBox native sandbox executor"""
+class SkillLiteExecutor(BaseExecutor):
+    """SkillLite native sandbox executor"""
     
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, skill_name: str = "calculator"):
         self.skill_dir = skill_dir
         self.skill_name = skill_name
-        self.skillbox_bin = SKILLBOX_BIN
-        self.name = f"SkillBox ({skill_name})"
+        self.skilllite_bin = SKILLLITE_BIN
+        self.name = f"SkillLite ({skill_name})"
         
     def setup(self) -> None:
-        if not os.path.exists(self.skillbox_bin):
-            raise RuntimeError(f"SkillBox binary not found at {self.skillbox_bin}")
+        if not os.path.exists(self.skilllite_bin):
+            raise RuntimeError(f"SkillLite binary not found at {self.skilllite_bin}")
     
     def execute(self, input_json: str) -> BenchmarkResult:
         start_time = time.perf_counter()
@@ -203,7 +203,7 @@ class SkillBoxExecutor(BaseExecutor):
             env = os.environ.copy()
             env["SKILLBOX_SKILLS_ROOT"] = str(PROJECT_ROOT)  # Allow .skills under project root
             process = subprocess.Popen(
-                [self.skillbox_bin, "run", str(self.skill_dir), input_json],
+                [self.skilllite_bin, "run", str(self.skill_dir), input_json],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -262,7 +262,7 @@ class DockerExecutor(BaseExecutor):
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, skill_name: str = "calculator"):
         self.skill_dir = skill_dir
         self.skill_name = skill_name
-        self.image_name = f"skillbox-benchmark-{skill_name}"
+        self.image_name = f"skilllite-benchmark-{skill_name}"
         self.docker_available = False
         self.name = f"Docker ({skill_name})"
         
@@ -795,7 +795,7 @@ def main():
     """Main function"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="SkillBox Benchmark Runner V2")
+    parser = argparse.ArgumentParser(description="SkillLite Benchmark Runner V2")
     parser.add_argument("--requests", "-n", type=int, default=50, help="Number of requests per skill")
     parser.add_argument("--concurrency", "-c", type=int, default=5, help="Concurrency level")
     parser.add_argument("--skip-docker", action="store_true", help="Skip Docker tests")
@@ -807,12 +807,12 @@ def main():
     args = parser.parse_args()
     
     print("=" * 60)
-    print("SkillBox Benchmark Runner V2")
+    print("SkillLite Benchmark Runner V2")
     print("=" * 60)
     print(f"Configuration:")
     print(f"  Requests per skill: {args.requests}")
     print(f"  Concurrency: {args.concurrency}")
-    print(f"  SkillBox Binary: {SKILLBOX_BIN}")
+    print(f"  SkillLite Binary: {SKILLLITE_BIN}")
     
     all_stats: List[BenchmarkStats] = []
 
@@ -848,15 +848,15 @@ def main():
         print(f"# Has Dependencies: {has_deps}")
         print(f"{'#'*60}")
         
-        # SkillBox
-        executor = SkillBoxExecutor(skill_dir, skill_name)
+        # SkillLite
+        executor = SkillLiteExecutor(skill_dir, skill_name)
         try:
             stats = run_concurrent_benchmark(
                 executor, input_json, args.requests, args.concurrency, skill_name
             )
             all_stats.append(stats)
         except Exception as e:
-            print(f"[ERROR] SkillBox ({skill_name}) failed: {e}")
+            print(f"[ERROR] SkillLite ({skill_name}) failed: {e}")
         
         # SRT (only supports skills without dependencies, as SRT doesn't auto-install dependencies)
         if not args.skip_srt and not has_deps:

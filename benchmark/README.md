@@ -49,9 +49,9 @@ High-concurrency performance comparison test suite for comparing SkillBox with o
 ### Optional Dependencies (for complete comparison testing)
 
 ```bash
-# Install psutil for SkillBox IPC 内存统计（--compare-ipc 时显示 Avg(MB)/Peak(MB)）
+# Install psutil for SkillBox IPC memory stats (Avg(MB)/Peak(MB) when using --compare-ipc)
 pip install -r requirements.txt
-# 或单独: pip install psutil
+# Or: pip install psutil
 
 # Install SRT (Anthropic Sandbox Runtime)
 npm install -g @anthropic-ai/sandbox-runtime
@@ -67,56 +67,57 @@ npm install pyodide
 
 ## Quick Start
 
-**两种运行方式（二选一）：**
+**Two ways to run (choose one):**
 
 ```bash
-# 方式 1：从项目根目录
+# Option 1: From project root
 cd /path/to/skillLite
-./benchmark/run_benchmark.sh                    # 基础测试
-python benchmark/benchmark_runner.py -n 100 -c 10  # 或直接用 Python
+./benchmark/run_benchmark.sh                    # Basic test
+python benchmark/benchmark_runner.py -n 100 -c 10  # Or run directly with Python
 
-# 方式 2：从 benchmark 目录
+# Option 2: From benchmark directory
 cd /path/to/skillLite/benchmark
-./run_benchmark.sh                             # 基础测试
-python benchmark_runner.py -n 100 -c 10       # 注意：在 benchmark 目录下不需要 benchmark/ 前缀
+./run_benchmark.sh                             # Basic test
+python benchmark_runner.py -n 100 -c 10       # No benchmark/ prefix when already in benchmark dir
 ```
 
-**注意**：已在 benchmark 目录时，不要再 `cd benchmark`（会报错 no such file）。直接用 `python benchmark_runner.py` 即可。
+**Note**: When already in the benchmark directory, do not `cd benchmark` again (will error: no such file). Use `python benchmark_runner.py` directly.
 
 ```bash
-# 完整测试（含 IPC 对比、内存统计）
+# Full test (IPC comparison, memory stats)
 ./run_benchmark.sh --compare-levels --compare-ipc
-# 或
+# Or
 python benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
 
-# 冷启动对比测试（每次迭代 setup -> execute -> teardown，模拟冷启动）
+# Cold start comparison (setup -> execute -> teardown per iteration)
 python benchmark_runner.py --cold-start --compare-levels --compare-ipc
-python benchmark_runner.py --cold-start --cold-iterations 20 --compare-ipc  # 自定义迭代次数
+python benchmark_runner.py --cold-start --cold-iterations 20 --compare-ipc  # Custom iterations
 
-# 跳过 Docker / 其他
+# Skip Docker / others
 ./run_benchmark.sh --skip-docker
 ./run_benchmark.sh -o results.json
 ```
 
-### 冷启动 vs 高并发
+### Cold Start vs High Concurrency
 
-| 测试类型 | 说明 | 适用场景 |
+| Test Type | Description | Use Case |
 |----------|------|----------|
-| **冷启动** (`--cold-start`) | 每次迭代销毁并重建 executor（IPC daemon 会关闭），输出**冷启动对比表** | 比较首请求延迟、IPC 与 CMD 冷启动差异 |
-| **高并发** | 保持 warm 状态，多请求并发执行，输出**性能对比表** | 比较吞吐量、P50/P95/P99 延迟 |
+| **Cold Start** (`--cold-start`) | Destroy and recreate executor each iteration (IPC daemon is shut down), outputs **cold start comparison table** | Compare first-request latency, IPC vs CMD cold start |
+| **High Concurrency** | Keep warm, run multiple requests concurrently, outputs **performance comparison table** | Compare throughput, P50/P95/P99 latency |
 
-冷启动测试结束后会输出 `COLD START BENCHMARK COMPARISON` 表格，包含各 Executor 的 Avg/Min/P50/P95/Max 及相对 baseline 的倍数。
+Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50/P95/Max per Executor and multiplier vs baseline.
 
-### 关于 CMD vs IPC 性能
+### CMD vs IPC Performance
 
-- **高并发 warm 场景**：CMD（subprocess）与 IPC 性能接近，甚至 CMD 可能略快。原因：短任务（~100ms）下，进程创建开销（~15ms）与 IPC 的 JSON/pipe 开销（~10ms）相当。
-- **冷启动场景**：IPC 优势明显——daemon 常驻避免每次 fork/exec，首次请求延迟更低。
-- 使用 `--cold-start --compare-ipc` 可直观对比。
+- **High concurrency warm**: CMD (subprocess) and IPC perform similarly; CMD may be slightly faster. For short tasks (~100ms), process creation (~15ms) and IPC JSON/pipe overhead (~10ms) are comparable.
+- **Cold start**: IPC has clear advantage—daemon stays resident, avoiding fork/exec per request, lower first-request latency.
+- Use `--cold-start --compare-ipc` for direct comparison.
+- **IPC Level 3**: Daemon supports concurrency (rayon thread pool); Python client implements batch sending (writer thread + short collection window). First wave of concurrent requests can be batched to the daemon, but later requests arrive one-by-one as jobs finish at different times, so overall throughput remains lower than subprocess. Single batch calls (e.g. `run_skill` loop) benefit from daemon concurrency.
 
-### 关于 [INFO] 日志
+### [INFO] Logging
 
-- **CMD (SkillBox subprocess)**：使用 `capture_output=True`，skillbox 的 stderr 被捕获，终端不显示 [INFO]；同时 benchmark 会传入 `SKILLBOX_QUIET=1`，减少日志与 syscall 开销。
-- **IPC (skillbox serve)**：daemon 启动时设置 `SKILLBOX_QUIET=1`，`serve_stdio` 也会强制设置，所以运行中不再输出 [INFO]，避免影响性能测试。
+- **CMD (SkillBox subprocess)**: Uses `capture_output=True`, skillbox stderr is captured so [INFO] does not appear in terminal; benchmark also passes `SKILLBOX_QUIET=1` to reduce logging and syscall overhead.
+- **IPC (skillbox serve)**: Daemon sets `SKILLBOX_QUIET=1` at startup; `serve_stdio` enforces it, so no [INFO] during runs to avoid affecting performance tests.
 
 ---
 
@@ -297,7 +298,7 @@ In addition to performance tests, we provide security comparison tests to evalua
 | **Code Injection** | Dynamic import | `__import__`, `importlib` |
 | | eval/exec | Dynamic code execution |
 
-### Security Comparison结果
+### Security Comparison Results
 
 | Test Item               |    SkillBox    |     Docker     |    Pyodide     |   Claude SRT   |
 |----------------------|----------------|----------------|----------------|----------------|
@@ -395,15 +396,15 @@ class MyCustomExecutor(BaseExecutor):
     name = "My Custom Executor"
     
     def setup(self) -> None:
-        # 初始化
+        # Initialize
         pass
     
     def execute(self, input_json: str) -> BenchmarkResult:
-        # 执行逻辑
+        # Execution logic
         pass
     
     def teardown(self) -> None:
-        # 清理
+        # Cleanup
         pass
 ```
 
@@ -445,12 +446,12 @@ Stronger isolation mechanisms are used on Linux:
 # Ubuntu/Debian
 sudo apt install bubblewrap
 
-# 或者
+# Or
 sudo apt install firejail
 ```
 
 **macOS**:
-macOS 使用内置的 sandbox-exec，无需额外安装。
+macOS uses built-in sandbox-exec; no additional installation required.
 
 ### Disable Sandbox
 

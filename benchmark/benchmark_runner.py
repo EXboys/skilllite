@@ -354,6 +354,8 @@ class SkillBoxIPCExecutor(BaseExecutor):
     def setup(self) -> None:
         os.environ["SKILLBOX_USE_IPC"] = "1"
         os.environ["SKILLBOX_QUIET"] = "1"
+        # IPC daemon validates skill path against SKILLBOX_SKILLS_ROOT; must be set before client starts
+        os.environ["SKILLBOX_SKILLS_ROOT"] = str(PROJECT_ROOT)
         from skilllite.ipc import _get_client
         self._client = _get_client()
         if not self._client:
