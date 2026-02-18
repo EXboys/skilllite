@@ -95,6 +95,17 @@ fn builtin_rules() -> Vec<PlanningRule> {
             tool_hint: Some("file_operation".into()),
             instruction: "**HTML/PPT/渲染/预览**: When the user asks for HTML rendering or browser preview, use **write_output** + **preview_server**.".into(),
         },
+        PlanningRule {
+            id: "chat_history".into(),
+            priority: 95,
+            keywords: vec![
+                "历史记录".into(), "聊天记录".into(), "聊天历史".into(), "查看记录".into(),
+                "chat history".into(), "conversation history".into(), "past chat".into(),
+            ],
+            context_keywords: vec![],
+            tool_hint: Some("chat_history".into()),
+            instruction: "**历史记录/聊天记录**: When the user asks to view, summarize, or analyze past chat/conversation history, you MUST use **chat_history** (built-in). Do NOT use list_directory or file_operation — chat_history reads directly from transcripts. Plan: (1) Use chat_history with date if specified; (2) Analyze/summarize the content.".into(),
+        },
     ]
 }
 
@@ -347,7 +358,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 **Available Skills**:
 {skills_info}
 
-**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, file_exists, run_command (execute shell command, requires user confirmation), preview_server (start HTTP server to preview HTML in browser)
+**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, list_output (list output directory files), file_exists, chat_history (read past conversation by date), chat_plan (read task plan), run_command (execute shell command, requires user confirmation), preview_server (start HTTP server to preview HTML in browser)
 
 **Output directory**: {output_dir}
 (When skills produce file outputs like screenshots or PDFs, instruct them to save directly to the output directory)
@@ -415,6 +426,11 @@ Example 8 - Website / landing page design (MUST use write_output + preview_serve
 User request: "生成一个关于skilllite 的官网"
 Return: [{{"id": 1, "description": "Design and generate a complete Skillite official website (HTML/CSS/JS) and save to output/index.html using write_output", "tool_hint": "file_operation", "completed": false}}, {{"id": 2, "description": "Use preview_server to start local HTTP server and open the website in browser for preview", "tool_hint": "file_operation", "completed": false}}]
 Note: Do NOT add a separate task for a frontend-design skill — it is reference-only. Generate HTML directly and use write_output.
+
+Example 9 - Chat history (MUST use chat_history, NOT list_directory or file_operation):
+User request: "查看20260216的历史记录" or "查看昨天的聊天记录"
+Return: [{{"id": 1, "description": "Use chat_history to read transcript for the specified date", "tool_hint": "chat_history", "completed": false}}, {{"id": 2, "description": "Analyze and summarize the chat content", "tool_hint": "analysis", "completed": false}}]
+Note: chat_history reads from transcripts. Do NOT plan list_directory or read_file for chat history — use chat_history. For output directory files, use list_output.
 
 Return only JSON, no other content."#
         )

@@ -43,6 +43,9 @@ When using tools:
 - Use write_output to write final text deliverables to the output directory
 - Use list_directory to explore the workspace structure
 - Use file_exists to check if files/directories exist before operations
+- Use chat_history to read past conversation when the user asks to view, summarize, or analyze chat records (supports date filter)
+- Use chat_plan to read task plans when the user asks about today's plan or task status
+- Use list_output to list files in the output directory (no path needed)
 - Use run_command to execute shell commands (requires user confirmation)
 - Always work within the workspace directory
 

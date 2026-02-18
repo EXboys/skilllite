@@ -812,7 +812,7 @@ async fn execute_tool_call(
 /// Tools whose results must never be LLM-summarized because the LLM needs the
 /// content verbatim (e.g. for content transfer between files, or re-use).
 /// For these tools, we only do simple truncation as a last resort.
-const CONTENT_PRESERVING_TOOLS: &[&str] = &["read_file"];
+const CONTENT_PRESERVING_TOOLS: &[&str] = &["read_file", "chat_history"];
 
 /// Process tool result content: sync fast path, then async LLM summarization.
 ///

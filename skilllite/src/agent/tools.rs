@@ -2,6 +2,7 @@
 //!
 //! Phase 1: read_file, write_file, list_directory, file_exists
 //! Phase 2: run_command, write_output, preview_server (stub)
+//! Phase 3: chat_history, chat_plan (dedicated read tools for chat data)
 //!
 //! Ported from Python `builtin_tools.py`. Enforces workspace confinement
 //! and sensitive path blocking.
@@ -245,6 +246,66 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
                 }),
             },
         },
+        // ── Chat data read tools (no list_directory permission expansion) ──
+        ToolDefinition {
+            tool_type: "function".to_string(),
+            function: FunctionDef {
+                name: "chat_history".to_string(),
+                description: "Read chat history from the session. Use when the user asks to view, summarize, or analyze past conversations. Returns messages in chronological order.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "date": {
+                            "type": "string",
+                            "description": "Optional. Date to read (YYYY-MM-DD or YYYYMMDD). If omitted, returns all available history."
+                        },
+                        "session_key": {
+                            "type": "string",
+                            "description": "Optional. Session key (default: 'default')."
+                        }
+                    },
+                    "required": []
+                }),
+            },
+        },
+        ToolDefinition {
+            tool_type: "function".to_string(),
+            function: FunctionDef {
+                name: "chat_plan".to_string(),
+                description: "Read the task plan for a session. Use when the user asks about today's plan, task status, or what was planned.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "date": {
+                            "type": "string",
+                            "description": "Optional. Date (YYYY-MM-DD or YYYYMMDD). Default: today."
+                        },
+                        "session_key": {
+                            "type": "string",
+                            "description": "Optional. Session key (default: 'default')."
+                        }
+                    },
+                    "required": []
+                }),
+            },
+        },
+        ToolDefinition {
+            tool_type: "function".to_string(),
+            function: FunctionDef {
+                name: "list_output".to_string(),
+                description: "List files in the output directory (where write_output saves files). Use when the user asks what files were generated, or to find output files by name. No path needed.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "recursive": {
+                            "type": "boolean",
+                            "description": "If true, list recursively. Default: false."
+                        }
+                    },
+                    "required": []
+                }),
+            },
+        },
     ]
 }
 
@@ -261,6 +322,9 @@ pub fn is_builtin_tool(name: &str) -> bool {
             | "run_command"
             | "write_output"
             | "preview_server"
+            | "chat_history"
+            | "chat_plan"
+            | "list_output"
     )
 }
 
@@ -318,6 +382,9 @@ pub fn execute_builtin_tool(
         "list_directory" => execute_list_directory(&args, workspace),
         "file_exists" => execute_file_exists(&args, workspace),
         "write_output" => execute_write_output(&args, workspace),
+        "chat_history" => execute_chat_history(&args),
+        "chat_plan" => execute_chat_plan(&args),
+        "list_output" => execute_list_output(&args),
         _ => Err(anyhow::anyhow!("Unknown built-in tool: {}", tool_name)),
     };
 
@@ -828,6 +895,158 @@ fn execute_write_output(args: &Value, workspace: &Path) -> Result<String> {
         content.len(),
         normalized.display()
     ))
+}
+
+// ─── Phase 3: chat_history, chat_plan (dedicated read tools) ─────────────────
+
+/// Resolve chat data root (~/.skilllite/chat). Matches ChatSession layout.
+fn chat_data_root() -> Result<PathBuf> {
+    let root = crate::executor::workspace_root(None)
+        .unwrap_or_else(|_| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".skilllite"));
+    Ok(root.join("chat"))
+}
+
+/// Normalize date string: "20260216" -> "2026-02-16".
+fn normalize_date(date: &str) -> String {
+    let s = date.trim().replace('-', "");
+    if s.len() == 8 {
+        format!("{}-{}-{}", &s[0..4], &s[4..6], &s[6..8])
+    } else {
+        date.to_string()
+    }
+}
+
+/// Execute `chat_history`: read chat transcript for a session.
+fn execute_chat_history(args: &Value) -> Result<String> {
+    let session_key = args
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default");
+    let date: Option<String> = args
+        .get("date")
+        .and_then(|v| v.as_str())
+        .map(|s| normalize_date(s));
+
+    let chat_root = chat_data_root()?;
+    let transcripts_dir = chat_root.join("transcripts");
+
+    if !transcripts_dir.exists() {
+        return Ok("No chat history found. Transcripts directory does not exist.".to_string());
+    }
+
+    let entries = if let Some(ref d) = date {
+        let path = crate::executor::transcript::transcript_path_for_session(
+            &transcripts_dir,
+            session_key,
+            Some(d),
+        );
+        if path.exists() {
+            crate::executor::transcript::read_entries(&path)?
+        } else {
+            return Ok(format!(
+                "No chat history found for session '{}' on date {}.",
+                session_key, d
+            ));
+        }
+    } else {
+        crate::executor::transcript::read_entries_for_session(&transcripts_dir, session_key)?
+    };
+
+    if entries.is_empty() {
+        return Ok(format!(
+            "No chat history found for session '{}'.",
+            session_key
+        ));
+    }
+
+    use crate::executor::transcript::TranscriptEntry;
+    let mut lines = Vec::new();
+    for entry in entries {
+        match entry {
+            TranscriptEntry::Session { .. } => {}
+            TranscriptEntry::Message { role, content, .. } => {
+                if let Some(c) = content {
+                    lines.push(format!("[{}] {}", role, c.trim()));
+                }
+            }
+            TranscriptEntry::Compaction { summary, .. } => {
+                if let Some(s) = summary {
+                    lines.push(format!("[compaction] {}", s));
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(lines.join("\n\n"))
+}
+
+/// Execute `chat_plan`: read task plan for a session.
+fn execute_chat_plan(args: &Value) -> Result<String> {
+    let session_key = args
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default");
+    let date_str = args
+        .get("date")
+        .and_then(|v| v.as_str())
+        .map(|s| normalize_date(s))
+        .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+
+    let chat_root = chat_data_root()?;
+    let plans_dir = chat_root.join("plans");
+    let plan_path = plans_dir.join(format!("{}-{}.json", session_key, date_str));
+
+    if !plan_path.exists() {
+        return Ok(format!(
+            "No plan found for session '{}' on date {}.",
+            session_key, date_str
+        ));
+    }
+
+    let content = std::fs::read_to_string(&plan_path)
+        .with_context(|| format!("Failed to read plan: {}", plan_path.display()))?;
+    let plan: Value = serde_json::from_str(&content)
+        .with_context(|| "Invalid plan JSON")?;
+
+    let task = plan.get("task").and_then(|v| v.as_str()).unwrap_or("");
+    let empty: Vec<Value> = vec![];
+    let steps = plan.get("steps").and_then(|v| v.as_array()).unwrap_or(&empty);
+
+    let mut lines = vec![format!("Task: {}", task), "Steps:".to_string()];
+    for (i, step) in steps.iter().enumerate() {
+        let desc = step.get("description").and_then(|v| v.as_str()).unwrap_or("");
+        let status = step.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
+        lines.push(format!("  {}. [{}] {}", i + 1, status, desc));
+    }
+    Ok(lines.join("\n"))
+}
+
+/// Execute `list_output`: list files in the output directory (no path needed).
+fn execute_list_output(args: &Value) -> Result<String> {
+    let recursive = args
+        .get("recursive")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let output_root = types::get_output_dir()
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow::anyhow!("Output directory not configured (SKILLLITE_OUTPUT_DIR)"))?;
+
+    if !output_root.exists() {
+        return Ok("Output directory does not exist or is empty.".to_string());
+    }
+    if !output_root.is_dir() {
+        anyhow::bail!("Output path is not a directory: {}", output_root.display());
+    }
+
+    let mut entries = Vec::new();
+    list_dir_impl(&output_root, &output_root, recursive, &mut entries, 0)?;
+
+    if entries.is_empty() {
+        return Ok("Output directory is empty.".to_string());
+    }
+
+    Ok(entries.join("\n"))
 }
 
 // ─── Phase 2.5: preview_server ──────────────────────────────────────────────
