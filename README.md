@@ -1,8 +1,8 @@
 # SkillLite
 
-[中文文档](./README_CN.md)
+[中文文档](./docs/zh/README.md)
 
-**The  lightweight AI Agent Skills engine with built-in native system-level sandbox, zero dependencies, and local execution.**
+**A lightweight AI Agent Skills engine with built-in native system-level sandbox, zero dependencies, and local execution.**
 
 A lightweight AI Agent Skills execution engine that integrates with any OpenAI-compatible LLM.
 
@@ -18,16 +18,14 @@ See SkillLite's performance compared to other sandbox solutions in real-time:
 ### Running Benchmarks
 
 ```bash
-cd benchmark
-
-# High concurrency (warm) + CMD vs IPC comparison
-python benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
+# From project root
+python benchmark/benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
 
 # Cold start comparison (outputs COLD START BENCHMARK COMPARISON table)
-python benchmark_runner.py --cold-start --compare-ipc
+python benchmark/benchmark_runner.py --cold-start --compare-ipc
 
 # Full test: cold start + high concurrency
-python benchmark_runner.py --cold-start --cold-iterations 20 --compare-levels --compare-ipc -o results.json
+python benchmark/benchmark_runner.py --cold-start --cold-iterations 20 --compare-levels --compare-ipc -o results.json
 ```
 
 See [benchmark/README.md](./benchmark/README.md) for full documentation.
@@ -58,11 +56,11 @@ See [benchmark/README.md](./benchmark/README.md) for full documentation.
 # Install SkillLite SDK
 pip install skilllite
 
-# Install the sandbox binary and skills directory and  skills files
+# Initialize project (sandbox binary + .skills/ directory)
 skilllite init
 
 # Verify installation
-skilllite status
+skilllite list
 
 ```
 
@@ -86,6 +84,12 @@ skilllite remove <skill-name> --force       # Remove without confirmation
 
 That's it! No Rust, no Docker, no complex setup required.
 
+**Zero-config quick start** (auto-detect LLM, setup skills, launch chat):
+
+```bash
+skilllite quickstart
+```
+
 > ⚠️ **Platform Support**: macOS and Linux only. Windows is not supported yet.
 
 ## 📚 Tutorials
@@ -98,16 +102,19 @@ That's it! No Rust, no Docker, no complex setup required.
 | [04. LangChain Integration](./tutorials/04_langchain_integration) | 15 min | Integration with LangChain framework |
 | [05. LlamaIndex Integration](./tutorials/05_llamaindex_integration) | 15 min | RAG + skill execution |
 | [06. MCP Server](./tutorials/06_mcp_server) | 10 min | Claude Desktop integration |
-| [07. OpenCode Integration](./tutorials/07_opencode_integration) | 5 min | One-command OpenCode integration |
+| [07. OpenCode Integration](./tutorials/07_opencode_integration) | 10 min | One-command OpenCode integration |
 
 ### Run Your First Example
 
 ```python
 from skilllite import chat
 
+# Uses .env for API config, .skills for tools
 result = chat("Calculate 15 * 27", skills_dir=".skills")
 print(result)
 ```
+
+Or use the CLI for interactive chat: `skilllite chat`
 
 ### Environment Configuration
 
@@ -152,7 +159,7 @@ In addition to performance tests, we provide security comparison tests to evalua
 
 ### Security Comparison 
 
-| Test Item               |    SkillBox    |     Docker     |    Pyodide     |   Claude SRT   |
+| Test Item               |   SkillLite    |     Docker     |    Pyodide     |   Claude SRT   |
 |----------------------|----------------|----------------|----------------|----------------|
 | **File System** | | | | |
 | Read /etc/passwd       |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
@@ -185,7 +192,7 @@ In addition to performance tests, we provide security comparison tests to evalua
 
 | Platform | Blocked | Partially Blocked | Allowed | Security Score |
 |------|------|----------|------|----------|
-| SkillBox | 18 | 0 | 2 | 90.0% |
+| SkillLite | 18 | 0 | 2 | 90.0% |
 | Docker | 2 | 0 | 18 | 10.0% |
 | Pyodide | 7 | 0 | 13 | 35.0% |
 | Claude SRT | 6 | 1 | 13 | 32.5% |
@@ -193,11 +200,11 @@ In addition to performance tests, we provide security comparison tests to evalua
 ### Running Security Tests
 
 ```bash
-# Complete test (SkillBox + Docker + Pyodide)
+# Complete test (SkillLite + Docker + Pyodide + Claude SRT)
 python3 benchmark/security_vs.py
 
-# Test SkillBox only
-python3 benchmark/security_vs.py --skip-docker --skip-pyodide
+# Test SkillLite only
+python3 benchmark/security_vs.py --skip-docker --skip-pyodide --skip-claude-srt
 
 # Output JSON results
 python3 benchmark/security_vs.py --output security_results.json
@@ -207,7 +214,7 @@ python3 benchmark/security_vs.py --output security_results.json
 
 ## Comprehensive Comparison Summary
 
-| Dimension | SkillBox | Docker | Pyodide | SRT |
+| Dimension | SkillLite | Docker | Pyodide | SRT |
 |------|----------|--------|---------|-----|
 | **Warm Start Latency** | 40 ms | 194 ms | 672 ms | 596 ms |
 | **Cold Start Latency** | 492 ms | 120s | ~5s | ~1s |
@@ -305,7 +312,6 @@ For LangChain or LlamaIndex agents, use the dedicated adapters:
 
 ```bash
 pip install langchain-skilllite   # LangChain
-pip install skilllite[llamaindex]  # LlamaIndex (optional extra)
 ```
 
 See [Framework Adapters](#framework-adapters) below.
@@ -403,8 +409,8 @@ SkillLite can be integrated with [OpenCode](https://github.com/opencode-ai/openc
 ### Quick Setup
 
 ```bash
-# Install with MCP support
-pip install skilllite[mcp]
+# Install SkillLite (MCP server is built-in)
+pip install skilllite
 
 # One-command setup for OpenCode
 skilllite init-opencode
@@ -422,10 +428,23 @@ The `init-opencode` command automatically:
 
 ## 📦 Core Components
 
-- **skilllite** (Rust binary) - Sandbox executor, CLI (chat/add/list/mcp/run/exec), MCP server
+- **skilllite** (Rust binary) - Sandbox executor, CLI (chat/add/list/mcp/run/exec/bash/init/quickstart), MCP server
 - **chat** - Python API for single-shot agent chat
 - **run_skill** / **execute_code** / **scan_code** - Python APIs for direct execution
 - **langchain-skilllite** - LangChain adapter (SkillLiteToolkit, SkillManager)
+
+### Key CLI Commands
+
+| Command | Description |
+|--------|-------------|
+| `skilllite init` | Initialize project (.skills/ + dependencies + audit) |
+| `skilllite quickstart` | Zero-config: detect LLM, setup skills, launch chat |
+| `skilllite chat` | Interactive agent chat |
+| `skilllite add owner/repo` | Add skills from GitHub |
+| `skilllite list` | List installed skills |
+| `skilllite mcp` | Start MCP server (Cursor/Claude Desktop) |
+| `skilllite init-cursor` | Initialize Cursor IDE integration |
+| `skilllite init-opencode` | Initialize OpenCode integration |
 
 ## 📄 License
 

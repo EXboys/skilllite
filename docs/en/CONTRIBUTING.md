@@ -67,7 +67,7 @@ cp .env.example .env
 
 - **Code comments**: English for all code comments and docstrings
 - **User docs**: Maintain both English and Chinese versions
-- **README sync**: Update both `README.md` and `README_CN.md` together
+- **README sync**: Update both `README.md` and `docs/zh/README.md` together
 
 ## Security
 

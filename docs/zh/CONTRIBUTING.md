@@ -67,7 +67,7 @@ cp .env.example .env
 
 - **代码注释**：所有代码注释和 docstring 使用英文
 - **用户文档**：同时维护英文和中文版本
-- **README 同步**：同时更新 `README.md` 和 `README_CN.md`
+- **README 同步**：同时更新 `README.md` 和 `docs/zh/README.md`
 
 ## 安全问题
 
