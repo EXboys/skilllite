@@ -476,15 +476,17 @@ CMD ["python", "/app/main.py"]
                 container_name = f"benchmark-{uuid.uuid4().hex[:8]}"
                 start_time = time.perf_counter()
                 
-                # Start container in detached mode
+                # Start container in detached mode; override CMD with sleep so container stays
+                # running (default CMD runs main.py which needs stdin and would exit immediately)
                 create_result = subprocess.run(
                     [
                         "docker", "run", "-d", "--name", container_name,
-                        "--memory=1g",  # Increase to 1GB to avoid OOM (Exit code 137)
+                        "--memory=1g",  # 1GB to avoid OOM (Exit code 137)
                         "--cpus=1",
                         "--network=none",
                         "--security-opt=no-new-privileges",
-                        self.image_name
+                        self.image_name,
+                        "sleep", "infinity"
                     ],
                     capture_output=True,
                     text=True,
@@ -756,7 +758,7 @@ CMD ["python", "/app/main.py"]
                 container_name = f"benchmark-gvisor-{uuid.uuid4().hex[:8]}"
                 start_time = time.perf_counter()
                 
-                # Start container with gVisor runtime in detached mode
+                # Start container with gVisor runtime in detached mode; override CMD so it stays running
                 create_result = subprocess.run(
                     [
                         "docker", "run", "-d", "--name", container_name,
@@ -765,7 +767,8 @@ CMD ["python", "/app/main.py"]
                         "--cpus=1",
                         "--network=none",
                         "--security-opt=no-new-privileges",
-                        self.image_name
+                        self.image_name,
+                        "sleep", "infinity"
                     ],
                     capture_output=True,
                     text=True,
