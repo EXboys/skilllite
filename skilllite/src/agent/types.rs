@@ -533,6 +533,45 @@ pub fn get_max_output_chars() -> usize {
     env_usize("SKILLLITE_MAX_OUTPUT_CHARS", 8000)
 }
 
+/// Long text selection strategy. `SKILLLITE_LONG_TEXT_STRATEGY`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LongTextStrategy {
+    /// Head + tail only (existing behavior).
+    HeadTailOnly,
+    /// Score all chunks (Position + Discourse + Entity), take top-K.
+    HeadTailExtract,
+}
+
+fn env_str(key: &str, default: &str) -> String {
+    std::env::var(key).unwrap_or_else(|_| default.to_string())
+}
+
+pub fn get_long_text_strategy() -> LongTextStrategy {
+    let v = env_str("SKILLLITE_LONG_TEXT_STRATEGY", "head_tail_only")
+        .to_lowercase()
+        .trim()
+        .to_string();
+    match v.as_str() {
+        "head_tail_extract" | "extract" => LongTextStrategy::HeadTailExtract,
+        _ => LongTextStrategy::HeadTailOnly,
+    }
+}
+
+/// Number of chunks to select in extract mode. Uses ratio or head+tail count as floor.
+pub fn get_extract_top_k(
+    total_chunks: usize,
+    head_chunks: usize,
+    tail_chunks: usize,
+) -> usize {
+    let ratio = std::env::var("SKILLLITE_EXTRACT_TOP_K_RATIO")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .unwrap_or(0.5);
+    let by_ratio = (total_chunks as f64 * ratio).ceil() as usize;
+    let floor = head_chunks + tail_chunks;
+    by_ratio.max(floor).min(total_chunks)
+}
+
 /// Threshold above which chunked LLM summarization is used instead of simple
 /// truncation. `SKILLLITE_SUMMARIZE_THRESHOLD`.
 /// Default raised from 15000→30000 to avoid summarizing medium-sized HTML/code

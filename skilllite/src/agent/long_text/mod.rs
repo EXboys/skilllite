@@ -1,25 +1,21 @@
-//! Long text processing: truncation and chunked LLM summarization.
+//! Long text processing: truncation and chunked selection/summarization.
 //!
-//! Ported from Python `extensions/long_text.py`.
+//! Strategy: head + tail (default), or head_tail_extract (Position + Discourse + Entity scoring).
+//! Configurable via `SKILLLITE_LONG_TEXT_STRATEGY`:
+//!   - `head_tail_only`: take first N + last M chunks (existing behavior)
+//!   - `head_tail_extract`: score all chunks, take top-K by score, preserve order
 //!
-//! Strategy: head + tail (articles: intro + conclusion are most important).
-//! When tool results exceed the summarization threshold, we:
-//!   1. Split into chunks of `SKILLLITE_CHUNK_SIZE` (~6000 chars)
-//!   2. Select head chunks + tail chunks (skip middle)
-//!   3. Summarize each chunk via LLM (≤ 500 chars per chunk)
-//!   4. Combine summaries; if still too long, do a final merge pass
-//!
-//! Configurable via environment variables (see `types.rs` env helpers):
-//!   SKILLLITE_CHUNK_SIZE, SKILLLITE_HEAD_CHUNKS, SKILLLITE_TAIL_CHUNKS,
-//!   SKILLLITE_MAX_OUTPUT_CHARS, SKILLLITE_SUMMARIZE_THRESHOLD
+//! Env: SKILLLITE_CHUNK_SIZE, SKILLLITE_HEAD_CHUNKS, SKILLLITE_TAIL_CHUNKS,
+//!      SKILLLITE_MAX_OUTPUT_CHARS, SKILLLITE_LONG_TEXT_STRATEGY, SKILLLITE_EXTRACT_TOP_K_RATIO
 
 use anyhow::Result;
 
 use super::llm::LlmClient;
-use super::types::{self, ChatMessage, safe_truncate, safe_slice_from, chunk_str};
+use super::types::{self, ChatMessage, chunk_str, safe_slice_from, safe_truncate};
+
+mod filter;
 
 /// Simple truncation with notice.
-/// Ported from Python `truncate_content`.
 pub fn truncate_content(content: &str, max_chars: usize) -> String {
     if content.len() <= max_chars {
         return content.to_string();
@@ -32,18 +28,7 @@ pub fn truncate_content(content: &str, max_chars: usize) -> String {
     )
 }
 
-/// Summarize long content using LLM with head+tail chunking strategy.
-///
-/// Ported from Python `summarize_long_content`.
-///
-/// Algorithm:
-///   1. Divide content into chunks of `chunk_size`
-///   2. If total ≤ head_size + tail_size: process all chunks
-///   3. Otherwise: take first `head_chunks` + last `tail_chunks` chunks
-///   4. Summarize each chunk individually (≤ 500 chars per chunk)
-///   5. Combine summaries; if combined > `max_output_chars`, do final merge
-///
-/// Returns the summarized text, or falls back to truncation on error.
+/// Summarize long content using LLM with configurable chunk selection strategy.
 pub async fn summarize_long_content(
     client: &LlmClient,
     model: &str,
@@ -58,29 +43,25 @@ pub async fn summarize_long_content(
     let head_size = head_chunks_count * chunk_size;
     let tail_size = tail_chunks_count * chunk_size;
 
-    // Split content into chunks and select head+tail
     let (chunks, truncated_note) = select_chunks(
         content,
         chunk_size,
         head_size,
         tail_size,
         total_len,
+        head_chunks_count,
+        tail_chunks_count,
     );
 
     if chunks.is_empty() {
         return "(内容为空)".to_string();
     }
 
-    // Summarize each chunk via LLM
     let mut chunk_summaries = Vec::new();
     for (idx, chunk) in chunks.iter().enumerate() {
         match summarize_single_chunk(client, model, chunk).await {
-            Ok(summary) if !summary.is_empty() => {
-                chunk_summaries.push(summary);
-            }
-            Ok(_) => {
-                chunk_summaries.push(format!("[段 {} 总结为空]", idx + 1));
-            }
+            Ok(summary) if !summary.is_empty() => chunk_summaries.push(summary),
+            Ok(_) => chunk_summaries.push(format!("[段 {} 总结为空]", idx + 1)),
             Err(e) => {
                 tracing::warn!("Chunk {} summarization failed: {}", idx + 1, e);
                 chunk_summaries.push(format!("[段 {} 总结失败]", idx + 1));
@@ -94,12 +75,10 @@ pub async fn summarize_long_content(
         format!("{}{}", chunk_summaries.join("\n\n"), truncated_note)
     };
 
-    // If combined is within limits, return directly
     if combined.len() <= max_output_chars {
         return combined;
     }
 
-    // Final merge pass: merge all summaries into one
     match merge_summaries(client, model, &combined).await {
         Ok(merged) => {
             let result = if merged.is_empty() {
@@ -124,49 +103,114 @@ pub async fn summarize_long_content(
     }
 }
 
-/// Select head + tail chunks from content.
-/// Returns (chunks, truncated_note).
+/// Select chunks: head+tail only, or scored extract (Position + Discourse + Entity).
 fn select_chunks(
     content: &str,
     chunk_size: usize,
     head_size: usize,
     tail_size: usize,
     total_len: usize,
+    head_chunks_count: usize,
+    tail_chunks_count: usize,
+) -> (Vec<String>, String) {
+    let strategy = types::get_long_text_strategy();
+    let all_chunks: Vec<String> = chunk_str(content, chunk_size)
+        .into_iter()
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .collect();
+
+    if all_chunks.is_empty() {
+        return (Vec::new(), String::new());
+    }
+
+    match strategy {
+        types::LongTextStrategy::HeadTailOnly => {
+            select_head_tail_only(
+                content,
+                &all_chunks,
+                chunk_size,
+                head_size,
+                tail_size,
+                total_len,
+                head_chunks_count,
+                tail_chunks_count,
+            )
+        }
+        types::LongTextStrategy::HeadTailExtract => {
+            select_by_score(
+                &all_chunks,
+                total_len,
+                head_chunks_count,
+                tail_chunks_count,
+            )
+        }
+    }
+}
+
+fn select_head_tail_only(
+    content: &str,
+    all_chunks: &[String],
+    chunk_size: usize,
+    head_size: usize,
+    tail_size: usize,
+    total_len: usize,
+    _head_chunks_count: usize,
+    _tail_chunks_count: usize,
 ) -> (Vec<String>, String) {
     if total_len <= head_size + tail_size {
-        // Content fits — process all chunks (UTF-8 safe via chunk_str)
-        let chunks: Vec<String> = chunk_str(content, chunk_size)
-            .into_iter()
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| s.to_string())
-            .collect();
-        (chunks, String::new())
+        (all_chunks.to_vec(), String::new())
     } else {
-        // Take head chunks + tail chunks, skip middle (UTF-8 safe)
         let mut chunks = Vec::new();
-
-        // Head chunks: take the first `head_size` bytes (at a safe boundary)
         let head_content = safe_truncate(content, head_size);
         for chunk in chunk_str(head_content, chunk_size) {
             if !chunk.trim().is_empty() {
                 chunks.push(chunk.to_string());
             }
         }
-
-        // Tail chunks: take the last `tail_size` bytes (at a safe boundary)
         let tail_content = safe_slice_from(content, total_len.saturating_sub(tail_size));
         for chunk in chunk_str(tail_content, chunk_size) {
             if !chunk.trim().is_empty() {
                 chunks.push(chunk.to_string());
             }
         }
-
         let note = format!("\n\n[注：原文 {} 字符，仅总结开头与结尾]", total_len);
         (chunks, note)
     }
 }
 
-/// Summarize a single chunk via LLM (target ≤ 500 chars).
+fn select_by_score(
+    all_chunks: &[String],
+    total_len: usize,
+    head_chunks_count: usize,
+    tail_chunks_count: usize,
+) -> (Vec<String>, String) {
+    let total_chunks = all_chunks.len();
+    let top_k = types::get_extract_top_k(total_chunks, head_chunks_count, tail_chunks_count);
+
+    let mut scored: Vec<(usize, String, f64)> = all_chunks
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (i, c.clone(), filter::score_chunk(c, i, total_chunks)))
+        .collect();
+
+    scored.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+    let selected: Vec<(usize, String)> = scored
+        .into_iter()
+        .take(top_k)
+        .map(|(i, c, _)| (i, c))
+        .collect();
+    let mut ordered: Vec<(usize, String)> = selected;
+    ordered.sort_by_key(|(i, _)| *i);
+
+    let chunks: Vec<String> = ordered.into_iter().map(|(_, c)| c).collect();
+    let note = format!(
+        "\n\n[注：原文 {} 字符，共 {} 段，按信息量选取 {} 段]",
+        total_len, total_chunks, top_k
+    );
+    (chunks, note)
+}
+
 async fn summarize_single_chunk(
     client: &LlmClient,
     model: &str,
@@ -196,7 +240,6 @@ async fn summarize_single_chunk(
     Ok(text)
 }
 
-/// Merge multiple chunk summaries into one concise summary (target ≤ 3000 chars).
 async fn merge_summaries(
     client: &LlmClient,
     model: &str,
