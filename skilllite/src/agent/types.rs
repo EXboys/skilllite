@@ -605,6 +605,17 @@ pub fn get_output_dir() -> Option<String> {
     crate::config::PathsConfig::from_env().output_dir
 }
 
+/// Compaction threshold: compact conversation history when message count exceeds this.
+/// `SKILLLITE_COMPACTION_THRESHOLD`. Default 16 (~8 turns).
+pub fn get_compaction_threshold() -> usize {
+    env_usize("SKILLLITE_COMPACTION_THRESHOLD", 16)
+}
+
+/// Number of recent messages to keep after compaction. `SKILLLITE_COMPACTION_KEEP_RECENT`.
+pub fn get_compaction_keep_recent() -> usize {
+    env_usize("SKILLLITE_COMPACTION_KEEP_RECENT", 10)
+}
+
 /// Whether to use compact planning prompt (rule filtering + fewer examples). Default true.
 /// Set `SKILLLITE_COMPACT_PLANNING=0` to disable and use full prompt.
 pub fn get_compact_planning() -> bool {

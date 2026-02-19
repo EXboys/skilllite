@@ -127,6 +127,17 @@ Prefer `SKILLLITE_*` as primary variables; compatible with `OPENAI_*`, `BASE_URL
 
 ---
 
+## Session & Compaction <small>[Advanced]</small>
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_COMPACTION_THRESHOLD` | int | `16` | Compact conversation history when message count exceeds this (~8 turns) |
+| `SKILLLITE_COMPACTION_KEEP_RECENT` | int | `10` | Number of recent messages to keep after compaction |
+
+**Usage**: Lower `COMPACTION_THRESHOLD` (e.g. `12`) for more frequent compaction; raise it if compaction triggers too often. The `/compact` command manually triggers compaction regardless of threshold.
+
+---
+
 ## Planning & Rules <small>[Advanced]</small>
 
 | Variable | Type | Default | Description |

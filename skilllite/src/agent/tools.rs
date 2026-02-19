@@ -259,7 +259,7 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "chat_history".to_string(),
-                description: "Read chat history from the session. Use when the user asks to view, summarize, or analyze past conversations. Returns messages in chronological order.".to_string(),
+                description: "Read chat history from the session. Use when the user asks to view, summarize, or analyze past conversations. Returns messages in chronological order. The transcript may contain [compaction] entries — these are summaries from /compact (history compression). To analyze /compact effect, read the transcript and find the [compaction] block.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -269,7 +269,7 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
                         },
                         "session_key": {
                             "type": "string",
-                            "description": "Optional. Session key (default: 'default')."
+                            "description": "Optional. Use the session_key from system prompt (default: 'default'). For current interactive chat, use that value; do NOT use 'memory' — that is a different concept."
                         }
                     },
                     "required": []

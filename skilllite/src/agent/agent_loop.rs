@@ -36,11 +36,12 @@ pub async fn run_agent_loop(
     user_message: &str,
     skills: &[LoadedSkill],
     event_sink: &mut dyn EventSink,
+    session_key: Option<&str>,
 ) -> Result<AgentResult> {
     if config.enable_task_planning {
-        run_with_task_planning(config, initial_messages, user_message, skills, event_sink).await
+        run_with_task_planning(config, initial_messages, user_message, skills, event_sink, session_key).await
     } else {
-        run_simple_loop(config, initial_messages, user_message, skills, event_sink).await
+        run_simple_loop(config, initial_messages, user_message, skills, event_sink, session_key).await
     }
 }
 
@@ -59,6 +60,7 @@ async fn run_simple_loop(
     user_message: &str,
     skills: &[LoadedSkill],
     event_sink: &mut dyn EventSink,
+    session_key: Option<&str>,
 ) -> Result<AgentResult> {
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
@@ -77,6 +79,7 @@ async fn run_simple_loop(
         config.system_prompt.as_deref(),
         skills,
         &config.workspace,
+        session_key,
     );
 
     // Build message list
@@ -266,6 +269,7 @@ async fn run_with_task_planning(
     user_message: &str,
     skills: &[LoadedSkill],
     event_sink: &mut dyn EventSink,
+    session_key: Option<&str>,
 ) -> Result<AgentResult> {
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
@@ -328,6 +332,7 @@ async fn run_with_task_planning(
             config.system_prompt.as_deref(),
             skills,
             &config.workspace,
+            session_key,
         );
         let mut messages = Vec::new();
         messages.push(ChatMessage::system(&system_prompt));
@@ -363,7 +368,15 @@ async fn run_with_task_planning(
     // Build task-aware system prompt and run with tools + nudge mechanism.
     // Matches Python SDK `_run_openai` when `enable_task_planning = True`.
 
-    let system_prompt = planner.build_task_system_prompt(skills);
+    let mut system_prompt = planner.build_task_system_prompt(skills);
+    if let Some(sk) = session_key {
+        system_prompt.push_str(&format!(
+            "\n\nCurrent session: {} — use session_key '{}' for chat_history and chat_plan.\n\
+             /compact compresses conversation; result appears as [compaction] in chat_history. \
+             When user asks about 最新的/compact or /compact效果, read chat_history with session_key '{}'.",
+            sk, sk, sk
+        ));
+    }
 
     let mut messages = Vec::new();
     messages.push(ChatMessage::system(&system_prompt));

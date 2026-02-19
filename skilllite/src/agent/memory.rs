@@ -91,10 +91,11 @@ pub fn is_memory_tool(name: &str) -> bool {
 // ─── Tool execution ─────────────────────────────────────────────────────────
 
 /// Execute a memory tool.
+/// Memory is stored in ~/.skilllite/chat/memory, not the workspace.
 pub fn execute_memory_tool(
     tool_name: &str,
     arguments: &str,
-    workspace: &Path,
+    _workspace: &Path,
     agent_id: &str,
 ) -> ToolResult {
     let args: serde_json::Value = match serde_json::from_str(arguments) {
@@ -109,10 +110,11 @@ pub fn execute_memory_tool(
         }
     };
 
+    let mem_root = crate::executor::chat_root();
     let result = match tool_name {
-        "memory_search" => execute_memory_search(&args, workspace, agent_id),
-        "memory_write" => execute_memory_write(&args, workspace, agent_id),
-        "memory_list" => execute_memory_list(workspace),
+        "memory_search" => execute_memory_search(&args, &mem_root, agent_id),
+        "memory_write" => execute_memory_write(&args, &mem_root, agent_id),
+        "memory_list" => execute_memory_list(&mem_root),
         _ => Err(anyhow::anyhow!("Unknown memory tool: {}", tool_name)),
     };
 
@@ -135,7 +137,7 @@ pub fn execute_memory_tool(
 /// Search memory using BM25.
 fn execute_memory_search(
     args: &serde_json::Value,
-    workspace: &Path,
+    chat_root: &Path,
     agent_id: &str,
 ) -> Result<String> {
     let query = args
@@ -147,7 +149,7 @@ fn execute_memory_search(
         .and_then(|v| v.as_i64())
         .unwrap_or(10);
 
-    let idx_path = crate::executor::memory::index_path(workspace, agent_id);
+    let idx_path = crate::executor::memory::index_path(chat_root, agent_id);
     if !idx_path.exists() {
         return Ok("No memory index found. Memory is empty.".to_string());
     }
@@ -176,7 +178,7 @@ fn execute_memory_search(
 /// Write content to memory and index it for BM25 search.
 fn execute_memory_write(
     args: &serde_json::Value,
-    workspace: &Path,
+    chat_root: &Path,
     agent_id: &str,
 ) -> Result<String> {
     let rel_path = args
@@ -192,7 +194,7 @@ fn execute_memory_write(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let memory_dir = workspace.join("memory");
+    let memory_dir = chat_root.join("memory");
     let file_path = memory_dir.join(rel_path);
 
     // Security: ensure path stays within memory directory
@@ -219,7 +221,7 @@ fn execute_memory_write(
         .with_context(|| format!("Failed to write memory file: {}", file_path.display()))?;
 
     // Index the file for BM25 search
-    let idx_path = crate::executor::memory::index_path(workspace, agent_id);
+    let idx_path = crate::executor::memory::index_path(chat_root, agent_id);
     if let Some(parent) = idx_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -235,8 +237,8 @@ fn execute_memory_write(
 }
 
 /// List all memory files.
-fn execute_memory_list(workspace: &Path) -> Result<String> {
-    let memory_dir = workspace.join("memory");
+fn execute_memory_list(chat_root: &Path) -> Result<String> {
+    let memory_dir = chat_root.join("memory");
     if !memory_dir.exists() {
         return Ok("Memory directory is empty (no files stored yet).".to_string());
     }
@@ -283,12 +285,14 @@ fn collect_memory_files(
 /// Build memory context by searching for relevant memories.
 /// Returns a context string to inject into the system prompt, or None if empty.
 /// Ported from Python `build_memory_context`.
+/// Memory is stored in ~/.skilllite/chat/memory.
 pub fn build_memory_context(
-    workspace: &Path,
+    _workspace: &Path,
     agent_id: &str,
     user_message: &str,
 ) -> Option<String> {
-    let idx_path = crate::executor::memory::index_path(workspace, agent_id);
+    let chat_root = crate::executor::chat_root();
+    let idx_path = crate::executor::memory::index_path(&chat_root, agent_id);
     if !idx_path.exists() {
         return None;
     }

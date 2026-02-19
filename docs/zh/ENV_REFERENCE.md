@@ -127,6 +127,17 @@
 
 ---
 
+## 会话与压缩 <small>[高级]</small>
+
+| 变量 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `SKILLLITE_COMPACTION_THRESHOLD` | int | `16` | 对话历史超过此消息数时触发压缩（约 8 轮） |
+| `SKILLLITE_COMPACTION_KEEP_RECENT` | int | `10` | 压缩后保留的最近消息数 |
+
+**使用场景**：若希望更早触发压缩，可降低 `COMPACTION_THRESHOLD`（如 `12`）；若压缩过于频繁可适当提高。`/compact` 命令可手动触发压缩，不受阈值限制。
+
+---
+
 ## 规划与规则 <small>[高级]</small>
 
 | 变量 | 类型 | 默认值 | 说明 |

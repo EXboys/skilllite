@@ -15,10 +15,8 @@ use super::memory;
 use super::skills::LoadedSkill;
 use super::types::*;
 
-/// Compaction threshold: compact when message count exceeds this.
-const COMPACTION_THRESHOLD: usize = 30;
-/// Number of recent messages to keep after compaction.
-const COMPACTION_KEEP_RECENT: usize = 10;
+// Compaction threshold/keep are configurable via types::get_compaction_threshold()
+// and types::get_compaction_keep_recent() (SKILLLITE_COMPACTION_* env vars).
 
 /// Persistent chat session.
 ///
@@ -173,7 +171,8 @@ impl ChatSession {
         }
 
         // Check if compaction is needed
-        let mut history = if history.len() >= COMPACTION_THRESHOLD {
+        let threshold = get_compaction_threshold();
+        let mut history = if history.len() >= threshold {
             self.compact_history(history).await?
         } else {
             history
@@ -197,6 +196,7 @@ impl ChatSession {
             user_message,
             &self.skills,
             event_sink,
+            Some(&self.session_key),
         )
         .await?;
 
@@ -285,11 +285,24 @@ impl ChatSession {
         &mut self,
         history: Vec<ChatMessage>,
     ) -> Result<Vec<ChatMessage>> {
-        if history.len() < COMPACTION_THRESHOLD {
+        let threshold = get_compaction_threshold();
+        if history.len() < threshold {
+            return Ok(history);
+        }
+        self.compact_history_inner(history, threshold).await
+    }
+
+    /// Inner compaction logic. `min_threshold`: use 0 for force_compact to bypass.
+    async fn compact_history_inner(
+        &mut self,
+        history: Vec<ChatMessage>,
+        min_threshold: usize,
+    ) -> Result<Vec<ChatMessage>> {
+        let keep_count = get_compaction_keep_recent();
+        if history.len() < min_threshold || history.len() <= keep_count {
             return Ok(history);
         }
 
-        let keep_count = COMPACTION_KEEP_RECENT;
         let split_point = history.len().saturating_sub(keep_count);
         let old_messages = &history[..split_point];
         let recent_messages = &history[split_point..];
@@ -360,6 +373,19 @@ impl ChatSession {
         result.extend(recent_messages.to_vec());
 
         Ok(result)
+    }
+
+    /// Force compaction: summarize history via LLM regardless of threshold.
+    /// Returns true if compaction was performed, false if history was too short.
+    pub async fn force_compact(&mut self) -> Result<bool> {
+        let _ = self.ensure_session()?;
+        let history = self.read_history()?;
+        let keep_count = get_compaction_keep_recent();
+        if history.len() <= keep_count {
+            return Ok(false);
+        }
+        let _ = self.compact_history_inner(history, 0).await?;
+        Ok(true)
     }
 
     /// Clear session: summarize conversation to memory, then reset.

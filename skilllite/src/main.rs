@@ -393,7 +393,11 @@ async fn run_interactive_chat(
                     }
                     "/compact" => {
                         eprintln!("📦 Compacting history...");
-                        // Compaction happens automatically in run_turn
+                        match session.force_compact().await {
+                            Ok(true) => eprintln!("✅ History compacted."),
+                            Ok(false) => eprintln!("ℹ️  Not enough messages to compact."),
+                            Err(e) => eprintln!("❌ Compaction failed: {}", e),
+                        }
                         continue;
                     }
                     _ => {}

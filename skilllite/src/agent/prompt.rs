@@ -44,7 +44,7 @@ When using tools:
 - For content >~6k chars: split into multiple write_output/write_file calls — first call overwrites, subsequent calls use append: true
 - Use list_directory to explore the workspace structure
 - Use file_exists to check if files/directories exist before operations
-- Use chat_history to read past conversation when the user asks to view, summarize, or analyze chat records (supports date filter)
+- Use chat_history to read past conversation when the user asks to view, summarize, or analyze chat records (supports date filter). Transcript contains [compaction] entries from /compact command.
 - Use chat_plan to read task plans when the user asks about today's plan or task status
 - Use list_output to list files in the output directory (no path needed)
 - Use run_command to execute shell commands (requires user confirmation)
@@ -62,6 +62,7 @@ pub fn build_system_prompt(
     custom_prompt: Option<&str>,
     skills: &[LoadedSkill],
     workspace: &str,
+    session_key: Option<&str>,
 ) -> String {
     let mut parts = Vec::new();
 
@@ -71,6 +72,15 @@ pub fn build_system_prompt(
     // Current date (for chat_history "昨天"/yesterday interpretation)
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     parts.push(format!("\n\nCurrent date: {} (use for chat_history: 昨天/yesterday = date minus 1 day)", today));
+
+    // Session and /compact hint (when in chat mode)
+    if let Some(sk) = session_key {
+        parts.push(format!(
+            "\n\nCurrent session: {} — use session_key '{}' for chat_history and chat_plan.\n\
+             /compact is a CLI command that compresses old conversation into a summary. The result appears as [compaction] in chat_history. When user asks about 最新的/compact or /compact的效果, read chat_history to find the [compaction] entry.",
+            sk, sk
+        ));
+    }
 
     // Workspace context
     parts.push(format!("\n\nWorkspace: {}", workspace));
@@ -323,14 +333,14 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_contains_workspace() {
-        let prompt = build_system_prompt(None, &[], "/home/user/project");
+        let prompt = build_system_prompt(None, &[], "/home/user/project", None);
         assert!(prompt.contains("Workspace: /home/user/project"));
     }
 
     #[test]
     fn test_build_system_prompt_uses_progressive_mode() {
         let skills = vec![make_test_skill("test-skill", "Test description")];
-        let prompt = build_system_prompt(None, &skills, "/tmp");
+        let prompt = build_system_prompt(None, &skills, "/tmp", None);
 
         assert!(prompt.contains("test-skill"));
         assert!(prompt.contains("Test description"));
