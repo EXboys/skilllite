@@ -621,6 +621,13 @@ pub fn get_summarize_threshold() -> usize {
     env_usize("SKILLLITE_SUMMARIZE_THRESHOLD", 30000)
 }
 
+/// Max output tokens for LLM completion. `SKILLLITE_MAX_TOKENS`.
+/// Higher values reduce write_output/write_file truncation when generating large content.
+/// Default 8192 to match common API limits (e.g. DeepSeek). Set higher if your API supports it.
+pub fn get_max_tokens() -> usize {
+    env_usize("SKILLLITE_MAX_TOKENS", 8192)
+}
+
 /// Max chars per tool result. `SKILLLITE_TOOL_RESULT_MAX_CHARS`.
 /// Default raised from 8000→12000 to better accommodate HTML/code tool results
 /// without triggering unnecessary truncation.

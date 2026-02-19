@@ -14,8 +14,9 @@
 | `BASE_URL` | string | - | **必需**。LLM API 地址，如 `https://api.deepseek.com/v1` |
 | `API_KEY` | string | - | **必需**。LLM API 密钥 |
 | `MODEL` | string | `deepseek-chat` | 模型名称 |
+| `SKILLLITE_MAX_TOKENS` | int | `8192` | LLM 单次输出 token 上限；增大可减少 write_output 截断（部分 API 如 Claude 支持更高） |
 
-**使用场景**：所有调用 LLM 的场景均需配置。支持 OpenAI 兼容 API 的任意提供商（DeepSeek、Qwen、Ollama 等）。
+**使用场景**：所有调用 LLM 的场景均需配置。支持 OpenAI 兼容 API 的任意提供商（DeepSeek、Qwen、Ollama 等）。若出现 `Recovered truncated JSON for write_output` 警告，可尝试增大 `SKILLLITE_MAX_TOKENS`。
 
 ---
 

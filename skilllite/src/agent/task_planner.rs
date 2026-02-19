@@ -499,8 +499,8 @@ r#"You are an intelligent task execution assistant responsible for executing tas
 
 ## Built-in Tools
 
-1. **write_output**: Write final deliverables (HTML, reports, etc.) to the output directory `{output_dir}`. Path is relative to output dir.
-2. **write_file**: Write/create files within the workspace
+1. **write_output**: Write final deliverables (HTML, reports, etc.) to the output directory `{output_dir}`. Path is relative to output dir. Use `append: true` to append. **For content >~6k chars**: split into multiple calls — first call overwrites, subsequent calls use `append: true`.
+2. **write_file**: Write/create files within the workspace. Use `append: true` to append. Same chunking rule for large content.
 3. **preview_server**: Start local HTTP server to preview files in browser
 4. **read_file**: Read file content
 5. **list_directory**: List directory contents

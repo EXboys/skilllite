@@ -122,7 +122,7 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "write_file".to_string(),
-                description: "Write content to a file. Creates parent directories if needed. Blocks writes to sensitive files (.env, .key, .git/config).".to_string(),
+                description: "Write content to a file. Creates parent directories if needed. Blocks writes to sensitive files (.env, .key, .git/config). Use append: true to append to existing file instead of overwriting.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -133,6 +133,10 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
                         "content": {
                             "type": "string",
                             "description": "Content to write"
+                        },
+                        "append": {
+                            "type": "boolean",
+                            "description": "If true, append content to end of file. Default: false (overwrite)."
                         }
                     },
                     "required": ["path", "content"]
@@ -199,7 +203,7 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "write_output".to_string(),
-                description: "Write final output to the output directory. Use for deliverable files (HTML, reports, etc.). Path is relative to the output directory.".to_string(),
+                description: "Write final output to the output directory. Use for deliverable files (HTML, reports, etc.). Path is relative to the output directory. Use append: true to append to existing file. For content >~6k chars, split into multiple calls: first call overwrites, subsequent calls use append: true.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -210,6 +214,10 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
                         "content": {
                             "type": "string",
                             "description": "Content to write"
+                        },
+                        "append": {
+                            "type": "boolean",
+                            "description": "If true, append content to end of file. Default: false (overwrite)."
                         }
                     },
                     "required": ["file_path", "content"]
@@ -340,8 +348,8 @@ pub fn execute_builtin_tool(
     arguments: &str,
     workspace: &Path,
 ) -> ToolResult {
-    let args: Value = match serde_json::from_str(arguments) {
-        Ok(v) => v,
+    let (args, was_recovered) = match serde_json::from_str(arguments) {
+        Ok(v) => (v, false),
         Err(_e) => {
             // Truncated JSON recovery: when LLM hits max_tokens (finish_reason: "length"),
             // tool arguments may be cut off mid-string. Try to recover file_path + content
@@ -354,7 +362,7 @@ pub fn execute_builtin_tool(
                             tool_name,
                             recovered.as_object().map_or(0, |o| o.len())
                         );
-                        recovered
+                        (recovered, true)
                     }
                     _ => {
                         return ToolResult {
@@ -389,12 +397,26 @@ pub fn execute_builtin_tool(
     };
 
     match result {
-        Ok(content) => ToolResult {
-            tool_call_id: String::new(),
-            tool_name: tool_name.to_string(),
-            content,
-            is_error: false,
-        },
+        Ok(content) => {
+            let final_content = if was_recovered
+                && (tool_name == "write_file" || tool_name == "write_output")
+            {
+                format!(
+                    "{}\n\n⚠️ Content may have been truncated due to token limit. \
+                     Consider splitting into smaller chunks or verify the output. \
+                     Increase SKILLLITE_MAX_TOKENS if needed.",
+                    content
+                )
+            } else {
+                content
+            };
+            ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content: final_content,
+                is_error: false,
+            }
+        }
         Err(e) => ToolResult {
             tool_call_id: String::new(),
             tool_name: tool_name.to_string(),
@@ -487,6 +509,7 @@ fn execute_write_file(args: &Value, workspace: &Path) -> Result<String> {
         .get("content")
         .and_then(|v| v.as_str())
         .context("'content' is required")?;
+    let append = args.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
 
     if is_sensitive_write_path(&path_str) {
         anyhow::bail!(
@@ -503,11 +526,23 @@ fn execute_write_file(args: &Value, workspace: &Path) -> Result<String> {
             .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
     }
 
-    std::fs::write(&resolved, content)
-        .with_context(|| format!("Failed to write file: {}", resolved.display()))?;
+    if append {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&resolved)
+            .with_context(|| format!("Failed to open file for append: {}", resolved.display()))?;
+        f.write_all(content.as_bytes())
+            .with_context(|| format!("Failed to append to file: {}", resolved.display()))?;
+    } else {
+        std::fs::write(&resolved, content)
+            .with_context(|| format!("Failed to write file: {}", resolved.display()))?;
+    }
 
     Ok(format!(
-        "Successfully wrote {} bytes to {}",
+        "Successfully {} {} bytes to {}",
+        if append { "appended" } else { "wrote" },
         content.len(),
         path_str
     ))
@@ -633,6 +668,13 @@ fn parse_truncated_json_for_file_tools(arguments: &str) -> Option<Value> {
     }
 
     let mut result = serde_json::Map::new();
+
+    // Extract "append": true/false (optional)
+    if arguments.contains("\"append\":true") {
+        result.insert("append".to_string(), Value::Bool(true));
+    } else if arguments.contains("\"append\":false") {
+        result.insert("append".to_string(), Value::Bool(false));
+    }
 
     // Extract "path" or "file_path": "value"
     let path_re = regex::Regex::new(r#""(?:file_)?path"\s*:\s*"((?:[^"\\]|\\.)*)""#).ok()?;
@@ -857,6 +899,7 @@ fn execute_write_output(args: &Value, workspace: &Path) -> Result<String> {
         .get("content")
         .and_then(|v| v.as_str())
         .context("'content' is required")?;
+    let append = args.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
 
     // Resolve output directory: SKILLLITE_OUTPUT_DIR > {workspace}/output
     let output_root = match types::get_output_dir() {
@@ -887,11 +930,23 @@ fn execute_write_output(args: &Value, workspace: &Path) -> Result<String> {
             .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
     }
 
-    std::fs::write(&normalized, content)
-        .with_context(|| format!("Failed to write output file: {}", normalized.display()))?;
+    if append {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&normalized)
+            .with_context(|| format!("Failed to open output file for append: {}", normalized.display()))?;
+        f.write_all(content.as_bytes())
+            .with_context(|| format!("Failed to append to output file: {}", normalized.display()))?;
+    } else {
+        std::fs::write(&normalized, content)
+            .with_context(|| format!("Failed to write output file: {}", normalized.display()))?;
+    }
 
     Ok(format!(
-        "Successfully wrote {} bytes to {}",
+        "Successfully {} {} bytes to {}",
+        if append { "appended" } else { "wrote" },
         content.len(),
         normalized.display()
     ))

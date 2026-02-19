@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 use super::types::{
     ChatMessage, EventSink, FunctionCall, ToolCall, ToolDefinition, ToolFormat, safe_truncate,
-    parse_claude_tool_calls,
+    parse_claude_tool_calls, get_max_tokens,
 };
 
 /// Detect API format from model name or API base.
@@ -105,6 +105,7 @@ impl LlmClient {
 
         let mut body = json!({
             "model": model,
+            "max_tokens": get_max_tokens(),
             "messages": messages,
         });
 
@@ -154,6 +155,7 @@ impl LlmClient {
 
         let mut body = json!({
             "model": model,
+            "max_tokens": get_max_tokens(),
             "messages": messages,
             "stream": true,
         });
@@ -302,7 +304,7 @@ impl LlmClient {
 
         let mut body = json!({
             "model": model,
-            "max_tokens": 8192,
+            "max_tokens": get_max_tokens(),
             "messages": claude_messages,
         });
 
@@ -354,7 +356,7 @@ impl LlmClient {
 
         let mut body = json!({
             "model": model,
-            "max_tokens": 8192,
+            "max_tokens": get_max_tokens(),
             "messages": claude_messages,
             "stream": true,
         });

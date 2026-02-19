@@ -14,8 +14,9 @@ This document lists all environment variables supported by SkillLite, including 
 | `BASE_URL` | string | - | **Required**. LLM API endpoint, e.g. `https://api.deepseek.com/v1` |
 | `API_KEY` | string | - | **Required**. LLM API key |
 | `MODEL` | string | `deepseek-chat` | Model name |
+| `SKILLLITE_MAX_TOKENS` | int | `8192` | Max output tokens per LLM call; higher reduces write_output truncation (some APIs like Claude support more) |
 
-**Usage**: Required for all LLM calls. Supports any OpenAI-compatible API provider (DeepSeek, Qwen, Ollama, etc.).
+**Usage**: Required for all LLM calls. Supports any OpenAI-compatible API provider (DeepSeek, Qwen, Ollama, etc.). If you see `Recovered truncated JSON for write_output`, try increasing `SKILLLITE_MAX_TOKENS`.
 
 ---
 
