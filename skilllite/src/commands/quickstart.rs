@@ -316,45 +316,17 @@ fn default_model_for_base(api_base: &str) -> &str {
 }
 
 /// Step 2: Ensure skills are available.
+/// Uses shared logic from init::ensure_skills_dir.
 fn ensure_skills(skills_path: &Path) -> Result<()> {
     eprintln!("📦 Step 2/3: Checking skills...");
 
-    if skills_path.is_dir() {
-        let skill_count = fs::read_dir(skills_path)
-            .map(|entries| {
-                entries
-                    .flatten()
-                    .filter(|e| e.path().is_dir() && e.path().join("SKILL.md").exists())
-                    .count()
-            })
-            .unwrap_or(0);
-
-        if skill_count > 0 {
-            eprintln!("   ✅ Found {} skill(s) in {}", skill_count, skills_path.display());
-            return Ok(());
-        }
+    let downloaded = crate::commands::init::ensure_skills_dir(skills_path, false)?;
+    if downloaded {
+        eprintln!("   ✅ Downloaded skills into {}", skills_path.display());
+    } else {
+        let count = crate::commands::init::count_skills(skills_path);
+        eprintln!("   ✅ Found {} skill(s) in {}", count, skills_path.display());
     }
-
-    // Check SKILLLITE_SKILLS_REPO for remote skills
-    if let Ok(repo) = std::env::var("SKILLLITE_SKILLS_REPO") {
-        if !repo.is_empty() {
-            eprintln!("   📥 Cloning skills from SKILLLITE_SKILLS_REPO: {}", repo);
-            // Use the add command to install
-            crate::commands::skill::cmd_add(&repo, &skills_path.to_string_lossy(), false, false)?;
-            return Ok(());
-        }
-    }
-
-    // No skills available — create example
-    eprintln!("   No skills found. Creating example skill...");
-    crate::commands::init::cmd_init(
-        &skills_path.to_string_lossy(),
-        true,
-        true,
-        false,
-        false,
-        false,
-    )?;
 
     Ok(())
 }

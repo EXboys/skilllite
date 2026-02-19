@@ -111,7 +111,9 @@ fn resolve_path(dir: &str) -> PathBuf {
 
 /// Ensure .skills/ directory exists and has skills. When empty, download from
 /// SKILLLITE_SKILLS_REPO (default: EXboys/skilllite). Returns true if skills were downloaded.
-fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool> {
+///
+/// Shared by `init` and `quickstart` commands.
+pub(crate) fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool> {
     if skills_path.exists() {
         let has_skills = fs::read_dir(skills_path)
             .map(|entries| {
@@ -137,6 +139,11 @@ fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool> {
         .with_context(|| format!("Failed to download skills from {}. Set SKILLLITE_SKILLS_REPO to customize.", repo))?;
 
     Ok(true)
+}
+
+/// Count skills in the directory (subdirs with SKILL.md). Used for status messages.
+pub(crate) fn count_skills(skills_path: &Path) -> usize {
+    discover_all_skills(skills_path).len()
 }
 
 /// Discover all skills in the skills directory.
