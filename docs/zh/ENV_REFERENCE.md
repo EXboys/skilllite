@@ -100,7 +100,9 @@
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLLITE_PLANNING_RULES_PATH` | string | - | 自定义 planning_rules.json 路径 |
+| `SKILLLITE_COMPACT_PLANNING` | bool | `true` | 是否使用紧凑规划 prompt（规则过滤 + fewer 示例），设为 `0` 可禁用 |
+
+规划规则定义在 `planning_rules.rs` 中，无需外部 JSON 配置。
 
 ---
 

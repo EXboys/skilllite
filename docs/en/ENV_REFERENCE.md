@@ -100,7 +100,9 @@ This document lists all environment variables supported by SkillLite, including 
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `SKILLLITE_PLANNING_RULES_PATH` | string | - | Custom path for planning_rules.json |
+| `SKILLLITE_COMPACT_PLANNING` | bool | `true` | Use compact planning prompt (rule filtering + fewer examples); set to `0` to disable |
+
+Planning rules are defined in `planning_rules.rs`; no external JSON config needed.
 
 ---
 

@@ -6,11 +6,12 @@
 //! - Generate task list from user message using LLM
 //! - Track task completion status
 //! - Build execution and task system prompts
-//! - Planning rules engine (built-in + external JSON)
+//! - Planning rules engine (rules defined in planning_rules.rs)
 
 use anyhow::Result;
 
 use super::llm::LlmClient;
+use super::planning_rules;
 use super::skills::LoadedSkill;
 use super::types::*;
 
@@ -27,124 +28,30 @@ fn resolve_output_dir() -> String {
     })
 }
 
-// ─── Planning Rules ─────────────────────────────────────────────────────────
-
-/// Get default built-in planning rules.
-/// Ported from Python `planning_rules.py` `_builtin_rules` + `planning_rules.json`.
-fn builtin_rules() -> Vec<PlanningRule> {
-    vec![
-        PlanningRule {
-            id: "explicit_skill".into(),
-            priority: 100,
-            keywords: vec![],
-            context_keywords: vec![],
-            tool_hint: None,
-            instruction: "**If user says \"使用 XX skill\" / \"用 XX 技能\" / \"use XX skills\"**, you MUST add that skill to the task list. Do NOT return empty list.".into(),
-        },
-        PlanningRule {
-            id: "weather".into(),
-            priority: 90,
-            keywords: vec!["天气".into(), "气温".into(), "气象".into(), "今天天气".into(), "明天天气".into(), "适合出行吗".into(), "适合出去玩吗".into()],
-            context_keywords: vec![],
-            tool_hint: Some("weather".into()),
-            instruction: "**天气/气象/天气预报**: When the user asks about weather, you MUST use **weather** skill. The LLM cannot provide real-time weather data; only the weather skill can. Return a task with tool_hint: \"weather\".".into(),
-        },
-        PlanningRule {
-            id: "realtime_http".into(),
-            priority: 90,
-            keywords: vec!["实时".into(), "最新".into(), "实时信息".into(), "最新数据".into(), "实时数据".into(), "最新排名".into(), "实时查询".into(), "抓取网页".into(), "获取最新".into(), "fetch live data".into()],
-            context_keywords: vec![],
-            tool_hint: Some("http-request".into()),
-            instruction: "**实时/最新/实时信息**: When the user explicitly asks for real-time or latest data, you MUST use **http-request** skill. The LLM's knowledge has a cutoff; only HTTP requests can fetch current information. Return a task with tool_hint: \"http-request\".".into(),
-        },
-        PlanningRule {
-            id: "continue_context".into(),
-            priority: 85,
-            keywords: vec!["继续".into(), "继续未完成".into(), "继续之前".into(), "继续任务".into()],
-            context_keywords: vec!["实时".into(), "最新".into(), "排名".into(), "university".into(), "QS".into(), "官网".into(), "需要用户自行查询".into(), "请访问官网".into()],
-            tool_hint: Some("http-request".into()),
-            instruction: "**继续/继续未完成的任务**: When the user says 继续, you MUST use the **conversation context** to understand what task to continue. If the context mentions real-time data, rankings, or similar, plan **http-request** to fetch the data.".into(),
-        },
-        PlanningRule {
-            id: "xiaohongshu".into(),
-            priority: 90,
-            keywords: vec!["小红书".into(), "种草文案".into(), "小红书图文".into(), "小红书笔记".into()],
-            context_keywords: vec![],
-            tool_hint: Some("xiaohongshu-writer".into()),
-            instruction: "**小红书/种草/图文笔记**: When the task involves 小红书 content, you MUST use **xiaohongshu-writer** skill.".into(),
-        },
-        PlanningRule {
-            id: "frontend_design".into(),
-            priority: 92,
-            keywords: vec![
-                "官网".into(), "网站".into(), "网站设计".into(), "设计网页".into(),
-                "设计页面".into(), "前端设计".into(), "页面设计".into(), "landing page".into(),
-                "website".into(), "web page".into(), "homepage".into(), "首页".into(),
-                "网站首页".into(), "官方网站".into(), "做个网站".into(), "做一个网站".into(),
-                "生成网站".into(), "生成页面".into(), "生成网页".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("file_operation".into()),
-            instruction: "**官网/网站/网页设计**: When the user asks to design or generate a website, landing page, or web page, you MUST plan exactly TWO tasks: (1) Generate the complete HTML/CSS/JS and use **write_output** to save to index.html (tool_hint: file_operation); (2) Use **preview_server** to start local server and open in browser (tool_hint: file_operation). If a frontend-design skill exists, it is reference-only — use its design guidelines but output via write_output. Do NOT call the frontend-design skill directly. Do NOT return empty list — website generation requires file output + preview.".into(),
-        },
-        PlanningRule {
-            id: "html_preview".into(),
-            priority: 90,
-            keywords: vec!["html渲染".into(), "渲染出来".into(), "预览".into(), "在浏览器中打开".into(), "html呈现".into(), "网页渲染".into(), "PPT".into()],
-            context_keywords: vec![],
-            tool_hint: Some("file_operation".into()),
-            instruction: "**HTML/PPT/渲染/预览**: When the user asks for HTML rendering or browser preview, use **write_output** + **preview_server**.".into(),
-        },
-        PlanningRule {
-            id: "chat_history".into(),
-            priority: 95,
-            keywords: vec![
-                "历史记录".into(), "聊天记录".into(), "聊天历史".into(), "查看记录".into(),
-                "chat history".into(), "conversation history".into(), "past chat".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("chat_history".into()),
-            instruction: "**历史记录/聊天记录**: When the user asks to view, summarize, or analyze past chat/conversation history, you MUST use **chat_history** (built-in). Do NOT use list_directory or file_operation — chat_history reads directly from transcripts. Plan: (1) Use chat_history with date if specified; (2) Analyze/summarize the content.".into(),
-        },
-        PlanningRule {
-            id: "output_to_file".into(),
-            priority: 92,
-            keywords: vec![
-                "输出到".into(), "输出到output".into(), "保存到".into(), "写到文件".into(),
-                "写入文件".into(), "保存为".into(), "输出到文件".into(),
-                "save to".into(), "output to".into(), "write to file".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("file_operation".into()),
-            instruction: "**输出到 output/文件**: When the user explicitly asks to output, save, or write content to a file (e.g. 输出到output, 保存到文件, 写到 output), you MUST plan a file_operation task using **write_output**. Even if the content is an article, report, or markdown, saving to file requires the tool. Return a task with tool_hint: \"file_operation\" and description like \"Use write_output to save the generated content to output/<filename>\".".into(),
-        },
-    ]
-}
-
-/// Load planning rules: external JSON path > built-in defaults.
-/// Ported from Python `planning_rules.py` `get_rules` + `load_rules`.
+/// Load planning rules. Uses built-in rules from planning_rules.rs.
 fn load_planning_rules() -> Vec<PlanningRule> {
-    if let Some(path) = get_planning_rules_path() {
-        match load_rules_from_json(&path) {
-            Ok(rules) if !rules.is_empty() => return rules,
-            Ok(_) => tracing::debug!("External planning rules empty, using built-in"),
-            Err(e) => tracing::warn!("Failed to load planning rules from {}: {}", path, e),
-        }
-    }
-    builtin_rules()
+    planning_rules::builtin_rules()
 }
 
-/// Load rules from a JSON file.
-fn load_rules_from_json(path: &str) -> Result<Vec<PlanningRule>> {
-    let content = std::fs::read_to_string(path)?;
-    let data: serde_json::Value = serde_json::from_str(&content)?;
-    let rules_val = data
-        .get("rules")
-        .ok_or_else(|| anyhow::anyhow!("Missing 'rules' key in planning rules JSON"))?;
-    let mut rules: Vec<PlanningRule> = serde_json::from_value(rules_val.clone())?;
-    // Sort by priority descending
-    rules.sort_by(|a, b| b.priority.cmp(&a.priority));
-    Ok(rules)
+/// Filter rules by user message: include rules with empty keywords (always) or
+/// rules whose keywords match the user message. Reduces prompt size when compact mode is on.
+fn filter_rules_for_user_message<'a>(rules: &'a [PlanningRule], user_message: &str) -> Vec<&'a PlanningRule> {
+    let msg_lower = user_message.to_lowercase();
+    rules
+        .iter()
+        .filter(|r| {
+            if r.keywords.is_empty() && r.context_keywords.is_empty() {
+                return true; // explicit_skill etc. — always include
+            }
+            let matches_keywords = r.keywords.iter().any(|k| {
+                user_message.contains(k.as_str()) || msg_lower.contains(&k.to_lowercase())
+            });
+            let matches_context = r.context_keywords.iter().any(|k| {
+                user_message.contains(k.as_str()) || msg_lower.contains(&k.to_lowercase())
+            });
+            matches_keywords || matches_context
+        })
+        .collect()
 }
 
 /// Build the "## CRITICAL" rules section for the planning prompt.
@@ -214,16 +121,41 @@ impl TaskPlanner {
                 .join("\n")
         };
 
-        let planning_prompt = self.build_planning_prompt(&skills_info);
+        let planning_prompt = self.build_planning_prompt(&skills_info, user_message);
 
-        let mut user_content = format!("User request:\n{}\n\n", user_message);
+        let mut user_content = format!(
+            "**PRIMARY — Plan ONLY based on this**:\nUser request: {}\n\n",
+            user_message
+        );
         if let Some(ctx) = conversation_context {
-            user_content.push_str(&format!(
-                "Conversation context (recent messages - use this to understand what task to continue):\n{}\n\n",
-                ctx
-            ));
+            // Only pass context when user says "继续" — otherwise it can confuse the model
+            let needs_continue_context = user_message.contains("继续")
+                || user_message.contains("继续之前")
+                || user_message.contains("继续任务");
+            if needs_continue_context {
+                user_content.push_str(&format!(
+                    "Conversation context (use ONLY when user says 继续 — to understand what to continue):\n{}\n\n",
+                    ctx
+                ));
+            } else {
+                // For new requests: pass truncated context to avoid model fixating on previous task
+                let max_ctx_bytes = 2000;
+                let ctx_truncated = if ctx.len() > max_ctx_bytes {
+                    format!(
+                        "{}...[truncated, {} bytes total]",
+                        safe_truncate(ctx, max_ctx_bytes),
+                        ctx.len()
+                    )
+                } else {
+                    ctx.to_string()
+                };
+                user_content.push_str(&format!(
+                    "Conversation context (REFERENCE ONLY — user's request above is the PRIMARY input; do NOT plan based on previous tasks in context):\n{}\n\n",
+                    ctx_truncated
+                ));
+            }
         }
-        user_content.push_str("Please generate task list:");
+        user_content.push_str("Generate task list based on the User request above:");
 
         let messages = vec![
             ChatMessage::system(&planning_prompt),
@@ -325,9 +257,20 @@ impl TaskPlanner {
     }
 
     /// Build the planning prompt for task generation.
-    /// Ported from Python `TaskPlanner._build_planning_prompt`.
-    fn build_planning_prompt(&self, skills_info: &str) -> String {
-        let rules_section = build_rules_section(&self.rules);
+    /// When SKILLLITE_COMPACT_PLANNING=1 (default): filter rules by user message, use fewer examples.
+    fn build_planning_prompt(&self, skills_info: &str, user_message: &str) -> String {
+        let compact = get_compact_planning();
+        let rules_section = if compact {
+            let filtered: Vec<&PlanningRule> = filter_rules_for_user_message(&self.rules, user_message);
+            build_rules_section(&filtered.iter().map(|r| (*r).clone()).collect::<Vec<_>>())
+        } else {
+            build_rules_section(&self.rules)
+        };
+        let examples_section = if compact {
+            planning_rules::compact_examples_section(user_message)
+        } else {
+            planning_rules::full_examples_section()
+        };
         let output_dir = resolve_output_dir();
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let yesterday = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
@@ -410,49 +353,7 @@ Example format:
   - tool_hint: Suggested tool (skill name or "file_operation")
   - completed: false
 
-Example 1 - Simple task (writing poetry):
-User request: "Write a poem praising spring"
-Return: []
-
-Example 2 - Task requiring tools:
-User request: "Calculate 123 * 456 + 789 for me"
-Return: [{{"id": 1, "description": "Use calculator to compute expression", "tool_hint": "calculator", "completed": false}}]
-
-Example 3 - User explicitly asks to use a skill (MUST use that skill):
-User request: "写一个关于本项目推广的小红书的图文，使用小红书的skills"
-Return: [{{"id": 1, "description": "Use xiaohongshu-writer to generate 小红书 content with thumbnail", "tool_hint": "xiaohongshu-writer", "completed": false}}]
-
-Example 4 - Weather query (MUST use weather skill, LLM cannot provide real-time data):
-User request: "深圳今天天气怎样，适合出去玩吗？"
-Return: [{{"id": 1, "description": "Use weather skill to query real-time weather in Shenzhen", "tool_hint": "weather", "completed": false}}]
-
-Example 5 - User asks for real-time/latest info (MUST use http-request):
-User request: "我需要更实时的信息" or "分析西安交大和清迈大学的对比，要最新数据"
-Return: [{{"id": 1, "description": "Use http-request to fetch latest data from authoritative sources (QS, official sites)", "tool_hint": "http-request", "completed": false}}, {{"id": 2, "description": "Analyze and compare based on fetched data", "tool_hint": "analysis", "completed": false}}]
-
-Example 6 - User says "继续" with context (MUST use context to infer task):
-User request: "继续为我那未完成的任务"
-Conversation context: [assistant previously said: "要完成西安交大与清迈大学的对比，最关键的是获取实时信息... 需要您行动: 获取2024年最新排名数据（需访问QS官网）..."]
-Return: [{{"id": 1, "description": "Use http-request to fetch QS rankings and university official data for Xi'an Jiaotong vs Chiang Mai comparison", "tool_hint": "http-request", "completed": false}}, {{"id": 2, "description": "Analyze and present comparison based on fetched data", "tool_hint": "analysis", "completed": false}}]
-
-Example 7 - HTML/PPT rendering (MUST use write_output + preview_server, user wants browser preview):
-User request: "帮我设计一个关于skilllite的介绍和分析的ppt，你可以通过html渲染出来给我"
-Return: [{{"id": 1, "description": "Use write_output to save HTML presentation to output/index.html", "tool_hint": "file_operation", "completed": false}}, {{"id": 2, "description": "Use preview_server to start local server and open in browser", "tool_hint": "file_operation", "completed": false}}]
-
-Example 8 - Website / landing page design (MUST use write_output + preview_server, exactly 2 tasks):
-User request: "生成一个关于skilllite 的官网"
-Return: [{{"id": 1, "description": "Design and generate a complete Skillite official website (HTML/CSS/JS) and save to output/index.html using write_output", "tool_hint": "file_operation", "completed": false}}, {{"id": 2, "description": "Use preview_server to start local HTTP server and open the website in browser for preview", "tool_hint": "file_operation", "completed": false}}]
-Note: Do NOT add a separate task for a frontend-design skill — it is reference-only. Generate HTML directly and use write_output.
-
-Example 9 - Chat history (MUST use chat_history, NOT list_directory or file_operation):
-User request: "查看20260216的历史记录" or "查看昨天的聊天记录"
-Return: [{{"id": 1, "description": "Use chat_history to read transcript for the specified date", "tool_hint": "chat_history", "completed": false}}, {{"id": 2, "description": "Analyze and summarize the chat content", "tool_hint": "analysis", "completed": false}}]
-Note: chat_history reads from transcripts. Do NOT plan list_directory or read_file for chat history — use chat_history. For output directory files, use list_output.
-
-Example 10 - User asks to output/save to file (MUST use write_output, even for articles):
-User request: "写一篇CSDN文章，输出到output" or "帮我写技术博客，保存到 output 目录"
-Return: [{{"id": 1, "description": "Generate the article content and use write_output to save to output directory (e.g. output/article.md)", "tool_hint": "file_operation", "completed": false}}]
-Note: When user explicitly says 输出到/保存到/写到 output or file, you MUST plan file_operation — the LLM cannot persist files without the tool.
+{examples_section}
 
 Return only JSON, no other content."#,
             today,

@@ -646,7 +646,15 @@ pub fn get_output_dir() -> Option<String> {
     env_optional("SKILLLITE_OUTPUT_DIR")
 }
 
-/// Path to external planning_rules.json. `SKILLLITE_PLANNING_RULES_PATH`.
-pub fn get_planning_rules_path() -> Option<String> {
-    env_optional("SKILLLITE_PLANNING_RULES_PATH")
+/// Whether to use compact planning prompt (rule filtering + fewer examples). Default true.
+/// Set `SKILLLITE_COMPACT_PLANNING=0` to disable and use full prompt.
+pub fn get_compact_planning() -> bool {
+    std::env::var("SKILLLITE_COMPACT_PLANNING")
+        .ok()
+        .and_then(|v| match v.to_lowercase().as_str() {
+            "0" | "false" | "no" | "off" => Some(false),
+            "1" | "true" | "yes" | "on" => Some(true),
+            _ => v.parse::<i32>().ok().map(|n| n != 0),
+        })
+        .unwrap_or(true)
 }
