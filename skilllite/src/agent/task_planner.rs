@@ -106,6 +106,18 @@ fn builtin_rules() -> Vec<PlanningRule> {
             tool_hint: Some("chat_history".into()),
             instruction: "**历史记录/聊天记录**: When the user asks to view, summarize, or analyze past chat/conversation history, you MUST use **chat_history** (built-in). Do NOT use list_directory or file_operation — chat_history reads directly from transcripts. Plan: (1) Use chat_history with date if specified; (2) Analyze/summarize the content.".into(),
         },
+        PlanningRule {
+            id: "output_to_file".into(),
+            priority: 92,
+            keywords: vec![
+                "输出到".into(), "输出到output".into(), "保存到".into(), "写到文件".into(),
+                "写入文件".into(), "保存为".into(), "输出到文件".into(),
+                "save to".into(), "output to".into(), "write to file".into(),
+            ],
+            context_keywords: vec![],
+            tool_hint: Some("file_operation".into()),
+            instruction: "**输出到 output/文件**: When the user explicitly asks to output, save, or write content to a file (e.g. 输出到output, 保存到文件, 写到 output), you MUST plan a file_operation task using **write_output**. Even if the content is an article, report, or markdown, saving to file requires the tool. Return a task with tool_hint: \"file_operation\" and description like \"Use write_output to save the generated content to output/<filename>\".".into(),
+        },
     ]
 }
 
@@ -334,7 +346,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 
 ## Examples of tasks that DON'T need tools (return empty list `[]`)
 
-- Writing poems, articles, stories (EXCEPT 小红书/种草/图文笔记 - see below)
+- Writing poems, articles, stories (EXCEPT 小红书/种草/图文笔记 - see below, EXCEPT when user asks to 输出到/保存到/写到文件 - see output_to_file rule)
 - Translating text
 - Answering knowledge-based questions (EXCEPT 天气/气象 - see below, EXCEPT when user asks for 实时/最新 - see below)
 - Code explanation, code review suggestions
@@ -355,6 +367,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 - **小红书/种草/图文笔记** (use xiaohongshu-writer - generates structured content + cover image)
 - **HTML/PPT/网页渲染** (use write_output to save HTML file, then preview_server to open in browser)
 - **官网/网站/网页设计** (use write_output to save HTML + preview_server to open in browser; if frontend-design skill available, use it)
+- **输出到 output/保存到文件** (when user says 输出到output, 保存到, 写到文件 — use write_output to persist content)
 - **Browser automation / screenshots / visiting websites** (use agent-browser or any matching skill)
 
 ## Available Resources
@@ -435,6 +448,11 @@ Example 9 - Chat history (MUST use chat_history, NOT list_directory or file_oper
 User request: "查看20260216的历史记录" or "查看昨天的聊天记录"
 Return: [{{"id": 1, "description": "Use chat_history to read transcript for the specified date", "tool_hint": "chat_history", "completed": false}}, {{"id": 2, "description": "Analyze and summarize the chat content", "tool_hint": "analysis", "completed": false}}]
 Note: chat_history reads from transcripts. Do NOT plan list_directory or read_file for chat history — use chat_history. For output directory files, use list_output.
+
+Example 10 - User asks to output/save to file (MUST use write_output, even for articles):
+User request: "写一篇CSDN文章，输出到output" or "帮我写技术博客，保存到 output 目录"
+Return: [{{"id": 1, "description": "Generate the article content and use write_output to save to output directory (e.g. output/article.md)", "tool_hint": "file_operation", "completed": false}}]
+Note: When user explicitly says 输出到/保存到/写到 output or file, you MUST plan file_operation — the LLM cannot persist files without the tool.
 
 Return only JSON, no other content."#,
             today,
