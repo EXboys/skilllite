@@ -632,12 +632,11 @@ pub fn get_compact_planning(model: Option<&str>) -> bool {
         None => return false, // unknown model → full
     };
     let compact_models = [
-        "claude-",
-        "gpt-4",
+        "claude-4.6",
+        "gpt-4.5",
         "gpt-5",
-        "gemini-2",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
+        "gemini-2.5",
+        "gemini-3.0",
     ];
     compact_models.iter().any(|p| model.starts_with(p) || model.contains(p))
 }
