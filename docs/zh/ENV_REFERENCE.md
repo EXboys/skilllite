@@ -142,7 +142,7 @@
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLLITE_COMPACT_PLANNING` | bool | `true` | 是否使用紧凑规划 prompt（规则过滤 + fewer 示例），设为 `0` 可禁用 |
+| `SKILLLITE_COMPACT_PLANNING` | bool | 自动 | 1=紧凑，0=完整。未设置时：仅 claude/gpt-4/gpt-5/gemini-2 用紧凑；deepseek/qwen/7b/ollama 等用完整 |
 
 规划规则定义在 `planning_rules.rs` 中，无需外部 JSON 配置。
 

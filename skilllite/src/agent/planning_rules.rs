@@ -51,6 +51,24 @@ pub fn builtin_rules() -> Vec<PlanningRule> {
             instruction: "**实时/最新/实时信息**: When the user explicitly asks for real-time or latest data, you MUST use **http-request** skill. The LLM's knowledge has a cutoff; only HTTP requests can fetch current information. Return a task with tool_hint: \"http-request\".".into(),
         },
         PlanningRule {
+            id: "external_comparison".into(),
+            priority: 92,
+            keywords: vec![
+                "对比".into(),
+                "比较".into(),
+                "优劣势".into(),
+                "优劣对比".into(),
+                "对比分析".into(),
+                "全方位".into(),
+                "全方位分析".into(),
+                "vs".into(),
+                "versus".into(),
+            ],
+            context_keywords: vec!["地方".into(), "城市".into(), "两地".into(), "城市对比".into()],
+            tool_hint: Some("http-request".into()),
+            instruction: "**对比/比较/优劣势** (places, cities, companies, topics): When the user asks to compare or analyze pros/cons of places, cities, companies, or external topics, PREFER **http-request** to fetch fresh data. Do NOT use chat_history — it is ONLY for past chat/conversation analysis. Plan: (1) http-request to fetch current info from web; (2) analysis. If user did not ask for 实时/最新 and task is general knowledge, you may return [] to let LLM answer directly.".into(),
+        },
+        PlanningRule {
             id: "continue_context".into(),
             priority: 85,
             keywords: vec!["继续".into(), "继续未完成".into(), "继续之前".into(), "继续任务".into()],
@@ -137,21 +155,24 @@ pub fn builtin_rules() -> Vec<PlanningRule> {
         },
         PlanningRule {
             id: "analyze_stability".into(),
-            priority: 96,
+            priority: 85,
             keywords: vec![
-                "分析".into(),
-                "稳定性".into(),
+                "分析稳定性".into(),
+                "分析项目问题".into(),
+                "分析历史消息".into(),
+                "分析健壮性".into(),
+                "分析最近".into(),
+                "ai稳定性".into(),
                 "项目问题".into(),
                 "历史消息".into(),
                 "最近几次".into(),
-                "ai稳定性".into(),
                 "健壮性".into(),
                 "analyze stability".into(),
                 "project issues".into(),
             ],
             context_keywords: vec![],
             tool_hint: Some("chat_history".into()),
-            instruction: "**分析AI稳定性/项目问题/历史消息**: When the user asks to analyze recent AI stability, project issues, robustness, or conversation quality, you MUST use **chat_history** first to get the data, then analyze. Plan: (1) Use chat_history to read recent transcripts; (2) Analyze/summarize the content (tool_hint: analysis). Do NOT plan write_output or file_operation — the user wants analysis, not a new article.".into(),
+            instruction: "**分析AI稳定性/项目问题/历史消息** (ONLY when user explicitly asks to analyze chat/conversation): When the user asks to analyze recent AI stability, project issues, robustness, or conversation quality, you MUST use **chat_history** first to get the data, then analyze. chat_history is ONLY for analyzing past chat records — do NOT use it for comparing places, cities, companies, or external topics.".into(),
         },
         PlanningRule {
             id: "output_to_file".into(),
@@ -197,6 +218,11 @@ Example 5 - User asks for real-time/latest info (MUST use http-request):
 User request: "我需要更实时的信息" or "分析西安交大和清迈大学的对比，要最新数据"
 Return: [{"id": 1, "description": "Use http-request to fetch latest data from authoritative sources (QS, official sites)", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Analyze and compare based on fetched data", "tool_hint": "analysis", "completed": false}]
 
+Example 5b - User asks to compare places/cities (use http-request for fresh data, NOT chat_history):
+User request: "分析一下清迈和深圳这两个地方的优劣势对比" or "比较北京和上海"
+Return: [{"id": 1, "description": "Use http-request to fetch current information about both places", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Analyze and compare based on fetched data", "tool_hint": "analysis", "completed": false}]
+Note: chat_history is for past CONVERSATION only. Do NOT use it for place/city/topic comparison.
+
 Example 6 - User says "继续" with context (MUST use context to infer task):
 User request: "继续为我那未完成的任务"
 Conversation context: [assistant previously said: "要完成西安交大与清迈大学的对比..."]
@@ -232,8 +258,19 @@ pub fn compact_examples_section(user_message: &str) -> String {
         "Example 1 - Simple (no tools): \"Write a poem\" → []".to_string(),
         "Example 2 - Tools: \"Calculate 123*456\" → [{\"id\":1,\"description\":\"Use calculator\",\"tool_hint\":\"calculator\",\"completed\":false}]".to_string(),
     ];
+    // Detect city/place comparison context: chat_history is WRONG for these
+    let is_city_or_place = user_message.contains("城市")
+        || user_message.contains("地方")
+        || user_message.contains("对比")
+        || user_message.contains("优劣势")
+        || user_message.contains("全方位")
+        || user_message.contains("两地")
+        || msg_lower.contains("city")
+        || msg_lower.contains("place");
     let candidates: Vec<(&str, &str, &str)> = vec![
-        ("分析", "稳定性", "分析/稳定性: Use chat_history then analysis. NOT write_output."),
+        ("城市", "全方位", "城市/地方/全方位分析: http-request for fresh data. NOT chat_history."),
+        ("对比", "优劣势", "对比/优劣势: http-request for fresh data. NOT chat_history."),
+        ("分析", "稳定性", "分析稳定性/项目: chat_history (ONLY when analyzing chat/project, NOT places)"),
         ("历史", "记录", "历史记录: chat_history + analysis."),
         ("输出到", "保存到", "输出到output: write_output, file_operation."),
         ("继续", "", "继续: use context to infer task, often http-request."),
@@ -248,7 +285,11 @@ pub fn compact_examples_section(user_message: &str) -> String {
         let matches = user_message.contains(k1)
             || msg_lower.contains(&k1.to_lowercase())
             || (!k2.is_empty() && (user_message.contains(k2) || msg_lower.contains(&k2.to_lowercase())));
-        if matches {
+        // Skip 分析/稳定性 when context is city/place — avoid steering toward chat_history
+        let skip = matches
+            && k1 == "分析"
+            && is_city_or_place;
+        if matches && !skip {
             lines.push(format!("Example - {}: {}", k1, text));
             added += 1;
         }

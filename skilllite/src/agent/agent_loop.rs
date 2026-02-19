@@ -11,6 +11,7 @@
 //!   - `run_with_task_planning`: Phase 2 with TaskPlanner, Auto-Nudge, etc.
 
 use anyhow::Result;
+use serde_json::Value;
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -655,8 +656,11 @@ async fn run_with_task_planning(
 
             event_sink.on_tool_call(tool_name, arguments);
 
-            let mut result =
-                execute_tool_call(tool_name, arguments, workspace, skills, event_sink, config.enable_memory).await;
+            let mut result = if tool_name.as_str() == "update_task_plan" {
+                handle_update_task_plan(arguments, &mut planner, event_sink)
+            } else {
+                execute_tool_call(tool_name, arguments, workspace, skills, event_sink, config.enable_memory).await
+            };
             result.tool_call_id = tc.id.clone();
 
             result.content =
@@ -774,6 +778,77 @@ async fn run_with_task_planning(
 // ═══════════════════════════════════════════════════════════════════════════════
 // Shared helpers
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/// Handle update_task_plan: parse new tasks, replace planner.task_list, notify event_sink.
+fn handle_update_task_plan(
+    arguments: &str,
+    planner: &mut TaskPlanner,
+    event_sink: &mut dyn EventSink,
+) -> super::types::ToolResult {
+    let args: Value = match serde_json::from_str(arguments) {
+        Ok(v) => v,
+        Err(e) => {
+            return super::types::ToolResult {
+                tool_call_id: String::new(),
+                tool_name: "update_task_plan".to_string(),
+                content: format!("Invalid JSON: {}", e),
+                is_error: true,
+            };
+        }
+    };
+    let tasks_arr = match args.get("tasks").and_then(|t| t.as_array()) {
+        Some(a) => a.clone(),
+        None => {
+            return super::types::ToolResult {
+                tool_call_id: String::new(),
+                tool_name: "update_task_plan".to_string(),
+                content: "Missing or invalid 'tasks' array".to_string(),
+                is_error: true,
+            };
+        }
+    };
+    let mut new_tasks = Vec::new();
+    for (i, t) in tasks_arr.iter().enumerate() {
+        let id = t.get("id").and_then(|v| v.as_u64()).unwrap_or((i + 1) as u64) as u32;
+        let description = t
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let tool_hint = t.get("tool_hint").and_then(|v| v.as_str()).map(String::from);
+        let completed = t.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+        new_tasks.push(Task {
+            id,
+            description,
+            tool_hint,
+            completed,
+        });
+    }
+    if new_tasks.is_empty() {
+        return super::types::ToolResult {
+            tool_call_id: String::new(),
+            tool_name: "update_task_plan".to_string(),
+            content: "Task list cannot be empty".to_string(),
+            is_error: true,
+        };
+    }
+    planner.task_list = new_tasks.clone();
+    event_sink.on_task_plan(&planner.task_list);
+    let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+    let mut content = format!(
+        "Task plan updated ({} tasks). Continue with the new plan.",
+        new_tasks.len()
+    );
+    if !reason.is_empty() {
+        content.push_str(&format!("\nReason: {}", reason));
+    }
+    super::types::ToolResult {
+        tool_call_id: String::new(),
+        tool_name: "update_task_plan".to_string(),
+        content,
+        is_error: false,
+    }
+}
 
 /// Execute a single tool call (built-in sync, built-in async, memory, or skill).
 async fn execute_tool_call(

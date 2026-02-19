@@ -142,7 +142,7 @@ Prefer `SKILLLITE_*` as primary variables; compatible with `OPENAI_*`, `BASE_URL
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `SKILLLITE_COMPACT_PLANNING` | bool | `true` | Use compact planning prompt (rule filtering + fewer examples); set to `0` to disable |
+| `SKILLLITE_COMPACT_PLANNING` | bool | auto | 1=compact, 0=full. When unset: only claude/gpt-4/gpt-5/gemini-2 use compact; deepseek/qwen/7b/ollama get full |
 
 Planning rules are defined in `planning_rules.rs`; no external JSON config needed.
 

@@ -314,6 +314,37 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
                 }),
             },
         },
+        ToolDefinition {
+            tool_type: "function".to_string(),
+            function: FunctionDef {
+                name: "update_task_plan".to_string(),
+                description: "Revise the task plan when current tasks are unusable (e.g. chat_history returned irrelevant data for a city comparison). Call with the new task list. Use when: (1) a task's result is clearly not useful for the user's goal; (2) the plan was wrong (e.g. used chat_history for place comparison). Pass `tasks` array with id, description, tool_hint, completed.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "tasks": {
+                            "type": "array",
+                            "description": "New task list. Each task: {id, description, tool_hint?, completed: false}",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "number"},
+                                    "description": {"type": "string"},
+                                    "tool_hint": {"type": "string"},
+                                    "completed": {"type": "boolean", "default": false}
+                                },
+                                "required": ["id", "description"]
+                            }
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Brief reason for the plan revision (e.g. chat_history had no relevant city data)"
+                        }
+                    },
+                    "required": ["tasks"]
+                }),
+            },
+        },
     ]
 }
 
@@ -333,6 +364,7 @@ pub fn is_builtin_tool(name: &str) -> bool {
             | "chat_history"
             | "chat_plan"
             | "list_output"
+            | "update_task_plan"
     )
 }
 
@@ -393,6 +425,9 @@ pub fn execute_builtin_tool(
         "chat_history" => execute_chat_history(&args),
         "chat_plan" => execute_chat_plan(&args),
         "list_output" => execute_list_output(&args),
+        "update_task_plan" => Err(anyhow::anyhow!(
+            "update_task_plan is only available in task-planning mode; it must be handled by the agent loop"
+        )),
         _ => Err(anyhow::anyhow!("Unknown built-in tool: {}", tool_name)),
     };
 

@@ -121,7 +121,7 @@ impl TaskPlanner {
                 .join("\n")
         };
 
-        let planning_prompt = self.build_planning_prompt(&skills_info, user_message);
+        let planning_prompt = self.build_planning_prompt(&skills_info, user_message, Some(model));
 
         let mut user_content = format!(
             "**PRIMARY — Plan ONLY based on this**:\nUser request: {}\n\n",
@@ -257,9 +257,10 @@ impl TaskPlanner {
     }
 
     /// Build the planning prompt for task generation.
-    /// When SKILLLITE_COMPACT_PLANNING=1 (default): filter rules by user message, use fewer examples.
-    fn build_planning_prompt(&self, skills_info: &str, user_message: &str) -> String {
-        let compact = get_compact_planning();
+    /// When compact: filter rules by user message, use fewer examples.
+    /// Weak models (7b, ollama, etc.) auto-get full prompt when SKILLLITE_COMPACT_PLANNING not set.
+    fn build_planning_prompt(&self, skills_info: &str, user_message: &str, model: Option<&str>) -> String {
+        let compact = get_compact_planning(model);
         let rules_section = if compact {
             let filtered: Vec<&PlanningRule> = filter_rules_for_user_message(&self.rules, user_message);
             build_rules_section(&filtered.iter().map(|r| (*r).clone()).collect::<Vec<_>>())
@@ -286,6 +287,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 
 1. **Complete simple tasks directly**: If a task can be completed directly by the LLM (such as writing, translation, Q&A, creative generation, etc.), return an empty task list `[]` and let the LLM answer directly
 2. **Use tools only when necessary**: Only plan tool-using tasks when the task truly requires external capabilities (such as calculations, HTTP requests, file operations, data analysis, browser automation, etc.)
+3. **chat_history is ONLY for past conversation**: Use chat_history ONLY when the user explicitly asks to view, summarize, or analyze **past chat/conversation records** (e.g. 查看聊天记录, 分析历史消息). For analysis of external topics (places, cities, companies, products), prefer http-request for fresh data or return `[]` for LLM knowledge — do NOT use chat_history
 
 ## Examples of tasks that DON'T need tools (return empty list `[]`)
 
@@ -318,7 +320,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 **Available Skills**:
 {skills_info}
 
-**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, list_output (list output directory files), file_exists, chat_history (read past conversation by date), chat_plan (read task plan), run_command (execute shell command, requires user confirmation), preview_server (start HTTP server to preview HTML in browser)
+**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, list_output (list output directory files), file_exists, chat_history (read past conversation by date), chat_plan (read task plan), **update_task_plan** (revise task list when current plan is wrong/unusable), run_command (execute shell command, requires user confirmation), preview_server (start HTTP server to preview HTML in browser)
 
 **Output directory**: {output_dir}
 (When skills produce file outputs like screenshots or PDFs, instruct them to save directly to the output directory)
@@ -390,13 +392,19 @@ r#"You are an intelligent task execution assistant responsible for executing tas
 
 **Current date**: {} (yesterday = {}; when calling chat_history for 昨天/昨天记录, pass date "{}")
 
-## CRITICAL: How to choose tools based on task tool_hint
+## CRITICAL: Plan is authority — execute strictly in order
+
+**The task plan is the single source of truth.** You MUST:
+1. Execute tasks ONE BY ONE in the given order. Do NOT skip or reorder.
+2. For each task, use ONLY the tool specified in its `tool_hint`. Do NOT improvise or switch to other tools.
+3. Declare "Task X completed" only after actually executing that task's required tool/action.
+4. **When tasks are unusable**: If a task's result is clearly not useful (e.g. chat_history returned irrelevant data for a city comparison), call **update_task_plan** to propose a revised plan, then continue with the new tasks.
 
 **Read the task's `tool_hint` field and follow STRICTLY:**
 
 - **tool_hint = "file_operation"** → Use ONLY built-in tools: `write_output`, `write_file`, `preview_server`, `read_file`, `list_directory`, `file_exists`, `run_command`. ⛔ Do NOT call ANY skill tools. Generate the content yourself and save with write_output.
 - **tool_hint = "analysis"** → No tools needed, produce text analysis directly.
-- **tool_hint = "<skill_name>"** (e.g. "calculator", "weather") → Call that specific skill tool directly.
+- **tool_hint = "<skill_name>"** (e.g. "http-request", "calculator", "weather") → Call that specific skill tool directly. Do NOT use chat_history when tool_hint is http-request.
 
 ## Built-in Tools
 
@@ -407,6 +415,7 @@ r#"You are an intelligent task execution assistant responsible for executing tas
 5. **list_directory**: List directory contents
 6. **file_exists**: Check if file exists
 7. **run_command**: Execute shell command (requires user confirmation)
+8. **update_task_plan**: When the current plan is wrong or a task's result is not useful, call with a new tasks array to replace the plan and continue with the revised tasks
 
 ## Available Skills (only use when task tool_hint matches a skill name)
 
@@ -435,6 +444,7 @@ r#"You are an intelligent task execution assistant responsible for executing tas
 - Execute tasks ONE BY ONE in order. Do NOT skip ahead.
 - Your FIRST response must be an ACTION (tool call), NOT a summary.
 - If a task requires a tool, call it FIRST, get the result, THEN declare completed.
+- **Do NOT improvise**: If Task 1 says http-request, call http-request — do NOT call chat_history or other tools instead.
 "#,
             today,
             yesterday,

@@ -616,12 +616,28 @@ pub fn get_compaction_keep_recent() -> usize {
     env_usize("SKILLLITE_COMPACTION_KEEP_RECENT", 10)
 }
 
-/// Whether to use compact planning prompt (rule filtering + fewer examples). Default true.
-/// Set `SKILLLITE_COMPACT_PLANNING=0` to disable and use full prompt.
-pub fn get_compact_planning() -> bool {
-    crate::config::env_bool(
+/// Whether to use compact planning prompt (rule filtering + fewer examples).
+/// - If SKILLLITE_COMPACT_PLANNING is set: use that (1=compact, 0=full).
+/// - If not set: only latest/best models (claude, gpt-4, gpt-5, gemini-2) use compact; deepseek, qwen, 7b, ollama etc. get full.
+pub fn get_compact_planning(model: Option<&str>) -> bool {
+    if let Some(v) = crate::config::loader::env_optional(
         crate::config::env_keys::misc::SKILLLITE_COMPACT_PLANNING,
         &[],
-        true,
-    )
+    ) {
+        return !matches!(v.to_lowercase().as_str(), "0" | "false" | "no" | "off");
+    }
+    // Auto: only top-tier models use compact; others (deepseek, qwen, 7b, ollama) get full prompt
+    let model = match model {
+        Some(m) => m.to_lowercase(),
+        None => return false, // unknown model → full
+    };
+    let compact_models = [
+        "claude-",
+        "gpt-4",
+        "gpt-5",
+        "gemini-2",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+    ];
+    compact_models.iter().any(|p| model.starts_with(p) || model.contains(p))
 }
