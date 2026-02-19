@@ -625,6 +625,9 @@ fn execute_with_firejail(
     // Set environment
     cmd.env("SKILLBOX_SANDBOX", "1");
     cmd.env("TMPDIR", work_dir);
+    if let Some(ref output_dir) = crate::config::PathsConfig::from_env().output_dir {
+        cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
+    }
     
     // Set proxy environment variables if proxy is running
     if let Some(ref manager) = proxy_manager {
@@ -703,6 +706,9 @@ fn execute_with_namespaces(
     // Set environment variables
     cmd.env("SKILLBOX_SANDBOX", "1");
     cmd.env("TMPDIR", work_dir);
+    if let Some(ref output_dir) = crate::config::PathsConfig::from_env().output_dir {
+        cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
+    }
 
     // Network control flag (informational only in simple mode)
     if !metadata.network.enabled {

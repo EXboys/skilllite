@@ -94,6 +94,14 @@ pub fn builtin_rules() -> Vec<PlanningRule> {
             instruction: "**小红书/种草/图文笔记**: When the task involves 小红书 content, you MUST use **xiaohongshu-writer** skill.".into(),
         },
         PlanningRule {
+            id: "csdn_article".into(),
+            priority: 88,
+            keywords: vec!["csdn".into(), "CSDN".into(), "csdn文章".into(), "CSDN文章".into(), "csdn博客".into()],
+            context_keywords: vec!["文章".into(), "博客".into(), "写一篇".into()],
+            tool_hint: None,
+            instruction: "**CSDN 文章**: When the user asks to write a CSDN article or blog, output the complete Markdown directly in your response. Follow **csdn-article** skill format (title, summary block, body, code blocks with language, tags). Use **writing-helper** for style. Do NOT return empty task list — include at least one task to generate the article.".into(),
+        },
+        PlanningRule {
             id: "frontend_design".into(),
             priority: 92,
             keywords: vec![

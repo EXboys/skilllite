@@ -273,6 +273,10 @@ fn execute_with_sandbox(
     // Set environment variables
     cmd.env("SKILLBOX_SANDBOX", "1");
     cmd.env("TMPDIR", work_dir);
+    // Expose output dir for skills that save files (e.g. csdn-article, xiaohongshu-writer)
+    if let Some(ref output_dir) = crate::config::PathsConfig::from_env().output_dir {
+        cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
+    }
     // Do not override HOME - some libs (fonts, cache) need it for path lookup
 
     // Set NODE_PATH for Node.js
