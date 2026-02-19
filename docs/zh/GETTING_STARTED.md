@@ -11,7 +11,7 @@ pip install skilllite
 ### 2. 初始化项目
 
 ```bash
-# 安装沙箱二进制并创建 .skills/ 目录
+# 安装沙箱二进制、创建 .skills/ 并从 EXboys/skilllite 下载 skills
 skilllite init
 
 # 验证安装
@@ -63,7 +63,7 @@ pip install langchain-skilllite
 ## CLI 命令
 
 ```bash
-skilllite init             # 初始化项目（沙箱 + .skills/）
+skilllite init             # 初始化项目（沙箱 + .skills/ + 下载 skills）
 skilllite init --skip-deps # 跳过依赖安装
 skilllite status           # 检查安装状态
 skilllite add owner/repo   # 从 GitHub 添加 skills

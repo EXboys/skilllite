@@ -4,7 +4,7 @@
 //!
 //! Flow:
 //!   1. Verify skilllite binary is available (self — always true)
-//!   2. Create .skills/ directory + example skill (if empty)
+//!   2. Create .skills/ directory + download skills from SKILLLITE_SKILLS_REPO (if empty)
 //!   3. Scan all skills → resolve dependencies → install to isolated environments
 //!   4. Run security audit (pip-audit / npm audit via dependency_audit)
 //!   5. Output summary
@@ -13,56 +13,12 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::commands::skill;
 use crate::skill::dependency_resolver;
 use crate::skill::metadata;
 
-const EXAMPLE_SKILL_MD: &str = r#"---
-name: hello-world
-description: A simple example skill that greets the user
-entry_point: main.py
-language: python
----
-
-# Hello World Skill
-
-A minimal example skill to demonstrate SkillLite's structure.
-
-## Usage
-
-This skill takes a `name` parameter and returns a greeting.
-
-## Input Schema
-
-```json
-{
-  "type": "object",
-  "properties": {
-    "name": {
-      "type": "string",
-      "description": "Name to greet"
-    }
-  }
-}
-```
-"#;
-
-const EXAMPLE_MAIN_PY: &str = r#"#!/usr/bin/env python3
-"""Hello World skill — greets the user by name."""
-
-import json
-import sys
-
-
-def main():
-    data = json.load(sys.stdin)
-    name = data.get("name", "World")
-    result = {"greeting": f"Hello, {name}!"}
-    print(json.dumps(result))
-
-
-if __name__ == "__main__":
-    main()
-"#;
+/// Default skills repo when SKILLLITE_SKILLS_REPO is not set.
+const DEFAULT_SKILLS_REPO: &str = "EXboys/skilllite";
 
 /// `skilllite init`
 pub fn cmd_init(
@@ -82,11 +38,11 @@ pub fn cmd_init(
     let version = env!("CARGO_PKG_VERSION");
     eprintln!("✅ Step 1/5: skilllite binary v{} ready", version);
 
-    // Step 2: Create .skills/ directory + example skill
+    // Step 2: Create .skills/ directory + download skills (if empty)
     eprintln!();
-    let created_example = create_skills_dir(&skills_path)?;
-    if created_example {
-        eprintln!("✅ Step 2/5: Created {} with example skill", skills_dir);
+    let downloaded = ensure_skills_dir(&skills_path, force)?;
+    if downloaded {
+        eprintln!("✅ Step 2/5: Downloaded skills into {}", skills_dir);
     } else {
         eprintln!("✅ Step 2/5: Skills directory already exists at {}", skills_dir);
     }
@@ -153,11 +109,10 @@ fn resolve_path(dir: &str) -> PathBuf {
     }
 }
 
-/// Create .skills/ directory and an example skill if it doesn't exist.
-/// Returns true if example skill was created.
-fn create_skills_dir(skills_path: &Path) -> Result<bool> {
+/// Ensure .skills/ directory exists and has skills. When empty, download from
+/// SKILLLITE_SKILLS_REPO (default: EXboys/skilllite). Returns true if skills were downloaded.
+fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool> {
     if skills_path.exists() {
-        // Check if there are any skills already
         let has_skills = fs::read_dir(skills_path)
             .map(|entries| {
                 entries
@@ -173,20 +128,15 @@ fn create_skills_dir(skills_path: &Path) -> Result<bool> {
     fs::create_dir_all(skills_path)
         .with_context(|| format!("Failed to create skills directory: {}", skills_path.display()))?;
 
-    // Create example skill
-    let example_dir = skills_path.join("hello-world");
-    if !example_dir.exists() {
-        fs::create_dir_all(&example_dir)
-            .context("Failed to create example skill directory")?;
-        fs::write(example_dir.join("SKILL.md"), EXAMPLE_SKILL_MD)
-            .context("Failed to write example SKILL.md")?;
-        fs::write(example_dir.join("main.py"), EXAMPLE_MAIN_PY)
-            .context("Failed to write example main.py")?;
-        eprintln!("   Created example skill: hello-world");
-        return Ok(true);
-    }
+    let repo = std::env::var("SKILLLITE_SKILLS_REPO")
+        .unwrap_or_else(|_| DEFAULT_SKILLS_REPO.to_string());
+    let skills_dir_str = skills_path.to_string_lossy().to_string();
 
-    Ok(false)
+    eprintln!("   📥 Downloading skills from {} ...", repo);
+    skill::cmd_add(&repo, &skills_dir_str, force, false)
+        .with_context(|| format!("Failed to download skills from {}. Set SKILLLITE_SKILLS_REPO to customize.", repo))?;
+
+    Ok(true)
 }
 
 /// Discover all skills in the skills directory.

@@ -52,7 +52,7 @@ python benchmark/benchmark_runner.py --cold-start --cold-iterations 20 --compare
 # 安装 SkillLite SDK
 pip install skilllite
 
-# 初始化项目（沙箱二进制 + .skills/ 目录）
+# 初始化项目（沙箱二进制 + .skills/ + 从 EXboys/skilllite 下载 skills）
 skilllite init
 
 # 验证安装
@@ -222,7 +222,7 @@ entry_point: scripts/main.py
 
 | 命令 | 说明 |
 |------|------|
-| `skilllite init` | 初始化项目（.skills/ + 依赖 + 审计） |
+| `skilllite init` | 初始化项目（.skills/ + 下载 skills + 依赖 + 审计） |
 | `skilllite quickstart` | 零配置：检测 LLM、配置 skills、启动对话 |
 | `skilllite chat` | 交互式 Agent 对话 |
 | `skilllite add owner/repo` | 从 GitHub 添加 skills |

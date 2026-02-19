@@ -56,7 +56,7 @@ See [benchmark/README.md](./benchmark/README.md) for full documentation.
 # Install SkillLite SDK
 pip install skilllite
 
-# Initialize project (sandbox binary + .skills/ directory)
+# Initialize project (sandbox binary + .skills/ + download skills from EXboys/skilllite)
 skilllite init
 
 # Verify installation
@@ -437,7 +437,7 @@ The `init-opencode` command automatically:
 
 | Command | Description |
 |--------|-------------|
-| `skilllite init` | Initialize project (.skills/ + dependencies + audit) |
+| `skilllite init` | Initialize project (.skills/ + download skills + dependencies + audit) |
 | `skilllite quickstart` | Zero-config: detect LLM, setup skills, launch chat |
 | `skilllite chat` | Interactive agent chat |
 | `skilllite add owner/repo` | Add skills from GitHub |

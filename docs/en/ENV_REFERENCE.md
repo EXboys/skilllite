@@ -25,6 +25,7 @@ This document lists all environment variables supported by SkillLite, including 
 |----------|------|---------|-------------|
 | `SKILLS_DIR` | string | `./.skills` | Skills directory path, supports relative/absolute paths |
 | `SKILLLITE_SKILLS_DIR` | string | - | Same as above (alias) |
+| `SKILLLITE_SKILLS_REPO` | string | `EXboys/skilllite` | GitHub repo for `skilllite init` to download skills when `.skills/` is empty (e.g. `owner/repo`) |
 | `SKILLLITE_OUTPUT_DIR` | string | `{workspace_root}/output` | Output directory for reports, images, etc. |
 | `SKILLBOX_SKILLS_ROOT` | string | Current working directory | Root directory for skill paths in sandbox; skill_dir must be under it |
 

@@ -11,7 +11,7 @@ pip install skilllite
 ### 2. Initialize Project
 
 ```bash
-# Install sandbox binary and create .skills/ directory
+# Install sandbox binary, create .skills/, and download skills from EXboys/skilllite
 skilllite init
 
 # Verify installation
@@ -63,7 +63,7 @@ pip install langchain-skilllite
 ## CLI Commands
 
 ```bash
-skilllite init             # Initialize project (sandbox + .skills/)
+skilllite init             # Initialize project (sandbox + .skills/ + download skills)
 skilllite init --skip-deps # Skip dependency installation
 skilllite status           # Check installation status
 skilllite add owner/repo   # Add skills from GitHub
