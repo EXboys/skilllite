@@ -257,7 +257,7 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
                     "properties": {
                         "date": {
                             "type": "string",
-                            "description": "Optional. Date to read (YYYY-MM-DD or YYYYMMDD). If omitted, returns all available history."
+                            "description": "Optional. Date to read (YYYY-MM-DD or YYYYMMDD). If omitted, returns all available history. For 昨天/yesterday, use (today - 1 day). Check system prompt for current date."
                         },
                         "session_key": {
                             "type": "string",

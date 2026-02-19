@@ -317,9 +317,13 @@ impl TaskPlanner {
     fn build_planning_prompt(&self, skills_info: &str) -> String {
         let rules_section = build_rules_section(&self.rules);
         let output_dir = resolve_output_dir();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let yesterday = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
 
         format!(
 r#"You are a task planning assistant. Based on user requirements, determine whether tools are needed and generate a task list.
+
+**Current date**: {} (yesterday = {}; for chat_history, pass this date when user says 昨天/昨天记录)
 
 ## Core Principle: Minimize Tool Usage
 
@@ -432,13 +436,17 @@ User request: "查看20260216的历史记录" or "查看昨天的聊天记录"
 Return: [{{"id": 1, "description": "Use chat_history to read transcript for the specified date", "tool_hint": "chat_history", "completed": false}}, {{"id": 2, "description": "Analyze and summarize the chat content", "tool_hint": "analysis", "completed": false}}]
 Note: chat_history reads from transcripts. Do NOT plan list_directory or read_file for chat history — use chat_history. For output directory files, use list_output.
 
-Return only JSON, no other content."#
+Return only JSON, no other content."#,
+            today,
+            yesterday
         )
     }
 
     /// Build the main execution system prompt for skill selection and file operations.
     /// Ported from Python `TaskPlanner.build_execution_prompt`.
     pub fn build_execution_prompt(&self, skills: &[LoadedSkill]) -> String {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let yesterday = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
         let skills_list: Vec<String> = skills
             .iter()
             .map(|s| {
@@ -460,6 +468,8 @@ Return only JSON, no other content."#
 
         format!(
 r#"You are an intelligent task execution assistant responsible for executing tasks based on user requirements.
+
+**Current date**: {} (yesterday = {}; when calling chat_history for 昨天/昨天记录, pass date "{}")
 
 ## CRITICAL: How to choose tools based on task tool_hint
 
@@ -506,7 +516,10 @@ r#"You are an intelligent task execution assistant responsible for executing tas
 - Execute tasks ONE BY ONE in order. Do NOT skip ahead.
 - Your FIRST response must be an ACTION (tool call), NOT a summary.
 - If a task requires a tool, call it FIRST, get the result, THEN declare completed.
-"#
+"#,
+            today,
+            yesterday,
+            yesterday
         )
     }
 

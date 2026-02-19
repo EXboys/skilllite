@@ -67,6 +67,10 @@ pub fn build_system_prompt(
     // Base system prompt
     parts.push(custom_prompt.unwrap_or(DEFAULT_SYSTEM_PROMPT).to_string());
 
+    // Current date (for chat_history "昨天"/yesterday interpretation)
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    parts.push(format!("\n\nCurrent date: {} (use for chat_history: 昨天/yesterday = date minus 1 day)", today));
+
     // Workspace context
     parts.push(format!("\n\nWorkspace: {}", workspace));
 
