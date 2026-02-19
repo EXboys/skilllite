@@ -51,13 +51,6 @@ const PROVIDERS: &[LlmProvider] = &[
     },
 ];
 
-const DEFAULT_MODELS: &[(&str, &str)] = &[
-    ("localhost:11434", "qwen2.5:7b"),
-    ("api.openai.com", "gpt-4o"),
-    ("api.deepseek.com", "deepseek-chat"),
-    ("dashscope.aliyuncs.com", "qwen-plus"),
-];
-
 /// `skilllite quickstart`
 pub fn cmd_quickstart(skills_dir: &str) -> Result<()> {
     let skills_path = resolve_path(skills_dir);
@@ -123,50 +116,17 @@ fn setup_llm() -> Result<(String, String, String)> {
 
 /// Check if .env or environment variables already have valid LLM config.
 fn detect_existing_config() -> Option<(String, String, String)> {
-    // Load .env if it exists
-    load_dotenv();
-
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .or_else(|_| std::env::var("SKILLLITE_API_KEY"))
-        .ok()
-        .filter(|k| !k.is_empty() && k != "sk-xxx")?;
-
-    let api_base = std::env::var("OPENAI_API_BASE")
-        .or_else(|_| std::env::var("OPENAI_BASE_URL"))
-        .or_else(|_| std::env::var("SKILLLITE_API_BASE"))
-        .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
-
-    let model = std::env::var("SKILLLITE_MODEL")
-        .or_else(|_| std::env::var("OPENAI_MODEL"))
-        .unwrap_or_else(|_| default_model_for_base(&api_base).to_string());
-
-    Some((api_base, api_key, model))
-}
-
-/// Load .env file from current directory.
-fn load_dotenv() {
-    let env_path = std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join(".env");
-
-    if let Ok(content) = fs::read_to_string(&env_path) {
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if let Some((key, value)) = line.split_once('=') {
-                let key = key.trim();
-                let value = value.trim().trim_matches('"').trim_matches('\'');
-                // Only set if not already set in real env
-                if std::env::var(key).is_err() {
-                    // SAFETY: quickstart runs at startup before tokio runtime,
-                    // single-threaded context.
-                    unsafe { std::env::set_var(key, value) };
-                }
-            }
-        }
+    crate::config::load_dotenv();
+    let cfg = crate::config::LlmConfig::try_from_env()?;
+    if cfg.api_key == "sk-xxx" {
+        return None;
     }
+    let model = if cfg.model.is_empty() {
+        crate::config::LlmConfig::default_model_for_base(&cfg.api_base).to_string()
+    } else {
+        cfg.model
+    };
+    Some((cfg.api_base, cfg.api_key, model))
 }
 
 /// Probe Ollama at localhost:11434.
@@ -270,7 +230,7 @@ fn interactive_llm_setup() -> Result<(String, String, String)> {
             "ollama".to_string()
         };
 
-        let model = default_model_for_base(&api_base).to_string();
+        let model = crate::config::LlmConfig::default_model_for_base(&api_base).to_string();
         eprintln!("   Model: {} (change via SKILLLITE_MODEL env var)", model);
 
         Ok((api_base, api_key, model))
@@ -304,15 +264,6 @@ fn prompt_api_key(env_var_name: &str) -> Result<String> {
         anyhow::bail!("API key is required for this provider");
     }
     Ok(key)
-}
-
-fn default_model_for_base(api_base: &str) -> &str {
-    for (host, model) in DEFAULT_MODELS {
-        if api_base.contains(host) {
-            return model;
-        }
-    }
-    "gpt-4o"
 }
 
 /// Step 2: Ensure skills are available.

@@ -17,9 +17,6 @@ use crate::commands::skill;
 use crate::skill::dependency_resolver;
 use crate::skill::metadata;
 
-/// Default skills repo when SKILLLITE_SKILLS_REPO is not set.
-const DEFAULT_SKILLS_REPO: &str = "EXboys/skilllite";
-
 /// `skilllite init`
 pub fn cmd_init(
     skills_dir: &str,
@@ -130,8 +127,7 @@ pub(crate) fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool>
     fs::create_dir_all(skills_path)
         .with_context(|| format!("Failed to create skills directory: {}", skills_path.display()))?;
 
-    let repo = std::env::var("SKILLLITE_SKILLS_REPO")
-        .unwrap_or_else(|_| DEFAULT_SKILLS_REPO.to_string());
+    let repo = crate::config::PathsConfig::from_env().skills_repo;
     let skills_dir_str = skills_path.to_string_lossy().to_string();
 
     eprintln!("   📥 Downloading skills from {} ...", repo);

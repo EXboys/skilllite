@@ -500,7 +500,7 @@ fn execute_skill_inner(
     }
 
     // Setup environment
-    let cache_dir: Option<String> = std::env::var("SKILLBOX_CACHE_DIR").ok();
+    let cache_dir = crate::config::CacheConfig::cache_dir();
     let env_path = crate::env::builder::ensure_environment(
         skill_dir,
         metadata,
@@ -525,11 +525,11 @@ fn execute_skill_inner(
 
         // Execute bash command (same logic as main.rs bash_command).
         // Resolve the effective cwd: prefer SKILLLITE_OUTPUT_DIR so file outputs
-        // (screenshots, PDFs, etc.) land in the output directory automatically,
-        // even when the LLM uses a relative filename like "screenshot.png".
-        let effective_cwd = std::env::var("SKILLLITE_OUTPUT_DIR")
-            .ok()
-            .map(std::path::PathBuf::from)
+        // (screenshots, PDFs, etc.) land in the output directory automatically.
+        let effective_cwd = crate::config::PathsConfig::from_env()
+            .output_dir
+            .as_ref()
+            .map(|s| std::path::PathBuf::from(s))
             .filter(|p| p.is_dir())
             .unwrap_or_else(|| workspace.to_path_buf());
 
@@ -614,8 +614,8 @@ fn execute_bash_in_skill(
     // This is critical because some tools (e.g. agent-browser) ignore shell cwd
     // and resolve file paths relative to their own process directory.
     cmd.env("SKILLLITE_WORKSPACE", workspace.as_os_str());
-    if let Ok(output_dir) = std::env::var("SKILLLITE_OUTPUT_DIR") {
-        cmd.env("SKILLLITE_OUTPUT_DIR", &output_dir);
+    if let Some(ref output_dir) = crate::config::PathsConfig::from_env().output_dir {
+        cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
     }
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());

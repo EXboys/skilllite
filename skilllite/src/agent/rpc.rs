@@ -144,16 +144,21 @@ impl EventSink for RpcEventSink {
 pub fn serve_agent_rpc() -> Result<()> {
     // Set default output directory BEFORE creating the tokio runtime (multi-threaded).
     // SAFETY: No other threads exist at this point.
-    if std::env::var("SKILLLITE_OUTPUT_DIR").is_err() {
+    let paths = crate::config::PathsConfig::from_env();
+    if paths.output_dir.is_none() {
         let chat_output = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".skilllite")
             .join("chat")
             .join("output");
-        unsafe { std::env::set_var("SKILLLITE_OUTPUT_DIR", chat_output.to_string_lossy().as_ref()) };
-    }
-    if let Ok(output_dir) = std::env::var("SKILLLITE_OUTPUT_DIR") {
-        let p = PathBuf::from(&output_dir);
+        let s = chat_output.to_string_lossy().to_string();
+        unsafe { std::env::set_var("SKILLLITE_OUTPUT_DIR", &s) };
+        let p = PathBuf::from(&s);
+        if !p.exists() {
+            let _ = std::fs::create_dir_all(&p);
+        }
+    } else if let Some(ref output_dir) = paths.output_dir {
+        let p = PathBuf::from(output_dir);
         if !p.exists() {
             let _ = std::fs::create_dir_all(&p);
         }

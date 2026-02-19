@@ -7,9 +7,10 @@ use std::path::{Path, PathBuf};
 
 /// Get the allowed root directory for path validation.
 pub fn get_allowed_root() -> Result<PathBuf> {
-    let allowed_root = std::env::var("SKILLBOX_SKILLS_ROOT")
+    let allowed_root = crate::config::PathsConfig::from_env()
+        .skills_root
         .map(PathBuf::from)
-        .unwrap_or_else(|_| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     allowed_root
         .canonicalize()
         .map_err(|e| anyhow::anyhow!("Invalid SKILLBOX_SKILLS_ROOT: {}", e))

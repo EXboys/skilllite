@@ -1,9 +1,7 @@
 //! Observability: tracing init, audit log, security events.
 //!
-//! Audit: SKILLLITE_AUDIT_LOG or SKILLBOX_AUDIT_LOG
-//! Security events: SKILLLITE_SECURITY_EVENTS_LOG
+//! Uses config::ObservabilityConfig for SKILLLITE_QUIET, LOG_LEVEL, AUDIT_LOG, etc.
 
-use std::env;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::Path;
@@ -19,17 +17,16 @@ static SECURITY_EVENTS_PATH: Mutex<Option<String>> = Mutex::new(None);
 /// Initialize tracing. Call at process startup.
 /// When SKILLLITE_QUIET=1 (or SKILLBOX_QUIET for compat), only WARN and above are logged.
 pub fn init_tracing() {
-    let level: String = if is_quiet() {
+    let cfg = crate::config::ObservabilityConfig::from_env();
+    let level: String = if cfg.quiet {
         "skilllite=warn".to_string()
     } else {
-        env::var("SKILLLITE_LOG_LEVEL").unwrap_or_else(|_| "skilllite=info".to_string())
+        cfg.log_level.clone()
     };
 
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
 
-    let json = env::var("SKILLLITE_LOG_JSON").or_else(|_| env::var("SKILLBOX_LOG_JSON"))
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes"))
-        .unwrap_or(false);
+    let json = cfg.log_json;
 
     let _ = if json {
         tracing_subscriber::registry()
@@ -53,12 +50,6 @@ pub fn init_tracing() {
     };
 }
 
-fn is_quiet() -> bool {
-    env::var("SKILLLITE_QUIET").or_else(|_| env::var("SKILLBOX_QUIET"))
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes"))
-        .unwrap_or(false)
-}
-
 fn get_audit_path() -> Option<String> {
     {
         let guard = AUDIT_PATH.lock().ok()?;
@@ -66,9 +57,7 @@ fn get_audit_path() -> Option<String> {
             return Some(p.clone());
         }
     }
-    let path = env::var("SKILLLITE_AUDIT_LOG")
-        .or_else(|_| env::var("SKILLBOX_AUDIT_LOG"))
-        .ok()?;
+    let path = crate::config::ObservabilityConfig::from_env().audit_log.clone()?;
     if path.is_empty() {
         return None;
     }
@@ -90,7 +79,7 @@ fn get_security_events_path() -> Option<String> {
             return Some(p.clone());
         }
     }
-    let path = env::var("SKILLLITE_SECURITY_EVENTS_LOG").ok()?;
+    let path = crate::config::ObservabilityConfig::from_env().security_events_log.clone()?;
     if path.is_empty() {
         return None;
     }

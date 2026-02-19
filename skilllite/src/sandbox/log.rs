@@ -10,7 +10,5 @@ macro_rules! info_log {
 }
 
 pub fn is_quiet() -> bool {
-    std::env::var("SKILLLITE_QUIET").or_else(|_| std::env::var("SKILLBOX_QUIET"))
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true") || v.eq_ignore_ascii_case("yes"))
-        .unwrap_or(false)
+    crate::config::ObservabilityConfig::from_env().quiet
 }

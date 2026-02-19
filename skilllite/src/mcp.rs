@@ -1012,7 +1012,7 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
     }
 
     // Setup environment
-    let cache_dir: Option<String> = std::env::var("SKILLBOX_CACHE_DIR").ok();
+    let cache_dir = crate::config::CacheConfig::cache_dir();
     let env_path = crate::env::builder::ensure_environment(
         &skill_dir,
         &meta,

@@ -2,54 +2,6 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Load `.env` file from current directory into environment variables.
-/// Simple parser: supports `KEY=VALUE`, `# comments`, and quoted values.
-/// Does NOT override existing env vars.
-///
-/// Uses `Once` to ensure this is called exactly once (safe for multi-threaded contexts).
-/// SAFETY: `set_var` is only called inside `call_once`, which guarantees single-threaded
-/// execution for the critical section. Subsequent calls to `load_dotenv()` are no-ops.
-fn load_dotenv() {
-    use std::sync::Once;
-    static DOTENV_INIT: Once = Once::new();
-
-    DOTENV_INIT.call_once(|| {
-        let path = std::env::current_dir()
-            .map(|d| d.join(".env"))
-            .unwrap_or_else(|_| std::path::PathBuf::from(".env"));
-
-        let content = match std::fs::read_to_string(&path) {
-            Ok(c) => c,
-            Err(_) => return,
-        };
-
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if let Some(eq_pos) = line.find('=') {
-                let key = line[..eq_pos].trim();
-                let mut value = line[eq_pos + 1..].trim();
-
-                if (value.starts_with('"') && value.ends_with('"'))
-                    || (value.starts_with('\'') && value.ends_with('\''))
-                {
-                    value = &value[1..value.len() - 1];
-                }
-
-                if key.is_empty() || std::env::var(key).is_ok() {
-                    continue;
-                }
-
-                // SAFETY: Inside `call_once`, guaranteed single-threaded execution.
-                // No other thread can be reading env vars concurrently here.
-                unsafe { std::env::set_var(key, value) };
-            }
-        }
-    });
-}
-
 // ─── UTF-8 safe string helpers ──────────────────────────────────────────────
 
 /// Truncate a string at a safe UTF-8 char boundary (from the start).
@@ -155,46 +107,19 @@ impl Default for AgentConfig {
 impl AgentConfig {
     /// Load from environment variables with sensible defaults.
     /// Also reads `.env` file from current directory if present.
-    /// Supports both standard OpenAI env vars and project-specific ones:
-    ///   OPENAI_API_BASE / BASE_URL, OPENAI_API_KEY / API_KEY, SKILLLITE_MODEL / MODEL
+    /// Uses unified config layer: SKILLLITE_* with fallback to OPENAI_* / BASE_URL / API_KEY / MODEL.
     pub fn from_env() -> Self {
-        // Load .env file from current directory (if exists)
-        load_dotenv();
-
-        let api_base = std::env::var("OPENAI_API_BASE")
-            .or_else(|_| std::env::var("OPENAI_BASE_URL"))
-            .or_else(|_| std::env::var("BASE_URL"))
-            .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
-        let api_key = std::env::var("OPENAI_API_KEY")
-            .or_else(|_| std::env::var("API_KEY"))
-            .unwrap_or_default();
-        let model = std::env::var("SKILLLITE_MODEL")
-            .or_else(|_| std::env::var("OPENAI_MODEL"))
-            .or_else(|_| std::env::var("MODEL"))
-            .unwrap_or_else(|_| "gpt-4o".to_string());
-        let workspace = std::env::var("SKILLLITE_WORKSPACE")
-            .unwrap_or_else(|_| {
-                std::env::current_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                    .to_string_lossy()
-                    .to_string()
-            });
-
-        let enable_memory = std::env::var("SKILLLITE_ENABLE_MEMORY")
-            .map(|v| v != "0" && v != "false" && v != "no")
-            .unwrap_or(true);
-
-        let enable_task_planning = std::env::var("SKILLLITE_ENABLE_TASK_PLANNING")
-            .map(|v| v != "0" && v != "false" && v != "no")
-            .unwrap_or(true);
-
+        crate::config::load_dotenv();
+        let llm = crate::config::LlmConfig::from_env();
+        let paths = crate::config::PathsConfig::from_env();
+        let flags = crate::config::AgentFeatureFlags::from_env();
         Self {
-            api_base,
-            api_key,
-            model,
-            workspace,
-            enable_memory,
-            enable_task_planning,
+            api_base: llm.api_base,
+            api_key: llm.api_key,
+            model: llm.model,
+            workspace: paths.workspace,
+            enable_memory: flags.enable_memory,
+            enable_task_planning: flags.enable_task_planning,
             ..Default::default()
         }
     }
@@ -588,11 +513,6 @@ fn env_usize(key: &str, default: usize) -> usize {
         .unwrap_or(default)
 }
 
-/// Helper: read an optional env var as String.
-pub fn env_optional(key: &str) -> Option<String> {
-    std::env::var(key).ok().filter(|v| !v.is_empty())
-}
-
 /// Chunk size for long text summarization (~1.5k tokens). `SKILLLITE_CHUNK_SIZE`.
 pub fn get_chunk_size() -> usize {
     env_usize("SKILLLITE_CHUNK_SIZE", 6000)
@@ -643,18 +563,15 @@ pub fn get_tool_result_recovery_max_chars() -> usize {
 
 /// Output directory override. `SKILLLITE_OUTPUT_DIR`.
 pub fn get_output_dir() -> Option<String> {
-    env_optional("SKILLLITE_OUTPUT_DIR")
+    crate::config::PathsConfig::from_env().output_dir
 }
 
 /// Whether to use compact planning prompt (rule filtering + fewer examples). Default true.
 /// Set `SKILLLITE_COMPACT_PLANNING=0` to disable and use full prompt.
 pub fn get_compact_planning() -> bool {
-    std::env::var("SKILLLITE_COMPACT_PLANNING")
-        .ok()
-        .and_then(|v| match v.to_lowercase().as_str() {
-            "0" | "false" | "no" | "off" => Some(false),
-            "1" | "true" | "yes" | "on" => Some(true),
-            _ => v.parse::<i32>().ok().map(|n| n != 0),
-        })
-        .unwrap_or(true)
+    crate::config::env_bool(
+        crate::config::env_keys::misc::SKILLLITE_COMPACT_PLANNING,
+        &[],
+        true,
+    )
 }

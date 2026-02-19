@@ -250,18 +250,22 @@ fn run_chat(
     // Only if SKILLLITE_OUTPUT_DIR is not already set by user
     // SAFETY: Called before tokio::runtime::Runtime::new() below, so no other
     // threads exist yet. All env var mutations happen in the single main thread.
-    if std::env::var("SKILLLITE_OUTPUT_DIR").is_err() {
+    let paths = crate::config::PathsConfig::from_env();
+    if paths.output_dir.is_none() {
         let chat_output = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".skilllite")
             .join("chat")
             .join("output");
-        unsafe { std::env::set_var("SKILLLITE_OUTPUT_DIR", chat_output.to_string_lossy().as_ref()) };
-    }
-
-    // Ensure output directory exists so skills can write files there immediately
-    if let Ok(output_dir) = std::env::var("SKILLLITE_OUTPUT_DIR") {
-        let p = PathBuf::from(&output_dir);
+        let s = chat_output.to_string_lossy().to_string();
+        unsafe { std::env::set_var("SKILLLITE_OUTPUT_DIR", &s) };
+        // Ensure output directory exists
+        let p = PathBuf::from(&s);
+        if !p.exists() {
+            let _ = std::fs::create_dir_all(&p);
+        }
+    } else if let Some(ref output_dir) = paths.output_dir {
+        let p = PathBuf::from(output_dir);
         if !p.exists() {
             let _ = std::fs::create_dir_all(&p);
         }

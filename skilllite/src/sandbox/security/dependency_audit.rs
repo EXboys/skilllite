@@ -375,17 +375,12 @@ fn build_inference_context(
 ///
 /// Returns `None` if LLM is not configured or the call fails.
 fn infer_packages_with_llm(context: &str, language: &str) -> Option<Vec<String>> {
-    let api_base = std::env::var("OPENAI_API_BASE")
-        .or_else(|_| std::env::var("BASE_URL"))
-        .ok()
-        .filter(|s| !s.is_empty())?;
-    let api_key = std::env::var("OPENAI_API_KEY")
-        .or_else(|_| std::env::var("API_KEY"))
-        .ok()
-        .filter(|s| !s.is_empty())?;
-    let model = std::env::var("SKILLLITE_MODEL")
-        .or_else(|_| std::env::var("MODEL"))
-        .unwrap_or_else(|_| "deepseek-chat".to_string());
+    let cfg = crate::config::LlmConfig::try_from_env()?;
+    let model = if cfg.model.is_empty() {
+        "deepseek-chat".to_string()
+    } else {
+        cfg.model
+    };
 
     let lang_label = if language == "python" {
         "Python (PyPI)"
@@ -416,12 +411,12 @@ fn infer_packages_with_llm(context: &str, language: &str) -> Option<Vec<String>>
 
     let url = format!(
         "{}/chat/completions",
-        api_base.trim_end_matches('/')
+        cfg.api_base.trim_end_matches('/')
     );
 
     let response = agent
         .post(&url)
-        .set("Authorization", &format!("Bearer {}", api_key))
+        .set("Authorization", &format!("Bearer {}", cfg.api_key))
         .set("Content-Type", "application/json")
         .send_json(&body)
         .ok()?;
@@ -468,26 +463,36 @@ const DEFAULT_OSV_API_BASE: &str = "https://api.osv.dev";
 
 /// Get custom audit API URL, if configured.
 fn get_custom_api() -> Option<String> {
-    std::env::var("SKILLLITE_AUDIT_API")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(|s| s.trim_end_matches('/').to_string())
+    crate::config::load_dotenv();
+    crate::config::env_optional(
+        crate::config::env_keys::misc::SKILLLITE_AUDIT_API,
+        &[],
+    )
+    .map(|s| s.trim_end_matches('/').to_string())
 }
 
 /// Get PyPI mirror base URL.
 fn get_pypi_base() -> String {
-    std::env::var("PYPI_MIRROR_URL")
-        .unwrap_or_else(|_| DEFAULT_PYPI_BASE.to_string())
-        .trim_end_matches('/')
-        .to_string()
+    crate::config::load_dotenv();
+    crate::config::env_or(
+        crate::config::env_keys::misc::PYPI_MIRROR_URL,
+        &[],
+        || DEFAULT_PYPI_BASE.to_string(),
+    )
+    .trim_end_matches('/')
+    .to_string()
 }
 
 /// Get OSV API base URL.
 fn get_osv_api_base() -> String {
-    std::env::var("OSV_API_URL")
-        .unwrap_or_else(|_| DEFAULT_OSV_API_BASE.to_string())
-        .trim_end_matches('/')
-        .to_string()
+    crate::config::load_dotenv();
+    crate::config::env_or(
+        crate::config::env_keys::misc::OSV_API_URL,
+        &[],
+        || DEFAULT_OSV_API_BASE.to_string(),
+    )
+    .trim_end_matches('/')
+    .to_string()
 }
 
 fn make_agent() -> ureq::Agent {
