@@ -26,4 +26,6 @@ pub mod env;
 pub mod reindex;
 pub mod init;
 #[cfg(feature = "agent")]
+pub mod planning_rules_gen;
+#[cfg(feature = "agent")]
 pub mod quickstart;

@@ -33,24 +33,24 @@ pub fn cmd_init(
 
     // Step 1: Binary check (we ARE the binary)
     let version = env!("CARGO_PKG_VERSION");
-    eprintln!("✅ Step 1/5: skilllite binary v{} ready", version);
+    eprintln!("✅ Step 1/6: skilllite binary v{} ready", version);
 
     // Step 2: Create .skills/ directory + download skills (if empty)
     eprintln!();
     let downloaded = ensure_skills_dir(&skills_path, force)?;
     if downloaded {
-        eprintln!("✅ Step 2/5: Downloaded skills into {}", skills_dir);
+        eprintln!("✅ Step 2/6: Downloaded skills into {}", skills_dir);
     } else {
-        eprintln!("✅ Step 2/5: Skills directory already exists at {}", skills_dir);
+        eprintln!("✅ Step 2/6: Skills directory already exists at {}", skills_dir);
     }
 
     // Step 3: Scan all skills and install dependencies
     eprintln!();
     let skills = discover_all_skills(&skills_path);
     if skills.is_empty() {
-        eprintln!("✅ Step 3/5: No skills found to process");
+        eprintln!("✅ Step 3/6: No skills found to process");
     } else {
-        eprintln!("📦 Step 3/5: Processing {} skill(s)...", skills.len());
+        eprintln!("📦 Step 3/6: Processing {} skill(s)...", skills.len());
         if skip_deps {
             eprintln!("   ⏭ Skipping dependency installation (--skip-deps)");
         } else {
@@ -67,13 +67,13 @@ pub fn cmd_init(
     // Step 4: Security audit
     eprintln!();
     if skip_audit {
-        eprintln!("✅ Step 4/5: Skipping security audit (--skip-audit)");
+        eprintln!("✅ Step 4/6: Skipping security audit (--skip-audit)");
     } else {
         let (audit_msgs, has_vulns) = audit_all_skills(&skills_path, &skills);
         if audit_msgs.is_empty() {
-            eprintln!("✅ Step 4/5: No dependencies to audit");
+            eprintln!("✅ Step 4/6: No dependencies to audit");
         } else {
-            eprintln!("🔍 Step 4/5: Security audit results:");
+            eprintln!("🔍 Step 4/6: Security audit results:");
             for msg in &audit_msgs {
                 eprintln!("{}", msg);
             }
@@ -86,9 +86,37 @@ pub fn cmd_init(
         }
     }
 
-    // Step 5: Summary
+    // Step 5: Generate planning rules (when --use-llm and API key available)
     eprintln!();
-    eprintln!("✅ Step 5/5: Initialization complete!");
+    #[cfg(feature = "agent")]
+    if skills.is_empty() {
+        eprintln!("✅ Step 5/6: No skills, skipping planning rules");
+    } else if !use_llm {
+        eprintln!("✅ Step 5/6: Skipping planning rules (use --use-llm to generate)");
+    } else {
+        eprintln!("📋 Step 5/6: Generating planning rules...");
+        let workspace = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."));
+        match crate::commands::planning_rules_gen::generate_planning_rules(
+            &workspace,
+            &skills_path,
+            &skills,
+            true,
+        ) {
+            Ok(path) => {
+                eprintln!("   ✅ Saved to {}", path.display());
+            }
+            Err(e) => {
+                eprintln!("   ⚠ Skipped ({})", e);
+            }
+        }
+    }
+    #[cfg(not(feature = "agent"))]
+    eprintln!("✅ Step 5/6: Planning rules (requires agent feature)");
+
+    // Step 6: Summary
+    eprintln!();
+    eprintln!("✅ Step 6/6: Initialization complete!");
     eprintln!();
     print_summary(&skills_path, &skills);
 

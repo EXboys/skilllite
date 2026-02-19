@@ -1,0 +1,529 @@
+[
+  {
+    "id": "explicit_skill",
+    "priority": 100,
+    "keywords": [],
+    "context_keywords": [],
+    "instruction": "**If user says \"使用 XX skill\" / \"用 XX 技能\" / \"use XX skills\"**, you MUST add that skill to the task list. Do NOT return empty list."
+  },
+  {
+    "id": "chat_history",
+    "priority": 95,
+    "keywords": [
+      "历史记录",
+      "聊天记录",
+      "聊天历史",
+      "查看记录",
+      "chat history",
+      "conversation history",
+      "past chat"
+    ],
+    "context_keywords": [],
+    "tool_hint": "chat_history",
+    "instruction": "**历史记录/聊天记录**: When the user asks to view, summarize, or analyze past chat/conversation history, you MUST use **chat_history** (built-in). Do NOT use list_directory or file_operation — chat_history reads directly from transcripts. Plan: (1) Use chat_history with date if specified; (2) Analyze/summarize the content."
+  },
+  {
+    "id": "external_comparison",
+    "priority": 92,
+    "keywords": [
+      "对比",
+      "比较",
+      "优劣势",
+      "优劣对比",
+      "对比分析",
+      "全方位",
+      "全方位分析",
+      "vs",
+      "versus"
+    ],
+    "context_keywords": [
+      "地方",
+      "城市",
+      "两地",
+      "城市对比"
+    ],
+    "tool_hint": "http-request",
+    "instruction": "**对比/比较/优劣势** (places, cities, companies, topics): When the user asks to compare or analyze pros/cons of places, cities, companies, or external topics, PREFER **http-request** to fetch fresh data. Do NOT use chat_history — it is ONLY for past chat/conversation analysis. Plan: (1) http-request to fetch current info from web; (2) analysis. If user did not ask for 实时/最新 and task is general knowledge, you may return [] to let LLM answer directly."
+  },
+  {
+    "id": "output_to_file",
+    "priority": 92,
+    "keywords": [
+      "输出到",
+      "输出到output",
+      "保存到",
+      "写到文件",
+      "写入文件",
+      "保存为",
+      "输出到文件",
+      "save to",
+      "output to",
+      "write to file"
+    ],
+    "context_keywords": [],
+    "tool_hint": "file_operation",
+    "instruction": "**输出到 output/文件**: When the user explicitly asks to output, save, or write content to a file (e.g. 输出到output, 保存到文件, 写到 output), you MUST plan a file_operation task using **write_output**. Even if the content is an article, report, or markdown, saving to file requires the tool. Return a task with tool_hint: \"file_operation\" and description like \"Use write_output to save the generated content to output/<filename>\"."
+  },
+  {
+    "id": "frontend_design",
+    "priority": 92,
+    "keywords": [
+      "官网",
+      "网站",
+      "网站设计",
+      "设计网页",
+      "设计页面",
+      "前端设计",
+      "页面设计",
+      "landing page",
+      "website",
+      "web page",
+      "homepage",
+      "首页",
+      "网站首页",
+      "官方网站",
+      "做个网站",
+      "做一个网站",
+      "生成网站",
+      "生成页面",
+      "生成网页"
+    ],
+    "context_keywords": [],
+    "tool_hint": "file_operation",
+    "instruction": "**官网/网站/网页设计**: When the user asks to design or generate a website, landing page, or web page, you MUST plan exactly TWO tasks: (1) Generate the complete HTML/CSS/JS and use **write_output** to save to index.html (tool_hint: file_operation); (2) Use **preview_server** to start local server and open in browser (tool_hint: file_operation). If a frontend-design skill exists, it is reference-only — use its design guidelines but output via write_output. Do NOT call the frontend-design skill directly. Do NOT return empty list — website generation requires file output + preview."
+  },
+  {
+    "id": "realtime_http",
+    "priority": 90,
+    "keywords": [
+      "实时",
+      "最新",
+      "实时信息",
+      "最新数据",
+      "实时数据",
+      "最新排名",
+      "实时查询",
+      "抓取网页",
+      "获取最新",
+      "fetch live data"
+    ],
+    "context_keywords": [],
+    "tool_hint": "http-request",
+    "instruction": "**实时/最新/实时信息**: When the user explicitly asks for real-time or latest data, you MUST use **http-request** skill. The LLM's knowledge has a cutoff; only HTTP requests can fetch current information. Return a task with tool_hint: \"http-request\"."
+  },
+  {
+    "id": "html_preview",
+    "priority": 90,
+    "keywords": [
+      "html渲染",
+      "渲染出来",
+      "预览",
+      "在浏览器中打开",
+      "html呈现",
+      "网页渲染",
+      "PPT"
+    ],
+    "context_keywords": [],
+    "tool_hint": "file_operation",
+    "instruction": "**HTML/PPT/渲染/预览**: When the user asks for HTML rendering or browser preview, use **write_output** + **preview_server**."
+  },
+  {
+    "id": "xiaohongshu",
+    "priority": 90,
+    "keywords": [
+      "小红书",
+      "种草文案",
+      "小红书图文",
+      "小红书笔记"
+    ],
+    "context_keywords": [],
+    "tool_hint": "xiaohongshu-writer",
+    "instruction": "**小红书/种草/图文笔记**: When the task involves 小红书 content, you MUST use **xiaohongshu-writer** skill."
+  },
+  {
+    "id": "agent_browser",
+    "priority": 90,
+    "keywords": [
+      "agent-browser",
+      "browser",
+      "automate",
+      "automation",
+      "open a website",
+      "fill out a form",
+      "click a button",
+      "take a screenshot",
+      "scrape data",
+      "scrape",
+      "web interaction",
+      "navigate",
+      "snapshot",
+      "浏览器",
+      "自动化",
+      "打开网站",
+      "填写表单",
+      "点击按钮",
+      "截图",
+      "抓取数据",
+      "网页交互"
+    ],
+    "context_keywords": [
+      "website",
+      "page",
+      "form",
+      "button",
+      "screenshot",
+      "data",
+      "test",
+      "login",
+      "web app",
+      "网站",
+      "页面",
+      "表单",
+      "测试",
+      "登录"
+    ],
+    "tool_hint": "agent-browser",
+    "instruction": "**Browser Automation**: When user asks to interact with a website (navigate, fill forms, click, screenshot, scrape data, test, login, or automate any browser task), return a task with tool_hint: \"agent-browser\"."
+  },
+  {
+    "id": "weather",
+    "priority": 90,
+    "keywords": [
+      "天气",
+      "气温",
+      "气象",
+      "今天天气",
+      "明天天气",
+      "适合出行吗",
+      "适合出去玩吗"
+    ],
+    "context_keywords": [],
+    "tool_hint": "weather",
+    "instruction": "**天气/气象/天气预报**: When the user asks about weather, you MUST use **weather** skill. The LLM cannot provide real-time weather data; only the weather skill can. Return a task with tool_hint: \"weather\"."
+  },
+  {
+    "id": "skill_creator",
+    "priority": 89,
+    "keywords": [
+      "skill creator",
+      "create skill",
+      "update skill",
+      "design skill",
+      "package skill",
+      "skill package",
+      "技能创建",
+      "创建技能",
+      "更新技能",
+      "设计技能",
+      "打包技能"
+    ],
+    "context_keywords": [
+      "skill",
+      "guide",
+      "workflow",
+      "tool",
+      "domain",
+      "expertise",
+      "resource",
+      "脚本",
+      "参考",
+      "资产",
+      "流程"
+    ],
+    "tool_hint": "skill-creator",
+    "instruction": "**Skill Creator**: When user asks to create, update, design, structure, or package an AgentSkill (with scripts, references, assets), return a task with tool_hint: \"skill-creator\"."
+  },
+  {
+    "id": "csdn_article",
+    "priority": 88,
+    "keywords": [
+      "csdn",
+      "CSDN",
+      "csdn文章",
+      "CSDN文章",
+      "csdn博客"
+    ],
+    "context_keywords": [
+      "文章",
+      "博客",
+      "写一篇"
+    ],
+    "instruction": "**CSDN 文章**: When the user asks to write a CSDN article or blog, output the complete Markdown directly in your response. Follow **csdn-article** skill format (title, summary block, body, code blocks with language, tags). Use **writing-helper** for style. Do NOT return empty task list — include at least one task to generate the article."
+  },
+  {
+    "id": "xiaohongshu_writer",
+    "priority": 87,
+    "keywords": [
+      "xiaohongshu",
+      "小红书",
+      "xiaohongshu writer",
+      "小红书创作",
+      "小红书内容",
+      "小红书图文",
+      "写小红书",
+      "小红书助手"
+    ],
+    "context_keywords": [
+      "content",
+      "title",
+      "body",
+      "hashtag",
+      "thumbnail",
+      "cover",
+      "emoji",
+      "图文",
+      "标题",
+      "正文",
+      "标签",
+      "封面"
+    ],
+    "tool_hint": "xiaohongshu-writer",
+    "instruction": "**Xiaohongshu Writer**: When user asks to create Xiaohongshu (Little Red Book) graphic content, first generate the complete content (title, body, hashtags, thumbnail design) following the skill's guide, then return a task with tool_hint: \"xiaohongshu-writer\" and include the generated content."
+  },
+  {
+    "id": "writing_helper",
+    "priority": 86,
+    "keywords": [
+      "writing helper",
+      "write article",
+      "write content",
+      "去AI味",
+      "降低AI感",
+      "自然写作",
+      "有温度",
+      "写作助手",
+      "写文章",
+      "写内容",
+      "高质量写作"
+    ],
+    "context_keywords": [
+      "article",
+      "content",
+      "blog",
+      "post",
+      "story",
+      "自然",
+      "口语",
+      "细节",
+      "风格",
+      "文章",
+      "内容",
+      "博客",
+      "帖子",
+      "故事"
+    ],
+    "instruction": "**Writing Helper**: When user asks to write an article or content and emphasizes natural, warm, low-AI-feeling writing (or uses keywords like '去AI味'), output the content directly following the writing-helper guidelines. Do NOT return an empty list or call a tool."
+  },
+  {
+    "id": "analyze_stability",
+    "priority": 85,
+    "keywords": [
+      "分析稳定性",
+      "分析项目问题",
+      "分析历史消息",
+      "分析健壮性",
+      "分析最近",
+      "ai稳定性",
+      "项目问题",
+      "历史消息",
+      "最近几次",
+      "健壮性",
+      "analyze stability",
+      "project issues"
+    ],
+    "context_keywords": [],
+    "tool_hint": "chat_history",
+    "instruction": "**分析AI稳定性/项目问题/历史消息** (ONLY when user explicitly asks to analyze chat/conversation): When the user asks to analyze recent AI stability, project issues, robustness, or conversation quality, you MUST use **chat_history** first to get the data, then analyze. chat_history is ONLY for analyzing past chat records — do NOT use it for comparing places, cities, companies, or external topics."
+  },
+  {
+    "id": "data_analysis",
+    "priority": 85,
+    "keywords": [
+      "data analysis",
+      "analyze data",
+      "csv",
+      "json",
+      "statistics",
+      "filter",
+      "aggregate",
+      "correlate",
+      "pandas",
+      "numpy",
+      "数据分析",
+      "分析数据",
+      "统计",
+      "过滤",
+      "聚合",
+      "相关性"
+    ],
+    "context_keywords": [
+      "data",
+      "table",
+      "column",
+      "row",
+      "mean",
+      "std",
+      "min",
+      "max",
+      "sum",
+      "count",
+      "数据",
+      "表格",
+      "列",
+      "行"
+    ],
+    "tool_hint": "data-analysis",
+    "instruction": "**Data Analysis**: When user asks to analyze CSV/JSON data (statistics, filtering, aggregation, correlation), return a task with tool_hint: \"data-analysis\"."
+  },
+  {
+    "id": "continue_context",
+    "priority": 85,
+    "keywords": [
+      "继续",
+      "继续未完成",
+      "继续之前",
+      "继续任务"
+    ],
+    "context_keywords": [
+      "实时",
+      "最新",
+      "排名",
+      "university",
+      "QS",
+      "官网",
+      "需要用户自行查询",
+      "请访问官网"
+    ],
+    "tool_hint": "http-request",
+    "instruction": "**继续/继续未完成的任务**: When the user says 继续, you MUST use the **conversation context** to understand what task to continue. If the context mentions real-time data, rankings, or similar, plan **http-request** to fetch the data."
+  },
+  {
+    "id": "http_request",
+    "priority": 82,
+    "keywords": [
+      "http",
+      "request",
+      "api",
+      "get",
+      "post",
+      "put",
+      "delete",
+      "patch",
+      "call api",
+      "fetch",
+      "send data",
+      "network",
+      "网页内容",
+      "获取网页",
+      "发送数据",
+      "调用API",
+      "HTTP请求",
+      "网络请求"
+    ],
+    "context_keywords": [
+      "url",
+      "endpoint",
+      "server",
+      "header",
+      "body",
+      "parameter",
+      "响应",
+      "结果"
+    ],
+    "tool_hint": "http-request",
+    "instruction": "**HTTP Request**: When user asks to make an HTTP request (GET, POST, PUT, DELETE, PATCH) to call an API, fetch web content, or send data to a server, return a task with tool_hint: \"http-request\"."
+  },
+  {
+    "id": "text_processor",
+    "priority": 65,
+    "keywords": [
+      "text processor",
+      "process text",
+      "uppercase",
+      "lowercase",
+      "reverse",
+      "trim",
+      "count",
+      "text operation",
+      "文本处理",
+      "处理文本",
+      "大写",
+      "小写",
+      "反转",
+      "去空白",
+      "统计",
+      "文本操作"
+    ],
+    "context_keywords": [
+      "text",
+      "string",
+      "character",
+      "convert",
+      "操作",
+      "转换"
+    ],
+    "tool_hint": "text-processor",
+    "instruction": "**Text Processor**: When user asks to process text (uppercase, lowercase, reverse, trim whitespace, count characters), return a task with tool_hint: \"text-processor\"."
+  },
+  {
+    "id": "calculator",
+    "priority": 60,
+    "keywords": [
+      "calculator",
+      "calculate",
+      "add",
+      "subtract",
+      "multiply",
+      "divide",
+      "plus",
+      "minus",
+      "times",
+      "arithmetic",
+      "operation",
+      "计算",
+      "计算器",
+      "加",
+      "减",
+      "乘",
+      "除",
+      "加法",
+      "减法",
+      "乘法",
+      "除法",
+      "算术"
+    ],
+    "context_keywords": [
+      "number",
+      "result",
+      "sum",
+      "difference",
+      "product",
+      "quotient",
+      "数字",
+      "结果"
+    ],
+    "tool_hint": "calculator",
+    "instruction": "**Calculator**: When user asks to perform basic arithmetic (add, subtract, multiply, divide numbers), return a task with tool_hint: \"calculator\"."
+  },
+  {
+    "id": "nodejs_test",
+    "priority": 50,
+    "keywords": [
+      "nodejs test",
+      "node test",
+      "test node",
+      "node.js test",
+      "测试node",
+      "测试nodejs"
+    ],
+    "context_keywords": [
+      "test",
+      "sandbox",
+      "simple",
+      "测试",
+      "沙箱"
+    ],
+    "tool_hint": "nodejs-test",
+    "instruction": "**Node.js Test**: When user asks to test the Node.js sandbox or perform a simple Node.js test, return a task with tool_hint: \"nodejs-test\"."
+  }
+]

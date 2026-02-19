@@ -285,7 +285,7 @@ async fn run_with_task_planning(
     }
 
     // ── Task planning ──────────────────────────────────────────────────────
-    let mut planner = TaskPlanner::new();
+    let mut planner = TaskPlanner::new(Some(workspace));
 
     // Build conversation context from initial_messages (for "继续" detection)
     let conversation_context: Option<String> = if !initial_messages.is_empty() {

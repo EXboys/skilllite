@@ -28,8 +28,21 @@ fn resolve_output_dir() -> String {
     })
 }
 
-/// Load planning rules. Uses built-in rules from planning_rules.rs.
-fn load_planning_rules() -> Vec<PlanningRule> {
+/// Load planning rules. Tries workspace/.skilllite/planning_rules.json first; falls back to built-in.
+fn load_planning_rules(workspace: Option<&std::path::Path>) -> Vec<PlanningRule> {
+    if let Some(ws) = workspace {
+        let path = ws.join(".skilllite").join("planning_rules.json");
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(rules) = serde_json::from_str::<Vec<PlanningRule>>(&content) {
+                    if !rules.is_empty() {
+                        tracing::debug!("Loaded {} planning rules from {}", rules.len(), path.display());
+                        return rules;
+                    }
+                }
+            }
+        }
+    }
     planning_rules::builtin_rules()
 }
 
@@ -86,11 +99,11 @@ pub struct TaskPlanner {
 }
 
 impl TaskPlanner {
-    /// Create a new TaskPlanner with built-in or external rules.
-    pub fn new() -> Self {
+    /// Create a new TaskPlanner. Loads from workspace/.skilllite/planning_rules.json if present.
+    pub fn new(workspace: Option<&std::path::Path>) -> Self {
         Self {
             task_list: Vec::new(),
-            rules: load_planning_rules(),
+            rules: load_planning_rules(workspace),
         }
     }
 
