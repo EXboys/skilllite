@@ -68,28 +68,9 @@ impl ChatSession {
 
         let sessions_path = self.data_root.join("sessions.json");
         let mut store = session::SessionStore::load(&sessions_path)?;
-
-        let session_id = if let Some(entry) = store.sessions.get(&self.session_key) {
-            entry.session_id.clone()
-        } else {
-            let id = uuid::Uuid::new_v4().to_string();
-            let entry = session::SessionEntry {
-                session_id: id.clone(),
-                session_key: self.session_key.clone(),
-                updated_at: chrono::Utc::now().to_rfc3339(),
-                input_tokens: 0,
-                output_tokens: 0,
-                total_tokens: 0,
-                context_tokens: 0,
-                compaction_count: 0,
-                memory_flush_at: None,
-                memory_flush_compaction_count: None,
-                extra: Default::default(),
-            };
-            store.sessions.insert(self.session_key.clone(), entry);
-            store.save(&sessions_path)?;
-            id
-        };
+        let entry = store.create_or_get(&self.session_key);
+        let session_id = entry.session_id.clone();
+        store.save(&sessions_path)?;
 
         // Ensure transcript
         let transcripts_dir = self.data_root.join("transcripts");
