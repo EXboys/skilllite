@@ -16,12 +16,11 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use super::llm::{self, LlmClient};
+use super::extensions;
 use super::long_text;
-use super::memory;
 use super::prompt;
 use super::skills::{self, LoadedSkill};
 use super::task_planner::TaskPlanner;
-use super::tools;
 use super::types::*;
 
 /// Maximum number of context overflow recovery retries before giving up.
@@ -67,9 +66,9 @@ async fn run_simple_loop(
     let workspace = Path::new(&config.workspace);
 
     // Collect all tool definitions: built-in + memory (if enabled) + skills
-    let mut all_tools = tools::get_builtin_tool_definitions();
+    let mut all_tools = extensions::get_builtin_tool_definitions();
     if config.enable_memory {
-        all_tools.extend(memory::get_memory_tool_definitions());
+        all_tools.extend(extensions::get_memory_tool_definitions());
     }
     for skill in skills {
         all_tools.extend(skill.tool_definitions.clone());
@@ -276,9 +275,9 @@ async fn run_with_task_planning(
     let workspace = Path::new(&config.workspace);
 
     // Collect all tool definitions: built-in + memory (if enabled) + skills
-    let mut all_tools = tools::get_builtin_tool_definitions();
+    let mut all_tools = extensions::get_builtin_tool_definitions();
     if config.enable_memory {
-        all_tools.extend(memory::get_memory_tool_definitions());
+        all_tools.extend(extensions::get_memory_tool_definitions());
     }
     for skill in skills {
         all_tools.extend(skill.tool_definitions.clone());
@@ -859,17 +858,17 @@ async fn execute_tool_call(
     event_sink: &mut dyn EventSink,
     enable_memory: bool,
 ) -> ToolResult {
-    if tools::is_builtin_tool(tool_name) {
-        if tools::is_async_builtin_tool(tool_name) {
+    if extensions::is_builtin_tool(tool_name) {
+        if extensions::is_async_builtin_tool(tool_name) {
             // Async built-in (run_command, preview_server)
-            tools::execute_async_builtin_tool(tool_name, arguments, workspace, event_sink).await
+            extensions::execute_async_builtin_tool(tool_name, arguments, workspace, event_sink).await
         } else {
             // Sync built-in (read_file, write_file, etc.)
-            tools::execute_builtin_tool(tool_name, arguments, workspace)
+            extensions::execute_builtin_tool(tool_name, arguments, workspace)
         }
-    } else if enable_memory && memory::is_memory_tool(tool_name) {
+    } else if enable_memory && extensions::is_memory_tool(tool_name) {
         // Memory tool (memory_search, memory_write, memory_list)
-        memory::execute_memory_tool(tool_name, arguments, workspace, "default")
+        extensions::execute_memory_tool(tool_name, arguments, workspace, "default")
     } else if let Some(skill) = skills::find_skill_by_tool_name(skills, tool_name) {
         // Skill tool
         skills::execute_skill(skill, tool_name, arguments, workspace, event_sink)
@@ -919,7 +918,7 @@ async fn process_result_content(
     content: &str,
 ) -> String {
     // Try sync fast path first
-    match tools::process_tool_result_content(content) {
+    match extensions::process_tool_result_content(content) {
         Some(processed) => processed,
         None => {
             // Content exceeds summarize threshold.
@@ -930,7 +929,7 @@ async fn process_result_content(
                     "Tool '{}' result {} chars exceeds threshold, using head+tail truncation (no LLM summarization)",
                     tool_name, content.len()
                 );
-                tools::process_tool_result_content_fallback(content)
+                extensions::process_tool_result_content_fallback(content)
             } else {
                 tracing::info!(
                     "Tool '{}' result {} chars exceeds summarize threshold, using LLM summarization",
@@ -939,7 +938,7 @@ async fn process_result_content(
                 let summary = long_text::summarize_long_content(client, model, content).await;
                 if summary.is_empty() {
                     // Fallback to sync head+tail truncation
-                    tools::process_tool_result_content_fallback(content)
+                    extensions::process_tool_result_content_fallback(content)
                 } else {
                     summary
                 }
@@ -970,7 +969,7 @@ fn inject_progressive_disclosure(
         let tool_name = &tc.function.name;
         // Normalize tool name for dedup (frontend-design == frontend_design)
         let normalized = tool_name.replace('-', "_").to_lowercase();
-        if !tools::is_builtin_tool(tool_name) && !documented_skills.contains(&normalized) {
+        if !extensions::is_builtin_tool(tool_name) && !documented_skills.contains(&normalized) {
             // Try by tool definition first, then by skill name (for reference-only skills)
             let skill = skills::find_skill_by_tool_name(skills, tool_name)
                 .or_else(|| skills::find_skill_by_name(skills, tool_name));

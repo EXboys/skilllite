@@ -1,8 +1,8 @@
-//! Built-in tools for the agent.
+//! Built-in tools for the agent (file ops, run_command, output, preview, chat).
 //!
 //! Phase 1: read_file, write_file, list_directory, file_exists
-//! Phase 2: run_command, write_output, preview_server (stub)
-//! Phase 3: chat_history, chat_plan (dedicated read tools for chat data)
+//! Phase 2: run_command, write_output, preview_server
+//! Phase 3: chat_history, chat_plan, list_output, update_task_plan
 //!
 //! Ported from Python `builtin_tools.py`. Enforces workspace confinement
 //! and sensitive path blocking.
@@ -11,7 +11,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-use super::types::{self, EventSink, ToolDefinition, FunctionDef, ToolResult, safe_truncate, safe_slice_from};
+use crate::agent::types::{self, EventSink, ToolDefinition, FunctionDef, ToolResult, safe_truncate, safe_slice_from};
 
 // ─── Security helpers (ported from Python) ──────────────────────────────────
 

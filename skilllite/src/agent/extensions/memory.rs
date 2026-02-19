@@ -9,7 +9,7 @@ use rusqlite::Connection;
 use serde_json::json;
 use std::path::Path;
 
-use super::types::{FunctionDef, ToolDefinition, ToolResult};
+use crate::agent::types::{FunctionDef, ToolDefinition, ToolResult};
 
 // ─── Tool definitions ───────────────────────────────────────────────────────
 

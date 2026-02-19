@@ -8,7 +8,7 @@
 //! for Python/TypeScript SDKs.
 
 pub mod llm;
-pub mod tools;
+pub mod extensions;
 pub mod skills;
 pub mod prompt;
 pub mod agent_loop;
@@ -17,5 +17,4 @@ pub mod types;
 pub mod planning_rules;
 pub mod task_planner;
 pub mod long_text;
-pub mod memory;
 pub mod rpc;

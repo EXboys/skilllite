@@ -10,8 +10,8 @@ use std::path::PathBuf;
 use crate::executor::{self, session, transcript};
 
 use super::agent_loop;
+use super::extensions;
 use super::llm::LlmClient;
-use super::memory;
 use super::skills::LoadedSkill;
 use super::types::*;
 
@@ -162,7 +162,7 @@ impl ChatSession {
         // Build memory context (if enabled) — inject relevant memories as system context
         if self.config.enable_memory {
             let workspace = std::path::Path::new(&self.config.workspace);
-            if let Some(mem_ctx) = memory::build_memory_context(workspace, "default", user_message) {
+            if let Some(mem_ctx) = extensions::build_memory_context(workspace, "default", user_message) {
                 history.push(ChatMessage::system(&mem_ctx));
             }
         }
