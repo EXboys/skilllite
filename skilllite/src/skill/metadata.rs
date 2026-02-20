@@ -303,6 +303,44 @@ pub fn parse_skill_metadata(skill_dir: &Path) -> Result<SkillMetadata> {
     extract_yaml_front_matter_with_detection(&content, skill_dir)
 }
 
+/// Merge OpenClaw metadata.openclaw.requires into compatibility string.
+/// Enables format compatibility with OpenClaw/ClawHub skills.
+fn merge_openclaw_requires(
+    compat: Option<&str>,
+    metadata: Option<&serde_json::Value>,
+) -> Option<String> {
+    let openclaw = metadata
+        .and_then(|m| m.get("openclaw"))
+        .and_then(|o| o.get("requires"));
+    let Some(openclaw) = openclaw else {
+        return compat.map(String::from);
+    };
+
+    let mut adds = Vec::new();
+    if let Some(bins) = openclaw.get("bins").and_then(|v| v.as_array()) {
+        let s: Vec<_> = bins.iter().filter_map(|b| b.as_str()).collect();
+        if !s.is_empty() {
+            adds.push(format!("Requires bins: {}", s.join(", ")));
+        }
+    }
+    if let Some(env) = openclaw.get("env").and_then(|v| v.as_array()) {
+        let s: Vec<_> = env.iter().filter_map(|e| e.as_str()).collect();
+        if !s.is_empty() {
+            adds.push(format!("Requires env: {}", s.join(", ")));
+        }
+    }
+    if adds.is_empty() {
+        return compat.map(String::from);
+    }
+    let base = compat.unwrap_or("");
+    let merged = if base.is_empty() {
+        adds.join(". ")
+    } else {
+        format!("{}. {}", base, adds.join(". "))
+    };
+    Some(merged)
+}
+
 /// Extract YAML front matter from markdown content (for tests without skill_dir)
 #[cfg(test)]
 fn extract_yaml_front_matter(content: &str) -> Result<SkillMetadata> {
@@ -340,16 +378,22 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         }
     }
 
+    // Merge OpenClaw metadata.openclaw.requires into compatibility (format compatibility)
+    let compatibility = merge_openclaw_requires(
+        front_matter.compatibility.as_deref(),
+        front_matter.metadata.as_ref(),
+    );
+
     // Detect language: first from compatibility, then from entry_point
-    let language = parse_compatibility_for_language(front_matter.compatibility.as_deref())
+    let language = parse_compatibility_for_language(compatibility.as_deref())
         .or_else(|| detect_language_from_entry_point(&entry_point));
 
     // Parse network policy from compatibility field
-    let network = parse_compatibility_for_network(front_matter.compatibility.as_deref());
+    let network = parse_compatibility_for_network(compatibility.as_deref());
 
     // Read resolved_packages from .skilllite.lock (written by `skilllite init`)
     let resolved_packages = skill_dir.and_then(|dir| {
-        read_lock_file_packages(dir, front_matter.compatibility.as_deref())
+        read_lock_file_packages(dir, compatibility.as_deref())
     });
 
     let requires_elevated = front_matter
@@ -361,7 +405,7 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         entry_point,
         language,
         description: front_matter.description.clone(),
-        compatibility: front_matter.compatibility.clone(),
+        compatibility,
         network,
         resolved_packages,
         allowed_tools: front_matter.allowed_tools.clone(),
@@ -600,5 +644,50 @@ compatibility: Requires Python 3.x
         let metadata = extract_yaml_front_matter(content)
             .expect("regular skill YAML should parse");
         assert!(!metadata.is_bash_tool_skill());
+    }
+
+    #[test]
+    fn test_openclaw_metadata_merge() {
+        let content = r#"---
+name: nano-banana-pro
+description: Generate or edit images via Gemini 3 Pro Image
+metadata:
+  openclaw:
+    requires:
+      bins: [uv]
+      env: [GEMINI_API_KEY]
+      config: [browser.enabled]
+    primaryEnv: GEMINI_API_KEY
+---
+"#;
+        let metadata = extract_yaml_front_matter(content)
+            .expect("OpenClaw format YAML should parse");
+        assert_eq!(metadata.name, "nano-banana-pro");
+        assert_eq!(
+            metadata.compatibility.as_deref(),
+            Some("Requires bins: uv. Requires env: GEMINI_API_KEY")
+        );
+    }
+
+    #[test]
+    fn test_openclaw_metadata_merge_with_base_compatibility() {
+        let content = r#"---
+name: test-skill
+description: Test
+compatibility: Requires Python 3.x
+metadata:
+  openclaw:
+    requires:
+      bins: [uv]
+      env: [API_KEY]
+---
+"#;
+        let metadata = extract_yaml_front_matter(content)
+            .expect("OpenClaw format with base compat should parse");
+        assert_eq!(
+            metadata.compatibility.as_deref(),
+            Some("Requires Python 3.x. Requires bins: uv. Requires env: API_KEY")
+        );
+        assert_eq!(metadata.language, Some("python".to_string()));
     }
 }

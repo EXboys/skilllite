@@ -38,6 +38,20 @@ fn is_local_path(source: &str) -> bool {
 }
 
 fn parse_source(source: &str) -> ParsedSource {
+    // ClawHub: clawhub:<skill-name>
+    if let Some(slug) = source.strip_prefix("clawhub:") {
+        let slug = slug.trim().to_lowercase();
+        if !slug.is_empty() {
+            return ParsedSource {
+                source_type: "clawhub".into(),
+                url: slug,
+                git_ref: None,
+                subpath: None,
+                skill_filter: None,
+            };
+        }
+    }
+
     // Local path
     if is_local_path(source) {
         let abs = std::env::current_dir()
@@ -143,6 +157,74 @@ fn parse_source(source: &str) -> ParsedSource {
     }
 }
 
+// ─── ClawHub Download ──────────────────────────────────────────────────────
+
+const CLAWHUB_DOWNLOAD_URL: &str = "https://clawhub.ai/api/v1/download";
+
+#[cfg(feature = "audit")]
+fn fetch_from_clawhub(slug: &str) -> Result<PathBuf> {
+    use std::io::Read;
+
+    let url = format!("{}?slug={}", CLAWHUB_DOWNLOAD_URL, slug);
+    let agent = ureq::AgentBuilder::new().build();
+    let resp = agent
+        .get(&url)
+        .call()
+        .context("Failed to fetch from ClawHub. Check network.")?;
+
+    let status = resp.status();
+    if status != 200 {
+        let body = resp.into_string().unwrap_or_default();
+        anyhow::bail!(
+            "ClawHub returned {} for slug '{}'. {}",
+            status,
+            slug,
+            if body.len() > 200 { "" } else { &body }
+        );
+    }
+
+    let mut reader = resp.into_reader();
+    let mut bytes = Vec::new();
+    reader
+        .read_to_end(&mut bytes)
+        .context("Failed to read zip from ClawHub")?;
+
+    let temp_dir = tempfile::tempdir().context("Failed to create temp directory")?;
+    #[allow(deprecated)]
+    let extract_path = temp_dir.into_path();
+
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .context("Invalid zip from ClawHub")?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).context("Failed to read zip entry")?;
+        let name = file.name().to_string();
+        // Skip _meta.json and path traversal
+        if name.contains("..") || name.starts_with('/') {
+            continue;
+        }
+        let out_path = extract_path.join(&name);
+        if file.is_dir() {
+            let _ = fs::create_dir_all(&out_path);
+        } else {
+            if let Some(parent) = out_path.parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let mut out_file = fs::File::create(&out_path)
+                .with_context(|| format!("Failed to create {}", out_path.display()))?;
+            std::io::copy(&mut file, &mut out_file)
+                .with_context(|| format!("Failed to extract {}", name))?;
+        }
+    }
+
+    Ok(extract_path)
+}
+
+#[cfg(not(feature = "audit"))]
+fn fetch_from_clawhub(_slug: &str) -> Result<PathBuf> {
+    anyhow::bail!("ClawHub download requires the 'audit' feature (ureq).")
+}
+
 // ─── Git Clone ──────────────────────────────────────────────────────────────
 
 fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<PathBuf> {
@@ -187,6 +269,11 @@ fn discover_skills(
     skill_filter: Option<&str>,
 ) -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
+
+    // repo_dir itself is a skill (e.g. ClawHub zip with SKILL.md at root)
+    if repo_dir.join("SKILL.md").exists() {
+        return vec![repo_dir.to_path_buf()];
+    }
 
     if let Some(sp) = subpath {
         let target = repo_dir.join(sp);
@@ -660,6 +747,12 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
             }
             eprintln!("📁 Using local path: {}", parsed.url);
             p
+        } else if parsed.source_type == "clawhub" {
+            eprintln!("⬇ Downloading from ClawHub ({}) ...", parsed.url);
+            let td = fetch_from_clawhub(&parsed.url)?;
+            eprintln!("✓ Download complete");
+            temp_dir = Some(td.clone());
+            td
         } else {
             eprintln!("⬇ Cloning {} ...", parsed.url);
             let td = clone_repo(&parsed.url, parsed.git_ref.as_deref())?;

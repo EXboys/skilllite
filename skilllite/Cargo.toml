@@ -48,6 +48,9 @@ uuid = { version = "1", features = ["v4"] }
 # Audit feature: lightweight sync HTTP client for OSV API queries
 ureq = { version = "2", optional = true, features = ["json"] }
 
+# ClawHub registry: zip extraction for skill bundles
+zip = "0.6"
+
 # IPC daemon: thread pool for concurrent request handling
 rayon = "1.10"
 

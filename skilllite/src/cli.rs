@@ -223,9 +223,10 @@ pub enum Commands {
 
     // ─── Phase 3: CLI Migration Commands (flat, no nesting) ────────────
 
-    /// Add skills from a remote repository or local path
+    /// Add skills from a remote repository, ClawHub, or local path
     ///
     /// Examples:
+    ///   skilllite add clawhub:<skill-name>
     ///   skilllite add owner/repo
     ///   skilllite add https://github.com/owner/repo
     ///   skilllite add ./local/path
