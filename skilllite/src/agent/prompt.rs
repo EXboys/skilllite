@@ -63,11 +63,24 @@ pub fn build_system_prompt(
     skills: &[LoadedSkill],
     workspace: &str,
     session_key: Option<&str>,
+    enable_memory: bool,
 ) -> String {
     let mut parts = Vec::new();
 
     // Base system prompt
     parts.push(custom_prompt.unwrap_or(DEFAULT_SYSTEM_PROMPT).to_string());
+
+    // Memory tools (built-in, NOT skills) — only when enable_memory
+    if enable_memory {
+        parts.push(
+            "\n\nMemory tools (built-in, NOT skills — use when user asks to store/retrieve persistent memory):\n\
+             - Use memory_write to store information for future retrieval (rel_path, content). Stores to ~/.skilllite/chat/memory/. Use for: user preferences, conversation summaries, facts to remember across sessions.\n\
+             - Use memory_search to find relevant memory by keywords or natural language.\n\
+             - Use memory_list to list all stored memory files.\n\
+             - When user asks for 生成向量记忆/写入记忆/保存到记忆, you MUST use memory_write (NOT write_file or write_output)."
+                .to_string(),
+        );
+    }
 
     // Current date (for chat_history "昨天"/yesterday interpretation)
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
@@ -333,18 +346,27 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_contains_workspace() {
-        let prompt = build_system_prompt(None, &[], "/home/user/project", None);
+        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false);
         assert!(prompt.contains("Workspace: /home/user/project"));
     }
 
     #[test]
     fn test_build_system_prompt_uses_progressive_mode() {
         let skills = vec![make_test_skill("test-skill", "Test description")];
-        let prompt = build_system_prompt(None, &skills, "/tmp", None);
+        let prompt = build_system_prompt(None, &skills, "/tmp", None, false);
 
         assert!(prompt.contains("test-skill"));
         assert!(prompt.contains("Test description"));
         assert!(prompt.contains("Tip:")); // Progressive mode hint
+    }
+
+    #[test]
+    fn test_build_system_prompt_includes_memory_tools_when_enabled() {
+        let prompt = build_system_prompt(None, &[], "/tmp", None, true);
+        assert!(prompt.contains("memory_write"));
+        assert!(prompt.contains("memory_search"));
+        assert!(prompt.contains("memory_list"));
+        assert!(prompt.contains("生成向量记忆"));
     }
 
     #[test]

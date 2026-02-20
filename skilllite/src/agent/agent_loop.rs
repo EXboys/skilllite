@@ -85,6 +85,7 @@ async fn run_simple_loop(
         skills,
         &config.workspace,
         session_key,
+        config.enable_memory,
     );
 
     // Build message list
@@ -335,64 +336,31 @@ async fn run_with_task_planning(
     // Notify event sink of the plan
     event_sink.on_task_plan(&planner.task_list);
 
-    // ── Empty plan: LLM answers directly, NO tools ──────────────────────
-    // Matches Python SDK: `_no_tools_needed = True` + `enable_task_planning = False`.
-    // When the planner says no tools are needed, we don't even pass tools
-    // to the LLM — it can only generate text. This structurally prevents
-    // hallucinated tool calls.
-    if planner.is_empty() {
-        tracing::info!(
-            "TaskPlanner returned empty list — LLM will answer directly without tools"
-        );
-        let system_prompt = prompt::build_system_prompt(
+    // ── Unified path: ALWAYS run with tools ─────────────────────────────
+    // No "empty plan = no tools" branch. Planner may return [] for simple
+    // queries; we still pass tools so LLM can use them if needed.
+    // When planner is empty: use standard prompt (no task list). When non-empty: use task-aware prompt.
+
+    let system_prompt = if planner.is_empty() {
+        prompt::build_system_prompt(
             config.system_prompt.as_deref(),
             skills,
             &config.workspace,
             session_key,
-        );
-        let mut messages = Vec::new();
-        messages.push(ChatMessage::system(&system_prompt));
-        messages.extend(initial_messages);
-        messages.push(ChatMessage::user(user_message));
-
-        let response = client
-            .chat_completion_stream(
-                &config.model,
-                &messages,
-                None, // no tools
-                config.temperature,
-                event_sink,
-            )
-            .await?;
-
-        let choice = response
-            .choices
-            .into_iter()
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("No choices in LLM response"))?;
-        if let Some(ref content) = choice.message.content {
-            event_sink.on_text(content);
+            config.enable_memory,
+        )
+    } else {
+        let mut prompt = planner.build_task_system_prompt(skills);
+        if let Some(sk) = session_key {
+            prompt.push_str(&format!(
+                "\n\nCurrent session: {} — use session_key '{}' for chat_history and chat_plan.\n\
+                 /compact compresses conversation; result appears as [compaction] in chat_history. \
+                 When user asks about 最新的/compact or /compact效果, read chat_history with session_key '{}'.",
+                sk, sk, sk
+            ));
         }
-        messages.push(ChatMessage::assistant(
-            choice.message.content.as_deref().unwrap_or(""),
-        ));
-
-        return Ok(build_agent_result(messages, 0, 1, Vec::new()));
-    }
-
-    // ── Non-empty plan: plan-driven execution ───────────────────────────
-    // Build task-aware system prompt and run with tools + nudge mechanism.
-    // Matches Python SDK `_run_openai` when `enable_task_planning = True`.
-
-    let mut system_prompt = planner.build_task_system_prompt(skills);
-    if let Some(sk) = session_key {
-        system_prompt.push_str(&format!(
-            "\n\nCurrent session: {} — use session_key '{}' for chat_history and chat_plan.\n\
-             /compact compresses conversation; result appears as [compaction] in chat_history. \
-             When user asks about 最新的/compact or /compact效果, read chat_history with session_key '{}'.",
-            sk, sk, sk
-        ));
-    }
+        prompt
+    };
 
     let mut messages = Vec::new();
     messages.push(ChatMessage::system(&system_prompt));
@@ -408,10 +376,15 @@ async fn run_with_task_planning(
     let mut context_overflow_retries = 0usize;
 
     // Plan-based budget: effective_max = min(global, num_tasks * per_task)
+    // When num_tasks=0 (planner returned empty), use max_iterations so we still run the loop
     let num_tasks = planner.task_list.len();
-    let effective_max = config
-        .max_iterations
-        .min(num_tasks * config.max_tool_calls_per_task);
+    let effective_max = if num_tasks == 0 {
+        config.max_iterations
+    } else {
+        config
+            .max_iterations
+            .min(num_tasks * config.max_tool_calls_per_task)
+    };
 
     let tools_ref = if all_tools.is_empty() {
         None

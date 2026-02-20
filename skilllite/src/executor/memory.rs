@@ -15,8 +15,9 @@ use std::sync::Once;
 static VEC_INIT: Once = Once::new();
 
 /// Load sqlite-vec extension. Must be called before opening any connection that uses vec0.
+/// Call this at process start or before the first Connection::open that may use vec0.
 #[cfg(feature = "memory_vector")]
-fn ensure_vec_extension_loaded() {
+pub fn ensure_vec_extension_loaded() {
     VEC_INIT.call_once(|| {
         unsafe {
             rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(

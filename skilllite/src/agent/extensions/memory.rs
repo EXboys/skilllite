@@ -103,6 +103,13 @@ pub async fn execute_memory_tool(
     enable_vector: bool,
     embed_ctx: Option<&MemoryVectorContext<'_>>,
 ) -> ToolResult {
+    // Load sqlite-vec extension BEFORE opening any connection. sqlite3_auto_extension
+    // only affects new connections; connections opened before this call won't have vec0.
+    #[cfg(feature = "memory_vector")]
+    if enable_vector {
+        crate::executor::memory::ensure_vec_extension_loaded();
+    }
+
     let args: serde_json::Value = match serde_json::from_str(arguments) {
         Ok(v) => v,
         Err(e) => {

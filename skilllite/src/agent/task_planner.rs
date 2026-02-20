@@ -333,7 +333,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 **Available Skills**:
 {skills_info}
 
-**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, list_output (list output directory files), file_exists, chat_history (read past conversation by date), chat_plan (read task plan), **update_task_plan** (revise task list when current plan is wrong/unusable), run_command (execute shell command, requires user confirmation), preview_server (start HTTP server to preview HTML in browser)
+**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, list_output (list output directory files), file_exists, chat_history (read past conversation by date), chat_plan (read task plan), **memory_write** (store persistent memory for future retrieval — use for 生成向量记忆/写入记忆/保存到记忆), **memory_search** (search memory by keywords), **memory_list** (list stored memory files), **update_task_plan** (revise task list when current plan is wrong/unusable), run_command (execute shell command, requires user confirmation), preview_server (start HTTP server to preview HTML in browser)
 
 **Output directory**: {output_dir}
 (When skills produce file outputs like screenshots or PDFs, instruct them to save directly to the output directory)

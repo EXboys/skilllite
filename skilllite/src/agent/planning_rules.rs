@@ -16,6 +16,21 @@ pub fn builtin_rules() -> Vec<PlanningRule> {
             instruction: "**If user says \"使用 XX skill\" / \"用 XX 技能\" / \"use XX skills\"**, you MUST add that skill to the task list. Do NOT return empty list.".into(),
         },
         PlanningRule {
+            id: "memory_write".into(),
+            priority: 95,
+            keywords: vec![
+                "memory_write".into(),
+                "生成向量记忆".into(),
+                "写入记忆".into(),
+                "保存到记忆".into(),
+                "向量记忆".into(),
+                "记忆存储".into(),
+            ],
+            context_keywords: vec![],
+            tool_hint: Some("memory_write".into()),
+            instruction: "**生成向量记忆/写入记忆/memory_write**: When the user asks to generate vector memory, store memory, save to memory, or explicitly says \"使用 memory_write\", you MUST add a task with tool_hint: \"memory_write\". Use memory_write to store conversation summaries, user preferences, or facts. Do NOT return empty list.".into(),
+        },
+        PlanningRule {
             id: "weather".into(),
             priority: 90,
             keywords: vec![
