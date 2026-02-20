@@ -6,6 +6,7 @@
 2. sojson天气 - 含空气质量
 3. wttr.in - 国外服务，可能超时
 """
+import argparse
 import json
 import sys
 import ssl
@@ -176,8 +177,13 @@ def get_weather(city: str) -> dict:
 
 
 def main():
+    # argparse 用于 skilllite schema 推断，使 LLM 知道需传入 city 参数
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--city", default=None, help="城市名称，如 '北京'、'深圳'、'清迈'")
+    args, _ = parser.parse_known_args()
+
     input_data = json.loads(sys.stdin.read())
-    city = input_data.get("city", "北京")
+    city = args.city or input_data.get("city", "北京")
     
     result = get_weather(city)
     
