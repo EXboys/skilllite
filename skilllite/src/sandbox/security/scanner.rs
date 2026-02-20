@@ -205,13 +205,66 @@ fn detect_language(script_path: &Path) -> String {
         .to_string()
 }
 
-/// Format scan result for display
+/// Format scan result for display.
+/// When `compact` is true and issues > 5, groups by rule and shows summary.
 pub fn format_scan_result(result: &ScanResult) -> String {
+    format_scan_result_impl(result, false)
+}
+
+/// Compact format for chat/CLI when there are many issues.
+pub fn format_scan_result_compact(result: &ScanResult) -> String {
+    format_scan_result_impl(result, true)
+}
+
+fn format_scan_result_impl(result: &ScanResult, compact: bool) -> String {
     if result.issues.is_empty() {
         return "✅ No security issues found. Script is safe to execute.".to_string();
     }
 
-    let mut output = format!("📋 Security Scan: {} item(s) flagged for review\n\n", result.issues.len());
+    let use_compact = compact && result.issues.len() > 5;
+
+    if use_compact {
+        // Group by (rule_id, severity) and count
+        use std::collections::HashMap;
+        let mut groups: HashMap<(String, String), usize> = HashMap::new();
+        for issue in &result.issues {
+            let severity_str = match issue.severity {
+                SecuritySeverity::Low => "Low",
+                SecuritySeverity::Medium => "Medium",
+                SecuritySeverity::High => "High",
+                SecuritySeverity::Critical => "Critical",
+            };
+            *groups
+                .entry((issue.rule_id.clone(), severity_str.to_string()))
+                .or_insert(0) += 1;
+        }
+
+        let mut output = format!(
+            "📋 Security Scan: {} item(s) flagged for review\n\n",
+            result.issues.len()
+        );
+        for ((rule_id, severity_str), count) in groups {
+            let icon = match severity_str.as_str() {
+                "Low" => "🟢",
+                "Medium" => "🟡",
+                "High" => "🟠",
+                "Critical" => "🔴",
+                _ => "⚪",
+            };
+            output.push_str(&format!("  {} {}× {} [{}]\n", icon, count, rule_id, severity_str));
+        }
+        if result.is_safe {
+            output.push_str("\n✅ All clear - only informational items found.");
+        } else {
+            output.push_str("\n📝 Review complete. Awaiting your approval to proceed.");
+        }
+        return output;
+    }
+
+    let mut output = format!(
+        "📋 Security Scan: {} item(s) flagged for review\n\n",
+        result.issues.len()
+    );
 
     for (idx, issue) in result.issues.iter().enumerate() {
         let severity_icon = match issue.severity {
@@ -220,7 +273,6 @@ pub fn format_scan_result(result: &ScanResult) -> String {
             SecuritySeverity::High => "🟠",
             SecuritySeverity::Critical => "🔴",
         };
-
         let severity_label = match issue.severity {
             SecuritySeverity::Low => "Low",
             SecuritySeverity::Medium => "Medium",
@@ -230,19 +282,10 @@ pub fn format_scan_result(result: &ScanResult) -> String {
 
         output.push_str(&format!(
             "  {} #{} [{}] {}\n",
-            severity_icon,
-            idx + 1,
-            severity_label,
-            issue.issue_type
+            severity_icon, idx + 1, severity_label, issue.issue_type
         ));
-        output.push_str(&format!(
-            "     ├─ Rule: {}\n",
-            issue.rule_id
-        ));
-        output.push_str(&format!(
-            "     ├─ Line {}: {}\n",
-            issue.line_number, issue.description
-        ));
+        output.push_str(&format!("     ├─ Rule: {}\n", issue.rule_id));
+        output.push_str(&format!("     ├─ Line {}: {}\n", issue.line_number, issue.description));
         output.push_str(&format!("     └─ Code: {}\n\n", issue.code_snippet));
     }
 

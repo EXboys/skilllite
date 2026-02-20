@@ -826,7 +826,7 @@ fn run_security_scan(skill_dir: &Path, metadata: &SkillMetadata) -> Option<Strin
             if result.is_safe {
                 None
             } else {
-                Some(crate::sandbox::security::scanner::format_scan_result(&result))
+                Some(crate::sandbox::security::scanner::format_scan_result_compact(&result))
             }
         }
         Err(e) => {

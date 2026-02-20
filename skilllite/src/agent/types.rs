@@ -369,12 +369,12 @@ pub trait EventSink: Send {
     fn on_task_progress(&mut self, _task_id: u32, _completed: bool) {}
 }
 
+/// Prefix for stderr lines to align within Assistant box (when used).
+const SINK_PREFIX: &str = "│ ";
+
 /// Simple terminal event sink for CLI chat.
 pub struct TerminalEventSink {
     pub verbose: bool,
-    /// Tracks whether text was streamed via `on_text_chunk` during the current
-    /// LLM response. When true, `on_text` becomes a no-op to avoid duplicating
-    /// already-displayed content. Reset when `on_text` is called.
     streamed_text: bool,
 }
 
@@ -383,6 +383,20 @@ impl TerminalEventSink {
         Self {
             verbose,
             streamed_text: false,
+        }
+    }
+
+    #[inline]
+    fn msg(&self, s: &str) {
+        eprintln!("{}{}", SINK_PREFIX, s);
+    }
+
+    #[inline]
+    fn msg_opt(&self, s: &str) {
+        if !s.is_empty() {
+            for line in s.lines() {
+                eprintln!("{}{}", SINK_PREFIX, line);
+            }
         }
     }
 }
@@ -412,35 +426,42 @@ impl EventSink for TerminalEventSink {
 
     fn on_tool_call(&mut self, name: &str, arguments: &str) {
         if self.verbose {
-            eprintln!("\n🔧 Tool: {} args={}", name, arguments);
+            // Truncate long JSON args for display
+            let args_display = if arguments.len() > 200 {
+                format!("{}…", safe_truncate(arguments, 200))
+            } else {
+                arguments.to_string()
+            };
+            self.msg(&format!("🔧 Tool: {}  args={}", name, args_display));
         } else {
-            eprintln!("\n🔧 {}", name);
+            self.msg(&format!("🔧 {}", name));
         }
     }
 
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool) {
-        let prefix = if is_error { "❌" } else { "✅" };
+        let icon = if is_error { "❌" } else { "✅" };
         if self.verbose {
-            let truncated = if result.len() > 500 {
-                format!("{}...", safe_truncate(result, 500))
+            let brief = if result.len() > 400 {
+                format!("{}…", safe_truncate(result, 400))
             } else {
                 result.to_string()
             };
-            eprintln!("  {} {}: {}", prefix, name, truncated);
+            self.msg(&format!("  {} {}: {}", icon, name, brief));
         } else {
-            let first_line = result.lines().next().unwrap_or("(empty)");
-            let brief = if first_line.len() > 120 {
-                format!("{}...", safe_truncate(first_line, 120))
+            let first = result.lines().next().unwrap_or("(ok)");
+            let brief = if first.len() > 80 {
+                format!("{}…", safe_truncate(first, 80))
             } else {
-                first_line.to_string()
+                first.to_string()
             };
-            eprintln!("  {} {}", prefix, brief);
+            self.msg(&format!("  {} {} {}", icon, name, brief));
         }
     }
 
     fn on_confirmation_request(&mut self, prompt: &str) -> bool {
         use std::io::Write;
-        eprint!("\n⚠️  {}\n确认执行? [y/N] ", prompt);
+        self.msg_opt(prompt);
+        eprint!("{}确认执行? [y/N] ", SINK_PREFIX);
         let _ = std::io::stderr().flush();
         let mut input = String::new();
         if std::io::stdin().read_line(&mut input).is_ok() {
@@ -452,7 +473,7 @@ impl EventSink for TerminalEventSink {
     }
 
     fn on_task_plan(&mut self, tasks: &[Task]) {
-        eprintln!("\n📋 Task plan ({} tasks):", tasks.len());
+        self.msg(&format!("📋 Task plan ({} tasks):", tasks.len()));
         for task in tasks {
             let status = if task.completed { "✅" } else { "○" };
             let hint = task
@@ -460,13 +481,13 @@ impl EventSink for TerminalEventSink {
                 .as_deref()
                 .map(|h| format!(" [{}]", h))
                 .unwrap_or_default();
-            eprintln!("   {}. {} {}{}", task.id, status, task.description, hint);
+            self.msg(&format!("   {}. {} {}{}", task.id, status, task.description, hint));
         }
     }
 
     fn on_task_progress(&mut self, task_id: u32, completed: bool) {
         if completed {
-            eprintln!("  ✅ Task {} completed", task_id);
+            self.msg(&format!("  ✅ Task {} completed", task_id));
         }
     }
 }

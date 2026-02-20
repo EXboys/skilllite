@@ -23,8 +23,12 @@ use clap::Parser;
 use cli::{Cli, Commands};
 
 fn main() -> Result<()> {
-    observability::init_tracing();
     let cli = Cli::parse();
+    #[cfg(feature = "agent")]
+    let is_chat = matches!(cli.command, Commands::Chat { .. });
+    #[cfg(not(feature = "agent"))]
+    let is_chat = false;
+    observability::init_tracing(if is_chat { observability::TracingMode::Chat } else { observability::TracingMode::Default });
 
     match cli.command {
         Commands::Serve { stdio } => {
@@ -288,14 +292,12 @@ fn run_chat(
     }
 
     // Auto-discover skill directories if none specified
-    let effective_skill_dirs = if skill_dirs.is_empty() {
+    let (effective_skill_dirs, was_auto_discovered) = if skill_dirs.is_empty() {
         let ws = Path::new(&config.workspace);
         let mut auto_dirs = Vec::new();
-        // Check common skill directory names
         for name in &[".skills", "skills"] {
             let dir = ws.join(name);
             if dir.is_dir() {
-                // Each subdirectory is a skill
                 if let Ok(entries) = std::fs::read_dir(&dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
@@ -305,26 +307,31 @@ fn run_chat(
                     }
                 }
                 if auto_dirs.is_empty() {
-                    // Might be a flat structure — add the directory itself
                     auto_dirs.push(dir.to_string_lossy().to_string());
                 }
             }
         }
-        if !auto_dirs.is_empty() {
-            eprintln!("🔍 Auto-discovered {} skill(s) in workspace", auto_dirs.len());
-        }
-        auto_dirs
+        let has_skills = !auto_dirs.is_empty();
+        (auto_dirs, has_skills)
     } else {
-        skill_dirs
+        (skill_dirs, false)
     };
 
-    // Load skills
+    // Load skills & print banner
     let loaded_skills = skills::load_skills(&effective_skill_dirs);
     if !loaded_skills.is_empty() {
-        eprintln!("📦 Loaded {} skill(s):", loaded_skills.len());
-        for s in &loaded_skills {
-            eprintln!("   - {}", s.name);
+        eprintln!("┌─ Skills ─────────────────────────────────────────────────");
+        if was_auto_discovered {
+            eprintln!("│  🔍 Auto-discovered {} skill(s)", loaded_skills.len());
         }
+        let names: Vec<&str> = loaded_skills.iter().map(|s| s.name.as_str()).collect();
+        let list = if names.len() <= 6 {
+            names.join(", ")
+        } else {
+            format!("{} … +{} more", names[..5].join(", "), names.len() - 5)
+        };
+        eprintln!("│  📦 {}", list);
+        eprintln!("└───────────────────────────────────────────────────────────");
     }
 
     // Build tokio runtime
@@ -348,6 +355,35 @@ fn run_chat(
     }
 }
 
+/// Format agent/API errors for user-friendly display in chat UI.
+#[cfg(feature = "agent")]
+fn format_chat_error(e: &anyhow::Error) -> String {
+    let s = e.to_string();
+    // Try to extract error.message from LLM API JSON: "LLM API error (403): {...}"
+    if let Some(json_start) = s.find('{') {
+        let json_part = &s[json_start..];
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_part) {
+            if let Some(msg) = v
+                .get("error")
+                .and_then(|e| e.get("message"))
+                .and_then(|m| m.as_str())
+            {
+                let status = s
+                    .strip_prefix("LLM API error (")
+                    .and_then(|rest| rest.split(')').next())
+                    .unwrap_or("API");
+                return format!("{} 错误: {}", status, msg);
+            }
+        }
+    }
+    // Fallback: truncate long errors (e.g. full JSON dump)
+    if s.len() > 200 {
+        format!("{}…", &s[..200])
+    } else {
+        s
+    }
+}
+
 #[cfg(feature = "agent")]
 async fn run_interactive_chat(
     config: agent::types::AgentConfig,
@@ -358,8 +394,10 @@ async fn run_interactive_chat(
     use agent::types::*;
     use agent::chat_session::ChatSession;
 
-    eprintln!("🤖 SkillBox Chat (model: {})", config.model);
-    eprintln!("   Type /exit to quit, /clear to reset, /compact to compress history\n");
+    eprintln!("┌────────────────────────────────────────────────────────────");
+    eprintln!("│  🤖 SkillBox Chat  ·  model: {}", config.model);
+    eprintln!("│  /exit 退出  ·  /clear 清空  ·  /compact 压缩历史");
+    eprintln!("└────────────────────────────────────────────────────────────\n");
 
     let mut session = ChatSession::new(config, session_key, skills);
     let mut sink = TerminalEventSink::new(verbose);
@@ -396,7 +434,7 @@ async fn run_interactive_chat(
                         match session.force_compact().await {
                             Ok(true) => eprintln!("✅ History compacted."),
                             Ok(false) => eprintln!("ℹ️  Not enough messages to compact."),
-                            Err(e) => eprintln!("❌ Compaction failed: {}", e),
+                            Err(e) => eprintln!("❌ Compaction failed: {}", format_chat_error(&e)),
                         }
                         continue;
                     }
@@ -404,13 +442,15 @@ async fn run_interactive_chat(
                 }
 
                 // Run the turn
-                eprint!("\nAssistant> ");
+                eprintln!("\n┌─ Assistant ───────────────────────────────────────────────");
                 match session.run_turn(input, &mut sink).await {
-                    Ok(_response) => {
-                        eprintln!(); // newline after streaming
+                    Ok(_) => {
+                        eprintln!("└────────────────────────────────────────────────────────────\n");
                     }
                     Err(e) => {
-                        eprintln!("\n❌ Error: {}", e);
+                        let msg = format_chat_error(&e);
+                        eprintln!("│  ❌ {}", msg);
+                        eprintln!("└────────────────────────────────────────────────────────────\n");
                     }
                 }
             }

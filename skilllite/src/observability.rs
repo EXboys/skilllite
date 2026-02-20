@@ -14,17 +14,31 @@ use tracing_subscriber::{EnvFilter, prelude::*};
 static AUDIT_PATH: Mutex<Option<String>> = Mutex::new(None);
 static SECURITY_EVENTS_PATH: Mutex<Option<String>> = Mutex::new(None);
 
+/// Tracing initialization mode.
+#[derive(Clone, Copy)]
+pub enum TracingMode {
+    /// Default: use SKILLLITE_LOG_LEVEL / SKILLLITE_QUIET from env
+    Default,
+    /// Chat: suppress agent-internal WARN (compaction, task planning) to keep UI clean
+    Chat,
+}
+
 /// Initialize tracing. Call at process startup.
 /// When SKILLLITE_QUIET=1 (or SKILLBOX_QUIET for compat), only WARN and above are logged.
-pub fn init_tracing() {
+pub fn init_tracing(mode: TracingMode) {
     let cfg = crate::config::ObservabilityConfig::from_env();
-    let level: String = if cfg.quiet {
+    let mut level: String = if cfg.quiet {
         "skilllite=warn".to_string()
     } else {
         cfg.log_level.clone()
     };
 
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
+    // Chat mode: suppress agent-internal warnings (compaction, task planning) to avoid polluting the UI
+    if matches!(mode, TracingMode::Chat) {
+        level = format!("{},skilllite::agent=error", level);
+    }
+
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&level));
 
     let json = cfg.log_json;
 
