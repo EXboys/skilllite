@@ -65,14 +65,8 @@ async fn run_simple_loop(
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
 
-    // Collect all tool definitions: built-in + memory (if enabled) + skills
-    let mut all_tools = extensions::get_builtin_tool_definitions();
-    if config.enable_memory {
-        all_tools.extend(extensions::get_memory_tool_definitions());
-    }
-    for skill in skills {
-        all_tools.extend(skill.tool_definitions.clone());
-    }
+    let registry = extensions::ExtensionRegistry::new(config.enable_memory, skills);
+    let all_tools = registry.all_tool_definitions();
 
     // Build system prompt
     let system_prompt = prompt::build_system_prompt(
@@ -233,7 +227,7 @@ async fn run_simple_loop(
                 event_sink.on_tool_call(tool_name, arguments);
 
                 let mut result =
-                    execute_tool_call(tool_name, arguments, workspace, skills, event_sink, config.enable_memory).await;
+                    execute_tool_call(&registry, tool_name, arguments, workspace, event_sink).await;
                 result.tool_call_id = tc.id.clone();
 
                 // Process long content (sync fast path → async LLM summarization fallback)
@@ -274,14 +268,8 @@ async fn run_with_task_planning(
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
 
-    // Collect all tool definitions: built-in + memory (if enabled) + skills
-    let mut all_tools = extensions::get_builtin_tool_definitions();
-    if config.enable_memory {
-        all_tools.extend(extensions::get_memory_tool_definitions());
-    }
-    for skill in skills {
-        all_tools.extend(skill.tool_definitions.clone());
-    }
+    let registry = extensions::ExtensionRegistry::new(config.enable_memory, skills);
+    let all_tools = registry.all_tool_definitions();
 
     // ── Task planning ──────────────────────────────────────────────────────
     let mut planner = TaskPlanner::new(Some(workspace));
@@ -658,7 +646,7 @@ async fn run_with_task_planning(
             let mut result = if tool_name.as_str() == "update_task_plan" {
                 handle_update_task_plan(arguments, &mut planner, event_sink)
             } else {
-                execute_tool_call(tool_name, arguments, workspace, skills, event_sink, config.enable_memory).await
+                execute_tool_call(&registry, tool_name, arguments, workspace, event_sink).await
             };
             result.tool_call_id = tc.id.clone();
 
@@ -849,51 +837,17 @@ fn handle_update_task_plan(
     }
 }
 
-/// Execute a single tool call (built-in sync, built-in async, memory, or skill).
+/// Execute a single tool call via ExtensionRegistry.
 async fn execute_tool_call(
+    registry: &extensions::ExtensionRegistry<'_>,
     tool_name: &str,
     arguments: &str,
     workspace: &Path,
-    skills: &[LoadedSkill],
     event_sink: &mut dyn EventSink,
-    enable_memory: bool,
 ) -> ToolResult {
-    if extensions::is_builtin_tool(tool_name) {
-        if extensions::is_async_builtin_tool(tool_name) {
-            // Async built-in (run_command, preview_server)
-            extensions::execute_async_builtin_tool(tool_name, arguments, workspace, event_sink).await
-        } else {
-            // Sync built-in (read_file, write_file, etc.)
-            extensions::execute_builtin_tool(tool_name, arguments, workspace)
-        }
-    } else if enable_memory && extensions::is_memory_tool(tool_name) {
-        // Memory tool (memory_search, memory_write, memory_list)
-        extensions::execute_memory_tool(tool_name, arguments, workspace, "default")
-    } else if let Some(skill) = skills::find_skill_by_tool_name(skills, tool_name) {
-        // Skill tool
-        skills::execute_skill(skill, tool_name, arguments, workspace, event_sink)
-    } else if let Some(skill) = skills::find_skill_by_name(skills, tool_name) {
-        // Reference-only skill (no entry_point / no scripts, just SKILL.md guidance).
-        // Return the full documentation so the LLM can use it as instructions.
-        let docs = prompt::get_skill_full_docs(skill)
-            .unwrap_or_else(|| format!("Skill '{}' is reference-only (no executable entry point). Use its guidance to generate content yourself using write_output.", skill.name));
-        ToolResult {
-            tool_call_id: String::new(),
-            tool_name: tool_name.to_string(),
-            content: format!(
-                "Note: '{}' is a reference-only skill (no executable script). Its documentation is provided below — use these guidelines to generate the content yourself, then save with write_output and preview with preview_server.\n\n{}",
-                skill.name, docs
-            ),
-            is_error: false,
-        }
-    } else {
-        ToolResult {
-            tool_call_id: String::new(),
-            tool_name: tool_name.to_string(),
-            content: format!("Unknown tool: {}", tool_name),
-            is_error: true,
-        }
-    }
+    registry
+        .execute(tool_name, arguments, workspace, event_sink)
+        .await
 }
 
 /// Tools whose results must never be LLM-summarized because the LLM needs the
