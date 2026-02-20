@@ -112,6 +112,26 @@
     "instruction": "**实时/最新/实时信息**: When the user explicitly asks for real-time or latest data, you MUST use **http-request** skill. The LLM's knowledge has a cutoff; only HTTP requests can fetch current information. Return a task with tool_hint: \"http-request\"."
   },
   {
+    "id": "openclaw_web_tools",
+    "priority": 91,
+    "keywords": [
+      "web_search",
+      "web_fetch",
+      "网页搜索",
+      "搜索网页",
+      "使用 web_search",
+      "使用 web_fetch",
+      "use web_search",
+      "use web_fetch"
+    ],
+    "context_keywords": [
+      "OpenClaw",
+      "ClawHub"
+    ],
+    "tool_hint": "http-request",
+    "instruction": "**OpenClaw web_search/web_fetch 映射**: When the task requires web search or fetching URL content (OpenClaw: web_search, web_fetch), use **http-request** skill. For search: call Brave/Perplexity API. For fetch: GET url with extract_mode: markdown."
+  },
+  {
     "id": "html_preview",
     "priority": 90,
     "keywords": [
@@ -146,6 +166,9 @@
     "keywords": [
       "agent-browser",
       "browser",
+      "使用 browser",
+      "use browser",
+      "用 browser",
       "automate",
       "automation",
       "open a website",
