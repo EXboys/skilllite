@@ -52,6 +52,13 @@ pub fn load_dotenv() {
                 if let Some(eq_pos) = line.find('=') {
                     let key = line[..eq_pos].trim();
                     let mut value = line[eq_pos + 1..].trim();
+                    // Strip inline comment (# not inside quotes)
+                    if let Some(hash_pos) = value.find('#') {
+                        let before_hash = value[..hash_pos].trim_end();
+                        if !before_hash.contains('"') && !before_hash.contains('\'') {
+                            value = before_hash;
+                        }
+                    }
                     if (value.starts_with('"') && value.ends_with('"'))
                         || (value.starts_with('\'') && value.ends_with('\''))
                     {

@@ -66,6 +66,12 @@ pub mod observability {
     pub const SKILLLITE_SECURITY_EVENTS_LOG: &str = "SKILLLITE_SECURITY_EVENTS_LOG";
 }
 
+/// Memory 向量检索
+pub mod memory {
+    pub const SKILLLITE_EMBEDDING_MODEL: &str = "SKILLLITE_EMBEDDING_MODEL";
+    pub const SKILLLITE_EMBEDDING_DIMENSION: &str = "SKILLLITE_EMBEDDING_DIMENSION";
+}
+
 /// 规划与 dependency-audit
 pub mod misc {
     pub const SKILLLITE_COMPACT_PLANNING: &str = "SKILLLITE_COMPACT_PLANNING";

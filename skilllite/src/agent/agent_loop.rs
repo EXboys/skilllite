@@ -15,8 +15,9 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::path::Path;
 
+use super::extensions::{self, MemoryVectorContext};
 use super::llm::{self, LlmClient};
-use super::extensions;
+use crate::config::EmbeddingConfig;
 use super::long_text;
 use super::prompt;
 use super::skills::{self, LoadedSkill};
@@ -64,8 +65,18 @@ async fn run_simple_loop(
 ) -> Result<AgentResult> {
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
+    let embed_config = EmbeddingConfig::from_env();
+    let embed_ctx = (config.enable_memory_vector && !config.api_key.is_empty())
+        .then(|| MemoryVectorContext {
+            client: &client,
+            embed_config: &embed_config,
+        });
 
-    let registry = extensions::ExtensionRegistry::new(config.enable_memory, skills);
+    let registry = extensions::ExtensionRegistry::new(
+        config.enable_memory,
+        config.enable_memory_vector,
+        skills,
+    );
     let all_tools = registry.all_tool_definitions();
 
     // Build system prompt
@@ -226,8 +237,15 @@ async fn run_simple_loop(
 
                 event_sink.on_tool_call(tool_name, arguments);
 
-                let mut result =
-                    execute_tool_call(&registry, tool_name, arguments, workspace, event_sink).await;
+                let mut result = execute_tool_call(
+                    &registry,
+                    tool_name,
+                    arguments,
+                    workspace,
+                    event_sink,
+                    embed_ctx.as_ref(),
+                )
+                .await;
                 result.tool_call_id = tc.id.clone();
 
                 // Process long content (sync fast path → async LLM summarization fallback)
@@ -267,8 +285,18 @@ async fn run_with_task_planning(
 ) -> Result<AgentResult> {
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
+    let embed_config = EmbeddingConfig::from_env();
+    let embed_ctx = (config.enable_memory_vector && !config.api_key.is_empty())
+        .then(|| MemoryVectorContext {
+            client: &client,
+            embed_config: &embed_config,
+        });
 
-    let registry = extensions::ExtensionRegistry::new(config.enable_memory, skills);
+    let registry = extensions::ExtensionRegistry::new(
+        config.enable_memory,
+        config.enable_memory_vector,
+        skills,
+    );
     let all_tools = registry.all_tool_definitions();
 
     // ── Task planning ──────────────────────────────────────────────────────
@@ -646,7 +674,15 @@ async fn run_with_task_planning(
             let mut result = if tool_name.as_str() == "update_task_plan" {
                 handle_update_task_plan(arguments, &mut planner, event_sink)
             } else {
-                execute_tool_call(&registry, tool_name, arguments, workspace, event_sink).await
+                execute_tool_call(
+                    &registry,
+                    tool_name,
+                    arguments,
+                    workspace,
+                    event_sink,
+                    embed_ctx.as_ref(),
+                )
+                .await
             };
             result.tool_call_id = tc.id.clone();
 
@@ -844,9 +880,10 @@ async fn execute_tool_call(
     arguments: &str,
     workspace: &Path,
     event_sink: &mut dyn EventSink,
+    embed_ctx: Option<&extensions::MemoryVectorContext<'_>>,
 ) -> ToolResult {
     registry
-        .execute(tool_name, arguments, workspace, event_sink)
+        .execute(tool_name, arguments, workspace, event_sink, embed_ctx)
         .await
 }
 

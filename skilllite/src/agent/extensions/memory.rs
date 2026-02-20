@@ -2,6 +2,7 @@
 //!
 //! Wraps the executor-layer `executor::memory` module to provide
 //! agent-facing memory tools (memory_search, memory_write, memory_list).
+//! With `memory_vector` feature: semantic search via sqlite-vec.
 //! Ported from Python `extensions/memory.py`.
 
 use anyhow::{Context, Result};
@@ -11,25 +12,26 @@ use std::path::Path;
 
 use crate::agent::types::{FunctionDef, ToolDefinition, ToolResult};
 
+use super::registry::MemoryVectorContext;
+
 // ─── Tool definitions ───────────────────────────────────────────────────────
 
 /// Get memory tool definitions for the LLM.
 pub fn get_memory_tool_definitions() -> Vec<ToolDefinition> {
+    let search_desc = "Search the agent's memory. Use keywords or natural language. \
+        Returns relevant memory chunks ranked by relevance.";
     vec![
         ToolDefinition {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "memory_search".to_string(),
-                description: "Search the agent's memory (BM25). Use keywords in the \
-                    same language as stored content. Returns relevant memory chunks \
-                    ranked by relevance."
-                    .to_string(),
+                description: search_desc.to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "Search query (use keywords in the same language as stored content)"
+                            "description": "Search query (keywords or natural language)"
                         },
                         "limit": {
                             "type": "integer",
@@ -92,11 +94,14 @@ pub fn is_memory_tool(name: &str) -> bool {
 
 /// Execute a memory tool.
 /// Memory is stored in ~/.skilllite/chat/memory, not the workspace.
-pub fn execute_memory_tool(
+/// When enable_vector and embed_ctx are set, uses semantic search and indexes embeddings.
+pub async fn execute_memory_tool(
     tool_name: &str,
     arguments: &str,
     _workspace: &Path,
     agent_id: &str,
+    enable_vector: bool,
+    embed_ctx: Option<&MemoryVectorContext<'_>>,
 ) -> ToolResult {
     let args: serde_json::Value = match serde_json::from_str(arguments) {
         Ok(v) => v,
@@ -112,8 +117,12 @@ pub fn execute_memory_tool(
 
     let mem_root = crate::executor::chat_root();
     let result = match tool_name {
-        "memory_search" => execute_memory_search(&args, &mem_root, agent_id),
-        "memory_write" => execute_memory_write(&args, &mem_root, agent_id),
+        "memory_search" => {
+            execute_memory_search(&args, &mem_root, agent_id, enable_vector, embed_ctx).await
+        }
+        "memory_write" => {
+            execute_memory_write(&args, &mem_root, agent_id, enable_vector, embed_ctx).await
+        }
         "memory_list" => execute_memory_list(&mem_root),
         _ => Err(anyhow::anyhow!("Unknown memory tool: {}", tool_name)),
     };
@@ -134,11 +143,14 @@ pub fn execute_memory_tool(
     }
 }
 
-/// Search memory using BM25.
-fn execute_memory_search(
+/// Search memory. Uses vector search when enable_vector and embed_ctx are set.
+#[allow(unused_variables)]
+async fn execute_memory_search(
     args: &serde_json::Value,
     chat_root: &Path,
     agent_id: &str,
+    enable_vector: bool,
+    embed_ctx: Option<&MemoryVectorContext<'_>>,
 ) -> Result<String> {
     let query = args
         .get("query")
@@ -157,7 +169,35 @@ fn execute_memory_search(
     let conn = Connection::open(&idx_path).context("Failed to open memory index")?;
     crate::executor::memory::ensure_index(&conn)?;
 
-    let hits = crate::executor::memory::search_bm25(&conn, query, limit)?;
+    #[cfg(feature = "memory_vector")]
+    let use_vec = enable_vector
+        && embed_ctx.is_some()
+        && crate::executor::memory::has_vec_index(&conn);
+
+    #[cfg(not(feature = "memory_vector"))]
+    let use_vec = false;
+
+    let hits = if use_vec {
+        #[cfg(feature = "memory_vector")]
+        {
+            let ctx = embed_ctx.unwrap();
+            let embeddings = ctx
+                .client
+                .embed(&ctx.embed_config.model, &[query])
+                .await
+                .context("Embedding API failed")?;
+            let query_emb = embeddings.first().context("No embedding returned")?;
+            crate::executor::memory::ensure_vec0_table(&conn, ctx.embed_config.dimension)?;
+            crate::executor::memory::search_vec(&conn, query_emb, limit)?
+        }
+        #[cfg(not(feature = "memory_vector"))]
+        {
+            unreachable!()
+        }
+    } else {
+        crate::executor::memory::search_bm25(&conn, query, limit)?
+    };
+
     if hits.is_empty() {
         return Ok(format!("No results found for query: '{}'", query));
     }
@@ -175,11 +215,14 @@ fn execute_memory_search(
     Ok(result)
 }
 
-/// Write content to memory and index it for BM25 search.
-fn execute_memory_write(
+/// Write content to memory and index for BM25 + vector (when enabled).
+#[allow(unused_variables)]
+async fn execute_memory_write(
     args: &serde_json::Value,
     chat_root: &Path,
     agent_id: &str,
+    enable_vector: bool,
+    embed_ctx: Option<&MemoryVectorContext<'_>>,
 ) -> Result<String> {
     let rel_path = args
         .get("rel_path")
@@ -220,7 +263,7 @@ fn execute_memory_write(
     std::fs::write(&file_path, &final_content)
         .with_context(|| format!("Failed to write memory file: {}", file_path.display()))?;
 
-    // Index the file for BM25 search
+    // Index for BM25 (always)
     let idx_path = crate::executor::memory::index_path(chat_root, agent_id);
     if let Some(parent) = idx_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -228,6 +271,29 @@ fn execute_memory_write(
     let conn = Connection::open(&idx_path).context("Failed to open memory index")?;
     crate::executor::memory::ensure_index(&conn)?;
     crate::executor::memory::index_file(&conn, rel_path, &final_content)?;
+
+    // Index for vector when enabled
+    #[cfg(feature = "memory_vector")]
+    if enable_vector {
+        if let Some(ctx) = embed_ctx {
+            let chunks = crate::executor::memory::chunk_content_for_embed(&final_content);
+            if !chunks.is_empty() {
+                let texts: Vec<&str> = chunks.iter().map(|s| s.as_str()).collect();
+                match ctx.client.embed(&ctx.embed_config.model, &texts).await {
+                    Ok(embeddings) if embeddings.len() == chunks.len() => {
+                        crate::executor::memory::ensure_vec0_table(&conn, ctx.embed_config.dimension)?;
+                        crate::executor::memory::index_file_vec(&conn, rel_path, &chunks, &embeddings)?;
+                    }
+                    Ok(_) => {
+                        tracing::warn!("Embedding count mismatch, skipping vector index");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Embedding failed, BM25 index only: {}", e);
+                    }
+                }
+            }
+        }
+    }
 
     Ok(format!(
         "Successfully wrote {} chars to memory://{}",
@@ -282,10 +348,9 @@ fn collect_memory_files(
 
 // ─── Memory context for chat sessions ───────────────────────────────────────
 
-/// Build memory context by searching for relevant memories.
+/// Build memory context by searching for relevant memories (BM25).
 /// Returns a context string to inject into the system prompt, or None if empty.
-/// Ported from Python `build_memory_context`.
-/// Memory is stored in ~/.skilllite/chat/memory.
+/// Vector search for build_memory_context can be added later (requires async).
 pub fn build_memory_context(
     _workspace: &Path,
     agent_id: &str,

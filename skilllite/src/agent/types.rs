@@ -78,6 +78,8 @@ pub struct AgentConfig {
     pub enable_task_planning: bool,
     /// Enable memory tools
     pub enable_memory: bool,
+    /// Enable memory vector search (requires memory_vector feature + embedding API)
+    pub enable_memory_vector: bool,
     /// Verbose output
     pub verbose: bool,
 }
@@ -99,6 +101,7 @@ impl Default for AgentConfig {
             skill_dirs: Vec::new(),
             enable_task_planning: true,
             enable_memory: true,
+            enable_memory_vector: false,
             verbose: false,
         }
     }
@@ -119,6 +122,7 @@ impl AgentConfig {
             model: llm.model,
             workspace: paths.workspace,
             enable_memory: flags.enable_memory,
+            enable_memory_vector: flags.enable_memory_vector,
             enable_task_planning: flags.enable_task_planning,
             ..Default::default()
         }

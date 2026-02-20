@@ -90,6 +90,54 @@ impl LlmClient {
         }
     }
 
+    /// Embed text(s) using OpenAI-compatible /embeddings API.
+    /// Returns one embedding vector per input string. Used when memory_vector feature is enabled.
+    #[allow(dead_code)]
+    pub async fn embed(&self, model: &str, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+        let url = format!("{}/embeddings", self.api_base);
+        let input: Value = if texts.len() == 1 {
+            json!(texts[0])
+        } else {
+            json!(texts.iter().map(|s| s.to_string()).collect::<Vec<_>>())
+        };
+        let body = json!({ "model": model, "input": input });
+        let resp = self
+            .http
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .context("Embedding API request failed")?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            anyhow::bail!("Embedding API error ({}): {}", status, body_text);
+        }
+        let json: Value = resp.json().await.context("Failed to parse embedding response")?;
+        let data = json
+            .get("data")
+            .and_then(|d| d.as_array())
+            .context("Missing 'data' in embedding response")?;
+        let mut embeddings = Vec::with_capacity(data.len());
+        for item in data {
+            let emb = item
+                .get("embedding")
+                .and_then(|e| e.as_array())
+                .context("Missing 'embedding' in embedding item")?;
+            let vec: Vec<f32> = emb
+                .iter()
+                .filter_map(|v| v.as_f64().map(|f| f as f32))
+                .collect();
+            embeddings.push(vec);
+        }
+        Ok(embeddings)
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // OpenAI-compatible API
     // ═══════════════════════════════════════════════════════════════════════════

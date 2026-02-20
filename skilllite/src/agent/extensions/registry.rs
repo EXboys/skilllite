@@ -8,9 +8,18 @@ use std::path::Path;
 
 use super::builtin;
 use super::memory;
+use crate::agent::llm::LlmClient;
 use crate::agent::prompt;
 use crate::agent::skills::{self, LoadedSkill};
 use crate::agent::types::{EventSink, ToolDefinition, ToolResult};
+use crate::config::EmbeddingConfig;
+
+/// Context for memory vector search (embedding API).
+#[allow(dead_code)] // used when memory_vector feature is enabled
+pub struct MemoryVectorContext<'a> {
+    pub client: &'a LlmClient,
+    pub embed_config: &'a EmbeddingConfig,
+}
 
 /// Unified registry for agent tool extensions.
 ///
@@ -24,15 +33,22 @@ use crate::agent::types::{EventSink, ToolDefinition, ToolResult};
 pub struct ExtensionRegistry<'a> {
     /// Whether memory tools (memory_search, memory_write, memory_list) are enabled.
     pub enable_memory: bool,
+    /// Whether memory vector search is enabled (requires memory_vector feature + embedding API).
+    pub enable_memory_vector: bool,
     /// Loaded skills providing tool definitions and execution.
     pub skills: &'a [LoadedSkill],
 }
 
 impl<'a> ExtensionRegistry<'a> {
     /// Create a registry with the given configuration.
-    pub fn new(enable_memory: bool, skills: &'a [LoadedSkill]) -> Self {
+    pub fn new(
+        enable_memory: bool,
+        enable_memory_vector: bool,
+        skills: &'a [LoadedSkill],
+    ) -> Self {
         Self {
             enable_memory,
+            enable_memory_vector,
             skills,
         }
     }
@@ -59,12 +75,14 @@ impl<'a> ExtensionRegistry<'a> {
     }
 
     /// Execute a tool by name. Dispatches to the appropriate extension.
+    /// `embed_ctx` is required for memory vector search when enable_memory_vector is true.
     pub async fn execute(
         &self,
         tool_name: &str,
         arguments: &str,
         workspace: &Path,
         event_sink: &mut dyn EventSink,
+        embed_ctx: Option<&MemoryVectorContext<'_>>,
     ) -> ToolResult {
         if builtin::is_builtin_tool(tool_name) {
             if builtin::is_async_builtin_tool(tool_name) {
@@ -73,7 +91,15 @@ impl<'a> ExtensionRegistry<'a> {
                 builtin::execute_builtin_tool(tool_name, arguments, workspace)
             }
         } else if self.enable_memory && memory::is_memory_tool(tool_name) {
-            memory::execute_memory_tool(tool_name, arguments, workspace, "default")
+            memory::execute_memory_tool(
+                tool_name,
+                arguments,
+                workspace,
+                "default",
+                self.enable_memory_vector,
+                embed_ctx,
+            )
+            .await
         } else if let Some(skill) = skills::find_skill_by_tool_name(self.skills, tool_name) {
             skills::execute_skill(skill, tool_name, arguments, workspace, event_sink)
         } else if let Some(skill) = skills::find_skill_by_name(self.skills, tool_name) {

@@ -17,7 +17,8 @@ executor = ["sandbox", "rusqlite"]
 agent = ["executor", "dep:tokio", "dep:reqwest", "dep:futures-util", "dep:rustyline"]
 # 仅用于 skilllite-sandbox 构建，含 sandbox+audit，不在 default 中
 sandbox_binary = ["sandbox", "audit"]
-# memory_vector = ["executor", "sqlite-vec"]  # 后续扩展
+# Memory 向量检索：启用后 memory_search 使用语义搜索（需配置 embedding API）
+memory_vector = ["executor", "agent", "dep:sqlite-vec", "dep:zerocopy"]
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
@@ -50,6 +51,10 @@ ureq = { version = "2", optional = true, features = ["json"] }
 
 # ClawHub registry: zip extraction for skill bundles
 zip = "0.6"
+
+# memory_vector feature: vector search for memory (sqlite-vec)
+sqlite-vec = { version = "0.1", optional = true }
+zerocopy = { version = "0.7", optional = true }
 
 # IPC daemon: thread pool for concurrent request handling
 rayon = "1.10"

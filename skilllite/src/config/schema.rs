@@ -107,6 +107,8 @@ impl PathsConfig {
 pub struct AgentFeatureFlags {
     pub enable_memory: bool,
     pub enable_task_planning: bool,
+    /// 启用 Memory 向量检索（需 memory_vector feature + embedding API）
+    pub enable_memory_vector: bool,
 }
 
 impl AgentFeatureFlags {
@@ -114,6 +116,54 @@ impl AgentFeatureFlags {
         Self {
             enable_memory: env_bool("SKILLLITE_ENABLE_MEMORY", &[], true),
             enable_task_planning: env_bool("SKILLLITE_ENABLE_TASK_PLANNING", &[], true),
+            enable_memory_vector: env_bool("SKILLLITE_ENABLE_MEMORY_VECTOR", &[], false),
+        }
+    }
+}
+
+/// Embedding API 配置（用于 memory vector 检索）
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // used when memory_vector feature is enabled
+pub struct EmbeddingConfig {
+    pub model: String,
+    pub dimension: usize,
+}
+
+impl EmbeddingConfig {
+    pub fn from_env() -> Self {
+        super::loader::load_dotenv();
+        let api_base = super::loader::env_or(
+            llm::API_BASE,
+            llm::API_BASE_ALIASES,
+            || "https://api.openai.com/v1".to_string(),
+        );
+        let (default_model, default_dim) = Self::default_for_base(&api_base);
+        let model = super::loader::env_or(
+            "SKILLLITE_EMBEDDING_MODEL",
+            &["EMBEDDING_MODEL"],
+            || default_model.to_string(),
+        );
+        let dimension = super::loader::env_optional("SKILLLITE_EMBEDDING_DIMENSION", &[])
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(default_dim);
+        Self { model, dimension }
+    }
+
+    /// 按 api_base 推断默认 embedding 模型和维度
+    fn default_for_base(api_base: &str) -> (&'static str, usize) {
+        let base_lower = api_base.to_lowercase();
+        if base_lower.contains("dashscope.aliyuncs.com") {
+            // 通义千问 / Qwen
+            ("text-embedding-v3", 1024)
+        } else if base_lower.contains("api.deepseek.com") {
+            ("deepseek-embedding", 1536)
+        } else if base_lower.contains("localhost:11434") || base_lower.contains("127.0.0.1:11434") {
+            // Ollama
+            ("nomic-embed-text", 768)
+        } else if base_lower.contains("api.openai.com") {
+            ("text-embedding-3-small", 1536)
+        } else {
+            ("text-embedding-3-small", 1536)
         }
     }
 }
