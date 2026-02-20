@@ -4,9 +4,13 @@
 //! Configurable via `SKILLLITE_LONG_TEXT_STRATEGY`:
 //!   - `head_tail_only`: take first N + last M chunks (existing behavior)
 //!   - `head_tail_extract`: score all chunks, take top-K by score, preserve order
+//!   - `mapreduce_full`: process ALL chunks (no filtering), Reduce merge; best with SKILLLITE_MAP_MODEL
+//!
+//! MapReduce model: when `SKILLLITE_MAP_MODEL` is set, Map uses that cheaper model; Reduce uses main.
 //!
 //! Env: SKILLLITE_CHUNK_SIZE, SKILLLITE_HEAD_CHUNKS, SKILLLITE_TAIL_CHUNKS,
-//!      SKILLLITE_MAX_OUTPUT_CHARS, SKILLLITE_LONG_TEXT_STRATEGY, SKILLLITE_EXTRACT_TOP_K_RATIO
+//!      SKILLLITE_MAX_OUTPUT_CHARS, SKILLLITE_LONG_TEXT_STRATEGY, SKILLLITE_EXTRACT_TOP_K_RATIO,
+//!      SKILLLITE_MAP_MODEL (optional, for Map stage)
 
 use anyhow::Result;
 
@@ -57,9 +61,19 @@ pub async fn summarize_long_content(
         return "(内容为空)".to_string();
     }
 
+    // Map: use cheaper model when SKILLLITE_MAP_MODEL set; Reduce uses main model
+    let map_model = types::get_map_model(model);
+    if map_model != model {
+        tracing::debug!(
+            "MapReduce: Map stage using {} (Reduce will use {})",
+            map_model,
+            model
+        );
+    }
+
     let mut chunk_summaries = Vec::new();
     for (idx, chunk) in chunks.iter().enumerate() {
-        match summarize_single_chunk(client, model, chunk).await {
+        match summarize_single_chunk(client, &map_model, chunk).await {
             Ok(summary) if !summary.is_empty() => chunk_summaries.push(summary),
             Ok(_) => chunk_summaries.push(format!("[段 {} 总结为空]", idx + 1)),
             Err(e) => {
@@ -79,6 +93,7 @@ pub async fn summarize_long_content(
         return combined;
     }
 
+    // Reduce: always use main model for merge (higher quality)
     match merge_summaries(client, model, &combined).await {
         Ok(merged) => {
             let result = if merged.is_empty() {
@@ -145,7 +160,17 @@ fn select_chunks(
                 tail_chunks_count,
             )
         }
+        types::LongTextStrategy::MapReduceFull => select_all_chunks(&all_chunks, total_len),
     }
+}
+
+fn select_all_chunks(all_chunks: &[String], total_len: usize) -> (Vec<String>, String) {
+    let n = all_chunks.len();
+    let note = format!(
+        "\n\n[注：原文 {} 字符，全量 MapReduce 共 {} 段]",
+        total_len, n
+    );
+    (all_chunks.to_vec(), note)
 }
 
 fn select_head_tail_only(

@@ -103,14 +103,43 @@ def _create_http_adapter(use_legacy_ssl=True):
     return LegacySSLAdapter(max_retries=retry)
 
 
+def _normalize_headers(headers_raw):
+    """解析 headers：支持 dict 或 JSON 字符串（Agent 可能传字符串）"""
+    if headers_raw is None:
+        return {}
+    if isinstance(headers_raw, dict):
+        return dict(headers_raw)
+    if isinstance(headers_raw, str):
+        try:
+            parsed = json.loads(headers_raw)
+            return dict(parsed) if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _normalize_timeout(timeout_raw):
+    """将 timeout 转为 int/float，Agent 可能传字符串如 "30" """
+    if timeout_raw is None:
+        return 30
+    if isinstance(timeout_raw, (int, float)):
+        return timeout_raw
+    if isinstance(timeout_raw, str):
+        try:
+            return int(float(timeout_raw))
+        except (ValueError, TypeError):
+            return 30
+    return 30
+
+
 def _request_with_requests(input_data):
     """使用 requests 库发起请求"""
     url = input_data.get("url")
     method = input_data.get("method", "GET").upper()
-    headers = dict(input_data.get("headers", {}))
+    headers = _normalize_headers(input_data.get("headers"))
     body = input_data.get("body")
     params = input_data.get("params", {})
-    timeout = input_data.get("timeout", 30)
+    timeout = _normalize_timeout(input_data.get("timeout"))
     use_legacy_ssl = input_data.get("use_legacy_ssl", True)  # 默认启用，兼容旧服务器
 
     if "User-Agent" not in headers:
@@ -179,10 +208,10 @@ def _request_with_urllib(input_data):
     """使用 urllib 发起请求（无 requests 时的 fallback）"""
     url = input_data.get("url")
     method = input_data.get("method", "GET").upper()
-    headers = dict(input_data.get("headers", {}))
+    headers = _normalize_headers(input_data.get("headers"))
     body = input_data.get("body")
     params = input_data.get("params", {})
-    timeout = input_data.get("timeout", 30)
+    timeout = _normalize_timeout(input_data.get("timeout"))
 
     if "User-Agent" not in headers:
         headers["User-Agent"] = DEFAULT_USER_AGENT

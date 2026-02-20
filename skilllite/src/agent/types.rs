@@ -537,6 +537,14 @@ pub fn get_max_output_chars() -> usize {
     env_usize("SKILLLITE_MAX_OUTPUT_CHARS", 8000)
 }
 
+/// Model for Map stage in MapReduce summarization. `SKILLLITE_MAP_MODEL`.
+/// When set, Map (per-chunk summarization) uses this cheaper model; Reduce (merge) uses main model.
+/// E.g. `qwen-plus`, `gemini-1.5-flash`. If unset, both stages use main model.
+pub fn get_map_model(main_model: &str) -> String {
+    crate::config::loader::env_optional("SKILLLITE_MAP_MODEL", &[])
+        .unwrap_or_else(|| main_model.to_string())
+}
+
 /// Long text selection strategy. `SKILLLITE_LONG_TEXT_STRATEGY`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LongTextStrategy {
@@ -544,6 +552,8 @@ pub enum LongTextStrategy {
     HeadTailOnly,
     /// Score all chunks (Position + Discourse + Entity), take top-K.
     HeadTailExtract,
+    /// Map all chunks (no filtering), Reduce merge. Best with SKILLLITE_MAP_MODEL.
+    MapReduceFull,
 }
 
 fn env_str(key: &str, default: &str) -> String {
@@ -557,6 +567,7 @@ pub fn get_long_text_strategy() -> LongTextStrategy {
         .to_string();
     match v.as_str() {
         "head_tail_extract" | "extract" => LongTextStrategy::HeadTailExtract,
+        "mapreduce_full" | "mapreduce" | "map_reduce" => LongTextStrategy::MapReduceFull,
         _ => LongTextStrategy::HeadTailOnly,
     }
 }
