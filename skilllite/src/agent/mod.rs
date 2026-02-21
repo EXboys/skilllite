@@ -12,6 +12,7 @@ pub mod extensions;
 pub mod skills;
 pub mod prompt;
 pub mod agent_loop;
+pub mod chat;
 pub mod chat_session;
 pub mod types;
 pub mod planning_rules;
