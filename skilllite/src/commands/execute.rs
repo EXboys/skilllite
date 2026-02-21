@@ -52,10 +52,11 @@ pub fn run_skill(
         effective_metadata.network.enabled = true;
     }
 
+    let runtime = crate::env::builder::build_runtime_paths(&env_path);
     let config = build_sandbox_config(&skill_path, &effective_metadata);
     let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
         &skill_path,
-        &env_path,
+        &runtime,
         &config,
         input_json,
         limits,
@@ -134,10 +135,11 @@ pub fn exec_script(
         None
     };
 
+    let runtime = crate::env::builder::build_runtime_paths(&env_path);
     let config = build_sandbox_config(&skill_path, &effective_metadata);
     let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
         &skill_path,
-        &env_path,
+        &runtime,
         &config,
         input_json,
         limits,

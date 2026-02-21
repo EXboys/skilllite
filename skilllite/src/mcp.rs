@@ -849,11 +849,11 @@ fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level: SandboxLev
     };
 
     let limits = ResourceLimits::from_env();
-    let env_path = PathBuf::new();
+    let runtime = crate::env::builder::build_runtime_paths(&PathBuf::new());
 
     let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
         temp_dir.path(),
-        &env_path,
+        &runtime,
         &config,
         "{}",
         limits,
@@ -1018,6 +1018,7 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
 
     let limits = ResourceLimits::from_env();
 
+    let runtime = crate::env::builder::build_runtime_paths(&env_path);
     let config = crate::sandbox::executor::SandboxConfig {
         name: meta.name.clone(),
         entry_point: meta.entry_point.clone(),
@@ -1028,7 +1029,7 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
     };
     let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
         &skill_dir,
-        &env_path,
+        &runtime,
         &config,
         &input_json,
         limits,

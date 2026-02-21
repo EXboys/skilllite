@@ -15,6 +15,23 @@ pub struct ExecutionResult {
     pub exit_code: i32,
 }
 
+/// Resolved runtime paths for sandbox execution.
+///
+/// Callers construct this via `env::builder` helpers; the sandbox module
+/// never imports `env::builder` directly.
+#[derive(Debug, Clone)]
+pub struct RuntimePaths {
+    /// Path to the Python interpreter (venv or system `python3`)
+    pub python: std::path::PathBuf,
+    /// Path to the Node.js interpreter (typically system `node`)
+    pub node: std::path::PathBuf,
+    /// Path to cached `node_modules` directory, if any
+    pub node_modules: Option<std::path::PathBuf>,
+    /// Environment directory (Python venv / Node env cache).
+    /// Empty `PathBuf` means no isolated environment.
+    pub env_dir: std::path::PathBuf,
+}
+
 /// Sandbox execution configuration.
 ///
 /// Callers construct this from `SkillMetadata` (or other sources);
@@ -225,7 +242,7 @@ fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &st
 /// Run a skill in a sandboxed environment with custom resource limits and security level
 pub fn run_in_sandbox_with_limits_and_level(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
@@ -334,7 +351,7 @@ pub fn run_in_sandbox_with_limits_and_level(
             skill_dir.to_string_lossy().as_ref(),
         );
         let start = Instant::now();
-        let result = execute_simple_without_sandbox(skill_dir, env_path, config, input_json, limits)?;
+        let result = execute_simple_without_sandbox(skill_dir, runtime, config, input_json, limits)?;
         
         if result.exit_code != 0 {
             anyhow::bail!(
@@ -367,7 +384,7 @@ pub fn run_in_sandbox_with_limits_and_level(
     let start = Instant::now();
     let result = execute_platform_sandbox_with_limits(
         skill_dir,
-        env_path,
+        runtime,
         config,
         input_json,
         limits,
@@ -398,13 +415,13 @@ pub fn run_in_sandbox_with_limits_and_level(
 #[cfg(target_os = "linux")]
 fn execute_platform_sandbox(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
 ) -> Result<ExecutionResult> {
     execute_platform_sandbox_with_limits(
         skill_dir,
-        env_path,
+        runtime,
         config,
         input_json,
         ResourceLimits::default(),
@@ -414,36 +431,36 @@ fn execute_platform_sandbox(
 #[cfg(target_os = "linux")]
 fn execute_platform_sandbox_with_limits(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    super::linux::execute_with_limits(skill_dir, env_path, config, input_json, limits)
+    super::linux::execute_with_limits(skill_dir, runtime, config, input_json, limits)
 }
 
 
 #[cfg(target_os = "macos")]
 fn execute_platform_sandbox_with_limits(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    super::macos::execute_with_limits(skill_dir, env_path, config, input_json, limits)
+    super::macos::execute_with_limits(skill_dir, runtime, config, input_json, limits)
 }
 
 #[cfg(target_os = "windows")]
 fn execute_platform_sandbox(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
 ) -> Result<ExecutionResult> {
     execute_platform_sandbox_with_limits(
         skill_dir,
-        env_path,
+        runtime,
         config,
         input_json,
         ResourceLimits::default(),
@@ -453,18 +470,18 @@ fn execute_platform_sandbox(
 #[cfg(target_os = "windows")]
 fn execute_platform_sandbox_with_limits(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    super::windows::execute_with_limits(skill_dir, env_path, config, input_json, limits)
+    super::windows::execute_with_limits(skill_dir, runtime, config, input_json, limits)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn execute_platform_sandbox(
     _skill_dir: &Path,
-    _env_path: &Path,
+    _runtime: &RuntimePaths,
     _config: &SandboxConfig,
     _input_json: &str,
 ) -> Result<ExecutionResult> {
@@ -474,7 +491,7 @@ fn execute_platform_sandbox(
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn execute_platform_sandbox_with_limits(
     _skill_dir: &Path,
-    _env_path: &Path,
+    _runtime: &RuntimePaths,
     _config: &SandboxConfig,
     _input_json: &str,
     _limits: ResourceLimits,
@@ -485,7 +502,7 @@ fn execute_platform_sandbox_with_limits(
 /// Execute without any sandbox (Level 1)
 fn execute_simple_without_sandbox(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
@@ -493,7 +510,7 @@ fn execute_simple_without_sandbox(
     #[cfg(target_os = "macos")]
     return super::macos::execute_simple_with_limits(
         skill_dir,
-        env_path,
+        runtime,
         config,
         input_json,
         limits,
@@ -502,7 +519,7 @@ fn execute_simple_without_sandbox(
     #[cfg(target_os = "linux")]
     return super::linux::execute_with_limits(
         skill_dir,
-        env_path,
+        runtime,
         config,
         input_json,
         limits,
@@ -511,7 +528,7 @@ fn execute_simple_without_sandbox(
     #[cfg(target_os = "windows")]
     return super::windows::execute_simple_with_limits(
         skill_dir,
-        env_path,
+        runtime,
         config,
         input_json,
         limits,

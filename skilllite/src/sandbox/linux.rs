@@ -1,12 +1,10 @@
 #![cfg(target_os = "linux")]
 
-use crate::env::builder::{get_node_executable, get_python_executable};
 use crate::sandbox::common::wait_with_timeout;
-use crate::sandbox::executor::{ExecutionResult, ResourceLimits};
+use crate::sandbox::executor::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use crate::sandbox::network_proxy::{ProxyConfig, ProxyManager};
 use crate::sandbox::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use crate::sandbox::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
-use crate::sandbox::executor::SandboxConfig;
 use anyhow::{Context, Result};
 use nix::mount::{mount, MsFlags};
 use nix::sched::{unshare, CloneFlags};
@@ -20,13 +18,13 @@ use tempfile::TempDir;
 /// Sandbox is enabled by default. Set SKILLBOX_NO_SANDBOX=1 to disable.
 pub fn execute(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
 ) -> Result<ExecutionResult> {
     execute_with_limits(
         skill_dir,
-        env_path,
+        runtime,
         config,
         input_json,
         crate::sandbox::executor::ResourceLimits::default(),
@@ -36,21 +34,21 @@ pub fn execute(
 /// Execute a skill in a Linux sandbox with custom resource limits
 pub fn execute_with_limits(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
-        return execute_simple_with_limits(skill_dir, env_path, config, input_json, limits);
+        return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
     
-    match execute_with_seccomp(skill_dir, env_path, config, input_json, limits) {
+    match execute_with_seccomp(skill_dir, runtime, config, input_json, limits) {
         Ok(result) => Ok(result),
         Err(e) => {
             eprintln!("[INFO] Seccomp sandbox failed ({}), trying namespace isolation...", e);
-            match execute_with_namespaces(skill_dir, env_path, config, input_json, limits) {
+            match execute_with_namespaces(skill_dir, runtime, config, input_json, limits) {
                 Ok(result) => Ok(result),
                 Err(e2) => {
                     Err(anyhow::anyhow!(
@@ -66,13 +64,13 @@ pub fn execute_with_limits(
 /// Simple execution without sandbox (fallback when all sandbox methods fail)
 fn execute_simple(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
 ) -> Result<ExecutionResult> {
     execute_simple_with_limits(
         skill_dir,
-        env_path,
+        runtime,
         config,
         input_json,
         crate::sandbox::executor::ResourceLimits::default(),
@@ -82,7 +80,7 @@ fn execute_simple(
 /// Simple execution without sandbox with custom resource limits
 fn execute_simple_with_limits(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
@@ -97,19 +95,15 @@ fn execute_simple_with_limits(
     // Prepare command based on language
     let mut cmd = match language.as_str() {
         "python" => {
-            let python = get_python_executable(env_path);
-            let mut c = Command::new(python);
+            let mut c = Command::new(&runtime.python);
             c.arg(&entry_point);
             c
         }
         "node" => {
-            let node = get_node_executable();
-            let mut c = Command::new(node);
+            let mut c = Command::new(&runtime.node);
             c.arg(&entry_point);
 
-            // Set NODE_PATH if we have a cached environment
-            if !env_path.as_os_str().is_empty() {
-                let node_modules = env_path.join("node_modules");
+            if let Some(ref node_modules) = runtime.node_modules {
                 c.env("NODE_PATH", node_modules);
             }
             c
@@ -161,7 +155,7 @@ fn execute_simple_with_limits(
 /// Uses landlock on Linux 5.13+ or falls back to seccomp
 fn execute_with_seccomp(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
@@ -178,12 +172,10 @@ fn execute_with_seccomp(
     // Prepare command based on language
     let (program, mut args) = match language.as_str() {
         "python" => {
-            let python = get_python_executable(env_path);
-            (python, vec![entry_point.to_string_lossy().to_string()])
+            (runtime.python.clone(), vec![entry_point.to_string_lossy().to_string()])
         }
         "node" => {
-            let node = get_node_executable();
-            (node, vec![entry_point.to_string_lossy().to_string()])
+            (runtime.node.clone(), vec![entry_point.to_string_lossy().to_string()])
         }
         _ => {
             anyhow::bail!("Unsupported language: {}", language);
@@ -198,7 +190,7 @@ fn execute_with_seccomp(
         return execute_with_bwrap(
             &bwrap,
             skill_dir,
-            env_path,
+            runtime,
             config,
             input_json,
             &program,
@@ -214,7 +206,7 @@ fn execute_with_seccomp(
         return execute_with_firejail(
             &firejail,
             skill_dir,
-            env_path,
+            runtime,
             config,
             input_json,
             &program,
@@ -266,7 +258,7 @@ fn which_firejail() -> Option<std::path::PathBuf> {
 fn execute_with_bwrap(
     bwrap: &Path,
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     program: &Path,
@@ -274,6 +266,7 @@ fn execute_with_bwrap(
     work_dir: &Path,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
+    let env_path = &runtime.env_dir;
     let network_policy = security_policy::resolve_network_policy(
         config.network_enabled,
         &config.network_outbound,
@@ -510,7 +503,7 @@ fn generate_seccomp_bpf_file(path: &Path) -> Result<()> {
 fn execute_with_firejail(
     firejail: &Path,
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     program: &Path,
@@ -518,6 +511,7 @@ fn execute_with_firejail(
     work_dir: &Path,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
+    let env_path = &runtime.env_dir;
     let network_policy = security_policy::resolve_network_policy(
         config.network_enabled,
         &config.network_outbound,
@@ -654,7 +648,7 @@ fn execute_with_firejail(
 /// Execute with namespace isolation (requires root)
 fn execute_with_namespaces(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
@@ -671,14 +665,12 @@ fn execute_with_namespaces(
     // Prepare command based on language
     let mut cmd = match language.as_str() {
         "python" => {
-            let python = get_python_executable(env_path);
-            let mut c = Command::new(python);
+            let mut c = Command::new(&runtime.python);
             c.arg(&entry_point);
             c
         }
         "node" => {
-            let node = get_node_executable();
-            let mut c = Command::new(node);
+            let mut c = Command::new(&runtime.node);
             c.arg(&entry_point);
             c
         }
@@ -745,7 +737,7 @@ fn execute_with_namespaces(
 fn setup_mount_namespace(
     root_path: &Path,
     skill_dir: &Path,
-    env_path: &Path,
+    env_dir: &Path,
 ) -> Result<()> {
     // Create necessary directories
     fs::create_dir_all(root_path.join("usr"))?;
@@ -794,9 +786,9 @@ fn setup_mount_namespace(
     )?;
 
     // Bind mount environment as read-only
-    if !env_path.as_os_str().is_empty() && env_path.exists() {
+    if !env_dir.as_os_str().is_empty() && env_dir.exists() {
         mount(
-            Some(env_path),
+            Some(env_dir),
             &root_path.join("env"),
             None::<&str>,
             readonly_flags,

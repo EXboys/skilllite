@@ -1,19 +1,17 @@
 #![cfg(target_os = "macos")]
 
-use crate::env::builder::{get_node_executable, get_node_modules_path, get_python_executable};
 use crate::sandbox::common::{
     wait_with_timeout,
     DEFAULT_FILE_SIZE_LIMIT_MB,
     DEFAULT_MAX_PROCESSES,
 };
-use crate::sandbox::executor::ExecutionResult;
+use crate::sandbox::executor::{ExecutionResult, RuntimePaths, SandboxConfig};
 use crate::sandbox::move_protection::{
     generate_log_tag, generate_move_blocking_rules, get_session_suffix,
 };
 use crate::sandbox::network_proxy::{ProxyConfig, ProxyManager};
 use crate::sandbox::security::policy::{self as security_policy, HomePathStyle, ResolvedNetworkPolicy};
 use crate::sandbox::seatbelt::generate_seatbelt_mandatory_deny_patterns;
-use crate::sandbox::executor::SandboxConfig;
 use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
@@ -25,7 +23,7 @@ use tempfile::TempDir;
 /// Execute a skill in a macOS sandbox with custom resource limits
 pub fn execute_with_limits(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
@@ -33,7 +31,7 @@ pub fn execute_with_limits(
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
         crate::info_log!("[INFO] using simple execution (no sandbox-exec)");
-        return execute_simple_with_limits(skill_dir, env_path, config, input_json, limits);
+        return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
 
     if security_policy::should_allow_playwright() && config.uses_playwright {
@@ -41,11 +39,11 @@ pub fn execute_with_limits(
             "[INFO] Skill {} uses Playwright; skipping sandbox (SKILLBOX_ALLOW_PLAYWRIGHT/L2)",
             config.name
         );
-        return execute_simple_with_limits(skill_dir, env_path, config, input_json, limits);
+        return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
     
     crate::info_log!("[INFO] using sandbox-exec (Seatbelt)...");
-    match execute_with_sandbox(skill_dir, env_path, config, input_json, limits) {
+    match execute_with_sandbox(skill_dir, runtime, config, input_json, limits) {
         Ok(result) if result.exit_code == 0 => Ok(result),
         Ok(_) | Err(_) => {
             eprintln!("[WARN] Sandbox execution failed, falling back to simple execution");
@@ -53,7 +51,7 @@ pub fn execute_with_limits(
                 &config.name,
                 "seatbelt_exec_failed",
             );
-            execute_simple_with_limits(skill_dir, env_path, config, input_json, limits)
+            execute_simple_with_limits(skill_dir, runtime, config, input_json, limits)
         }
     }
 }
@@ -61,7 +59,7 @@ pub fn execute_with_limits(
 /// Simple execution without sandbox (fallback for when sandbox-exec is unavailable)
 pub fn execute_simple_with_limits(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
@@ -78,19 +76,15 @@ pub fn execute_simple_with_limits(
     // Prepare command based on language
     let mut cmd = match language.as_str() {
         "python" => {
-            let python = get_python_executable(env_path);
-            let mut c = Command::new(python);
+            let mut c = Command::new(&runtime.python);
             c.arg(entry_point);
             c
         }
         "node" => {
-            let node = get_node_executable();
-            let mut c = Command::new(node);
+            let mut c = Command::new(&runtime.node);
             c.arg(entry_point);
 
-            // Set NODE_PATH if we have a cached environment
-            if !env_path.as_os_str().is_empty() {
-                let node_modules = get_node_modules_path(env_path);
+            if let Some(ref node_modules) = runtime.node_modules {
                 c.env("NODE_PATH", node_modules);
             }
             c
@@ -158,7 +152,7 @@ pub fn execute_simple_with_limits(
 /// Execute with macOS sandbox-exec with resource limits and network proxy (pure Rust, no script injection)
 fn execute_with_sandbox(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
@@ -211,7 +205,7 @@ fn execute_with_sandbox(
     let profile_path = work_dir.join("sandbox.sb");
     let profile_content = generate_sandbox_profile_with_proxy(
         skill_dir,
-        env_path,
+        &runtime.env_dir,
         config,
         work_dir,
         proxy_manager.as_ref().and_then(|m| m.http_port()),
@@ -223,12 +217,10 @@ fn execute_with_sandbox(
     // Prepare command based on language
     let (executable, mut args) = match language.as_str() {
         "python" => {
-            let python = get_python_executable(env_path);
-            (python, vec![entry_point.to_string()])
+            (runtime.python.clone(), vec![entry_point.to_string()])
         }
         "node" => {
-            let node = get_node_executable();
-            (node, vec![entry_point.to_string()])
+            (runtime.node.clone(), vec![entry_point.to_string()])
         }
         _ => {
             anyhow::bail!("Unsupported language: {}", language);
@@ -270,9 +262,10 @@ fn execute_with_sandbox(
     // Do not override HOME - some libs (fonts, cache) need it for path lookup
 
     // Set NODE_PATH for Node.js
-    if language == "node" && !env_path.as_os_str().is_empty() {
-        let node_modules = get_node_modules_path(env_path);
-        cmd.env("NODE_PATH", node_modules);
+    if language == "node" {
+        if let Some(ref node_modules) = runtime.node_modules {
+            cmd.env("NODE_PATH", node_modules);
+        }
     }
 
     // Set proxy environment variables if proxy is running

@@ -249,3 +249,22 @@ pub fn get_node_executable() -> PathBuf {
 pub fn get_node_modules_path(env_path: &Path) -> PathBuf {
     env_path.join("node_modules")
 }
+
+/// Construct `RuntimePaths` from an environment path.
+///
+/// This is the bridge between `env::builder` (which knows how to resolve
+/// interpreter paths) and `sandbox::executor` (which only consumes the
+/// resolved `RuntimePaths` struct).
+pub fn build_runtime_paths(env_path: &Path) -> crate::sandbox::executor::RuntimePaths {
+    let has_env = !env_path.as_os_str().is_empty();
+    crate::sandbox::executor::RuntimePaths {
+        python: get_python_executable(env_path),
+        node: get_node_executable(),
+        node_modules: if has_env {
+            Some(get_node_modules_path(env_path))
+        } else {
+            None
+        },
+        env_dir: env_path.to_path_buf(),
+    }
+}

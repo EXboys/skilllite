@@ -560,10 +560,11 @@ fn execute_skill_inner(
             metadata.clone()
         };
 
+        let runtime = crate::env::builder::build_runtime_paths(&env_path);
         let config = build_sandbox_config(skill_dir, &effective_metadata);
         let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
             skill_dir,
-            &env_path,
+            &runtime,
             &config,
             &input_json,
             limits,

@@ -16,7 +16,7 @@
 
 #![cfg(target_os = "windows")]
 
-use crate::sandbox::executor::{ExecutionResult, ResourceLimits, SandboxConfig};
+use crate::sandbox::executor::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -24,18 +24,18 @@ use std::process::{Command, Stdio};
 /// Execute a skill in Windows sandbox (via WSL2 bridge)
 pub fn execute_with_limits(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
-        return execute_simple_with_limits(skill_dir, env_path, config, input_json, limits);
+        return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
 
     if is_wsl2_available() {
-        match execute_via_wsl2(skill_dir, env_path, config, input_json, limits) {
+        match execute_via_wsl2(skill_dir, runtime, config, input_json, limits) {
             Ok(result) => return Ok(result),
             Err(e) => {
                 eprintln!("[WARN] WSL2 execution failed: {}. Trying Job Object fallback...", e);
@@ -43,7 +43,7 @@ pub fn execute_with_limits(
         }
     }
 
-    execute_with_job_object(skill_dir, env_path, config, input_json, limits)
+    execute_with_job_object(skill_dir, runtime, config, input_json, limits)
 }
 
 /// Check if WSL2 is available and properly configured
@@ -103,11 +103,12 @@ fn windows_to_wsl_path(path: &Path) -> Result<String> {
 /// Execute skill via WSL2 using the Linux skilllite binary
 fn execute_via_wsl2(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
+    let env_path = &runtime.env_dir;
     // Convert paths to WSL format
     let wsl_skill_dir = windows_to_wsl_path(skill_dir)
         .context("Failed to convert skill_dir to WSL path")?;
@@ -165,11 +166,12 @@ fn execute_via_wsl2(
 /// like file system or network restrictions. Use WSL2 for full security.
 fn execute_with_job_object(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
+    let env_path = &runtime.env_dir;
     use std::io::Write;
     use tempfile::TempDir;
 
@@ -266,11 +268,12 @@ fn execute_with_job_object(
 /// Simple execution without sandbox (Level 1 or fallback)
 pub fn execute_simple_with_limits(
     skill_dir: &Path,
-    env_path: &Path,
+    runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
+    let env_path = &runtime.env_dir;
     use std::io::Write;
     use tempfile::TempDir;
 
