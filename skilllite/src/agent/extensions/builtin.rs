@@ -147,7 +147,7 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "search_replace".to_string(),
-                description: "Replace exact text in a file. Use for precise edits instead of read_file + write_file. old_string must match exactly (including whitespace). If old_string appears multiple times, use replace_all: true to replace all, or false (default) to replace only the first occurrence.".to_string(),
+                description: "Replace exact text in a file. Use for precise edits instead of read_file + write_file. Supports workspace and output directory (path relative to workspace or output dir). old_string must match exactly (including whitespace). If old_string appears multiple times, use replace_all: true to replace all, or false (default) to replace only the first occurrence.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -635,7 +635,8 @@ fn execute_search_replace(args: &Value, workspace: &Path) -> Result<String> {
         );
     }
 
-    let resolved = resolve_within_workspace(&path_str, workspace)?;
+    // Allow both workspace and output directory (same as read_file)
+    let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
 
     if !resolved.exists() {
         anyhow::bail!("File not found: {}", path_str);
@@ -1788,5 +1789,27 @@ mod tests {
         let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
         assert!(result.is_error);
         assert!(result.content.contains("Blocked"));
+    }
+
+    #[test]
+    fn test_search_replace_output_directory() {
+        // output/ inside workspace: path "output/index.html" resolves to workspace/output/index.html
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let output_dir = workspace.join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+        let file_path = output_dir.join("index.html");
+        std::fs::write(&file_path, "<title>Old Title</title>").unwrap();
+
+        let args = serde_json::json!({
+            "path": "output/index.html",
+            "old_string": "Old Title",
+            "new_string": "New Title"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "<title>New Title</title>");
     }
 }
