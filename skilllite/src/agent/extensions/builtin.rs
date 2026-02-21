@@ -1,6 +1,6 @@
 //! Built-in tools for the agent (file ops, run_command, output, preview, chat).
 //!
-//! Phase 1: read_file, write_file, list_directory, file_exists
+//! Phase 1: read_file, write_file, search_replace, list_directory, file_exists
 //! Phase 2: run_command, write_output, preview_server
 //! Phase 3: chat_history, chat_plan, list_output, update_task_plan
 //!
@@ -140,6 +140,35 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
                         }
                     },
                     "required": ["path", "content"]
+                }),
+            },
+        },
+        ToolDefinition {
+            tool_type: "function".to_string(),
+            function: FunctionDef {
+                name: "search_replace".to_string(),
+                description: "Replace exact text in a file. Use for precise edits instead of read_file + write_file. old_string must match exactly (including whitespace). If old_string appears multiple times, use replace_all: true to replace all, or false (default) to replace only the first occurrence.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path (relative to workspace or absolute)"
+                        },
+                        "old_string": {
+                            "type": "string",
+                            "description": "Exact text to find and replace (must match including whitespace)"
+                        },
+                        "new_string": {
+                            "type": "string",
+                            "description": "Text to replace old_string with"
+                        },
+                        "replace_all": {
+                            "type": "boolean",
+                            "description": "If true, replace all occurrences. Default: false (replace first only)."
+                        }
+                    },
+                    "required": ["path", "old_string", "new_string"]
                 }),
             },
         },
@@ -356,6 +385,7 @@ pub fn is_builtin_tool(name: &str) -> bool {
         name,
         "read_file"
             | "write_file"
+            | "search_replace"
             | "list_directory"
             | "file_exists"
             | "run_command"
@@ -419,6 +449,7 @@ pub fn execute_builtin_tool(
     let result = match tool_name {
         "read_file" => execute_read_file(&args, workspace),
         "write_file" => execute_write_file(&args, workspace),
+        "search_replace" => execute_search_replace(&args, workspace),
         "list_directory" => execute_list_directory(&args, workspace),
         "file_exists" => execute_file_exists(&args, workspace),
         "write_output" => execute_write_output(&args, workspace),
@@ -579,6 +610,73 @@ fn execute_write_file(args: &Value, workspace: &Path) -> Result<String> {
         "Successfully {} {} bytes to {}",
         if append { "appended" } else { "wrote" },
         content.len(),
+        path_str
+    ))
+}
+
+/// Replace exact text in a file. Cursor-style precise edit.
+fn execute_search_replace(args: &Value, workspace: &Path) -> Result<String> {
+    let path_str = get_path_arg(args, false)
+        .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
+    let old_string = args
+        .get("old_string")
+        .and_then(|v| v.as_str())
+        .context("'old_string' is required")?;
+    let new_string = args
+        .get("new_string")
+        .and_then(|v| v.as_str())
+        .context("'new_string' is required")?;
+    let replace_all = args.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    if is_sensitive_write_path(&path_str) {
+        anyhow::bail!(
+            "Blocked: editing sensitive file '{}' is not allowed",
+            path_str
+        );
+    }
+
+    let resolved = resolve_within_workspace(&path_str, workspace)?;
+
+    if !resolved.exists() {
+        anyhow::bail!("File not found: {}", path_str);
+    }
+    if resolved.is_dir() {
+        anyhow::bail!("Path is a directory, not a file: {}", path_str);
+    }
+
+    let content = std::fs::read_to_string(&resolved)
+        .with_context(|| format!("Failed to read file: {}", path_str))?;
+
+    let count = if old_string.is_empty() {
+        anyhow::bail!("old_string cannot be empty");
+    } else if replace_all {
+        content.matches(old_string).count()
+    } else {
+        if content.contains(old_string) {
+            1
+        } else {
+            0
+        }
+    };
+
+    if count == 0 {
+        anyhow::bail!(
+            "old_string not found in file. Ensure it matches exactly (including whitespace and newlines)."
+        );
+    }
+
+    let new_content = if replace_all {
+        content.replace(old_string, new_string)
+    } else {
+        content.replacen(old_string, new_string, 1)
+    };
+
+    std::fs::write(&resolved, &new_content)
+        .with_context(|| format!("Failed to write file: {}", path_str))?;
+
+    Ok(format!(
+        "Successfully replaced {} occurrence(s) in {}",
+        count,
         path_str
     ))
 }
@@ -1610,4 +1708,85 @@ pub fn process_tool_result_content_fallback(content: &str) -> String {
         "{}\n\n... [content truncated: {} chars total, showing head+tail] ...\n\n{}",
         head, len, tail
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_search_replace_first_occurrence() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "hello world\nhello again\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "hello",
+            "new_string": "hi",
+            "replace_all": false
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("Successfully replaced 1 occurrence"));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "hi world\nhello again\n");
+    }
+
+    #[test]
+    fn test_search_replace_all() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "foo bar foo baz foo\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "foo",
+            "new_string": "qux",
+            "replace_all": true
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("Successfully replaced 3 occurrence"));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "qux bar qux baz qux\n");
+    }
+
+    #[test]
+    fn test_search_replace_old_string_not_found() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "hello world\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "xyz",
+            "new_string": "abc"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(result.is_error);
+        assert!(result.content.contains("old_string not found"));
+    }
+
+    #[test]
+    fn test_search_replace_blocks_sensitive_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let env_path = workspace.join(".env");
+        std::fs::write(&env_path, "KEY=value\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": ".env",
+            "old_string": "KEY=value",
+            "new_string": "KEY=modified"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(result.is_error);
+        assert!(result.content.contains("Blocked"));
+    }
 }

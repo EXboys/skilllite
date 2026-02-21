@@ -333,7 +333,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 **Available Skills**:
 {skills_info}
 
-**Built-in capabilities**: read_file, write_file, write_output (final results), list_directory, list_output (list output directory files), file_exists, chat_history (read past conversation by date), chat_plan (read task plan), **memory_write** (store persistent memory for future retrieval — use for 生成向量记忆/写入记忆/保存到记忆), **memory_search** (search memory by keywords), **memory_list** (list stored memory files), **update_task_plan** (revise task list when current plan is wrong/unusable), run_command (execute shell command, requires user confirmation), preview_server (start HTTP server to preview HTML in browser)
+**Built-in capabilities**: read_file, write_file, **search_replace** (precise text replacement in files), write_output (final results), list_directory, list_output (list output directory files), file_exists, chat_history (read past conversation by date), chat_plan (read task plan), **memory_write** (store persistent memory for future retrieval — use for 生成向量记忆/写入记忆/保存到记忆), **memory_search** (search memory by keywords), **memory_list** (list stored memory files), **update_task_plan** (revise task list when current plan is wrong/unusable), run_command (execute shell command, requires user confirmation), preview_server (start HTTP server to preview HTML in browser)
 
 **Output directory**: {output_dir}
 (When skills produce file outputs like screenshots or PDFs, instruct them to save directly to the output directory)
@@ -415,7 +415,7 @@ r#"You are an intelligent task execution assistant responsible for executing tas
 
 **Read the task's `tool_hint` field and follow STRICTLY:**
 
-- **tool_hint = "file_operation"** → Use ONLY built-in tools: `write_output`, `write_file`, `preview_server`, `read_file`, `list_directory`, `file_exists`, `run_command`. ⛔ Do NOT call ANY skill tools. Generate the content yourself and save with write_output.
+- **tool_hint = "file_operation"** → Use ONLY built-in tools: `write_output`, `write_file`, `search_replace`, `preview_server`, `read_file`, `list_directory`, `file_exists`, `run_command`. ⛔ Do NOT call ANY skill tools. Generate the content yourself and save with write_output. Prefer **search_replace** for precise edits (change specific text) instead of read_file + write_file.
 - **tool_hint = "analysis"** → No tools needed, produce text analysis directly.
 - **tool_hint = "<skill_name>"** (e.g. "http-request", "calculator", "weather") → Call that specific skill tool directly. Do NOT use chat_history when tool_hint is http-request.
 
@@ -423,12 +423,13 @@ r#"You are an intelligent task execution assistant responsible for executing tas
 
 1. **write_output**: Write final deliverables (HTML, reports, etc.) to the output directory `{output_dir}`. Path is relative to output dir. Use `append: true` to append. **For content >~6k chars**: split into multiple calls — first call overwrites, subsequent calls use `append: true`.
 2. **write_file**: Write/create files within the workspace. Use `append: true` to append. Same chunking rule for large content.
-3. **preview_server**: Start local HTTP server to preview files in browser
-4. **read_file**: Read file content
-5. **list_directory**: List directory contents
-6. **file_exists**: Check if file exists
-7. **run_command**: Execute shell command (requires user confirmation)
-8. **update_task_plan**: When the current plan is wrong or a task's result is not useful, call with a new tasks array to replace the plan and continue with the revised tasks
+3. **search_replace**: Replace exact text in a file (path, old_string, new_string, replace_all?). Prefer over read_file+write_file for precise edits.
+4. **preview_server**: Start local HTTP server to preview files in browser
+5. **read_file**: Read file content
+6. **list_directory**: List directory contents
+7. **file_exists**: Check if file exists
+8. **run_command**: Execute shell command (requires user confirmation)
+9. **update_task_plan**: When the current plan is wrong or a task's result is not useful, call with a new tasks array to replace the plan and continue with the revised tasks
 
 ## Available Skills (only use when task tool_hint matches a skill name)
 
