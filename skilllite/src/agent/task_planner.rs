@@ -423,7 +423,7 @@ r#"You are an intelligent task execution assistant responsible for executing tas
 
 1. **write_output**: Write final deliverables (HTML, reports, etc.) to the output directory `{output_dir}`. Path is relative to output dir. Use `append: true` to append. **For content >~6k chars**: split into multiple calls — first call overwrites, subsequent calls use `append: true`.
 2. **write_file**: Write/create files within the workspace. Use `append: true` to append. Same chunking rule for large content.
-3. **search_replace**: Replace exact text in a file (path, old_string, new_string, replace_all?). Prefer over read_file+write_file for precise edits.
+3. **search_replace**: Replace exact text in a file (path, old_string, new_string, replace_all?, normalize_whitespace?). Use normalize_whitespace: true to tolerate trailing whitespace. Prefer over read_file+write_file for precise edits.
 4. **preview_server**: Start local HTTP server to preview files in browser
 5. **read_file**: Read file content
 6. **list_directory**: List directory contents

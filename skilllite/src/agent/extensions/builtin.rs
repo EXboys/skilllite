@@ -147,7 +147,7 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "search_replace".to_string(),
-                description: "Replace exact text in a file. Use for precise edits instead of read_file + write_file. Supports workspace and output directory (path relative to workspace or output dir). old_string must match exactly (including whitespace). If old_string appears multiple times, use replace_all: true to replace all, or false (default) to replace only the first occurrence.".to_string(),
+                description: "Replace exact text in a file. Use for precise edits instead of read_file + write_file. Supports workspace and output directory (path relative to workspace or output dir). old_string must match exactly (including whitespace). Use normalize_whitespace: true to allow optional trailing whitespace after old_string (reduces match failure). If old_string appears multiple times, use replace_all: true to replace all, or false (default) to replace only the first occurrence.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -166,6 +166,10 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
                         "replace_all": {
                             "type": "boolean",
                             "description": "If true, replace all occurrences. Default: false (replace first only)."
+                        },
+                        "normalize_whitespace": {
+                            "type": "boolean",
+                            "description": "If true, allow optional trailing whitespace after old_string when matching (reduces failure from minor whitespace differences). Default: false."
                         }
                     },
                     "required": ["path", "old_string", "new_string"]
@@ -627,6 +631,10 @@ fn execute_search_replace(args: &Value, workspace: &Path) -> Result<String> {
         .and_then(|v| v.as_str())
         .context("'new_string' is required")?;
     let replace_all = args.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
+    let normalize_whitespace = args
+        .get("normalize_whitespace")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     if is_sensitive_write_path(&path_str) {
         anyhow::bail!(
@@ -648,28 +656,48 @@ fn execute_search_replace(args: &Value, workspace: &Path) -> Result<String> {
     let content = std::fs::read_to_string(&resolved)
         .with_context(|| format!("Failed to read file: {}", path_str))?;
 
-    let count = if old_string.is_empty() {
+    let (count, new_content) = if old_string.is_empty() {
         anyhow::bail!("old_string cannot be empty");
-    } else if replace_all {
-        content.matches(old_string).count()
-    } else {
-        if content.contains(old_string) {
-            1
-        } else {
-            0
+    } else if normalize_whitespace {
+        // Match old_string + optional trailing whitespace (spaces, tabs, newlines)
+        let escaped = regex::escape(old_string);
+        let pattern = format!(r"({})\s*", escaped);
+        let re = regex::Regex::new(&pattern)
+            .map_err(|e| anyhow::anyhow!("Invalid old_string for regex: {}", e))?;
+        let count = re.find_iter(&content).count();
+        if count == 0 {
+            anyhow::bail!(
+                "old_string not found in file (with normalize_whitespace). Ensure it matches (trailing whitespace is ignored)."
+            );
         }
-    };
-
-    if count == 0 {
-        anyhow::bail!(
-            "old_string not found in file. Ensure it matches exactly (including whitespace and newlines)."
-        );
-    }
-
-    let new_content = if replace_all {
-        content.replace(old_string, new_string)
+        let repl = regex::NoExpand(new_string);
+        let new_content = if replace_all {
+            re.replace_all(&content, repl).into_owned()
+        } else {
+            re.replacen(&content, 1, repl).into_owned()
+        };
+        (count, new_content)
     } else {
-        content.replacen(old_string, new_string, 1)
+        let count = if replace_all {
+            content.matches(old_string).count()
+        } else {
+            if content.contains(old_string) {
+                1
+            } else {
+                0
+            }
+        };
+        if count == 0 {
+            anyhow::bail!(
+                "old_string not found in file. Ensure it matches exactly (including whitespace and newlines). Use normalize_whitespace: true to allow trailing whitespace."
+            );
+        }
+        let new_content = if replace_all {
+            content.replace(old_string, new_string)
+        } else {
+            content.replacen(old_string, new_string, 1)
+        };
+        (count, new_content)
     };
 
     std::fs::write(&resolved, &new_content)
@@ -1789,6 +1817,71 @@ mod tests {
         let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
         assert!(result.is_error);
         assert!(result.content.contains("Blocked"));
+    }
+
+    #[test]
+    fn test_search_replace_normalize_whitespace_trailing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "hello world  \nnext line\n").unwrap();
+
+        // old_string "hello world" matches "hello world  \n" (trailing spaces + newline)
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "hello world",
+            "new_string": "hi",
+            "normalize_whitespace": true
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "hinext line\n");
+    }
+
+    #[test]
+    fn test_search_replace_normalize_whitespace_replace_all() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "foo \nbar \nbaz\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "bar",
+            "new_string": "qux",
+            "replace_all": true,
+            "normalize_whitespace": true
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        // "bar \n" (bar + trailing whitespace) replaced with "qux"
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "foo \nquxbaz\n");
+    }
+
+    #[test]
+    fn test_search_replace_normalize_whitespace_literal_replacement() {
+        // new_string with $ should be literal (NoExpand), not regex $1
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "price: 100\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "price: 100",
+            "new_string": "price: $200",
+            "normalize_whitespace": true
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        // Trailing \n consumed by match, replaced with "price: $200"
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "price: $200");
     }
 
     #[test]
