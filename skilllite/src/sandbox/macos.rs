@@ -5,7 +5,7 @@ use crate::sandbox::common::{
     DEFAULT_FILE_SIZE_LIMIT_MB,
     DEFAULT_MAX_PROCESSES,
 };
-use crate::sandbox::executor::{ExecutionResult, RuntimePaths, SandboxConfig};
+use crate::sandbox::runner::{ExecutionResult, RuntimePaths, SandboxConfig};
 use crate::sandbox::move_protection::{
     generate_log_tag, generate_move_blocking_rules, get_session_suffix,
 };
@@ -26,7 +26,7 @@ pub fn execute_with_limits(
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
-    limits: crate::sandbox::executor::ResourceLimits,
+    limits: crate::sandbox::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
@@ -62,7 +62,7 @@ pub fn execute_simple_with_limits(
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
-    limits: crate::sandbox::executor::ResourceLimits,
+    limits: crate::sandbox::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     crate::info_log!("[INFO] simple: executing {}...", config.entry_point);
     let language = &config.language;
@@ -155,7 +155,7 @@ fn execute_with_sandbox(
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
-    limits: crate::sandbox::executor::ResourceLimits,
+    limits: crate::sandbox::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     use std::os::unix::process::CommandExt;
     

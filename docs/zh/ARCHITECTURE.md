@@ -82,7 +82,7 @@ skillLite/
 
 ### 1. Rust 沙箱执行器 (skilllite)
 
-#### 1.1 沙箱安全级别 (`sandbox/executor.rs`)
+#### 1.1 沙箱安全级别 (`sandbox/runner.rs`)
 
 ```rust
 pub enum SandboxLevel {
@@ -97,7 +97,7 @@ pub enum SandboxLevel {
 - `Level2`: 使用系统级沙箱隔离（macOS 用 Seatbelt，Linux 用 Namespace）
 - `Level3`: 在 Level2 基础上增加静态代码安全扫描，发现危险操作需用户授权
 
-#### 1.2 资源限制 (`sandbox/executor.rs`)
+#### 1.2 资源限制 (`sandbox/runner.rs`)
 
 ```rust
 pub struct ResourceLimits {

@@ -16,7 +16,7 @@
 
 #![cfg(target_os = "windows")]
 
-use crate::sandbox::executor::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
+use crate::sandbox::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::{Command, Stdio};

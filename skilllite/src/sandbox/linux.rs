@@ -1,7 +1,7 @@
 #![cfg(target_os = "linux")]
 
 use crate::sandbox::common::wait_with_timeout;
-use crate::sandbox::executor::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
+use crate::sandbox::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use crate::sandbox::network_proxy::{ProxyConfig, ProxyManager};
 use crate::sandbox::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use crate::sandbox::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
@@ -27,7 +27,7 @@ pub fn execute(
         runtime,
         config,
         input_json,
-        crate::sandbox::executor::ResourceLimits::default(),
+        crate::sandbox::runner::ResourceLimits::default(),
     )
 }
 
@@ -37,7 +37,7 @@ pub fn execute_with_limits(
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
-    limits: crate::sandbox::executor::ResourceLimits,
+    limits: crate::sandbox::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
@@ -73,7 +73,7 @@ fn execute_simple(
         runtime,
         config,
         input_json,
-        crate::sandbox::executor::ResourceLimits::default(),
+        crate::sandbox::runner::ResourceLimits::default(),
     )
 }
 
@@ -83,7 +83,7 @@ fn execute_simple_with_limits(
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
-    limits: crate::sandbox::executor::ResourceLimits,
+    limits: crate::sandbox::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
@@ -158,7 +158,7 @@ fn execute_with_seccomp(
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
-    limits: crate::sandbox::executor::ResourceLimits,
+    limits: crate::sandbox::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     use std::os::unix::process::CommandExt;
     
@@ -264,7 +264,7 @@ fn execute_with_bwrap(
     program: &Path,
     entry_point: &Path,
     work_dir: &Path,
-    limits: crate::sandbox::executor::ResourceLimits,
+    limits: crate::sandbox::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     let env_path = &runtime.env_dir;
     let network_policy = security_policy::resolve_network_policy(
@@ -651,7 +651,7 @@ fn execute_with_namespaces(
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
-    limits: crate::sandbox::executor::ResourceLimits,
+    limits: crate::sandbox::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     use std::os::unix::process::CommandExt;
     

@@ -4,7 +4,7 @@
 
 use crate::path_validation::validate_skill_path;
 use crate::sandbox;
-use crate::sandbox::executor::SandboxConfig;
+use crate::sandbox::runner::SandboxConfig;
 use crate::skill;
 use anyhow::{Context, Result};
 use serde_json::json;
@@ -23,8 +23,8 @@ pub fn run_skill(
     input_json: &str,
     allow_network: bool,
     cache_dir: Option<&String>,
-    limits: sandbox::executor::ResourceLimits,
-    sandbox_level: sandbox::executor::SandboxLevel,
+    limits: sandbox::runner::ResourceLimits,
+    sandbox_level: sandbox::runner::SandboxLevel,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
 
@@ -48,7 +48,7 @@ pub fn run_skill(
 
     let runtime = crate::env::builder::build_runtime_paths(&env_path);
     let config = build_sandbox_config(&skill_path, &effective_metadata);
-    let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
+    let output = sandbox::runner::run_in_sandbox_with_limits_and_level(
         &skill_path,
         &runtime,
         &config,
@@ -68,8 +68,8 @@ pub fn exec_script(
     args: Option<&String>,
     allow_network: bool,
     cache_dir: Option<&String>,
-    limits: sandbox::executor::ResourceLimits,
-    sandbox_level: sandbox::executor::SandboxLevel,
+    limits: sandbox::runner::ResourceLimits,
+    sandbox_level: sandbox::runner::SandboxLevel,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
     let full_script_path = skill_path.join(script_path);
@@ -131,7 +131,7 @@ pub fn exec_script(
 
     let runtime = crate::env::builder::build_runtime_paths(&env_path);
     let config = build_sandbox_config(&skill_path, &effective_metadata);
-    let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
+    let output = sandbox::runner::run_in_sandbox_with_limits_and_level(
         &skill_path,
         &runtime,
         &config,
@@ -225,7 +225,7 @@ fn execute_bash_with_env(
     let mut child = cmd.spawn()
         .with_context(|| format!("Failed to spawn bash command: {}", command))?;
 
-    let memory_limit = sandbox::executor::ResourceLimits::from_env().max_memory_bytes();
+    let memory_limit = sandbox::runner::ResourceLimits::from_env().max_memory_bytes();
     let (stdout, stderr, exit_code, was_killed, kill_reason) =
         sandbox::common::wait_with_timeout(&mut child, timeout_secs, memory_limit, true)?;
 

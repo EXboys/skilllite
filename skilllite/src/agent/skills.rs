@@ -14,7 +14,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::sandbox::executor::{ResourceLimits, SandboxConfig, SandboxLevel};
+use crate::sandbox::runner::{ResourceLimits, SandboxConfig, SandboxLevel};
 use crate::sandbox::security::scanner::ScriptScanner;
 use crate::skill::metadata::{self, SkillMetadata};
 
@@ -562,7 +562,7 @@ fn execute_skill_inner(
 
         let runtime = crate::env::builder::build_runtime_paths(&env_path);
         let config = build_sandbox_config(skill_dir, &effective_metadata);
-        let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
+        let output = crate::sandbox::runner::run_in_sandbox_with_limits_and_level(
             skill_dir,
             &runtime,
             &config,

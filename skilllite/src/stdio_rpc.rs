@@ -16,7 +16,7 @@
 use anyhow::{Context, Result};
 use crate::commands::execute;
 use crate::path_validation;
-use crate::sandbox::executor::{ResourceLimits, SandboxLevel};
+use crate::sandbox::runner::{ResourceLimits, SandboxLevel};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, BufReader, Write};
 use std::sync::mpsc;

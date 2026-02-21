@@ -25,7 +25,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::sandbox::executor::{ResourceLimits, SandboxLevel};
+use crate::sandbox::runner::{ResourceLimits, SandboxLevel};
 use crate::sandbox::security::scanner::ScriptScanner;
 use crate::sandbox::security::types::{
     ScanResult, SecurityIssue, SecurityIssueType, SecuritySeverity,
@@ -839,7 +839,7 @@ fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level: SandboxLev
         _ => "python",
     };
 
-    let config = crate::sandbox::executor::SandboxConfig {
+    let config = crate::sandbox::runner::SandboxConfig {
         name: "execute_code".to_string(),
         entry_point: script_name,
         language: lang_str.to_string(),
@@ -851,7 +851,7 @@ fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level: SandboxLev
     let limits = ResourceLimits::from_env();
     let runtime = crate::env::builder::build_runtime_paths(&PathBuf::new());
 
-    let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
+    let output = crate::sandbox::runner::run_in_sandbox_with_limits_and_level(
         temp_dir.path(),
         &runtime,
         &config,
@@ -1019,7 +1019,7 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
     let limits = ResourceLimits::from_env();
 
     let runtime = crate::env::builder::build_runtime_paths(&env_path);
-    let config = crate::sandbox::executor::SandboxConfig {
+    let config = crate::sandbox::runner::SandboxConfig {
         name: meta.name.clone(),
         entry_point: meta.entry_point.clone(),
         language: metadata::detect_language(&skill_dir, &meta),
@@ -1027,7 +1027,7 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
         network_outbound: meta.network.outbound.clone(),
         uses_playwright: meta.uses_playwright(),
     };
-    let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
+    let output = crate::sandbox::runner::run_in_sandbox_with_limits_and_level(
         &skill_dir,
         &runtime,
         &config,
