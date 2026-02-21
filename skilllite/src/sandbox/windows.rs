@@ -16,8 +16,7 @@
 
 #![cfg(target_os = "windows")]
 
-use crate::sandbox::executor::{ExecutionResult, ResourceLimits};
-use crate::skill::metadata::SkillMetadata;
+use crate::sandbox::executor::{ExecutionResult, ResourceLimits, SandboxConfig};
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -26,19 +25,17 @@ use std::process::{Command, Stdio};
 pub fn execute_with_limits(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    // Check if sandbox is explicitly disabled
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
-        return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
+        return execute_simple_with_limits(skill_dir, env_path, config, input_json, limits);
     }
 
-    // Try WSL2 first (recommended, full Linux sandbox security)
     if is_wsl2_available() {
-        match execute_via_wsl2(skill_dir, env_path, metadata, input_json, limits) {
+        match execute_via_wsl2(skill_dir, env_path, config, input_json, limits) {
             Ok(result) => return Ok(result),
             Err(e) => {
                 eprintln!("[WARN] WSL2 execution failed: {}. Trying Job Object fallback...", e);
@@ -46,8 +43,7 @@ pub fn execute_with_limits(
         }
     }
 
-    // Fallback: Job Object isolation (basic resource limits only)
-    execute_with_job_object(skill_dir, env_path, metadata, input_json, limits)
+    execute_with_job_object(skill_dir, env_path, config, input_json, limits)
 }
 
 /// Check if WSL2 is available and properly configured
@@ -108,7 +104,7 @@ fn windows_to_wsl_path(path: &Path) -> Result<String> {
 fn execute_via_wsl2(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
@@ -170,23 +166,22 @@ fn execute_via_wsl2(
 fn execute_with_job_object(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    use crate::skill::metadata::detect_language;
     use std::io::Write;
     use tempfile::TempDir;
 
     eprintln!("[WARN] Using Job Object fallback - limited security isolation");
     eprintln!("[WARN] For full security, install WSL2: wsl --install");
     crate::observability::security_sandbox_fallback(
-        &metadata.name,
+        &config.name,
         "windows_job_object_limited_isolation",
     );
 
-    let language = detect_language(skill_dir, metadata);
-    let entry_point = skill_dir.join(&metadata.entry_point);
+    let language = &config.language;
+    let entry_point = skill_dir.join(&config.entry_point);
 
     // Create temp directory for input
     let temp_dir = TempDir::new()?;
@@ -272,17 +267,15 @@ fn execute_with_job_object(
 pub fn execute_simple_with_limits(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    // For simple execution, just use the Job Object path without the warning
-    use crate::skill::metadata::detect_language;
     use std::io::Write;
     use tempfile::TempDir;
 
-    let language = detect_language(skill_dir, metadata);
-    let entry_point = skill_dir.join(&metadata.entry_point);
+    let language = &config.language;
+    let entry_point = skill_dir.join(&config.entry_point);
 
     let temp_dir = TempDir::new()?;
     let input_file = temp_dir.path().join("input.json");

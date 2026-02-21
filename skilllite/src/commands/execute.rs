@@ -4,6 +4,7 @@
 
 use crate::path_validation::validate_skill_path;
 use crate::sandbox;
+use crate::sandbox::executor::SandboxConfig;
 use crate::skill;
 use anyhow::{Context, Result};
 use serde_json::json;
@@ -51,10 +52,11 @@ pub fn run_skill(
         effective_metadata.network.enabled = true;
     }
 
+    let config = build_sandbox_config(&skill_path, &effective_metadata);
     let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
         &skill_path,
         &env_path,
-        &effective_metadata,
+        &config,
         input_json,
         limits,
         sandbox_level,
@@ -132,10 +134,11 @@ pub fn exec_script(
         None
     };
 
+    let config = build_sandbox_config(&skill_path, &effective_metadata);
     let output = sandbox::executor::run_in_sandbox_with_limits_and_level(
         &skill_path,
         &env_path,
-        &effective_metadata,
+        &config,
         input_json,
         limits,
         sandbox_level,
@@ -163,12 +166,19 @@ pub fn bash_command(
         );
     }
 
-    let patterns = metadata.get_bash_patterns();
-    if patterns.is_empty() {
+    let skill_patterns = metadata.get_bash_patterns();
+    if skill_patterns.is_empty() {
         anyhow::bail!("Skill '{}' has allowed-tools but no Bash(...) patterns found", metadata.name);
     }
 
-    sandbox::bash_validator::validate_bash_command(command, &patterns)
+    let validator_patterns: Vec<sandbox::bash_validator::BashToolPattern> = skill_patterns
+        .into_iter()
+        .map(|p| sandbox::bash_validator::BashToolPattern {
+            command_prefix: p.command_prefix,
+            raw_pattern: p.raw_pattern,
+        })
+        .collect();
+    sandbox::bash_validator::validate_bash_command(command, &validator_patterns)
         .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
 
     crate::info_log!("[INFO] bash: ensure_environment start...");
@@ -279,6 +289,18 @@ pub fn show_skill_info(skill_dir: &str) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Build a `SandboxConfig` from `SkillMetadata`, resolving language via `detect_language`.
+fn build_sandbox_config(skill_dir: &Path, metadata: &skill::metadata::SkillMetadata) -> SandboxConfig {
+    SandboxConfig {
+        name: metadata.name.clone(),
+        entry_point: metadata.entry_point.clone(),
+        language: skill::metadata::detect_language(skill_dir, metadata),
+        network_enabled: metadata.network.enabled,
+        network_outbound: metadata.network.outbound.clone(),
+        uses_playwright: metadata.uses_playwright(),
+    }
 }
 
 /// Detect script language from file extension.

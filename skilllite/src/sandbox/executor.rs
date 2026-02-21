@@ -1,7 +1,6 @@
 use crate::observability;
 use crate::sandbox::common::{DEFAULT_MAX_MEMORY_MB, DEFAULT_TIMEOUT_SECS};
 use crate::sandbox::security::{format_scan_result, ScriptScanner, SecuritySeverity};
-use crate::skill::metadata::SkillMetadata;
 use anyhow::Result;
 use std::env;
 use std::io::{self, IsTerminal, Write};
@@ -14,6 +13,26 @@ pub struct ExecutionResult {
     pub stdout: String,
     pub stderr: String,
     pub exit_code: i32,
+}
+
+/// Sandbox execution configuration.
+///
+/// Callers construct this from `SkillMetadata` (or other sources);
+/// the sandbox module never imports `skill::metadata` directly.
+#[derive(Debug, Clone)]
+pub struct SandboxConfig {
+    /// Skill / task name (used for logging and audit)
+    pub name: String,
+    /// Entry point script path relative to skill directory
+    pub entry_point: String,
+    /// Resolved language: "python", "node", or "bash"
+    pub language: String,
+    /// Whether outbound network access is permitted
+    pub network_enabled: bool,
+    /// Allowed outbound hosts (e.g. ["*"] for wildcard)
+    pub network_outbound: Vec<String>,
+    /// Whether the skill uses Playwright (requires relaxed sandbox on macOS)
+    pub uses_playwright: bool,
 }
 
 /// Sandbox security levels
@@ -207,7 +226,7 @@ fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &st
 pub fn run_in_sandbox_with_limits_and_level(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
     level: SandboxLevel,
@@ -224,16 +243,15 @@ pub fn run_in_sandbox_with_limits_and_level(
 
     // Level 3: Perform static code scanning
     if level.use_code_scanning() {
-        let script_path = skill_dir.join(&metadata.entry_point);
+        let script_path = skill_dir.join(&config.entry_point);
         if script_path.exists() {
             let scanner = ScriptScanner::new()
-                .allow_network(metadata.network.enabled)
-                .allow_file_ops(false)  // Default: no file operations allowed
-                .allow_process_exec(false);  // Default: no process execution allowed
+                .allow_network(config.network_enabled)
+                .allow_file_ops(false)
+                .allow_process_exec(false);
             
             let scan_result = scanner.scan_file(&script_path)?;
             
-            // Count critical and high severity issues
             let critical_issues: Vec<_> = scan_result.issues.iter()
                 .filter(|issue| matches!(issue.severity, SecuritySeverity::Critical))
                 .collect();
@@ -241,9 +259,7 @@ pub fn run_in_sandbox_with_limits_and_level(
                 .filter(|issue| matches!(issue.severity, SecuritySeverity::High))
                 .collect();
             
-            // If critical or high severity issues are found, request user authorization
             if !critical_issues.is_empty() || !high_issues.is_empty() {
-                // Skip duplicate scan output when auto-approving (agent-rpc / SKILLBOX_AUTO_APPROVE)
                 let will_auto_approve = !io::stdin().is_terminal()
                     || env::var("SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
                         let v = v.trim().to_lowercase();
@@ -261,10 +277,9 @@ pub fn run_in_sandbox_with_limits_and_level(
 
                 let issues_count = critical_issues.len() + high_issues.len();
 
-                // Audit & security event
-                let code_hash = ""; // Not computed here; Python side has it
+                let code_hash = "";
                 observability::audit_confirmation_requested(
-                    &metadata.name,
+                    &config.name,
                     code_hash,
                     issues_count,
                     severity_str,
@@ -282,20 +297,17 @@ pub fn run_in_sandbox_with_limits_and_level(
                     })
                     .collect();
                 observability::security_scan_high(
-                    &metadata.name,
+                    &config.name,
                     severity_str,
                     &serde_json::Value::Array(issues_json),
                 );
 
-                // When stdin is not a TTY (e.g. agent-rpc mode), the agent has already
-                // confirmed via EventSink. Do not block on read_line - it would deadlock
-                // since Python is waiting for the next event.
                 let approved = if !io::stdin().is_terminal() {
                     tracing::info!("Non-TTY stdin (agent-rpc): auto-approve (agent already confirmed)");
-                    observability::audit_confirmation_response(&metadata.name, true, "rpc");
+                    observability::audit_confirmation_response(&config.name, true, "rpc");
                     true
                 } else {
-                    request_user_authorization(&metadata.name, issues_count, severity_str)
+                    request_user_authorization(&config.name, issues_count, severity_str)
                 };
 
                 if !approved {
@@ -306,7 +318,6 @@ pub fn run_in_sandbox_with_limits_and_level(
                 }
             }
             
-            // Log warnings for medium/low severity issues
             if !scan_result.issues.is_empty() && critical_issues.is_empty() && high_issues.is_empty() {
                 eprintln!("{}", format_scan_result(&scan_result));
             }
@@ -317,13 +328,13 @@ pub fn run_in_sandbox_with_limits_and_level(
     if !level.use_sandbox() {
         tracing::warn!("Running without sandbox (Level 1) - no isolation, but with resource limits");
         observability::audit_command_invoked(
-            &metadata.name,
-            &metadata.entry_point,
+            &config.name,
+            &config.entry_point,
             &[],
             skill_dir.to_string_lossy().as_ref(),
         );
         let start = Instant::now();
-        let result = execute_simple_without_sandbox(skill_dir, env_path, metadata, input_json, limits)?;
+        let result = execute_simple_without_sandbox(skill_dir, env_path, config, input_json, limits)?;
         
         if result.exit_code != 0 {
             anyhow::bail!(
@@ -333,13 +344,12 @@ pub fn run_in_sandbox_with_limits_and_level(
             );
         }
 
-        // Parse and validate output is valid JSON
         let output = result.stdout.trim();
         let _: serde_json::Value = serde_json::from_str(output)
             .map_err(|e| anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output))?;
 
         observability::audit_execution_completed(
-            &metadata.name,
+            &config.name,
             result.exit_code,
             start.elapsed().as_millis() as u64,
             result.stdout.len(),
@@ -349,8 +359,8 @@ pub fn run_in_sandbox_with_limits_and_level(
 
     // Level 2 & 3: Execute with sandbox
     observability::audit_command_invoked(
-        &metadata.name,
-        &metadata.entry_point,
+        &config.name,
+        &config.entry_point,
         &[] as &[&str],
         skill_dir.to_string_lossy().as_ref(),
     );
@@ -358,7 +368,7 @@ pub fn run_in_sandbox_with_limits_and_level(
     let result = execute_platform_sandbox_with_limits(
         skill_dir,
         env_path,
-        metadata,
+        config,
         input_json,
         limits,
     )?;
@@ -371,13 +381,12 @@ pub fn run_in_sandbox_with_limits_and_level(
         );
     }
 
-    // Parse and validate output is valid JSON
     let output = result.stdout.trim();
     let _: serde_json::Value = serde_json::from_str(output)
         .map_err(|e| anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output))?;
 
     observability::audit_execution_completed(
-        &metadata.name,
+        &config.name,
         result.exit_code,
         start.elapsed().as_millis() as u64,
         result.stdout.len(),
@@ -390,13 +399,13 @@ pub fn run_in_sandbox_with_limits_and_level(
 fn execute_platform_sandbox(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
 ) -> Result<ExecutionResult> {
     execute_platform_sandbox_with_limits(
         skill_dir,
         env_path,
-        metadata,
+        config,
         input_json,
         ResourceLimits::default(),
     )
@@ -406,11 +415,11 @@ fn execute_platform_sandbox(
 fn execute_platform_sandbox_with_limits(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    super::linux::execute_with_limits(skill_dir, env_path, metadata, input_json, limits)
+    super::linux::execute_with_limits(skill_dir, env_path, config, input_json, limits)
 }
 
 
@@ -418,24 +427,24 @@ fn execute_platform_sandbox_with_limits(
 fn execute_platform_sandbox_with_limits(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    super::macos::execute_with_limits(skill_dir, env_path, metadata, input_json, limits)
+    super::macos::execute_with_limits(skill_dir, env_path, config, input_json, limits)
 }
 
 #[cfg(target_os = "windows")]
 fn execute_platform_sandbox(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
 ) -> Result<ExecutionResult> {
     execute_platform_sandbox_with_limits(
         skill_dir,
         env_path,
-        metadata,
+        config,
         input_json,
         ResourceLimits::default(),
     )
@@ -445,18 +454,18 @@ fn execute_platform_sandbox(
 fn execute_platform_sandbox_with_limits(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    super::windows::execute_with_limits(skill_dir, env_path, metadata, input_json, limits)
+    super::windows::execute_with_limits(skill_dir, env_path, config, input_json, limits)
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn execute_platform_sandbox(
     _skill_dir: &Path,
     _env_path: &Path,
-    _metadata: &SkillMetadata,
+    _config: &SandboxConfig,
     _input_json: &str,
 ) -> Result<ExecutionResult> {
     anyhow::bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
@@ -466,7 +475,7 @@ fn execute_platform_sandbox(
 fn execute_platform_sandbox_with_limits(
     _skill_dir: &Path,
     _env_path: &Path,
-    _metadata: &SkillMetadata,
+    _config: &SandboxConfig,
     _input_json: &str,
     _limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
@@ -477,7 +486,7 @@ fn execute_platform_sandbox_with_limits(
 fn execute_simple_without_sandbox(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
@@ -485,7 +494,7 @@ fn execute_simple_without_sandbox(
     return super::macos::execute_simple_with_limits(
         skill_dir,
         env_path,
-        metadata,
+        config,
         input_json,
         limits,
     );
@@ -494,7 +503,7 @@ fn execute_simple_without_sandbox(
     return super::linux::execute_with_limits(
         skill_dir,
         env_path,
-        metadata,
+        config,
         input_json,
         limits,
     );
@@ -503,7 +512,7 @@ fn execute_simple_without_sandbox(
     return super::windows::execute_simple_with_limits(
         skill_dir,
         env_path,
-        metadata,
+        config,
         input_json,
         limits,
     );

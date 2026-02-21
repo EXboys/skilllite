@@ -839,16 +839,13 @@ fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level: SandboxLev
         _ => "python",
     };
 
-    let meta = metadata::SkillMetadata {
+    let config = crate::sandbox::executor::SandboxConfig {
         name: "execute_code".to_string(),
         entry_point: script_name,
-        language: Some(lang_str.to_string()),
-        description: None,
-        compatibility: None,
-        network: metadata::NetworkPolicy::default(),
-        resolved_packages: None,
-        allowed_tools: None,
-        requires_elevated_permissions: false,
+        language: lang_str.to_string(),
+        network_enabled: false,
+        network_outbound: Vec::new(),
+        uses_playwright: false,
     };
 
     let limits = ResourceLimits::from_env();
@@ -857,7 +854,7 @@ fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level: SandboxLev
     let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
         temp_dir.path(),
         &env_path,
-        &meta,
+        &config,
         "{}",
         limits,
         sandbox_level,
@@ -1021,10 +1018,18 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
 
     let limits = ResourceLimits::from_env();
 
+    let config = crate::sandbox::executor::SandboxConfig {
+        name: meta.name.clone(),
+        entry_point: meta.entry_point.clone(),
+        language: metadata::detect_language(&skill_dir, &meta),
+        network_enabled: meta.network.enabled,
+        network_outbound: meta.network.outbound.clone(),
+        uses_playwright: meta.uses_playwright(),
+    };
     let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
         &skill_dir,
         &env_path,
-        &meta,
+        &config,
         &input_json,
         limits,
         sandbox_level,

@@ -13,8 +13,19 @@
 //! 3. **Blocked prefix check** — dangerous commands (rm, sudo, sh, curl, etc.)
 //!    are always rejected regardless of allowed patterns.
 
-use crate::skill::metadata::BashToolPattern;
 use thiserror::Error;
+
+/// Parsed pattern from `allowed-tools: Bash(prefix:*)`.
+///
+/// Defined locally so that the sandbox module does not depend on `skill::metadata`.
+/// Callers convert from `skill::metadata::BashToolPattern` at the call site.
+#[derive(Debug, Clone)]
+pub struct BashToolPattern {
+    /// Command prefix, e.g. "agent-browser"
+    pub command_prefix: String,
+    /// Raw pattern string, e.g. "agent-browser:*"
+    pub raw_pattern: String,
+}
 
 /// Errors returned by bash command validation.
 #[derive(Debug, Error)]

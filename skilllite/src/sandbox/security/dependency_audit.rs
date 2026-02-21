@@ -264,29 +264,51 @@ fn parse_lock_file(lock_path: &Path) -> Option<Vec<Dependency>> {
 /// Inferred packages have an empty `version` field; the PyPI query path
 /// handles this by querying `/pypi/{name}/json` (latest version).
 pub fn resolve_from_metadata(skill_dir: &Path) -> Vec<Dependency> {
+    // NOTE: This is the only place in the sandbox module that touches
+    // `skill::metadata` directly. Phase 2 will move this call site to the
+    // commands layer so that sandbox never imports skill.
     let meta = match crate::skill::metadata::parse_skill_metadata(skill_dir) {
         Ok(m) => m,
         Err(_) => return Vec::new(),
     };
 
-    let compatibility = meta.compatibility.as_deref().unwrap_or("");
-    if compatibility.is_empty() && meta.resolved_packages.is_none() {
+    resolve_from_metadata_fields(
+        skill_dir,
+        meta.compatibility.as_deref(),
+        meta.resolved_packages.as_deref(),
+        meta.description.as_deref(),
+        meta.language.as_deref(),
+        &meta.entry_point,
+    )
+}
+
+/// Pure data-driven dependency resolution (no `SkillMetadata` dependency).
+fn resolve_from_metadata_fields(
+    skill_dir: &Path,
+    compatibility: Option<&str>,
+    resolved_packages: Option<&[String]>,
+    description: Option<&str>,
+    language_hint: Option<&str>,
+    entry_point: &str,
+) -> Vec<Dependency> {
+    let compat = compatibility.unwrap_or("");
+    if compat.is_empty() && resolved_packages.is_none() {
         return Vec::new();
     }
 
-    let language = crate::skill::metadata::detect_language(skill_dir, &meta);
+    let language = language_hint
+        .map(String::from)
+        .unwrap_or_else(|| detect_language_from_entry_point(entry_point, skill_dir));
     let ecosystem = match language.as_str() {
         "python" => "PyPI",
         "node" => "npm",
-        _ => "PyPI", // default to PyPI for unknown
+        _ => "PyPI",
     };
 
-    // Priority 1: resolved_packages from metadata/lock
-    if let Some(ref resolved) = meta.resolved_packages {
+    if let Some(resolved) = resolved_packages {
         return resolved
             .iter()
             .map(|pkg| {
-                // resolved_packages may be "name==version" or just "name"
                 if let Some((name, ver)) = pkg.split_once("==") {
                     Dependency {
                         name: name.trim().to_string(),
@@ -305,10 +327,8 @@ pub fn resolve_from_metadata(skill_dir: &Path) -> Vec<Dependency> {
             .collect();
     }
 
-    // Build context string for inference
-    let context = build_inference_context(&meta, compatibility);
+    let context = build_inference_context(description, compat);
 
-    // Priority 2: LLM inference
     if let Some(packages) = infer_packages_with_llm(&context, &language) {
         if !packages.is_empty() {
             eprintln!(
@@ -327,9 +347,8 @@ pub fn resolve_from_metadata(skill_dir: &Path) -> Vec<Dependency> {
         }
     }
 
-    // Priority 3: Whitelist regex matching
     let whitelist_packages =
-        crate::skill::deps::parse_compatibility_for_packages(Some(compatibility));
+        crate::skill::deps::parse_compatibility_for_packages(Some(compat));
     if !whitelist_packages.is_empty() {
         eprintln!(
             "   📋 Whitelist matched {} package(s): {}",
@@ -349,19 +368,44 @@ pub fn resolve_from_metadata(skill_dir: &Path) -> Vec<Dependency> {
     Vec::new()
 }
 
-/// Build a concise context string for LLM inference from skill metadata.
-fn build_inference_context(
-    meta: &crate::skill::metadata::SkillMetadata,
-    compatibility: &str,
-) -> String {
+/// Lightweight language detection for dependency audit (avoids importing skill::metadata).
+fn detect_language_from_entry_point(entry_point: &str, skill_dir: &Path) -> String {
+    if entry_point.ends_with(".py") {
+        return "python".to_string();
+    }
+    if entry_point.ends_with(".js") || entry_point.ends_with(".ts") {
+        return "node".to_string();
+    }
+    if entry_point.ends_with(".sh") {
+        return "bash".to_string();
+    }
+    let scripts_dir = skill_dir.join("scripts");
+    if scripts_dir.exists() {
+        if let Ok(entries) = std::fs::read_dir(&scripts_dir) {
+            for entry in entries.flatten() {
+                if let Some(ext) = entry.path().extension() {
+                    match ext.to_string_lossy().as_ref() {
+                        "py" => return "python".to_string(),
+                        "js" | "ts" => return "node".to_string(),
+                        "sh" => return "bash".to_string(),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    "python".to_string()
+}
+
+/// Build a concise context string for LLM inference.
+fn build_inference_context(description: Option<&str>, compatibility: &str) -> String {
     let mut parts = Vec::new();
-    if let Some(ref desc) = meta.description {
+    if let Some(desc) = description {
         parts.push(format!("Description: {}", desc));
     }
     if !compatibility.is_empty() {
         parts.push(format!("Compatibility: {}", compatibility));
     }
-    // Limit to 2000 chars to avoid excessive token usage
     let joined = parts.join("\n");
     joined.chars().take(2000).collect()
 }

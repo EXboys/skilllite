@@ -14,7 +14,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::sandbox::executor::{ResourceLimits, SandboxLevel};
+use crate::sandbox::executor::{ResourceLimits, SandboxConfig, SandboxLevel};
 use crate::sandbox::security::scanner::ScriptScanner;
 use crate::skill::metadata::{self, SkillMetadata};
 
@@ -518,9 +518,15 @@ fn execute_skill_inner(
             .and_then(|v| v.as_str())
             .context("'command' is required for bash-tool skills")?;
 
-        // Validate against allowed patterns
-        let patterns = metadata.get_bash_patterns();
-        crate::sandbox::bash_validator::validate_bash_command(command, &patterns)
+        let skill_patterns = metadata.get_bash_patterns();
+        let validator_patterns: Vec<crate::sandbox::bash_validator::BashToolPattern> = skill_patterns
+            .into_iter()
+            .map(|p| crate::sandbox::bash_validator::BashToolPattern {
+                command_prefix: p.command_prefix,
+                raw_pattern: p.raw_pattern,
+            })
+            .collect();
+        crate::sandbox::bash_validator::validate_bash_command(command, &validator_patterns)
             .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
 
         // Execute bash command (same logic as main.rs bash_command).
@@ -546,32 +552,36 @@ fn execute_skill_inner(
         let _: Value = serde_json::from_str(&input_json)
             .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
 
-        // Multi-script routing: override entry_point if this is a multi-script tool
-        if let Some(ref entry) = multi_script_entry {
-            let mut override_metadata = metadata.clone();
-            override_metadata.entry_point = entry.to_string();
-
-            let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
-                skill_dir,
-                &env_path,
-                &override_metadata,
-                &input_json,
-                limits,
-                sandbox_level,
-            )?;
-            Ok(output)
+        let effective_metadata = if let Some(ref entry) = multi_script_entry {
+            let mut m = metadata.clone();
+            m.entry_point = entry.to_string();
+            m
         } else {
-            // Execute in sandbox (same process, direct call)
-            let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
-                skill_dir,
-                &env_path,
-                metadata,
-                &input_json,
-                limits,
-                sandbox_level,
-            )?;
-            Ok(output)
-        }
+            metadata.clone()
+        };
+
+        let config = build_sandbox_config(skill_dir, &effective_metadata);
+        let output = crate::sandbox::executor::run_in_sandbox_with_limits_and_level(
+            skill_dir,
+            &env_path,
+            &config,
+            &input_json,
+            limits,
+            sandbox_level,
+        )?;
+        Ok(output)
+    }
+}
+
+/// Build a `SandboxConfig` from `SkillMetadata`, resolving language via `detect_language`.
+fn build_sandbox_config(skill_dir: &Path, metadata: &SkillMetadata) -> SandboxConfig {
+    SandboxConfig {
+        name: metadata.name.clone(),
+        entry_point: metadata.entry_point.clone(),
+        language: metadata::detect_language(skill_dir, metadata),
+        network_enabled: metadata.network.enabled,
+        network_outbound: metadata.network.outbound.clone(),
+        uses_playwright: metadata.uses_playwright(),
     }
 }
 

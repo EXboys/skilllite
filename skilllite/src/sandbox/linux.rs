@@ -6,7 +6,7 @@ use crate::sandbox::executor::{ExecutionResult, ResourceLimits};
 use crate::sandbox::network_proxy::{ProxyConfig, ProxyManager};
 use crate::sandbox::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use crate::sandbox::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
-use crate::skill::metadata::{detect_language, SkillMetadata};
+use crate::sandbox::executor::SandboxConfig;
 use anyhow::{Context, Result};
 use nix::mount::{mount, MsFlags};
 use nix::sched::{unshare, CloneFlags};
@@ -21,13 +21,13 @@ use tempfile::TempDir;
 pub fn execute(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
 ) -> Result<ExecutionResult> {
     execute_with_limits(
         skill_dir,
         env_path,
-        metadata,
+        config,
         input_json,
         crate::sandbox::executor::ResourceLimits::default(),
     )
@@ -37,23 +37,20 @@ pub fn execute(
 pub fn execute_with_limits(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    // Sandbox is enabled by default for security
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
-        return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
+        return execute_simple_with_limits(skill_dir, env_path, config, input_json, limits);
     }
     
-    // Try to use seccomp-based sandbox (works without root)
-    match execute_with_seccomp(skill_dir, env_path, metadata, input_json, limits) {
+    match execute_with_seccomp(skill_dir, env_path, config, input_json, limits) {
         Ok(result) => Ok(result),
         Err(e) => {
-            // If seccomp fails, try namespace isolation (may require root)
             eprintln!("[INFO] Seccomp sandbox failed ({}), trying namespace isolation...", e);
-            match execute_with_namespaces(skill_dir, env_path, metadata, input_json, limits) {
+            match execute_with_namespaces(skill_dir, env_path, config, input_json, limits) {
                 Ok(result) => Ok(result),
                 Err(e2) => {
                     Err(anyhow::anyhow!(
@@ -70,13 +67,13 @@ pub fn execute_with_limits(
 fn execute_simple(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
 ) -> Result<ExecutionResult> {
     execute_simple_with_limits(
         skill_dir,
         env_path,
-        metadata,
+        config,
         input_json,
         crate::sandbox::executor::ResourceLimits::default(),
     )
@@ -86,12 +83,12 @@ fn execute_simple(
 fn execute_simple_with_limits(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    let language = detect_language(skill_dir, metadata);
-    let entry_point = skill_dir.join(&metadata.entry_point);
+    let language = &config.language;
+    let entry_point = skill_dir.join(&config.entry_point);
 
     // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
@@ -134,22 +131,18 @@ fn execute_simple_with_limits(
     cmd.env("SKILLBOX_SANDBOX", "0");
     cmd.env("TMPDIR", work_dir);
 
-    // Network control flag (informational only in simple mode)
-    if !metadata.network.enabled {
+    if !config.network_enabled {
         cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
     }
 
-    // Spawn the process
     let mut child = cmd.spawn().with_context(|| "Failed to spawn skill process")?;
 
-    // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
         stdin
             .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
 
-    // Wait with timeout and memory monitoring (using common module)
     let (stdout, stderr, exit_code, _, _) = wait_with_timeout(
         &mut child,
         limits.timeout_secs,
@@ -169,14 +162,14 @@ fn execute_simple_with_limits(
 fn execute_with_seccomp(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
     use std::os::unix::process::CommandExt;
     
-    let language = detect_language(skill_dir, metadata);
-    let entry_point = skill_dir.join(&metadata.entry_point);
+    let language = &config.language;
+    let entry_point = skill_dir.join(&config.entry_point);
 
     // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
@@ -206,7 +199,7 @@ fn execute_with_seccomp(
             &bwrap,
             skill_dir,
             env_path,
-            metadata,
+            config,
             input_json,
             &program,
             &entry_point,
@@ -222,7 +215,7 @@ fn execute_with_seccomp(
             &firejail,
             skill_dir,
             env_path,
-            metadata,
+            config,
             input_json,
             &program,
             &entry_point,
@@ -274,17 +267,16 @@ fn execute_with_bwrap(
     bwrap: &Path,
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     program: &Path,
     entry_point: &Path,
     work_dir: &Path,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    // Resolve network policy from canonical security_policy (aligns with macOS)
     let network_policy = security_policy::resolve_network_policy(
-        metadata.network.enabled,
-        &metadata.network.outbound,
+        config.network_enabled,
+        &config.network_outbound,
     );
 
     // Start network proxy when policy requires domain filtering
@@ -519,7 +511,7 @@ fn execute_with_firejail(
     firejail: &Path,
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     program: &Path,
     entry_point: &Path,
@@ -527,8 +519,8 @@ fn execute_with_firejail(
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
     let network_policy = security_policy::resolve_network_policy(
-        metadata.network.enabled,
-        &metadata.network.outbound,
+        config.network_enabled,
+        &config.network_outbound,
     );
 
     let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
@@ -663,14 +655,14 @@ fn execute_with_firejail(
 fn execute_with_namespaces(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
     use std::os::unix::process::CommandExt;
     
-    let language = detect_language(skill_dir, metadata);
-    let entry_point = skill_dir.join(&metadata.entry_point);
+    let language = &config.language;
+    let entry_point = skill_dir.join(&config.entry_point);
 
     // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
@@ -710,8 +702,7 @@ fn execute_with_namespaces(
         cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
     }
 
-    // Network control flag (informational only in simple mode)
-    if !metadata.network.enabled {
+    if !config.network_enabled {
         cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
     }
 

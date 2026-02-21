@@ -13,7 +13,7 @@ use crate::sandbox::move_protection::{
 use crate::sandbox::network_proxy::{ProxyConfig, ProxyManager};
 use crate::sandbox::security::policy::{self as security_policy, HomePathStyle, ResolvedNetworkPolicy};
 use crate::sandbox::seatbelt::generate_seatbelt_mandatory_deny_patterns;
-use crate::skill::metadata::{detect_language, SkillMetadata};
+use crate::sandbox::executor::SandboxConfig;
 use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
@@ -26,40 +26,34 @@ use tempfile::TempDir;
 pub fn execute_with_limits(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    // Check if sandbox is explicitly disabled
     if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
         eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
         crate::info_log!("[INFO] using simple execution (no sandbox-exec)");
-        return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
+        return execute_simple_with_limits(skill_dir, env_path, config, input_json, limits);
     }
 
-    // Playwright requires spawn (driver+Chromium); macOS Seatbelt blocks it despite allow rules.
-    // Only skip sandbox when BOTH: user opts in AND this skill actually uses Playwright.
-    if security_policy::should_allow_playwright() && metadata.uses_playwright() {
+    if security_policy::should_allow_playwright() && config.uses_playwright {
         crate::info_log!(
             "[INFO] Skill {} uses Playwright; skipping sandbox (SKILLBOX_ALLOW_PLAYWRIGHT/L2)",
-            metadata.name
+            config.name
         );
-        return execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits);
+        return execute_simple_with_limits(skill_dir, env_path, config, input_json, limits);
     }
     
     crate::info_log!("[INFO] using sandbox-exec (Seatbelt)...");
-    // Use sandbox-exec with Seatbelt for system-level isolation
-    // Falls back to simple execution if sandbox-exec fails (e.g. "Operation not permitted" on SIP-restricted macOS)
-    match execute_with_sandbox(skill_dir, env_path, metadata, input_json, limits) {
+    match execute_with_sandbox(skill_dir, env_path, config, input_json, limits) {
         Ok(result) if result.exit_code == 0 => Ok(result),
         Ok(_) | Err(_) => {
-            // Sandbox failed, fall back to simple execution with warning
             eprintln!("[WARN] Sandbox execution failed, falling back to simple execution");
             crate::observability::security_sandbox_fallback(
-                &metadata.name,
+                &config.name,
                 "seatbelt_exec_failed",
             );
-            execute_simple_with_limits(skill_dir, env_path, metadata, input_json, limits)
+            execute_simple_with_limits(skill_dir, env_path, config, input_json, limits)
         }
     }
 }
@@ -68,15 +62,14 @@ pub fn execute_with_limits(
 pub fn execute_simple_with_limits(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    crate::info_log!("[INFO] simple: executing {}...", metadata.entry_point);
-    let language = detect_language(skill_dir, metadata);
+    crate::info_log!("[INFO] simple: executing {}...", config.entry_point);
+    let language = &config.language;
     
-    // Use relative entry_point since we set current_dir to skill_dir
-    let entry_point = &metadata.entry_point;
+    let entry_point = &config.entry_point;
 
     // Create temporary directory for work
     let temp_dir = TempDir::new()?;
@@ -129,8 +122,7 @@ pub fn execute_simple_with_limits(
     cmd.env("SKILLBOX_SANDBOX", "0");
     cmd.env("TMPDIR", work_dir);
 
-    // Network control flag (informational only in simple mode)
-    if !metadata.network.enabled {
+    if !config.network_enabled {
         cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
     }
 
@@ -167,24 +159,22 @@ pub fn execute_simple_with_limits(
 fn execute_with_sandbox(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     input_json: &str,
     limits: crate::sandbox::executor::ResourceLimits,
 ) -> Result<ExecutionResult> {
     use std::os::unix::process::CommandExt;
     
-    let language = detect_language(skill_dir, metadata);
-    // Use relative entry_point since we set current_dir to skill_dir
-    let entry_point = &metadata.entry_point;
+    let language = &config.language;
+    let entry_point = &config.entry_point;
 
     // Create temporary directory for sandbox profile and work
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
-    // Resolve network policy from canonical security_policy
     let network_policy = security_policy::resolve_network_policy(
-        metadata.network.enabled,
-        &metadata.network.outbound,
+        config.network_enabled,
+        &config.network_outbound,
     );
 
     // Start network proxy when policy requires domain filtering
@@ -222,7 +212,7 @@ fn execute_with_sandbox(
     let profile_content = generate_sandbox_profile_with_proxy(
         skill_dir,
         env_path,
-        metadata,
+        config,
         work_dir,
         proxy_manager.as_ref().and_then(|m| m.http_port()),
         proxy_manager.as_ref().and_then(|m| m.socks5_port()),
@@ -391,7 +381,7 @@ fn execute_with_sandbox(
 fn generate_sandbox_profile_with_proxy(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     work_dir: &Path,
     http_proxy_port: Option<u16>,
     socks5_proxy_port: Option<u16>,
@@ -404,7 +394,7 @@ fn generate_sandbox_profile_with_proxy(
     let allow_playwright = security_policy::should_allow_playwright();
     
     // Generate unique log tag for this execution (P1: precise violation tracking)
-    let command_desc = format!("skill:{}", metadata.name);
+    let command_desc = format!("skill:{}", config.name);
     let log_tag = generate_log_tag(&command_desc);
 
     let mut profile = String::new();
@@ -640,7 +630,7 @@ fn generate_sandbox_profile_with_proxy(
 fn generate_sandbox_profile(
     skill_dir: &Path,
     env_path: &Path,
-    metadata: &SkillMetadata,
+    config: &SandboxConfig,
     work_dir: &Path,
 ) -> Result<String> {
     let skill_dir_str = skill_dir.to_string_lossy();
@@ -694,7 +684,7 @@ fn generate_sandbox_profile(
     // ============================================================
     // SECURITY: Network isolation
     // ============================================================
-    if !metadata.network.enabled {
+    if !config.network_enabled {
         profile.push_str("; SECURITY: Network access DISABLED\n");
         profile.push_str("(deny network*)\n\n");
     }
@@ -788,13 +778,12 @@ fn generate_sandbox_profile(
     }
     profile.push_str("\n");
 
-    // Network policy for enabled case
-    if metadata.network.enabled {
+    if config.network_enabled {
         profile.push_str("; Network access enabled\n");
-        if metadata.network.outbound.is_empty() {
+        if config.network_outbound.is_empty() {
             profile.push_str("(allow network-outbound)\n");
         } else {
-            for host in &metadata.network.outbound {
+            for host in &config.network_outbound {
                 if let Some(ips) = resolve_host_to_ips(host) {
                     for ip in ips {
                         profile.push_str(&format!(
@@ -854,19 +843,16 @@ mod tests {
         let env_path = Path::new("");
         let work_dir = Path::new("/tmp/work");
 
-        let metadata = SkillMetadata {
+        let config = SandboxConfig {
             name: "test".to_string(),
             entry_point: "main.py".to_string(),
-            language: Some("python".to_string()),
-            description: None,
-            compatibility: None,
-            network: Default::default(),
-            resolved_packages: None,
-            allowed_tools: None,
-            requires_elevated_permissions: false,
+            language: "python".to_string(),
+            network_enabled: false,
+            network_outbound: Vec::new(),
+            uses_playwright: false,
         };
 
-        let profile = generate_sandbox_profile(skill_dir, env_path, &metadata, work_dir)
+        let profile = generate_sandbox_profile(skill_dir, env_path, &config, work_dir)
             .expect("test sandbox profile generation should succeed");
 
         assert!(profile.contains("(version 1)"));
