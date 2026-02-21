@@ -13,6 +13,10 @@ pub mod schema;
 
 #[allow(unused_imports)] // 供后续迁移 observability 等模块使用
 pub use loader::{env_bool, env_optional, env_or, load_dotenv};
+pub use loader::{
+    ensure_default_output_dir, init_daemon_env, init_llm_env, remove_env_var, set_env_var,
+    ScopedEnvGuard,
+};
 pub use schema::{
     AgentFeatureFlags, CacheConfig, EmbeddingConfig, LlmConfig, ObservabilityConfig, PathsConfig,
 };

@@ -43,7 +43,7 @@
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use super::types::*;
@@ -142,27 +142,7 @@ impl EventSink for RpcEventSink {
 /// Reads JSON-Lines from stdin, processes agent_chat requests,
 /// streams events as JSON-Lines to stdout.
 pub fn serve_agent_rpc() -> Result<()> {
-    // Set default output directory BEFORE creating the tokio runtime (multi-threaded).
-    // SAFETY: No other threads exist at this point.
-    let paths = crate::config::PathsConfig::from_env();
-    if paths.output_dir.is_none() {
-        let chat_output = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".skilllite")
-            .join("chat")
-            .join("output");
-        let s = chat_output.to_string_lossy().to_string();
-        unsafe { std::env::set_var("SKILLLITE_OUTPUT_DIR", &s) };
-        let p = PathBuf::from(&s);
-        if !p.exists() {
-            let _ = std::fs::create_dir_all(&p);
-        }
-    } else if let Some(ref output_dir) = paths.output_dir {
-        let p = PathBuf::from(output_dir);
-        if !p.exists() {
-            let _ = std::fs::create_dir_all(&p);
-        }
-    }
+    crate::config::ensure_default_output_dir();
 
     let stdin = io::stdin();
     let stdout = io::stdout();

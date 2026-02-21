@@ -124,3 +124,72 @@ pub fn env_is_set(primary: &str, aliases: &[&str]) -> bool {
     env::var(primary).is_ok()
         || aliases.iter().any(|a| env::var(a).is_ok())
 }
+
+// ─── 集中式 env::set_var / remove_var 包装 ─────────────────────────────────
+//
+// 所有对 `std::env::set_var` / `remove_var` 的调用都应通过下面的函数进行，
+// 业务代码不再直接出现 `unsafe { env::set_var(...) }`。
+//
+// SAFETY 约定：调用方需确保在多线程启动前（tokio runtime 创建前）调用。
+
+/// 设置单个环境变量（unsafe 集中在此处）
+#[allow(unsafe_code)]
+pub fn set_env_var(key: &str, value: &str) {
+    unsafe { env::set_var(key, value) };
+}
+
+/// 移除单个环境变量
+#[allow(unsafe_code)]
+pub fn remove_env_var(key: &str) {
+    unsafe { env::remove_var(key) };
+}
+
+/// 初始化 LLM 环境变量（api_base / api_key / model）
+///
+/// quickstart 等入口在 tokio runtime 启动前调用。
+pub fn init_llm_env(api_base: &str, api_key: &str, model: &str) {
+    set_env_var("OPENAI_API_BASE", api_base);
+    set_env_var("OPENAI_API_KEY", api_key);
+    set_env_var("SKILLLITE_MODEL", model);
+}
+
+/// 初始化 daemon/stdio 模式的静默环境变量
+pub fn init_daemon_env() {
+    set_env_var("SKILLBOX_AUTO_APPROVE", "1");
+    set_env_var("SKILLLITE_QUIET", "1");
+}
+
+/// 确保 `SKILLLITE_OUTPUT_DIR` 有值，若未设置则使用 `~/.skilllite/chat/output/`。
+///
+/// 同时创建目录（若不存在）。chat 和 agent-rpc 入口共用。
+pub fn ensure_default_output_dir() {
+    let paths = super::PathsConfig::from_env();
+    if paths.output_dir.is_none() {
+        let chat_output = dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".skilllite")
+            .join("chat")
+            .join("output");
+        let s = chat_output.to_string_lossy().to_string();
+        set_env_var("SKILLLITE_OUTPUT_DIR", &s);
+        if !chat_output.exists() {
+            let _ = std::fs::create_dir_all(&chat_output);
+        }
+    } else if let Some(ref output_dir) = paths.output_dir {
+        let p = std::path::PathBuf::from(output_dir);
+        if !p.exists() {
+            let _ = std::fs::create_dir_all(&p);
+        }
+    }
+}
+
+/// RAII guard：drop 时通过 [`remove_env_var`] 清除指定环境变量。
+///
+/// 用于 exec_script 等需要临时设置再还原的场景。
+pub struct ScopedEnvGuard(pub &'static str);
+
+impl Drop for ScopedEnvGuard {
+    fn drop(&mut self) {
+        remove_env_var(self.0);
+    }
+}

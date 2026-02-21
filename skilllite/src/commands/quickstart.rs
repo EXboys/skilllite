@@ -294,13 +294,7 @@ fn write_env_if_needed(api_base: &str, api_key: &str, model: &str) -> Result<()>
 
     // Don't write .env if using Ollama (no sensitive key)
     if api_key == "ollama" {
-        // Still set env vars for this session
-        // SAFETY: Called before tokio runtime, single-threaded.
-        unsafe {
-            std::env::set_var("OPENAI_API_BASE", api_base);
-            std::env::set_var("OPENAI_API_KEY", api_key);
-            std::env::set_var("SKILLLITE_MODEL", model);
-        }
+        crate::config::init_llm_env(api_base, api_key, model);
         return Ok(());
     }
 
@@ -327,13 +321,7 @@ fn launch_chat(api_base: &str, api_key: &str, model: &str, skills_path: &Path) -
     use crate::agent::types::*;
     use crate::agent::skills;
 
-    // Set environment variables for the agent
-    // SAFETY: Called before tokio runtime, single-threaded.
-    unsafe {
-        std::env::set_var("OPENAI_API_BASE", api_base);
-        std::env::set_var("OPENAI_API_KEY", api_key);
-        std::env::set_var("SKILLLITE_MODEL", model);
-    }
+    crate::config::init_llm_env(api_base, api_key, model);
 
     let mut config = AgentConfig::from_env();
     config.api_base = api_base.to_string();

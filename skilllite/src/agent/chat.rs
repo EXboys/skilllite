@@ -3,7 +3,7 @@
 //! Extracted from `main.rs` so that `main` only does argument dispatch.
 
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::chat_session::ChatSession;
 use super::skills;
@@ -42,29 +42,7 @@ pub fn run_chat(
     config.system_prompt = system_prompt;
     config.verbose = verbose;
 
-    // Set default output directory to ~/.skilllite/chat/output/ (matching Python SDK)
-    // Only if SKILLLITE_OUTPUT_DIR is not already set by user
-    // SAFETY: Called before tokio::runtime::Runtime::new() below, so no other
-    // threads exist yet. All env var mutations happen in the single main thread.
-    let paths = crate::config::PathsConfig::from_env();
-    if paths.output_dir.is_none() {
-        let chat_output = dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".skilllite")
-            .join("chat")
-            .join("output");
-        let s = chat_output.to_string_lossy().to_string();
-        unsafe { std::env::set_var("SKILLLITE_OUTPUT_DIR", &s) };
-        let p = PathBuf::from(&s);
-        if !p.exists() {
-            let _ = std::fs::create_dir_all(&p);
-        }
-    } else if let Some(ref output_dir) = paths.output_dir {
-        let p = PathBuf::from(output_dir);
-        if !p.exists() {
-            let _ = std::fs::create_dir_all(&p);
-        }
-    }
+    crate::config::ensure_default_output_dir();
 
     // Enable task planning: --plan > --no-plan > config (default true)
     if plan {

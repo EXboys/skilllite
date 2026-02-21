@@ -27,12 +27,7 @@ use std::thread;
 /// Reads JSON-RPC requests from stdin (one per line), writes responses to stdout.
 /// Uses rayon thread pool for concurrent request handling.
 pub fn serve_stdio() -> Result<()> {
-    // Suppress info logs in daemon mode (benchmark, etc.)
-    // SAFETY: Called at the start of serve_stdio before any multi-threading.
-    unsafe {
-        std::env::set_var("SKILLBOX_AUTO_APPROVE", "1");
-        std::env::set_var("SKILLLITE_QUIET", "1");
-    }
+    crate::config::init_daemon_env();
 
     let (tx, rx) = mpsc::channel::<(Value, std::result::Result<Value, String>)>();
 
