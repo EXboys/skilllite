@@ -170,6 +170,8 @@ impl ChatSession {
         // Append user message to transcript
         self.append_message("user", user_message)?;
 
+        event_sink.on_turn_start();
+
         // Run the agent loop
         let result = agent_loop::run_agent_loop(
             &self.config,

@@ -442,15 +442,15 @@ async fn run_interactive_chat(
                 }
 
                 // Run the turn
-                eprintln!("\n┌─ Assistant ───────────────────────────────────────────────");
+                eprintln!();
                 match session.run_turn(input, &mut sink).await {
                     Ok(_) => {
-                        eprintln!("└────────────────────────────────────────────────────────────\n");
+                        eprintln!();
                     }
                     Err(e) => {
                         let msg = format_chat_error(&e);
-                        eprintln!("│  ❌ {}", msg);
-                        eprintln!("└────────────────────────────────────────────────────────────\n");
+                        eprintln!("❌ {}", msg);
+                        eprintln!();
                     }
                 }
             }

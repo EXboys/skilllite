@@ -351,6 +351,8 @@ pub struct AgentResult {
 
 /// Event sink trait for different output targets (CLI, RPC, SDK).
 pub trait EventSink: Send {
+    /// Called at the start of each conversation turn (before any other events).
+    fn on_turn_start(&mut self) {}
     /// Called when the assistant produces text content.
     fn on_text(&mut self, text: &str);
     /// Called when a tool is about to be invoked.
@@ -369,13 +371,17 @@ pub trait EventSink: Send {
     fn on_task_progress(&mut self, _task_id: u32, _completed: bool) {}
 }
 
-/// Prefix for stderr lines to align within Assistant box (when used).
-const SINK_PREFIX: &str = "│ ";
+/// Separator for CLI section headers.
+const SECTION_SEP: &str = "──────────────────────────────────────";
 
 /// Simple terminal event sink for CLI chat.
 pub struct TerminalEventSink {
     pub verbose: bool,
     streamed_text: bool,
+    /// Whether we've shown the "执行" section header this turn.
+    execution_section_shown: bool,
+    /// Whether we've shown the "结果" section header this turn.
+    result_section_shown: bool,
 }
 
 impl TerminalEventSink {
@@ -383,25 +389,47 @@ impl TerminalEventSink {
         Self {
             verbose,
             streamed_text: false,
+            execution_section_shown: false,
+            result_section_shown: false,
         }
     }
 
     #[inline]
     fn msg(&self, s: &str) {
-        eprintln!("{}{}", SINK_PREFIX, s);
+        eprintln!("{}", s);
     }
 
     #[inline]
     fn msg_opt(&self, s: &str) {
         if !s.is_empty() {
             for line in s.lines() {
-                eprintln!("{}{}", SINK_PREFIX, line);
+                eprintln!("{}", line);
             }
+        }
+    }
+
+    fn show_execution_section(&mut self) {
+        if !self.execution_section_shown {
+            self.execution_section_shown = true;
+            self.msg(&format!("─── 🔧 执行 ─── {}", SECTION_SEP));
+        }
+    }
+
+    fn show_result_section(&mut self) {
+        if !self.result_section_shown {
+            self.result_section_shown = true;
+            self.msg(&format!("─── 📄 结果 ─── {}", SECTION_SEP));
+            self.msg("");
         }
     }
 }
 
 impl EventSink for TerminalEventSink {
+    fn on_turn_start(&mut self) {
+        self.execution_section_shown = false;
+        self.result_section_shown = false;
+    }
+
     fn on_text(&mut self, text: &str) {
         if self.streamed_text {
             // Text was already displayed chunk-by-chunk via on_text_chunk.
@@ -411,6 +439,10 @@ impl EventSink for TerminalEventSink {
             return;
         }
         // Non-streaming path: display full text + newline
+        // Only show result section when we have actual content (avoids empty "结果" between plan and execution)
+        if !text.trim().is_empty() {
+            self.show_result_section();
+        }
         use std::io::Write;
         print!("{}", text);
         let _ = std::io::stdout().flush();
@@ -419,12 +451,17 @@ impl EventSink for TerminalEventSink {
 
     fn on_text_chunk(&mut self, chunk: &str) {
         self.streamed_text = true;
+        // Only show result section when we have actual content (avoids empty "结果" between plan and execution)
+        if !chunk.trim().is_empty() {
+            self.show_result_section();
+        }
         use std::io::Write;
         print!("{}", chunk);
         let _ = std::io::stdout().flush();
     }
 
     fn on_tool_call(&mut self, name: &str, arguments: &str) {
+        self.show_execution_section();
         if self.verbose {
             // Truncate long JSON args for display
             let args_display = if arguments.len() > 200 {
@@ -461,7 +498,7 @@ impl EventSink for TerminalEventSink {
     fn on_confirmation_request(&mut self, prompt: &str) -> bool {
         use std::io::Write;
         self.msg_opt(prompt);
-        eprint!("{}确认执行? [y/N] ", SINK_PREFIX);
+        eprint!("确认执行? [y/N] ");
         let _ = std::io::stderr().flush();
         let mut input = String::new();
         if std::io::stdin().read_line(&mut input).is_ok() {
@@ -473,7 +510,8 @@ impl EventSink for TerminalEventSink {
     }
 
     fn on_task_plan(&mut self, tasks: &[Task]) {
-        self.msg(&format!("📋 Task plan ({} tasks):", tasks.len()));
+        self.msg(&format!("─── 📋 计划 ─── {}", SECTION_SEP));
+        self.msg(&format!("Task plan ({} tasks):", tasks.len()));
         for task in tasks {
             let status = if task.completed { "✅" } else { "○" };
             let hint = task
