@@ -116,13 +116,13 @@ fn setup_llm() -> Result<(String, String, String)> {
 
 /// Check if .env or environment variables already have valid LLM config.
 fn detect_existing_config() -> Option<(String, String, String)> {
-    crate::config::load_dotenv();
-    let cfg = crate::config::LlmConfig::try_from_env()?;
+    skilllite_core::config::load_dotenv();
+    let cfg = skilllite_core::config::LlmConfig::try_from_env()?;
     if cfg.api_key == "sk-xxx" {
         return None;
     }
     let model = if cfg.model.is_empty() {
-        crate::config::LlmConfig::default_model_for_base(&cfg.api_base).to_string()
+        skilllite_core::config::LlmConfig::default_model_for_base(&cfg.api_base).to_string()
     } else {
         cfg.model
     };
@@ -230,7 +230,7 @@ fn interactive_llm_setup() -> Result<(String, String, String)> {
             "ollama".to_string()
         };
 
-        let model = crate::config::LlmConfig::default_model_for_base(&api_base).to_string();
+        let model = skilllite_core::config::LlmConfig::default_model_for_base(&api_base).to_string();
         eprintln!("   Model: {} (change via SKILLLITE_MODEL env var)", model);
 
         Ok((api_base, api_key, model))
@@ -294,7 +294,7 @@ fn write_env_if_needed(api_base: &str, api_key: &str, model: &str) -> Result<()>
 
     // Don't write .env if using Ollama (no sensitive key)
     if api_key == "ollama" {
-        crate::config::init_llm_env(api_base, api_key, model);
+        skilllite_core::config::init_llm_env(api_base, api_key, model);
         return Ok(());
     }
 
@@ -318,10 +318,10 @@ fn write_env_if_needed(api_base: &str, api_key: &str, model: &str) -> Result<()>
 /// Step 3: Launch the chat session.
 #[cfg(feature = "agent")]
 fn launch_chat(api_base: &str, api_key: &str, model: &str, skills_path: &Path) -> Result<()> {
-    use crate::agent::types::*;
-    use crate::agent::skills;
+    use skilllite_agent::types::*;
+    use skilllite_agent::skills;
 
-    crate::config::init_llm_env(api_base, api_key, model);
+    skilllite_core::config::init_llm_env(api_base, api_key, model);
 
     let mut config = AgentConfig::from_env();
     config.api_base = api_base.to_string();
@@ -361,11 +361,11 @@ fn launch_chat(api_base: &str, api_key: &str, model: &str, skills_path: &Path) -
 
 #[cfg(feature = "agent")]
 async fn run_interactive_quickstart(
-    config: crate::agent::types::AgentConfig,
-    skills: Vec<crate::agent::skills::LoadedSkill>,
+    config: skilllite_agent::types::AgentConfig,
+    skills: Vec<skilllite_agent::skills::LoadedSkill>,
 ) -> Result<()> {
-    use crate::agent::types::*;
-    use crate::agent::chat_session::ChatSession;
+    use skilllite_agent::types::*;
+    use skilllite_agent::chat_session::ChatSession;
 
     eprintln!("🤖 SkillBox Quickstart Chat (model: {})", config.model);
     eprintln!("   Type /exit to quit, /clear to reset, /compact to compress history");

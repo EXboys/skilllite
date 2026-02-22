@@ -1,7 +1,7 @@
 //! Skill scan command: scan directory and analyze executable scripts.
 
-use crate::path_validation::validate_skill_path;
-use crate::skill;
+use skilllite_core::path_validation::validate_skill_path;
+use skilllite_core::skill;
 use anyhow::Result;
 use std::fs;
 

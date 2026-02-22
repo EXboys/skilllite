@@ -6,7 +6,7 @@
 //! and agent helpers (build_skills_context, list_tools). One request → one response.
 //!
 //! **Not this module**: For Agent Chat streaming (JSON-Lines events, one request → many events),
-//! see [`crate::agent::rpc`]. That uses `skilllite agent-rpc` as a separate process.
+//! see [`skilllite_agent::rpc`]. That uses `skilllite agent-rpc` as a separate process.
 //!
 //! Protocol:
 //!
@@ -15,8 +15,8 @@
 
 use anyhow::{Context, Result};
 use crate::commands::execute;
-use crate::path_validation;
-use crate::sandbox::runner::{ResourceLimits, SandboxLevel};
+use skilllite_core::path_validation;
+use skilllite_sandbox::runner::{ResourceLimits, SandboxLevel};
 use serde_json::{json, Value};
 use std::io::{self, BufRead, BufReader, Write};
 use std::sync::mpsc;
@@ -27,7 +27,7 @@ use std::thread;
 /// Reads JSON-RPC requests from stdin (one per line), writes responses to stdout.
 /// Uses rayon thread pool for concurrent request handling.
 pub fn serve_stdio() -> Result<()> {
-    crate::config::init_daemon_env();
+    skilllite_core::config::init_daemon_env();
 
     let (tx, rx) = mpsc::channel::<(Value, std::result::Result<Value, String>)>();
 
@@ -117,29 +117,29 @@ fn dispatch_request(method: &str, params: &Value) -> Result<Value> {
         "exec" => handle_exec(params),
         "bash" => handle_bash(params),
         #[cfg(feature = "executor")]
-        "session_create" => crate::executor::rpc::handle_session_create(params),
+        "session_create" => skilllite_executor::rpc::handle_session_create(params),
         #[cfg(feature = "executor")]
-        "session_get" => crate::executor::rpc::handle_session_get(params),
+        "session_get" => skilllite_executor::rpc::handle_session_get(params),
         #[cfg(feature = "executor")]
-        "session_update" => crate::executor::rpc::handle_session_update(params),
+        "session_update" => skilllite_executor::rpc::handle_session_update(params),
         #[cfg(feature = "executor")]
-        "transcript_append" => crate::executor::rpc::handle_transcript_append(params),
+        "transcript_append" => skilllite_executor::rpc::handle_transcript_append(params),
         #[cfg(feature = "executor")]
-        "transcript_read" => crate::executor::rpc::handle_transcript_read(params),
+        "transcript_read" => skilllite_executor::rpc::handle_transcript_read(params),
         #[cfg(feature = "executor")]
-        "transcript_ensure" => crate::executor::rpc::handle_transcript_ensure(params),
+        "transcript_ensure" => skilllite_executor::rpc::handle_transcript_ensure(params),
         #[cfg(feature = "executor")]
-        "memory_write" => crate::executor::rpc::handle_memory_write(params),
+        "memory_write" => skilllite_executor::rpc::handle_memory_write(params),
         #[cfg(feature = "executor")]
-        "memory_search" => crate::executor::rpc::handle_memory_search(params),
+        "memory_search" => skilllite_executor::rpc::handle_memory_search(params),
         #[cfg(feature = "executor")]
-        "token_count" => crate::executor::rpc::handle_token_count(params),
+        "token_count" => skilllite_executor::rpc::handle_token_count(params),
         #[cfg(feature = "executor")]
-        "plan_textify" => crate::executor::rpc::handle_plan_textify(params),
+        "plan_textify" => skilllite_executor::rpc::handle_plan_textify(params),
         #[cfg(feature = "executor")]
-        "plan_write" => crate::executor::rpc::handle_plan_write(params),
+        "plan_write" => skilllite_executor::rpc::handle_plan_write(params),
         #[cfg(feature = "executor")]
-        "plan_read" => crate::executor::rpc::handle_plan_read(params),
+        "plan_read" => skilllite_executor::rpc::handle_plan_read(params),
         #[cfg(feature = "agent")]
         "build_skills_context" => handle_build_skills_context(params),
         #[cfg(feature = "agent")]
@@ -220,8 +220,8 @@ fn handle_bash(params: &Value) -> Result<Value> {
 
 #[cfg(feature = "agent")]
 fn handle_build_skills_context(params: &Value) -> Result<Value> {
-    use crate::agent::prompt::{build_skills_context, PromptMode};
-    use crate::agent::skills;
+    use skilllite_agent::prompt::{build_skills_context, PromptMode};
+    use skilllite_agent::skills;
 
     let p = params.as_object().context("params must be object")?;
     let skills_dir = p.get("skills_dir").and_then(|v| v.as_str()).context("skills_dir required")?;
@@ -261,7 +261,7 @@ fn handle_build_skills_context(params: &Value) -> Result<Value> {
 
 #[cfg(feature = "agent")]
 pub fn handle_list_tools(params: &Value) -> Result<Value> {
-    use crate::agent::skills;
+    use skilllite_agent::skills;
 
     let p = params.as_object().context("params must be object")?;
     let skills_dir = p.get("skills_dir").and_then(|v| v.as_str()).context("skills_dir required")?;

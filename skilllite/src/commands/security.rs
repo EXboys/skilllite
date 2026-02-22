@@ -1,7 +1,7 @@
 //! Security commands: security scan, dependency audit.
 
-use crate::path_validation::validate_path_under_root;
-use crate::sandbox::security::{format_scan_result, format_scan_result_json, ScriptScanner};
+use skilllite_core::path_validation::validate_path_under_root;
+use skilllite_sandbox::security::{format_scan_result, format_scan_result_json, ScriptScanner};
 use anyhow::Result;
 
 /// Perform security scan on a script.
@@ -34,7 +34,7 @@ pub fn security_scan_script(
 /// Audit skill dependencies for known vulnerabilities via OSV.dev.
 #[cfg(feature = "audit")]
 pub fn dependency_audit_skill(skill_dir: &str, json_output: bool) -> Result<()> {
-    use crate::sandbox::security::dependency_audit;
+    use skilllite_sandbox::security::dependency_audit;
 
     let path = validate_path_under_root(skill_dir, "Skill directory")?;
     let result = dependency_audit::audit_skill_dependencies(&path)?;

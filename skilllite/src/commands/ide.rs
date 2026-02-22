@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::skill::metadata;
+use skilllite_core::skill::metadata;
 
 // ─── Shared Helpers ─────────────────────────────────────────────────────────
 

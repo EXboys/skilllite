@@ -14,8 +14,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::commands::skill;
-use crate::skill::dependency_resolver;
-use crate::skill::metadata;
+use skilllite_core::skill::dependency_resolver;
+use skilllite_core::skill::metadata;
 
 /// `skilllite init`
 pub fn cmd_init(
@@ -155,7 +155,7 @@ pub(crate) fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool>
     fs::create_dir_all(skills_path)
         .with_context(|| format!("Failed to create skills directory: {}", skills_path.display()))?;
 
-    let repo = crate::config::PathsConfig::from_env().skills_repo;
+    let repo = skilllite_core::config::PathsConfig::from_env().skills_repo;
     let skills_dir_str = skills_path.to_string_lossy().to_string();
 
     eprintln!("   📥 Downloading skills from {} ...", repo);
@@ -204,12 +204,12 @@ fn install_all_deps(
 
     #[cfg(feature = "agent")]
     let (llm_client, model) = if use_llm {
-        let config = crate::agent::types::AgentConfig::from_env();
+        let config = skilllite_agent::types::AgentConfig::from_env();
         if config.api_key.is_empty() {
             tracing::debug!("--use-llm requested but no API key; falling back to whitelist");
             (None, None)
         } else {
-            let client = crate::agent::llm::LlmClient::new(&config.api_base, &config.api_key);
+            let client = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key);
             (Some(client), Some(config.model))
         }
     } else {
@@ -243,7 +243,7 @@ fn install_all_deps(
                         let model_opt = model.as_deref();
                         if let (Some(client), Some(m)) = (client_opt, model_opt) {
                             let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
-                            rt.block_on(dependency_resolver::resolve_packages(
+                            rt.block_on(skilllite_agent::dependency_resolver::resolve_packages(
                                 &skill_path,
                                 meta.compatibility.as_deref(),
                                 &lang,
@@ -291,7 +291,7 @@ fn install_all_deps(
                 }
 
                 let cache_dir: Option<&str> = None;
-                match crate::env::builder::ensure_environment(&skill_path, &meta, cache_dir) {
+                match skilllite_sandbox::env::builder::ensure_environment(&skill_path, &meta, cache_dir) {
                     Ok(_) => {
                         messages.push(format!("   ✓ {} [{}]: dependencies installed", name, lang));
                     }
@@ -331,7 +331,7 @@ fn audit_all_skills(skills_path: &Path, skills: &[String]) -> (Vec<String>, bool
         let script_files = collect_script_files_for_audit(&skill_path, &meta);
 
         if !script_files.is_empty() {
-            let scanner = crate::sandbox::security::ScriptScanner::new();
+            let scanner = skilllite_sandbox::security::ScriptScanner::new();
             let mut total_issues = 0usize;
             let mut total_high = 0usize;
 
@@ -343,8 +343,8 @@ fn audit_all_skills(skills_path: &Path, skills: &[String]) -> (Vec<String>, bool
                         .filter(|i| {
                             matches!(
                                 i.severity,
-                                crate::sandbox::security::types::SecuritySeverity::High
-                                    | crate::sandbox::security::types::SecuritySeverity::Critical
+                                skilllite_sandbox::security::types::SecuritySeverity::High
+                                    | skilllite_sandbox::security::types::SecuritySeverity::Critical
                             )
                         })
                         .count();
@@ -373,7 +373,7 @@ fn audit_all_skills(skills_path: &Path, skills: &[String]) -> (Vec<String>, bool
                 || skill_path.join("package.json").exists();
 
             if has_deps {
-                use crate::sandbox::security::dependency_audit;
+                use skilllite_sandbox::security::dependency_audit;
                 match dependency_audit::audit_skill_dependencies(&skill_path) {
                     Ok(result) => {
                         if result.vulnerable_count > 0 {

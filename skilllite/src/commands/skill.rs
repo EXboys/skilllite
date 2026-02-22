@@ -9,8 +9,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::sandbox::security::ScriptScanner;
-use crate::skill::metadata;
+use skilllite_sandbox::security::ScriptScanner;
+use skilllite_core::skill::metadata;
 
 // ─── Source Parsing ─────────────────────────────────────────────────────────
 
@@ -490,7 +490,7 @@ fn install_skill_deps(skills_dir: &Path, installed: &[String]) -> Vec<String> {
         match metadata::parse_skill_metadata(&skill_path) {
             Ok(meta) => {
                 let cache_dir: Option<&str> = None;
-                match crate::env::builder::ensure_environment(&skill_path, &meta, cache_dir) {
+                match skilllite_sandbox::env::builder::ensure_environment(&skill_path, &meta, cache_dir) {
                     Ok(_) => {
                         let lang = metadata::detect_language(&skill_path, &meta);
                         messages.push(format!(
@@ -632,8 +632,8 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
                     let high = result.issues.iter().filter(|i| {
                         matches!(
                             i.severity,
-                            crate::sandbox::security::types::SecuritySeverity::High
-                                | crate::sandbox::security::types::SecuritySeverity::Critical
+                            skilllite_sandbox::security::types::SecuritySeverity::High
+                                | skilllite_sandbox::security::types::SecuritySeverity::Critical
                         )
                     }).count();
                     total_issues += result.issues.len();
@@ -669,7 +669,7 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
         // ── Supply chain audit ──
         #[cfg(feature = "audit")]
         if has_deps {
-            use crate::sandbox::security::dependency_audit;
+            use skilllite_sandbox::security::dependency_audit;
 
             match dependency_audit::audit_skill_dependencies(&skill_path) {
                 Ok(result) => {
@@ -1168,7 +1168,7 @@ fn skill_to_json(skill_path: &Path) -> serde_json::Value {
 
             // Multi-script tools: when no entry_point, detect scripts and their schemas
             let multi_script_tools = if meta.entry_point.is_empty() && !meta.is_bash_tool_skill() {
-                let tools = crate::skill::schema::detect_multi_script_tools(skill_path, &name);
+                let tools = skilllite_core::skill::schema::detect_multi_script_tools(skill_path, &name);
                 tools
                     .into_iter()
                     .map(|t| {

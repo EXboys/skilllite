@@ -269,18 +269,63 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
 ```
 
-### Compile the Sandbox Executor
+### Build & Install Commands (from repository root)
+
+| Package | Binary | Command | Description |
+|---------|--------|---------|-------------|
+| skilllite | **skilllite** | `cargo build -p skilllite` | **Full** (Agent + Chat + MCP + sandbox + audit). No vector memory. |
+| skilllite | **skilllite** | `cargo build -p skilllite --features memory_vector` | Full **+ vector memory** search |
+| skilllite | **skilllite** | `cargo build -p skilllite --no-default-features` | Minimal: run/exec/bash/scan only, no Agent |
+| skilllite | **skilllite-sandbox** | `cargo build -p skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | Sandbox + MCP only |
+
+### Install (to `~/.cargo/bin/`)
+
+| Command | What you get |
+|---------|--------------|
+| `cargo install --path skilllite` | **skilllite** — full (Agent + Chat + MCP + sandbox + audit). **Does NOT include vector memory.** |
+| `cargo install --path skilllite --features memory_vector` | **skilllite** — full + vector memory search (semantic `memory_search`) |
+| `cargo install --path skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | **skilllite-sandbox** — sandbox + MCP only, no Agent |
+
+**Default features** = `sandbox`, `audit`, `agent`. Vector memory (`memory_vector`) is **not** in default.
+
+### From `skilllite/` subdir
 
 ```bash
-cd skilllite
-cargo build --release
-cargo install --path .
-skilllite --help
+cd skilllite && cargo install --path .                              # full, no vector
+cd skilllite && cargo install --path . --features memory_vector     # full + vector
 ```
 
-After compilation, the binary will be at:
-- `cargo install`: `~/.cargo/bin/skilllite`
-- `cargo build`: `skilllite/target/release/skilllite`
+### Script (avoids copy-paste issues)
+
+If you get `command not found: cargo install` when pasting, the clipboard may have invisible Unicode. Use:
+
+```bash
+./scripts/install-from-source.sh
+```
+
+This installs full + vector memory. Run from repository root.
+
+### Output paths
+
+- `cargo install`: `~/.cargo/bin/skilllite` or `~/.cargo/bin/skilllite-sandbox`
+- `cargo build`: `target/release/skilllite` or `target/release/skilllite-sandbox`
+
+### Project Structure (Cargo Workspace)
+
+Standard Rust multi-crate layout; root `Cargo.toml` declares the workspace:
+
+```
+skilllite/
+├── Cargo.toml              # [workspace] members
+├── skilllite/              # Main binary (CLI entry point)
+└── crates/
+    ├── skilllite-core/     # Config, skill metadata, path validation
+    ├── skilllite-sandbox/  # Sandbox executor (independently deliverable)
+    ├── skilllite-executor/ # Session, transcript, memory
+    └── skilllite-agent/    # LLM Agent loop, tool extensions
+```
+
+Dependency direction: `skilllite → agent → sandbox + executor → core`. See [ARCHITECTURE.md](./docs/en/ARCHITECTURE.md).
 
 </details>
 
@@ -441,7 +486,7 @@ The `init-opencode` command automatically:
 
 ## 📦 Core Components
 
-- **skilllite** (Rust binary) - Sandbox executor, CLI, Agent loop, MCP server — single binary with everything
+- **skilllite** (Rust binary) - Sandbox executor, CLI, Agent loop, MCP server — single binary with everything (workspace: `skilllite/` + `crates/*`)
 - **python-sdk** (`pip install skilllite`) - Thin bridge (~600 lines), zero runtime deps, calls Rust binary via subprocess
 - **langchain-skilllite** (`pip install langchain-skilllite`) - LangChain adapter (SkillLiteToolkit)
 

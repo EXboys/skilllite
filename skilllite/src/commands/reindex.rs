@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
 
-use crate::skill::metadata;
+use skilllite_core::skill::metadata;
 
 /// `skilllite reindex`
 pub fn cmd_reindex(skills_dir: &str, verbose: bool) -> Result<()> {

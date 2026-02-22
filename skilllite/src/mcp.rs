@@ -25,12 +25,12 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::sandbox::runner::{ResourceLimits, SandboxLevel};
-use crate::sandbox::security::scanner::ScriptScanner;
-use crate::sandbox::security::types::{
+use skilllite_sandbox::runner::{ResourceLimits, SandboxLevel};
+use skilllite_sandbox::security::scanner::ScriptScanner;
+use skilllite_sandbox::security::types::{
     ScanResult, SecurityIssue, SecurityIssueType, SecuritySeverity,
 };
-use crate::skill::metadata;
+use skilllite_core::skill::metadata;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MCP Server State
@@ -779,7 +779,7 @@ fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> Result<Stri
                 matches!(i.severity, SecuritySeverity::Critical)
             });
             if has_critical {
-                crate::observability::security_scan_rejected(
+                skilllite_core::observability::security_scan_rejected(
                     "execute_code",
                     sid,
                     cached.scan_result.issues.len(),
@@ -790,8 +790,8 @@ fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> Result<Stri
             }
 
             // Audit: execution approved
-            crate::observability::audit_confirmation_response("execute_code", true, "user");
-            crate::observability::security_scan_approved(
+            skilllite_core::observability::audit_confirmation_response("execute_code", true, "user");
+            skilllite_core::observability::security_scan_approved(
                 "execute_code",
                 sid,
                 cached.scan_result.issues.len(),
@@ -839,7 +839,7 @@ fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level: SandboxLev
         _ => "python",
     };
 
-    let config = crate::sandbox::runner::SandboxConfig {
+    let config = skilllite_sandbox::runner::SandboxConfig {
         name: "execute_code".to_string(),
         entry_point: script_name,
         language: lang_str.to_string(),
@@ -849,9 +849,9 @@ fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level: SandboxLev
     };
 
     let limits = ResourceLimits::from_env();
-    let runtime = crate::env::builder::build_runtime_paths(&PathBuf::new());
+    let runtime = skilllite_sandbox::env::builder::build_runtime_paths(&PathBuf::new());
 
-    let output = crate::sandbox::runner::run_in_sandbox_with_limits_and_level(
+    let output = skilllite_sandbox::runner::run_in_sandbox_with_limits_and_level(
         temp_dir.path(),
         &runtime,
         &config,
@@ -927,8 +927,8 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
                 }
 
                 // Audit: scan approved
-                crate::observability::audit_confirmation_response(skill_name, true, "user");
-                crate::observability::security_scan_approved(
+                skilllite_core::observability::audit_confirmation_response(skill_name, true, "user");
+                skilllite_core::observability::security_scan_approved(
                     skill_name,
                     sid,
                     server.scan_cache.get(sid).map_or(0, |c| c.scan_result.issues.len()),
@@ -966,13 +966,13 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
 
                     if has_high {
                         // Audit: confirmation requested
-                        crate::observability::audit_confirmation_requested(
+                        skilllite_core::observability::audit_confirmation_requested(
                             skill_name,
                             &new_code_hash,
                             scan_result.issues.len(),
                             "High",
                         );
-                        crate::observability::security_scan_high(
+                        skilllite_core::observability::security_scan_high(
                             skill_name,
                             "High",
                             &serde_json::json!(scan_result.issues.iter().map(|i| {
@@ -1009,8 +1009,8 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
     }
 
     // Setup environment
-    let cache_dir = crate::config::CacheConfig::cache_dir();
-    let env_path = crate::env::builder::ensure_environment(
+    let cache_dir = skilllite_core::config::CacheConfig::cache_dir();
+    let env_path = skilllite_sandbox::env::builder::ensure_environment(
         &skill_dir,
         &meta,
         cache_dir.as_deref(),
@@ -1018,8 +1018,8 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
 
     let limits = ResourceLimits::from_env();
 
-    let runtime = crate::env::builder::build_runtime_paths(&env_path);
-    let config = crate::sandbox::runner::SandboxConfig {
+    let runtime = skilllite_sandbox::env::builder::build_runtime_paths(&env_path);
+    let config = skilllite_sandbox::runner::SandboxConfig {
         name: meta.name.clone(),
         entry_point: meta.entry_point.clone(),
         language: metadata::detect_language(&skill_dir, &meta),
@@ -1027,7 +1027,7 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
         network_outbound: meta.network.outbound.clone(),
         uses_playwright: meta.uses_playwright(),
     };
-    let output = crate::sandbox::runner::run_in_sandbox_with_limits_and_level(
+    let output = skilllite_sandbox::runner::run_in_sandbox_with_limits_and_level(
         &skill_dir,
         &runtime,
         &config,

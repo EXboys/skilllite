@@ -1,0 +1,25 @@
+[package]
+name = "skilllite-executor"
+version = "0.1.9"
+edition = "2021"
+authors = ["EX <boyex345@gmail.com>"]
+description = "SkillLite Executor: session, transcript, memory storage"
+license = "MIT"
+
+[features]
+default = []
+memory_vector = ["dep:sqlite-vec", "dep:zerocopy"]
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.31", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5.0"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+
+# memory_vector feature
+sqlite-vec = { version = "0.1", optional = true }
+zerocopy = { version = "0.7", optional = true }

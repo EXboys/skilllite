@@ -13,13 +13,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "agent")]
-use crate::agent::planning_rules;
+use skilllite_agent::planning_rules;
 #[cfg(feature = "agent")]
-use crate::agent::types::{AgentConfig, ChatMessage, PlanningRule};
+use skilllite_agent::types::{AgentConfig, ChatMessage, PlanningRule};
 #[cfg(feature = "agent")]
-use crate::agent::llm::LlmClient;
+use skilllite_agent::llm::LlmClient;
 #[cfg(feature = "agent")]
-use crate::skill::metadata;
+use skilllite_core::skill::metadata;
 
 /// Extract body content from SKILL.md (content after the closing `---` of front matter).
 /// Returns up to `max_chars` for summary.

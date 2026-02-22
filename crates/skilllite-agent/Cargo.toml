@@ -1,0 +1,42 @@
+[package]
+name = "skilllite-agent"
+version = "0.1.9"
+edition = "2021"
+authors = ["EX <boyex345@gmail.com>"]
+description = "SkillLite Agent: LLM-powered tool loop, extensions, chat"
+license = "MIT"
+
+[features]
+default = []
+memory_vector = ["dep:sqlite-vec", "dep:zerocopy", "skilllite-executor/memory_vector"]
+
+[dependencies]
+skilllite-core = { path = "../skilllite-core" }
+skilllite-sandbox = { path = "../skilllite-sandbox" }
+skilllite-executor = { path = "../skilllite-executor" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+anyhow = "1.0"
+thiserror = "1.0"
+regex = "1.10"
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+hex = "0.4"
+dirs = "5.0"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-util", "process"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+futures-util = { version = "0.3" }
+rustyline = { version = "14" }
+rusqlite = { version = "0.31", features = ["bundled"] }
+
+# memory_vector feature
+sqlite-vec = { version = "0.1", optional = true }
+zerocopy = { version = "0.7", optional = true }
+
+[dev-dependencies]
+tempfile = "3.10"

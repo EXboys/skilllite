@@ -2,10 +2,9 @@
 //!
 //! Implements run_skill, exec_script, bash_command, validate_skill, show_skill_info.
 
-use crate::path_validation::validate_skill_path;
-use crate::sandbox;
-use crate::sandbox::runner::SandboxConfig;
-use crate::skill;
+use skilllite_core::path_validation::validate_skill_path;
+use skilllite_sandbox::runner::SandboxConfig;
+use skilllite_core::skill;
 use anyhow::{Context, Result};
 use serde_json::json;
 use std::path::Path;
@@ -15,7 +14,7 @@ use std::sync::Mutex;
 /// so concurrent exec calls must be serialized. run and bash do not need this.
 static EXEC_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
-use crate::config::ScopedEnvGuard;
+use skilllite_core::config::ScopedEnvGuard;
 
 /// Run a skill with the given input (requires entry_point in SKILL.md).
 pub fn run_skill(
@@ -23,8 +22,8 @@ pub fn run_skill(
     input_json: &str,
     allow_network: bool,
     cache_dir: Option<&String>,
-    limits: sandbox::runner::ResourceLimits,
-    sandbox_level: sandbox::runner::SandboxLevel,
+    limits: skilllite_sandbox::runner::ResourceLimits,
+    sandbox_level: skilllite_sandbox::runner::SandboxLevel,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
 
@@ -37,18 +36,18 @@ pub fn run_skill(
     let _input: serde_json::Value = serde_json::from_str(input_json)
         .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
 
-    crate::info_log!("[INFO] ensure_environment start...");
-    let env_path = crate::env::builder::ensure_environment(&skill_path, &metadata, cache_dir.map(|s| s.as_str()))?;
-    crate::info_log!("[INFO] ensure_environment done");
+    skilllite_sandbox::info_log!("[INFO] ensure_environment start...");
+    let env_path = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &metadata, cache_dir.map(|s| s.as_str()))?;
+    skilllite_sandbox::info_log!("[INFO] ensure_environment done");
 
     let mut effective_metadata = metadata;
     if allow_network {
         effective_metadata.network.enabled = true;
     }
 
-    let runtime = crate::env::builder::build_runtime_paths(&env_path);
+    let runtime = skilllite_sandbox::env::builder::build_runtime_paths(&env_path);
     let config = build_sandbox_config(&skill_path, &effective_metadata);
-    let output = sandbox::runner::run_in_sandbox_with_limits_and_level(
+    let output = skilllite_sandbox::runner::run_in_sandbox_with_limits_and_level(
         &skill_path,
         &runtime,
         &config,
@@ -68,8 +67,8 @@ pub fn exec_script(
     args: Option<&String>,
     allow_network: bool,
     cache_dir: Option<&String>,
-    limits: sandbox::runner::ResourceLimits,
-    sandbox_level: sandbox::runner::SandboxLevel,
+    limits: skilllite_sandbox::runner::ResourceLimits,
+    sandbox_level: skilllite_sandbox::runner::SandboxLevel,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
     let full_script_path = skill_path.join(script_path);
@@ -94,7 +93,7 @@ pub fn exec_script(
         let mut meta = skill::metadata::parse_skill_metadata(&skill_path)?;
         meta.entry_point = script_path.to_string();
         meta.language = Some(language.clone());
-        let env = crate::env::builder::ensure_environment(&skill_path, &meta, cache_dir.map(|s| s.as_str()))?;
+        let env = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &meta, cache_dir.map(|s| s.as_str()))?;
         (meta, env)
     } else {
         let meta = skill::metadata::SkillMetadata {
@@ -122,16 +121,16 @@ pub fn exec_script(
 
     let _guard = EXEC_ENV_MUTEX.lock().map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
     let _args_guard = if let Some(ref args_str) = args {
-        crate::config::set_env_var("SKILLBOX_SCRIPT_ARGS", args_str);
+        skilllite_core::config::set_env_var("SKILLBOX_SCRIPT_ARGS", args_str);
         Some(ScopedEnvGuard("SKILLBOX_SCRIPT_ARGS"))
     } else {
-        crate::config::remove_env_var("SKILLBOX_SCRIPT_ARGS");
+        skilllite_core::config::remove_env_var("SKILLBOX_SCRIPT_ARGS");
         None
     };
 
-    let runtime = crate::env::builder::build_runtime_paths(&env_path);
+    let runtime = skilllite_sandbox::env::builder::build_runtime_paths(&env_path);
     let config = build_sandbox_config(&skill_path, &effective_metadata);
-    let output = sandbox::runner::run_in_sandbox_with_limits_and_level(
+    let output = skilllite_sandbox::runner::run_in_sandbox_with_limits_and_level(
         &skill_path,
         &runtime,
         &config,
@@ -167,25 +166,25 @@ pub fn bash_command(
         anyhow::bail!("Skill '{}' has allowed-tools but no Bash(...) patterns found", metadata.name);
     }
 
-    let validator_patterns: Vec<sandbox::bash_validator::BashToolPattern> = skill_patterns
+    let validator_patterns: Vec<skilllite_sandbox::bash_validator::BashToolPattern> = skill_patterns
         .into_iter()
-        .map(|p| sandbox::bash_validator::BashToolPattern {
+        .map(|p| skilllite_sandbox::bash_validator::BashToolPattern {
             command_prefix: p.command_prefix,
             raw_pattern: p.raw_pattern,
         })
         .collect();
-    sandbox::bash_validator::validate_bash_command(command, &validator_patterns)
+    skilllite_sandbox::bash_validator::validate_bash_command(command, &validator_patterns)
         .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
 
-    crate::info_log!("[INFO] bash: ensure_environment start...");
-    let env_path = crate::env::builder::ensure_environment(
+    skilllite_sandbox::info_log!("[INFO] bash: ensure_environment start...");
+    let env_path = skilllite_sandbox::env::builder::ensure_environment(
         &skill_path,
         &metadata,
         cache_dir.map(|s| s.as_str()),
     )?;
-    crate::info_log!("[INFO] bash: ensure_environment done");
+    skilllite_sandbox::info_log!("[INFO] bash: ensure_environment done");
 
-    crate::info_log!("[INFO] bash: executing command: {}", command);
+    skilllite_sandbox::info_log!("[INFO] bash: executing command: {}", command);
     let output = execute_bash_with_env(command, &skill_path, &env_path, timeout_secs, cwd)?;
 
     Ok(output)
@@ -225,13 +224,13 @@ fn execute_bash_with_env(
     let mut child = cmd.spawn()
         .with_context(|| format!("Failed to spawn bash command: {}", command))?;
 
-    let memory_limit = sandbox::runner::ResourceLimits::from_env().max_memory_bytes();
+    let memory_limit = skilllite_sandbox::runner::ResourceLimits::from_env().max_memory_bytes();
     let (stdout, stderr, exit_code, was_killed, kill_reason) =
-        sandbox::common::wait_with_timeout(&mut child, timeout_secs, memory_limit, true)?;
+        skilllite_sandbox::common::wait_with_timeout(&mut child, timeout_secs, memory_limit, true)?;
 
     if was_killed {
         if let Some(ref reason) = kill_reason {
-            crate::info_log!("[WARN] bash command killed: {}", reason);
+            skilllite_sandbox::info_log!("[WARN] bash command killed: {}", reason);
         }
     }
 

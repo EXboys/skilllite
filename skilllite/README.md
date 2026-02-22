@@ -1,6 +1,55 @@
-# SkillLite
+# SkillLite Rust Binary
 
 A lightweight Skills secure execution engine for Linux and macOS.
+
+> This package is part of a **Cargo Workspace**. Build from the **repository root**.
+
+## Build & Install Reference
+
+All commands run from **repository root** (or use `cd skilllite && cargo install --path .`).
+
+### Build commands
+
+| Binary | Command | What you get |
+|--------|---------|--------------|
+| **skilllite** | `cargo build -p skilllite` | **Full** (Agent + Chat + MCP + sandbox + audit). No vector memory. |
+| **skilllite** | `cargo build -p skilllite --features memory_vector` | Full **+ vector memory** search |
+| **skilllite** | `cargo build -p skilllite --no-default-features` | Minimal: run/exec/bash/scan only |
+| **skilllite-sandbox** | `cargo build -p skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | Sandbox + MCP only |
+
+### Install commands
+
+| Command | Binary installed |
+|---------|------------------|
+| `cargo install --path skilllite` | **skilllite** — full. Does **not** include vector memory. |
+| `cargo install --path skilllite --features memory_vector` | **skilllite** — full + vector memory |
+| `cargo install --path skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | **skilllite-sandbox** |
+
+Default features = `sandbox`, `audit`, `agent`. `memory_vector` is optional.
+
+### Output paths
+
+- Install: `~/.cargo/bin/skilllite` or `~/.cargo/bin/skilllite-sandbox`
+- Build: `target/release/skilllite` or `target/release/skilllite-sandbox`
+
+## Project Structure (Workspace)
+
+```
+skilllite/           # Repository root
+├── Cargo.toml       # [workspace] members = ["skilllite", "crates/*"]
+├── skilllite/       # This dir: main binary entry
+│   └── src/         # main.rs, cli, commands, stdio_rpc, mcp
+└── crates/
+    ├── skilllite-core/      # Config, skill, path_validation, observability
+    ├── skilllite-sandbox/   # Sandbox + env (independently addable via cargo add)
+    ├── skilllite-executor/  # Session, transcript, memory
+    └── skilllite-agent/     # LLM, tools, chat, extensions
+```
+
+`crates/` follows the common Rust multi-crate layout (e.g. tokio, clap, serde), enabling:
+- Enforced dependency direction and no circular deps
+- Independent publishing (e.g. `skilllite-sandbox` via `cargo add`)
+- Faster incremental builds
 
 ## Features
 
@@ -175,7 +224,7 @@ Description of the skill...
 | `SKILLBOX_AUTO_APPROVE` | Auto-approve security prompts (1/true/yes) | - |
 | `SKILLBOX_CACHE_DIR` | Custom cache directory | System cache |
 
-> 完整环境变量列表见 [ENV_REFERENCE](../docs/en/ENV_REFERENCE.md) / [ENV_REFERENCE 中文](../docs/zh/ENV_REFERENCE.md)。
+> Full env var list: [ENV_REFERENCE](../docs/en/ENV_REFERENCE.md) / [ENV_REFERENCE 中文](../docs/zh/ENV_REFERENCE.md).
 
 ## Custom Security Rules
 

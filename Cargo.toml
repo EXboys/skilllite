@@ -1,0 +1,8 @@
+[workspace]
+members = ["skilllite", "crates/*"]
+resolver = "2"
+
+[profile.release]
+lto = true
+strip = true
+opt-level = "z"

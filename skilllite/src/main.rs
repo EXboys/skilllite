@@ -1,20 +1,7 @@
 mod cli;
 mod commands;
-mod config;
-mod env;
 mod stdio_rpc;
 mod mcp;
-mod observability;
-mod path_validation;
-// mod protocol;
-mod sandbox;
-mod skill;
-
-#[cfg(feature = "executor")]
-mod executor;
-
-#[cfg(feature = "agent")]
-mod agent;
 
 use anyhow::Result;
 use std::io::Read;
@@ -27,7 +14,7 @@ fn main() -> Result<()> {
     let is_chat = matches!(cli.command, Commands::Chat { .. });
     #[cfg(not(feature = "agent"))]
     let is_chat = false;
-    observability::init_tracing(if is_chat { observability::TracingMode::Chat } else { observability::TracingMode::Default });
+    skilllite_core::observability::init_tracing(if is_chat { skilllite_core::observability::TracingMode::Chat } else { skilllite_core::observability::TracingMode::Default });
 
     match cli.command {
         Commands::Serve { stdio } => {
@@ -51,8 +38,8 @@ fn main() -> Result<()> {
             } else {
                 input_json
             };
-            let sandbox_level = sandbox::runner::SandboxLevel::from_env_or_cli(sandbox_level);
-            let limits = sandbox::runner::ResourceLimits::from_env()
+            let sandbox_level = skilllite_sandbox::runner::SandboxLevel::from_env_or_cli(sandbox_level);
+            let limits = skilllite_sandbox::runner::ResourceLimits::from_env()
                 .with_cli_overrides(max_memory, timeout);
             let result = commands::execute::run_skill(&skill_dir, &input_json, allow_network, cache_dir.as_ref(), limits, sandbox_level)?;
             println!("{}", result);
@@ -75,8 +62,8 @@ fn main() -> Result<()> {
             } else {
                 input_json
             };
-            let sandbox_level = sandbox::runner::SandboxLevel::from_env_or_cli(sandbox_level);
-            let limits = sandbox::runner::ResourceLimits::from_env()
+            let sandbox_level = skilllite_sandbox::runner::SandboxLevel::from_env_or_cli(sandbox_level);
+            let limits = skilllite_sandbox::runner::ResourceLimits::from_env()
                 .with_cli_overrides(max_memory, timeout);
             let result = commands::execute::exec_script(&skill_dir, &script_path, &input_json, args.as_ref(), allow_network, cache_dir.as_ref(), limits, sandbox_level)?;
             println!("{}", result);
@@ -130,7 +117,7 @@ fn main() -> Result<()> {
             no_plan,
             no_memory,
         } => {
-            agent::chat::run_chat(
+            skilllite_agent::chat::run_chat(
                 api_base,
                 api_key,
                 model,
@@ -200,7 +187,7 @@ fn main() -> Result<()> {
         }
         #[cfg(feature = "agent")]
         Commands::AgentRpc => {
-            agent::rpc::serve_agent_rpc()?;
+            skilllite_agent::rpc::serve_agent_rpc()?;
         }
         Commands::Mcp { skills_dir } => {
             mcp::serve_mcp_stdio(&skills_dir)?;
@@ -209,4 +196,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
