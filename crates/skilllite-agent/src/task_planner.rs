@@ -306,7 +306,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 
 - Writing poems, articles, stories (EXCEPT 小红书/种草/图文笔记 - see below, EXCEPT when user asks to 输出到/保存到/写到文件 - see output_to_file rule)
 - Translating text
-- Answering knowledge-based questions (EXCEPT 天气/气象 - see below, EXCEPT when user asks for 实时/最新 - see below)
+- Answering knowledge-based questions (EXCEPT 天气/气象 - see below, EXCEPT 实时/最新 - see below, EXCEPT 介绍+具体地点/景点/路线 - see place_attraction_intro rule)
 - Code explanation, code review suggestions
 - Creative generation, brainstorming (EXCEPT 小红书 - see below, EXCEPT HTML/PPT rendering - see below, EXCEPT 网站/官网/网页设计 - see below)
 - Summarizing, rewriting, polishing text
@@ -327,6 +327,7 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 - **官网/网站/网页设计** (use write_output to save HTML + preview_server to open in browser; if frontend-design skill available, use it)
 - **输出到 output/保存到文件** (when user says 输出到output, 保存到, 写到文件 — use write_output to persist content)
 - **Browser automation / screenshots / visiting websites** (use agent-browser or any matching skill)
+- **介绍+地点/景点/旅游路线** (e.g. 介绍一下清迈的 take a walk — use agent-browser or http-request for fresh info)
 
 ## Available Resources
 

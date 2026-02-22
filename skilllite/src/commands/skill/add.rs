@@ -1,7 +1,4 @@
-//! Skill management commands: add, remove, list, show.
-//!
-//! Migrated from Python `python-sdk/skilllite/cli/add.py` and `repo.py`.
-//! Depends ONLY on skill/ and env/ layers (Layer 1-2), NOT on agent/ (Layer 3).
+//! `skilllite add` — Add skills from remote repo, ClawHub, or local path.
 
 use anyhow::{Context, Result};
 use regex::Regex;
@@ -9,23 +6,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use skilllite_sandbox::security::ScriptScanner;
 use skilllite_core::skill::metadata;
+use skilllite_sandbox::security::ScriptScanner;
+use skilllite_sandbox::security::types::SecuritySeverity;
+
+use super::common;
 
 // ─── Source Parsing ─────────────────────────────────────────────────────────
 
-/// Parsed result of a source string.
 #[derive(Debug)]
 struct ParsedSource {
-    /// Source type: "github", "gitlab", "git", "local"
     source_type: String,
-    /// Clone URL or local path
     url: String,
-    /// Git ref (branch/tag)
     git_ref: Option<String>,
-    /// Subdirectory within the repo
     subpath: Option<String>,
-    /// Filter to a specific skill by name
     skill_filter: Option<String>,
 }
 
@@ -38,7 +32,6 @@ fn is_local_path(source: &str) -> bool {
 }
 
 fn parse_source(source: &str) -> ParsedSource {
-    // ClawHub: clawhub:<skill-name>
     if let Some(slug) = source.strip_prefix("clawhub:") {
         let slug = slug.trim().to_lowercase();
         if !slug.is_empty() {
@@ -52,7 +45,6 @@ fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    // Local path
     if is_local_path(source) {
         let abs = std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
@@ -66,9 +58,7 @@ fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    // GitHub tree URL with path: https://github.com/owner/repo/tree/branch/path
-    let re_tree_path =
-        Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)").unwrap();
+    let re_tree_path = Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)").unwrap();
     if let Some(cap) = re_tree_path.captures(source) {
         return ParsedSource {
             source_type: "github".into(),
@@ -79,9 +69,7 @@ fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    // GitHub tree URL branch only: https://github.com/owner/repo/tree/branch
-    let re_tree_branch =
-        Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$").unwrap();
+    let re_tree_branch = Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$").unwrap();
     if let Some(cap) = re_tree_branch.captures(source) {
         return ParsedSource {
             source_type: "github".into(),
@@ -92,7 +80,6 @@ fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    // GitHub URL: https://github.com/owner/repo
     let re_github = Regex::new(r"github\.com/([^/]+)/([^/]+?)(?:\.git)?/*$").unwrap();
     if let Some(cap) = re_github.captures(source) {
         return ParsedSource {
@@ -104,7 +91,6 @@ fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    // GitLab URL: https://gitlab.com/owner/repo
     let re_gitlab = Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").unwrap();
     if let Some(cap) = re_gitlab.captures(source) {
         let repo_path = &cap[1];
@@ -119,7 +105,6 @@ fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    // GitHub shorthand with @ filter: owner/repo@skill-name
     let re_at_filter = Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").unwrap();
     if let Some(cap) = re_at_filter.captures(source) {
         if !source.contains(':') {
@@ -133,7 +118,6 @@ fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    // GitHub shorthand: owner/repo or owner/repo/path/to/skill
     let re_shorthand = Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").unwrap();
     if let Some(cap) = re_shorthand.captures(source) {
         if !source.contains(':') && !source.starts_with('.') {
@@ -147,7 +131,6 @@ fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    // Fallback: treat as direct git URL
     ParsedSource {
         source_type: "git".into(),
         url: source.to_string(),
@@ -185,21 +168,18 @@ fn fetch_from_clawhub(slug: &str) -> Result<PathBuf> {
 
     let mut reader = resp.into_reader();
     let mut bytes = Vec::new();
-    reader
-        .read_to_end(&mut bytes)
-        .context("Failed to read zip from ClawHub")?;
+    reader.read_to_end(&mut bytes).context("Failed to read zip from ClawHub")?;
 
     let temp_dir = tempfile::tempdir().context("Failed to create temp directory")?;
     #[allow(deprecated)]
     let extract_path = temp_dir.into_path();
 
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .context("Invalid zip from ClawHub")?;
+    let mut archive =
+        zip::ZipArchive::new(std::io::Cursor::new(bytes)).context("Invalid zip from ClawHub")?;
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).context("Failed to read zip entry")?;
         let name = file.name().to_string();
-        // Skip _meta.json and path traversal
         if name.contains("..") || name.starts_with('/') {
             continue;
         }
@@ -210,8 +190,8 @@ fn fetch_from_clawhub(slug: &str) -> Result<PathBuf> {
             if let Some(parent) = out_path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            let mut out_file = fs::File::create(&out_path)
-                .with_context(|| format!("Failed to create {}", out_path.display()))?;
+            let mut out_file =
+                fs::File::create(&out_path).with_context(|| format!("Failed to create {}", out_path.display()))?;
             std::io::copy(&mut file, &mut out_file)
                 .with_context(|| format!("Failed to extract {}", name))?;
         }
@@ -228,8 +208,7 @@ fn fetch_from_clawhub(_slug: &str) -> Result<PathBuf> {
 // ─── Git Clone ──────────────────────────────────────────────────────────────
 
 fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<PathBuf> {
-    let temp_dir = tempfile::tempdir()
-        .context("Failed to create temp directory")?;
+    let temp_dir = tempfile::tempdir().context("Failed to create temp directory")?;
     #[allow(deprecated)]
     let temp_path = temp_dir.into_path();
 
@@ -240,9 +219,7 @@ fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<PathBuf> {
     }
     cmd.arg(url).arg(&temp_path);
 
-    let output = cmd
-        .output()
-        .context("Failed to execute git clone. Is git installed?")?;
+    let output = cmd.output().context("Failed to execute git clone. Is git installed?")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -270,7 +247,6 @@ fn discover_skills(
 ) -> Vec<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
-    // repo_dir itself is a skill (e.g. ClawHub zip with SKILL.md at root)
     if repo_dir.join("SKILL.md").exists() {
         return vec![repo_dir.to_path_buf()];
     }
@@ -399,6 +375,15 @@ fn find_skill_by_name_recursive(dir: &Path, name: &str, results: &mut Vec<PathBu
 
 // ─── Skill Copy ─────────────────────────────────────────────────────────────
 
+const COPY_EXCLUDE_DIRS: &[&str] = &[
+    ".git", "__pycache__", "node_modules", "venv", ".venv", ".tox", ".mypy_cache", ".pytest_cache",
+    ".ruff_cache", "dist", "build", "*.egg-info",
+];
+
+const COPY_EXCLUDE_FILES: &[&str] = &[".DS_Store", "Thumbs.db"];
+
+const COPY_EXCLUDE_EXTENSIONS: &[&str] = &["pyc", "pyo"];
+
 fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
     if dest.exists() {
         fs::remove_dir_all(dest)
@@ -408,32 +393,6 @@ fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Files and directories to exclude when copying skills.
-const COPY_EXCLUDE_DIRS: &[&str] = &[
-    ".git",
-    "__pycache__",
-    "node_modules",
-    "venv",
-    ".venv",
-    ".tox",
-    ".mypy_cache",
-    ".pytest_cache",
-    ".ruff_cache",
-    "dist",
-    "build",
-    "*.egg-info",
-];
-
-const COPY_EXCLUDE_FILES: &[&str] = &[
-    ".DS_Store",
-    "Thumbs.db",
-];
-
-const COPY_EXCLUDE_EXTENSIONS: &[&str] = &[
-    "pyc",
-    "pyo",
-];
-
 fn copy_dir_filtered(src: &Path, dest: &Path) -> Result<()> {
     fs::create_dir_all(dest)
         .with_context(|| format!("Failed to create directory: {}", dest.display()))?;
@@ -441,7 +400,6 @@ fn copy_dir_filtered(src: &Path, dest: &Path) -> Result<()> {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
 
-        // Skip excluded directories
         if COPY_EXCLUDE_DIRS.iter().any(|d| {
             if d.contains('*') {
                 let prefix = d.trim_end_matches('*').trim_end_matches('.');
@@ -454,12 +412,10 @@ fn copy_dir_filtered(src: &Path, dest: &Path) -> Result<()> {
             continue;
         }
 
-        // Skip excluded files
         if COPY_EXCLUDE_FILES.contains(&name_str.as_ref()) {
             continue;
         }
 
-        // Skip excluded extensions
         if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
             if COPY_EXCLUDE_EXTENSIONS.contains(&ext) {
                 continue;
@@ -511,19 +467,12 @@ fn install_skill_deps(skills_dir: &Path, installed: &[String]) -> Vec<String> {
     messages
 }
 
-// ─── Security Scanning (on add) ─────────────────────────────────────────────
+// ─── Security Scanning ──────────────────────────────────────────────────────
 
-/// Collect all scannable script files from a skill directory.
-///
-/// Sources:
-/// 1. Entry point (if declared)
-/// 2. All .py / .js / .ts / .sh files in `scripts/` directory
-/// Deduplicates so the entry point isn't scanned twice.
-fn collect_script_files(skill_path: &Path, meta: &metadata::SkillMetadata) -> Vec<std::path::PathBuf> {
+fn collect_script_files(skill_path: &Path, meta: &metadata::SkillMetadata) -> Vec<PathBuf> {
     let mut files = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
-    // Entry point
     if !meta.entry_point.is_empty() {
         let ep = skill_path.join(&meta.entry_point);
         if ep.exists() {
@@ -534,7 +483,6 @@ fn collect_script_files(skill_path: &Path, meta: &metadata::SkillMetadata) -> Ve
         }
     }
 
-    // All scripts in scripts/ directory
     let scripts_dir = skill_path.join("scripts");
     if scripts_dir.is_dir() {
         if let Ok(entries) = fs::read_dir(&scripts_dir) {
@@ -553,7 +501,6 @@ fn collect_script_files(skill_path: &Path, meta: &metadata::SkillMetadata) -> Ve
                 if !dominated {
                     continue;
                 }
-                // Skip test files and __init__.py
                 let name = path.file_name().unwrap_or_default().to_string_lossy();
                 if name.starts_with("test_")
                     || name.ends_with("_test.py")
@@ -562,7 +509,6 @@ fn collect_script_files(skill_path: &Path, meta: &metadata::SkillMetadata) -> Ve
                 {
                     continue;
                 }
-                // Deduplicate (entry point might be in scripts/)
                 let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
                 if seen.insert(canonical) {
                     files.push(path);
@@ -574,12 +520,6 @@ fn collect_script_files(skill_path: &Path, meta: &metadata::SkillMetadata) -> Ve
     files
 }
 
-/// Run security scans on newly installed skills:
-/// 1. Static code analysis on all script files
-/// 2. Supply chain vulnerability audit on dependencies (requires `audit` feature)
-///
-/// Returns (messages, has_high_risk) where has_high_risk is true if any
-/// high/critical code issues or vulnerable dependencies were found.
 fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String>, bool) {
     let mut messages = Vec::new();
     let mut has_high_risk = false;
@@ -590,23 +530,19 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
             continue;
         }
 
-        // ── Code security scan ──
         let meta = match metadata::parse_skill_metadata(&skill_path) {
             Ok(m) => m,
             Err(_) => continue,
         };
 
-        // ── Collect all scannable scripts ──
         let script_files = collect_script_files(&skill_path, &meta);
 
-        // Check if there are dependencies (explicit files, lock, or inferrable from metadata)
         let has_deps = skill_path.join("requirements.txt").exists()
             || skill_path.join("package.json").exists()
             || skill_path.join(".skilllite.lock").exists()
             || meta.resolved_packages.is_some()
             || meta.compatibility.as_ref().map_or(false, |c| !c.is_empty());
 
-        // Nothing to scan at all
         if script_files.is_empty() && !has_deps {
             let skill_type = if meta.is_bash_tool_skill() {
                 "bash-tool"
@@ -620,7 +556,6 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
             continue;
         }
 
-        // ── Code security scan (all scripts) ──
         if !script_files.is_empty() {
             let scanner = ScriptScanner::new();
             let mut total_issues = 0usize;
@@ -632,8 +567,7 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
                     let high = result.issues.iter().filter(|i| {
                         matches!(
                             i.severity,
-                            skilllite_sandbox::security::types::SecuritySeverity::High
-                                | skilllite_sandbox::security::types::SecuritySeverity::Critical
+                            SecuritySeverity::High | SecuritySeverity::Critical
                         )
                     }).count();
                     total_issues += result.issues.len();
@@ -666,12 +600,20 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
             }
         }
 
-        // ── Supply chain audit ──
         #[cfg(feature = "audit")]
         if has_deps {
             use skilllite_sandbox::security::dependency_audit;
 
-            match dependency_audit::audit_skill_dependencies(&skill_path) {
+            let metadata_hint = metadata::parse_skill_metadata(&skill_path)
+                .ok()
+                .map(|meta| dependency_audit::MetadataHint {
+                    compatibility: meta.compatibility,
+                    resolved_packages: meta.resolved_packages,
+                    description: meta.description,
+                    language: meta.language,
+                    entry_point: meta.entry_point,
+                });
+            match dependency_audit::audit_skill_dependencies(&skill_path, metadata_hint.as_ref()) {
                 Ok(result) => {
                     if result.vulnerable_count > 0 {
                         has_high_risk = true;
@@ -680,7 +622,8 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
                             name, result.vulnerable_count, result.scanned, result.total_vulns
                         ));
                         for entry in result.entries.iter().filter(|e| !e.vulns.is_empty()).take(3) {
-                            let vuln_ids: Vec<_> = entry.vulns.iter().take(2).map(|v| v.id.as_str()).collect();
+                            let vuln_ids: Vec<_> =
+                                entry.vulns.iter().take(2).map(|v| v.id.as_str()).collect();
                             let more = if entry.vulns.len() > 2 {
                                 format!(" +{}", entry.vulns.len() - 2)
                             } else {
@@ -715,13 +658,11 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
     (messages, has_high_risk)
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Public command handlers
-// ═══════════════════════════════════════════════════════════════════════════
+// ─── Public command ─────────────────────────────────────────────────────────
 
-/// `skilllite skill add <source>`
+/// `skilllite add <source>`
 pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> Result<()> {
-    let skills_path = resolve_skills_dir(skills_dir);
+    let skills_path = common::resolve_skills_dir(skills_dir);
     let parsed = parse_source(source);
 
     eprintln!("📦 Source: {}", source);
@@ -794,8 +735,7 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
         }
 
         eprintln!();
-        fs::create_dir_all(&skills_path)
-            .context("Failed to create skills directory")?;
+        fs::create_dir_all(&skills_path).context("Failed to create skills directory")?;
 
         let mut installed: Vec<String> = Vec::new();
         for skill_path in &skills {
@@ -827,9 +767,6 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
             return Ok(());
         }
 
-        // ── Step 1: Security scans BEFORE installing dependencies ──
-        // This is critical: pip install / npm install can execute arbitrary
-        // code (setup.py, postinstall scripts). Scan first, warn early.
         eprintln!();
         eprintln!("🔍 Running security scans (pre-install)...");
         let (scan_messages, has_high_risk) = scan_installed_skills(&skills_path, &installed);
@@ -837,7 +774,6 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
             eprintln!("{}", msg);
         }
 
-        // ── Step 2: If high-risk issues found, ask for confirmation ──
         if has_high_risk && !force {
             eprintln!();
             eprintln!("⚠️  High-risk issues detected. Installing dependencies may execute untrusted code.");
@@ -851,7 +787,6 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
             }
         }
 
-        // ── Step 3: Install dependencies (only after scan approval) ──
         eprintln!();
         eprintln!("📦 Installing dependencies...");
         let dep_messages = install_skill_deps(&skills_path, &installed);
@@ -879,339 +814,4 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
     }
 
     result
-}
-
-/// `skilllite skill remove <name>`
-pub fn cmd_remove(skill_name: &str, skills_dir: &str, force: bool) -> Result<()> {
-    let skills_path = resolve_skills_dir(skills_dir);
-
-    if !skills_path.exists() {
-        anyhow::bail!("No skills directory found. Nothing to remove.");
-    }
-
-    let mut skill_path = skills_path.join(skill_name);
-
-    if !skill_path.exists() {
-        let mut found = false;
-        if let Ok(entries) = fs::read_dir(&skills_path) {
-            for entry in entries.flatten() {
-                let p = entry.path();
-                if !p.is_dir() || !p.join("SKILL.md").exists() {
-                    continue;
-                }
-                if let Ok(meta) = metadata::parse_skill_metadata(&p) {
-                    if meta.name == skill_name {
-                        skill_path = p;
-                        found = true;
-                        break;
-                    }
-                }
-            }
-        }
-        if !found {
-            anyhow::bail!(
-                "Skill '{}' not found in {}",
-                skill_name,
-                skills_path.display()
-            );
-        }
-    }
-
-    if !force {
-        let dir_name = skill_path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
-        eprint!(
-            "Remove skill '{}' from {}? [y/N] ",
-            dir_name,
-            skills_path.display()
-        );
-        let mut answer = String::new();
-        std::io::stdin().read_line(&mut answer)?;
-        if !matches!(answer.trim().to_lowercase().as_str(), "y" | "yes") {
-            eprintln!("Cancelled.");
-            return Ok(());
-        }
-    }
-
-    let dir_name = skill_path
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
-    fs::remove_dir_all(&skill_path)
-        .with_context(|| format!("Failed to remove skill: {}", skill_path.display()))?;
-    eprintln!("✓ Removed skill '{}'", dir_name);
-    Ok(())
-}
-
-/// `skilllite skill list`
-pub fn cmd_list(skills_dir: &str, json_output: bool) -> Result<()> {
-    let skills_path = resolve_skills_dir(skills_dir);
-
-    if !skills_path.exists() {
-        if json_output {
-            println!("[]");
-        } else {
-            eprintln!("No skills directory found. Run `skilllite skill add` first.");
-        }
-        return Ok(());
-    }
-
-    let mut skill_dirs: Vec<PathBuf> = Vec::new();
-    if let Ok(entries) = fs::read_dir(&skills_path) {
-        let mut entries: Vec<_> = entries.flatten().collect();
-        entries.sort_by_key(|e| e.file_name());
-        for entry in entries {
-            let p = entry.path();
-            if p.is_dir() && p.join("SKILL.md").exists() {
-                skill_dirs.push(p);
-            }
-        }
-    }
-
-    if skill_dirs.is_empty() {
-        if json_output {
-            println!("[]");
-        } else {
-            eprintln!("No skills installed.");
-        }
-        return Ok(());
-    }
-
-    if json_output {
-        let mut skills_json = Vec::new();
-        for skill_path in &skill_dirs {
-            let info = skill_to_json(skill_path);
-            skills_json.push(info);
-        }
-        println!("{}", serde_json::to_string_pretty(&skills_json)?);
-        return Ok(());
-    }
-
-    eprintln!("📋 Installed skills ({}):", skill_dirs.len());
-    eprintln!();
-    for skill_path in &skill_dirs {
-        match metadata::parse_skill_metadata(skill_path) {
-            Ok(meta) => {
-                let name = if meta.name.is_empty() {
-                    skill_path
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_string()
-                } else {
-                    meta.name.clone()
-                };
-                let lang = metadata::detect_language(skill_path, &meta);
-                let lang_tag = if lang != "unknown" {
-                    format!("[{}]", lang)
-                } else {
-                    String::new()
-                };
-                eprintln!("  • {} {}", name, lang_tag);
-                if let Some(ref desc) = meta.description {
-                    let short: String = desc.chars().take(80).collect();
-                    eprintln!("    {}", short);
-                }
-                eprintln!("    path: {}", skill_path.display());
-            }
-            Err(e) => {
-                let name = skill_path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-                eprintln!("  • {}", name);
-                eprintln!("    ⚠ Could not parse SKILL.md: {}", e);
-            }
-        }
-        eprintln!();
-    }
-
-    Ok(())
-}
-
-/// `skilllite skill show <name>`
-pub fn cmd_show(skill_name: &str, skills_dir: &str, json_output: bool) -> Result<()> {
-    let skills_path = resolve_skills_dir(skills_dir);
-    let skill_path = find_skill(&skills_path, skill_name)?;
-    let meta = metadata::parse_skill_metadata(&skill_path)?;
-    let lang = metadata::detect_language(&skill_path, &meta);
-
-    if json_output {
-        let info = skill_to_json(&skill_path);
-        println!("{}", serde_json::to_string_pretty(&info)?);
-        return Ok(());
-    }
-
-    eprintln!("📦 Skill: {}", meta.name);
-    eprintln!("   Path: {}", skill_path.display());
-    if let Some(ref desc) = meta.description {
-        eprintln!("   Description: {}", desc);
-    }
-    eprintln!("   Language: {}", lang);
-    if meta.entry_point.is_empty() {
-        if meta.is_bash_tool_skill() {
-            eprintln!("   Type: bash-tool skill");
-            if let Some(ref at) = meta.allowed_tools {
-                eprintln!("   Allowed Tools: {}", at);
-            }
-        } else {
-            eprintln!("   Type: prompt-only skill");
-        }
-    } else {
-        eprintln!("   Entry Point: {}", meta.entry_point);
-    }
-    eprintln!(
-        "   Network: {}",
-        if meta.network.enabled { "enabled" } else { "disabled" }
-    );
-    if !meta.network.outbound.is_empty() {
-        eprintln!("   Outbound: {}", meta.network.outbound.join(", "));
-    }
-    if let Some(ref compat) = meta.compatibility {
-        eprintln!("   Compatibility: {}", compat);
-    }
-    if let Some(ref pkgs) = meta.resolved_packages {
-        eprintln!("   Resolved Packages: {}", pkgs.join(", "));
-    }
-
-    let scripts_dir = skill_path.join("scripts");
-    if scripts_dir.is_dir() {
-        eprintln!("   Scripts:");
-        if let Ok(entries) = fs::read_dir(&scripts_dir) {
-            let mut entries: Vec<_> = entries.flatten().collect();
-            entries.sort_by_key(|e| e.file_name());
-            for entry in entries {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if !name.starts_with('.') {
-                    eprintln!("     - {}", name);
-                }
-            }
-        }
-    }
-
-    let refs_dir = skill_path.join("references");
-    if refs_dir.is_dir() {
-        eprintln!("   References:");
-        if let Ok(entries) = fs::read_dir(&refs_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if !name.starts_with('.') {
-                    eprintln!("     - {}", name);
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-fn resolve_skills_dir(skills_dir: &str) -> PathBuf {
-    let p = PathBuf::from(skills_dir);
-    if p.is_absolute() {
-        p
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(p)
-    }
-}
-
-fn find_skill(skills_path: &Path, skill_name: &str) -> Result<PathBuf> {
-    if !skills_path.exists() {
-        anyhow::bail!("Skills directory not found: {}", skills_path.display());
-    }
-
-    let direct = skills_path.join(skill_name);
-    if direct.is_dir() && direct.join("SKILL.md").exists() {
-        return Ok(direct);
-    }
-
-    if let Ok(entries) = fs::read_dir(skills_path) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if !p.is_dir() || !p.join("SKILL.md").exists() {
-                continue;
-            }
-            if let Ok(meta) = metadata::parse_skill_metadata(&p) {
-                if meta.name == skill_name {
-                    return Ok(p);
-                }
-            }
-        }
-    }
-
-    anyhow::bail!(
-        "Skill '{}' not found in {}",
-        skill_name,
-        skills_path.display()
-    )
-}
-
-fn skill_to_json(skill_path: &Path) -> serde_json::Value {
-    match metadata::parse_skill_metadata(skill_path) {
-        Ok(meta) => {
-            let lang = metadata::detect_language(skill_path, &meta);
-            let name = if meta.name.is_empty() {
-                skill_path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .to_string()
-            } else {
-                meta.name.clone()
-            };
-
-            // Multi-script tools: when no entry_point, detect scripts and their schemas
-            let multi_script_tools = if meta.entry_point.is_empty() && !meta.is_bash_tool_skill() {
-                let tools = skilllite_core::skill::schema::detect_multi_script_tools(skill_path, &name);
-                tools
-                    .into_iter()
-                    .map(|t| {
-                        serde_json::json!({
-                            "tool_name": t.tool_name,
-                            "skill_name": t.skill_name,
-                            "script_path": t.script_path,
-                            "language": t.language,
-                            "input_schema": t.input_schema,
-                            "description": t.description,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            } else {
-                vec![]
-            };
-
-            serde_json::json!({
-                "name": name,
-                "description": meta.description,
-                "language": lang,
-                "entry_point": if meta.entry_point.is_empty() { "" } else { meta.entry_point.as_str() },
-                "network_enabled": meta.network.enabled,
-                "compatibility": meta.compatibility,
-                "resolved_packages": meta.resolved_packages,
-                "allowed_tools": meta.allowed_tools,
-                "path": skill_path.to_string_lossy(),
-                "is_bash_tool": meta.is_bash_tool_skill(),
-                "requires_elevated_permissions": meta.requires_elevated_permissions,
-                "multi_script_tools": multi_script_tools,
-            })
-        }
-        Err(e) => {
-            let name = skill_path
-                .file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string();
-            serde_json::json!({
-                "name": name,
-                "error": e.to_string(),
-                "path": skill_path.to_string_lossy(),
-            })
-        }
-    }
 }

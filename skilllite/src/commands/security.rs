@@ -32,17 +32,39 @@ pub fn security_scan_script(
 }
 
 /// Audit skill dependencies for known vulnerabilities via OSV.dev.
+///
+/// Parses SKILL.md in the commands layer and passes metadata to sandbox for
+/// dependency inference — sandbox never imports or parses skill metadata.
 #[cfg(feature = "audit")]
 pub fn dependency_audit_skill(skill_dir: &str, json_output: bool) -> Result<()> {
-    use skilllite_sandbox::security::dependency_audit;
+    use skilllite_sandbox::security::dependency_audit::MetadataHint;
 
     let path = validate_path_under_root(skill_dir, "Skill directory")?;
-    let result = dependency_audit::audit_skill_dependencies(&path)?;
+
+    // Parse SKILL.md in commands layer; sandbox receives only the hint struct
+    let metadata_hint = skilllite_core::skill::metadata::parse_skill_metadata(&path)
+        .ok()
+        .map(|meta| MetadataHint {
+            compatibility: meta.compatibility,
+            resolved_packages: meta.resolved_packages,
+            description: meta.description,
+            language: meta.language,
+            entry_point: meta.entry_point,
+        });
+
+    let result =
+        skilllite_sandbox::security::dependency_audit::audit_skill_dependencies(&path, metadata_hint.as_ref())?;
 
     if json_output {
-        println!("{}", dependency_audit::format_audit_result_json(&result));
+        println!(
+            "{}",
+            skilllite_sandbox::security::dependency_audit::format_audit_result_json(&result)
+        );
     } else {
-        println!("{}", dependency_audit::format_audit_result(&result));
+        println!(
+            "{}",
+            skilllite_sandbox::security::dependency_audit::format_audit_result(&result)
+        );
     }
 
     if result.vulnerable_count > 0 {

@@ -10,7 +10,7 @@ use std::path::PathBuf;
 /// Get the cache directory for skill environments.
 /// Uses `env::builder::get_cache_dir` for consistency.
 fn get_cache_dir() -> PathBuf {
-    skilllite_sandbox::env::builder::get_cache_dir(None).unwrap_or_else(|_| {
+    skilllite_sandbox::env::builder::get_cache_dir(None).unwrap_or_else(|| {
         dirs::cache_dir()
             .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".cache"))
             .join("skilllite")

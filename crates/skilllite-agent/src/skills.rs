@@ -599,7 +599,7 @@ fn build_sandbox_config(skill_dir: &Path, metadata: &SkillMetadata) -> SandboxCo
 /// Returns structured text with stdout, stderr, and exit_code so the LLM
 /// always sees both channels — critical for diagnosing failures.
 fn execute_bash_in_skill(
-    _skill_dir: &Path,
+    skill_dir: &Path,
     command: &str,
     env_path: &Path,
     cwd: &Path,
@@ -632,13 +632,15 @@ fn execute_bash_in_skill(
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    // Inject node_modules/.bin/ into PATH
-    if env_path.exists() {
-        let bin_dir = env_path.join("node_modules").join(".bin");
-        if bin_dir.exists() {
-            let current_path = std::env::var("PATH").unwrap_or_default();
-            cmd.env("PATH", format!("{}:{}", bin_dir.display(), current_path));
-        }
+    // Inject node_modules/.bin/ into PATH (from env cache or from skill_dir)
+    let bin_dir = if env_path.exists() {
+        env_path.join("node_modules").join(".bin")
+    } else {
+        skill_dir.join("node_modules").join(".bin")
+    };
+    if bin_dir.exists() {
+        let current_path = std::env::var("PATH").unwrap_or_default();
+        cmd.env("PATH", format!("{}:{}", bin_dir.display(), current_path));
     }
 
     let output = cmd.output()

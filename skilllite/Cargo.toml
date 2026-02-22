@@ -58,8 +58,8 @@ name = "skilllite"
 path = "src/main.rs"
 
 # skilllite-sandbox: 沙箱 + MCP，无 executor/agent。
-# 构建: cargo build --bin skilllite-sandbox --no-default-features --features sandbox_binary
+# 构建: cargo build -p skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary
 [[bin]]
 name = "skilllite-sandbox"
-path = "src/main.rs"
+path = "src/bin/skilllite-sandbox.rs"
 required-features = ["sandbox_binary"]

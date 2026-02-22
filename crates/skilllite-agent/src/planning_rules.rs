@@ -47,6 +47,38 @@ pub fn builtin_rules() -> Vec<PlanningRule> {
             instruction: "**天气/气象/天气预报**: When the user asks about weather, you MUST use **weather** skill. The LLM cannot provide real-time weather data; only the weather skill can. Return a task with tool_hint: \"weather\".".into(),
         },
         PlanningRule {
+            id: "place_attraction_intro".into(),
+            priority: 91,
+            keywords: vec![
+                "介绍一下".into(),
+                "介绍".into(),
+                "推荐".into(),
+                "攻略".into(),
+                "路线".into(),
+                "景点".into(),
+                "旅游".into(),
+                "步行".into(),
+                "漫步".into(),
+                "walk".into(),
+                "take a walk".into(),
+                "walking".into(),
+                "tour".into(),
+                "walking tour".into(),
+                "步行路线".into(),
+                "徒步".into(),
+            ],
+            context_keywords: vec![
+                "清迈".into(),
+                "曼谷".into(),
+                "普吉".into(),
+                "地方".into(),
+                "城市".into(),
+                "某地".into(),
+            ],
+            tool_hint: None,
+            instruction: "**介绍+地点/景点/旅游路线**: When the user asks to 介绍/推荐 a specific place, attraction, walking route, or tour (e.g. 介绍一下清迈的 take a walk, 推荐曼谷的景点), the LLM's knowledge may be stale or incomplete. You MUST add a task to fetch fresh information: use **agent-browser** if available (to open search and extract info), or **http-request** to fetch from web. Do NOT return empty list [] — place/attraction intros need up-to-date info.".into(),
+        },
+        PlanningRule {
             id: "realtime_http".into(),
             priority: 90,
             keywords: vec![
@@ -311,6 +343,11 @@ User request: "分析一下清迈和深圳这两个地方的优劣势对比" or 
 Return: [{"id": 1, "description": "Use http-request to fetch current information about both places", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Analyze and compare based on fetched data", "tool_hint": "analysis", "completed": false}]
 Note: chat_history is for past CONVERSATION only. Do NOT use it for place/city/topic comparison.
 
+Example 5c - User asks to introduce a place/attraction/walking route (MUST use agent-browser or http-request, NOT []):
+User request: "介绍一下take a walk，清迈的" or "推荐曼谷的步行路线" or "清迈有哪些值得去的景点"
+Return: [{"id": 1, "description": "Use agent-browser to open search and fetch info about the place/attraction/route", "tool_hint": "agent-browser", "completed": false}, {"id": 2, "description": "Summarize and present the introduction", "tool_hint": "analysis", "completed": false}]
+Note: Do NOT return []. Place/attraction intros need fresh web data.
+
 Example 6 - User says "继续" with context (MUST use context to infer task):
 User request: "继续为我那未完成的任务"
 Conversation context: [assistant previously said: "要完成西安交大与清迈大学的对比..."]
@@ -356,6 +393,7 @@ pub fn compact_examples_section(user_message: &str) -> String {
         || msg_lower.contains("city")
         || msg_lower.contains("place");
     let candidates: Vec<(&str, &str, &str)> = vec![
+        ("介绍", "景点", "介绍+地点/景点/路线: agent-browser or http-request for fresh info. NOT []."),
         ("城市", "全方位", "城市/地方/全方位分析: http-request for fresh data. NOT chat_history."),
         ("对比", "优劣势", "对比/优劣势: http-request for fresh data. NOT chat_history."),
         ("分析", "稳定性", "分析稳定性/项目: chat_history (ONLY when analyzing chat/project, NOT places)"),

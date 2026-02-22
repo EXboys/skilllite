@@ -78,6 +78,17 @@ pub struct DependencyAuditResult {
     pub entries: Vec<PackageAuditEntry>,
 }
 
+/// Metadata hint for dependency inference when no explicit dependency files exist.
+/// Provided by the commands layer (which parses SKILL.md); sandbox never parses skill metadata.
+#[derive(Debug, Clone)]
+pub struct MetadataHint {
+    pub compatibility: Option<String>,
+    pub resolved_packages: Option<Vec<String>>,
+    pub description: Option<String>,
+    pub language: Option<String>,
+    pub entry_point: String,
+}
+
 // ─── Dependency file parsers ────────────────────────────────────────────────
 
 /// Parse Python `requirements.txt` / `pip freeze` output.
@@ -160,11 +171,14 @@ pub fn parse_package_json(content: &str) -> Vec<Dependency> {
 /// 1. `requirements.txt` (Python, explicit)
 /// 2. `package.json` (Node.js, explicit)
 /// 3. `.skilllite.lock` → `resolved_packages` (written by `skilllite init`)
-/// 4. **Smart inference from SKILL.md** — LLM → whitelist fallback
-///    (only when no explicit dependency files are found)
+/// 4. **Smart inference** — when `metadata_hint` is provided and no explicit files found:
+///    LLM inference → whitelist fallback (uses compatibility, resolved_packages, etc.)
+///
+/// `metadata_hint`: When `Some`, used for inference when no dependency files exist.
+/// Must be provided by the commands layer (which parses SKILL.md); sandbox never parses skill metadata.
 ///
 /// Deduplicates by (name, ecosystem) — explicit files take priority over lock file.
-pub fn collect_dependencies(skill_dir: &Path) -> Vec<Dependency> {
+pub fn collect_dependencies(skill_dir: &Path, metadata_hint: Option<&MetadataHint>) -> Vec<Dependency> {
     let mut deps = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
@@ -204,15 +218,23 @@ pub fn collect_dependencies(skill_dir: &Path) -> Vec<Dependency> {
         }
     }
 
-    // 4. No explicit files found → infer from SKILL.md metadata
-    //    Uses: resolved_packages > LLM inference > whitelist matching
+    // 4. No explicit files found and metadata_hint provided → infer via LLM/whitelist
     if deps.is_empty() {
-        let inferred = resolve_from_metadata(skill_dir);
-        for dep in inferred {
-            let key = (dep.name.to_lowercase(), dep.ecosystem.clone());
-            if !seen.contains(&key) {
-                seen.insert(key);
-                deps.push(dep);
+        if let Some(hint) = metadata_hint {
+            let inferred = resolve_from_metadata_fields(
+                skill_dir,
+                hint.compatibility.as_deref(),
+                hint.resolved_packages.as_deref(),
+                hint.description.as_deref(),
+                hint.language.as_deref(),
+                &hint.entry_point,
+            );
+            for dep in inferred {
+                let key = (dep.name.to_lowercase(), dep.ecosystem.clone());
+                if !seen.contains(&key) {
+                    seen.insert(key);
+                    deps.push(dep);
+                }
             }
         }
     }
@@ -249,38 +271,6 @@ fn parse_lock_file(lock_path: &Path) -> Option<Vec<Dependency>> {
 }
 
 // ─── Smart Dependency Resolution (LLM → whitelist fallback) ─────────────────
-
-/// Resolve dependencies from SKILL.md metadata when no explicit dependency
-/// files (requirements.txt / package.json) are present.
-///
-/// Resolution chain:
-/// 1. `resolved_packages` from `.skilllite.lock` or metadata  (already handled by collect_dependencies)
-/// 2. **LLM inference** — send the compatibility/description text to an
-///    OpenAI-compatible API and extract installable package names.
-///    Requires `OPENAI_API_BASE` (or `BASE_URL`) + `OPENAI_API_KEY` (or `API_KEY`).
-/// 3. **Whitelist regex** — match the compatibility string against a hardcoded
-///    list of well-known Python/Node packages (same list as `deps.rs`).
-///
-/// Inferred packages have an empty `version` field; the PyPI query path
-/// handles this by querying `/pypi/{name}/json` (latest version).
-pub fn resolve_from_metadata(skill_dir: &Path) -> Vec<Dependency> {
-    // NOTE: This is the only place in the sandbox module that touches
-    // `skill::metadata` directly. Phase 2 will move this call site to the
-    // commands layer so that sandbox never imports skill.
-    let meta = match skilllite_core::skill::metadata::parse_skill_metadata(skill_dir) {
-        Ok(m) => m,
-        Err(_) => return Vec::new(),
-    };
-
-    resolve_from_metadata_fields(
-        skill_dir,
-        meta.compatibility.as_deref(),
-        meta.resolved_packages.as_deref(),
-        meta.description.as_deref(),
-        meta.language.as_deref(),
-        &meta.entry_point,
-    )
-}
 
 /// Pure data-driven dependency resolution (no `SkillMetadata` dependency).
 fn resolve_from_metadata_fields(
@@ -787,11 +777,18 @@ fn query_pypi(
 
 /// Run a full dependency audit on a skill directory.
 ///
+/// `metadata_hint`: When `Some`, used for inference when no explicit dependency
+/// files exist. Must be provided by the commands layer (which parses SKILL.md);
+/// sandbox never parses skill metadata.
+///
 /// Backend selection:
 /// 1. If `SKILLLITE_AUDIT_API` is set → all packages via custom API
 /// 2. Otherwise → Python via PyPI JSON API, npm via OSV batch API
-pub fn audit_skill_dependencies(skill_dir: &Path) -> Result<DependencyAuditResult> {
-    let deps = collect_dependencies(skill_dir);
+pub fn audit_skill_dependencies(
+    skill_dir: &Path,
+    metadata_hint: Option<&MetadataHint>,
+) -> Result<DependencyAuditResult> {
+    let deps = collect_dependencies(skill_dir, metadata_hint);
     if deps.is_empty() {
         return Ok(DependencyAuditResult {
             scanned: 0,
