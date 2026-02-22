@@ -3,11 +3,13 @@
 mod cli;
 mod commands;
 mod mcp;
+mod protocol;
 mod stdio_rpc;
 
 use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Commands};
+use protocol::ProtocolHandler;
 use std::io::Read;
 
 /// Run the CLI — parses args and dispatches to command handlers.
@@ -27,7 +29,8 @@ pub fn run_cli() -> Result<()> {
     match cli.command {
         Commands::Serve { stdio } => {
             if stdio {
-                stdio_rpc::serve_stdio()?;
+                protocol::StdioRpcHandler
+                    .serve(protocol::ProtocolParams::Stdio)?;
             }
         }
         Commands::Run {
@@ -264,7 +267,10 @@ pub fn run_cli() -> Result<()> {
             skilllite_agent::rpc::serve_agent_rpc()?;
         }
         Commands::Mcp { skills_dir } => {
-            mcp::serve_mcp_stdio(&skills_dir)?;
+            protocol::McpHandler
+                .serve(protocol::ProtocolParams::Mcp {
+                    skills_dir: skills_dir.clone(),
+                })?;
         }
     }
 

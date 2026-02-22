@@ -17,6 +17,7 @@
 #![cfg(target_os = "windows")]
 
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
+use crate::runtime_resolver::RuntimeResolver;
 use anyhow::{Context, Result};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -185,38 +186,27 @@ fn execute_with_job_object(
     let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
 
+    let resolved = runtime
+        .resolve(language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language on Windows: {}", language))?;
+
     // Create temp directory for input
     let temp_dir = TempDir::new()?;
     let input_file = temp_dir.path().join("input.json");
     std::fs::write(&input_file, input_json)?;
 
-    // Determine the interpreter
-    let (program, args): (String, Vec<String>) = match language.as_str() {
-        "python" => {
-            let python = if env_path.as_os_str().is_empty() {
-                "python".to_string()
-            } else {
-                env_path.join("Scripts").join("python.exe")
-                    .to_string_lossy().to_string()
-            };
-            (python, vec![entry_point.to_string_lossy().to_string()])
-        }
-        "node" => {
-            ("node".to_string(), vec![entry_point.to_string_lossy().to_string()])
-        }
-        _ => {
-            anyhow::bail!("Unsupported language on Windows: {}", language);
-        }
-    };
+    let args = vec![entry_point.to_string_lossy().to_string()];
 
     // Set environment variables
-    let mut cmd = Command::new(&program);
+    let mut cmd = Command::new(&resolved.interpreter);
     cmd.args(&args)
         .current_dir(skill_dir)
         .env("SKILL_INPUT_FILE", &input_file)
-        .env("SKILL_INPUT", input_json)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .env("SKILL_INPUT", input_json);
+    for (k, v) in &resolved.extra_env {
+        cmd.env(k, v);
+    }
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     // Note: Full Job Object implementation would require windows-rs crate
     // For now, we use basic process execution with timeout
@@ -280,43 +270,31 @@ pub fn execute_simple_with_limits(
     let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
 
+    // Bash on Windows: prefer WSL if available
+    if language == "bash" && is_wsl2_available() {
+        let wsl_entry = windows_to_wsl_path(&entry_point)?;
+        return execute_bash_via_wsl(&wsl_entry, input_json, limits);
+    }
+
+    let resolved = runtime
+        .resolve(language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language on Windows: {}", language))?;
+
     let temp_dir = TempDir::new()?;
     let input_file = temp_dir.path().join("input.json");
     std::fs::write(&input_file, input_json)?;
 
-    let (program, args): (String, Vec<String>) = match language.as_str() {
-        "python" => {
-            let python = if env_path.as_os_str().is_empty() {
-                "python".to_string()
-            } else {
-                env_path.join("Scripts").join("python.exe")
-                    .to_string_lossy().to_string()
-            };
-            (python, vec![entry_point.to_string_lossy().to_string()])
-        }
-        "node" => {
-            ("node".to_string(), vec![entry_point.to_string_lossy().to_string()])
-        }
-        "bash" => {
-            // On Windows, try to use Git Bash or WSL bash
-            if is_wsl2_available() {
-                let wsl_entry = windows_to_wsl_path(&entry_point)?;
-                return execute_bash_via_wsl(&wsl_entry, input_json, limits);
-            }
-            ("bash".to_string(), vec![entry_point.to_string_lossy().to_string()])
-        }
-        _ => {
-            anyhow::bail!("Unsupported language on Windows: {}", language);
-        }
-    };
+    let args = vec![entry_point.to_string_lossy().to_string()];
 
-    let mut cmd = Command::new(&program);
+    let mut cmd = Command::new(&resolved.interpreter);
     cmd.args(&args)
         .current_dir(skill_dir)
         .env("SKILL_INPUT_FILE", &input_file)
-        .env("SKILL_INPUT", input_json)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .env("SKILL_INPUT", input_json);
+    for (k, v) in &resolved.extra_env {
+        cmd.env(k, v);
+    }
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let output = cmd.output()
         .context("Failed to execute skill")?;

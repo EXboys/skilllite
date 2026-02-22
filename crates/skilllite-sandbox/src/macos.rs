@@ -6,6 +6,7 @@ use crate::common::{
     DEFAULT_MAX_PROCESSES,
 };
 use crate::runner::{ExecutionResult, RuntimePaths, SandboxConfig};
+use crate::runtime_resolver::RuntimeResolver;
 use crate::move_protection::{
     generate_log_tag, generate_move_blocking_rules, get_session_suffix,
 };
@@ -66,33 +67,21 @@ pub fn execute_simple_with_limits(
 ) -> Result<ExecutionResult> {
     crate::info_log!("[INFO] simple: executing {}...", config.entry_point);
     let language = &config.language;
-    
     let entry_point = &config.entry_point;
+
+    let resolved = runtime
+        .resolve(language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
 
     // Create temporary directory for work
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
-    // Prepare command based on language
-    let mut cmd = match language.as_str() {
-        "python" => {
-            let mut c = Command::new(&runtime.python);
-            c.arg(entry_point);
-            c
-        }
-        "node" => {
-            let mut c = Command::new(&runtime.node);
-            c.arg(entry_point);
-
-            if let Some(ref node_modules) = runtime.node_modules {
-                c.env("NODE_PATH", node_modules);
-            }
-            c
-        }
-        _ => {
-            anyhow::bail!("Unsupported language: {}", language);
-        }
-    };
+    let mut cmd = Command::new(&resolved.interpreter);
+    cmd.arg(entry_point);
+    for (k, v) in resolved.extra_env {
+        cmd.env(k, v);
+    }
 
     // Add script arguments from SKILLBOX_SCRIPT_ARGS environment variable
     // This allows passing CLI arguments to scripts that use argparse
@@ -214,18 +203,10 @@ fn execute_with_sandbox(
     )?;
     fs::write(&profile_path, &profile_content)?;
 
-    // Prepare command based on language
-    let (executable, mut args) = match language.as_str() {
-        "python" => {
-            (runtime.python.clone(), vec![entry_point.to_string()])
-        }
-        "node" => {
-            (runtime.node.clone(), vec![entry_point.to_string()])
-        }
-        _ => {
-            anyhow::bail!("Unsupported language: {}", language);
-        }
-    };
+    let resolved = runtime
+        .resolve(language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+    let mut args = vec![entry_point.to_string()];
 
     // Add script arguments from SKILLBOX_SCRIPT_ARGS environment variable
     // This allows passing CLI arguments to scripts that use argparse
@@ -241,7 +222,7 @@ fn execute_with_sandbox(
     // Build sandbox-exec command - directly execute interpreter (no script injection)
     let mut cmd = Command::new("sandbox-exec");
     cmd.args(["-f", profile_path.to_str().expect("profile path must be valid UTF-8")]);
-    cmd.arg(&executable);
+    cmd.arg(&resolved.interpreter);
     cmd.args(&args);
 
     // Set working directory
@@ -261,11 +242,8 @@ fn execute_with_sandbox(
     }
     // Do not override HOME - some libs (fonts, cache) need it for path lookup
 
-    // Set NODE_PATH for Node.js
-    if language == "node" {
-        if let Some(ref node_modules) = runtime.node_modules {
-            cmd.env("NODE_PATH", node_modules);
-        }
+    for (k, v) in &resolved.extra_env {
+        cmd.env(k, v);
     }
 
     // Set proxy environment variables if proxy is running

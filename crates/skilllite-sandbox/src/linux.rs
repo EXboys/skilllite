@@ -2,6 +2,7 @@
 
 use crate::common::wait_with_timeout;
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
+use crate::runtime_resolver::{ResolvedRuntime, RuntimeResolver};
 use crate::network_proxy::{ProxyConfig, ProxyManager};
 use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use crate::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
@@ -88,30 +89,19 @@ fn execute_simple_with_limits(
     let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
 
+    let resolved = runtime
+        .resolve(language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+
     // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
-    // Prepare command based on language
-    let mut cmd = match language.as_str() {
-        "python" => {
-            let mut c = Command::new(&runtime.python);
-            c.arg(&entry_point);
-            c
-        }
-        "node" => {
-            let mut c = Command::new(&runtime.node);
-            c.arg(&entry_point);
-
-            if let Some(ref node_modules) = runtime.node_modules {
-                c.env("NODE_PATH", node_modules);
-            }
-            c
-        }
-        _ => {
-            anyhow::bail!("Unsupported language: {}", language);
-        }
-    };
+    let mut cmd = Command::new(&resolved.interpreter);
+    cmd.arg(&entry_point);
+    for (k, v) in &resolved.extra_env {
+        cmd.env(k, v);
+    }
 
     // Set working directory
     cmd.current_dir(skill_dir);
@@ -165,22 +155,15 @@ fn execute_with_seccomp(
     let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
 
+    let resolved = runtime
+        .resolve(language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+    let program = &resolved.interpreter;
+    let mut args = vec![entry_point.to_string_lossy().to_string()];
+
     // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
-
-    // Prepare command based on language
-    let (program, mut args) = match language.as_str() {
-        "python" => {
-            (runtime.python.clone(), vec![entry_point.to_string_lossy().to_string()])
-        }
-        "node" => {
-            (runtime.node.clone(), vec![entry_point.to_string_lossy().to_string()])
-        }
-        _ => {
-            anyhow::bail!("Unsupported language: {}", language);
-        }
-    };
 
     // Use bwrap (bubblewrap) if available for unprivileged sandboxing
     // bwrap is commonly available on Linux and provides namespace isolation without root
@@ -193,7 +176,7 @@ fn execute_with_seccomp(
             runtime,
             config,
             input_json,
-            &program,
+            &resolved,
             &entry_point,
             work_dir,
             limits,
@@ -209,7 +192,7 @@ fn execute_with_seccomp(
             runtime,
             config,
             input_json,
-            &program,
+            resolved,
             &entry_point,
             work_dir,
             limits,
@@ -261,7 +244,7 @@ fn execute_with_bwrap(
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
-    program: &Path,
+    resolved: &ResolvedRuntime,
     entry_point: &Path,
     work_dir: &Path,
     limits: crate::runner::ResourceLimits,
@@ -371,6 +354,9 @@ fn execute_with_bwrap(
             cmd.args(["--setenv", &key, &value]);
         }
     }
+    for (k, v) in &resolved.extra_env {
+        cmd.args(["--setenv", k, v]);
+    }
     
     // Block mandatory deny directories using tmpfs (makes them empty)
     for dir in MANDATORY_DENY_DIRECTORIES {
@@ -398,7 +384,7 @@ fn execute_with_bwrap(
     
     // Add the program and arguments
     cmd.arg("--");
-    cmd.arg(program);
+    cmd.arg(&resolved.interpreter);
     cmd.arg(entry_point);
     
     // Set working directory
@@ -506,7 +492,7 @@ fn execute_with_firejail(
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
-    program: &Path,
+    resolved: &ResolvedRuntime,
     entry_point: &Path,
     work_dir: &Path,
     limits: ResourceLimits,
@@ -597,7 +583,7 @@ fn execute_with_firejail(
     
     // Add the program and arguments
     cmd.arg("--");
-    cmd.arg(program);
+    cmd.arg(&resolved.interpreter);
     cmd.arg(entry_point);
     
     // Set working directory
@@ -613,6 +599,9 @@ fn execute_with_firejail(
     cmd.env("TMPDIR", work_dir);
     if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
         cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
+    }
+    for (k, v) in &resolved.extra_env {
+        cmd.env(k, v);
     }
     
     // Set proxy environment variables if proxy is running
@@ -658,26 +647,19 @@ fn execute_with_namespaces(
     let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
 
+    let resolved = runtime
+        .resolve(language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+
     // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
-    // Prepare command based on language
-    let mut cmd = match language.as_str() {
-        "python" => {
-            let mut c = Command::new(&runtime.python);
-            c.arg(&entry_point);
-            c
-        }
-        "node" => {
-            let mut c = Command::new(&runtime.node);
-            c.arg(&entry_point);
-            c
-        }
-        _ => {
-            anyhow::bail!("Unsupported language: {}", language);
-        }
-    };
+    let mut cmd = Command::new(&resolved.interpreter);
+    cmd.arg(&entry_point);
+    for (k, v) in &resolved.extra_env {
+        cmd.env(k, v);
+    }
 
     // Set up stdin/stdout/stderr
     cmd.stdin(Stdio::piped());

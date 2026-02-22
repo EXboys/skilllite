@@ -1,8 +1,7 @@
 //! ExtensionRegistry: unified registry for agent tool extensions.
 //!
-//! Consolidates built-in tools, memory tools, and skills into a single interface
-//! for tool discovery and execution. Supports future extensibility (e.g. third-party
-//! extensions via register()).
+//! Uses compile-time registration: add new tools by calling `register(tools())`.
+//! Pattern: `registry.register(builtin::file_ops::tools());` — no changes to agent_loop.
 
 use std::path::Path;
 
@@ -23,46 +22,107 @@ pub struct MemoryVectorContext<'a> {
 
 /// Unified registry for agent tool extensions.
 ///
-/// Currently supports two extension sources:
-/// - **Built-in extensions**: file ops, run_command, output, preview, chat (read_file, write_file, etc.)
-/// - **Memory extensions**: memory_search, memory_write, memory_list (when enable_memory)
-/// - **Skills**: dynamically loaded from skill directories
-///
-/// Future: `register(extension)` for third-party plugins.
+/// Tool sources are registered at construction. Pattern:
+/// ```ignore
+/// let registry = ExtensionRegistry::builder(enable_memory, enable_memory_vector, skills)
+///     .register(builtin::get_builtin_tool_definitions())
+///     .register_memory_if(enable_memory)
+///     .build();
+/// ```
+/// Adding a new tool module = add to builtin, or `.register(new_tools())`.
 #[derive(Debug)]
 pub struct ExtensionRegistry<'a> {
-    /// Whether memory tools (memory_search, memory_write, memory_list) are enabled.
+    /// Cached tool definitions (from registered extensions + skills).
+    tool_definitions: Vec<ToolDefinition>,
+    /// Whether memory tools are enabled.
     pub enable_memory: bool,
-    /// Whether memory vector search is enabled (requires memory_vector feature + embedding API).
+    /// Whether memory vector search is enabled.
     pub enable_memory_vector: bool,
-    /// Loaded skills providing tool definitions and execution.
+    /// Loaded skills (for execution dispatch).
     pub skills: &'a [LoadedSkill],
 }
 
-impl<'a> ExtensionRegistry<'a> {
-    /// Create a registry with the given configuration.
+/// Builder for ExtensionRegistry with explicit tool registration.
+#[derive(Debug)]
+pub struct ExtensionRegistryBuilder<'a> {
+    tool_definitions: Vec<ToolDefinition>,
+    enable_memory: bool,
+    enable_memory_vector: bool,
+    skills: &'a [LoadedSkill],
+}
+
+impl<'a> ExtensionRegistryBuilder<'a> {
+    /// Create a new builder. Call `register()` for each tool provider, then `build()`.
     pub fn new(
         enable_memory: bool,
         enable_memory_vector: bool,
         skills: &'a [LoadedSkill],
     ) -> Self {
         Self {
+            tool_definitions: Vec::new(),
             enable_memory,
             enable_memory_vector,
             skills,
         }
     }
 
-    /// Collect all tool definitions from built-in, memory (if enabled), and skills.
-    pub fn all_tool_definitions(&self) -> Vec<ToolDefinition> {
-        let mut tools = builtin::get_builtin_tool_definitions();
-        if self.enable_memory {
-            tools.extend(memory::get_memory_tool_definitions());
+    /// Register tool definitions from an extension. Add one line per tool module.
+    #[must_use]
+    pub fn register(mut self, defs: impl IntoIterator<Item = ToolDefinition>) -> Self {
+        self.tool_definitions.extend(defs);
+        self
+    }
+
+    /// Register memory tools if enable_memory is true.
+    #[must_use]
+    pub fn register_memory_if(mut self, enable: bool) -> Self {
+        if enable {
+            self.tool_definitions
+                .extend(memory::get_memory_tool_definitions());
         }
+        self
+    }
+
+    /// Build the registry. Skills' tool definitions are added at build time.
+    pub fn build(self) -> ExtensionRegistry<'a> {
+        let mut tool_definitions = self.tool_definitions;
         for skill in self.skills {
-            tools.extend(skill.tool_definitions.clone());
+            tool_definitions.extend(skill.tool_definitions.clone());
         }
-        tools
+        ExtensionRegistry {
+            tool_definitions,
+            enable_memory: self.enable_memory,
+            enable_memory_vector: self.enable_memory_vector,
+            skills: self.skills,
+        }
+    }
+}
+
+impl<'a> ExtensionRegistry<'a> {
+    /// Create a registry with default tool registration (builtin + memory + skills).
+    pub fn new(
+        enable_memory: bool,
+        enable_memory_vector: bool,
+        skills: &'a [LoadedSkill],
+    ) -> Self {
+        Self::builder(enable_memory, enable_memory_vector, skills)
+            .register(builtin::get_builtin_tool_definitions())
+            .register_memory_if(enable_memory)
+            .build()
+    }
+
+    /// Start building a registry with explicit registration.
+    pub fn builder(
+        enable_memory: bool,
+        enable_memory_vector: bool,
+        skills: &'a [LoadedSkill],
+    ) -> ExtensionRegistryBuilder<'a> {
+        ExtensionRegistryBuilder::new(enable_memory, enable_memory_vector, skills)
+    }
+
+    /// Collect all tool definitions (from registered extensions + skills).
+    pub fn all_tool_definitions(&self) -> Vec<ToolDefinition> {
+        self.tool_definitions.clone()
     }
 
     /// Check if any extension owns this tool name.
