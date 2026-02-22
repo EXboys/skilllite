@@ -41,6 +41,7 @@ venv/
 ENV/
 env/
 !skilllite/src/env/
+!crates/skilllite-sandbox/src/env/
 .venv
 
 # IDEs
