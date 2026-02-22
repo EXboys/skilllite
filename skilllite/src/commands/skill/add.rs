@@ -535,6 +535,32 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
             Err(_) => continue,
         };
 
+        // Scan SKILL.md for supply chain / agent-driven social engineering patterns
+        let skill_md_path = skill_path.join("SKILL.md");
+        if let Ok(content) = fs::read_to_string(&skill_md_path) {
+            let alerts = skilllite_core::skill::skill_md_security::scan_skill_md_suspicious_patterns(&content);
+            if !alerts.is_empty() {
+                let high_count = alerts.iter().filter(|a| a.severity == "high").count();
+                if high_count > 0 {
+                    has_high_risk = true;
+                }
+                messages.push(format!(
+                    "   📄 {} SKILL.md: ⚠ {} alert(s) ({} high) - supply chain / agent social engineering",
+                    name, alerts.len(), high_count
+                ));
+                for a in alerts.iter().take(3) {
+                    messages.push(format!("      [{}] {}", a.severity.to_uppercase(), a.message));
+                }
+                if alerts.len() > 3 {
+                    messages.push(format!(
+                        "      ... +{} more. Run `skilllite scan {}` for full report.",
+                        alerts.len() - 3,
+                        skill_path.display()
+                    ));
+                }
+            }
+        }
+
         let script_files = collect_script_files(&skill_path, &meta);
 
         let has_deps = skill_path.join("requirements.txt").exists()

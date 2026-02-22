@@ -816,36 +816,62 @@ fn compute_skill_hash(skill_dir: &Path, metadata: &SkillMetadata) -> String {
     hex::encode(hasher.finalize())[..16].to_string()
 }
 
-/// Run security scan on a skill's entry point.
-/// Returns formatted report string, or None if scan is clean.
+/// Run security scan on a skill's entry point and SKILL.md.
+/// Returns formatted report string if any issues found, or None if scan is clean.
 fn run_security_scan(skill_dir: &Path, metadata: &SkillMetadata) -> Option<String> {
+    let mut report_parts = Vec::new();
+
+    // 1. Scan SKILL.md for supply chain / agent-driven social engineering patterns
+    let skill_md_path = skill_dir.join("SKILL.md");
+    if skill_md_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&skill_md_path) {
+            let alerts = skilllite_core::skill::skill_md_security::scan_skill_md_suspicious_patterns(&content);
+            if !alerts.is_empty() {
+                report_parts.push("SKILL.md security alerts (supply chain / agent-driven social engineering):".to_string());
+                for a in &alerts {
+                    report_parts.push(format!("  [{}] {}: {}", a.severity.to_uppercase(), a.pattern, a.message));
+                }
+                report_parts.push(String::new());
+            }
+        }
+    }
+
+    // 2. Scan entry point script
     let entry_path = if !metadata.entry_point.is_empty() {
         skill_dir.join(&metadata.entry_point)
     } else {
         let defaults = ["scripts/main.py", "main.py"];
         match defaults.iter().map(|d| skill_dir.join(d)).find(|p| p.exists()) {
             Some(p) => p,
-            None => return None,
+            None => {
+                return if report_parts.is_empty() {
+                    None
+                } else {
+                    Some(report_parts.join("\n"))
+                };
+            }
         }
     };
 
-    if !entry_path.exists() {
-        return None;
-    }
-
-    let scanner = ScriptScanner::new();
-    match scanner.scan_file(&entry_path) {
-        Ok(result) => {
-            if result.is_safe {
-                None
-            } else {
-                Some(skilllite_sandbox::security::scanner::format_scan_result_compact(&result))
+    if entry_path.exists() {
+        let scanner = ScriptScanner::new();
+        match scanner.scan_file(&entry_path) {
+            Ok(result) => {
+                if !result.is_safe {
+                    report_parts.push(skilllite_sandbox::security::scanner::format_scan_result_compact(&result));
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Security scan failed for {}: {}", entry_path.display(), e);
+                report_parts.push(format!("Script security scan failed: {}. Manual review required.", e));
             }
         }
-        Err(e) => {
-            tracing::warn!("Security scan failed for {}: {}", entry_path.display(), e);
-            Some(format!("Security scan failed: {}. Manual review required.", e))
-        }
+    }
+
+    if report_parts.is_empty() {
+        None
+    } else {
+        Some(report_parts.join("\n"))
     }
 }
 
