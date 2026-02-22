@@ -90,7 +90,7 @@ That's it! No Rust, no Docker, no complex setup required.
 skilllite quickstart
 ```
 
-> ⚠️ **Platform Support**: macOS and Linux only. Windows is not supported yet.
+> **Platform Support**: macOS, Linux, and Windows (via WSL2 Bridge).
 
 ## 📚 Tutorials
 
@@ -221,7 +221,7 @@ python3 benchmark/security_vs.py --output security_results.json
 | **Memory Usage** | 10 MB | ~100 MB | ~50 MB | 84 MB |
 | **Security** | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
 | **Deployment Complexity** | Single binary | Requires daemon | Requires Node.js | Requires installation |
-| **Platform Support** | macOS/Linux | All platforms | All platforms | macOS/Linux |
+| **Platform Support** | macOS/Linux/Win(WSL2) | All platforms | All platforms | macOS/Linux |
 
 **Note**: gVisor runs ON TOP OF Docker (using `--runtime=runsc`), so its performance will always be worse than Docker. It's only useful for security isolation comparison, not performance benchmarking.
 
@@ -344,15 +344,28 @@ my-skill/
 ```markdown
 ---
 name: my-skill
-description: My custom Skill
-version: 1.0.0
-entry_point: scripts/main.py
+description: My custom Skill that does something useful.
+license: MIT
+compatibility: Requires Python 3.x with requests library, network access
+metadata:
+  author: your-name
+  version: "1.0"
 ---
 
 # My Skill
 
-This is the detailed description of the Skill...
+This is the detailed description of the Skill.
+
+## Input Parameters
+
+- `query`: Input query string (required)
+
+## Output Format
+
+Returns JSON result.
 ```
+
+> **Note**: Dependencies are declared in the `compatibility` field (not `requirements.txt`). Entry point is auto-detected (`main.py` > `main.js` > `main.ts` > `main.sh`).
 
 ## Framework Adapters
 
@@ -428,10 +441,9 @@ The `init-opencode` command automatically:
 
 ## 📦 Core Components
 
-- **skilllite** (Rust binary) - Sandbox executor, CLI (chat/add/list/mcp/run/exec/bash/init/quickstart), MCP server
-- **chat** - Python API for single-shot agent chat
-- **run_skill** / **execute_code** / **scan_code** - Python APIs for direct execution
-- **langchain-skilllite** - LangChain adapter (SkillLiteToolkit, SkillManager)
+- **skilllite** (Rust binary) - Sandbox executor, CLI, Agent loop, MCP server — single binary with everything
+- **python-sdk** (`pip install skilllite`) - Thin bridge (~600 lines), zero runtime deps, calls Rust binary via subprocess
+- **langchain-skilllite** (`pip install langchain-skilllite`) - LangChain adapter (SkillLiteToolkit)
 
 ### Key CLI Commands
 
@@ -439,12 +451,19 @@ The `init-opencode` command automatically:
 |--------|-------------|
 | `skilllite init` | Initialize project (.skills/ + download skills + dependencies + audit) |
 | `skilllite quickstart` | Zero-config: detect LLM, setup skills, launch chat |
-| `skilllite chat` | Interactive agent chat |
+| `skilllite chat` | Interactive agent chat (or `--message` for single-shot) |
 | `skilllite add owner/repo` | Add skills from GitHub |
+| `skilllite remove <name>` | Remove an installed skill |
 | `skilllite list` | List installed skills |
+| `skilllite show <name>` | Show skill details |
+| `skilllite run <dir> '<json>'` | Execute a skill directly |
+| `skilllite scan <dir>` | Scan skill for security issues |
 | `skilllite mcp` | Start MCP server (Cursor/Claude Desktop) |
+| `skilllite serve` | Start IPC daemon (stdio JSON-RPC) |
 | `skilllite init-cursor` | Initialize Cursor IDE integration |
 | `skilllite init-opencode` | Initialize OpenCode integration |
+| `skilllite clean-env` | Clean cached runtime environments |
+| `skilllite reindex` | Re-index all installed skills |
 
 ## 📄 License
 

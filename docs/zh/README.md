@@ -86,7 +86,7 @@ skilllite remove <skill-name> --force       # 无需确认直接移除
 skilllite quickstart
 ```
 
-> ⚠️ **平台支持**：目前仅支持 **macOS** 和 **Linux**，暂不支持 Windows。
+> **平台支持**：macOS、Linux 和 Windows（通过 WSL2 桥接）。
 
 ## 📚 教程
 
@@ -154,7 +154,7 @@ python3 benchmark/security_vs.py --output security_results.json
 | **内存占用** | 10 MB | ~100 MB | ~50 MB | 84 MB |
 | **安全性** | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
 | **部署复杂度** | 单二进制 | 需守护进程 | 需 Node.js | 需安装 |
-| **平台支持** | macOS/Linux | 全平台 | 全平台 | macOS/Linux |
+| **平台支持** | macOS/Linux/Win(WSL2) | 全平台 | 全平台 | macOS/Linux |
 
 ### 与 Claude Code Sandbox 的关系
 
@@ -201,22 +201,34 @@ my-skill/
 ```markdown
 ---
 name: my-skill
-description: 我的自定义 Skill
-version: 1.0.0
-entry_point: scripts/main.py
+description: 我的自定义 Skill，用于处理某些任务。
+license: MIT
+compatibility: Requires Python 3.x with requests library, network access
+metadata:
+  author: your-name
+  version: "1.0"
 ---
 
 # My Skill
 
-这是 Skill 的详细说明...
+这是 Skill 的详细说明。
+
+## 输入参数
+
+- `query`: 输入查询字符串（必需）
+
+## 输出格式
+
+返回 JSON 格式结果。
 ```
+
+> **注意**：依赖通过 `compatibility` 字段声明（而非 `requirements.txt`）。入口点自动检测（`main.py` > `main.js` > `main.ts` > `main.sh`）。
 
 ## 📦 核心组件
 
-- **skilllite**（Rust 二进制）- 沙箱执行器、CLI（chat/add/list/mcp/run/exec/bash/init/quickstart）、MCP 服务器
-- **chat** - Python API，用于单次 Agent 对话
-- **run_skill** / **execute_code** / **scan_code** - Python API，用于直接执行
-- **langchain-skilllite** - LangChain 适配器（SkillLiteToolkit、SkillManager）
+- **skilllite**（Rust 二进制）- 沙箱执行器、CLI、Agent 循环、MCP 服务器——单二进制包含一切
+- **python-sdk**（`pip install skilllite`）- 薄桥接层（~600 行），零运行时依赖，通过 subprocess 调用 Rust 二进制
+- **langchain-skilllite**（`pip install langchain-skilllite`）- LangChain 适配器（SkillLiteToolkit）
 
 ### 主要 CLI 命令
 
@@ -224,12 +236,19 @@ entry_point: scripts/main.py
 |------|------|
 | `skilllite init` | 初始化项目（.skills/ + 下载 skills + 依赖 + 审计） |
 | `skilllite quickstart` | 零配置：检测 LLM、配置 skills、启动对话 |
-| `skilllite chat` | 交互式 Agent 对话 |
+| `skilllite chat` | 交互式 Agent 对话（或 `--message` 单次对话） |
 | `skilllite add owner/repo` | 从 GitHub 添加 skills |
+| `skilllite remove <name>` | 移除已安装的 skill |
 | `skilllite list` | 列出已安装 skills |
+| `skilllite show <name>` | 显示 skill 详情 |
+| `skilllite run <dir> '<json>'` | 直接执行 skill |
+| `skilllite scan <dir>` | 扫描 skill 安全性 |
 | `skilllite mcp` | 启动 MCP 服务器（Cursor/Claude Desktop） |
+| `skilllite serve` | 启动 IPC 守护进程（stdio JSON-RPC） |
 | `skilllite init-cursor` | 初始化 Cursor IDE 集成 |
 | `skilllite init-opencode` | 初始化 OpenCode 集成 |
+| `skilllite clean-env` | 清理缓存的运行时环境 |
+| `skilllite reindex` | 重新索引所有已安装 skills |
 
 ## 🔌 OpenCode 集成
 
