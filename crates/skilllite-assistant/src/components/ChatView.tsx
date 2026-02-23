@@ -24,6 +24,7 @@ export default function ChatView() {
       addMemoryHint: s.addMemoryHint,
       clearPlan: s.clearPlan,
       setLatestOutput: s.setLatestOutput,
+      clearAll: s.clearAll,
     }))
   );
 
@@ -69,6 +70,20 @@ export default function ChatView() {
     );
   };
 
+  const handleClear = useCallback(async () => {
+    if (loading) return;
+    try {
+      await invoke("skilllite_clear_transcript", { session_key: "default" });
+      setMessages([]);
+      setError(null);
+      statusActions.clearAll();
+      refreshRecentData();
+    } catch (err) {
+      console.error("[skilllite-assistant] skilllite_clear_transcript failed:", err);
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [loading, statusActions.clearAll, refreshRecentData]);
+
   const handleStop = useCallback(async () => {
     try {
       await invoke("skilllite_stop");
@@ -91,6 +106,13 @@ export default function ChatView() {
   const handleSend = async () => {
     const text = input.trim();
     if (!text || loading) return;
+
+    // Slash commands: /new or /reset to clear chat (like OpenClaw)
+    if (text === "/new" || text === "/reset") {
+      setInput("");
+      await handleClear();
+      return;
+    }
 
     setInput("");
     setError(null);
@@ -135,6 +157,18 @@ export default function ChatView() {
 
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark">
+      <div className="flex justify-end py-1.5 px-3 border-b border-border dark:border-border-dark shrink-0">
+        <button
+          type="button"
+          onClick={handleClear}
+          disabled={loading}
+          className="text-xs text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent disabled:opacity-50 px-2 py-1 rounded hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
+          aria-label="Clear chat"
+          title="清空对话"
+        >
+          清空对话
+        </button>
+      </div>
       <MessageList messages={messages} loading={loading} onConfirm={handleConfirm} />
 
       {error && (

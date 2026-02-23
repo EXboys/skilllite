@@ -51,6 +51,15 @@ async fn skilllite_load_transcript(session_key: Option<String>) -> Vec<skilllite
 }
 
 #[tauri::command]
+async fn skilllite_clear_transcript(session_key: Option<String>) -> Result<(), String> {
+    let key = session_key.unwrap_or_else(|| "default".to_string());
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::clear_transcript(&key))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(std::convert::identity)
+}
+
+#[tauri::command]
 async fn skilllite_read_memory_file(relative_path: String) -> Result<String, String> {
     let path = relative_path.clone();
     match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_memory_file(&path)).await {
@@ -107,6 +116,7 @@ pub fn run() {
             skilllite_stop,
             skilllite_load_recent,
             skilllite_load_transcript,
+            skilllite_clear_transcript,
             skilllite_read_memory_file,
             skilllite_read_output_file,
             skilllite_read_output_file_base64,

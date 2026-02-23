@@ -351,14 +351,14 @@ fn skilllite_chat_root() -> Option<PathBuf> {
 }
 
 /// Open a directory in the system file manager.
-/// module: "output" | "memory" | "plan" | "log" (log opens chat root)
+/// module: "output" | "memory" | "plan" | "log" (log opens transcripts dir)
 pub fn open_directory(module: &str) -> Result<(), String> {
     let chat_root = skilllite_chat_root().ok_or("Chat root not found")?;
     let path = match module {
         "output" => chat_root.join("output"),
         "memory" => chat_root.join("memory"),
         "plan" => chat_root.join("plans"),
-        "log" => chat_root.clone(),
+        "log" => chat_root.join("transcripts"), // 执行日志对应 transcript .jsonl 文件
         _ => return Err(format!("Unknown module: {}", module)),
     };
     // Ensure directory exists so the file manager opens a valid path
@@ -720,4 +720,26 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
         }
     }
     messages
+}
+
+/// Clear (archive) transcript files for the session. Archived files are renamed to
+/// `{path}.archived.{timestamp}` so they are no longer loaded. Next agent run starts fresh.
+pub fn clear_transcript(session_key: &str) -> Result<(), String> {
+    let chat_root = match skilllite_chat_root() {
+        Some(r) if r.exists() => r,
+        _ => return Ok(()), // no chat root, nothing to clear
+    };
+    let transcripts_dir = chat_root.join("transcripts");
+    let paths = list_transcript_paths(&transcripts_dir, session_key);
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    for path in paths {
+        let archived = std::path::PathBuf::from(format!("{}.archived.{}", path.display(), timestamp));
+        if let Err(e) = std::fs::rename(&path, &archived) {
+            return Err(format!("Failed to archive {}: {}", path.display(), e));
+        }
+    }
+    Ok(())
 }
