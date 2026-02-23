@@ -150,8 +150,6 @@ fn execute_with_seccomp(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    use std::os::unix::process::CommandExt;
-    
     let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
 
@@ -192,7 +190,7 @@ fn execute_with_seccomp(
             runtime,
             config,
             input_json,
-            resolved,
+            &resolved,
             &entry_point,
             work_dir,
             limits,
@@ -247,7 +245,7 @@ fn execute_with_bwrap(
     resolved: &ResolvedRuntime,
     entry_point: &Path,
     work_dir: &Path,
-    limits: crate::runner::ResourceLimits,
+    _limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     let env_path = &runtime.env_dir;
     let network_policy = security_policy::resolve_network_policy(
@@ -495,7 +493,7 @@ fn execute_with_firejail(
     resolved: &ResolvedRuntime,
     entry_point: &Path,
     work_dir: &Path,
-    limits: ResourceLimits,
+    _limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
     let env_path = &runtime.env_dir;
     let network_policy = security_policy::resolve_network_policy(
@@ -642,8 +640,6 @@ fn execute_with_namespaces(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    use std::os::unix::process::CommandExt;
-    
     let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
 
