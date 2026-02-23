@@ -11,6 +11,7 @@ use nix::mount::{mount, MsFlags};
 use nix::sched::{unshare, CloneFlags};
 use std::fs;
 use std::io::Write;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use tempfile::TempDir;
@@ -156,8 +157,8 @@ fn execute_with_seccomp(
     let resolved = runtime
         .resolve(language)
         .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
-    let program = &resolved.interpreter;
-    let mut args = vec![entry_point.to_string_lossy().to_string()];
+    let _program = &resolved.interpreter;
+    let _args = vec![entry_point.to_string_lossy().to_string()];
 
     // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
