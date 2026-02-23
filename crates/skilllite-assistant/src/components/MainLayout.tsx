@@ -1,42 +1,20 @@
 import { useState, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useGlobalShortcut } from "../hooks/useGlobalShortcut";
-import { invoke } from "@tauri-apps/api/core";
 import ChatView from "./ChatView";
 import StatusPanel from "./StatusPanel";
 import SettingsModal from "./SettingsModal";
-import { useStatusStore } from "../stores/useStatusStore";
+import { useRecentData } from "../hooks/useRecentData";
 
 export default function MainLayout() {
   useGlobalShortcut();
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const setRecentData = useStatusStore((s) => s.setRecentData);
+  const { refreshRecentData } = useRecentData();
 
   useEffect(() => {
-    invoke<{
-      memory_files: string[];
-      output_files: string[];
-      plan: { task: string; steps: { id: number; description: string; completed: boolean }[] } | null;
-    }>("skilllite_load_recent")
-      .then((data) => {
-        setRecentData({
-          memoryFiles: data.memory_files ?? [],
-          outputFiles: data.output_files ?? [],
-          plan: data.plan
-            ? {
-                task: data.plan.task,
-                steps: data.plan.steps.map((s) => ({
-                  id: s.id,
-                  description: s.description,
-                  completed: s.completed,
-                })),
-              }
-            : undefined,
-        });
-      })
-      .catch(() => {});
-  }, [setRecentData]);
+    refreshRecentData();
+  }, [refreshRecentData]);
 
   const handleHideToTray = async () => {
     const win = getCurrentWindow();

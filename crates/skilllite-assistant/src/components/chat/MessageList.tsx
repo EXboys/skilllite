@@ -11,9 +11,12 @@ interface MessageListProps {
 export function MessageList({ messages, loading, onConfirm }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+  const lastContentLen =
+    lastMsg && "content" in lastMsg ? (lastMsg as { content: string }).content.length : 0;
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages.length, lastMsg?.id, lastContentLen]);
 
   const showLoadingIndicator =
     loading && (messages.length === 0 || messages[messages.length - 1]?.type === "user");

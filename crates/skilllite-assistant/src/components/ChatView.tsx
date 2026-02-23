@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useStatusStore } from "../stores/useStatusStore";
 import { useChatEvents } from "../hooks/useChatEvents";
+import { useRecentData } from "../hooks/useRecentData";
 import { MessageList } from "./chat/MessageList";
 import { ChatInput } from "./chat/ChatInput";
 import type { ChatMessage } from "../types/chat";
@@ -13,48 +15,27 @@ export default function ChatView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { settings } = useSettingsStore();
-  const addTaskPlan = useStatusStore((s) => s.addTaskPlan);
-  const updateTaskProgress = useStatusStore((s) => s.updateTaskProgress);
-  const addLog = useStatusStore((s) => s.addLog);
-  const addMemoryHint = useStatusStore((s) => s.addMemoryHint);
-  const clearPlan = useStatusStore((s) => s.clearPlan);
-  const setLatestOutput = useStatusStore((s) => s.setLatestOutput);
-  const setRecentData = useStatusStore((s) => s.setRecentData);
-
-  const refreshRecentData = useCallback(() => {
-    invoke<{
-      memory_files: string[];
-      output_files: string[];
-      plan: { task: string; steps: { id: number; description: string; completed: boolean }[] } | null;
-    }>("skilllite_load_recent")
-      .then((data) => {
-        setRecentData({
-          memoryFiles: data.memory_files ?? [],
-          outputFiles: data.output_files ?? [],
-          plan: data.plan
-            ? {
-                task: data.plan.task,
-                steps: data.plan.steps.map((s) => ({
-                  id: s.id,
-                  description: s.description,
-                  completed: s.completed,
-                })),
-              }
-            : undefined,
-        });
-      })
-      .catch(() => {});
-  }, [setRecentData]);
+  const { refreshRecentData } = useRecentData();
+  const statusActions = useStatusStore(
+    useShallow((s) => ({
+      addTaskPlan: s.addTaskPlan,
+      updateTaskProgress: s.updateTaskProgress,
+      addLog: s.addLog,
+      addMemoryHint: s.addMemoryHint,
+      clearPlan: s.clearPlan,
+      setLatestOutput: s.setLatestOutput,
+    }))
+  );
 
   useChatEvents({
     setMessages,
     setLoading,
     setError,
-    addTaskPlan,
-    updateTaskProgress,
-    addLog,
-    addMemoryHint,
-    setLatestOutput,
+    addTaskPlan: statusActions.addTaskPlan,
+    updateTaskProgress: statusActions.updateTaskProgress,
+    addLog: statusActions.addLog,
+    addMemoryHint: statusActions.addMemoryHint,
+    setLatestOutput: statusActions.setLatestOutput,
     onTurnComplete: refreshRecentData,
   });
 
@@ -72,7 +53,9 @@ export default function ChatView() {
           setMessages(msgs);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("[skilllite-assistant] skilllite_load_transcript failed:", err);
+      });
   }, []);
 
   const handleConfirm = async (id: string, approved: boolean) => {
@@ -94,7 +77,7 @@ export default function ChatView() {
         const last = prev[prev.length - 1];
         if (last?.type === "assistant" && last?.streaming) {
           const content = last.content ? `${last.content}\n\n[已中止]` : "[已中止]";
-          setLatestOutput(content);
+          statusActions.setLatestOutput(content);
           return [...prev.slice(0, -1), { ...last, content, streaming: false }];
         }
         return prev;
@@ -103,7 +86,7 @@ export default function ChatView() {
     } catch {
       setLoading(false);
     }
-  }, [refreshRecentData, setLatestOutput]);
+  }, [refreshRecentData, statusActions.setLatestOutput]);
 
   const handleSend = async () => {
     const text = input.trim();
@@ -111,8 +94,8 @@ export default function ChatView() {
 
     setInput("");
     setError(null);
-    clearPlan();
-    setLatestOutput("");
+    statusActions.clearPlan();
+    statusActions.setLatestOutput("");
     setMessages((prev) => [
       ...prev,
       { id: crypto.randomUUID(), type: "user", content: text },

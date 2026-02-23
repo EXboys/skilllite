@@ -3,6 +3,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStatusStore, type TaskItem, type LogEntry } from "../stores/useStatusStore";
 import { MarkdownContent } from "./shared/MarkdownContent";
+import { groupMemoryFiles } from "../utils/fileUtils";
+import { useRecentData } from "../hooks/useRecentData";
 
 export type DetailModule = "plan" | "mem" | "log" | "output";
 
@@ -11,16 +13,6 @@ export function parseDetailModuleFromHash(): DetailModule | null {
   const hash = window.location.hash;
   const m = hash.match(/^#?detail\/(plan|mem|log|output)$/);
   return (m?.[1] as DetailModule) ?? null;
-}
-
-function groupMemoryFiles(files: string[]): Record<string, string[]> {
-  const groups: Record<string, string[]> = {};
-  for (const f of files) {
-    const parts = f.split("/");
-    const key = parts.length > 1 ? parts[0] : ".";
-    (groups[key] ??= []).push(f);
-  }
-  return groups;
 }
 
 function TaskList({ tasks }: { tasks: TaskItem[] }) {
@@ -292,7 +284,7 @@ function OutputFileContent({ files }: { files: string[] }) {
 
 export default function DetailWindowView() {
   const [module, setModule] = useState<DetailModule | null>(null);
-  const setRecentData = useStatusStore((s) => s.setRecentData);
+  const { refreshRecentData } = useRecentData();
   const { tasks, logEntries, memoryHints, memoryFiles, outputFiles } = useStatusStore();
 
   useEffect(() => {
@@ -301,29 +293,8 @@ export default function DetailWindowView() {
   }, []);
 
   useEffect(() => {
-    invoke<{
-      memory_files: string[];
-      output_files: string[];
-      plan: { task: string; steps: { id: number; description: string; completed: boolean }[] } | null;
-    }>("skilllite_load_recent")
-      .then((data) => {
-        setRecentData({
-          memoryFiles: data.memory_files ?? [],
-          outputFiles: data.output_files ?? [],
-          plan: data.plan
-            ? {
-                task: data.plan.task,
-                steps: data.plan.steps.map((s) => ({
-                  id: s.id,
-                  description: s.description,
-                  completed: s.completed,
-                })),
-              }
-            : undefined,
-        });
-      })
-      .catch(() => {});
-  }, [setRecentData]);
+    refreshRecentData();
+  }, [refreshRecentData]);
 
   const handleClose = () => {
     getCurrentWindow().close();
@@ -341,8 +312,8 @@ export default function DetailWindowView() {
   const handleOpenDir = async () => {
     try {
       await invoke("skilllite_open_directory", { module: dirModule });
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("[skilllite-assistant] skilllite_open_directory failed:", err);
     }
   };
 

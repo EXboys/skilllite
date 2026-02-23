@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { useStatusStore, type TaskItem, type LogEntry } from "../stores/useStatusStore";
+import { groupMemoryFiles } from "../utils/fileUtils";
 
 export type DetailModule = "plan" | "mem" | "log" | "output" | null;
 
@@ -34,17 +35,6 @@ async function openDetailWindow(module: NonNullable<DetailModule>) {
     height: 560,
     resizable: true,
   });
-}
-
-/** Group memory files by top-level directory. */
-function groupMemoryFiles(files: string[]): Record<string, string[]> {
-  const groups: Record<string, string[]> = {};
-  for (const f of files) {
-    const parts = f.split("/");
-    const key = parts.length > 1 ? parts[0] : ".";
-    (groups[key] ??= []).push(f);
-  }
-  return groups;
 }
 
 const PREVIEW_LIMIT = 3;
@@ -217,7 +207,9 @@ function SummarySection({
 }
 
 const openDir = (module: string) => () => {
-  invoke("skilllite_open_directory", { module }).catch(() => {});
+  invoke("skilllite_open_directory", { module }).catch((err) => {
+    console.error("[skilllite-assistant] skilllite_open_directory failed:", err);
+  });
 };
 
 export default function StatusPanel() {
