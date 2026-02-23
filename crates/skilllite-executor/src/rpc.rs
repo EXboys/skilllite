@@ -7,6 +7,7 @@ use std::io::Write;
 
 use super::memory::{ensure_index, index_file, index_path, search_bm25};
 use super::session::SessionStore;
+use super::plan::{append_plan, read_latest_plan};
 use super::transcript::{
     append_entry, ensure_session_header, read_entries_for_session, transcript_path_today,
     TranscriptEntry,
@@ -139,13 +140,14 @@ pub fn handle_transcript_read(params: &Value) -> Result<Value> {
     Ok(json!(arr))
 }
 
-/// Plan file path: plans/{session_key}-{date}.json
-fn plan_path(plans_dir: &std::path::Path, session_key: &str) -> std::path::PathBuf {
-    let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
-    plans_dir.join(format!("{}-{}.json", session_key, date_str))
+/// Resolve plans directory. Use chat root for consistency with ChatSession/chat_data.
+fn plans_dir_for_workspace(workspace_path: Option<&str>) -> Result<std::path::PathBuf> {
+    let root = workspace_root(workspace_path)?;
+    Ok(root.join("chat").join("plans"))
 }
 
-/// Write plan to plans/{session_key}-{date}.json (overwrite). OpenClaw-style plan storage.
+/// Write plan to plans/{session_key}-{date}.jsonl (append). OpenClaw-style plan storage.
+/// Each plan is appended as a new line, preserving history (no overwrite).
 pub fn handle_plan_write(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
     let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
@@ -155,9 +157,7 @@ pub fn handle_plan_write(params: &Value) -> Result<Value> {
     let task_list = p.get("steps").or(p.get("task_list")).context("steps or task_list required")?;
     let tasks = task_list.as_array().context("steps must be array")?;
 
-    let root = workspace_root(workspace_path)?;
-    let plans_dir = root.join("plans");
-    let plan_path = plan_path(&plans_dir, session_key);
+    let plans_dir = plans_dir_for_workspace(workspace_path)?;
 
     let (steps, current_step_id) = task_list_to_plan_steps(tasks)?;
     let updated_at = chrono::Utc::now().to_rfc3339();
@@ -170,37 +170,23 @@ pub fn handle_plan_write(params: &Value) -> Result<Value> {
         "updated_at": updated_at,
     });
 
-    if let Some(parent) = plan_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let pretty = serde_json::to_string_pretty(&plan_json)?;
-    fs::write(&plan_path, pretty)?;
+    append_plan(&plans_dir, session_key, &plan_json)?;
 
     let text = plan_textify_inner(tasks)?;
     Ok(json!({"ok": true, "text": text}))
 }
 
-/// Read plan from plans/{session_key}-{date}.json
+/// Read latest plan from plans/{session_key}-{date}.jsonl (or legacy .json).
 pub fn handle_plan_read(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
     let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
     let date = p.get("date").and_then(|v| v.as_str());
 
-    let root = workspace_root(workspace_path)?;
-    let plans_dir = root.join("plans");
-    let plan_path = if let Some(d) = date {
-        plans_dir.join(format!("{}-{}.json", session_key, d))
-    } else {
-        plan_path(&plans_dir, session_key)
-    };
+    let plans_dir = plans_dir_for_workspace(workspace_path)?;
 
-    if !plan_path.exists() {
-        return Ok(json!(null));
-    }
-    let content = fs::read_to_string(&plan_path)?;
-    let plan: Value = serde_json::from_str(&content)?;
-    Ok(plan)
+    let plan = read_latest_plan(&plans_dir, session_key, date)?;
+    Ok(plan.unwrap_or(serde_json::Value::Null))
 }
 
 /// Convert task_list to plan steps with status: completed | running | pending

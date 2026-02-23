@@ -210,18 +210,11 @@ impl ChatSession {
         transcript::append_entry(&t_path, &entry)
     }
 
-    /// Persist the task plan to plans/{session_key}-{date}.json.
-    /// Matches the format used by the RPC `plan_write` handler.
+    /// Persist the task plan to plans/{session_key}-{date}.jsonl (append).
+    /// Each plan is appended, preserving history. OpenClaw-style.
     fn persist_plan(&self, user_message: &str, tasks: &[super::types::Task]) -> Result<()> {
         let plans_dir = self.data_root.join("plans");
-        if !plans_dir.exists() {
-            std::fs::create_dir_all(&plans_dir)?;
-        }
 
-        let date_str = chrono::Local::now().format("%Y-%m-%d").to_string();
-        let plan_path = plans_dir.join(format!("{}-{}.json", self.session_key, date_str));
-
-        // Convert tasks to plan steps with status
         let mut steps = Vec::with_capacity(tasks.len());
         let mut current_step_id: u32 = 0;
         let mut found_running = false;
@@ -256,9 +249,8 @@ impl ChatSession {
             "updated_at": chrono::Utc::now().to_rfc3339(),
         });
 
-        let pretty = serde_json::to_string_pretty(&plan_json)?;
-        std::fs::write(&plan_path, pretty)?;
-        tracing::info!("Task plan persisted to {}", plan_path.display());
+        skilllite_executor::plan::append_plan(&plans_dir, &self.session_key, &plan_json)?;
+        tracing::info!("Task plan appended to plans/{}", self.session_key);
         Ok(())
     }
 

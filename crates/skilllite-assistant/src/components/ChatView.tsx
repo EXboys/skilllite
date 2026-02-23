@@ -157,7 +157,18 @@ export default function ChatView() {
 
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark">
-      <div className="flex justify-end py-1.5 px-3 border-b border-border dark:border-border-dark shrink-0">
+      <div className="flex justify-end items-center gap-2 py-1.5 px-3 border-b border-border dark:border-border-dark shrink-0">
+        {loading && (
+          <button
+            type="button"
+            onClick={handleStop}
+            className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors font-medium"
+            aria-label="Stop"
+            title="停止当前任务"
+          >
+            停止
+          </button>
+        )}
         <button
           type="button"
           onClick={handleClear}
@@ -169,7 +180,11 @@ export default function ChatView() {
           清空对话
         </button>
       </div>
-      <MessageList messages={messages} loading={loading} onConfirm={handleConfirm} />
+      <MessageList
+        messages={messages}
+        loading={loading}
+        onConfirm={handleConfirm}
+      />
 
       {error && (
         <div className="px-4 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm border-t border-red-100 dark:border-red-900/40">

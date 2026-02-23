@@ -451,58 +451,78 @@ fn load_output_files(chat_root: &std::path::Path) -> Vec<String> {
 }
 
 /// Load latest plan from chat_root (for parallel execution).
+/// Supports jsonl (append) format and legacy .json.
 fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
     let plans_dir = chat_root.join("plans");
-    let plan_path = if plans_dir.exists() {
-        let session_key = "default";
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        let path = plans_dir.join(format!("{}-{}.json", session_key, today));
-        if path.exists() {
-            Some(path)
+    if !plans_dir.exists() {
+        return None;
+    }
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let session_key = "default";
+
+    fn parse_plan_from_file(path: &std::path::Path) -> Option<serde_json::Value> {
+        let content = std::fs::read_to_string(path).ok()?;
+        match path.extension().and_then(|e| e.to_str()) {
+            Some("jsonl") => content
+                .lines()
+                .rev()
+                .find(|l| !l.trim().is_empty())
+                .and_then(|l| serde_json::from_str(l).ok()),
+            _ => serde_json::from_str(&content).ok(),
+        }
+    }
+
+    let plan: Option<serde_json::Value> = {
+        let jsonl_path = plans_dir.join(format!("{}-{}.jsonl", session_key, today));
+        let json_path = plans_dir.join(format!("{}-{}.json", session_key, today));
+        if jsonl_path.exists() {
+            parse_plan_from_file(&jsonl_path)
+        } else if json_path.exists() {
+            parse_plan_from_file(&json_path)
         } else {
             let mut candidates: Vec<_> = std::fs::read_dir(&plans_dir)
-                .into_iter()
+                .ok()?
                 .flatten()
-                .flatten()
-                .filter(|e| e.path().extension().map_or(false, |x| x == "json"))
+                .filter(|e| {
+                    e.path()
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .map_or(false, |n| n.starts_with(session_key))
+                })
                 .collect();
             candidates.sort_by_key(|e| {
                 std::fs::metadata(e.path())
                     .and_then(|m| m.modified())
                     .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
             });
-            candidates.last().map(|e| e.path())
+            candidates.last().and_then(|e| parse_plan_from_file(&e.path()))
         }
-    } else {
-        None
     };
-    plan_path.and_then(|p| {
-        let content = std::fs::read_to_string(&p).ok()?;
-        let v: serde_json::Value = serde_json::from_str(&content).ok()?;
-        let task = v
-            .get("task")
-            .and_then(|t| t.as_str())
-            .unwrap_or("")
-            .to_string();
-        let steps_arr = v.get("steps").and_then(|s| s.as_array())?;
-        let steps: Vec<PlanStep> = steps_arr
-            .iter()
-            .map(|s| {
-                let id = s.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-                let desc = s.get("description").and_then(|d| d.as_str()).unwrap_or("");
-                let status = s
-                    .get("status")
-                    .and_then(|st| st.as_str())
-                    .unwrap_or("pending");
-                PlanStep {
-                    id: if id > 0 { id } else { 1 },
-                    description: desc.to_string(),
-                    completed: status == "completed" || status == "done",
-                }
-            })
-            .collect();
-        Some(RecentPlan { task, steps })
-    })
+
+    let plan = plan?;
+    let task = plan
+        .get("task")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_string();
+    let steps_arr = plan.get("steps").and_then(|s| s.as_array())?;
+    let steps: Vec<PlanStep> = steps_arr
+        .iter()
+        .map(|s| {
+            let id = s.get("id").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let desc = s.get("description").and_then(|d| d.as_str()).unwrap_or("");
+            let status = s
+                .get("status")
+                .and_then(|st| st.as_str())
+                .unwrap_or("pending");
+            PlanStep {
+                id: if id > 0 { id } else { 1 },
+                description: desc.to_string(),
+                completed: status == "completed" || status == "done",
+            }
+        })
+        .collect();
+    Some(RecentPlan { task, steps })
 }
 
 /// Load recent memory files, output files, and plan in parallel using threads.

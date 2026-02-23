@@ -1,6 +1,6 @@
 //! Chat data read tools: chat_history, chat_plan, update_task_plan definition.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
@@ -173,27 +173,23 @@ pub(super) fn execute_chat_plan(args: &Value) -> Result<String> {
         .get("session_key")
         .and_then(|v| v.as_str())
         .unwrap_or("default");
-    let date_str = args
+    let date: Option<String> = args
         .get("date")
         .and_then(|v| v.as_str())
-        .map(|s| normalize_date(s))
-        .unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+        .map(|s| normalize_date(s));
 
     let chat_root = chat_data_root()?;
     let plans_dir = chat_root.join("plans");
-    let plan_path = plans_dir.join(format!("{}-{}.json", session_key, date_str));
 
-    if !plan_path.exists() {
+    let plan = skilllite_executor::plan::read_latest_plan(&plans_dir, session_key, date.as_deref())?;
+
+    let Some(plan) = plan else {
+        let date_str = date.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
         return Ok(format!(
             "No plan found for session '{}' on date {}.",
             session_key, date_str
         ));
-    }
-
-    let content = std::fs::read_to_string(&plan_path)
-        .with_context(|| format!("Failed to read plan: {}", plan_path.display()))?;
-    let plan: Value = serde_json::from_str(&content)
-        .with_context(|| "Invalid plan JSON")?;
+    };
 
     let task = plan.get("task").and_then(|v| v.as_str()).unwrap_or("");
     let empty: Vec<Value> = vec![];

@@ -1,4 +1,5 @@
 pub mod memory;
+pub mod plan;
 pub mod rpc;
 pub mod session;
 pub mod transcript;

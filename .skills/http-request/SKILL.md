@@ -21,6 +21,7 @@ metadata:
 - 支持超时设置
 - **旧版 SSL 兼容**：支持连接使用旧版 TLS 的服务器（如部分政府/教育网站）
 - **浏览器级 User-Agent**：减少 503/反爬拦截
+- **Wikipedia/Wikimedia 合规**：访问 wikipedia.org / wikimedia.org / wikidata.org 时自动使用合规 User-Agent（否则易 403），并加 1.5 秒间隔降低限流
 - **自动重试**：对 502/503/504 自动重试 2 次
 - **HTML→Markdown**：网页响应自动转为 Markdown（默认），降低 token 消耗
 
@@ -42,6 +43,24 @@ metadata:
   "method": "POST",
   "headers": {"Content-Type": "application/json"},
   "body": {"message": "hello world"}
+}
+```
+
+### Wikipedia 获取城市/地点摘要（推荐，限流较宽松）
+```json
+{
+  "url": "https://en.wikipedia.org/api/rest_v1/page/summary/Chiang_Mai",
+  "method": "GET"
+}
+```
+或 `.../page/summary/Bangkok`。返回 JSON 含 extract、description、title 等。
+
+### Wikipedia 搜索 API（params 可用 q，skill 会自动转为 action=query&list=search）
+```json
+{
+  "url": "https://en.wikipedia.org/w/api.php",
+  "method": "GET",
+  "params": {"q": "Chiang Mai tourism"}
 }
 ```
 

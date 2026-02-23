@@ -6,8 +6,9 @@ HTTP Request Skill - 发起 HTTP 网络请求
 
 import json
 import re
-import sys
 import ssl
+import sys
+import time
 
 # html2text：HTML 转 Markdown，默认用于网页内容，降低 token 消耗
 try:
@@ -35,11 +36,24 @@ DEFAULT_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
 
+# Wikimedia/Wikipedia API 要求：必须使用描述性 User-Agent，否则返回 403 Too Many Requests
+# 参见 https://meta.wikimedia.org/wiki/User-Agent_policy
+WIKIMEDIA_USER_AGENT = (
+    "SkillLite/1.0 (https://github.com/EXboys/skilllite; skilllite-http-request)"
+)
+
 # 默认请求头，模拟真实浏览器
 DEFAULT_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
 }
+
+
+def _is_wikimedia_url(url: str) -> bool:
+    """判断是否为 Wikipedia/Wikimedia 域名，需使用合规 User-Agent"""
+    if not url:
+        return False
+    return "wikipedia.org" in url or "wikimedia.org" in url or "wikidata.org" in url
 
 
 def _looks_like_html(body: str, headers: dict) -> bool:
@@ -132,21 +146,68 @@ def _normalize_timeout(timeout_raw):
     return 30
 
 
+def _normalize_params(params_raw):
+    """解析 params：支持 dict 或 JSON 字符串（Agent 可能传 params: "{\"q\": \"...\"}"）"""
+    if params_raw is None:
+        return {}
+    if isinstance(params_raw, dict):
+        return dict(params_raw)
+    if isinstance(params_raw, str):
+        try:
+            parsed = json.loads(params_raw)
+            return dict(parsed) if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _fix_wikipedia_api_params(url: str, params: dict) -> dict:
+    """
+    Agent 常传 params={"q": "..."}，但 MediaWiki API 需要 action=query&list=search&srsearch=...
+    自动转换为合规格式，避免 403 / 无效请求。
+    """
+    if not _is_wikimedia_url(url) or "/api.php" not in url:
+        return params
+    if "action" in params:
+        return params  # 已是正确格式
+    q = params.get("q") or params.get("query") or params.get("search")
+    if q is None:
+        return params
+    q_str = str(q).strip() if q else ""
+    if not q_str:
+        return params
+    return {
+        "action": "query",
+        "list": "search",
+        "srsearch": q_str,
+        "format": "json",
+        "srlimit": "5",
+    }
+
+
 def _request_with_requests(input_data):
     """使用 requests 库发起请求"""
     url = input_data.get("url")
     method = input_data.get("method", "GET").upper()
     headers = _normalize_headers(input_data.get("headers"))
     body = input_data.get("body")
-    params = input_data.get("params", {})
+    params = _normalize_params(input_data.get("params"))
+    params = _fix_wikipedia_api_params(url, params)
     timeout = _normalize_timeout(input_data.get("timeout"))
     use_legacy_ssl = input_data.get("use_legacy_ssl", True)  # 默认启用，兼容旧服务器
 
     if "User-Agent" not in headers:
-        headers["User-Agent"] = DEFAULT_USER_AGENT
+        if _is_wikimedia_url(url):
+            headers["User-Agent"] = WIKIMEDIA_USER_AGENT
+        else:
+            headers["User-Agent"] = DEFAULT_USER_AGENT
     for k, v in DEFAULT_HEADERS.items():
         if k not in headers:
             headers[k] = v
+
+    # Wikimedia API 连续请求易触发 403，间隔 2.5 秒降低限流概率
+    if _is_wikimedia_url(url):
+        time.sleep(2.5)
 
     session = requests.Session()
     adapter = _create_http_adapter(use_legacy_ssl=use_legacy_ssl)
@@ -172,12 +233,15 @@ def _request_with_requests(input_data):
 
         # 4xx/5xx 视为失败（与旧版行为一致）
         if resp.status_code >= 400:
-            return {
+            out = {
                 "success": False,
                 "status_code": resp.status_code,
                 "error": resp.reason or f"HTTP {resp.status_code}",
                 "body": body_out,
             }
+            if resp.status_code == 403 and _is_wikimedia_url(url):
+                out["hint"] = "Wikipedia 403: IP 可能被临时限流，请 5–10 分钟后再试或换网络；或改用 Wikipedia REST API: https://en.wikipedia.org/api/rest_v1/page/summary/Chiang_Mai"
+            return out
         return {
             "success": True,
             "status_code": resp.status_code,
@@ -210,11 +274,18 @@ def _request_with_urllib(input_data):
     method = input_data.get("method", "GET").upper()
     headers = _normalize_headers(input_data.get("headers"))
     body = input_data.get("body")
-    params = input_data.get("params", {})
+    params = _normalize_params(input_data.get("params"))
+    params = _fix_wikipedia_api_params(url, params)
     timeout = _normalize_timeout(input_data.get("timeout"))
 
     if "User-Agent" not in headers:
-        headers["User-Agent"] = DEFAULT_USER_AGENT
+        if _is_wikimedia_url(url):
+            headers["User-Agent"] = WIKIMEDIA_USER_AGENT
+        else:
+            headers["User-Agent"] = DEFAULT_USER_AGENT
+
+    if _is_wikimedia_url(url):
+        time.sleep(2.5)
     for k, v in DEFAULT_HEADERS.items():
         if k not in headers:
             headers[k] = v
