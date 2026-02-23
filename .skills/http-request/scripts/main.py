@@ -56,6 +56,15 @@ def _is_wikimedia_url(url: str) -> bool:
     return "wikipedia.org" in url or "wikimedia.org" in url or "wikidata.org" in url
 
 
+def _is_wttr_url(url: str) -> bool:
+    """wttr.in 对浏览器 UA 返回 HTML，需用 curl UA 才能拿到 JSON (format=j1)"""
+    return url and "wttr.in" in url
+
+
+# wttr.in 检测浏览器 UA 会返回 HTML；curl UA 才能拿到 JSON
+WTTR_USER_AGENT = "curl/8.0"
+
+
 def _looks_like_html(body: str, headers: dict) -> bool:
     """判断响应是否为 HTML"""
     if not body or not isinstance(body, str):
@@ -199,6 +208,8 @@ def _request_with_requests(input_data):
     if "User-Agent" not in headers:
         if _is_wikimedia_url(url):
             headers["User-Agent"] = WIKIMEDIA_USER_AGENT
+        elif _is_wttr_url(url):
+            headers["User-Agent"] = WTTR_USER_AGENT  # wttr.in 对浏览器 UA 返回 HTML
         else:
             headers["User-Agent"] = DEFAULT_USER_AGENT
     for k, v in DEFAULT_HEADERS.items():
@@ -281,6 +292,8 @@ def _request_with_urllib(input_data):
     if "User-Agent" not in headers:
         if _is_wikimedia_url(url):
             headers["User-Agent"] = WIKIMEDIA_USER_AGENT
+        elif _is_wttr_url(url):
+            headers["User-Agent"] = WTTR_USER_AGENT
         else:
             headers["User-Agent"] = DEFAULT_USER_AGENT
 
@@ -344,6 +357,14 @@ def _request_with_urllib(input_data):
 
 
 def main():
+    try:
+        _main_inner()
+    except Exception as e:
+        # 防御性：任何未捕获异常也输出合法 JSON，避免沙箱解析失败
+        print(json.dumps({"success": False, "error": str(e)}, ensure_ascii=False))
+
+
+def _main_inner():
     try:
         input_data = json.loads(sys.stdin.read())
     except json.JSONDecodeError as e:

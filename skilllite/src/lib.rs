@@ -263,6 +263,13 @@ pub fn run_cli() -> Result<()> {
             commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict, force, false)?;
         }
         #[cfg(feature = "agent")]
+        Commands::ClearSession {
+            session_key,
+            workspace,
+        } => {
+            skilllite_agent::chat::run_clear_session(&session_key, &workspace)?;
+        }
+        #[cfg(feature = "agent")]
         Commands::AgentRpc => {
             skilllite_agent::rpc::serve_agent_rpc()?;
         }

@@ -445,6 +445,20 @@ pub enum Commands {
         skills_dir: String,
     },
 
+    /// Clear session (OpenClaw-style): summarize to memory, archive transcript, reset counts.
+    ///
+    /// Used by Assistant and /new. Preserves short conversations in memory before clearing.
+    #[cfg(feature = "agent")]
+    #[command(name = "clear-session")]
+    ClearSession {
+        /// Session key (default: default)
+        #[arg(long, default_value = "default")]
+        session_key: String,
+        /// Workspace path for .env (API key); default current dir
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+    },
+
     /// Run agent_chat RPC server over stdio (JSON-Lines event stream)
     ///
     /// Used by Python/TypeScript SDKs to call the Rust agent engine.

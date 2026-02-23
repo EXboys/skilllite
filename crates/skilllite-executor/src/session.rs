@@ -101,6 +101,16 @@ impl SessionStore {
         entry.updated_at = chrono_now();
         Ok(())
     }
+
+    /// Reset compaction-related fields for a fresh session (e.g. after /new or clear).
+    pub fn reset_compaction_state(&mut self, session_key: &str) {
+        if let Some(entry) = self.sessions.get_mut(session_key) {
+            entry.compaction_count = 0;
+            entry.memory_flush_at = None;
+            entry.memory_flush_compaction_count = None;
+            entry.updated_at = chrono_now();
+        }
+    }
 }
 
 fn chrono_now() -> String {

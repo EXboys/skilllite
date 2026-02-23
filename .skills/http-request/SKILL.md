@@ -46,6 +46,24 @@ metadata:
 }
 ```
 
+### 天气查询（推荐 Open-Meteo，免费无 key）
+```json
+{
+  "url": "https://api.open-meteo.com/v1/forecast",
+  "method": "GET",
+  "params": {
+    "latitude": 18.7883,
+    "longitude": 98.9853,
+    "daily": "temperature_2m_max,temperature_2m_min,weathercode",
+    "timezone": "Asia/Bangkok",
+    "forecast_days": 2
+  }
+}
+```
+清迈坐标 18.7883,98.9853。返回 JSON 含 daily.time、temperature_2m_max/min、weathercode。
+
+wttr.in 亦可用：`https://wttr.in/Chiang_Mai?format=j1`，skill 会自动用 curl UA 以获取 JSON。
+
 ### Wikipedia 获取城市/地点摘要（推荐，限流较宽松）
 ```json
 {

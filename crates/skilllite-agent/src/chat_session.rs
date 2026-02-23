@@ -7,7 +7,11 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use skilllite_executor::{session, transcript};
+use skilllite_executor::{
+    memory as executor_memory,
+    session,
+    transcript,
+};
 
 use super::agent_loop;
 use super::extensions;
@@ -454,8 +458,45 @@ impl ChatSession {
         Ok(true)
     }
 
-    /// Clear session: summarize conversation to memory, then reset.
-    /// Phase 2: generates a summary of the conversation before clearing.
+    /// Full clear (OpenClaw-style): summarize to memory, archive transcript, reset counts.
+    /// Used by Assistant /new and `skilllite clear-session`.
+    pub async fn clear_full(&mut self) -> Result<()> {
+        if let Ok(history) = self.read_history() {
+            if !history.is_empty() {
+                let _ = self.summarize_for_memory(&history).await;
+            }
+        }
+        self.archive_transcript()?;
+        self.reset_session_counts()?;
+        self.session_id = None;
+        Ok(())
+    }
+
+    fn archive_transcript(&self) -> Result<()> {
+        let transcripts_dir = self.data_root.join("transcripts");
+        let paths = transcript::list_transcript_files(&transcripts_dir, &self.session_key)?;
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        for path in paths {
+            let archived =
+                std::path::PathBuf::from(format!("{}.archived.{}", path.display(), timestamp));
+            std::fs::rename(&path, &archived)?;
+        }
+        Ok(())
+    }
+
+    fn reset_session_counts(&self) -> Result<()> {
+        let sessions_path = self.data_root.join("sessions.json");
+        if let Ok(mut store) = session::SessionStore::load(&sessions_path) {
+            store.reset_compaction_state(&self.session_key);
+            let _ = store.save(&sessions_path);
+        }
+        Ok(())
+    }
+
+    /// Clear session: summarize conversation to memory, then reset (CLI /clear, transcript kept).
     pub async fn clear(&mut self) -> Result<()> {
         // If we have a session, summarize the conversation before clearing
         if self.session_id.is_some() {
@@ -472,6 +513,12 @@ impl ChatSession {
     /// Summarize conversation history and write to memory.
     /// Called before clearing a session to preserve key context.
     async fn summarize_for_memory(&self, history: &[ChatMessage]) -> Result<()> {
+        // clear-session should still finish quickly without an API key.
+        if self.config.api_key.trim().is_empty() {
+            tracing::info!("Skipping memory summary on clear: OPENAI_API_KEY is empty");
+            return Ok(());
+        }
+
         let client = LlmClient::new(&self.config.api_base, &self.config.api_key);
 
         let conversation: Vec<String> = history
@@ -520,7 +567,42 @@ impl ChatSession {
             return Ok(());
         }
 
-        // Write summary as a compaction entry in the transcript
+        let memory_entry = format!(
+            "\n\n---\n\n## [Session cleared — {}]\n\n{}",
+            chrono::Local::now().format("%Y-%m-%d %H:%M"),
+            summary
+        );
+
+        // Write to memory/YYYY-MM-DD.md (durable, searchable)
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let memory_dir = self.data_root.join("memory");
+        std::fs::create_dir_all(&memory_dir)?;
+        let memory_path = memory_dir.join(format!("{}.md", today));
+        let final_content = if memory_path.exists() {
+            format!(
+                "{}\n{}",
+                std::fs::read_to_string(&memory_path).unwrap_or_default(),
+                memory_entry
+            )
+        } else {
+            memory_entry.trim_start().to_string()
+        };
+        std::fs::write(&memory_path, &final_content)?;
+
+        // Index for BM25 search
+        let rel_path = format!("{}.md", today);
+        let idx_path = executor_memory::index_path(&self.data_root, &self.session_key);
+        if let Some(parent) = idx_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        if let Ok(conn) = rusqlite::Connection::open(&idx_path) {
+            let _ = executor_memory::ensure_index(&conn)
+                .and_then(|_| executor_memory::index_file(&conn, &rel_path, &final_content));
+        }
+
+        tracing::info!("Session memory summary written to memory/{}", rel_path);
+
+        // Also append compaction to transcript so read_history returns summary (CLI /clear case)
         let transcripts_dir = self.data_root.join("transcripts");
         let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
         let entry = transcript::TranscriptEntry::Compaction {
@@ -530,9 +612,8 @@ impl ChatSession {
             tokens_before: 0,
             summary: Some(format!("[Session cleared — memory summary]\n{}", summary)),
         };
-        transcript::append_entry(&t_path, &entry)?;
+        let _ = transcript::append_entry(&t_path, &entry);
 
-        tracing::info!("Session memory summary written to transcript");
         Ok(())
     }
 }

@@ -13,6 +13,8 @@ export default function ChatView() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { settings } = useSettingsStore();
   const { refreshRecentData } = useRecentData();
@@ -59,6 +61,12 @@ export default function ChatView() {
       });
   }, []);
 
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 1500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   const handleConfirm = async (id: string, approved: boolean) => {
     await invoke("skilllite_confirm", { approved });
     setMessages((prev) =>
@@ -71,18 +79,27 @@ export default function ChatView() {
   };
 
   const handleClear = useCallback(async () => {
-    if (loading) return;
+    if (loading || isClearing) return;
+    setIsClearing(true);
+    setNotice("正在清空对话...");
     try {
-      await invoke("skilllite_clear_transcript", { session_key: "default" });
+      await invoke("skilllite_clear_transcript", {
+        session_key: "default",
+        workspace: settings.workspace || ".",
+      });
       setMessages([]);
       setError(null);
       statusActions.clearAll();
       refreshRecentData();
+      setNotice("已清空对话");
     } catch (err) {
       console.error("[skilllite-assistant] skilllite_clear_transcript failed:", err);
       setError(err instanceof Error ? err.message : String(err));
+      setNotice(null);
+    } finally {
+      setIsClearing(false);
     }
-  }, [loading, statusActions.clearAll, refreshRecentData]);
+  }, [loading, isClearing, settings.workspace, statusActions.clearAll, refreshRecentData]);
 
   const handleStop = useCallback(async () => {
     try {
@@ -105,7 +122,7 @@ export default function ChatView() {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || loading) return;
+    if (!text || loading || isClearing) return;
 
     // Slash commands: /new or /reset to clear chat (like OpenClaw)
     if (text === "/new" || text === "/reset") {
@@ -172,14 +189,47 @@ export default function ChatView() {
         <button
           type="button"
           onClick={handleClear}
-          disabled={loading}
-          className="text-xs text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent disabled:opacity-50 px-2 py-1 rounded hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
+          disabled={loading || isClearing}
+          className={`text-xs px-2 py-1 rounded transition-colors inline-flex items-center gap-1.5 ${
+            isClearing
+              ? "text-accent bg-accent/10 dark:bg-accent/20"
+              : "text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent hover:bg-ink/5 dark:hover:bg-white/5"
+          } disabled:opacity-50`}
           aria-label="Clear chat"
-          title="清空对话"
+          title={isClearing ? "正在清空对话" : "清空对话"}
         >
-          清空对话
+          {isClearing && (
+            <svg
+              className="w-3 h-3 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="9"
+                className="opacity-25"
+                stroke="currentColor"
+                strokeWidth="3"
+              />
+              <path
+                d="M21 12a9 9 0 0 0-9-9"
+                className="opacity-100"
+                stroke="currentColor"
+                strokeWidth="3"
+                strokeLinecap="round"
+              />
+            </svg>
+          )}
+          {isClearing ? "正在清空" : "清空对话"}
         </button>
       </div>
+      {isClearing && (
+        <div className="mx-3 mt-2 px-3 py-2 rounded-md border border-accent/30 bg-accent/10 dark:bg-accent/20 text-accent text-xs animate-pulse">
+          正在清空会话并整理历史，请稍候...
+        </div>
+      )}
       <MessageList
         messages={messages}
         loading={loading}
@@ -191,13 +241,18 @@ export default function ChatView() {
           {error}
         </div>
       )}
+      {!error && notice && (
+        <div className="px-4 py-2.5 bg-ink/5 dark:bg-white/5 text-ink-mute dark:text-ink-dark-mute text-sm border-t border-border dark:border-border-dark">
+          {notice}
+        </div>
+      )}
 
       <ChatInput
         value={input}
         onChange={setInput}
         onSend={handleSend}
         onStop={handleStop}
-        disabled={loading}
+        disabled={loading || isClearing}
         loading={loading}
       />
     </div>

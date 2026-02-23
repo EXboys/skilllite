@@ -742,24 +742,57 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
     messages
 }
 
-/// Clear (archive) transcript files for the session. Archived files are renamed to
-/// `{path}.archived.{timestamp}` so they are no longer loaded. Next agent run starts fresh.
-pub fn clear_transcript(session_key: &str) -> Result<(), String> {
-    let chat_root = match skilllite_chat_root() {
-        Some(r) if r.exists() => r,
-        _ => return Ok(()), // no chat root, nothing to clear
-    };
-    let transcripts_dir = chat_root.join("transcripts");
-    let paths = list_transcript_paths(&transcripts_dir, session_key);
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    for path in paths {
-        let archived = std::path::PathBuf::from(format!("{}.archived.{}", path.display(), timestamp));
-        if let Err(e) = std::fs::rename(&path, &archived) {
-            return Err(format!("Failed to archive {}: {}", path.display(), e));
-        }
+/// Clear session (OpenClaw-style): summarize to memory, archive transcript, reset counts.
+/// Spawns `skilllite clear-session` so short conversations are preserved in memory/ before clearing.
+pub fn clear_transcript(
+    session_key: &str,
+    workspace: &str,
+    skilllite_path: &std::path::Path,
+) -> Result<(), String> {
+    let workspace_root = find_project_root(workspace);
+
+    let mut cmd = std::process::Command::new(&skilllite_path);
+    cmd.args([
+        "clear-session",
+        "--session-key",
+        session_key,
+        "--workspace",
+        workspace_root.to_string_lossy().as_ref(),
+    ])
+    .current_dir(&workspace_root)
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::piped());
+
+    for (k, v) in load_dotenv_for_child(workspace) {
+        cmd.env(k, v);
+    }
+
+    let output = cmd.output().map_err(|e| format!("Failed to run clear-session: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "clear-session failed: {}",
+            if stderr.is_empty() {
+                output.status.to_string()
+            } else {
+                stderr.trim().to_string()
+            }
+        ));
     }
     Ok(())
+}
+
+pub(crate) fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> std::path::PathBuf {
+    let exe_name = if cfg!(target_os = "windows") {
+        "skilllite.exe"
+    } else {
+        "skilllite"
+    };
+    if let Ok(res_dir) = app.path().resource_dir() {
+        let bundled = res_dir.join(exe_name);
+        if bundled.exists() {
+            return bundled;
+        }
+    }
+    std::path::PathBuf::from(exe_name)
 }

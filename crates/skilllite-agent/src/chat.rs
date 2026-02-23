@@ -9,6 +9,38 @@ use super::chat_session::ChatSession;
 use super::skills;
 use super::types::*;
 
+/// Clear session (OpenClaw-style): summarize to memory, archive transcript, reset counts.
+/// Called by `skilllite clear-session` and Assistant. Loads .env from workspace.
+pub fn run_clear_session(session_key: &str, workspace: &str) -> Result<()> {
+    let workspace_path = Path::new(workspace).canonicalize().unwrap_or_else(|_| {
+        std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join(workspace)
+    });
+    if std::env::set_current_dir(&workspace_path).is_err() {
+        // Non-fatal: .env may not exist or API key may be in env already
+    }
+
+    let mut config = AgentConfig::from_env();
+    config.workspace = workspace_path.to_string_lossy().to_string();
+
+    if config.api_key.is_empty() {
+        tracing::warn!(
+            "No OPENAI_API_KEY; summarization skipped. Session will still be archived and counts reset."
+        );
+    }
+
+    skilllite_core::config::ensure_default_output_dir();
+
+    let loaded_skills = skills::load_skills(&[]);
+    let mut session = ChatSession::new(config, session_key, loaded_skills);
+
+    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
+    rt.block_on(async { session.clear_full().await })?;
+
+    Ok(())
+}
+
 /// Top-level entry-point called from `main()` for the `chat` subcommand.
 pub fn run_chat(
     api_base: Option<String>,
