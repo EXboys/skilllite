@@ -44,29 +44,29 @@ export default function MainLayout() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="flex flex-col h-screen bg-surface dark:bg-surface-dark">
       {/* Top bar */}
-      <header className="flex items-center justify-between h-12 px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shrink-0">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">
-          SkillLite Assistant
+      <header className="flex items-center justify-between h-12 px-4 border-b border-border dark:border-border-dark bg-white dark:bg-paper-dark shrink-0">
+        <h1 className="text-base font-semibold tracking-tight text-ink dark:text-ink-dark">
+          SkillLite
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
-            className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            className="px-2 py-1.5 text-sm text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
             aria-label="Settings"
           >
-            Settings
+            设置
           </button>
           <button
             type="button"
             onClick={handleHideToTray}
-            className="px-2 py-1 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            className="px-2 py-1.5 text-sm text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
             aria-label="Hide to tray"
             title="隐藏到托盘"
           >
-            Tray
+            最小化
           </button>
         </div>
       </header>
@@ -80,17 +80,17 @@ export default function MainLayout() {
 
         {/* Right: StatusPanel */}
         <aside
-          className={`flex flex-col border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 transition-all duration-200 ${
+          className={`flex flex-col border-l border-border dark:border-border-dark bg-white dark:bg-paper-dark transition-all duration-200 ${
             rightPanelCollapsed ? "w-10 shrink-0" : "w-[280px] min-w-[200px] shrink-0"
           }`}
         >
-          <div className="flex items-center h-10 px-2 border-b border-gray-200 dark:border-gray-700 shrink-0">
+          <div className="flex items-center h-10 px-2 border-b border-border dark:border-border-dark shrink-0">
             <button
               type="button"
               onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-              className="ml-auto p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+              className="ml-auto p-2 text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
               aria-label={rightPanelCollapsed ? "Expand panel" : "Collapse panel"}
-              title={rightPanelCollapsed ? "Expand" : "Collapse"}
+              title={rightPanelCollapsed ? "展开" : "收起"}
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

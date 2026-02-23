@@ -49,22 +49,22 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 dark:bg-black/50 backdrop-blur-sm"
       onClick={onClose}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === "Escape" && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-lg bg-white dark:bg-gray-800 p-6 shadow-xl"
+        className="w-full max-w-md rounded-lg bg-white dark:bg-paper-dark p-6 shadow-xl border border-border dark:border-border-dark"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <h2 className="text-base font-semibold text-ink dark:text-ink-dark mb-4">
           设置
         </h2>
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-ink dark:text-ink-dark-mute mb-1">
               API Key
             </label>
             <input
@@ -72,11 +72,11 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="sk-...（留空则使用 .env 中的 OPENAI_API_KEY）"
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-gray-100 placeholder-gray-500 text-sm"
+              className="w-full rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-ink dark:text-ink-dark placeholder-ink-mute text-sm focus:ring-2 focus:ring-accent/40 focus:border-accent outline-none"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-ink dark:text-ink-dark-mute mb-1">
               模型
             </label>
             <input
@@ -84,11 +84,11 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="gpt-4o"
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-gray-100 placeholder-gray-500 text-sm"
+              className="w-full rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-ink dark:text-ink-dark placeholder-ink-mute text-sm focus:ring-2 focus:ring-accent/40 focus:border-accent outline-none"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-ink dark:text-ink-dark-mute mb-1">
               工作区路径
             </label>
             <div className="flex gap-2">
@@ -97,19 +97,19 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 value={workspace}
                 onChange={(e) => setWorkspace(e.target.value)}
                 placeholder="."
-                className="flex-1 min-w-0 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-gray-100 placeholder-gray-500 text-sm"
+                className="flex-1 min-w-0 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-ink dark:text-ink-dark placeholder-ink-mute text-sm focus:ring-2 focus:ring-accent/40 focus:border-accent outline-none"
               />
               <button
                 type="button"
                 onClick={handleBrowseWorkspace}
-                className="shrink-0 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 text-sm font-medium"
+                className="shrink-0 px-3 py-2 rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark-mute hover:bg-gray-100 dark:hover:bg-white/5 text-sm font-medium transition-colors"
               >
                 浏览
               </button>
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+            <label className="block text-sm font-medium text-ink dark:text-ink-dark-mute mb-1">
               API Base URL（可选）
             </label>
             <input
@@ -117,7 +117,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               value={apiBase}
               onChange={(e) => setApiBase(e.target.value)}
               placeholder="https://api.openai.com/v1"
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-gray-900 dark:text-gray-100 placeholder-gray-500 text-sm"
+              className="w-full rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-ink dark:text-ink-dark placeholder-ink-mute text-sm focus:ring-2 focus:ring-accent/40 focus:border-accent outline-none"
             />
           </div>
         </div>
@@ -125,14 +125,14 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+            className="px-4 py-2 text-sm text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark transition-colors"
           >
             取消
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-2 rounded-lg bg-blue-500 text-white text-sm font-medium hover:bg-blue-600"
+            className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
           >
             保存
           </button>

@@ -48,17 +48,17 @@ const markdownComponents = {
   }) => {
     const isInline = !className;
     return isInline ? (
-      <code className="px-1.5 py-0.5 rounded bg-black/10 dark:bg-white/10 font-mono text-sm">
+      <code className="px-1.5 py-0.5 rounded-md bg-ink/8 dark:bg-white/8 font-mono text-[0.9em]">
         {children}
       </code>
     ) : (
-      <code className={`block p-3 rounded-lg text-sm overflow-x-auto ${className ?? ""}`}>
+      <code className={`block p-3 rounded-md text-sm overflow-x-auto ${className ?? ""}`}>
         {children}
       </code>
     );
   },
   pre: ({ children }: { children?: React.ReactNode }) => (
-    <pre className="mb-2 overflow-x-auto rounded-lg bg-black/5 dark:bg-white/5 p-3 text-sm">
+    <pre className="mb-2 overflow-x-auto rounded-md bg-ink/5 dark:bg-white/5 p-3 text-sm">
       {children}
     </pre>
   ),
@@ -88,24 +88,24 @@ const markdownComponents = {
     <h3 className="text-sm font-bold mb-1 mt-1.5 first:mt-0">{children}</h3>
   ),
   blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-3 my-2 italic text-gray-600 dark:text-gray-400">
+    <blockquote className="border-l-4 border-border dark:border-border-dark pl-3 my-2 italic text-ink-mute dark:text-ink-dark-mute">
       {children}
     </blockquote>
   ),
   table: ({ children }: { children?: React.ReactNode }) => (
     <div className="overflow-x-auto mb-2">
-      <table className="min-w-full border-collapse border border-gray-200 dark:border-gray-600">
+      <table className="min-w-full border-collapse border border-border dark:border-border-dark">
         {children}
       </table>
     </div>
   ),
   th: ({ children }: { children?: React.ReactNode }) => (
-    <th className="border border-gray-200 dark:border-gray-600 px-2 py-1 text-left font-medium bg-gray-100 dark:bg-gray-700">
+    <th className="border border-border dark:border-border-dark px-2 py-1 text-left font-medium bg-ink/5 dark:bg-white/5">
       {children}
     </th>
   ),
   td: ({ children }: { children?: React.ReactNode }) => (
-    <td className="border border-gray-200 dark:border-gray-600 px-2 py-1">
+    <td className="border border-border dark:border-border-dark px-2 py-1">
       {children}
     </td>
   ),
@@ -392,8 +392,8 @@ export default function ChatView() {
     if (m.type === "user") {
       return (
         <div key={m.id} className="flex justify-end">
-          <div className="max-w-[80%] rounded-lg px-4 py-2 bg-blue-500 text-white [&_a]:text-blue-100 [&_a]:underline [&_code]:bg-white/20 [&_code]:px-1">
-            <MarkdownContent content={m.content} className="text-white [&_*]:text-inherit" />
+          <div className="max-w-[80%] rounded-lg px-4 py-2.5 bg-gray-200 dark:bg-gray-700 text-ink dark:text-ink-dark [&_a]:text-accent [&_a]:underline [&_code]:bg-black/10 dark:[&_code]:bg-white/10 [&_code]:px-1">
+            <MarkdownContent content={m.content} />
           </div>
         </div>
       );
@@ -401,10 +401,10 @@ export default function ChatView() {
     if (m.type === "assistant") {
       return (
         <div key={m.id} className="flex justify-start">
-          <div className="max-w-[80%] rounded-lg px-4 py-2 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700">
+          <div className="max-w-[80%] rounded-lg px-4 py-2.5 bg-white dark:bg-paper-dark text-ink dark:text-ink-dark border border-border dark:border-border-dark">
             <MarkdownContent content={m.content} />
             {m.streaming && (
-              <span className="inline-block w-2 h-4 ml-1 bg-current animate-pulse align-middle" />
+              <span className="inline-block w-2 h-4 ml-1 bg-accent animate-pulse align-middle rounded-sm" />
             )}
           </div>
         </div>
@@ -413,11 +413,11 @@ export default function ChatView() {
     if (m.type === "plan") {
       return (
         <div key={m.id} className="flex justify-start">
-          <div className="max-w-[85%] rounded-lg px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-            <div className="text-sm font-medium text-amber-800 dark:text-amber-200 mb-2">
+          <div className="max-w-[85%] rounded-lg px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-border dark:border-border-dark">
+            <div className="text-sm font-medium text-ink dark:text-ink-dark-mute mb-2">
               任务计划
             </div>
-            <ul className="space-y-1.5 text-sm text-gray-700 dark:text-gray-300">
+            <ul className="space-y-1.5 text-sm text-ink dark:text-ink-dark-mute">
               {m.tasks.map((t) => (
                 <li key={t.id} className="flex items-start gap-2">
                   <span className="shrink-0 mt-0.5">
@@ -425,7 +425,7 @@ export default function ChatView() {
                   </span>
                   <span>{t.description}</span>
                   {t.tool_hint && (
-                    <span className="text-amber-600 dark:text-amber-400 shrink-0">
+                    <span className="text-ink-mute dark:text-ink-dark-mute shrink-0 text-xs">
                       [{t.tool_hint}]
                     </span>
                   )}
@@ -439,11 +439,11 @@ export default function ChatView() {
     if (m.type === "tool_call") {
       return (
         <div key={m.id} className="flex justify-start">
-          <div className="max-w-[85%] rounded-lg px-4 py-2 bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800">
-            <div className="text-sm font-mono text-sky-700 dark:text-sky-300">
+          <div className="max-w-[85%] rounded-lg px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border border-border dark:border-border-dark">
+            <div className="text-sm font-mono text-ink-mute dark:text-ink-dark-mute">
               <span className="font-medium">→ {m.name}</span>
               {m.args && (
-                <pre className="mt-1 text-xs overflow-x-auto whitespace-pre-wrap break-words text-gray-600 dark:text-gray-400">
+                <pre className="mt-1 text-xs overflow-x-auto whitespace-pre-wrap break-words text-ink-mute dark:text-ink-dark-mute">
                   {m.args.length > 200 ? m.args.slice(0, 200) + "…" : m.args}
                 </pre>
               )}
@@ -458,8 +458,8 @@ export default function ChatView() {
           <div
             className={`max-w-[85%] rounded-lg px-4 py-2 border ${
               m.isError
-                ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800"
-                : "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800"
+                ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50"
+                : "bg-gray-50 dark:bg-gray-800/50 border-border dark:border-border-dark"
             }`}
           >
             <div className="text-sm font-mono">
@@ -467,7 +467,7 @@ export default function ChatView() {
                 {m.isError ? "✗ " : "✓ "}
                 {m.name}
               </span>
-              <pre className="mt-1 text-xs overflow-x-auto whitespace-pre-wrap break-words max-h-40 overflow-y-auto text-gray-700 dark:text-gray-300">
+              <pre className="mt-1 text-xs overflow-x-auto whitespace-pre-wrap break-words max-h-40 overflow-y-auto text-ink dark:text-ink-dark-mute">
                 {m.result.length > 500 ? m.result.slice(0, 500) + "…" : m.result}
               </pre>
             </div>
@@ -478,15 +478,15 @@ export default function ChatView() {
     if (m.type === "confirmation") {
       return (
         <div key={m.id} className="flex justify-start">
-          <div className="max-w-[85%] rounded-lg px-4 py-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800">
-            <div className="text-sm font-medium text-orange-800 dark:text-orange-200 mb-2">
+          <div className="max-w-[85%] rounded-lg px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
+            <div className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">
               执行确认
             </div>
-            <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300 mb-4 max-h-48 overflow-y-auto">
+            <pre className="whitespace-pre-wrap text-sm text-ink dark:text-ink-dark-mute mb-4 max-h-48 overflow-y-auto">
               {m.prompt}
             </pre>
             {m.resolved ? (
-              <div className="text-sm text-gray-600 dark:text-gray-400">
+              <div className="text-sm text-ink-mute dark:text-ink-dark-mute">
                 {m.approved ? "✓ 已允许" : "✗ 已拒绝"}
               </div>
             ) : (
@@ -494,14 +494,14 @@ export default function ChatView() {
                 <button
                   type="button"
                   onClick={() => handleConfirm(m.id, false)}
-                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="px-3 py-1.5 text-sm rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-gray-100 dark:hover:bg-white/5"
                 >
                   拒绝
                 </button>
                 <button
                   type="button"
                   onClick={() => handleConfirm(m.id, true)}
-                  className="px-3 py-1.5 text-sm rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600"
+                  className="px-3 py-1.5 text-sm rounded-md bg-accent text-white font-medium hover:bg-accent-hover"
                 >
                   允许
                 </button>
@@ -515,14 +515,14 @@ export default function ChatView() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-900">
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div className="flex flex-col h-full bg-surface dark:bg-surface-dark">
+      <div className="flex-1 overflow-y-auto p-5 space-y-4">
         {messages.map(renderMessage)}
         {loading &&
           (messages.length === 0 || messages[messages.length - 1]?.type === "user") && (
             <div className="flex justify-start">
-              <div className="rounded-lg px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse" />
+              <div className="rounded-lg px-4 py-2.5 bg-white dark:bg-paper-dark border border-border dark:border-border-dark">
+                <span className="inline-block w-2 h-4 bg-accent/60 animate-pulse rounded-sm" />
               </div>
             </div>
           )}
@@ -530,29 +530,29 @@ export default function ChatView() {
       </div>
 
       {error && (
-        <div className="px-4 py-2 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+        <div className="px-4 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm border-t border-red-100 dark:border-red-900/40">
           {error}
         </div>
       )}
 
-      <div className="p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+      <div className="p-4 border-t border-border dark:border-border-dark bg-white dark:bg-paper-dark">
         <div className="flex gap-2">
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a message..."
+            placeholder="输入指令，按 Enter 发送…"
             disabled={loading}
-            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-4 py-2 text-gray-900 dark:text-gray-100 placeholder-gray-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
+            className="flex-1 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-4 py-2.5 text-ink dark:text-ink-dark placeholder-ink-mute dark:placeholder-ink-dark-mute focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none disabled:opacity-50"
           />
           <button
             type="button"
             onClick={handleSend}
             disabled={loading || !input.trim()}
-            className="px-4 py-2 rounded-lg bg-blue-500 text-white font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            Send
+            发送
           </button>
         </div>
       </div>

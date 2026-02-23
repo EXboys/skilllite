@@ -51,7 +51,7 @@ const PREVIEW_LIMIT = 3;
 function TaskList({ tasks, limit }: { tasks: TaskItem[]; limit?: number }) {
   if (tasks.length === 0) {
     return (
-      <p className="text-xs text-gray-500 dark:text-gray-400 italic">暂无任务计划</p>
+      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无任务计划</p>
     );
   }
   const show = limit ? tasks.slice(0, limit) : tasks;
@@ -61,15 +61,15 @@ function TaskList({ tasks, limit }: { tasks: TaskItem[]; limit?: number }) {
         <li
           key={t.id}
           className={`flex items-start gap-2 text-xs ${
-            t.completed ? "text-gray-500 dark:text-gray-400 line-through" : "text-gray-700 dark:text-gray-300"
+            t.completed ? "text-ink-mute dark:text-ink-dark-mute line-through" : "text-ink dark:text-ink-dark-mute"
           }`}
         >
-          <span className="shrink-0 mt-0.5">
+          <span className="shrink-0 mt-0.5 text-accent">
             {t.completed ? "✓" : "○"}
           </span>
           <span>{t.description}</span>
           {t.tool_hint && (
-            <span className="text-gray-500 dark:text-gray-400 shrink-0">
+            <span className="text-ink-mute dark:text-ink-dark-mute shrink-0">
               [{t.tool_hint}]
             </span>
           )}
@@ -82,7 +82,7 @@ function TaskList({ tasks, limit }: { tasks: TaskItem[]; limit?: number }) {
 function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
   if (entries.length === 0) {
     return (
-      <p className="text-xs text-gray-500 dark:text-gray-400 italic">暂无日志</p>
+      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无日志</p>
     );
   }
   const reversed = entries.slice().reverse();
@@ -93,10 +93,10 @@ function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
         <li
           key={e.id}
           className={`text-xs font-mono ${
-            e.isError ? "text-red-600 dark:text-red-400" : "text-gray-600 dark:text-gray-400"
+            e.isError ? "text-red-600 dark:text-red-400" : "text-ink-mute dark:text-ink-dark-mute"
           }`}
         >
-          <span className="text-gray-400 dark:text-gray-500">[{e.time}]</span>{" "}
+          <span className="text-ink-mute/80 dark:text-ink-dark-mute/80">[{e.time}]</span>{" "}
           {e.type === "tool_call" && "→"}
           {e.type === "tool_result" && (e.isError ? "✗" : "✓")}
           {e.name && <span className="font-medium">{e.name}: </span>}
@@ -110,20 +110,20 @@ function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
 function OutputPreview({ files, limit = 3 }: { files: string[]; limit?: number }) {
   if (files.length === 0) {
     return (
-      <p className="text-xs text-gray-500 dark:text-gray-400 italic">暂无输出文件</p>
+      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无输出文件</p>
     );
   }
   const show = limit ? files.slice(0, limit) : files;
   return (
     <ul className="space-y-0.5">
       {show.map((f, i) => (
-        <li key={i} className="text-xs text-gray-600 dark:text-gray-400 truncate flex items-center gap-1">
+        <li key={i} className="text-xs text-ink-mute dark:text-ink-dark-mute truncate flex items-center gap-1">
           <span className="shrink-0">📄</span>
           <span className="truncate">{f.split("/").pop() ?? f}</span>
         </li>
       ))}
       {files.length > limit && (
-        <li className="text-xs text-gray-500 dark:text-gray-500 truncate pt-1">
+        <li className="text-xs text-ink-mute dark:text-ink-dark-mute truncate pt-1">
           + {files.length - limit} 个文件
         </li>
       )}
@@ -136,7 +136,7 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
   const hasHints = hints.length > 0;
   if (!hasFiles && !hasHints) {
     return (
-      <p className="text-xs text-gray-500 dark:text-gray-400 italic">暂无记忆</p>
+      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无记忆</p>
     );
   }
   const flatFiles = Object.values(groupMemoryFiles(files)).flat();
@@ -144,13 +144,13 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
   return (
     <ul className="space-y-0.5">
       {showFiles.map((f, i) => (
-        <li key={i} className="text-xs text-gray-600 dark:text-gray-400 truncate flex items-center gap-1">
+        <li key={i} className="text-xs text-ink-mute dark:text-ink-dark-mute truncate flex items-center gap-1">
           <span className="shrink-0">📄</span>
           <span className="truncate">{f.split("/").pop() ?? f}</span>
         </li>
       ))}
       {hasHints && limit && (
-        <li className="text-xs text-gray-500 dark:text-gray-500 truncate pt-1">
+        <li className="text-xs text-ink-mute dark:text-ink-dark-mute truncate pt-1">
           + {hints.length} 条最近操作
         </li>
       )}
@@ -175,11 +175,11 @@ function SummarySection({
       <button
         type="button"
         onClick={onClickMore}
-        className="flex items-center justify-between w-full text-left font-medium text-gray-700 dark:text-gray-300 mb-2 group hover:text-gray-900 dark:hover:text-white"
+        className="flex items-center justify-between w-full text-left font-medium text-ink dark:text-ink-dark mb-2 group hover:text-accent dark:hover:text-accent"
       >
         <span>{title}</span>
         {hasMore && (
-          <span className="text-xs font-normal text-gray-400 group-hover:text-blue-500 flex items-center gap-0.5">
+          <span className="text-xs font-normal text-ink-mute group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent flex items-center gap-0.5 transition-colors">
             更多
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 18l6-6-6-6" />

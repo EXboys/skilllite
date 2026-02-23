@@ -27,7 +27,7 @@ function groupMemoryFiles(files: string[]): Record<string, string[]> {
 function TaskList({ tasks }: { tasks: TaskItem[] }) {
   if (tasks.length === 0) {
     return (
-      <p className="text-sm text-gray-500 dark:text-gray-400 italic">暂无任务计划</p>
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无任务计划</p>
     );
   }
   return (
@@ -36,13 +36,13 @@ function TaskList({ tasks }: { tasks: TaskItem[] }) {
         <li
           key={t.id}
           className={`flex items-start gap-2 text-sm ${
-            t.completed ? "text-gray-500 dark:text-gray-400 line-through" : "text-gray-700 dark:text-gray-300"
+            t.completed ? "text-ink-mute dark:text-ink-dark-mute line-through" : "text-ink dark:text-ink-dark-mute"
           }`}
         >
-          <span className="shrink-0 mt-0.5">{t.completed ? "✓" : "○"}</span>
+          <span className="shrink-0 mt-0.5 text-accent">{t.completed ? "✓" : "○"}</span>
           <span>{t.description}</span>
           {t.tool_hint && (
-            <span className="text-gray-500 dark:text-gray-400 shrink-0">[{t.tool_hint}]</span>
+            <span className="text-ink-mute dark:text-ink-dark-mute shrink-0">[{t.tool_hint}]</span>
           )}
         </li>
       ))}
@@ -53,7 +53,7 @@ function TaskList({ tasks }: { tasks: TaskItem[] }) {
 function LogList({ entries }: { entries: LogEntry[] }) {
   if (entries.length === 0) {
     return (
-      <p className="text-sm text-gray-500 dark:text-gray-400 italic">暂无日志</p>
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无日志</p>
     );
   }
   return (
@@ -62,10 +62,10 @@ function LogList({ entries }: { entries: LogEntry[] }) {
         <li
           key={e.id}
           className={`text-sm font-mono ${
-            e.isError ? "text-red-600 dark:text-red-400" : "text-gray-600 dark:text-gray-400"
+            e.isError ? "text-red-600 dark:text-red-400" : "text-ink-mute dark:text-ink-dark-mute"
           }`}
         >
-          <span className="text-gray-400 dark:text-gray-500">[{e.time}]</span>{" "}
+          <span className="text-ink-mute/80 dark:text-ink-dark-mute/80">[{e.time}]</span>{" "}
           {e.type === "tool_call" && "→"}
           {e.type === "tool_result" && (e.isError ? "✗" : "✓")}
           {e.name && <span className="font-medium">{e.name}: </span>}
@@ -85,7 +85,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
   const hasHints = hints.length > 0;
   if (!hasFiles && !hasHints) {
     return (
-      <p className="text-sm text-gray-500 dark:text-gray-400 italic">暂无记忆</p>
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无记忆</p>
     );
   }
 
@@ -117,7 +117,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
         {Object.entries(groups).map(([group, paths]) => (
           <li key={group}>
             {group !== "." && (
-              <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{group}/</div>
+              <div className="text-sm font-medium text-ink-mute dark:text-ink-dark-mute mb-1">{group}/</div>
             )}
             <ul className="space-y-0.5">
               {paths.map((f, i) => (
@@ -125,17 +125,17 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
                   <button
                     type="button"
                     onClick={() => handleFileClick(f)}
-                    className="text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 w-full text-left flex items-center gap-2 py-1"
+                    className="text-sm text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent w-full text-left flex items-center gap-2 py-1 transition-colors"
                     title={f}
                   >
                     <span className="shrink-0">📄</span>
                     <span className="truncate flex-1">{f.split("/").pop() ?? f}</span>
-                    <span className="text-gray-400 shrink-0">{expandedFile === f ? "▼" : "▶"}</span>
+                    <span className="text-ink-mute/80 shrink-0">{expandedFile === f ? "▼" : "▶"}</span>
                   </button>
                   {expandedFile === f && (
-                    <div className="mt-2 p-3 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-sm overflow-y-auto max-h-80 border border-gray-200 dark:border-gray-600">
+                    <div className="mt-2 p-3 rounded-md bg-surface dark:bg-surface-dark text-sm overflow-y-auto max-h-80 border border-border dark:border-border-dark">
                       {loading ? (
-                        <span className="text-gray-500">加载中...</span>
+                        <span className="text-ink-mute">加载中...</span>
                       ) : fileContent ? (
                         <div className="prose prose-sm max-w-none dark:prose-invert [&_pre]:text-xs [&_code]:text-xs">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>{fileContent}</ReactMarkdown>
@@ -152,13 +152,13 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
       {hasHints && (
         <>
           {hasFiles && (
-            <div className="text-sm font-medium text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-600">
+            <div className="text-sm font-medium text-ink-mute dark:text-ink-dark-mute pt-2 border-t border-border dark:border-border-dark">
               最近操作
             </div>
           )}
           <ul className="space-y-0.5">
             {hints.slice().reverse().map((h, i) => (
-              <li key={`hint-${i}`} className="text-sm text-gray-500 truncate">
+              <li key={`hint-${i}`} className="text-sm text-ink-mute dark:text-ink-dark-mute truncate">
                 {h}
               </li>
             ))}
@@ -182,15 +182,15 @@ const markdownComponents = {
   ol: ({ children }: { children?: React.ReactNode }) => <ol className="list-decimal list-inside mb-2">{children}</ol>,
   code: ({ className, children }: { className?: string; children?: React.ReactNode }) =>
     !className ? (
-      <code className="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-600 font-mono text-sm">{children}</code>
+      <code className="px-1.5 py-0.5 rounded-md bg-ink/10 dark:bg-white/10 font-mono text-sm">{children}</code>
     ) : (
-      <code className={`block p-3 rounded text-sm overflow-x-auto ${className ?? ""}`}>{children}</code>
+      <code className={`block p-3 rounded-md text-sm overflow-x-auto ${className ?? ""}`}>{children}</code>
     ),
   pre: ({ children }: { children?: React.ReactNode }) => (
-    <pre className="mb-2 overflow-x-auto rounded bg-gray-100 dark:bg-gray-700 p-3 text-sm">{children}</pre>
+    <pre className="mb-2 overflow-x-auto rounded-md bg-ink/5 dark:bg-white/5 p-3 text-sm">{children}</pre>
   ),
   a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="underline text-blue-600 dark:text-blue-400">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="underline text-accent hover:text-accent-hover">
       {children}
     </a>
   ),
@@ -203,7 +203,7 @@ function OutputFileContent({ files }: { files: string[] }) {
 
   if (files.length === 0) {
     return (
-      <p className="text-sm text-gray-500 dark:text-gray-400 italic">暂无输出文件</p>
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无输出文件</p>
     );
   }
 
@@ -260,7 +260,7 @@ function OutputFileContent({ files }: { files: string[] }) {
                             srcDoc={fileContent}
                             sandbox="allow-same-origin"
                             title={f}
-                            className="w-full min-h-[200px] border-0 rounded bg-white dark:bg-gray-900"
+                            className="w-full min-h-[200px] border-0 rounded-md bg-paper dark:bg-surface-dark"
                           />
                         ) : f.endsWith(".md") ? (
                           <div className="prose prose-sm max-w-none dark:prose-invert [&_pre]:text-xs [&_code]:text-xs">
@@ -325,20 +325,20 @@ export default function DetailWindowView() {
 
   if (!module) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <p className="text-gray-500">无效的详情视图</p>
+      <div className="min-h-screen flex items-center justify-center bg-surface dark:bg-surface-dark">
+        <p className="text-ink-mute">无效的详情视图</p>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-white dark:bg-gray-800">
-      <header className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700 shrink-0">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-white">{TITLES[module]}</h1>
+    <div className="flex flex-col min-h-screen bg-paper dark:bg-paper-dark">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-border dark:border-border-dark shrink-0">
+        <h1 className="text-base font-semibold text-ink dark:text-ink-dark">{TITLES[module]}</h1>
         <button
           type="button"
           onClick={handleClose}
-          className="p-2 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+          className="p-2 text-ink-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
           aria-label="关闭窗口"
         >
           <svg
