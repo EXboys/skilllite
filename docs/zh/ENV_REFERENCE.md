@@ -133,8 +133,12 @@
 |------|------|--------|------|
 | `SKILLLITE_COMPACTION_THRESHOLD` | int | `16` | 对话历史超过此消息数时触发压缩（约 8 轮） |
 | `SKILLLITE_COMPACTION_KEEP_RECENT` | int | `10` | 压缩后保留的最近消息数 |
+| `SKILLLITE_MEMORY_FLUSH_ENABLED` | bool | `true` | 是否启用 pre-compaction 记忆自动写入（OpenClaw 风格） |
+| `SKILLLITE_MEMORY_FLUSH_THRESHOLD` | int | `12` | 达到此消息数时触发记忆 flush（低于压缩阈值可更早触发） |
 
 **使用场景**：若希望更早触发压缩，可降低 `COMPACTION_THRESHOLD`（如 `12`）；若压缩过于频繁可适当提高。`/compact` 命令可手动触发压缩，不受阈值限制。
+
+**记忆自动触发**：启用 `enable_memory` 时，当对话达到 `MEMORY_FLUSH_THRESHOLD`（默认 12 条消息，约 6 轮）会自动运行一次静默 turn，提醒模型将重要内容写入 `memory/YYYY-MM-DD.md`。若记忆触发过少，可降低 `MEMORY_FLUSH_THRESHOLD`（如 `8` 或 `6`）。
 
 ---
 

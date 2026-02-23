@@ -371,6 +371,19 @@ pub trait EventSink: Send {
     fn on_task_progress(&mut self, _task_id: u32, _completed: bool) {}
 }
 
+/// Silent event sink for background operations (e.g. pre-compaction memory flush).
+/// Swallows all output and auto-approves confirmation requests.
+pub struct SilentEventSink;
+
+impl EventSink for SilentEventSink {
+    fn on_text(&mut self, _text: &str) {}
+    fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+    fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+    fn on_confirmation_request(&mut self, _prompt: &str) -> bool {
+        true // Auto-approve for silent operations (memory flush may rarely need run_command)
+    }
+}
+
 /// Separator for CLI section headers.
 const SECTION_SEP: &str = "──────────────────────────────────────";
 
@@ -683,6 +696,27 @@ pub fn get_output_dir() -> Option<String> {
 /// `SKILLLITE_COMPACTION_THRESHOLD`. Default 16 (~8 turns).
 pub fn get_compaction_threshold() -> usize {
     env_usize("SKILLLITE_COMPACTION_THRESHOLD", 16)
+}
+
+/// Whether to run pre-compaction memory flush (OpenClaw-style).
+/// When enabled, before compacting we run a silent agent turn to remind the model
+/// to write durable memories. `SKILLLITE_MEMORY_FLUSH_ENABLED`. Default true.
+pub fn get_memory_flush_enabled() -> bool {
+    let v = skilllite_core::config::loader::env_optional(
+        "SKILLLITE_MEMORY_FLUSH_ENABLED",
+        &[],
+    );
+    match v.as_deref().map(|s| s.to_lowercase()) {
+        Some(s) if matches!(s.as_str(), "0" | "false" | "no" | "off") => false,
+        _ => true,
+    }
+}
+
+/// Memory flush threshold: run memory flush when history approaches compaction.
+/// Lower value = more frequent memory flush. Use same as compaction if not set.
+/// `SKILLLITE_MEMORY_FLUSH_THRESHOLD`. Default 12 (so flush triggers ~4 msgs before compaction at 16).
+pub fn get_memory_flush_threshold() -> usize {
+    env_usize("SKILLLITE_MEMORY_FLUSH_THRESHOLD", 12)
 }
 
 /// Number of recent messages to keep after compaction. `SKILLLITE_COMPACTION_KEEP_RECENT`.

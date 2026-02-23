@@ -151,9 +151,39 @@ impl ChatSession {
             );
         }
 
+        // Early memory flush: run when history approaches compaction (OpenClaw-style).
+        // Lower SKILLLITE_MEMORY_FLUSH_THRESHOLD (default 12) = more frequent triggers.
+        let flush_threshold = get_memory_flush_threshold();
+        let compaction_threshold = get_compaction_threshold();
+        if self.config.enable_memory
+            && get_memory_flush_enabled()
+            && history.len() >= flush_threshold
+        {
+            let sessions_path = self.data_root.join("sessions.json");
+            if let Ok(store) = session::SessionStore::load(&sessions_path) {
+                if let Some(entry) = store.get(&self.session_key) {
+                    let next_compaction = entry.compaction_count + 1;
+                    let need_flush = entry.memory_flush_compaction_count != Some(next_compaction);
+                    if need_flush {
+                        if let Err(e) = self.run_memory_flush_turn(&history).await {
+                            tracing::warn!("Early memory flush failed: {}", e);
+                        } else {
+                            if let Ok(mut store) = session::SessionStore::load(&sessions_path) {
+                                if let Some(se) = store.sessions.get_mut(&self.session_key) {
+                                    se.memory_flush_compaction_count = Some(next_compaction);
+                                    se.memory_flush_at = Some(chrono::Utc::now().to_rfc3339());
+                                    let _ = store.save(&sessions_path);
+                                }
+                            }
+                            tracing::debug!("Early memory flush completed (threshold={})", flush_threshold);
+                        }
+                    }
+                }
+            }
+        }
+
         // Check if compaction is needed
-        let threshold = get_compaction_threshold();
-        let mut history = if history.len() >= threshold {
+        let mut history = if history.len() >= compaction_threshold {
             self.compact_history(history).await?
         } else {
             history
@@ -255,7 +285,8 @@ impl ChatSession {
     }
 
     /// Compact old messages: summarize via LLM, write compaction entry.
-    /// Ported from Python `_check_and_compact`.
+    /// Before compaction, runs pre-compaction memory flush (OpenClaw-style) when enabled:
+    /// a silent agent turn reminds the model to write durable memories to memory/YYYY-MM-DD.md.
     async fn compact_history(
         &mut self,
         history: Vec<ChatMessage>,
@@ -264,7 +295,67 @@ impl ChatSession {
         if history.len() < threshold {
             return Ok(history);
         }
+
+        // Pre-compaction memory flush (OpenClaw-style): give model a chance to save to memory
+        // before we summarize away the conversation. Runs once per compaction cycle.
+        if self.config.enable_memory
+            && get_memory_flush_enabled()
+        {
+            let sessions_path = self.data_root.join("sessions.json");
+            if let Ok(store) = session::SessionStore::load(&sessions_path) {
+                if let Some(entry) = store.get(&self.session_key) {
+                    let next_compaction_count = entry.compaction_count + 1;
+                    let need_flush = entry.memory_flush_compaction_count != Some(next_compaction_count);
+                    if need_flush {
+                        if let Err(e) = self.run_memory_flush_turn(&history).await {
+                            tracing::warn!("Memory flush failed (continuing with compaction): {}", e);
+                        } else {
+                            if let Ok(mut store) = session::SessionStore::load(&sessions_path) {
+                                if let Some(session_entry) = store.sessions.get_mut(&self.session_key) {
+                                    session_entry.memory_flush_compaction_count = Some(next_compaction_count);
+                                    session_entry.memory_flush_at = Some(chrono::Utc::now().to_rfc3339());
+                                    let _ = store.save(&sessions_path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         self.compact_history_inner(history, threshold).await
+    }
+
+    /// Run a silent agent turn to remind the model to write durable memories before compaction.
+    /// OpenClaw-style: system + user prompt, model may call memory_write, we don't show/output.
+    async fn run_memory_flush_turn(&self, history: &[ChatMessage]) -> Result<()> {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let memory_flush_reminder = format!(
+            "Session nearing compaction. Store durable memories now. \
+             Use memory_write to save key context (preferences, decisions, file paths, summaries) \
+             to memory/{}.md. Reply with NO_REPLY if nothing to store.",
+            today
+        );
+        let memory_flush_prompt = format!(
+            "Write any lasting notes to memory/{}.md; reply with NO_REPLY if nothing to store.",
+            today
+        );
+
+        let mut flush_messages: Vec<ChatMessage> = history.to_vec();
+        flush_messages.push(ChatMessage::system(&memory_flush_reminder));
+
+        let mut silent_sink = SilentEventSink;
+        tracing::debug!("Running pre-compaction memory flush");
+        let _ = agent_loop::run_agent_loop(
+            &self.config,
+            flush_messages,
+            &memory_flush_prompt,
+            &self.skills,
+            &mut silent_sink,
+            Some(&self.session_key),
+        )
+        .await?;
+        Ok(())
     }
 
     /// Inner compaction logic. `min_threshold`: use 0 for force_compact to bypass.

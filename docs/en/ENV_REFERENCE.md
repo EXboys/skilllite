@@ -133,8 +133,12 @@ Prefer `SKILLLITE_*` as primary variables; compatible with `OPENAI_*`, `BASE_URL
 |----------|------|---------|-------------|
 | `SKILLLITE_COMPACTION_THRESHOLD` | int | `16` | Compact conversation history when message count exceeds this (~8 turns) |
 | `SKILLLITE_COMPACTION_KEEP_RECENT` | int | `10` | Number of recent messages to keep after compaction |
+| `SKILLLITE_MEMORY_FLUSH_ENABLED` | bool | `true` | Enable pre-compaction memory flush (OpenClaw-style) |
+| `SKILLLITE_MEMORY_FLUSH_THRESHOLD` | int | `12` | Trigger memory flush at this message count (lower = more frequent) |
 
 **Usage**: Lower `COMPACTION_THRESHOLD` (e.g. `12`) for more frequent compaction; raise it if compaction triggers too often. The `/compact` command manually triggers compaction regardless of threshold.
+
+**Memory auto-flush**: When `enable_memory` is on, a silent turn runs at `MEMORY_FLUSH_THRESHOLD` (default 12 messages, ~6 turns) to prompt the model to write durable memories to `memory/YYYY-MM-DD.md`. Lower `MEMORY_FLUSH_THRESHOLD` (e.g. `8` or `6`) for more frequent memory triggers.
 
 ---
 
