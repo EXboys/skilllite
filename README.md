@@ -310,6 +310,19 @@ This installs full + vector memory. Run from repository root.
 - `cargo install`: `~/.cargo/bin/skilllite` or `~/.cargo/bin/skilllite-sandbox`
 - `cargo build`: `target/release/skilllite` or `target/release/skilllite-sandbox`
 
+### Desktop Assistant (skilllite-assistant)
+
+Tauri 2 + React Desktop，位于 `crates/skilllite-assistant/`：
+
+```bash
+cd crates/skilllite-assistant
+npm install
+npm run tauri dev    # dev mode（HMR）
+npm run tauri build  
+```
+
+详见 [crates/skilllite-assistant/README.md](./crates/skilllite-assistant/README.md)。
+
 ### Project Structure (Cargo Workspace)
 
 Standard Rust multi-crate layout; root `Cargo.toml` declares the workspace:
@@ -319,6 +332,7 @@ skilllite/
 ├── Cargo.toml              # [workspace] members
 ├── skilllite/              # Main binary (CLI entry point)
 └── crates/
+    ├── skilllite-assistant/ # Desktop app (Tauri + React)
     ├── skilllite-core/     # Config, skill metadata, path validation
     ├── skilllite-sandbox/  # Sandbox executor (independently deliverable)
     ├── skilllite-executor/ # Session, transcript, memory

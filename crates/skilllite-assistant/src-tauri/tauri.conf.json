@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "SkillLite Assistant",
+  "version": "0.1.0",
+  "identifier": "com.skilllite.assistant",
+  "build": {
+    "beforeDevCommand": "bash scripts/prebuild-skilllite.sh && npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "bash scripts/prebuild-skilllite.sh && npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "SkillLite Assistant",
+        "width": 900,
+        "height": 650,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "10.13"
+    },
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "createUpdaterArtifacts": false,
+    "shortDescription": "SkillLite AI Assistant",
+    "longDescription": "A lightweight desktop companion for the SkillLite AI Agent engine.",
+    "category": "DeveloperTool",
+    "resources": [
+      "resources/**/*"
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 [workspace]
-members = ["skilllite", "crates/*"]
+members = ["skilllite", "crates/*", "crates/skilllite-assistant/src-tauri"]
+exclude = ["crates/skilllite-assistant", "crates/crates"]
 resolver = "2"
 
 [profile.release]

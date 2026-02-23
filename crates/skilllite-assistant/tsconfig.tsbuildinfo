@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/chatview.tsx","./src/components/detailwindowview.tsx","./src/components/mainlayout.tsx","./src/components/settingsmodal.tsx","./src/components/statuspanel.tsx","./src/hooks/useglobalshortcut.ts","./src/stores/usesettingsstore.ts","./src/stores/usestatusstore.ts"],"version":"5.6.3"}

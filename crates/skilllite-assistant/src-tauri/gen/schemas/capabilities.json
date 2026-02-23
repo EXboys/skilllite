@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities for the main and detail windows","local":true,"windows":["main","detail-*"],"permissions":["core:default","core:webview:allow-create-webview-window","global-shortcut:allow-register","global-shortcut:allow-unregister","global-shortcut:allow-is-registered","dialog:default"]}}
