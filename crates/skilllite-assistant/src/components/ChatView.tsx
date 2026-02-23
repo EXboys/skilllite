@@ -1,152 +1,62 @@
-import { useState, useRef, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useStatusStore } from "../stores/useStatusStore";
-
-interface TaskItem {
-  id: number;
-  description: string;
-  tool_hint?: string;
-  completed?: boolean;
-}
-
-type ChatMessage =
-  | { id: string; type: "user"; content: string }
-  | { id: string; type: "assistant"; content: string; streaming?: boolean }
-  | { id: string; type: "plan"; tasks: TaskItem[] }
-  | { id: string; type: "tool_call"; name: string; args: string }
-  | { id: string; type: "tool_result"; name: string; result: string; isError: boolean }
-  | { id: string; type: "confirmation"; prompt: string; resolved?: boolean; approved?: boolean };
-
-interface StreamEvent {
-  event: string;
-  data: Record<string, unknown>;
-}
-
-const markdownComponents = {
-  p: ({ children }: { children?: React.ReactNode }) => (
-    <p className="mb-2 last:mb-0">{children}</p>
-  ),
-  ul: ({ children }: { children?: React.ReactNode }) => (
-    <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>
-  ),
-  ol: ({ children }: { children?: React.ReactNode }) => (
-    <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>
-  ),
-  li: ({ children }: { children?: React.ReactNode }) => (
-    <li className="ml-2">{children}</li>
-  ),
-  code: ({
-    className,
-    children,
-  }: {
-    className?: string;
-    children?: React.ReactNode;
-  }) => {
-    const isInline = !className;
-    return isInline ? (
-      <code className="px-1.5 py-0.5 rounded-md bg-ink/8 dark:bg-white/8 font-mono text-[0.9em]">
-        {children}
-      </code>
-    ) : (
-      <code className={`block p-3 rounded-md text-sm overflow-x-auto ${className ?? ""}`}>
-        {children}
-      </code>
-    );
-  },
-  pre: ({ children }: { children?: React.ReactNode }) => (
-    <pre className="mb-2 overflow-x-auto rounded-md bg-ink/5 dark:bg-white/5 p-3 text-sm">
-      {children}
-    </pre>
-  ),
-  a: ({
-    href,
-    children,
-  }: {
-    href?: string;
-    children?: React.ReactNode;
-  }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="underline hover:opacity-80"
-    >
-      {children}
-    </a>
-  ),
-  h1: ({ children }: { children?: React.ReactNode }) => (
-    <h1 className="text-lg font-bold mb-2 mt-3 first:mt-0">{children}</h1>
-  ),
-  h2: ({ children }: { children?: React.ReactNode }) => (
-    <h2 className="text-base font-bold mb-1.5 mt-2 first:mt-0">{children}</h2>
-  ),
-  h3: ({ children }: { children?: React.ReactNode }) => (
-    <h3 className="text-sm font-bold mb-1 mt-1.5 first:mt-0">{children}</h3>
-  ),
-  blockquote: ({ children }: { children?: React.ReactNode }) => (
-    <blockquote className="border-l-4 border-border dark:border-border-dark pl-3 my-2 italic text-ink-mute dark:text-ink-dark-mute">
-      {children}
-    </blockquote>
-  ),
-  table: ({ children }: { children?: React.ReactNode }) => (
-    <div className="overflow-x-auto mb-2">
-      <table className="min-w-full border-collapse border border-border dark:border-border-dark">
-        {children}
-      </table>
-    </div>
-  ),
-  th: ({ children }: { children?: React.ReactNode }) => (
-    <th className="border border-border dark:border-border-dark px-2 py-1 text-left font-medium bg-ink/5 dark:bg-white/5">
-      {children}
-    </th>
-  ),
-  td: ({ children }: { children?: React.ReactNode }) => (
-    <td className="border border-border dark:border-border-dark px-2 py-1">
-      {children}
-    </td>
-  ),
-  strong: ({ children }: { children?: React.ReactNode }) => (
-    <strong className="font-semibold">{children}</strong>
-  ),
-};
-
-function MarkdownContent({ content, className }: { content: string; className?: string }) {
-  return (
-    <div className={`markdown-content text-sm leading-relaxed break-words ${className ?? ""}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-        {content}
-      </ReactMarkdown>
-    </div>
-  );
-}
+import { useChatEvents } from "../hooks/useChatEvents";
+import { MessageList } from "./chat/MessageList";
+import { ChatInput } from "./chat/ChatInput";
+import type { ChatMessage } from "../types/chat";
 
 export default function ChatView() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const { settings } = useSettingsStore();
-  const {
+  const addTaskPlan = useStatusStore((s) => s.addTaskPlan);
+  const updateTaskProgress = useStatusStore((s) => s.updateTaskProgress);
+  const addLog = useStatusStore((s) => s.addLog);
+  const addMemoryHint = useStatusStore((s) => s.addMemoryHint);
+  const clearPlan = useStatusStore((s) => s.clearPlan);
+  const setLatestOutput = useStatusStore((s) => s.setLatestOutput);
+  const setRecentData = useStatusStore((s) => s.setRecentData);
+
+  const refreshRecentData = useCallback(() => {
+    invoke<{
+      memory_files: string[];
+      output_files: string[];
+      plan: { task: string; steps: { id: number; description: string; completed: boolean }[] } | null;
+    }>("skilllite_load_recent")
+      .then((data) => {
+        setRecentData({
+          memoryFiles: data.memory_files ?? [],
+          outputFiles: data.output_files ?? [],
+          plan: data.plan
+            ? {
+                task: data.plan.task,
+                steps: data.plan.steps.map((s) => ({
+                  id: s.id,
+                  description: s.description,
+                  completed: s.completed,
+                })),
+              }
+            : undefined,
+        });
+      })
+      .catch(() => {});
+  }, [setRecentData]);
+
+  useChatEvents({
+    setMessages,
+    setLoading,
+    setError,
     addTaskPlan,
     updateTaskProgress,
     addLog,
     addMemoryHint,
-    clearPlan,
     setLatestOutput,
-  } = useStatusStore();
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    onTurnComplete: refreshRecentData,
+  });
 
   useEffect(() => {
     invoke<Array<{ id: string; role: string; content: string }>>("skilllite_load_transcript", {
@@ -176,165 +86,24 @@ export default function ChatView() {
     );
   };
 
-  useEffect(() => {
-    const unlistenConfirm = listen<{ prompt: string }>(
-      "skilllite-confirmation-request",
-      (ev) => {
-        const prompt = ev.payload.prompt ?? "";
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "confirmation",
-            prompt,
-          },
-        ]);
-      }
-    );
-    return () => {
-      unlistenConfirm.then((fn) => fn());
-    };
-  }, []);
-
-  useEffect(() => {
-    const unlisten = listen<StreamEvent>("skilllite-event", (ev) => {
-      const { event, data } = ev.payload;
-      if (event === "text_chunk") {
-        const text = (data?.text as string) ?? "";
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.type === "assistant" && last?.streaming) {
-            const newContent = last.content + text;
-            setLatestOutput(newContent);
-            return [
-              ...prev.slice(0, -1),
-              { ...last, content: newContent },
-            ];
-          }
-          setLatestOutput(text);
-          return [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              type: "assistant",
-              content: text,
-              streaming: true,
-            },
-          ];
-        });
-        setLoading(false);
-      } else if (event === "text") {
-        const text = (data?.text as string) ?? "";
-        setLatestOutput(text);
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.type === "assistant" && last?.streaming) {
-            return [
-              ...prev.slice(0, -1),
-              { ...last, content: text, streaming: false },
-            ];
-          }
-          return [
-            ...prev,
-            {
-              id: crypto.randomUUID(),
-              type: "assistant",
-              content: text,
-              streaming: false,
-            },
-          ];
-        });
-        setLoading(false);
-      } else if (event === "done") {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.type === "assistant" && last?.streaming) {
-            setLatestOutput(last.content);
-            return [...prev.slice(0, -1), { ...last, streaming: false }];
-          }
-          return prev;
-        });
-        setLoading(false);
-      } else if (event === "error") {
-        const msg = (data?.message as string) ?? "Unknown error";
-        const errContent = `Error: ${msg}`;
-        setLatestOutput(errContent);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "assistant",
-            content: errContent,
-          },
-        ]);
-        setError(msg);
-        setLoading(false);
-        addLog({ type: "error", text: msg, isError: true });
-      } else if (event === "task_plan") {
-        const tasks = (data?.tasks as Array<{ id?: number; description?: string; tool_hint?: string; completed?: boolean }>) ?? [];
-        const taskItems = tasks.map((t, i) => ({
-          id: t.id ?? i + 1,
-          description: t.description ?? "",
-          tool_hint: t.tool_hint,
-          completed: (t.completed ?? false) as boolean,
-        }));
-        addTaskPlan(taskItems);
-        addLog({ type: "plan", text: `计划 ${tasks.length} 个任务` });
-        setMessages((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), type: "plan", tasks: taskItems },
-        ]);
-      } else if (event === "task_progress") {
-        const taskId = (data?.task_id as number) ?? 0;
-        const completed = (data?.completed as boolean) ?? false;
-        updateTaskProgress(taskId, completed);
-      } else if (event === "tool_call") {
-        const name = (data?.name as string) ?? "";
-        const args = (data?.arguments as string) ?? "";
-        addLog({
-          type: "tool_call",
-          name,
-          text: args.length > 60 ? args.slice(0, 60) + "…" : args,
-        });
-        if (["memory_write", "memory_search", "memory_list"].includes(name)) {
-          addMemoryHint(`${name}: ${args.slice(0, 40)}…`);
+  const handleStop = useCallback(async () => {
+    try {
+      await invoke("skilllite_stop");
+      setLoading(false);
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last?.type === "assistant" && last?.streaming) {
+          const content = last.content ? `${last.content}\n\n[已中止]` : "[已中止]";
+          setLatestOutput(content);
+          return [...prev.slice(0, -1), { ...last, content, streaming: false }];
         }
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "tool_call",
-            name,
-            args,
-          },
-        ]);
-      } else if (event === "tool_result") {
-        const name = (data?.name as string) ?? "";
-        const isErr = (data?.is_error as boolean) ?? false;
-        const result = (data?.result as string) ?? "";
-        addLog({
-          type: "tool_result",
-          name,
-          text: result.length > 80 ? result.slice(0, 80) + "…" : result,
-          isError: isErr,
-        });
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "tool_result",
-            name,
-            result,
-            isError: isErr,
-          },
-        ]);
-      }
-    });
-
-    return () => {
-      unlisten.then((fn) => fn());
-    };
-  }, [addTaskPlan, updateTaskProgress, addLog, addMemoryHint, setLatestOutput]);
+        return prev;
+      });
+      refreshRecentData();
+    } catch {
+      setLoading(false);
+    }
+  }, [refreshRecentData, setLatestOutput]);
 
   const handleSend = async () => {
     const text = input.trim();
@@ -381,153 +150,9 @@ export default function ChatView() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const renderMessage = (m: ChatMessage) => {
-    if (m.type === "user") {
-      return (
-        <div key={m.id} className="flex justify-end">
-          <div className="max-w-[80%] rounded-lg px-4 py-2.5 bg-gray-200 dark:bg-gray-700 text-ink dark:text-ink-dark [&_a]:text-accent [&_a]:underline [&_code]:bg-black/10 dark:[&_code]:bg-white/10 [&_code]:px-1">
-            <MarkdownContent content={m.content} />
-          </div>
-        </div>
-      );
-    }
-    if (m.type === "assistant") {
-      return (
-        <div key={m.id} className="flex justify-start">
-          <div className="max-w-[80%] rounded-lg px-4 py-2.5 bg-white dark:bg-paper-dark text-ink dark:text-ink-dark border border-border dark:border-border-dark">
-            <MarkdownContent content={m.content} />
-            {m.streaming && (
-              <span className="inline-block w-2 h-4 ml-1 bg-accent animate-pulse align-middle rounded-sm" />
-            )}
-          </div>
-        </div>
-      );
-    }
-    if (m.type === "plan") {
-      return (
-        <div key={m.id} className="flex justify-start">
-          <div className="max-w-[85%] rounded-lg px-4 py-3 bg-gray-50 dark:bg-gray-800/50 border border-border dark:border-border-dark">
-            <div className="text-sm font-medium text-ink dark:text-ink-dark-mute mb-2">
-              任务计划
-            </div>
-            <ul className="space-y-1.5 text-sm text-ink dark:text-ink-dark-mute">
-              {m.tasks.map((t) => (
-                <li key={t.id} className="flex items-start gap-2">
-                  <span className="shrink-0 mt-0.5">
-                    {t.completed ? "✓" : "○"}
-                  </span>
-                  <span>{t.description}</span>
-                  {t.tool_hint && (
-                    <span className="text-ink-mute dark:text-ink-dark-mute shrink-0 text-xs">
-                      [{t.tool_hint}]
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      );
-    }
-    if (m.type === "tool_call") {
-      return (
-        <div key={m.id} className="flex justify-start">
-          <div className="max-w-[85%] rounded-lg px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border border-border dark:border-border-dark">
-            <div className="text-sm font-mono text-ink-mute dark:text-ink-dark-mute">
-              <span className="font-medium">→ {m.name}</span>
-              {m.args && (
-                <pre className="mt-1 text-xs overflow-x-auto whitespace-pre-wrap break-words text-ink-mute dark:text-ink-dark-mute">
-                  {m.args.length > 200 ? m.args.slice(0, 200) + "…" : m.args}
-                </pre>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-    if (m.type === "tool_result") {
-      return (
-        <div key={m.id} className="flex justify-start">
-          <div
-            className={`max-w-[85%] rounded-lg px-4 py-2 border ${
-              m.isError
-                ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50"
-                : "bg-gray-50 dark:bg-gray-800/50 border-border dark:border-border-dark"
-            }`}
-          >
-            <div className="text-sm font-mono">
-              <span className="font-medium">
-                {m.isError ? "✗ " : "✓ "}
-                {m.name}
-              </span>
-              <pre className="mt-1 text-xs overflow-x-auto whitespace-pre-wrap break-words max-h-40 overflow-y-auto text-ink dark:text-ink-dark-mute">
-                {m.result.length > 500 ? m.result.slice(0, 500) + "…" : m.result}
-              </pre>
-            </div>
-          </div>
-        </div>
-      );
-    }
-    if (m.type === "confirmation") {
-      return (
-        <div key={m.id} className="flex justify-start">
-          <div className="max-w-[85%] rounded-lg px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50">
-            <div className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">
-              执行确认
-            </div>
-            <pre className="whitespace-pre-wrap text-sm text-ink dark:text-ink-dark-mute mb-4 max-h-48 overflow-y-auto">
-              {m.prompt}
-            </pre>
-            {m.resolved ? (
-              <div className="text-sm text-ink-mute dark:text-ink-dark-mute">
-                {m.approved ? "✓ 已允许" : "✗ 已拒绝"}
-              </div>
-            ) : (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleConfirm(m.id, false)}
-                  className="px-3 py-1.5 text-sm rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-gray-100 dark:hover:bg-white/5"
-                >
-                  拒绝
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleConfirm(m.id, true)}
-                  className="px-3 py-1.5 text-sm rounded-md bg-accent text-white font-medium hover:bg-accent-hover"
-                >
-                  允许
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark">
-      <div className="flex-1 overflow-y-auto p-5 space-y-4">
-        {messages.map(renderMessage)}
-        {loading &&
-          (messages.length === 0 || messages[messages.length - 1]?.type === "user") && (
-            <div className="flex justify-start">
-              <div className="rounded-lg px-4 py-2.5 bg-white dark:bg-paper-dark border border-border dark:border-border-dark">
-                <span className="inline-block w-2 h-4 bg-accent/60 animate-pulse rounded-sm" />
-              </div>
-            </div>
-          )}
-        <div ref={messagesEndRef} />
-      </div>
+      <MessageList messages={messages} loading={loading} onConfirm={handleConfirm} />
 
       {error && (
         <div className="px-4 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm border-t border-red-100 dark:border-red-900/40">
@@ -535,27 +160,14 @@ export default function ChatView() {
         </div>
       )}
 
-      <div className="p-4 border-t border-border dark:border-border-dark bg-white dark:bg-paper-dark">
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入指令，按 Enter 发送…"
-            disabled={loading}
-            className="flex-1 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-4 py-2.5 text-ink dark:text-ink-dark placeholder-ink-mute dark:placeholder-ink-dark-mute focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none disabled:opacity-50"
-          />
-          <button
-            type="button"
-            onClick={handleSend}
-            disabled={loading || !input.trim()}
-            className="px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            发送
-          </button>
-        </div>
-      </div>
+      <ChatInput
+        value={input}
+        onChange={setInput}
+        onSend={handleSend}
+        onStop={handleStop}
+        disabled={loading}
+        loading={loading}
+      />
     </div>
   );
 }

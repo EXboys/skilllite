@@ -6,6 +6,7 @@
 //!
 //! For confirmation_request: emit to frontend, wait for skilllite_confirm, write to stdin.
 
+use base64::Engine;
 use serde::Serialize;
 use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
@@ -25,6 +26,10 @@ pub struct StreamEvent {
 /// Shared state for confirmation flow: frontend calls skilllite_confirm → sends to this channel.
 #[derive(Default, Clone)]
 pub struct ConfirmationState(pub Arc<Mutex<Option<mpsc::Sender<bool>>>>);
+
+/// Shared state for the chat subprocess; skilllite_stop can kill it.
+#[derive(Default, Clone)]
+pub struct ChatProcessState(pub Arc<Mutex<Option<std::process::Child>>>);
 
 /// Find project root (dir containing .skills or skills) by walking up from start path.
 fn find_project_root(start: &str) -> std::path::PathBuf {
@@ -118,6 +123,7 @@ pub fn chat_stream(
     workspace: Option<String>,
     config_overrides: Option<ChatConfigOverrides>,
     confirmation_state: ConfirmationState,
+    process_state: ChatProcessState,
 ) -> Result<(), String> {
     let raw_workspace = workspace
         .or_else(|| config_overrides.as_ref().and_then(|c| c.workspace.clone()))
@@ -164,6 +170,11 @@ pub fn chat_stream(
         .stdout
         .take()
         .ok_or_else(|| "Failed to open stdout".to_string())?;
+
+    {
+        let mut guard = process_state.0.lock().map_err(|_| "ChatProcessState lock poisoned")?;
+        *guard = Some(child);
+    }
 
     let mut config_json = serde_json::Map::new();
     config_json.insert("workspace".to_string(), json!(workspace_str));
@@ -288,7 +299,25 @@ pub fn chat_stream(
     }
 
     drop(stdin);
-    let _ = child.wait();
+    let child_opt = {
+        let mut guard = process_state.0.lock().map_err(|_| "ChatProcessState lock poisoned")?;
+        guard.take()
+    };
+    if let Some(mut c) = child_opt {
+        let _ = c.wait();
+    }
+    Ok(())
+}
+
+/// Kill the current chat subprocess if running. Called when user clicks "Stop".
+pub fn stop_chat(process_state: &ChatProcessState) -> Result<(), String> {
+    let mut guard = process_state
+        .0
+        .lock()
+        .map_err(|_| "ChatProcessState lock poisoned")?;
+    if let Some(mut child) = guard.take() {
+        let _ = child.kill();
+    }
     Ok(())
 }
 
@@ -321,6 +350,36 @@ fn skilllite_chat_root() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(".skilllite").join("chat"))
 }
 
+/// Open a directory in the system file manager.
+/// module: "output" | "memory" | "plan" | "log" (log opens chat root)
+pub fn open_directory(module: &str) -> Result<(), String> {
+    let chat_root = skilllite_chat_root().ok_or("Chat root not found")?;
+    let path = match module {
+        "output" => chat_root.join("output"),
+        "memory" => chat_root.join("memory"),
+        "plan" => chat_root.join("plans"),
+        "log" => chat_root.clone(),
+        _ => return Err(format!("Unknown module: {}", module)),
+    };
+    // Ensure directory exists so the file manager opens a valid path
+    if !path.exists() {
+        std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(&path).spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer").arg(path.to_string_lossy().to_string()).spawn().map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-open").arg(&path).spawn().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 fn collect_md_files(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<String>) {
     if !dir.is_dir() {
         return;
@@ -340,65 +399,67 @@ fn collect_md_files(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec
     }
 }
 
-/// Load recent memory files and latest plan from ~/.skilllite/chat/.
-pub fn load_recent() -> RecentData {
-    let chat_root = match skilllite_chat_root() {
-        Some(r) if r.exists() => r,
-        _ => {
-            return RecentData {
-                memory_files: vec![],
-                output_files: vec![],
-                plan: None,
-            }
-        }
-    };
-
-    let memory_dir = chat_root.join("memory");
-    let mut memory_files = Vec::new();
-    if memory_dir.exists() {
-        collect_md_files(&memory_dir, &memory_dir, &mut memory_files);
+fn collect_output_files_inner(
+    dir: &std::path::Path,
+    base: &std::path::Path,
+    out: &mut Vec<String>,
+) {
+    if !dir.is_dir() {
+        return;
     }
-    memory_files.sort();
-
-    let output_dir = chat_root.join("output");
-    let mut output_files = Vec::new();
-    if output_dir.exists() {
-        fn collect_output_files(
-            dir: &std::path::Path,
-            base: &std::path::Path,
-            out: &mut Vec<String>,
-        ) {
-            if !dir.is_dir() {
-                return;
-            }
-            let Ok(entries) = std::fs::read_dir(dir) else {
-                return;
-            };
-            const EXTS: &[&str] = &["md", "html", "htm", "txt", "json", "csv"];
-            for e in entries.flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    collect_output_files(&p, base, out);
-                } else if let Some(ext) = p.extension() {
-                    let ext_lower = ext.to_string_lossy().to_lowercase();
-                    if EXTS.contains(&ext_lower.as_str()) {
-                        if let Ok(rel) = p.strip_prefix(base) {
-                            out.push(rel.to_string_lossy().to_string());
-                        }
-                    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    const EXTS: &[&str] = &[
+        "md", "html", "htm", "txt", "json", "csv", "png", "jpg", "jpeg", "gif", "webp", "svg",
+    ];
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            collect_output_files_inner(&p, base, out);
+        } else if let Some(ext) = p.extension() {
+            let ext_lower = ext.to_string_lossy().to_lowercase();
+            if EXTS.contains(&ext_lower.as_str()) {
+                if let Ok(rel) = p.strip_prefix(base) {
+                    out.push(rel.to_string_lossy().to_string());
                 }
             }
         }
-        collect_output_files(&output_dir, &output_dir, &mut output_files);
-        output_files.sort();
     }
+}
 
+/// Load memory files from chat_root (for parallel execution).
+fn load_memory_files(chat_root: &std::path::Path) -> Vec<String> {
+    let memory_dir = chat_root.join("memory");
+    let mut out = Vec::new();
+    if memory_dir.exists() {
+        collect_md_files(&memory_dir, &memory_dir, &mut out);
+        out.sort();
+    }
+    out
+}
+
+/// Load output files from chat_root (for parallel execution).
+fn load_output_files(chat_root: &std::path::Path) -> Vec<String> {
+    let output_dir = chat_root.join("output");
+    let mut out = Vec::new();
+    if output_dir.exists() {
+        collect_output_files_inner(&output_dir, &output_dir, &mut out);
+        out.sort();
+    }
+    out
+}
+
+/// Load latest plan from chat_root (for parallel execution).
+fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
     let plans_dir = chat_root.join("plans");
-    let plan = if plans_dir.exists() {
+    let plan_path = if plans_dir.exists() {
         let session_key = "default";
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let path = plans_dir.join(format!("{}-{}.json", session_key, today));
-        if !path.exists() {
+        if path.exists() {
+            Some(path)
+        } else {
             let mut candidates: Vec<_> = std::fs::read_dir(&plans_dir)
                 .into_iter()
                 .flatten()
@@ -411,14 +472,11 @@ pub fn load_recent() -> RecentData {
                     .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
             });
             candidates.last().map(|e| e.path())
-        } else {
-            Some(path)
         }
     } else {
         None
     };
-
-    let plan_data = plan.and_then(|p| {
+    plan_path.and_then(|p| {
         let content = std::fs::read_to_string(&p).ok()?;
         let v: serde_json::Value = serde_json::from_str(&content).ok()?;
         let task = v
@@ -444,16 +502,43 @@ pub fn load_recent() -> RecentData {
             })
             .collect();
         Some(RecentPlan { task, steps })
-    });
+    })
+}
+
+/// Load recent memory files, output files, and plan in parallel using threads.
+pub fn load_recent() -> RecentData {
+    let chat_root = match skilllite_chat_root() {
+        Some(r) if r.exists() => r,
+        _ => {
+            return RecentData {
+                memory_files: vec![],
+                output_files: vec![],
+                plan: None,
+            }
+        }
+    };
+
+    let root = chat_root.clone();
+    let mem_handle = std::thread::spawn(move || load_memory_files(&root));
+
+    let root = chat_root.clone();
+    let out_handle = std::thread::spawn(move || load_output_files(&root));
+
+    let plan_handle = std::thread::spawn(move || load_plan_data(&chat_root));
+
+    let memory_files = mem_handle.join().unwrap_or_default();
+    let output_files = out_handle.join().unwrap_or_default();
+    let plan = plan_handle.join().unwrap_or(None);
 
     RecentData {
         memory_files,
         output_files,
-        plan: plan_data,
+        plan,
     }
 }
 
 /// Read content of an output file by relative path (e.g. "report.md" or "index.html").
+/// For text files returns the content; use read_output_file_base64 for binary (e.g. images).
 pub fn read_output_file(relative_path: &str) -> Result<String, String> {
     if relative_path.contains("..") || relative_path.starts_with('/') {
         return Err("Invalid path".to_string());
@@ -464,6 +549,20 @@ pub fn read_output_file(relative_path: &str) -> Result<String, String> {
         return Err("Path escape".to_string());
     }
     std::fs::read_to_string(&full_path).map_err(|e| e.to_string())
+}
+
+/// Read output file as base64 (for binary files like PNG, JPG, etc.).
+pub fn read_output_file_base64(relative_path: &str) -> Result<String, String> {
+    if relative_path.contains("..") || relative_path.starts_with('/') {
+        return Err("Invalid path".to_string());
+    }
+    let chat_root = skilllite_chat_root().ok_or("Chat root not found")?;
+    let full_path = chat_root.join("output").join(relative_path);
+    if !full_path.starts_with(chat_root) {
+        return Err("Path escape".to_string());
+    }
+    let bytes = std::fs::read(&full_path).map_err(|e| e.to_string())?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
 /// Read content of a memory file by relative path (e.g. "platforms/skilllite_analysis.md").

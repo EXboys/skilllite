@@ -1,5 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { invoke } from "@tauri-apps/api/core";
 import { useStatusStore, type TaskItem, type LogEntry } from "../stores/useStatusStore";
 
 export type DetailModule = "plan" | "mem" | "log" | "output" | null;
@@ -162,31 +163,48 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
 function SummarySection({
   title,
   onClickMore,
+  onOpenDir,
   hasMore,
   children,
 }: {
   title: string;
   onClickMore: () => void;
+  onOpenDir?: () => void;
   hasMore: boolean;
   children: React.ReactNode;
 }) {
   return (
     <section className="mb-4">
-      <button
-        type="button"
-        onClick={onClickMore}
-        className="flex items-center justify-between w-full text-left font-medium text-ink dark:text-ink-dark mb-2 group hover:text-accent dark:hover:text-accent"
-      >
-        <span>{title}</span>
-        {hasMore && (
-          <span className="text-xs font-normal text-ink-mute group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent flex items-center gap-0.5 transition-colors">
-            更多
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M9 18l6-6-6-6" />
+      <div className="flex items-center justify-between mb-2">
+        <button
+          type="button"
+          onClick={onClickMore}
+          className="flex-1 min-w-0 text-left font-medium text-ink dark:text-ink-dark group hover:text-accent dark:hover:text-accent"
+        >
+          <span>{title}</span>
+          {hasMore && (
+            <span className="text-xs font-normal text-ink-mute group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent inline-flex items-center gap-0.5 ml-0.5 transition-colors">
+              更多
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 18l6-6-6-6" />
+              </svg>
+            </span>
+          )}
+        </button>
+        {onOpenDir && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpenDir(); }}
+            className="p-1.5 shrink-0 text-ink-mute hover:text-ink dark:hover:text-ink-dark rounded hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
+            aria-label="打开目录"
+            title="在文件管理器中打开"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
             </svg>
-          </span>
+          </button>
         )}
-      </button>
+      </div>
       <div
         onClick={hasMore ? onClickMore : undefined}
         role={hasMore ? "button" : undefined}
@@ -197,6 +215,10 @@ function SummarySection({
     </section>
   );
 }
+
+const openDir = (module: string) => () => {
+  invoke("skilllite_open_directory", { module }).catch(() => {});
+};
 
 export default function StatusPanel() {
   const { tasks, logEntries, memoryHints, memoryFiles, outputFiles } = useStatusStore();
@@ -211,6 +233,7 @@ export default function StatusPanel() {
       <SummarySection
         title="任务计划"
         onClickMore={() => openDetailWindow("plan")}
+        onOpenDir={openDir("plan")}
         hasMore={planHasMore || tasks.length > 0}
       >
         <TaskList tasks={tasks} limit={PREVIEW_LIMIT} />
@@ -219,6 +242,7 @@ export default function StatusPanel() {
       <SummarySection
         title="记忆"
         onClickMore={() => openDetailWindow("mem")}
+        onOpenDir={openDir("memory")}
         hasMore={memHasMore || memoryFiles.length > 0}
       >
         <MemoryPreview files={memoryFiles} hints={memoryHints} limit={PREVIEW_LIMIT} />
@@ -227,6 +251,7 @@ export default function StatusPanel() {
       <SummarySection
         title="执行日志"
         onClickMore={() => openDetailWindow("log")}
+        onOpenDir={openDir("log")}
         hasMore={logHasMore || logEntries.length > 0}
       >
         <LogList entries={logEntries} limit={PREVIEW_LIMIT} />
@@ -235,6 +260,7 @@ export default function StatusPanel() {
       <SummarySection
         title="输出"
         onClickMore={() => openDetailWindow("output")}
+        onOpenDir={openDir("output")}
         hasMore={outputHasMore}
       >
         <OutputPreview files={outputFiles} limit={PREVIEW_LIMIT} />

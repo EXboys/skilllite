@@ -14,34 +14,75 @@ async fn skilllite_chat_stream(
     message: String,
     workspace: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
-    state: tauri::State<'_, skilllite_bridge::ConfirmationState>,
+    conf_state: tauri::State<'_, skilllite_bridge::ConfirmationState>,
+    process_state: tauri::State<'_, skilllite_bridge::ChatProcessState>,
 ) -> Result<(), String> {
-    let conf_state = (*state).clone();
+    let conf = (*conf_state).clone();
+    let proc = (*process_state).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        skilllite_bridge::chat_stream(window, message, workspace, config, conf_state)
+        skilllite_bridge::chat_stream(window, message, workspace, config, conf, proc)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-fn skilllite_load_recent() -> skilllite_bridge::RecentData {
-    skilllite_bridge::load_recent()
+fn skilllite_stop(process_state: tauri::State<'_, skilllite_bridge::ChatProcessState>) -> Result<(), String> {
+    skilllite_bridge::stop_chat(&process_state)
 }
 
 #[tauri::command]
-fn skilllite_load_transcript(session_key: Option<String>) -> Vec<skilllite_bridge::TranscriptMessage> {
-    skilllite_bridge::load_transcript(session_key.as_deref().unwrap_or("default"))
+async fn skilllite_load_recent() -> skilllite_bridge::RecentData {
+    tauri::async_runtime::spawn_blocking(skilllite_bridge::load_recent)
+        .await
+        .unwrap_or_else(|_| skilllite_bridge::RecentData {
+            memory_files: vec![],
+            output_files: vec![],
+            plan: None,
+        })
 }
 
 #[tauri::command]
-fn skilllite_read_memory_file(relative_path: String) -> Result<String, String> {
-    skilllite_bridge::read_memory_file(&relative_path)
+async fn skilllite_load_transcript(session_key: Option<String>) -> Vec<skilllite_bridge::TranscriptMessage> {
+    let key = session_key.unwrap_or_else(|| "default".to_string());
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::load_transcript(&key))
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
-fn skilllite_read_output_file(relative_path: String) -> Result<String, String> {
-    skilllite_bridge::read_output_file(&relative_path)
+async fn skilllite_read_memory_file(relative_path: String) -> Result<String, String> {
+    let path = relative_path.clone();
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_memory_file(&path)).await {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+async fn skilllite_read_output_file(relative_path: String) -> Result<String, String> {
+    let path = relative_path.clone();
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_output_file(&path)).await {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+async fn skilllite_read_output_file_base64(relative_path: String) -> Result<String, String> {
+    let path = relative_path.clone();
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_output_file_base64(&path)).await {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+async fn skilllite_open_directory(module: String) -> Result<(), String> {
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::open_directory(&module)).await {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -63,15 +104,19 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             skilllite_chat_stream,
+            skilllite_stop,
             skilllite_load_recent,
             skilllite_load_transcript,
             skilllite_read_memory_file,
             skilllite_read_output_file,
+            skilllite_read_output_file_base64,
+            skilllite_open_directory,
             skilllite_confirm
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .manage(skilllite_bridge::ConfirmationState::default())
+        .manage(skilllite_bridge::ChatProcessState::default())
         .setup(|app| {
             // Tray icon with menu
             let show_i = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
