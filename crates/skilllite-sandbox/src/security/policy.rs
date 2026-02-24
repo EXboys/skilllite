@@ -221,10 +221,20 @@ pub fn get_sensitive_read_project_regex_patterns(relaxed: bool) -> Vec<&'static 
 }
 
 // ============================================================================
-// Process Execution Denylist
+// Process Execution Policy
 // ============================================================================
+//
+// Strategy: WHITELIST (as of hardening step 2)
+//
+// macOS Seatbelt profile now uses a whitelist approach:
+//   (allow process-exec (literal "/resolved/interpreter"))
+//   (deny process-exec)
+//
+// The resolved interpreter path comes from RuntimePaths at execution time.
+// The legacy denylist constants below are retained for Linux (firejail) and
+// as documentation of known-dangerous binaries.
 
-/// Commands always blocked from execution
+/// Commands always blocked from execution (used by Linux firejail/bwrap)
 pub const PROCESS_DENYLIST_ALWAYS: &[&str] = &[
     "/bin/bash",
     "/bin/zsh",
@@ -244,7 +254,7 @@ pub const PROCESS_DENYLIST_STRICT_ONLY: &[&str] = &["/usr/bin/git"];
 /// macOS-specific: osascript (AppleScript execution)
 pub const PROCESS_DENYLIST_MACOS: &[&str] = &["/usr/bin/osascript"];
 
-/// Get full process denylist for a platform
+/// Get full process denylist for a platform (used by Linux sandbox implementations)
 pub fn get_process_exec_denylist(relaxed: bool, platform: HomePathStyle) -> Vec<&'static str> {
     let mut list: Vec<&'static str> = PROCESS_DENYLIST_ALWAYS.iter().copied().collect();
     if !relaxed {
@@ -255,6 +265,22 @@ pub fn get_process_exec_denylist(relaxed: bool, platform: HomePathStyle) -> Vec<
     }
     list
 }
+
+// ============================================================================
+// IPC / Kernel Operation Policy (macOS Seatbelt)
+// ============================================================================
+//
+// High-risk Mach/IOKit operations that are always denied in the sandbox.
+// These are never needed by skill scripts and can be exploited for sandbox escape.
+
+/// Mach IPC operations that are always blocked.
+/// - mach-register: prevents registering rogue Mach services (IPC injection)
+/// - mach-priv-task-port: prevents debugging/injecting other processes
+pub const MACH_DENY_ALWAYS: &[&str] = &["mach-register", "mach-priv-task-port"];
+
+/// IOKit operations that are always blocked.
+/// - iokit-open: prevents direct kernel driver access
+pub const IOKIT_DENY_ALWAYS: &[&str] = &["iokit-open"];
 
 // ============================================================================
 // Network Policy

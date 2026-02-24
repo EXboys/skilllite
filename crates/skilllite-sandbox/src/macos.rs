@@ -11,7 +11,7 @@ use crate::move_protection::{
     generate_log_tag, generate_move_blocking_rules, get_session_suffix,
 };
 use crate::network_proxy::{ProxyConfig, ProxyManager};
-use crate::security::policy::{self as security_policy, HomePathStyle, ResolvedNetworkPolicy};
+use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use crate::seatbelt::generate_seatbelt_mandatory_deny_patterns;
 use anyhow::{Context, Result};
 use std::fs;
@@ -192,6 +192,11 @@ fn execute_with_sandbox(
         None
     };
 
+    // Resolve runtime BEFORE generating profile (profile needs interpreter path for whitelist)
+    let resolved = runtime
+        .resolve(language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+
     // Generate sandbox profile with proxy ports if available
     let profile_path = work_dir.join("sandbox.sb");
     let profile_content = generate_sandbox_profile_with_proxy(
@@ -202,12 +207,9 @@ fn execute_with_sandbox(
         proxy_manager.as_ref().and_then(|m| m.http_port()),
         proxy_manager.as_ref().and_then(|m| m.socks5_port()),
         &network_policy,
+        &resolved.interpreter,
     )?;
     fs::write(&profile_path, &profile_content)?;
-
-    let resolved = runtime
-        .resolve(language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
     let mut args = vec![entry_point.to_string()];
 
     // Add script arguments from SKILLBOX_SCRIPT_ARGS environment variable
@@ -343,14 +345,16 @@ fn execute_with_sandbox(
 
 /// Generate a Seatbelt sandbox profile for macOS with network proxy support
 ///
-/// Security controls from canonical security_policy (allow-default with explicit deny):
+/// Security controls from canonical security_policy:
 /// 1. MANDATORY DENY: Always block writes to shell configs, git hooks, IDE configs, etc.
 /// 2. MOVE PROTECTION: Block file movement to prevent bypass via mv/rename (P0)
 /// 3. NETWORK: Route through proxy when enabled, block all when disabled
 /// 4. FILE READ: Block sensitive files (/etc, ~/.ssh, etc.)
-/// 5. FILE WRITE: Block writes outside work directory
-/// 6. PROCESS: Block execution of dangerous commands
-/// 7. LOGTAG: Embed unique tag in deny rules for precise violation tracking (P1)
+/// 5. FILE WRITE: Block writes outside work directory (deny-default + whitelist)
+/// 6. PROCESS EXEC: Whitelist-only — only the resolved interpreter is allowed
+/// 7. PROCESS FORK: Denied by default (allowed only for Playwright)
+/// 8. IPC/KERNEL: Block mach-register, mach-priv-task-port, iokit-open
+/// 9. LOGTAG: Embed unique tag in deny rules for precise violation tracking (P1)
 fn generate_sandbox_profile_with_proxy(
     skill_dir: &Path,
     env_path: &Path,
@@ -359,6 +363,7 @@ fn generate_sandbox_profile_with_proxy(
     http_proxy_port: Option<u16>,
     socks5_proxy_port: Option<u16>,
     network_policy: &ResolvedNetworkPolicy,
+    interpreter_path: &Path,
 ) -> Result<String> {
     let skill_dir_str = skill_dir.to_string_lossy();
     let work_dir_str = work_dir.to_string_lossy();
@@ -462,16 +467,60 @@ fn generate_sandbox_profile_with_proxy(
     }
 
     // ============================================================
-    // SECURITY: Block dangerous process execution
-    // Relaxed: allow git for version control operations
-    // Relaxed: allow Playwright Chromium for browser-based skills (e.g. xiaohongshu-writer HTML screenshot)
+    // SECURITY: Process control — fork + execution whitelist
     // ============================================================
+
+    // --- Process fork control ---
     if allow_playwright {
-        profile.push_str("; Allow Playwright for browser-based skills (L2 or SKILLBOX_ALLOW_PLAYWRIGHT=1)\n");
-        profile.push_str("; process-fork: required for subprocess.Popen\n");
-        profile.push_str("; process-exec: 1) Playwright driver (node) in venv; 2) Chromium in ms-playwright\n");
+        profile.push_str("; Playwright mode: allow process-fork for subprocess.Popen / Chromium\n");
         profile.push_str("(allow process-fork)\n");
-        // Playwright first spawns driver/node (Node.js) from venv's site-packages/playwright/driver/
+    } else {
+        profile.push_str("; SECURITY: Block process forking (prevents subprocess execution)\n");
+        profile.push_str("(deny process-fork)\n");
+    }
+
+    // --- Process execution whitelist (replaces blacklist approach) ---
+    profile.push_str("; SECURITY: Process execution whitelist — only the resolved interpreter is allowed\n");
+
+    // Resolve bare interpreter names ("python3", "node") to absolute paths.
+    // Bare names won't match in Seatbelt (literal) because the kernel uses full paths.
+    let interpreter_abs = if interpreter_path.is_absolute() {
+        interpreter_path.to_path_buf()
+    } else {
+        resolve_which(interpreter_path).unwrap_or_else(|| interpreter_path.to_path_buf())
+    };
+    let interpreter_str = interpreter_abs.to_string_lossy();
+    profile.push_str(&format!(
+        "(allow process-exec (literal \"{}\"))\n",
+        interpreter_str
+    ));
+
+    // Also allow the canonical path (handles venv symlinks → real binary)
+    if let Ok(canonical) = interpreter_abs.canonicalize() {
+        let canonical_str = canonical.to_string_lossy();
+        if canonical_str.as_ref() != interpreter_str.as_ref() {
+            profile.push_str(&format!(
+                "(allow process-exec (literal \"{}\"))\n",
+                canonical_str
+            ));
+        }
+        // macOS framework Python (Homebrew / python.org) uses posix_spawn to re-exec
+        // through Python.app bundle. Allow the entire framework version directory so
+        // both .../bin/python3 and .../Resources/Python.app/Contents/MacOS/Python work.
+        if let Some(fw_pos) = canonical_str.find("Python.framework/Versions/") {
+            let after_versions = &canonical_str[fw_pos + "Python.framework/Versions/".len()..];
+            if let Some(slash) = after_versions.find('/') {
+                let fw_version_root = &canonical_str[..fw_pos + "Python.framework/Versions/".len() + slash];
+                profile.push_str(&format!(
+                    "(allow process-exec (subpath \"{}\"))\n",
+                    fw_version_root
+                ));
+            }
+        }
+    }
+
+    // Playwright: also allow driver (Node.js in venv) and Chromium
+    if allow_playwright {
         if !env_path.as_os_str().is_empty() && env_path.exists() {
             let env_path_str = env_path.to_string_lossy();
             profile.push_str(&format!(
@@ -479,7 +528,6 @@ fn generate_sandbox_profile_with_proxy(
                 env_path_str
             ));
         }
-        // Then driver spawns Chromium from ~/Library/Caches/ms-playwright/
         if let Ok(home) = std::env::var("HOME") {
             let playwright_cache = format!("{}/Library/Caches/ms-playwright", home);
             if Path::new(&playwright_cache).exists() {
@@ -490,10 +538,9 @@ fn generate_sandbox_profile_with_proxy(
             }
         }
     }
-    profile.push_str("; SECURITY: Block dangerous commands (from security_policy)\n");
-    for cmd in security_policy::get_process_exec_denylist(relaxed, HomePathStyle::MacOS) {
-        profile.push_str(&format!("(deny process-exec (literal \"{}\"))\n", cmd));
-    }
+
+    // Deny all other process execution (whitelist-only)
+    profile.push_str("(deny process-exec)\n");
     profile.push_str("\n");
 
     // ============================================================
@@ -535,10 +582,20 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("\n");
 
     // ============================================================
-    // ALLOW DEFAULT - For non-file-write operations (process, mach, etc.)
-    // Note: file-write* is already denied above, this allows other operations
+    // SECURITY: Block high-risk IPC and kernel operations
+    // These are never needed by skill scripts and can be used for sandbox escape
     // ============================================================
-    profile.push_str("; Allow default for runtime compatibility (non-file-write operations)\n");
+    profile.push_str("; SECURITY: Block high-risk IPC and kernel operations\n");
+    profile.push_str("(deny mach-register)\n");       // prevent Mach service injection
+    profile.push_str("(deny mach-priv-task-port)\n");  // prevent debugging/injecting other processes
+    profile.push_str("(deny iokit-open)\n");           // prevent direct kernel driver access
+    profile.push_str("\n");
+
+    // ============================================================
+    // ALLOW DEFAULT - For remaining operations (mach-lookup, sysctl, signal, etc.)
+    // Explicitly denied operations above are NOT overridden by allow-default.
+    // ============================================================
+    profile.push_str("; Allow default for runtime compatibility (mach-lookup, sysctl, signal, etc.)\n");
     profile.push_str("(allow default)\n\n");
 
     // ============================================================
@@ -593,18 +650,21 @@ fn generate_sandbox_profile_with_proxy(
 
 /// Generate a Seatbelt sandbox profile for macOS (legacy, without proxy)
 /// 
-/// Security controls (using allow-default with explicit deny):
+/// Security controls:
 /// 1. MANDATORY DENY: Always block writes to shell configs, git hooks, IDE configs, etc.
 /// 2. NETWORK: Block all network access when disabled
 /// 3. FILE READ: Block sensitive files (/etc, ~/.ssh, etc.)
-/// 4. FILE WRITE: Block writes outside work directory
-/// 5. PROCESS: Block execution of dangerous commands
+/// 4. FILE WRITE: Block writes outside work directory (deny-default + whitelist)
+/// 5. PROCESS EXEC: Whitelist-only — only the resolved interpreter is allowed
+/// 6. PROCESS FORK: Denied by default
+/// 7. IPC/KERNEL: Block mach-register, mach-priv-task-port, iokit-open
 #[allow(dead_code)]
 fn generate_sandbox_profile(
     skill_dir: &Path,
     env_path: &Path,
     config: &SandboxConfig,
     work_dir: &Path,
+    interpreter_path: &Path,
 ) -> Result<String> {
     let skill_dir_str = skill_dir.to_string_lossy();
     let work_dir_str = work_dir.to_string_lossy();
@@ -663,23 +723,43 @@ fn generate_sandbox_profile(
     }
 
     // ============================================================
-    // SECURITY: Block dangerous process execution
+    // SECURITY: Process control — fork + execution whitelist
     // ============================================================
-    profile.push_str("; SECURITY: Block dangerous commands\n");
-    profile.push_str("(deny process-exec (literal \"/bin/bash\"))\n");
-    profile.push_str("(deny process-exec (literal \"/bin/zsh\"))\n");
-    profile.push_str("(deny process-exec (literal \"/bin/sh\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/env\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/curl\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/wget\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/ssh\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/scp\"))\n");
-    if !legacy_relaxed {
-        profile.push_str("(deny process-exec (literal \"/usr/bin/git\"))\n");
+    profile.push_str("; SECURITY: Block process forking\n");
+    profile.push_str("(deny process-fork)\n");
+
+    profile.push_str("; SECURITY: Process execution whitelist — only the resolved interpreter is allowed\n");
+    let interpreter_abs = if interpreter_path.is_absolute() {
+        interpreter_path.to_path_buf()
+    } else {
+        resolve_which(interpreter_path).unwrap_or_else(|| interpreter_path.to_path_buf())
+    };
+    let interpreter_str = interpreter_abs.to_string_lossy();
+    profile.push_str(&format!(
+        "(allow process-exec (literal \"{}\"))\n",
+        interpreter_str
+    ));
+    if let Ok(canonical) = interpreter_abs.canonicalize() {
+        let canonical_str = canonical.to_string_lossy();
+        if canonical_str.as_ref() != interpreter_str.as_ref() {
+            profile.push_str(&format!(
+                "(allow process-exec (literal \"{}\"))\n",
+                canonical_str
+            ));
+        }
+        // macOS framework Python: allow posix_spawn re-exec through Python.app bundle
+        if let Some(fw_pos) = canonical_str.find("Python.framework/Versions/") {
+            let after_versions = &canonical_str[fw_pos + "Python.framework/Versions/".len()..];
+            if let Some(slash) = after_versions.find('/') {
+                let fw_version_root = &canonical_str[..fw_pos + "Python.framework/Versions/".len() + slash];
+                profile.push_str(&format!(
+                    "(allow process-exec (subpath \"{}\"))\n",
+                    fw_version_root
+                ));
+            }
+        }
     }
-    profile.push_str("(deny process-exec (literal \"/bin/rm\"))\n");
-    profile.push_str("(deny process-exec (literal \"/bin/chmod\"))\n");
-    profile.push_str("(deny process-exec (literal \"/usr/bin/osascript\"))\n");
+    profile.push_str("(deny process-exec)\n");
     profile.push_str("\n");
 
     // ============================================================
@@ -721,10 +801,18 @@ fn generate_sandbox_profile(
     profile.push_str("\n");
 
     // ============================================================
-    // ALLOW DEFAULT - For non-file-write operations (process, mach, etc.)
-    // Note: file-write* is already denied above, this allows other operations
+    // SECURITY: Block high-risk IPC and kernel operations
     // ============================================================
-    profile.push_str("; Allow default for runtime compatibility (non-file-write operations)\n");
+    profile.push_str("; SECURITY: Block high-risk IPC and kernel operations\n");
+    profile.push_str("(deny mach-register)\n");
+    profile.push_str("(deny mach-priv-task-port)\n");
+    profile.push_str("(deny iokit-open)\n");
+    profile.push_str("\n");
+
+    // ============================================================
+    // ALLOW DEFAULT - For remaining operations (mach-lookup, sysctl, signal, etc.)
+    // ============================================================
+    profile.push_str("; Allow default for runtime compatibility (mach-lookup, sysctl, signal, etc.)\n");
     profile.push_str("(allow default)\n\n");
 
     // ============================================================
@@ -806,6 +894,24 @@ fn resolve_host_to_ips(host: &str) -> Option<Vec<String>> {
     }
 }
 
+/// Resolve a bare command name (e.g. "python3", "node") to its absolute path via PATH lookup.
+/// Returns None if the command is not found.
+fn resolve_which(cmd: &Path) -> Option<std::path::PathBuf> {
+    Command::new("/usr/bin/which")
+        .arg(cmd)
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(std::path::PathBuf::from(path));
+                }
+            }
+            None
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -825,12 +931,21 @@ mod tests {
             uses_playwright: false,
         };
 
-        let profile = generate_sandbox_profile(skill_dir, env_path, &config, work_dir)
+        let interpreter = Path::new("/usr/bin/python3");
+        let profile = generate_sandbox_profile(skill_dir, env_path, &config, work_dir, interpreter)
             .expect("test sandbox profile generation should succeed");
 
         assert!(profile.contains("(version 1)"));
-        // The sandbox profile uses allow-default mode with explicit deny rules
         assert!(profile.contains("/tmp/test_skill"));
         assert!(profile.contains("(deny network*)"));
+        // Step 1: high-risk IPC/kernel operations are denied
+        assert!(profile.contains("(deny mach-register)"));
+        assert!(profile.contains("(deny mach-priv-task-port)"));
+        assert!(profile.contains("(deny iokit-open)"));
+        // Step 2: process-exec whitelist (only interpreter allowed)
+        assert!(profile.contains("(allow process-exec (literal \"/usr/bin/python3\"))"));
+        assert!(profile.contains("(deny process-exec)"));
+        // Step 2: process-fork denied by default
+        assert!(profile.contains("(deny process-fork)"));
     }
 }
