@@ -32,6 +32,7 @@ use skilllite_sandbox::security::types::{
 };
 use skilllite_core::skill::metadata;
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
+use skilllite_core::skill::trust::TrustDecision;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MCP Server State
@@ -903,6 +904,23 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
                 "Execution blocked: Skill signature is invalid. Please verify source and reinstall."
             );
         }
+    }
+    // Trust tier enforcement
+    match integrity.trust_decision {
+        TrustDecision::Deny => {
+            anyhow::bail!(
+                "Execution blocked: Skill trust tier is Deny. Reinstall from trusted source or verify integrity."
+            );
+        }
+        TrustDecision::RequireConfirm => {
+            if !confirmed {
+                anyhow::bail!(
+                    "Execution blocked: Skill requires confirmation (trust tier: {:?}). Pass confirmed=true to run.",
+                    integrity.trust_tier
+                );
+            }
+        }
+        TrustDecision::Allow => {}
     }
 
     let meta = metadata::parse_skill_metadata(&skill_dir)?;

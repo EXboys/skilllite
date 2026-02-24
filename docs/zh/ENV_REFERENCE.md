@@ -84,6 +84,7 @@
 | `SKILLBOX_ALLOW_PLAYWRIGHT` | bool | `false` | 为使用 Playwright 的 Skill 跳过沙箱 |
 | `SANDBOX_BUILTIN_TOOLS` | bool | `false` | 在子进程中运行 read_file/write_file 以隔离 |
 | `SKILLBOX_AUTO_APPROVE` | bool | `false` | 自动批准 L3 安全提示（不推荐） |
+| `SKILLLITE_TRUST_BYPASS_CONFIRM` | bool | `false` | 允许 Community/Unknown 信任等级 Skill 无需确认即可执行（仅 CLI/Python；MCP 使用 `confirmed` 参数） |
 
 **沙箱级别说明**：
 

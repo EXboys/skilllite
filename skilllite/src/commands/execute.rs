@@ -4,6 +4,7 @@
 
 use skilllite_core::path_validation::validate_skill_path;
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
+use skilllite_core::skill::trust::TrustDecision;
 use skilllite_sandbox::runner::SandboxConfig;
 use skilllite_core::skill;
 use anyhow::{Context, Result};
@@ -341,7 +342,7 @@ fn enforce_skill_integrity_before_execution(skill_path: &Path) -> Result<()> {
     };
     let report = manifest::evaluate_skill_status(skills_dir, skill_path)?;
     match report.status {
-        SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => Ok(()),
+        SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => {}
         SkillIntegrityStatus::HashChanged => {
             anyhow::bail!(
                 "Execution blocked: Skill fingerprint changed since installation. \
@@ -355,4 +356,27 @@ Please verify the skill source and reinstall."
             )
         }
     }
+    // Trust tier enforcement
+    match report.trust_decision {
+        TrustDecision::Deny => {
+            anyhow::bail!(
+                "Execution blocked: Skill trust tier is Deny. \
+Reinstall from trusted source or verify integrity."
+            )
+        }
+        TrustDecision::RequireConfirm => {
+            let bypass = std::env::var("SKILLLITE_TRUST_BYPASS_CONFIRM")
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            if !bypass {
+                anyhow::bail!(
+                    "Execution blocked: Skill requires confirmation (trust tier: {:?}). \
+Set SKILLLITE_TRUST_BYPASS_CONFIRM=1 to run, or use --confirm in MCP.",
+                    report.trust_tier
+                )
+            }
+        }
+        TrustDecision::Allow => {}
+    }
+    Ok(())
 }

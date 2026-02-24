@@ -84,6 +84,7 @@ Prefer `SKILLLITE_*` as primary variables; compatible with `OPENAI_*`, `BASE_URL
 | `SKILLBOX_ALLOW_PLAYWRIGHT` | bool | `false` | Skip sandbox for Skills using Playwright |
 | `SANDBOX_BUILTIN_TOOLS` | bool | `false` | Run read_file/write_file in subprocess for isolation |
 | `SKILLBOX_AUTO_APPROVE` | bool | `false` | Auto-approve L3 security prompts (not recommended) |
+| `SKILLLITE_TRUST_BYPASS_CONFIRM` | bool | `false` | Allow execution of Community/Unknown trust tier skills without confirmation (CLI/Python only; MCP uses `confirmed` param) |
 
 **Sandbox Level Description**:
 
