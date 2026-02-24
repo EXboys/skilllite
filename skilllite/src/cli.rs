@@ -303,6 +303,25 @@ pub enum Commands {
         json: bool,
     },
 
+    /// Verify skill integrity (fingerprint/signature) by skill name or path
+    Verify {
+        /// Skill name or skill directory path
+        #[arg(value_name = "TARGET")]
+        target: String,
+
+        /// Skills directory path (default: .skills)
+        #[arg(long, short = 's', default_value = ".skills")]
+        skills_dir: String,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Strict mode: return non-zero when HASH_CHANGED or SIGNATURE_INVALID
+        #[arg(long)]
+        strict: bool,
+    },
+
     /// Initialize Cursor IDE integration (.cursor/mcp.json + rules)
     #[command(name = "init-cursor")]
     InitCursor {

@@ -211,6 +211,14 @@ pub fn run_cli() -> Result<()> {
         } => {
             commands::skill::cmd_show(&skill_name, &skills_dir, json)?;
         }
+        Commands::Verify {
+            target,
+            skills_dir,
+            json,
+            strict,
+        } => {
+            commands::skill::cmd_verify(&target, &skills_dir, json, strict)?;
+        }
         Commands::InitCursor {
             project_dir,
             skills_dir,

@@ -8,8 +8,10 @@ mod common;
 mod list;
 mod remove;
 mod show;
+mod verify;
 
 pub use add::cmd_add;
 pub use list::cmd_list;
 pub use remove::cmd_remove;
 pub use show::cmd_show;
+pub use verify::cmd_verify;
