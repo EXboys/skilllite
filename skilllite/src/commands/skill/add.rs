@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use skilllite_core::skill::metadata;
+use skilllite_core::skill::manifest;
 use skilllite_sandbox::security::ScriptScanner;
 use skilllite_sandbox::security::types::SecuritySeverity;
 
@@ -784,6 +785,7 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
             }
 
             copy_skill(skill_path, &dest)?;
+            let _entry = manifest::upsert_installed_skill(&skills_path, &dest, source)?;
             installed.push(skill_name.clone());
             eprintln!("   ✓ {}: installed to {}", skill_name, dest.display());
         }

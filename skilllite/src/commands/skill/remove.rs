@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use std::fs;
 
 use skilllite_core::skill::metadata;
+use skilllite_core::skill::manifest;
 
 use super::common;
 
@@ -68,6 +69,7 @@ pub fn cmd_remove(skill_name: &str, skills_dir: &str, force: bool) -> Result<()>
         .to_string();
     fs::remove_dir_all(&skill_path)
         .with_context(|| format!("Failed to remove skill: {}", skill_path.display()))?;
+    let _ = manifest::remove_skill_entry(&skills_path, &skill_path);
     eprintln!("✓ Removed skill '{}'", dir_name);
     Ok(())
 }

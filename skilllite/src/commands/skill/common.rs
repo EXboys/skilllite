@@ -1,6 +1,7 @@
 //! Shared helpers for skill management commands.
 
 use anyhow::Result;
+use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::metadata;
 use std::path::{Path, PathBuf};
 
@@ -80,15 +81,22 @@ pub fn skill_to_json(skill_path: &Path) -> serde_json::Value {
                 vec![]
             };
 
+            let (integrity_status, source, manifest_version, signature_status, installed_at) =
+                integrity_json_fields(skill_path);
             serde_json::json!({
                 "name": name,
                 "description": meta.description,
                 "language": lang,
+                "version": manifest_version.or(meta.version.clone()),
                 "entry_point": if meta.entry_point.is_empty() { "" } else { meta.entry_point.as_str() },
                 "network_enabled": meta.network.enabled,
                 "compatibility": meta.compatibility,
                 "resolved_packages": meta.resolved_packages,
                 "allowed_tools": meta.allowed_tools,
+                "integrity_status": integrity_status,
+                "source": source,
+                "signature_status": signature_status,
+                "installed_at": installed_at,
                 "path": skill_path.to_string_lossy(),
                 "is_bash_tool": meta.is_bash_tool_skill(),
                 "requires_elevated_permissions": meta.requires_elevated_permissions,
@@ -108,4 +116,71 @@ pub fn skill_to_json(skill_path: &Path) -> serde_json::Value {
             })
         }
     }
+}
+
+pub fn status_label_for_skill(skill_path: &Path) -> String {
+    let Some(skills_dir) = skill_path.parent() else {
+        return "UNSIGNED".to_string();
+    };
+    match manifest::evaluate_skill_status(skills_dir, skill_path) {
+        Ok(report) => match report.status {
+            SkillIntegrityStatus::Ok => "OK".to_string(),
+            SkillIntegrityStatus::HashChanged => "HASH_CHANGED".to_string(),
+            SkillIntegrityStatus::SignatureInvalid => "SIGNATURE_INVALID".to_string(),
+            SkillIntegrityStatus::Unsigned => "UNSIGNED".to_string(),
+        },
+        Err(_) => "UNSIGNED".to_string(),
+    }
+}
+
+fn integrity_json_fields(
+    skill_path: &Path,
+) -> (
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
+    let Some(skills_dir) = skill_path.parent() else {
+        return (
+            "UNSIGNED".to_string(),
+            None,
+            None,
+            Some("UNSIGNED".to_string()),
+            None,
+        );
+    };
+
+    let Ok(report) = manifest::evaluate_skill_status(skills_dir, skill_path) else {
+        return (
+            "UNSIGNED".to_string(),
+            None,
+            None,
+            Some("UNSIGNED".to_string()),
+            None,
+        );
+    };
+
+    let status = match report.status {
+        SkillIntegrityStatus::Ok => "OK".to_string(),
+        SkillIntegrityStatus::HashChanged => "HASH_CHANGED".to_string(),
+        SkillIntegrityStatus::SignatureInvalid => "SIGNATURE_INVALID".to_string(),
+        SkillIntegrityStatus::Unsigned => "UNSIGNED".to_string(),
+    };
+
+    let signature = match report.signature_status {
+        manifest::SignatureStatus::Unsigned => "UNSIGNED".to_string(),
+        manifest::SignatureStatus::Valid => "VALID".to_string(),
+        manifest::SignatureStatus::Invalid => "INVALID".to_string(),
+    };
+
+    let source = report.entry.as_ref().map(|e| e.source.clone());
+    let version = report.entry.as_ref().and_then(|e| e.version.clone());
+    let installed_at = report
+        .entry
+        .as_ref()
+        .map(|e| e.installed_at.to_rfc3339());
+
+    (status, source, version, Some(signature), installed_at)
 }

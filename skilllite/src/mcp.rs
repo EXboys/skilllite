@@ -31,6 +31,7 @@ use skilllite_sandbox::security::types::{
     ScanResult, SecurityIssue, SecurityIssueType, SecuritySeverity,
 };
 use skilllite_core::skill::metadata;
+use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MCP Server State
@@ -888,6 +889,20 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
     let skill_dir = server.skills_dir.join(skill_name);
     if !skill_dir.exists() || !skill_dir.join("SKILL.md").exists() {
         anyhow::bail!("Skill '{}' not found in {}", skill_name, server.skills_dir.display());
+    }
+    let integrity = manifest::evaluate_skill_status(&server.skills_dir, &skill_dir)?;
+    match integrity.status {
+        SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => {}
+        SkillIntegrityStatus::HashChanged => {
+            anyhow::bail!(
+                "Execution blocked: Skill fingerprint changed since installation. Please reinstall this skill before running."
+            );
+        }
+        SkillIntegrityStatus::SignatureInvalid => {
+            anyhow::bail!(
+                "Execution blocked: Skill signature is invalid. Please verify source and reinstall."
+            );
+        }
     }
 
     let meta = metadata::parse_skill_metadata(&skill_dir)?;

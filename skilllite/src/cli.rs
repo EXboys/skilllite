@@ -387,6 +387,10 @@ pub enum Commands {
         /// Verbose output
         #[arg(long, short)]
         verbose: bool,
+
+        /// Rebuild .skilllite-manifest.json for existing skills
+        #[arg(long)]
+        rebuild_manifest: bool,
     },
 
     /// Initialize a SkillLite project — create .skills/, install deps, run audit

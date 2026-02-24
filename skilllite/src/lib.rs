@@ -233,8 +233,12 @@ pub fn run_cli() -> Result<()> {
         Commands::CleanEnv { dry_run, force } => {
             commands::env::cmd_clean(dry_run, force)?;
         }
-        Commands::Reindex { skills_dir, verbose } => {
-            commands::reindex::cmd_reindex(&skills_dir, verbose)?;
+        Commands::Reindex {
+            skills_dir,
+            verbose,
+            rebuild_manifest,
+        } => {
+            commands::reindex::cmd_reindex(&skills_dir, verbose, rebuild_manifest)?;
         }
         #[cfg(feature = "agent")]
         Commands::Quickstart { skills_dir } => {

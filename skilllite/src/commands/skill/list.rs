@@ -72,7 +72,8 @@ pub fn cmd_list(skills_dir: &str, json_output: bool) -> Result<()> {
                 } else {
                     String::new()
                 };
-                eprintln!("  • {} {}", name, lang_tag);
+                let status = common::status_label_for_skill(skill_path);
+                eprintln!("  • {} {} [{}]", name, lang_tag, status);
                 if let Some(ref desc) = meta.description {
                     let short: String = desc.chars().take(80).collect();
                     eprintln!("    {}", short);

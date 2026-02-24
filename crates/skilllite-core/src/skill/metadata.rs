@@ -98,6 +98,9 @@ pub struct SkillMetadata {
     /// Description of the skill
     pub description: Option<String>,
 
+    /// Optional semantic version from SKILL.md front matter metadata.version
+    pub version: Option<String>,
+
     /// Compatibility string (environment requirements)
     pub compatibility: Option<String>,
 
@@ -405,6 +408,12 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         entry_point,
         language,
         description: front_matter.description.clone(),
+        version: front_matter
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("version"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string()),
         compatibility,
         network,
         resolved_packages,

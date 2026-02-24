@@ -6,10 +6,11 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
 
+use skilllite_core::skill::manifest;
 use skilllite_core::skill::metadata;
 
 /// `skilllite reindex`
-pub fn cmd_reindex(skills_dir: &str, verbose: bool) -> Result<()> {
+pub fn cmd_reindex(skills_dir: &str, verbose: bool, rebuild_manifest: bool) -> Result<()> {
     let skills_path = if PathBuf::from(skills_dir).is_absolute() {
         PathBuf::from(skills_dir)
     } else {
@@ -30,6 +31,13 @@ pub fn cmd_reindex(skills_dir: &str, verbose: bool) -> Result<()> {
     let mut total = 0;
     let mut valid = 0;
     let mut errors = 0;
+    let mut manifest_rebuilt = 0;
+
+    let existing_manifest = if rebuild_manifest {
+        Some(manifest::load_manifest(&skills_path).unwrap_or_default())
+    } else {
+        None
+    };
 
     let mut entries: Vec<_> = fs::read_dir(&skills_path)
         .context("Failed to read skills directory")?
@@ -85,6 +93,24 @@ pub fn cmd_reindex(skills_dir: &str, verbose: bool) -> Result<()> {
                         eprintln!("      packages: {}", pkgs.join(", "));
                     }
                 }
+
+                if rebuild_manifest {
+                    let skill_name = if meta.name.is_empty() {
+                        p.file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string()
+                    } else {
+                        meta.name.clone()
+                    };
+                    let previous_source = existing_manifest
+                        .as_ref()
+                        .and_then(|m| m.skills.get(&skill_name))
+                        .map(|e| e.source.clone())
+                        .unwrap_or_else(|| "reindex-local".to_string());
+                    manifest::upsert_installed_skill(&skills_path, &p, &previous_source)?;
+                    manifest_rebuilt += 1;
+                }
             }
             Err(e) => {
                 errors += 1;
@@ -96,6 +122,13 @@ pub fn cmd_reindex(skills_dir: &str, verbose: bool) -> Result<()> {
 
     eprintln!();
     eprintln!("Summary: {} skill(s) scanned, {} valid, {} error(s)", total, valid, errors);
+    if rebuild_manifest {
+        eprintln!(
+            "Manifest: rebuilt/updated {} skill entr{}",
+            manifest_rebuilt,
+            if manifest_rebuilt == 1 { "y" } else { "ies" }
+        );
+    }
 
     if errors > 0 {
         eprintln!("⚠ Fix errors in SKILL.md files above to ensure proper functionality.");

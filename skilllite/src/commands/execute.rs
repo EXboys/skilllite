@@ -3,6 +3,7 @@
 //! Implements run_skill, exec_script, bash_command, validate_skill, show_skill_info.
 
 use skilllite_core::path_validation::validate_skill_path;
+use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_sandbox::runner::SandboxConfig;
 use skilllite_core::skill;
 use anyhow::{Context, Result};
@@ -26,6 +27,7 @@ pub fn run_skill(
     sandbox_level: skilllite_sandbox::runner::SandboxLevel,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
+    enforce_skill_integrity_before_execution(&skill_path)?;
 
     let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
 
@@ -71,6 +73,7 @@ pub fn exec_script(
     sandbox_level: skilllite_sandbox::runner::SandboxLevel,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
+    enforce_skill_integrity_before_execution(&skill_path)?;
     let full_script_path = skill_path.join(script_path);
 
     if !full_script_path.exists() {
@@ -105,6 +108,7 @@ pub fn exec_script(
             entry_point: script_path.to_string(),
             language: Some(language.clone()),
             description: None,
+            version: None,
             compatibility: None,
             network: skill::metadata::NetworkPolicy::default(),
             resolved_packages: None,
@@ -151,6 +155,7 @@ pub fn bash_command(
     cwd: Option<&String>,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
+    enforce_skill_integrity_before_execution(&skill_path)?;
 
     let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
 
@@ -327,5 +332,27 @@ fn detect_script_language(script_path: &Path) -> Result<String> {
             anyhow::bail!("Cannot detect language for script: {}", script_path.display())
         }
         _ => anyhow::bail!("Unsupported script extension: .{}", extension),
+    }
+}
+
+fn enforce_skill_integrity_before_execution(skill_path: &Path) -> Result<()> {
+    let Some(skills_dir) = skill_path.parent() else {
+        return Ok(());
+    };
+    let report = manifest::evaluate_skill_status(skills_dir, skill_path)?;
+    match report.status {
+        SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => Ok(()),
+        SkillIntegrityStatus::HashChanged => {
+            anyhow::bail!(
+                "Execution blocked: Skill fingerprint changed since installation. \
+Run `skilllite add <source> --force` to reinstall and update manifest."
+            )
+        }
+        SkillIntegrityStatus::SignatureInvalid => {
+            anyhow::bail!(
+                "Execution blocked: Skill signature is invalid. \
+Please verify the skill source and reinstall."
+            )
+        }
     }
 }
