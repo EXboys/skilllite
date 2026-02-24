@@ -2,10 +2,24 @@
 
 [中文文档](./docs/zh/README.md)
 
-**A lightweight AI Agent Skills engine with built-in native system-level sandbox, zero dependencies, and local execution.**
+**A lightweight AI Agent Skills secure engine with built-in native system-level sandbox, zero dependencies, and local execution.**
 
-A lightweight AI Agent Skills execution engine that integrates with any OpenAI-compatible LLM.
+A lightweight AI Agent Skills secure execution engine that integrates with any OpenAI-compatible LLM.
 
+
+## Architecture: Two Layers
+
+```
+┌────────────────────────────────────────────────────┐
+│  Agent Layer (optional)                            │
+│  Built-in chat, planning, memory, tools            │
+│  Binary: skilllite (full)                          │
+├────────────────────────────────────────────────────┤
+│  Core Layer                                        │
+│  Sandbox + security scan + skills management + MCP │
+│  Binary: skilllite-sandbox (lightweight)           │
+└────────────────────────────────────────────────────┘
+```
 
 ## ⚡ Performance Benchmark
 
