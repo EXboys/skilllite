@@ -939,20 +939,20 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
             }
         }
         if !malicious.is_empty() {
-            anyhow::bail!(
-                "Admission blocked: malicious skills detected: {}",
+            eprintln!(
+                "   ❌ Blocked malicious skill(s): {}",
                 malicious.join(", ")
             );
         }
         if !suspicious.is_empty() && !force {
-            anyhow::bail!(
-                "Admission requires explicit approval for suspicious skills: {}. Re-run with --force to continue.",
+            eprintln!(
+                "   ⚠️  Skipped suspicious skill(s): {} (use --force to install)",
                 suspicious.join(", ")
             );
         }
-        if !suspicious.is_empty() {
+        if !suspicious.is_empty() && force {
             eprintln!(
-                "⚠️  Continuing with --force for suspicious skills: {}",
+                "   ⚠️  Continuing with --force for suspicious skills: {}",
                 suspicious.join(", ")
             );
         }
@@ -961,8 +961,20 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
             .iter()
             .map(|r| (r.name.clone(), r.risk.as_str()))
             .collect();
+        let blocked: std::collections::HashSet<&str> = malicious.iter().map(|s| s.as_str()).collect();
+        let skipped_suspicious: std::collections::HashSet<&str> = if force {
+            std::collections::HashSet::new()
+        } else {
+            suspicious.iter().map(|s| s.as_str()).collect()
+        };
         let mut installed: Vec<String> = Vec::new();
         for (skill_name, skill_path) in &install_candidates {
+            if blocked.contains(skill_name.as_str()) {
+                continue;
+            }
+            if skipped_suspicious.contains(skill_name.as_str()) {
+                continue;
+            }
             let dest = skills_path.join(&skill_name);
             copy_skill(skill_path, &dest)?;
             let admission = risk_by_name.get(skill_name).copied();

@@ -83,18 +83,18 @@
     },
     "http-request": {
       "name": "http-request",
-      "source": "reindex-local",
+      "source": "Exboys/skilllite",
       "version": "1.0",
       "hash": "f3e2a472380bdf404d3bd4fb8e1bc6cb2ad7132d1e7c8dc49954368b84f4a487",
       "signature_status": "UNSIGNED",
       "trust_tier": "COMMUNITY",
-      "trust_score": 56,
+      "trust_score": 63,
       "tier_reason": [
-        "local/custom source",
+        "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-02-24T05:08:26.726276Z",
-      "installed_at": "2026-02-24T05:08:26.726276Z",
+      "tier_updated_at": "2026-02-24T09:46:03.172354Z",
+      "installed_at": "2026-02-24T09:46:03.172354Z",
       "admission_risk": "safe"
     },
     "nodejs-test": {
