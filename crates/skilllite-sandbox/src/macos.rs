@@ -45,14 +45,16 @@ pub fn execute_with_limits(
     
     crate::info_log!("[INFO] using sandbox-exec (Seatbelt)...");
     match execute_with_sandbox(skill_dir, runtime, config, input_json, limits) {
-        Ok(result) if result.exit_code == 0 => Ok(result),
-        Ok(_) | Err(_) => {
-            eprintln!("[WARN] Sandbox execution failed, falling back to simple execution");
+        Ok(result) => Ok(result),
+        Err(e) => {
             skilllite_core::observability::security_sandbox_fallback(
                 &config.name,
                 "seatbelt_exec_failed",
             );
-            execute_simple_with_limits(skill_dir, runtime, config, input_json, limits)
+            Err(e.context(
+                "Sandbox execution failed. Refusing to fall back to unsandboxed execution. \
+                 Set SKILLBOX_NO_SANDBOX=1 to explicitly run without sandbox (not recommended)."
+            ))
         }
     }
 }
