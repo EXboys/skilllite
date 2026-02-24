@@ -7,6 +7,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::skill::metadata;
+use crate::skill::trust::{
+    self, IntegritySignal, SignatureSignal, TrustDecision, TrustTier,
+};
 
 const MANIFEST_FILE_NAME: &str = ".skilllite-manifest.json";
 
@@ -34,6 +37,14 @@ pub struct SkillManifestEntry {
     pub version: Option<String>,
     pub hash: String,
     pub signature_status: SignatureStatus,
+    #[serde(default)]
+    pub trust_tier: TrustTier,
+    #[serde(default)]
+    pub trust_score: u8,
+    #[serde(default)]
+    pub tier_reason: Vec<String>,
+    #[serde(default)]
+    pub tier_updated_at: Option<DateTime<Utc>>,
     pub installed_at: DateTime<Utc>,
 }
 
@@ -58,6 +69,10 @@ pub struct SkillIntegrityReport {
     pub current_hash: String,
     pub signature_status: SignatureStatus,
     pub entry: Option<SkillManifestEntry>,
+    pub trust_tier: TrustTier,
+    pub trust_score: u8,
+    pub trust_decision: TrustDecision,
+    pub trust_reasons: Vec<String>,
 }
 
 pub fn manifest_path(skills_dir: &Path) -> PathBuf {
@@ -131,11 +146,24 @@ pub fn evaluate_skill_status(skills_dir: &Path, skill_dir: &Path) -> Result<Skil
         SkillIntegrityStatus::HashChanged
     };
 
+    let source = entry.as_ref().map(|e| e.source.as_str());
+    let assessment = trust::assess_skill_trust(
+        source,
+        map_signature_signal(&signature_status),
+        map_integrity_signal(&status),
+        false,
+        false,
+    );
+
     Ok(SkillIntegrityReport {
         status,
         current_hash,
         signature_status,
         entry,
+        trust_tier: assessment.tier,
+        trust_score: assessment.score,
+        trust_decision: assessment.decision,
+        trust_reasons: assessment.reasons,
     })
 }
 
@@ -143,6 +171,18 @@ fn build_entry(skill_dir: &Path, source: &str) -> Result<SkillManifestEntry> {
     let meta = metadata::parse_skill_metadata(skill_dir)?;
     let hash = compute_skill_fingerprint(skill_dir)?;
     let signature_status = read_signature_status(skill_dir, &hash)?;
+    let integrity_status = match signature_status {
+        SignatureStatus::Invalid => SkillIntegrityStatus::SignatureInvalid,
+        SignatureStatus::Unsigned => SkillIntegrityStatus::Unsigned,
+        SignatureStatus::Valid => SkillIntegrityStatus::Ok,
+    };
+    let assessment = trust::assess_skill_trust(
+        Some(source),
+        map_signature_signal(&signature_status),
+        map_integrity_signal(&integrity_status),
+        false,
+        false,
+    );
     Ok(SkillManifestEntry {
         name: if meta.name.is_empty() {
             skill_key(skill_dir)?
@@ -153,8 +193,29 @@ fn build_entry(skill_dir: &Path, source: &str) -> Result<SkillManifestEntry> {
         version: meta.version,
         hash,
         signature_status,
+        trust_tier: assessment.tier,
+        trust_score: assessment.score,
+        tier_reason: assessment.reasons,
+        tier_updated_at: Some(Utc::now()),
         installed_at: Utc::now(),
     })
+}
+
+fn map_signature_signal(signature_status: &SignatureStatus) -> SignatureSignal {
+    match signature_status {
+        SignatureStatus::Unsigned => SignatureSignal::Unsigned,
+        SignatureStatus::Valid => SignatureSignal::Valid,
+        SignatureStatus::Invalid => SignatureSignal::Invalid,
+    }
+}
+
+fn map_integrity_signal(status: &SkillIntegrityStatus) -> IntegritySignal {
+    match status {
+        SkillIntegrityStatus::Ok => IntegritySignal::Ok,
+        SkillIntegrityStatus::HashChanged => IntegritySignal::HashChanged,
+        SkillIntegrityStatus::SignatureInvalid => IntegritySignal::SignatureInvalid,
+        SkillIntegrityStatus::Unsigned => IntegritySignal::Unsigned,
+    }
 }
 
 fn skill_key(skill_dir: &Path) -> Result<String> {

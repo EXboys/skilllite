@@ -40,6 +40,10 @@ pub fn cmd_verify(target: &str, skills_dir: &str, json_output: bool, strict: boo
                 "path": skill_path.to_string_lossy(),
                 "status": status,
                 "signature_status": signature,
+                "trust_tier": format!("{:?}", report.trust_tier).to_uppercase(),
+                "trust_score": report.trust_score,
+                "trust_decision": format!("{:?}", report.trust_decision).to_uppercase(),
+                "trust_reasons": report.trust_reasons,
                 "current_hash": report.current_hash,
                 "manifest_hash": manifest_hash,
                 "source": source,
@@ -51,6 +55,11 @@ pub fn cmd_verify(target: &str, skills_dir: &str, json_output: bool, strict: boo
         eprintln!("   Path: {}", skill_path.display());
         eprintln!("   Status: {}", status);
         eprintln!("   Signature: {}", signature);
+        eprintln!(
+            "   Trust: {} (score={})",
+            format!("{:?}", report.trust_tier).to_uppercase(),
+            report.trust_score
+        );
         eprintln!("   Current Hash: {}", report.current_hash);
         if !manifest_hash.is_empty() {
             eprintln!("   Manifest Hash: {}", manifest_hash);

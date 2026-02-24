@@ -83,6 +83,7 @@ pub fn skill_to_json(skill_path: &Path) -> serde_json::Value {
 
             let (integrity_status, source, manifest_version, signature_status, installed_at) =
                 integrity_json_fields(skill_path);
+            let (trust_tier, trust_score, trust_reason) = trust_json_fields(skill_path);
             serde_json::json!({
                 "name": name,
                 "description": meta.description,
@@ -97,6 +98,9 @@ pub fn skill_to_json(skill_path: &Path) -> serde_json::Value {
                 "source": source,
                 "signature_status": signature_status,
                 "installed_at": installed_at,
+                "trust_tier": trust_tier,
+                "trust_score": trust_score,
+                "trust_reason": trust_reason,
                 "path": skill_path.to_string_lossy(),
                 "is_bash_tool": meta.is_bash_tool_skill(),
                 "requires_elevated_permissions": meta.requires_elevated_permissions,
@@ -115,6 +119,16 @@ pub fn skill_to_json(skill_path: &Path) -> serde_json::Value {
                 "path": skill_path.to_string_lossy(),
             })
         }
+    }
+}
+
+pub fn trust_tier_for_skill(skill_path: &Path) -> String {
+    let Some(skills_dir) = skill_path.parent() else {
+        return "UNKNOWN".to_string();
+    };
+    match manifest::evaluate_skill_status(skills_dir, skill_path) {
+        Ok(report) => format!("{:?}", report.trust_tier).to_uppercase(),
+        Err(_) => "UNKNOWN".to_string(),
     }
 }
 
@@ -183,4 +197,18 @@ fn integrity_json_fields(
         .map(|e| e.installed_at.to_rfc3339());
 
     (status, source, version, Some(signature), installed_at)
+}
+
+fn trust_json_fields(skill_path: &Path) -> (String, u8, Vec<String>) {
+    let Some(skills_dir) = skill_path.parent() else {
+        return ("UNKNOWN".to_string(), 0, vec![]);
+    };
+    let Ok(report) = manifest::evaluate_skill_status(skills_dir, skill_path) else {
+        return ("UNKNOWN".to_string(), 0, vec![]);
+    };
+    (
+        format!("{:?}", report.trust_tier).to_uppercase(),
+        report.trust_score,
+        report.trust_reasons,
+    )
 }

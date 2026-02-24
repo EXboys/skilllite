@@ -7,7 +7,14 @@
       "version": null,
       "hash": "a4d92219d816bda21c9182b06bf8e9f0a836fd0e7d058c2b4dc254cd444c5e11",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.656070Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.717697Z",
+      "installed_at": "2026-02-24T05:08:26.717698Z"
     },
     "calculator": {
       "name": "calculator",
@@ -15,7 +22,14 @@
       "version": "1.0",
       "hash": "8eab280cc2bdf419fd341a56f9cb1c4cdcab7c3c7ba61f356a9fd580315b8d64",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.658588Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.718961Z",
+      "installed_at": "2026-02-24T05:08:26.718961Z"
     },
     "csdn-article": {
       "name": "csdn-article",
@@ -23,7 +37,14 @@
       "version": "1.0",
       "hash": "657a9c4a7f807a9fab2b2e696faf4aa20beb69ac9f0e429522b4e2d062d35b4c",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.659741Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.720760Z",
+      "installed_at": "2026-02-24T05:08:26.720760Z"
     },
     "data-analysis": {
       "name": "data-analysis",
@@ -31,7 +52,14 @@
       "version": "1.0",
       "hash": "2aadfa1ebad86370f33184a5c6cd80025120458558b6fe19ebb3e7c0e21e6ce0",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.661450Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.722659Z",
+      "installed_at": "2026-02-24T05:08:26.722659Z"
     },
     "frontend-design": {
       "name": "frontend-design",
@@ -39,7 +67,14 @@
       "version": null,
       "hash": "537c1df9d0c694ecf9139a911f9ad0bd111a7ebc173a55457568459e543fe75b",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.662855Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.724266Z",
+      "installed_at": "2026-02-24T05:08:26.724266Z"
     },
     "http-request": {
       "name": "http-request",
@@ -47,7 +82,14 @@
       "version": "1.0",
       "hash": "f3e2a472380bdf404d3bd4fb8e1bc6cb2ad7132d1e7c8dc49954368b84f4a487",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.664706Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.726276Z",
+      "installed_at": "2026-02-24T05:08:26.726276Z"
     },
     "nodejs-test": {
       "name": "node-test",
@@ -55,7 +97,14 @@
       "version": null,
       "hash": "e7b83c0c858ea2af1be3e9cd62ee6ca70113bd66e2f0e7297e3cc2cc911e0804",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.666431Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.727828Z",
+      "installed_at": "2026-02-24T05:08:26.727828Z"
     },
     "skill-creator": {
       "name": "skill-creator",
@@ -63,7 +112,14 @@
       "version": null,
       "hash": "4c344c56c980325791982e8bb4182d2f044a3118849fc91914c3e8b5fbbe91a2",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.669160Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.730602Z",
+      "installed_at": "2026-02-24T05:08:26.730602Z"
     },
     "text-processor": {
       "name": "text-processor",
@@ -71,7 +127,14 @@
       "version": "1.0",
       "hash": "e891420dac9e5791204164d711ff5141b358b591a9de85ef00d4a6fd7c26c888",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.671684Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.733147Z",
+      "installed_at": "2026-02-24T05:08:26.733148Z"
     },
     "weather": {
       "name": "weather",
@@ -79,7 +142,14 @@
       "version": "3.0",
       "hash": "5838a469ff471cb4258adc4002adb53ac39dc36e0f458656555821ab8a53cf76",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.673014Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.734594Z",
+      "installed_at": "2026-02-24T05:08:26.734594Z"
     },
     "writing-helper": {
       "name": "writing-helper",
@@ -87,7 +157,14 @@
       "version": "3.0",
       "hash": "76d66fce01bb561477a563e980775873411f720d350b82237c056053dc760ad9",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.674184Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.735672Z",
+      "installed_at": "2026-02-24T05:08:26.735672Z"
     },
     "xiaohongshu-writer": {
       "name": "xiaohongshu-writer",
@@ -95,7 +172,14 @@
       "version": "1.0",
       "hash": "182ff2c6ef698f6cddf4bd3f6b5632240c0a29021e0acab82b91bc25ee803a96",
       "signature_status": "UNSIGNED",
-      "installed_at": "2026-02-24T02:55:27.675554Z"
+      "trust_tier": "COMMUNITY",
+      "trust_score": 56,
+      "tier_reason": [
+        "local/custom source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-02-24T05:08:26.737306Z",
+      "installed_at": "2026-02-24T05:08:26.737306Z"
     }
   }
 }
