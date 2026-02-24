@@ -84,6 +84,8 @@ pub fn skill_to_json(skill_path: &Path) -> serde_json::Value {
             let (integrity_status, source, manifest_version, signature_status, installed_at) =
                 integrity_json_fields(skill_path);
             let (trust_tier, trust_score, trust_reason) = trust_json_fields(skill_path);
+            let admission_risk = admission_risk_for_skill(skill_path);
+            let security_rating = security_rating_for_skill(skill_path);
             serde_json::json!({
                 "name": name,
                 "description": meta.description,
@@ -101,6 +103,8 @@ pub fn skill_to_json(skill_path: &Path) -> serde_json::Value {
                 "trust_tier": trust_tier,
                 "trust_score": trust_score,
                 "trust_reason": trust_reason,
+                "admission_risk": admission_risk,
+                "security_rating": security_rating,
                 "path": skill_path.to_string_lossy(),
                 "is_bash_tool": meta.is_bash_tool_skill(),
                 "requires_elevated_permissions": meta.requires_elevated_permissions,
@@ -129,6 +133,27 @@ pub fn trust_tier_for_skill(skill_path: &Path) -> String {
     match manifest::evaluate_skill_status(skills_dir, skill_path) {
         Ok(report) => format!("{:?}", report.trust_tier).to_uppercase(),
         Err(_) => "UNKNOWN".to_string(),
+    }
+}
+
+/// 准入扫描结果（safe/suspicious/malicious），存量 skill 无此项则为 None
+pub fn admission_risk_for_skill(skill_path: &Path) -> Option<String> {
+    let skills_dir = skill_path.parent()?;
+    let report = manifest::evaluate_skill_status(skills_dir, skill_path).ok()?;
+    report.entry?.admission_risk.clone()
+}
+
+/// 统一安全评级：admission_risk 优先，trust_tier 兜底
+pub fn security_rating_for_skill(skill_path: &Path) -> String {
+    if let Some(risk) = admission_risk_for_skill(skill_path) {
+        return risk.to_uppercase();
+    }
+    let tier = trust_tier_for_skill(skill_path);
+    match tier.as_str() {
+        "TRUSTED" => "SAFE".to_string(),
+        "REVIEWED" => "REVIEWED".to_string(),
+        "COMMUNITY" | "UNKNOWN" => "UNSCANNED".to_string(),
+        _ => "UNSCANNED".to_string(),
     }
 }
 

@@ -192,8 +192,8 @@ pub fn run_cli() -> Result<()> {
         } => {
             commands::skill::cmd_remove(&skill_name, &skills_dir, force)?;
         }
-        Commands::List { skills_dir, json } => {
-            commands::skill::cmd_list(&skills_dir, json)?;
+        Commands::List { skills_dir, json, scan } => {
+            commands::skill::cmd_list(&skills_dir, json, scan)?;
         }
         #[cfg(feature = "agent")]
         Commands::ListTools { skills_dir, format } => {

@@ -273,6 +273,10 @@ pub enum Commands {
         /// Output as JSON
         #[arg(long)]
         json: bool,
+
+        /// Run admission scan on all installed skills and update security ratings
+        #[arg(long)]
+        scan: bool,
     },
 
     /// List tool definitions (OpenAI/Claude format) for LLM/adapters

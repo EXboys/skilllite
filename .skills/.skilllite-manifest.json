@@ -14,7 +14,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.717697Z",
-      "installed_at": "2026-02-24T05:08:26.717698Z"
+      "installed_at": "2026-02-24T05:08:26.717698Z",
+      "admission_risk": "safe"
     },
     "calculator": {
       "name": "calculator",
@@ -29,7 +30,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.718961Z",
-      "installed_at": "2026-02-24T05:08:26.718961Z"
+      "installed_at": "2026-02-24T05:08:26.718961Z",
+      "admission_risk": "safe"
     },
     "csdn-article": {
       "name": "csdn-article",
@@ -44,7 +46,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.720760Z",
-      "installed_at": "2026-02-24T05:08:26.720760Z"
+      "installed_at": "2026-02-24T05:08:26.720760Z",
+      "admission_risk": "safe"
     },
     "data-analysis": {
       "name": "data-analysis",
@@ -59,7 +62,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.722659Z",
-      "installed_at": "2026-02-24T05:08:26.722659Z"
+      "installed_at": "2026-02-24T05:08:26.722659Z",
+      "admission_risk": "safe"
     },
     "frontend-design": {
       "name": "frontend-design",
@@ -74,7 +78,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.724266Z",
-      "installed_at": "2026-02-24T05:08:26.724266Z"
+      "installed_at": "2026-02-24T05:08:26.724266Z",
+      "admission_risk": "safe"
     },
     "http-request": {
       "name": "http-request",
@@ -89,7 +94,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.726276Z",
-      "installed_at": "2026-02-24T05:08:26.726276Z"
+      "installed_at": "2026-02-24T05:08:26.726276Z",
+      "admission_risk": "safe"
     },
     "nodejs-test": {
       "name": "node-test",
@@ -104,7 +110,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.727828Z",
-      "installed_at": "2026-02-24T05:08:26.727828Z"
+      "installed_at": "2026-02-24T05:08:26.727828Z",
+      "admission_risk": "suspicious"
     },
     "skill-creator": {
       "name": "skill-creator",
@@ -119,7 +126,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.730602Z",
-      "installed_at": "2026-02-24T05:08:26.730602Z"
+      "installed_at": "2026-02-24T05:08:26.730602Z",
+      "admission_risk": "safe"
     },
     "text-processor": {
       "name": "text-processor",
@@ -134,7 +142,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.733147Z",
-      "installed_at": "2026-02-24T05:08:26.733148Z"
+      "installed_at": "2026-02-24T05:08:26.733148Z",
+      "admission_risk": "suspicious"
     },
     "weather": {
       "name": "weather",
@@ -149,7 +158,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.734594Z",
-      "installed_at": "2026-02-24T05:08:26.734594Z"
+      "installed_at": "2026-02-24T05:08:26.734594Z",
+      "admission_risk": "safe"
     },
     "writing-helper": {
       "name": "writing-helper",
@@ -164,7 +174,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.735672Z",
-      "installed_at": "2026-02-24T05:08:26.735672Z"
+      "installed_at": "2026-02-24T05:08:26.735672Z",
+      "admission_risk": "safe"
     },
     "xiaohongshu-writer": {
       "name": "xiaohongshu-writer",
@@ -179,7 +190,8 @@
         "unsigned package"
       ],
       "tier_updated_at": "2026-02-24T05:08:26.737306Z",
-      "installed_at": "2026-02-24T05:08:26.737306Z"
+      "installed_at": "2026-02-24T05:08:26.737306Z",
+      "admission_risk": "suspicious"
     }
   }
 }

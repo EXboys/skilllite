@@ -4,12 +4,13 @@ use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
 
-use skilllite_core::skill::metadata;
+use skilllite_core::skill::{manifest, metadata};
 
+use super::add;
 use super::common;
 
 /// `skilllite list`
-pub fn cmd_list(skills_dir: &str, json_output: bool) -> Result<()> {
+pub fn cmd_list(skills_dir: &str, json_output: bool, scan: bool) -> Result<()> {
     let skills_path = common::resolve_skills_dir(skills_dir);
 
     if !skills_path.exists() {
@@ -40,6 +41,44 @@ pub fn cmd_list(skills_dir: &str, json_output: bool) -> Result<()> {
             eprintln!("No skills installed.");
         }
         return Ok(());
+    }
+
+    if scan {
+        eprintln!("🔍 Scanning {} skill(s)...", skill_dirs.len());
+        let candidates: Vec<(String, PathBuf)> = skill_dirs
+            .iter()
+            .filter_map(|p| {
+                let name = metadata::parse_skill_metadata(p)
+                    .ok()
+                    .map(|m| m.name.clone())
+                    .unwrap_or_else(|| {
+                        p.file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string()
+                    });
+                if name.is_empty() { None } else { Some((name, p.clone())) }
+            })
+            .collect();
+
+        let reports = add::scan_candidate_skills_fast(&candidates);
+        for report in &reports {
+            eprintln!("   ▶ {} => {}", report.name, report.risk.as_str());
+            for msg in &report.messages {
+                eprintln!("{}", msg);
+            }
+        }
+
+        for report in &reports {
+            if let Some((_, skill_path)) = candidates.iter().find(|(n, _)| n == &report.name) {
+                let _ = manifest::update_admission_risk(
+                    &skills_path,
+                    skill_path,
+                    report.risk.as_str(),
+                );
+            }
+        }
+        eprintln!("✅ Scan complete. Ratings updated.\n");
     }
 
     if json_output {
@@ -73,8 +112,8 @@ pub fn cmd_list(skills_dir: &str, json_output: bool) -> Result<()> {
                     String::new()
                 };
                 let status = common::status_label_for_skill(skill_path);
-                let trust_tier = common::trust_tier_for_skill(skill_path);
-                eprintln!("  • {} {} [{}] [{}]", name, lang_tag, status, trust_tier);
+                let rating = common::security_rating_for_skill(skill_path);
+                eprintln!("  • {} {} [{}] [{}]", name, lang_tag, status, rating);
                 if let Some(ref desc) = meta.description {
                     let short: String = desc.chars().take(80).collect();
                     eprintln!("    {}", short);

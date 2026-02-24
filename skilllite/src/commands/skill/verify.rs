@@ -33,12 +33,14 @@ pub fn cmd_verify(target: &str, skills_dir: &str, json_output: bool, strict: boo
     let installed_at = report.entry.as_ref().map(|e| e.installed_at.to_rfc3339());
 
     if json_output {
+        let rating = common::security_rating_for_skill(&skill_path);
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
                 "target": target,
                 "path": skill_path.to_string_lossy(),
                 "status": status,
+                "security_rating": rating,
                 "signature_status": signature,
                 "trust_tier": format!("{:?}", report.trust_tier).to_uppercase(),
                 "trust_score": report.trust_score,
@@ -53,10 +55,11 @@ pub fn cmd_verify(target: &str, skills_dir: &str, json_output: bool, strict: boo
     } else {
         eprintln!("🔎 Verify: {}", target);
         eprintln!("   Path: {}", skill_path.display());
+        let rating = common::security_rating_for_skill(&skill_path);
         eprintln!("   Status: {}", status);
-        eprintln!("   Signature: {}", signature);
+        eprintln!("   Security Rating: {}", rating);
         eprintln!(
-            "   Trust: {} (score={})",
+            "   Trust (internal): {} (score={})",
             format!("{:?}", report.trust_tier).to_uppercase(),
             report.trust_score
         );

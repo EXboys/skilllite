@@ -11,6 +11,11 @@ use skilllite_core::skill::manifest;
 use skilllite_sandbox::security::ScriptScanner;
 use skilllite_sandbox::security::types::SecuritySeverity;
 
+#[cfg(feature = "agent")]
+use skilllite_agent::llm::LlmClient;
+#[cfg(feature = "agent")]
+use skilllite_agent::types::{AgentConfig, ChatMessage};
+
 use super::common;
 
 // ─── Source Parsing ─────────────────────────────────────────────────────────
@@ -521,49 +526,176 @@ fn collect_script_files(skill_path: &Path, meta: &metadata::SkillMetadata) -> Ve
     files
 }
 
-fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String>, bool) {
-    let mut messages = Vec::new();
-    let mut has_high_risk = false;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum AdmissionRisk {
+    Safe,
+    Suspicious,
+    Malicious,
+}
 
-    for name in installed {
-        let skill_path = skills_dir.join(name);
+impl AdmissionRisk {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Safe => "safe",
+            Self::Suspicious => "suspicious",
+            Self::Malicious => "malicious",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct SkillScanReport {
+    pub name: String,
+    pub risk: AdmissionRisk,
+    pub messages: Vec<String>,
+}
+
+fn sample_scripts_for_llm(script_files: &[PathBuf], max_files: usize, max_chars: usize) -> String {
+    let mut out = String::new();
+    for script_path in script_files.iter().take(max_files) {
+        let Ok(content) = fs::read_to_string(script_path) else {
+            continue;
+        };
+        let snippet: String = content.chars().take(max_chars).collect();
+        out.push_str(&format!(
+            "\n### {}\n{}\n",
+            script_path.display(),
+            if content.chars().count() > max_chars {
+                format!("{snippet}\n...<truncated>")
+            } else {
+                snippet
+            }
+        ));
+    }
+    out
+}
+
+#[cfg(feature = "agent")]
+fn llm_admission_assess(skill_name: &str, skill_md: &str, script_samples: &str) -> Result<(AdmissionRisk, String)> {
+    let config = AgentConfig::from_env();
+    if config.api_key.trim().is_empty() {
+        anyhow::bail!("LLM scan skipped: API key not configured");
+    }
+
+    let system_prompt = r#"You are a security admission scanner for Skill packages.
+Classify risk into one of: safe, suspicious, malicious.
+Return STRICT JSON only:
+{"risk":"safe|suspicious|malicious","reason":"...","evidence":["..."]}
+
+Rules:
+- malicious: direct harmful payload patterns, command execution abuse, obfuscated delivery, clear exploit intent.
+- suspicious: potentially dangerous behaviors or unclear intent requiring manual review.
+- safe: normal utility behavior with no obvious malicious intent.
+"#;
+    let user_prompt = format!(
+        "Skill: {skill_name}\n\nSKILL.md:\n{skill_md}\n\nScript samples:\n{script_samples}"
+    );
+
+    let messages = vec![ChatMessage::system(system_prompt), ChatMessage::user(&user_prompt)];
+    let client = LlmClient::new(&config.api_base, &config.api_key);
+    let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
+    let resp = rt.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            client.chat_completion(&config.model, &messages, None, Some(0.1)),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("LLM request timed out (15s)"))?
+    })?;
+    let raw = resp
+        .choices
+        .first()
+        .and_then(|c| c.message.content.clone())
+        .unwrap_or_else(|| "{}".to_string());
+    let cleaned = raw
+        .trim()
+        .trim_start_matches("```json")
+        .trim_start_matches("```")
+        .trim_end_matches("```")
+        .trim();
+    let v: serde_json::Value = serde_json::from_str(cleaned)
+        .with_context(|| format!("LLM risk JSON parse failed: {}", &raw.chars().take(180).collect::<String>()))?;
+    let risk = match v.get("risk").and_then(|r| r.as_str()).unwrap_or("suspicious") {
+        "safe" => AdmissionRisk::Safe,
+        "malicious" => AdmissionRisk::Malicious,
+        _ => AdmissionRisk::Suspicious,
+    };
+    let reason = v
+        .get("reason")
+        .and_then(|r| r.as_str())
+        .unwrap_or("LLM flagged potential risk")
+        .to_string();
+    Ok((risk, reason))
+}
+
+#[cfg(not(feature = "agent"))]
+fn llm_admission_assess(_skill_name: &str, _skill_md: &str, _script_samples: &str) -> Result<(AdmissionRisk, String)> {
+    anyhow::bail!("LLM scan unavailable: binary built without `agent` feature")
+}
+
+pub(super) fn scan_candidate_skills(candidates: &[(String, PathBuf)]) -> Vec<SkillScanReport> {
+    scan_candidate_skills_inner(candidates, false)
+}
+
+pub(super) fn scan_candidate_skills_fast(candidates: &[(String, PathBuf)]) -> Vec<SkillScanReport> {
+    scan_candidate_skills_inner(candidates, true)
+}
+
+fn scan_candidate_skills_inner(candidates: &[(String, PathBuf)], skip_dep_audit: bool) -> Vec<SkillScanReport> {
+    let mut reports = Vec::new();
+
+    let total = candidates.len();
+    for (idx, (name, skill_path)) in candidates.iter().enumerate() {
+        eprint!("   [{}/{}] {} ...", idx + 1, total, name);
+
         if !skill_path.join("SKILL.md").exists() {
+            eprintln!(" ⚠ missing SKILL.md");
+            reports.push(SkillScanReport {
+                name: name.clone(),
+                risk: AdmissionRisk::Suspicious,
+                messages: vec![format!("   ⚠ {}: missing SKILL.md, treated as suspicious", name)],
+            });
             continue;
         }
 
-        let meta = match metadata::parse_skill_metadata(&skill_path) {
+        let meta = match metadata::parse_skill_metadata(skill_path) {
             Ok(m) => m,
-            Err(_) => continue,
+            Err(e) => {
+                reports.push(SkillScanReport {
+                    name: name.clone(),
+                    risk: AdmissionRisk::Suspicious,
+                    messages: vec![format!("   ⚠ {}: failed to parse SKILL.md ({})", name, e)],
+                });
+                continue;
+            }
         };
 
-        // Scan SKILL.md for supply chain / agent-driven social engineering patterns
+        let mut risk = AdmissionRisk::Safe;
+        let mut messages = Vec::new();
+        let mut skill_md_content = String::new();
+
         let skill_md_path = skill_path.join("SKILL.md");
         if let Ok(content) = fs::read_to_string(&skill_md_path) {
+            skill_md_content = content.clone();
             let alerts = skilllite_core::skill::skill_md_security::scan_skill_md_suspicious_patterns(&content);
             if !alerts.is_empty() {
                 let high_count = alerts.iter().filter(|a| a.severity == "high").count();
                 if high_count > 0 {
-                    has_high_risk = true;
+                    risk = AdmissionRisk::Malicious;
+                } else {
+                    risk = risk.max(AdmissionRisk::Suspicious);
                 }
                 messages.push(format!(
-                    "   📄 {} SKILL.md: ⚠ {} alert(s) ({} high) - supply chain / agent social engineering",
+                    "   📄 {} SKILL.md: ⚠ {} alert(s) ({} high)",
                     name, alerts.len(), high_count
                 ));
                 for a in alerts.iter().take(3) {
                     messages.push(format!("      [{}] {}", a.severity.to_uppercase(), a.message));
                 }
-                if alerts.len() > 3 {
-                    messages.push(format!(
-                        "      ... +{} more. Run `skilllite scan {}` for full report.",
-                        alerts.len() - 3,
-                        skill_path.display()
-                    ));
-                }
             }
         }
 
-        let script_files = collect_script_files(&skill_path, &meta);
-
+        let script_files = collect_script_files(skill_path, &meta);
         let has_deps = skill_path.join("requirements.txt").exists()
             || skill_path.join("package.json").exists()
             || skill_path.join(".skilllite.lock").exists()
@@ -580,45 +712,42 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
                 "   ✅ {} ({}): no scripts or dependencies to scan",
                 name, skill_type
             ));
-            continue;
         }
 
         if !script_files.is_empty() {
             let scanner = ScriptScanner::new();
             let mut total_issues = 0usize;
             let mut total_high = 0usize;
-            let mut worst_file: Option<String> = None;
+            let mut total_critical = 0usize;
 
             for script_path in &script_files {
                 if let Ok(result) = scanner.scan_file(script_path) {
-                    let high = result.issues.iter().filter(|i| {
-                        matches!(
-                            i.severity,
-                            SecuritySeverity::High | SecuritySeverity::Critical
-                        )
-                    }).count();
+                    let high = result
+                        .issues
+                        .iter()
+                        .filter(|i| matches!(i.severity, SecuritySeverity::High))
+                        .count();
+                    let critical = result
+                        .issues
+                        .iter()
+                        .filter(|i| matches!(i.severity, SecuritySeverity::Critical))
+                        .count();
                     total_issues += result.issues.len();
                     total_high += high;
-                    if high > 0 && worst_file.is_none() {
-                        worst_file = Some(script_path.display().to_string());
-                    }
+                    total_critical += critical;
                 }
             }
 
+            if total_critical > 0 {
+                risk = AdmissionRisk::Malicious;
+            } else if total_high > 0 {
+                risk = risk.max(AdmissionRisk::Suspicious);
+            }
             if total_issues > 0 {
-                if total_high > 0 {
-                    has_high_risk = true;
-                }
                 messages.push(format!(
-                    "   🔒 {} code scan: {} issue(s) across {} file(s) ({} high/critical)",
-                    name, total_issues, script_files.len(), total_high
+                    "   🔒 {} code scan: {} issue(s) across {} file(s) ({} high / {} critical)",
+                    name, total_issues, script_files.len(), total_high, total_critical
                 ));
-                if let Some(ref path) = worst_file {
-                    messages.push(format!(
-                        "      ⚠ Run `skilllite security-scan {}` for details",
-                        path
-                    ));
-                }
             } else {
                 messages.push(format!(
                     "   🔒 {} code scan: ✅ {} file(s) clean",
@@ -628,10 +757,10 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
         }
 
         #[cfg(feature = "audit")]
-        if has_deps {
+        if has_deps && !skip_dep_audit {
             use skilllite_sandbox::security::dependency_audit;
 
-            let metadata_hint = metadata::parse_skill_metadata(&skill_path)
+            let metadata_hint = metadata::parse_skill_metadata(skill_path)
                 .ok()
                 .map(|meta| dependency_audit::MetadataHint {
                     compatibility: meta.compatibility,
@@ -640,30 +769,13 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
                     language: meta.language,
                     entry_point: meta.entry_point,
                 });
-            match dependency_audit::audit_skill_dependencies(&skill_path, metadata_hint.as_ref()) {
+            match dependency_audit::audit_skill_dependencies(skill_path, metadata_hint.as_ref()) {
                 Ok(result) => {
                     if result.vulnerable_count > 0 {
-                        has_high_risk = true;
+                        risk = risk.max(AdmissionRisk::Suspicious);
                         messages.push(format!(
                             "   🛡 {} dependency audit: ⚠ {}/{} packages vulnerable ({} vulns)",
                             name, result.vulnerable_count, result.scanned, result.total_vulns
-                        ));
-                        for entry in result.entries.iter().filter(|e| !e.vulns.is_empty()).take(3) {
-                            let vuln_ids: Vec<_> =
-                                entry.vulns.iter().take(2).map(|v| v.id.as_str()).collect();
-                            let more = if entry.vulns.len() > 2 {
-                                format!(" +{}", entry.vulns.len() - 2)
-                            } else {
-                                String::new()
-                            };
-                            messages.push(format!(
-                                "      - {} {}: {}{}",
-                                entry.name, entry.version, vuln_ids.join(", "), more
-                            ));
-                        }
-                        messages.push(format!(
-                            "      Run `skilllite dependency-audit {}` for full report",
-                            skill_path.display()
                         ));
                     } else if result.scanned > 0 {
                         messages.push(format!(
@@ -673,16 +785,35 @@ fn scan_installed_skills(skills_dir: &Path, installed: &[String]) -> (Vec<String
                     }
                 }
                 Err(e) => {
-                    messages.push(format!(
-                        "   🛡 {} dependency audit: ⚠ error: {}",
-                        name, e
-                    ));
+                    risk = risk.max(AdmissionRisk::Suspicious);
+                    messages.push(format!("   🛡 {} dependency audit: ⚠ error: {}", name, e));
                 }
             }
         }
+
+        let needs_llm = risk > AdmissionRisk::Safe;
+        if needs_llm {
+            let script_samples = sample_scripts_for_llm(&script_files, 3, 1200);
+            match llm_admission_assess(name, &skill_md_content, &script_samples) {
+                Ok((llm_risk, reason)) => {
+                    risk = risk.max(llm_risk);
+                    messages.push(format!("   🧠 {} LLM confirm: {} ({})", name, llm_risk.as_str(), reason));
+                }
+                Err(e) => {
+                    messages.push(format!("   🧠 {} LLM confirm skipped: {}", name, e));
+                }
+            }
+        }
+
+        eprintln!(" {}", risk.as_str());
+        reports.push(SkillScanReport {
+            name: name.clone(),
+            risk,
+            messages,
+        });
     }
 
-    (messages, has_high_risk)
+    reports
 }
 
 // ─── Public command ─────────────────────────────────────────────────────────
@@ -764,7 +895,7 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
         eprintln!();
         fs::create_dir_all(&skills_path).context("Failed to create skills directory")?;
 
-        let mut installed: Vec<String> = Vec::new();
+        let mut install_candidates: Vec<(String, PathBuf)> = Vec::new();
         for skill_path in &skills {
             let skill_name = match metadata::parse_skill_metadata(skill_path) {
                 Ok(meta) if !meta.name.is_empty() => meta.name,
@@ -783,9 +914,64 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
                 );
                 continue;
             }
+            install_candidates.push((skill_name, skill_path.clone()));
+        }
 
+        if install_candidates.is_empty() {
+            eprintln!("   No new skills installed.");
+            return Ok(());
+        }
+
+        eprintln!();
+        eprintln!("🔍 Running admission scans (content-based)...");
+        let scan_reports = scan_candidate_skills(&install_candidates);
+        let mut malicious = Vec::new();
+        let mut suspicious = Vec::new();
+        for report in &scan_reports {
+            eprintln!("   ▶ {} => {}", report.name, report.risk.as_str());
+            for msg in &report.messages {
+                eprintln!("{}", msg);
+            }
+            match report.risk {
+                AdmissionRisk::Malicious => malicious.push(report.name.clone()),
+                AdmissionRisk::Suspicious => suspicious.push(report.name.clone()),
+                AdmissionRisk::Safe => {}
+            }
+        }
+        if !malicious.is_empty() {
+            anyhow::bail!(
+                "Admission blocked: malicious skills detected: {}",
+                malicious.join(", ")
+            );
+        }
+        if !suspicious.is_empty() && !force {
+            anyhow::bail!(
+                "Admission requires explicit approval for suspicious skills: {}. Re-run with --force to continue.",
+                suspicious.join(", ")
+            );
+        }
+        if !suspicious.is_empty() {
+            eprintln!(
+                "⚠️  Continuing with --force for suspicious skills: {}",
+                suspicious.join(", ")
+            );
+        }
+
+        let risk_by_name: std::collections::HashMap<String, &str> = scan_reports
+            .iter()
+            .map(|r| (r.name.clone(), r.risk.as_str()))
+            .collect();
+        let mut installed: Vec<String> = Vec::new();
+        for (skill_name, skill_path) in &install_candidates {
+            let dest = skills_path.join(&skill_name);
             copy_skill(skill_path, &dest)?;
-            let _entry = manifest::upsert_installed_skill(&skills_path, &dest, source)?;
+            let admission = risk_by_name.get(skill_name).copied();
+            let _entry = manifest::upsert_installed_skill_with_admission(
+                &skills_path,
+                &dest,
+                source,
+                admission,
+            )?;
             installed.push(skill_name.clone());
             eprintln!("   ✓ {}: installed to {}", skill_name, dest.display());
         }
@@ -793,26 +979,6 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
         if installed.is_empty() {
             eprintln!("   No new skills installed.");
             return Ok(());
-        }
-
-        eprintln!();
-        eprintln!("🔍 Running security scans (pre-install)...");
-        let (scan_messages, has_high_risk) = scan_installed_skills(&skills_path, &installed);
-        for msg in &scan_messages {
-            eprintln!("{}", msg);
-        }
-
-        if has_high_risk && !force {
-            eprintln!();
-            eprintln!("⚠️  High-risk issues detected. Installing dependencies may execute untrusted code.");
-            eprint!("   Continue with dependency installation? [y/N] ");
-            let mut answer = String::new();
-            std::io::stdin().read_line(&mut answer)?;
-            if !matches!(answer.trim().to_lowercase().as_str(), "y" | "yes") {
-                eprintln!("   Cancelled. Skills copied but dependencies NOT installed.");
-                eprintln!("   You can review the code and run `skilllite dependency-audit <skill_dir>` manually.");
-                return Ok(());
-            }
         }
 
         eprintln!();

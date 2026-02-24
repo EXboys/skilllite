@@ -46,6 +46,9 @@ pub struct SkillManifestEntry {
     #[serde(default)]
     pub tier_updated_at: Option<DateTime<Utc>>,
     pub installed_at: DateTime<Utc>,
+    /// 准入扫描结果：safe/suspicious/malicious（仅 skill add 时写入，存量无此项）
+    #[serde(default)]
+    pub admission_risk: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,12 +106,40 @@ pub fn save_manifest(skills_dir: &Path, manifest: &SkillManifest) -> Result<()> 
 }
 
 pub fn upsert_installed_skill(skills_dir: &Path, skill_dir: &Path, source: &str) -> Result<SkillManifestEntry> {
+    upsert_installed_skill_with_admission(skills_dir, skill_dir, source, None)
+}
+
+/// 同 upsert_installed_skill，可传入准入扫描结果（safe/suspicious/malicious）
+pub fn upsert_installed_skill_with_admission(
+    skills_dir: &Path,
+    skill_dir: &Path,
+    source: &str,
+    admission_risk: Option<&str>,
+) -> Result<SkillManifestEntry> {
     let mut manifest = load_manifest(skills_dir)?;
-    let entry = build_entry(skill_dir, source)?;
+    let mut entry = build_entry(skill_dir, source)?;
+    if let Some(r) = admission_risk {
+        entry.admission_risk = Some(r.to_string());
+    }
     let key = skill_key(skill_dir)?;
     manifest.skills.insert(key, entry.clone());
     save_manifest(skills_dir, &manifest)?;
     Ok(entry)
+}
+
+/// 仅更新已有 entry 的 admission_risk 字段，不重建整个 entry
+pub fn update_admission_risk(
+    skills_dir: &Path,
+    skill_dir: &Path,
+    risk: &str,
+) -> Result<()> {
+    let mut manifest = load_manifest(skills_dir)?;
+    let key = skill_key(skill_dir)?;
+    if let Some(entry) = manifest.skills.get_mut(&key) {
+        entry.admission_risk = Some(risk.to_string());
+        save_manifest(skills_dir, &manifest)?;
+    }
+    Ok(())
 }
 
 pub fn remove_skill_entry(skills_dir: &Path, skill_dir: &Path) -> Result<bool> {
@@ -198,6 +229,7 @@ fn build_entry(skill_dir: &Path, source: &str) -> Result<SkillManifestEntry> {
         tier_reason: assessment.reasons,
         tier_updated_at: Some(Utc::now()),
         installed_at: Utc::now(),
+        admission_risk: None,
     })
 }
 
