@@ -21,6 +21,15 @@ A lightweight AI Agent Skills secure execution engine that integrates with any O
 └────────────────────────────────────────────────────┘
 ```
 
+| | **skilllite** (full) | **skilllite-sandbox** (lightweight) |
+|---|---|---|
+| Binary size | ~6.2 MB | ~3.6 MB |
+| Startup RSS | ~4 MB | ~3.9 MB |
+| Agent mode RSS (chat / agent-rpc) | ~11 MB | — |
+| Sandbox execution RSS | ~12 MB | ~12 MB |
+
+> Measured on macOS ARM64, release build. Sandbox execution RSS is dominated by the embedded Python process, so both binaries are similar. The Agent layer adds memory only when chat, planning, or memory features are actively used.
+
 ## ⚡ Performance Benchmark
 
 See SkillLite's performance compared to other sandbox solutions in real-time:
@@ -33,13 +42,14 @@ See SkillLite's performance compared to other sandbox solutions in real-time:
 
 ```bash
 # From project root
-python benchmark/benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
+cd benchmark/
+python benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
 
 # Cold start comparison (outputs COLD START BENCHMARK COMPARISON table)
-python benchmark/benchmark_runner.py --cold-start --compare-ipc
+python benchmark_runner.py --cold-start --compare-ipc
 
 # Full test: cold start + high concurrency
-python benchmark/benchmark_runner.py --cold-start --cold-iterations 20 --compare-levels --compare-ipc -o results.json
+python benchmark_runner.py --cold-start --cold-iterations 20 --compare-levels --compare-ipc -o results.json
 ```
 
 See [benchmark/README.md](./benchmark/README.md) for full documentation.
@@ -217,14 +227,15 @@ In addition to performance tests, we provide security comparison tests to evalua
 ### Running Security Tests
 
 ```bash
+cd benchmark
 # Complete test (SkillLite + Docker + Pyodide + Claude SRT)
-python3 benchmark/security_vs.py
+python3 security_vs.py
 
 # Test SkillLite only
-python3 benchmark/security_vs.py --skip-docker --skip-pyodide --skip-claude-srt
+python3 security_vs.py --skip-docker --skip-pyodide --skip-claude-srt
 
 # Output JSON results
-python3 benchmark/security_vs.py --output security_results.json
+python3 security_vs.py --output security_results.json
 ```
 
 ---
@@ -235,7 +246,7 @@ python3 benchmark/security_vs.py --output security_results.json
 |------|----------|--------|---------|-----|
 | **Warm Start Latency** | 40 ms | 194 ms | 672 ms | 596 ms |
 | **Cold Start Latency** | 492 ms | 120s | ~5s | ~1s |
-| **Memory Usage** | 10 MB | ~100 MB | ~50 MB | 84 MB |
+| **Memory Usage** | ~10 MB | ~100 MB | ~50 MB | ~84 MB |
 | **Security** | ⭐⭐⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐ |
 | **Deployment Complexity** | Single binary | Requires daemon | Requires Node.js | Requires installation |
 | **Platform Support** | macOS/Linux/Win(WSL2) | All platforms | All platforms | macOS/Linux |
