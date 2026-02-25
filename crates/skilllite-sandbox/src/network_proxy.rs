@@ -19,6 +19,65 @@ use std::thread;
 use std::time::Duration;
 
 // ============================================================================
+// Reverse DNS Lookup (F5: IP direct-connect blocking)
+// ============================================================================
+
+/// Attempt reverse DNS lookup for an IP address using system `getnameinfo`.
+/// Returns the resolved hostname, or `None` if lookup fails or returns the
+/// raw IP string (no PTR record).
+#[cfg(unix)]
+fn reverse_dns_lookup(ip: &std::net::IpAddr) -> Option<String> {
+    use std::net::IpAddr;
+
+    unsafe {
+        let mut host_buf = [0u8; 1025]; // NI_MAXHOST
+
+        let ret = match ip {
+            IpAddr::V4(ipv4) => {
+                let mut sa: libc::sockaddr_in = std::mem::zeroed();
+                sa.sin_family = libc::AF_INET as libc::sa_family_t;
+                sa.sin_addr.s_addr = u32::from_ne_bytes(ipv4.octets());
+                libc::getnameinfo(
+                    &sa as *const _ as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                    host_buf.as_mut_ptr() as *mut libc::c_char,
+                    host_buf.len() as libc::socklen_t,
+                    std::ptr::null_mut(),
+                    0,
+                    libc::NI_NAMEREQD,
+                )
+            }
+            IpAddr::V6(ipv6) => {
+                let mut sa: libc::sockaddr_in6 = std::mem::zeroed();
+                sa.sin6_family = libc::AF_INET6 as libc::sa_family_t;
+                sa.sin6_addr.s6_addr = ipv6.octets();
+                libc::getnameinfo(
+                    &sa as *const _ as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+                    host_buf.as_mut_ptr() as *mut libc::c_char,
+                    host_buf.len() as libc::socklen_t,
+                    std::ptr::null_mut(),
+                    0,
+                    libc::NI_NAMEREQD,
+                )
+            }
+        };
+
+        if ret != 0 {
+            return None;
+        }
+
+        let c_str = std::ffi::CStr::from_ptr(host_buf.as_ptr() as *const libc::c_char);
+        c_str.to_str().ok().map(|s| s.to_string())
+    }
+}
+
+#[cfg(not(unix))]
+fn reverse_dns_lookup(_ip: &std::net::IpAddr) -> Option<String> {
+    None
+}
+
+// ============================================================================
 // Proxy Configuration
 // ============================================================================
 
@@ -31,6 +90,10 @@ pub struct ProxyConfig {
     pub denied_domains: Vec<String>,
     /// Whether to allow all domains if allowlist is empty
     pub allow_all_if_empty: bool,
+    /// Whether loopback addresses (127.0.0.0/8, ::1, "localhost") are allowed
+    /// by default.  Loopback traffic stays on the machine and is not a data
+    /// exfiltration vector, so it is allowed unless explicitly denied.
+    pub allow_loopback: bool,
 }
 
 impl Default for ProxyConfig {
@@ -39,6 +102,7 @@ impl Default for ProxyConfig {
             allowed_domains: Vec::new(),
             denied_domains: Vec::new(),
             allow_all_if_empty: false,
+            allow_loopback: true,
         }
     }
 }
@@ -51,6 +115,7 @@ impl ProxyConfig {
             allowed_domains: Vec::new(),
             denied_domains: Vec::new(),
             allow_all_if_empty: false,
+            allow_loopback: false,
         }
     }
 
@@ -60,8 +125,14 @@ impl ProxyConfig {
             allowed_domains: domains,
             denied_domains: Vec::new(),
             allow_all_if_empty: false,
-            ..Default::default()
+            allow_loopback: true,
         }
+    }
+
+    /// Whether `domain` is a loopback name (RFC 6761 ".localhost" TLD).
+    fn is_loopback_domain(domain: &str) -> bool {
+        let d = domain.to_lowercase();
+        d == "localhost" || d.ends_with(".localhost")
     }
 
     /// Check if a domain is allowed
@@ -73,6 +144,12 @@ impl ProxyConfig {
             if Self::domain_matches(&domain_lower, denied) {
                 return false;
             }
+        }
+
+        // Loopback domains (localhost, *.localhost) allowed by default —
+        // traffic stays on the machine, not a data-exfiltration vector.
+        if self.allow_loopback && Self::is_loopback_domain(&domain_lower) {
+            return true;
         }
 
         // If allowlist is empty and allow_all_if_empty is true, allow
@@ -88,6 +165,52 @@ impl ProxyConfig {
         }
 
         false
+    }
+
+    /// Check if a direct IP connection should be allowed.
+    ///
+    /// When domain filtering is active, raw IP addresses cannot be matched
+    /// against domain patterns. This method attempts reverse DNS (PTR lookup)
+    /// to resolve the IP to a hostname, then checks that hostname against the
+    /// allowlist. If reverse DNS fails, the connection is blocked (fail-secure).
+    pub fn is_ip_connection_allowed(&self, ip_str: &str) -> bool {
+        // Check denied list with the raw IP first
+        for denied in &self.denied_domains {
+            if Self::domain_matches(ip_str, denied) {
+                return false;
+            }
+        }
+
+        // Loopback IPs (127.0.0.0/8, ::1) allowed by default — same
+        // rationale as loopback domains: traffic never leaves the host.
+        if self.allow_loopback {
+            if let Ok(ip) = ip_str.parse::<std::net::IpAddr>() {
+                if ip.is_loopback() {
+                    return true;
+                }
+            }
+        }
+
+        // No specific domain filtering → fall back to standard logic
+        if self.allowed_domains.is_empty() {
+            return self.allow_all_if_empty;
+        }
+
+        // Wildcard "*" allows all — no reverse DNS needed
+        if self.allowed_domains.iter().any(|d| d.trim() == "*") {
+            return true;
+        }
+
+        // Domain filtering is active — attempt reverse DNS
+        let ip: std::net::IpAddr = match ip_str.parse() {
+            Ok(ip) => ip,
+            Err(_) => return false,
+        };
+
+        match reverse_dns_lookup(&ip) {
+            Some(ref domain) => self.is_domain_allowed(domain),
+            None => false, // Fail-secure: no PTR record → block
+        }
     }
 
     /// Check if a domain matches a pattern (supports wildcards)
@@ -681,15 +804,26 @@ impl Socks5Proxy {
             }
         };
 
-        // Check if domain is allowed
+        // Check if connection is allowed (F5: reverse DNS for IP direct connections)
         {
             let cfg = config.read().expect("proxy config lock");
-            if !cfg.is_domain_allowed(&host) {
+            let allowed = if atyp == 0x01 || atyp == 0x04 {
+                cfg.is_ip_connection_allowed(&host)
+            } else {
+                cfg.is_domain_allowed(&host)
+            };
+
+            if !allowed {
                 let blocked_target = format!("{}:{}", host, port);
+                let reason = if atyp == 0x01 || atyp == 0x04 {
+                    "ip_direct_connection_blocked"
+                } else {
+                    "domain_not_in_allowlist"
+                };
                 observability::security_blocked_network(
                     "unknown",
                     &blocked_target,
-                    "domain_not_in_allowlist",
+                    reason,
                 );
                 Self::send_reply(&mut client, 0x02)?; // Connection not allowed
                 return Ok(());
@@ -850,7 +984,7 @@ mod tests {
             ],
             denied_domains: vec!["evil.github.com".to_string()],
             allow_all_if_empty: false,
-            ..Default::default()
+            allow_loopback: true,
         };
 
         // Allowed domains
@@ -898,5 +1032,104 @@ mod tests {
         
         let env_vars = manager.get_proxy_env_vars();
         assert!(!env_vars.is_empty());
+    }
+
+    #[test]
+    fn test_ip_direct_connection_blocked_with_domain_filter() {
+        let config = ProxyConfig::with_allowed_domains(vec![
+            "github.com".to_string(),
+            "*.github.com".to_string(),
+        ]);
+
+        // Raw IPs should NOT pass domain matching
+        assert!(!config.is_domain_allowed("140.82.112.4"));
+        assert!(!config.is_domain_allowed("::1"));
+
+        // is_ip_connection_allowed: no PTR record for RFC 5737 TEST-NET → blocked
+        assert!(!config.is_ip_connection_allowed("192.0.2.1"));
+    }
+
+    #[test]
+    fn test_ip_allowed_when_wildcard() {
+        let config = ProxyConfig {
+            allowed_domains: vec!["*".to_string()],
+            denied_domains: vec![],
+            allow_all_if_empty: false,
+            allow_loopback: true,
+        };
+
+        // Wildcard allows all, including IP direct
+        assert!(config.is_ip_connection_allowed("1.2.3.4"));
+    }
+
+    #[test]
+    fn test_ip_allowed_when_no_filter() {
+        let config = ProxyConfig {
+            allowed_domains: vec![],
+            denied_domains: vec![],
+            allow_all_if_empty: true,
+            allow_loopback: true,
+        };
+
+        // No domain filtering + allow_all → IP passes
+        assert!(config.is_ip_connection_allowed("1.2.3.4"));
+    }
+
+    #[test]
+    fn test_ip_blocked_when_block_all() {
+        let config = ProxyConfig::block_all();
+        assert!(!config.is_ip_connection_allowed("1.2.3.4"));
+        // block_all sets allow_loopback = false
+        assert!(!config.is_ip_connection_allowed("127.0.0.1"));
+        assert!(!config.is_domain_allowed("localhost"));
+    }
+
+    #[test]
+    fn test_loopback_allowed_by_default() {
+        let config = ProxyConfig::with_allowed_domains(vec![
+            "github.com".to_string(),
+        ]);
+
+        // Loopback addresses pass without needing explicit allowlist entry
+        assert!(config.is_ip_connection_allowed("127.0.0.1"));
+        assert!(config.is_ip_connection_allowed("127.0.0.2"));
+        assert!(config.is_ip_connection_allowed("::1"));
+        assert!(config.is_domain_allowed("localhost"));
+        assert!(config.is_domain_allowed("app.localhost"));
+
+        // External IPs still blocked
+        assert!(!config.is_ip_connection_allowed("192.0.2.1"));
+    }
+
+    #[test]
+    fn test_loopback_denied_takes_precedence() {
+        let config = ProxyConfig {
+            allowed_domains: vec!["github.com".to_string()],
+            denied_domains: vec!["localhost".to_string()],
+            allow_all_if_empty: false,
+            allow_loopback: true,
+        };
+
+        // Denied list overrides allow_loopback for domains
+        assert!(!config.is_domain_allowed("localhost"));
+
+        // 127.0.0.1 as raw IP is not in denied_domains text,
+        // but loopback IP is still allowed (denied only matches "localhost" text)
+        assert!(config.is_ip_connection_allowed("127.0.0.1"));
+    }
+
+    #[test]
+    fn test_loopback_ip_denied_by_ip_pattern() {
+        let config = ProxyConfig {
+            allowed_domains: vec!["github.com".to_string()],
+            denied_domains: vec!["127.0.0.1".to_string()],
+            allow_all_if_empty: false,
+            allow_loopback: true,
+        };
+
+        // IP in denied list → blocked even with allow_loopback
+        assert!(!config.is_ip_connection_allowed("127.0.0.1"));
+        // Other loopback IPs still allowed
+        assert!(config.is_ip_connection_allowed("127.0.0.2"));
     }
 }

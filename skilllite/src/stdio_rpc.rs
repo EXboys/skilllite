@@ -22,6 +22,9 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::sync::mpsc;
 use std::thread;
 
+/// Maximum JSON-RPC request size (10 MB) to prevent OOM DoS.
+const MAX_REQUEST_SIZE: usize = 10 * 1024 * 1024;
+
 /// Run the skill execution stdio RPC daemon.
 ///
 /// Reads JSON-RPC requests from stdin (one per line), writes responses to stdout.
@@ -55,15 +58,16 @@ pub fn serve_stdio() -> Result<()> {
     });
 
     let stdin = io::stdin();
-    let reader = BufReader::new(stdin.lock());
+    let mut reader = BufReader::new(stdin.lock());
     let (done_tx, done_rx) = mpsc::channel::<()>();
     let mut pending = 0usize;
 
-    for line in reader.lines() {
-        let line = match line.context("Failed to read stdin") {
-            Ok(l) => l,
+    loop {
+        let line = match read_line_limited(&mut reader) {
+            Ok(None) => break,       // EOF
+            Ok(Some(l)) => l,
             Err(e) => {
-                let _ = tx.send((Value::Null, Err(e.to_string())));
+                let _ = tx.send((Value::Null, Err(format!("Request size error: {}", e))));
                 continue;
             }
         };
@@ -108,6 +112,80 @@ pub fn serve_stdio() -> Result<()> {
     writer_handle.join().map_err(|_| anyhow::anyhow!("Writer thread panicked"))??;
 
     Ok(())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Size-Limited Stdin Reader (F3: OOM DoS prevention)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Read a single line from `reader`, enforcing [`MAX_REQUEST_SIZE`].
+/// Returns `Ok(None)` on EOF, `Ok(Some(line))` on success.
+fn read_line_limited(reader: &mut impl BufRead) -> io::Result<Option<String>> {
+    let mut buf = Vec::new();
+    loop {
+        let available = match reader.fill_buf() {
+            Ok(b) => b,
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if available.is_empty() {
+            return if buf.is_empty() {
+                Ok(None)
+            } else {
+                if buf.last() == Some(&b'\r') { buf.pop(); }
+                String::from_utf8(buf)
+                    .map(Some)
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"))
+            };
+        }
+        match available.iter().position(|&b| b == b'\n') {
+            Some(pos) => {
+                if buf.len() + pos > MAX_REQUEST_SIZE {
+                    reader.consume(pos + 1);
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Request exceeds 10MB size limit",
+                    ));
+                }
+                buf.extend_from_slice(&available[..pos]);
+                reader.consume(pos + 1);
+                if buf.last() == Some(&b'\r') { buf.pop(); }
+                return String::from_utf8(buf)
+                    .map(Some)
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"));
+            }
+            None => {
+                let len = available.len();
+                if buf.len() + len > MAX_REQUEST_SIZE {
+                    reader.consume(len);
+                    skip_until_newline(reader);
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Request exceeds 10MB size limit",
+                    ));
+                }
+                buf.extend_from_slice(available);
+                reader.consume(len);
+            }
+        }
+    }
+}
+
+fn skip_until_newline(reader: &mut impl BufRead) {
+    loop {
+        match reader.fill_buf() {
+            Ok(b) if b.is_empty() => break,
+            Ok(b) => {
+                if let Some(pos) = b.iter().position(|&c| c == b'\n') {
+                    reader.consume(pos + 1);
+                    break;
+                }
+                let len = b.len();
+                reader.consume(len);
+            }
+            Err(_) => break,
+        }
+    }
 }
 
 /// Dispatch JSON-RPC request to the appropriate handler.

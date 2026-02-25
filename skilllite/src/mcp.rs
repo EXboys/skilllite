@@ -25,6 +25,9 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+/// Maximum JSON-RPC request size (10 MB) to prevent OOM DoS.
+const MAX_REQUEST_SIZE: usize = 10 * 1024 * 1024;
+
 use skilllite_sandbox::runner::{ResourceLimits, SandboxLevel};
 use skilllite_sandbox::security::scanner::ScriptScanner;
 use skilllite_sandbox::security::types::{
@@ -235,6 +238,83 @@ fn get_mcp_tools() -> Vec<Value> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Size-Limited Stdin Reader (F3: OOM DoS prevention)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/// Read a single line from `reader`, enforcing [`MAX_REQUEST_SIZE`].
+/// Returns `Ok(None)` on EOF, `Ok(Some(line))` on success.
+/// Oversized lines are skipped (bytes discarded) and an error is returned.
+fn read_line_limited(reader: &mut impl BufRead) -> io::Result<Option<String>> {
+    let mut buf = Vec::new();
+    loop {
+        let available = match reader.fill_buf() {
+            Ok(b) => b,
+            Err(ref e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        };
+        if available.is_empty() {
+            return if buf.is_empty() {
+                Ok(None)
+            } else {
+                if buf.last() == Some(&b'\r') { buf.pop(); }
+                String::from_utf8(buf)
+                    .map(Some)
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"))
+            };
+        }
+        match available.iter().position(|&b| b == b'\n') {
+            Some(pos) => {
+                if buf.len() + pos > MAX_REQUEST_SIZE {
+                    reader.consume(pos + 1);
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Request exceeds 10MB size limit",
+                    ));
+                }
+                buf.extend_from_slice(&available[..pos]);
+                reader.consume(pos + 1);
+                if buf.last() == Some(&b'\r') { buf.pop(); }
+                return String::from_utf8(buf)
+                    .map(Some)
+                    .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"));
+            }
+            None => {
+                let len = available.len();
+                if buf.len() + len > MAX_REQUEST_SIZE {
+                    reader.consume(len);
+                    skip_until_newline(reader);
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Request exceeds 10MB size limit",
+                    ));
+                }
+                buf.extend_from_slice(available);
+                reader.consume(len);
+            }
+        }
+    }
+}
+
+/// Discard bytes from `reader` until a newline or EOF, using only the
+/// internal buffer (no heap allocation for the discarded data).
+fn skip_until_newline(reader: &mut impl BufRead) {
+    loop {
+        match reader.fill_buf() {
+            Ok(b) if b.is_empty() => break,
+            Ok(b) => {
+                if let Some(pos) = b.iter().position(|&c| c == b'\n') {
+                    reader.consume(pos + 1);
+                    break;
+                }
+                let len = b.len();
+                reader.consume(len);
+            }
+            Err(_) => break,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // MCP Protocol: Main Server Loop
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -247,10 +327,23 @@ pub fn serve_mcp_stdio(skills_dir: &str) -> Result<()> {
 
     let stdin = io::stdin();
     let mut stdout = io::stdout();
-    let reader = BufReader::new(stdin.lock());
+    let mut reader = BufReader::new(stdin.lock());
 
-    for line in reader.lines() {
-        let line = line.context("Failed to read stdin")?;
+    loop {
+        let line = match read_line_limited(&mut reader) {
+            Ok(None) => break,       // EOF
+            Ok(Some(l)) => l,
+            Err(e) => {
+                let err_resp = json!({
+                    "jsonrpc": "2.0",
+                    "id": null,
+                    "error": {"code": -32600, "message": format!("Request size error: {}", e)}
+                });
+                writeln!(stdout, "{}", err_resp)?;
+                stdout.flush()?;
+                continue;
+            }
+        };
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -764,39 +857,49 @@ fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> Result<Stri
                 "scan_id is required when confirmed=true. Call scan_code first to get a scan_id."
             )?;
 
-            let cached = server.scan_cache.get(sid).context(
-                "Invalid or expired scan_id. The scan may have expired (TTL: 300s). Please call scan_code again."
-            )?;
+            // Extract needed data within a scoped borrow, then consume on success
+            let (cached_code_hash, issues_count, has_critical) = {
+                let cached = server.scan_cache.get(sid).context(
+                    "Invalid or expired scan_id. The scan may have expired (TTL: 300s). Please call scan_code again."
+                )?;
+                (
+                    cached.code_hash.clone(),
+                    cached.scan_result.issues.len(),
+                    cached.scan_result.issues.iter().any(|i| {
+                        matches!(i.severity, SecuritySeverity::Critical)
+                    }),
+                )
+            };
 
             // Verify code_hash matches
             let current_hash = McpServer::generate_code_hash(language, code);
-            if cached.code_hash != current_hash {
+            if cached_code_hash != current_hash {
                 anyhow::bail!(
                     "Code has changed since the scan. Please call scan_code again with the new code."
                 );
             }
 
             // Check for critical issues — cannot override
-            let has_critical = cached.scan_result.issues.iter().any(|i| {
-                matches!(i.severity, SecuritySeverity::Critical)
-            });
             if has_critical {
                 skilllite_core::observability::security_scan_rejected(
                     "execute_code",
                     sid,
-                    cached.scan_result.issues.len(),
+                    issues_count,
                 );
                 anyhow::bail!(
                     "Execution blocked: Critical security issues cannot be overridden even with confirmation."
                 );
             }
 
+            // One-time consumption: remove scan_id to prevent replay (F4)
+            server.scan_cache.remove(sid);
+
             // Audit: execution approved
             skilllite_core::observability::audit_confirmation_response("execute_code", true, "user");
             skilllite_core::observability::security_scan_approved(
                 "execute_code",
                 sid,
-                cached.scan_result.issues.len(),
+                issues_count,
             );
         } else {
             // Auto-scan
@@ -941,14 +1044,10 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
                     "scan_id is required when confirmed=true. The skill security scan must be reviewed first."
                 )?;
 
-                if !server.scan_cache.contains_key(sid) {
-                    anyhow::bail!(
+                let issues_count = {
+                    let cached = server.scan_cache.get(sid).context(
                         "Invalid or expired scan_id. Please review the security report and try again."
-                    );
-                }
-
-                // Check for critical issues
-                if let Some(cached) = server.scan_cache.get(sid) {
+                    )?;
                     let has_critical = cached.scan_result.issues.iter().any(|i| {
                         matches!(i.severity, SecuritySeverity::Critical)
                     });
@@ -957,14 +1056,18 @@ fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Result<String>
                             "Execution blocked: Critical security issues cannot be overridden."
                         );
                     }
-                }
+                    cached.scan_result.issues.len()
+                };
+
+                // One-time consumption: remove scan_id to prevent replay (F4)
+                server.scan_cache.remove(sid);
 
                 // Audit: scan approved
                 skilllite_core::observability::audit_confirmation_response(skill_name, true, "user");
                 skilllite_core::observability::security_scan_approved(
                     skill_name,
                     sid,
-                    server.scan_cache.get(sid).map_or(0, |c| c.scan_result.issues.len()),
+                    issues_count,
                 );
 
                 // Cache confirmation
