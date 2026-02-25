@@ -37,7 +37,7 @@
 
 > **Core principle: Scan before install, enforce after install. (先判毒，再落地；落地后防改)**
 
-Most sandbox solutions only provide **runtime isolation** — a single layer. SkillLite is the first lightweight engine that defends across **the entire skill lifecycle**:
+Most sandbox solutions only provide **runtime isolation** — a single layer. SkillLite is the  lightweight engine that defends across **the entire skill lifecycle**:
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -85,7 +85,7 @@ Most sandbox solutions only provide **runtime isolation** — a single layer. Sk
 | Claude SRT | 7.5/20 | 37.5% |
 | Docker (default) | 2/20 | 10% |
 
-<details>
+
 <summary>Full 20-item security test breakdown</summary>
 
 | Test Item | SkillLite | Docker | Pyodide | Claude SRT |
@@ -122,7 +122,6 @@ Most sandbox solutions only provide **runtime isolation** — a single layer. Sk
 cd benchmark && python3 security_vs.py
 ```
 
-</details>
 
 ---
 
