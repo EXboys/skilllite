@@ -277,11 +277,10 @@ pub fn run_in_sandbox_with_limits_and_level(
                 .collect();
             
             if !critical_issues.is_empty() || !high_issues.is_empty() {
-                let will_auto_approve = !io::stdin().is_terminal()
-                    || env::var("SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
-                        let v = v.trim().to_lowercase();
-                        v == "1" || v == "true" || v == "yes"
-                    });
+                let will_auto_approve = env::var("SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
+                    let v = v.trim().to_lowercase();
+                    v == "1" || v == "true" || v == "yes"
+                });
                 if !will_auto_approve {
                     eprintln!("{}", format_scan_result(&scan_result));
                 }
@@ -319,10 +318,22 @@ pub fn run_in_sandbox_with_limits_and_level(
                     &serde_json::Value::Array(issues_json),
                 );
 
-                let approved = if !io::stdin().is_terminal() {
-                    tracing::info!("Non-TTY stdin (agent-rpc): auto-approve (agent already confirmed)");
-                    observability::audit_confirmation_response(&config.name, true, "rpc");
+                let auto_approve_env = env::var("SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
+                    let v = v.trim().to_lowercase();
+                    v == "1" || v == "true" || v == "yes"
+                });
+
+                let approved = if auto_approve_env {
+                    tracing::info!("Auto-approved via SKILLBOX_AUTO_APPROVE (agent/daemon already confirmed)");
+                    observability::audit_confirmation_response(&config.name, true, "auto");
                     true
+                } else if !io::stdin().is_terminal() {
+                    tracing::warn!(
+                        "Non-TTY stdin: blocking {} severity issues (set SKILLBOX_AUTO_APPROVE=1 to override)",
+                        severity_str
+                    );
+                    observability::audit_confirmation_response(&config.name, false, "non-tty-blocked");
+                    false
                 } else {
                     request_user_authorization(&config.name, issues_count, severity_str)
                 };

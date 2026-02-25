@@ -220,7 +220,7 @@ pub fn get_default_python_rules() -> Vec<SecurityRule> {
         .for_languages(&["python"]),
         SecurityRule::new(
             "py-builtins-modify",
-            r"(?:setattr|delattr)\s*\(\s*__builtins__",
+            r"(?:(?:setattr|delattr)\s*\(\s*(?:__builtins__|builtins)\b|builtins\.\w+\s*=[^=])",
             SecurityIssueType::CodeInjection,
             SecuritySeverity::Critical,
             "Modification of built-in functions",

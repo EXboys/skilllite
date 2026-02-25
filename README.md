@@ -170,6 +170,9 @@ In addition to performance tests, we provide security comparison tests to evalua
 | | CPU bomb | Infinite loop calculation |
 | **Code Injection** | Dynamic import | `__import__`, `importlib` |
 | | eval/exec | Dynamic code execution |
+| | Modify built-in funcs | Override `builtins.open` etc. |
+| **Information Leakage** | Environment variables | Read `os.environ` |
+| | System information | Platform, Python version |
 
 ### Security Comparison 
 
@@ -177,7 +180,7 @@ In addition to performance tests, we provide security comparison tests to evalua
 |----------------------|----------------|----------------|----------------|----------------|
 | **File System** | | | | |
 | Read /etc/passwd       |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
-| Read SSH private key    |      ✅ Blocked      |      ✅ Blocked      |      ✅ Blocked      |      ❌ Allowed      |
+| Read SSH private key    |      ✅ Blocked      |      ✅ Blocked      |      ✅ Blocked      |      ✅ Blocked      |
 | Write to /tmp dir       |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
 | Directory traversal     |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
 | List root directory     |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
@@ -191,13 +194,13 @@ In addition to performance tests, we provide security comparison tests to evalua
 | Enumerate processes    |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ✅ Blocked      |
 | Send process signal    |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |    ⚠️ Partially Blocked     |
 | **Resource Limits** | | | | |
-| Memory bomb             |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Memory bomb             |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
 | Fork bomb              |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |      ❌ Allowed      |
 | CPU intensive compute  |      ✅ Blocked      |      ✅ Blocked      |      ❌ Allowed      |      ✅ Blocked      |
 | **Code Injection** | | | | |
 | Dynamic import os      |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
 | Use eval/exec          |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
-| Modify built-in funcs  |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
+| Modify built-in funcs  |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
 | **Information Leakage** | | | | |
 | Read environment vars  |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
 | Get system info        |      ✅ Blocked      |      ❌ Allowed      |      ❌ Allowed      |      ❌ Allowed      |
@@ -206,10 +209,10 @@ In addition to performance tests, we provide security comparison tests to evalua
 
 | Platform | Blocked | Partially Blocked | Allowed | Security Score |
 |------|------|----------|------|----------|
-| SkillLite | 18 | 0 | 2 | 90.0% |
+| SkillLite (Level 3) | 20 | 0 | 0 | 100.0% |
 | Docker | 2 | 0 | 18 | 10.0% |
 | Pyodide | 7 | 0 | 13 | 35.0% |
-| Claude SRT | 6 | 1 | 13 | 32.5% |
+| Claude SRT | 7 | 1 | 12 | 37.5% |
 
 ### Running Security Tests
 
