@@ -286,7 +286,7 @@ fn execute_with_bwrap(
     resolved: &ResolvedRuntime,
     entry_point: &Path,
     work_dir: &Path,
-    _limits: crate::runner::ResourceLimits,
+    limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     let env_path = &runtime.env_dir;
     let network_policy = security_policy::resolve_network_policy(
@@ -433,6 +433,46 @@ fn execute_with_bwrap(
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
+
+    // Apply resource limits via pre_exec — inherited by bwrap's child process through fork+exec
+    let memory_limit_mb = limits.max_memory_mb;
+    let cpu_limit_secs = limits.timeout_secs;
+    let file_size_limit_mb = crate::common::DEFAULT_FILE_SIZE_LIMIT_MB;
+    let max_processes = crate::common::DEFAULT_MAX_PROCESSES;
+
+    unsafe {
+        cmd.pre_exec(move || {
+            use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
+
+            let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
+            let mem_limit = rlimit {
+                rlim_cur: memory_limit_bytes,
+                rlim_max: memory_limit_bytes,
+            };
+            setrlimit(RLIMIT_AS, &mem_limit);
+
+            let cpu_limit = rlimit {
+                rlim_cur: cpu_limit_secs,
+                rlim_max: cpu_limit_secs,
+            };
+            setrlimit(RLIMIT_CPU, &cpu_limit);
+
+            let file_limit_bytes = file_size_limit_mb * 1024 * 1024;
+            let file_limit = rlimit {
+                rlim_cur: file_limit_bytes,
+                rlim_max: file_limit_bytes,
+            };
+            setrlimit(RLIMIT_FSIZE, &file_limit);
+
+            let nproc_limit = rlimit {
+                rlim_cur: max_processes,
+                rlim_max: max_processes,
+            };
+            setrlimit(RLIMIT_NPROC, &nproc_limit);
+
+            Ok(())
+        });
+    }
     
     // Spawn the process
     let mut child = cmd.spawn().with_context(|| "Failed to spawn bwrap sandbox")?;
@@ -443,47 +483,84 @@ fn execute_with_bwrap(
             .with_context(|| "Failed to write to stdin")?;
     }
     
-    // Wait for completion
-    let output = child.wait_with_output()
-        .with_context(|| "Failed to wait for bwrap sandbox")?;
+    // Wait with timeout and memory monitoring
+    let (stdout, stderr, exit_code, _, _) = wait_with_timeout(
+        &mut child,
+        limits.timeout_secs,
+        limits.max_memory_bytes(),
+        true,
+    )?;
     
     // Proxy manager will be dropped here, stopping the proxy servers
     drop(proxy_manager);
     
     Ok(ExecutionResult {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        exit_code: output.status.code().unwrap_or(-1),
+        stdout,
+        stderr,
+        exit_code,
     })
 }
 
-/// Generate a seccomp BPF filter file that blocks Unix socket creation
+/// Generate a seccomp BPF filter file for bwrap's `--seccomp` option.
+///
+/// Blocks the same set of dangerous syscalls as `seccomp.rs::build_sandbox_filter`:
+/// ptrace, mount, umount2, keyctl, kexec_load, kexec_file_load, pivot_root, chroot,
+/// socket(AF_UNIX), clone(CLONE_NEWUSER), unshare(CLONE_NEWUSER).
 fn generate_seccomp_bpf_file(path: &Path) -> Result<()> {
     use std::io::Write;
-    
-    // BPF filter that blocks socket(AF_UNIX, ...) syscalls
-    // This is a binary BPF program format that bwrap can load
-    
-    // For x86_64: socket syscall is 41, AF_UNIX is 1
-    // For aarch64: socket syscall is 198, AF_UNIX is 1
-    
+
     #[cfg(target_arch = "x86_64")]
-    const SYS_SOCKET: u32 = 41;
-    
+    mod nr {
+        pub const SOCKET: u32 = 41;
+        pub const PTRACE: u32 = 101;
+        pub const MOUNT: u32 = 165;
+        pub const UMOUNT2: u32 = 166;
+        pub const CLONE: u32 = 56;
+        pub const KEYCTL: u32 = 250;
+        pub const KEXEC_LOAD: u32 = 246;
+        pub const KEXEC_FILE_LOAD: u32 = 320;
+        pub const PIVOT_ROOT: u32 = 155;
+        pub const CHROOT: u32 = 161;
+        pub const UNSHARE: u32 = 272;
+    }
+
     #[cfg(target_arch = "aarch64")]
-    const SYS_SOCKET: u32 = 198;
-    
+    mod nr {
+        pub const SOCKET: u32 = 198;
+        pub const PTRACE: u32 = 117;
+        pub const MOUNT: u32 = 40;
+        pub const UMOUNT2: u32 = 39;
+        pub const CLONE: u32 = 220;
+        pub const KEYCTL: u32 = 219;
+        pub const KEXEC_LOAD: u32 = 104;
+        pub const KEXEC_FILE_LOAD: u32 = 294;
+        pub const PIVOT_ROOT: u32 = 41;
+        pub const CHROOT: u32 = 51;
+        pub const UNSHARE: u32 = 97;
+    }
+
     #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    const SYS_SOCKET: u32 = 0;
-    
+    mod nr {
+        pub const SOCKET: u32 = 0;
+        pub const PTRACE: u32 = 0;
+        pub const MOUNT: u32 = 0;
+        pub const UMOUNT2: u32 = 0;
+        pub const CLONE: u32 = 0;
+        pub const KEYCTL: u32 = 0;
+        pub const KEXEC_LOAD: u32 = 0;
+        pub const KEXEC_FILE_LOAD: u32 = 0;
+        pub const PIVOT_ROOT: u32 = 0;
+        pub const CHROOT: u32 = 0;
+        pub const UNSHARE: u32 = 0;
+    }
+
     const AF_UNIX: u32 = 1;
-    
-    // Seccomp return values
+    const CLONE_NEWUSER: u32 = 0x10000000;
+
     const SECCOMP_RET_ALLOW: u32 = 0x7fff0000;
     const SECCOMP_RET_ERRNO: u32 = 0x00050000;
     const EPERM: u32 = 1;
-    
-    // BPF instruction codes
+
     const BPF_LD: u16 = 0x00;
     const BPF_W: u16 = 0x00;
     const BPF_ABS: u16 = 0x20;
@@ -491,28 +568,55 @@ fn generate_seccomp_bpf_file(path: &Path) -> Result<()> {
     const BPF_JEQ: u16 = 0x10;
     const BPF_K: u16 = 0x00;
     const BPF_RET: u16 = 0x06;
-    
-    // Seccomp data offsets
+    const BPF_ALU: u16 = 0x04;
+    const BPF_AND: u16 = 0x50;
+
     const SECCOMP_DATA_NR: u32 = 0;
     const SECCOMP_DATA_ARGS: u32 = 16;
-    
-    // Build BPF filter instructions
-    let filter: Vec<(u16, u8, u8, u32)> = vec![
-        // Load syscall number
-        (BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_NR),
-        // If not socket(), allow (jump 3 instructions forward)
-        (BPF_JMP | BPF_JEQ | BPF_K, 0, 3, SYS_SOCKET),
-        // Load first argument (domain/family)
-        (BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_ARGS),
-        // If AF_UNIX, return EPERM (jump 0 forward to next instruction)
-        (BPF_JMP | BPF_JEQ | BPF_K, 0, 1, AF_UNIX),
-        // Return EPERM for AF_UNIX sockets
-        (BPF_RET | BPF_K, 0, 0, SECCOMP_RET_ERRNO | EPERM),
-        // Allow everything else
-        (BPF_RET | BPF_K, 0, 0, SECCOMP_RET_ALLOW),
-    ];
-    
-    // Write filter to file in binary format
+
+    type Inst = (u16, u8, u8, u32);
+    let deny: Inst = (BPF_RET | BPF_K, 0, 0, SECCOMP_RET_ERRNO | EPERM);
+    let allow: Inst = (BPF_RET | BPF_K, 0, 0, SECCOMP_RET_ALLOW);
+
+    let mut filter: Vec<Inst> = Vec::with_capacity(36);
+
+    // Load syscall number
+    filter.push((BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_NR));
+
+    // Unconditional blocks
+    for syscall in [nr::PTRACE, nr::MOUNT, nr::UMOUNT2, nr::KEYCTL,
+                    nr::KEXEC_LOAD, nr::KEXEC_FILE_LOAD, nr::PIVOT_ROOT, nr::CHROOT] {
+        filter.push((BPF_JMP | BPF_JEQ | BPF_K, 0, 1, syscall));
+        filter.push(deny);
+    }
+
+    // socket(AF_UNIX) block
+    filter.push((BPF_JMP | BPF_JEQ | BPF_K, 0, 3, nr::SOCKET));
+    filter.push((BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_ARGS));
+    filter.push((BPF_JMP | BPF_JEQ | BPF_K, 0, 1, AF_UNIX));
+    filter.push(deny);
+    // Reload syscall number
+    filter.push((BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_NR));
+
+    // clone(CLONE_NEWUSER) block
+    filter.push((BPF_JMP | BPF_JEQ | BPF_K, 0, 4, nr::CLONE));
+    filter.push((BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_ARGS));
+    filter.push((BPF_ALU | BPF_AND | BPF_K, 0, 0, CLONE_NEWUSER));
+    filter.push((BPF_JMP | BPF_JEQ | BPF_K, 0, 1, CLONE_NEWUSER));
+    filter.push(deny);
+    // Reload syscall number
+    filter.push((BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_NR));
+
+    // unshare(CLONE_NEWUSER) block
+    filter.push((BPF_JMP | BPF_JEQ | BPF_K, 0, 4, nr::UNSHARE));
+    filter.push((BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_ARGS));
+    filter.push((BPF_ALU | BPF_AND | BPF_K, 0, 0, CLONE_NEWUSER));
+    filter.push((BPF_JMP | BPF_JEQ | BPF_K, 0, 1, CLONE_NEWUSER));
+    filter.push(deny);
+
+    // Allow everything else
+    filter.push(allow);
+
     let mut file = fs::File::create(path)?;
     for (code, jt, jf, k) in filter {
         file.write_all(&code.to_ne_bytes())?;
@@ -520,7 +624,7 @@ fn generate_seccomp_bpf_file(path: &Path) -> Result<()> {
         file.write_all(&[jf])?;
         file.write_all(&k.to_ne_bytes())?;
     }
-    
+
     Ok(())
 }
 
