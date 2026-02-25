@@ -182,8 +182,9 @@ pub fn run_cli() -> Result<()> {
             skills_dir,
             force,
             list,
+            scan_offline,
         } => {
-            commands::skill::cmd_add(&source, &skills_dir, force, list)?;
+            commands::skill::cmd_add(&source, &skills_dir, force, list, scan_offline)?;
         }
         Commands::Remove {
             skill_name,

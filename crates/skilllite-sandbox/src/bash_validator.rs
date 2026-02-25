@@ -12,8 +12,11 @@
 //!    `allowed-tools: Bash(prefix:*)` patterns declared in SKILL.md.
 //! 3. **Blocked prefix check** — dangerous commands (rm, sudo, sh, curl, etc.)
 //!    are always rejected regardless of allowed patterns.
+//! 4. **Unicode NFKC normalization** — applied before validation to prevent
+//!    Unicode homoglyph/confusable bypass (e.g. ｒｍ vs rm).
 
 use thiserror::Error;
+use unicode_normalization::UnicodeNormalization;
 
 /// Parsed pattern from `allowed-tools: Bash(prefix:*)`.
 ///
@@ -106,7 +109,9 @@ pub fn validate_bash_command(
     cmd: &str,
     allowed_patterns: &[BashToolPattern],
 ) -> Result<(), BashValidationError> {
-    let trimmed = cmd.trim();
+    // G3: NFKC normalization to prevent Unicode homoglyph bypass (e.g. ｒｍ vs rm)
+    let normalized = cmd.nfkc().collect::<String>();
+    let trimmed = normalized.trim();
 
     // 0. Reject empty commands
     if trimmed.is_empty() {
@@ -317,5 +322,22 @@ mod tests {
     fn test_valid_with_leading_spaces() {
         let patterns = agent_browser_patterns();
         assert!(validate_bash_command("  agent-browser open https://example.com", &patterns).is_ok());
+    }
+
+    // ---- G3: Unicode NFKC normalization ----
+
+    #[test]
+    fn test_reject_fullwidth_rm() {
+        // Fullwidth 'r' (U+FF52) and 'm' (U+FF4D) - NFKC normalizes to ASCII, then blocked
+        let patterns = agent_browser_patterns();
+        let result = validate_bash_command("\u{ff52}\u{ff4d} -rf /", &patterns);
+        assert!(matches!(result, Err(BashValidationError::BlockedPrefix(_))));
+    }
+
+    #[test]
+    fn test_reject_fullwidth_sudo() {
+        let patterns = agent_browser_patterns();
+        let result = validate_bash_command("\u{ff53}\u{ff55}\u{ff44}\u{ff4f} whoami", &patterns);
+        assert!(matches!(result, Err(BashValidationError::BlockedPrefix(_))));
     }
 }

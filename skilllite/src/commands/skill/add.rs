@@ -541,6 +541,15 @@ impl AdmissionRisk {
             Self::Malicious => "malicious",
         }
     }
+
+    #[cfg(feature = "agent")]
+    fn from_cache_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "safe" => Self::Safe,
+            "malicious" => Self::Malicious,
+            _ => Self::Suspicious,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -575,6 +584,12 @@ fn llm_admission_assess(skill_name: &str, skill_md: &str, script_samples: &str) 
     let config = AgentConfig::from_env();
     if config.api_key.trim().is_empty() {
         anyhow::bail!("LLM scan skipped: API key not configured");
+    }
+
+    // A3: Check scan cache to avoid redundant LLM calls for same content
+    let content_hash = skilllite_core::scan_cache::content_hash(skill_md, script_samples);
+    if let Some((risk_str, reason)) = skilllite_core::scan_cache::get_cached(&content_hash)? {
+        return Ok((AdmissionRisk::from_cache_str(&risk_str), reason));
     }
 
     let system_prompt = r#"You are a security admission scanner for Skill packages.
@@ -625,6 +640,10 @@ Rules:
         .and_then(|r| r.as_str())
         .unwrap_or("LLM flagged potential risk")
         .to_string();
+
+    // A3: Store in scan cache for future lookups
+    let _ = skilllite_core::scan_cache::put_cached(&content_hash, risk.as_str(), &reason);
+
     Ok((risk, reason))
 }
 
@@ -633,15 +652,22 @@ fn llm_admission_assess(_skill_name: &str, _skill_md: &str, _script_samples: &st
     anyhow::bail!("LLM scan unavailable: binary built without `agent` feature")
 }
 
-pub(super) fn scan_candidate_skills(candidates: &[(String, PathBuf)]) -> Vec<SkillScanReport> {
-    scan_candidate_skills_inner(candidates, false)
+pub(super) fn scan_candidate_skills(
+    candidates: &[(String, PathBuf)],
+    scan_offline: bool,
+) -> Vec<SkillScanReport> {
+    scan_candidate_skills_inner(candidates, scan_offline, scan_offline)
 }
 
 pub(super) fn scan_candidate_skills_fast(candidates: &[(String, PathBuf)]) -> Vec<SkillScanReport> {
-    scan_candidate_skills_inner(candidates, true)
+    scan_candidate_skills_inner(candidates, true, false)
 }
 
-fn scan_candidate_skills_inner(candidates: &[(String, PathBuf)], skip_dep_audit: bool) -> Vec<SkillScanReport> {
+fn scan_candidate_skills_inner(
+    candidates: &[(String, PathBuf)],
+    skip_dep_audit: bool,
+    scan_offline: bool,
+) -> Vec<SkillScanReport> {
     let mut reports = Vec::new();
 
     let total = candidates.len();
@@ -757,7 +783,7 @@ fn scan_candidate_skills_inner(candidates: &[(String, PathBuf)], skip_dep_audit:
         }
 
         #[cfg(feature = "audit")]
-        if has_deps && !skip_dep_audit {
+        if has_deps && !skip_dep_audit && !scan_offline {
             use skilllite_sandbox::security::dependency_audit;
 
             let metadata_hint = metadata::parse_skill_metadata(skill_path)
@@ -791,7 +817,7 @@ fn scan_candidate_skills_inner(candidates: &[(String, PathBuf)], skip_dep_audit:
             }
         }
 
-        let needs_llm = risk > AdmissionRisk::Safe;
+        let needs_llm = risk > AdmissionRisk::Safe && !scan_offline;
         if needs_llm {
             let script_samples = sample_scripts_for_llm(&script_files, 3, 1200);
             match llm_admission_assess(name, &skill_md_content, &script_samples) {
@@ -819,7 +845,13 @@ fn scan_candidate_skills_inner(candidates: &[(String, PathBuf)], skip_dep_audit:
 // ─── Public command ─────────────────────────────────────────────────────────
 
 /// `skilllite add <source>`
-pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> Result<()> {
+pub fn cmd_add(
+    source: &str,
+    skills_dir: &str,
+    force: bool,
+    list_only: bool,
+    scan_offline: bool,
+) -> Result<()> {
     let skills_path = common::resolve_skills_dir(skills_dir);
     let parsed = parse_source(source);
 
@@ -923,8 +955,12 @@ pub fn cmd_add(source: &str, skills_dir: &str, force: bool, list_only: bool) -> 
         }
 
         eprintln!();
-        eprintln!("🔍 Running admission scans (content-based)...");
-        let scan_reports = scan_candidate_skills(&install_candidates);
+        if scan_offline {
+            eprintln!("🔍 Running admission scans (offline: local rules only, no LLM/network)...");
+        } else {
+            eprintln!("🔍 Running admission scans (content-based)...");
+        }
+        let scan_reports = scan_candidate_skills(&install_candidates, scan_offline);
         let mut malicious = Vec::new();
         let mut suspicious = Vec::new();
         for report in &scan_reports {

@@ -246,6 +246,10 @@ pub enum Commands {
         /// List available skills without installing
         #[arg(long, short)]
         list: bool,
+
+        /// Offline scan only: skip LLM analysis and network dependency audit
+        #[arg(long)]
+        scan_offline: bool,
     },
 
     /// Remove an installed skill

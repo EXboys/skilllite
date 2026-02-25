@@ -159,7 +159,7 @@ pub(crate) fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool>
     let skills_dir_str = skills_path.to_string_lossy().to_string();
 
     eprintln!("   📥 Downloading skills from {} ...", repo);
-    skill::cmd_add(&repo, &skills_dir_str, force, false)
+    skill::cmd_add(&repo, &skills_dir_str, force, false, false)
         .with_context(|| format!("Failed to download skills from {}. Set SKILLLITE_SKILLS_REPO to customize.", repo))?;
 
     Ok(true)
