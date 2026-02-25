@@ -26,7 +26,7 @@ A lightweight AI Agent Skills secure execution engine that integrates with any O
 | Binary size | ~6.2 MB | ~3.6 MB |
 | Startup RSS | ~4 MB | ~3.9 MB |
 | Agent mode RSS (chat / agent-rpc) | ~11 MB | — |
-| Sandbox execution RSS | ~12 MB | ~12 MB |
+| Sandbox execution RSS | ~11 MB | ~10 MB |
 
 > Measured on macOS ARM64, release build. Sandbox execution RSS is dominated by the embedded Python process, so both binaries are similar. The Agent layer adds memory only when chat, planning, or memory features are actively used.
 
