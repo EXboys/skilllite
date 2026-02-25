@@ -61,7 +61,7 @@ skilllite/           # Repository root
   - **Level 3**: Sandbox isolation + static code scanning (default)
 - **Security Scanning**: Static code analysis with customizable rules for Python and JavaScript
 - **Network Control**: Configurable network access derived from compatibility field
-- **Resource Limits**: Memory limits (default 512MB) and timeout controls (default 30s)
+- **Resource Limits**: Memory limits (default 256MB) and timeout controls (default 30s)
 - **JSON Protocol**: stdin/stdout JSON communication
 
 ## Installation
@@ -129,7 +129,7 @@ skilllite run <SKILL_DIR> '<INPUT_JSON>' [OPTIONS]
 **Options:**
 - `--allow-network`: Override SKILL.md network policy
 - `--cache-dir <DIR>`: Custom cache directory for environments
-- `--max-memory <MB>`: Maximum memory limit in MB (default: 512)
+- `--max-memory <MB>`: Maximum memory limit in MB (default: 256)
 - `--timeout <SECS>`: Execution timeout in seconds (default: 30)
 - `--sandbox-level <1|2|3>`: Sandbox security level (default: 3)
 
@@ -219,7 +219,7 @@ Description of the skill...
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `SKILLBOX_SANDBOX_LEVEL` | Sandbox security level (1-3) | 3 |
-| `SKILLBOX_MAX_MEMORY_MB` | Maximum memory in MB | 512 |
+| `SKILLBOX_MAX_MEMORY_MB` | Maximum memory in MB | 256 |
 | `SKILLBOX_TIMEOUT_SECS` | Execution timeout in seconds | 30 |
 | `SKILLBOX_AUTO_APPROVE` | Auto-approve security prompts (1/true/yes) | - |
 | `SKILLBOX_CACHE_DIR` | Custom cache directory | System cache |

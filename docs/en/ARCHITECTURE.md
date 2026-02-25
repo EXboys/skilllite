@@ -262,7 +262,7 @@ The sandbox no longer `use crate::env::builder::*`; it receives `RuntimePaths` c
 
 ```rust
 pub struct ResourceLimits {
-    pub max_memory_mb: u64,   // Default 512MB
+    pub max_memory_mb: u64,   // Default 256MB
     pub timeout_secs: u64,    // Default 30 seconds
 }
 ```
@@ -663,7 +663,7 @@ MODEL=deepseek-chat
 
 # Sandbox Configuration
 SKILLBOX_SANDBOX_LEVEL=3      # 1/2/3
-SKILLBOX_MAX_MEMORY_MB=512    # Memory limit
+SKILLBOX_MAX_MEMORY_MB=256    # Memory limit
 SKILLBOX_TIMEOUT_SECS=30      # Timeout
 SKILLBOX_AUTO_APPROVE=false   # Auto-approve dangerous operations
 SKILLBOX_NO_SANDBOX=false     # Disable sandbox

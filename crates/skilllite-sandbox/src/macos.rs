@@ -67,6 +67,8 @@ pub fn execute_simple_with_limits(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
+    use std::os::unix::process::CommandExt;
+
     crate::info_log!("[INFO] simple: executing {}...", config.entry_point);
     let language = &config.language;
     let entry_point = &config.entry_point;
@@ -109,6 +111,46 @@ pub fn execute_simple_with_limits(
 
     if !config.network_enabled {
         cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
+    }
+
+    // Apply resource limits via pre_exec (kernel-enforced, not polling-only)
+    let memory_limit_mb = limits.max_memory_mb;
+    let cpu_limit_secs = limits.timeout_secs;
+    let file_size_limit_mb = crate::common::DEFAULT_FILE_SIZE_LIMIT_MB;
+    let max_processes = crate::common::DEFAULT_MAX_PROCESSES;
+
+    unsafe {
+        cmd.pre_exec(move || {
+            use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
+
+            let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
+            let mem_limit = rlimit {
+                rlim_cur: memory_limit_bytes,
+                rlim_max: memory_limit_bytes,
+            };
+            setrlimit(RLIMIT_AS, &mem_limit);
+
+            let cpu_limit = rlimit {
+                rlim_cur: cpu_limit_secs,
+                rlim_max: cpu_limit_secs,
+            };
+            setrlimit(RLIMIT_CPU, &cpu_limit);
+
+            let file_limit_bytes = file_size_limit_mb * 1024 * 1024;
+            let file_limit = rlimit {
+                rlim_cur: file_limit_bytes,
+                rlim_max: file_limit_bytes,
+            };
+            setrlimit(RLIMIT_FSIZE, &file_limit);
+
+            let nproc_limit = rlimit {
+                rlim_cur: max_processes,
+                rlim_max: max_processes,
+            };
+            setrlimit(RLIMIT_NPROC, &nproc_limit);
+
+            Ok(())
+        });
     }
 
     // Spawn the process

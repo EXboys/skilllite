@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 // ============================================================
 
 /// Default maximum memory limit in MB
-pub const DEFAULT_MAX_MEMORY_MB: u64 = 512;
+pub const DEFAULT_MAX_MEMORY_MB: u64 = 256;
 
 /// Default execution timeout in seconds
 pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
@@ -179,6 +179,29 @@ pub fn wait_with_timeout(
                 let stderr = stderr_handle
                     .map(|h| h.join().unwrap_or_default())
                     .unwrap_or_default();
+
+                // Post-exit memory check via getrusage(RUSAGE_CHILDREN).
+                // On macOS RLIMIT_AS is not enforced by the kernel, so a
+                // fast-allocating script can finish before the RSS polling
+                // loop catches it. ru_maxrss gives the peak RSS the child
+                // ever reached and lets us reject the result retroactively.
+                if let Some(peak) = get_children_peak_rss_bytes() {
+                    if peak > memory_limit_bytes {
+                        let peak_mb = peak / (1024 * 1024);
+                        let limit_mb = memory_limit_bytes / (1024 * 1024);
+                        return Ok((
+                            String::new(),
+                            format!(
+                                "Process rejected: peak memory ({} MB) exceeded limit ({} MB)",
+                                peak_mb, limit_mb
+                            ),
+                            -1,
+                            true,
+                            Some("memory_limit".to_string()),
+                        ));
+                    }
+                }
+
                 return Ok((stdout, stderr, status.code().unwrap_or(-1), false, None));
             }
             Ok(None) => {}
@@ -226,6 +249,37 @@ pub fn wait_with_timeout(
 
         thread::sleep(check_interval);
     }
+}
+
+/// Get peak RSS of all waited-for children via getrusage(RUSAGE_CHILDREN).
+/// Returns bytes on all platforms (macOS reports bytes, Linux reports KB).
+#[cfg(unix)]
+fn get_children_peak_rss_bytes() -> Option<u64> {
+    use nix::libc::{getrusage, rusage, RUSAGE_CHILDREN};
+    let mut usage: rusage = unsafe { std::mem::zeroed() };
+    let ret = unsafe { getrusage(RUSAGE_CHILDREN, &mut usage) };
+    if ret != 0 {
+        return None;
+    }
+    let maxrss = usage.ru_maxrss;
+    if maxrss <= 0 {
+        return None;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        // macOS: ru_maxrss is in bytes
+        Some(maxrss as u64)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Linux: ru_maxrss is in kilobytes
+        Some(maxrss as u64 * 1024)
+    }
+}
+
+#[cfg(not(unix))]
+fn get_children_peak_rss_bytes() -> Option<u64> {
+    None
 }
 
 #[cfg(test)]

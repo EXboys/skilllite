@@ -410,19 +410,63 @@ pub fn execute_simple_with_limits(
     cmd.arg(&entry_point)
         .current_dir(skill_dir)
         .env("SKILL_INPUT_FILE", &input_file)
-        .env("SKILL_INPUT", input_json);
+        .env("SKILL_INPUT", input_json)
+        .env("SKILLBOX_SANDBOX", "0");
     for (k, v) in &resolved.extra_env {
         cmd.env(k, v);
     }
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    if !config.network_enabled {
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
+    }
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
-    let output = cmd.output().context("Failed to execute skill")?;
+    let mut child = cmd.spawn().context("Failed to execute skill")?;
 
-    Ok(ExecutionResult {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        exit_code: output.status.code().unwrap_or(-1),
-    })
+    if let Err(e) = attach_job_object(&child, &limits) {
+        eprintln!("[WARN] Failed to attach Job Object: {}. Resource limits not enforced.", e);
+    }
+
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(input_json.as_bytes());
+    }
+
+    let timeout = std::time::Duration::from_secs(limits.timeout_secs);
+    let start = std::time::Instant::now();
+
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                use std::io::Read;
+                let mut stdout = String::new();
+                let mut stderr = String::new();
+                if let Some(ref mut out) = child.stdout {
+                    let _ = out.read_to_string(&mut stdout);
+                }
+                if let Some(ref mut err) = child.stderr {
+                    let _ = err.read_to_string(&mut stderr);
+                }
+                return Ok(ExecutionResult {
+                    stdout,
+                    stderr,
+                    exit_code: status.code().unwrap_or(-1),
+                });
+            }
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    return Ok(ExecutionResult {
+                        stdout: String::new(),
+                        stderr: format!("Process killed: exceeded timeout of {}s", limits.timeout_secs),
+                        exit_code: -1,
+                    });
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(e) => return Err(anyhow::anyhow!("Failed to wait for process: {}", e)),
+        }
+    }
 }
 
 /// Execute bash script via WSL

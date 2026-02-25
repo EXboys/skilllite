@@ -260,7 +260,7 @@ sandbox 不再 `use crate::env::builder::*`，改为接收 `RuntimePaths`，由 
 
 ```rust
 pub struct ResourceLimits {
-    pub max_memory_mb: u64,   // 默认 512MB
+    pub max_memory_mb: u64,   // 默认 256MB
     pub timeout_secs: u64,    // 默认 30 秒
 }
 ```
@@ -661,7 +661,7 @@ MODEL=deepseek-chat
 
 # 沙箱配置
 SKILLBOX_SANDBOX_LEVEL=3      # 1/2/3
-SKILLBOX_MAX_MEMORY_MB=512    # 内存限制
+SKILLBOX_MAX_MEMORY_MB=256    # 内存限制
 SKILLBOX_TIMEOUT_SECS=30      # 超时时间
 SKILLBOX_AUTO_APPROVE=false   # 自动批准危险操作
 SKILLBOX_NO_SANDBOX=false     # 禁用沙箱

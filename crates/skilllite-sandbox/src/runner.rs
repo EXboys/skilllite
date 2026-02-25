@@ -121,11 +121,11 @@ impl SandboxLevel {
 /// Resource limits for skill execution
 /// 
 /// Default values are defined in `common.rs`:
-/// - `max_memory_mb`: DEFAULT_MAX_MEMORY_MB (512 MB)
+/// - `max_memory_mb`: DEFAULT_MAX_MEMORY_MB (256 MB)
 /// - `timeout_secs`: DEFAULT_TIMEOUT_SECS (30 seconds)
 #[derive(Debug, Clone, Copy)]
 pub struct ResourceLimits {
-    /// Maximum memory limit in MB (default: 512)
+    /// Maximum memory limit in MB (default: 256)
     pub max_memory_mb: u64,
     /// Execution timeout in seconds (default: 30)
     pub timeout_secs: u64,

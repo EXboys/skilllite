@@ -106,7 +106,7 @@ Prefer `SKILLLITE_*` as primary variables; compatible with `OPENAI_*`, `BASE_URL
 |----------|------|---------|-------------|
 | `EXECUTION_TIMEOUT` | int | `120` | Single execution timeout (seconds) |
 | `SKILLBOX_TIMEOUT_SECS` | int | - | Same as above (alias) |
-| `MAX_MEMORY_MB` | int | `512` | Maximum memory (MB) |
+| `MAX_MEMORY_MB` | int | `256` | Maximum memory (MB) |
 | `SKILLBOX_MAX_MEMORY_MB` | int | - | Same as above (alias) |
 
 **Usage**: For Skills with many dependencies (e.g. xiaohongshu-writer), consider `EXECUTION_TIMEOUT=300`.

@@ -106,7 +106,7 @@
 |------|------|--------|------|
 | `EXECUTION_TIMEOUT` | int | `120` | 单次执行超时（秒） |
 | `SKILLBOX_TIMEOUT_SECS` | int | - | 同上（别名） |
-| `MAX_MEMORY_MB` | int | `512` | 最大内存（MB） |
+| `MAX_MEMORY_MB` | int | `256` | 最大内存（MB） |
 | `SKILLBOX_MAX_MEMORY_MB` | int | - | 同上（别名） |
 
 **使用场景**：依赖较多的 Skill（如 xiaohongshu-writer）建议 `EXECUTION_TIMEOUT=300`。

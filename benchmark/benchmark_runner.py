@@ -269,6 +269,7 @@ class SkillBoxExecutor(BaseExecutor):
                 skilllite_env = {
                     "SKILLBOX_QUIET": "1",
                     "SKILLBOX_SKILLS_ROOT": str(PROJECT_ROOT),
+                    "SKILLLITE_TRUST_BYPASS_CONFIRM": "1",
                 }
                 elapsed_ms, success, stdout, stderr, memory_kb = self.resource_monitor.get_peak_memory_kb(
                     [self.skilllite_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
@@ -301,6 +302,7 @@ class SkillBoxExecutor(BaseExecutor):
                 env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
                 env["SKILLBOX_QUIET"] = "1"  # Suppress [INFO] to avoid perf impact
                 env["SKILLBOX_SKILLS_ROOT"] = str(PROJECT_ROOT)  # Allow .skills under project root
+                env["SKILLLITE_TRUST_BYPASS_CONFIRM"] = "1"
                 
                 # Use --sandbox-level CLI argument (takes precedence over env var)
                 result = subprocess.run(

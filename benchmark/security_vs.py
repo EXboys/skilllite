@@ -532,9 +532,10 @@ entry_point: scripts/main.py
             # Use specified sandbox level
             env = os.environ.copy()
             env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
+            env["SKILLLITE_TRUST_BYPASS_CONFIRM"] = "1"
             
             result = subprocess.run(
-                [self.binary_path, "run", self.skill_dir, "{}"],
+                [self.binary_path, "run", "--sandbox-level", str(self.sandbox_level), self.skill_dir, "{}"],
                 capture_output=True,
                 timeout=test.timeout,
                 cwd=self.work_dir,
