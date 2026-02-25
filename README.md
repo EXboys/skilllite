@@ -4,6 +4,10 @@
 
 **A lightweight AI Agent Skills secure engine with built-in native system-level sandbox, zero dependencies, and local execution.**
 
+[![Performance Benchmark Video](https://github.com/EXboys/skilllite/raw/main/docs/images/benchmark-en.gif)]
+
+![Performance Benchmark Comparison](./docs/images/benchmark-en.png)
+
 ## Architecture: Two Layers
 
 ```
@@ -124,9 +128,6 @@ cd benchmark && python3 security_vs.py
 
 ## ⚡ Performance
 
-[![Performance Benchmark Video](https://github.com/EXboys/skilllite/raw/main/docs/images/benchmark-en.gif)]
-
-![Performance Benchmark Comparison](./docs/images/benchmark-en.png)
 
 | Dimension | SkillLite | Docker | Pyodide | SRT |
 |---|---|---|---|---|
