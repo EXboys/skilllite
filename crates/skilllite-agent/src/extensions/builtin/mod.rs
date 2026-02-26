@@ -1,7 +1,7 @@
 //! Built-in tools for the agent.
 //!
 //! Split into submodules by tool category:
-//! - `file_ops`:    read_file, write_file, search_replace, insert_lines, list_directory, file_exists
+//! - `file_ops`:    read_file, write_file, search_replace, insert_lines, grep_files, list_directory, file_exists
 //! - `run_command`: run_command (shell execution with confirmation)
 //! - `output`:      write_output, list_output
 //! - `preview`:     preview_server (local HTTP file server)
@@ -290,6 +290,7 @@ pub fn is_builtin_tool(name: &str) -> bool {
             | "search_replace"
             | "preview_edit"
             | "insert_lines"
+            | "grep_files"
             | "list_directory"
             | "file_exists"
             | "run_command"
@@ -350,6 +351,7 @@ pub fn execute_builtin_tool(
         "search_replace" => file_ops::execute_search_replace(&args, workspace),
         "preview_edit" => file_ops::execute_preview_edit(&args, workspace),
         "insert_lines" => file_ops::execute_insert_lines(&args, workspace),
+        "grep_files" => file_ops::execute_grep_files(&args, workspace),
         "list_directory" => file_ops::execute_list_directory(&args, workspace),
         "file_exists" => file_ops::execute_file_exists(&args, workspace),
         "write_output" => output::execute_write_output(&args, workspace),
@@ -1053,5 +1055,254 @@ mod tests {
         let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
         assert!(result.is_error);
         assert!(result.content.contains("Blocked"));
+    }
+
+    // ─── Phase II: grep_files ────────────────────────────────────────────
+
+    #[test]
+    fn test_grep_files_basic_match() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        std::fs::write(workspace.join("a.txt"), "hello world\nfoo bar\n").unwrap();
+        std::fs::write(workspace.join("b.txt"), "hello rust\nbaz\n").unwrap();
+
+        let args = serde_json::json!({ "pattern": "hello" });
+        let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("a.txt:1:hello world"));
+        assert!(result.content.contains("b.txt:1:hello rust"));
+        assert!(result.content.contains("2 match(es) in 2 file(s)"));
+    }
+
+    #[test]
+    fn test_grep_files_regex_pattern() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        std::fs::write(workspace.join("code.rs"), "fn main() {\n    let x = 42;\n}\n").unwrap();
+
+        let args = serde_json::json!({ "pattern": r"fn\s+\w+" });
+        let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("code.rs:1:fn main()"));
+    }
+
+    #[test]
+    fn test_grep_files_include_filter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        std::fs::write(workspace.join("a.rs"), "match_me\n").unwrap();
+        std::fs::write(workspace.join("b.py"), "match_me\n").unwrap();
+
+        let args = serde_json::json!({ "pattern": "match_me", "include": "*.rs" });
+        let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("a.rs:1:match_me"));
+        assert!(!result.content.contains("b.py"));
+    }
+
+    #[test]
+    fn test_grep_files_no_match() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        std::fs::write(workspace.join("a.txt"), "hello\n").unwrap();
+
+        let args = serde_json::json!({ "pattern": "xyz_not_here" });
+        let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("No matches found"));
+    }
+
+    #[test]
+    fn test_grep_files_skips_git_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let git_dir = workspace.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("config"), "find_me\n").unwrap();
+        std::fs::write(workspace.join("src.txt"), "find_me\n").unwrap();
+
+        let args = serde_json::json!({ "pattern": "find_me" });
+        let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("src.txt"));
+        assert!(!result.content.contains(".git"));
+    }
+
+    #[test]
+    fn test_grep_files_recursive() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let sub = workspace.join("sub").join("deep");
+        std::fs::create_dir_all(&sub).unwrap();
+        std::fs::write(sub.join("nested.txt"), "deep_match\n").unwrap();
+
+        let args = serde_json::json!({ "pattern": "deep_match" });
+        let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("sub/deep/nested.txt:1:deep_match"));
+    }
+
+    #[test]
+    fn test_grep_files_invalid_regex() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+
+        let args = serde_json::json!({ "pattern": "[invalid" });
+        let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+        assert!(result.is_error);
+        assert!(result.content.contains("Invalid regex"));
+    }
+
+    // ─── Phase II: auto-backup ───────────────────────────────────────────
+
+    #[test]
+    fn test_search_replace_creates_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "original content\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "original",
+            "new_string": "modified"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("\"backup\""));
+        assert!(result.content.contains("edit-backups"));
+    }
+
+    #[test]
+    fn test_insert_lines_creates_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "line1\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "line": 0,
+            "content": "prepended"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("\"backup\""));
+        assert!(result.content.contains("edit-backups"));
+    }
+
+    #[test]
+    fn test_dry_run_no_backup() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "alpha beta\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "alpha",
+            "new_string": "gamma",
+            "dry_run": true
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("\"backup\": null"));
+    }
+
+    // ─── Phase II: syntax validation ─────────────────────────────────────
+
+    #[test]
+    fn test_validation_warns_on_invalid_json() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("data.json");
+        std::fs::write(&file_path, "{\"key\": \"value\"}\n").unwrap();
+
+        let _args = serde_json::json!({
+            "path": "data.json",
+            "old_string": "\"value\"",
+            "new_string": "\"value\""
+        });
+        let args2 = serde_json::json!({
+            "path": "data.json",
+            "old_string": "{\"key\": \"value\"}",
+            "new_string": "{\"key\": \"value\""
+        });
+        let result = execute_builtin_tool("search_replace", &args2.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("JSON syntax warning"));
+    }
+
+    #[test]
+    fn test_validation_warns_on_unmatched_bracket() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("code.rs");
+        std::fs::write(&file_path, "fn main() {\n    println!(\"hi\");\n}\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "code.rs",
+            "old_string": "fn main() {\n    println!(\"hi\");\n}",
+            "new_string": "fn main() {\n    println!(\"hi\");\n"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("validation_warning"));
+        assert!(result.content.contains("Unclosed"));
+    }
+
+    #[test]
+    fn test_validation_no_warning_on_valid_code() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("code.rs");
+        std::fs::write(&file_path, "fn foo() {\n    1 + 2\n}\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "code.rs",
+            "old_string": "1 + 2",
+            "new_string": "3 + 4"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("\"validation_warning\": null"));
+    }
+
+    #[test]
+    fn test_search_replace_multibyte_content_no_panic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("readme.md");
+        let chinese_content = "# 项目说明\n\n**轻量级 AI Agent 安全引擎**，内置原生系统级沙箱，零依赖，本地执行。\n\n## 功能特性\n\n- 🔒 安全沙箱\n- 🚀 高性能\n- 📦 零依赖\n";
+        std::fs::write(&file_path, chinese_content).unwrap();
+
+        let args = serde_json::json!({
+            "path": "readme.md",
+            "old_string": "**轻量级 AI Agent 安全引擎**，内置原生系统级沙箱，零依赖，本地执行。",
+            "new_string": "**A lightweight AI Agent secure engine** with built-in sandbox, zero deps."
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error, "Error: {}", result.content);
+        assert!(result.content.contains("\"match_type\": \"exact\""));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("lightweight AI Agent"));
+    }
+
+    #[test]
+    fn test_validation_warns_on_invalid_yaml() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("config.yaml");
+        std::fs::write(&file_path, "key: value\nnested:\n  a: 1\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "config.yaml",
+            "old_string": "nested:\n  a: 1",
+            "new_string": "nested:\n  a: 1\n  b: [unclosed"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("YAML syntax warning") || result.content.contains("Unclosed"));
     }
 }

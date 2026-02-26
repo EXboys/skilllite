@@ -1,8 +1,8 @@
-//! File operations: read_file, write_file, search_replace, insert_lines, list_directory, file_exists.
+//! File operations: read_file, write_file, search_replace, insert_lines, grep_files, list_directory, file_exists.
 
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::types::{ToolDefinition, FunctionDef};
 
@@ -122,6 +122,31 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
                         }
                     },
                     "required": ["path", "line", "content"]
+                }),
+            },
+        },
+        ToolDefinition {
+            tool_type: "function".to_string(),
+            function: FunctionDef {
+                name: "grep_files".to_string(),
+                description: "Search file contents using regex. Returns file:line:content matches. Auto-skips .git, node_modules, target, and binary files.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": "Regex pattern to search for"
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Directory to search in (relative to workspace). Default: workspace root."
+                        },
+                        "include": {
+                            "type": "string",
+                            "description": "File type filter (e.g. '*.rs', '*.py'). Default: all text files."
+                        }
+                    },
+                    "required": ["pattern"]
                 }),
             },
         },
@@ -349,15 +374,21 @@ pub(super) fn execute_insert_lines(args: &Value, workspace: &Path) -> Result<Str
         )
     };
 
+    let backup = backup_file_before_edit(&resolved);
+
     std::fs::write(&resolved, &new_content)
         .with_context(|| format!("Failed to write file: {}", path_str))?;
+
+    let validation_warning = validate_syntax(&resolved, &new_content);
 
     let inserted_lines = insert_content.lines().count().max(1);
     let result = json!({
         "path": path_str,
         "inserted_after_line": line_num,
         "lines_inserted": inserted_lines,
-        "new_total_lines": total + inserted_lines
+        "new_total_lines": total + inserted_lines,
+        "backup": backup,
+        "validation_warning": validation_warning
     });
 
     Ok(format!(
@@ -559,9 +590,14 @@ fn execute_replace_like(args: &Value, workspace: &Path, apply_changes: bool) -> 
     let new_excerpt = safe_excerpt(&new_content, first_match_start, new_string.len(), 200);
     let diff_excerpt = format!("- {}\n+ {}", old_excerpt, new_excerpt);
 
+    let mut backup: Option<String> = None;
+    let mut validation_warning: Option<String> = None;
+
     if should_write {
+        backup = backup_file_before_edit(&resolved);
         std::fs::write(&resolved, &new_content)
             .with_context(|| format!("Failed to write file: {}", path_str))?;
+        validation_warning = validate_syntax(&resolved, &new_content);
         skilllite_core::observability::audit_edit_applied(
             &path_str,
             replaced_occurrences,
@@ -584,7 +620,9 @@ fn execute_replace_like(args: &Value, workspace: &Path, apply_changes: bool) -> 
         "occurrences": replaced_occurrences,
         "total_occurrences": total_occurrences,
         "first_changed_line": first_changed_line,
-        "diff_excerpt": diff_excerpt
+        "diff_excerpt": diff_excerpt,
+        "backup": backup,
+        "validation_warning": validation_warning
     });
 
     if should_write {
@@ -841,6 +879,304 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     prev[b_len]
 }
 
+// ─── grep_files ─────────────────────────────────────────────────────────────
+
+pub(super) fn execute_grep_files(args: &Value, workspace: &Path) -> Result<String> {
+    let pattern = args
+        .get("pattern")
+        .and_then(|v| v.as_str())
+        .context("'pattern' is required")?;
+    let path_str = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
+    let include = args.get("include").and_then(|v| v.as_str());
+
+    let re = regex::Regex::new(pattern)
+        .map_err(|e| anyhow::anyhow!("Invalid regex pattern: {}", e))?;
+
+    let resolved = resolve_within_workspace_or_output(path_str, workspace)?;
+    if !resolved.exists() {
+        anyhow::bail!("Path not found: {}", path_str);
+    }
+
+    let mut results = Vec::new();
+    let mut files_matched = 0usize;
+    const MAX_MATCHES: usize = 50;
+
+    grep_recursive(
+        &resolved,
+        workspace,
+        &re,
+        include,
+        &mut results,
+        &mut files_matched,
+        MAX_MATCHES,
+    )?;
+
+    if results.is_empty() {
+        return Ok("No matches found.".to_string());
+    }
+
+    let total = results.len();
+    let mut output = results.join("\n");
+    output.push_str(&format!(
+        "\n\n[{} match(es) in {} file(s){}]",
+        total,
+        files_matched,
+        if total >= MAX_MATCHES {
+            " — results capped at 50"
+        } else {
+            ""
+        }
+    ));
+    Ok(output)
+}
+
+const SKIP_DIRS: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    "__pycache__",
+    "venv",
+    ".venv",
+    ".tox",
+];
+
+fn grep_recursive(
+    dir: &Path,
+    workspace: &Path,
+    re: &regex::Regex,
+    include: Option<&str>,
+    results: &mut Vec<String>,
+    files_matched: &mut usize,
+    max_matches: usize,
+) -> Result<()> {
+    if !dir.is_dir() {
+        return grep_single_file(dir, workspace, re, results, files_matched, max_matches);
+    }
+
+    let mut entries: Vec<_> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for entry in entries {
+        if results.len() >= max_matches {
+            return Ok(());
+        }
+
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_string();
+
+        if path.is_dir() {
+            if SKIP_DIRS.contains(&name.as_str()) || name.starts_with('.') {
+                continue;
+            }
+            grep_recursive(&path, workspace, re, include, results, files_matched, max_matches)?;
+        } else {
+            if let Some(glob) = include {
+                if !matches_glob(&name, glob) {
+                    continue;
+                }
+            }
+            if is_likely_binary(&path) {
+                continue;
+            }
+            grep_single_file(&path, workspace, re, results, files_matched, max_matches)?;
+        }
+    }
+    Ok(())
+}
+
+fn grep_single_file(
+    path: &Path,
+    workspace: &Path,
+    re: &regex::Regex,
+    results: &mut Vec<String>,
+    files_matched: &mut usize,
+    max_matches: usize,
+) -> Result<()> {
+    if let Ok(content) = std::fs::read_to_string(path) {
+        let rel_path = path
+            .strip_prefix(workspace)
+            .unwrap_or(path)
+            .to_string_lossy();
+        let mut file_has_match = false;
+
+        for (line_num, line) in content.lines().enumerate() {
+            if results.len() >= max_matches {
+                break;
+            }
+            if re.is_match(line) {
+                if !file_has_match {
+                    *files_matched += 1;
+                    file_has_match = true;
+                }
+                results.push(format!("{}:{}:{}", rel_path, line_num + 1, line));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn matches_glob(name: &str, pattern: &str) -> bool {
+    if let Some(ext) = pattern.strip_prefix("*.") {
+        name.ends_with(&format!(".{}", ext))
+    } else {
+        name == pattern
+    }
+}
+
+fn is_likely_binary(path: &Path) -> bool {
+    use std::io::Read;
+    if let Ok(mut f) = std::fs::File::open(path) {
+        let mut buf = [0u8; 512];
+        if let Ok(n) = f.read(&mut buf) {
+            return buf[..n].contains(&0);
+        }
+    }
+    true
+}
+
+// ─── Auto-backup (II2) ─────────────────────────────────────────────────────
+
+fn backup_file_before_edit(resolved: &Path) -> Option<String> {
+    let home = dirs::home_dir()?;
+    let backup_dir = home.join(".skilllite").join("edit-backups");
+    std::fs::create_dir_all(&backup_dir).ok()?;
+
+    let filename = resolved.file_name()?.to_string_lossy().to_string();
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let backup_name = format!("{}_{}", ts, filename);
+    let backup_path = backup_dir.join(&backup_name);
+
+    std::fs::copy(resolved, &backup_path).ok()?;
+    cleanup_old_backups(&backup_dir, 50);
+    Some(backup_path.to_string_lossy().to_string())
+}
+
+fn cleanup_old_backups(dir: &Path, keep: usize) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut files: Vec<PathBuf> = entries
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.is_file())
+            .collect();
+
+        if files.len() <= keep {
+            return;
+        }
+
+        files.sort_by_key(|p| {
+            p.metadata()
+                .ok()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+        });
+
+        for path in files.iter().take(files.len() - keep) {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
+// ─── Syntax validation (II3) ───────────────────────────────────────────────
+
+fn validate_syntax(path: &Path, content: &str) -> Option<String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_lowercase());
+
+    if let Some(ref ext) = ext {
+        match ext.as_str() {
+            "json" => {
+                if let Err(e) = serde_json::from_str::<Value>(content) {
+                    return Some(format!("JSON syntax warning: {}", e));
+                }
+            }
+            "yaml" | "yml" => {
+                if let Err(e) = serde_yaml::from_str::<serde_yaml::Value>(content) {
+                    return Some(format!("YAML syntax warning: {}", e));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    check_bracket_balance(content)
+}
+
+fn check_bracket_balance(content: &str) -> Option<String> {
+    let mut stack: Vec<(char, usize)> = Vec::new();
+    let mut in_string = false;
+    let mut string_char = '"';
+    let mut escaped = false;
+
+    for (line_idx, line) in content.lines().enumerate() {
+        for ch in line.chars() {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            if ch == '\\' && in_string {
+                escaped = true;
+                continue;
+            }
+
+            if in_string {
+                if ch == string_char {
+                    in_string = false;
+                }
+                continue;
+            }
+
+            match ch {
+                '"' | '\'' => {
+                    in_string = true;
+                    string_char = ch;
+                }
+                '(' | '[' | '{' => stack.push((ch, line_idx + 1)),
+                ')' | ']' | '}' => {
+                    let expected = match ch {
+                        ')' => '(',
+                        ']' => '[',
+                        '}' => '{',
+                        _ => unreachable!(),
+                    };
+                    match stack.pop() {
+                        Some((open, _)) if open == expected => {}
+                        Some((open, open_line)) => {
+                            return Some(format!(
+                                "Bracket mismatch: '{}' at line {} does not match '{}' at line {}",
+                                ch,
+                                line_idx + 1,
+                                open,
+                                open_line
+                            ));
+                        }
+                        None => {
+                            return Some(format!(
+                                "Unmatched closing '{}' at line {}",
+                                ch,
+                                line_idx + 1
+                            ));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    if let Some((open, line)) = stack.last() {
+        return Some(format!("Unclosed '{}' at line {}", open, line));
+    }
+
+    None
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 fn safe_excerpt(content: &str, start: usize, span_len: usize, max_len: usize) -> String {
@@ -850,7 +1186,8 @@ fn safe_excerpt(content: &str, start: usize, span_len: usize, max_len: usize) ->
     let end = ceil_char_boundary(content, (start + span_len + suffix).min(content.len()));
     let mut excerpt = content[begin..end].replace('\n', "\\n");
     if excerpt.len() > max_len {
-        excerpt.truncate(max_len);
+        let safe_len = floor_char_boundary(&excerpt, max_len);
+        excerpt.truncate(safe_len);
         excerpt.push_str("...");
     }
     excerpt
