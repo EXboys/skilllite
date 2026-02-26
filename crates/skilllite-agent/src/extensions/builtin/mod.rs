@@ -1305,4 +1305,143 @@ mod tests {
         assert!(!result.is_error);
         assert!(result.content.contains("YAML syntax warning") || result.content.contains("Unclosed"));
     }
+
+    // ─── Phase III: edit failure smart hints ─────────────────────────────
+
+    #[test]
+    fn test_failure_hint_shows_closest_match_context() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.rs");
+        std::fs::write(
+            &file_path,
+            "fn main() {\n    println!(\"hello world\");\n    let x = 42;\n}\n",
+        )
+        .unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.rs",
+            "old_string": "completely_unrelated_string_that_wont_match_anything_at_all_xyz"
+        ,   "new_string": "replacement"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(result.is_error);
+        assert!(result.content.contains("Closest match found at line"));
+        assert!(result.content.contains("similarity:"));
+        assert!(result.content.contains("Tip:"));
+    }
+
+    // ─── Phase III: insert_lines indent awareness ───────────────────────
+
+    #[test]
+    fn test_insert_lines_auto_indent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.rs");
+        std::fs::write(
+            &file_path,
+            "fn main() {\n    let x = 1;\n    let y = 2;\n}\n",
+        )
+        .unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.rs",
+            "line": 2,
+            "content": "let z = 3;"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(
+            content.contains("    let z = 3;"),
+            "Expected auto-indented line, got:\n{}",
+            content
+        );
+    }
+
+    #[test]
+    fn test_insert_lines_no_indent_when_content_already_indented() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.py");
+        std::fs::write(&file_path, "def foo():\n    x = 1\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.py",
+            "line": 1,
+            "content": "    y = 2"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(
+            content.contains("    y = 2") && !content.contains("        y = 2"),
+            "Should NOT double-indent already-indented content, got:\n{}",
+            content
+        );
+    }
+
+    #[test]
+    fn test_insert_lines_no_indent_at_top_level() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "line1\nline2\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "line": 1,
+            "content": "new_line"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "line1\nnew_line\nline2\n");
+    }
+
+    #[test]
+    fn test_insert_lines_multiline_auto_indent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.rs");
+        std::fs::write(
+            &file_path,
+            "fn main() {\n    let x = 1;\n}\n",
+        )
+        .unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.rs",
+            "line": 1,
+            "content": "let y = 2;\nlet z = 3;"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("    let y = 2;\n    let z = 3;"));
+    }
+
+    // ─── Phase III: run_command output truncation ───────────────────────
+
+    #[test]
+    fn test_run_command_truncation() {
+        use super::run_command;
+        let long_output = "x".repeat(10000);
+        let truncated = run_command::truncate_command_output_for_test(&long_output);
+        assert!(truncated.len() < long_output.len());
+        assert!(truncated.contains("output truncated"));
+        assert!(truncated.contains("10000 total chars"));
+    }
+
+    #[test]
+    fn test_run_command_no_truncation_short() {
+        use super::run_command;
+        let short = "hello world";
+        let result = run_command::truncate_command_output_for_test(short);
+        assert_eq!(result, short);
+    }
 }

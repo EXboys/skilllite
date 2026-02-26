@@ -352,10 +352,13 @@ pub(super) fn execute_insert_lines(args: &Value, workspace: &Path) -> Result<Str
     let needs_preceding_newline =
         line_num > 0 && insert_at == content.len() && !content.is_empty() && !content.ends_with('\n');
 
-    let insert_with_newline = if insert_content.ends_with('\n') {
-        insert_content.to_string()
+    let indented_content = auto_indent(insert_content, &lines, line_num);
+    let effective_content = indented_content.as_deref().unwrap_or(insert_content);
+
+    let insert_with_newline = if effective_content.ends_with('\n') {
+        effective_content.to_string()
     } else {
-        format!("{}\n", insert_content)
+        format!("{}\n", effective_content)
     };
 
     let new_content = if needs_preceding_newline {
@@ -548,9 +551,13 @@ fn execute_replace_like(args: &Value, workspace: &Path, apply_changes: bool) -> 
                     );
                     Ok((fm.match_type, 1, 1, fm.start, fm.end - fm.start, new_content))
                 }
-                None => Err(anyhow::anyhow!(
-                    "old_string not found in file (tried exact + fuzzy matching). Ensure old_string matches the file content. Use read_file with line numbers to verify the exact text."
-                )),
+                None => {
+                    let hint = build_failure_hint(&content, old_string);
+                    Err(anyhow::anyhow!(
+                        "old_string not found in file (tried exact + fuzzy matching).\n\n{}\n\nTip: Copy the exact text from above into old_string, or use insert_lines with line number.",
+                        hint
+                    ))
+                }
             }
         } else {
             Err(anyhow::anyhow!(
@@ -831,6 +838,103 @@ fn fuzzy_match_end(
         let last = start_line + num_lines - 1;
         (offsets[last] + content_lines[last].len()).min(content.len())
     }
+}
+
+// ─── Indent awareness (III4) ────────────────────────────────────────────────
+
+/// If insert_content has no indentation but the target line does, auto-indent.
+/// Returns None if no adjustment needed.
+fn auto_indent(content: &str, lines: &[&str], after_line: usize) -> Option<String> {
+    // Prefer the NEXT line as reference (the surrounding context where content lands).
+    // Fall back to the line we're inserting after.
+    let ref_line = if after_line < lines.len() {
+        lines[after_line]
+    } else if after_line > 0 {
+        lines[after_line - 1]
+    } else if !lines.is_empty() {
+        lines[0]
+    } else {
+        return None;
+    };
+
+    let indent = detect_indentation(ref_line);
+    if indent.is_empty() {
+        return None;
+    }
+
+    let has_indent = content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .any(|l| l.starts_with(' ') || l.starts_with('\t'));
+    if has_indent {
+        return None;
+    }
+
+    let indented: Vec<String> = content
+        .lines()
+        .map(|l| {
+            if l.trim().is_empty() {
+                l.to_string()
+            } else {
+                format!("{}{}", indent, l)
+            }
+        })
+        .collect();
+    Some(indented.join("\n"))
+}
+
+fn detect_indentation(line: &str) -> &str {
+    let trimmed_len = line.trim_start().len();
+    &line[..line.len() - trimmed_len]
+}
+
+// ─── Edit failure smart hints (III1) ────────────────────────────────────────
+
+/// When fuzzy match fails entirely, find the most similar region and show ±10 lines.
+fn build_failure_hint(content: &str, old_string: &str) -> String {
+    let old_lines: Vec<&str> = old_string.lines().collect();
+    if old_lines.is_empty() || content.is_empty() {
+        return "File is empty or old_string is empty.".to_string();
+    }
+
+    let content_lines: Vec<&str> = content.lines().collect();
+    if content_lines.is_empty() {
+        return "File is empty.".to_string();
+    }
+
+    let mut best_score = 0.0_f64;
+    let mut best_pos = 0_usize;
+    let window = old_lines.len().min(content_lines.len());
+
+    for i in 0..=(content_lines.len().saturating_sub(window)) {
+        let mut total_sim = 0.0;
+        for j in 0..window {
+            total_sim += levenshtein_similarity(
+                old_lines.get(j).unwrap_or(&"").trim(),
+                content_lines[i + j].trim(),
+            );
+        }
+        let avg = total_sim / window as f64;
+        if avg > best_score {
+            best_score = avg;
+            best_pos = i;
+        }
+    }
+
+    let context_radius = 5;
+    let ctx_start = best_pos.saturating_sub(context_radius);
+    let ctx_end = (best_pos + window + context_radius).min(content_lines.len());
+
+    let mut hint = format!(
+        "Closest match found at lines {}-{} (similarity: {:.2}, below threshold):\n",
+        best_pos + 1,
+        best_pos + window,
+        best_score
+    );
+    for i in ctx_start..ctx_end {
+        hint.push_str(&format!("{:>6}|{}\n", i + 1, content_lines[i]));
+    }
+    hint
 }
 
 fn line_byte_offsets(content: &str) -> Vec<usize> {

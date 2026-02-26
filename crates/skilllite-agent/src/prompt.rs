@@ -99,6 +99,11 @@ pub fn build_system_prompt(
     // Workspace context
     parts.push(format!("\n\nWorkspace: {}", workspace));
 
+    // Project structure auto-index
+    if let Some(index) = build_workspace_index(workspace) {
+        parts.push(format!("\n\nProject structure:\n```\n{}\n```", index));
+    }
+
     // Output directory context — LLM must use $SKILLLITE_OUTPUT_DIR for file outputs
     let output_dir = get_output_dir().unwrap_or_else(|| format!("{}/output", workspace));
     parts.push(format!("\nOutput directory: {}", output_dir));
@@ -138,6 +143,175 @@ pub fn build_system_prompt(
     }
 
     parts.join("")
+}
+
+/// Build a compact workspace index: file tree + top-level signatures.
+/// Keeps output under ~2000 chars for prompt efficiency.
+fn build_workspace_index(workspace: &str) -> Option<String> {
+    use std::path::Path;
+
+    let ws = Path::new(workspace);
+    if !ws.is_dir() {
+        return None;
+    }
+
+    let mut output = String::new();
+    let mut total_chars = 0usize;
+    const MAX_CHARS: usize = 2000;
+
+    const SKIP: &[&str] = &[
+        ".git", "node_modules", "target", "__pycache__", "venv", ".venv",
+        ".tox", ".pytest_cache", ".cursor", ".skilllite",
+    ];
+
+    fn walk_tree(
+        dir: &Path,
+        base: &Path,
+        output: &mut String,
+        total: &mut usize,
+        depth: usize,
+        max_chars: usize,
+        skip: &[&str],
+    ) {
+        if *total >= max_chars || depth > 3 {
+            return;
+        }
+
+        let mut entries: Vec<_> = match std::fs::read_dir(dir) {
+            Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+            Err(_) => return,
+        };
+        entries.sort_by_key(|e| e.file_name());
+
+        for entry in entries {
+            if *total >= max_chars {
+                return;
+            }
+
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') && depth == 0 {
+                continue;
+            }
+
+            let path = entry.path();
+            let prefix = "  ".repeat(depth);
+
+            if path.is_dir() {
+                if skip.contains(&name.as_str()) {
+                    continue;
+                }
+                let line = format!("{}📁 {}/\n", prefix, name);
+                *total += line.len();
+                output.push_str(&line);
+                walk_tree(&path, base, output, total, depth + 1, max_chars, skip);
+            } else {
+                let line = format!("{}  {}\n", prefix, name);
+                *total += line.len();
+                output.push_str(&line);
+            }
+        }
+    }
+
+    walk_tree(ws, ws, &mut output, &mut total_chars, 0, MAX_CHARS, SKIP);
+
+    let sigs = extract_signatures(ws);
+    if !sigs.is_empty() {
+        let sig_section = format!("\nKey symbols:\n{}", sigs);
+        if total_chars + sig_section.len() <= MAX_CHARS + 500 {
+            output.push_str(&sig_section);
+        }
+    }
+
+    if output.trim().is_empty() {
+        None
+    } else {
+        Some(output)
+    }
+}
+
+/// Extract top-level function/class/struct signatures from key source files.
+fn extract_signatures(workspace: &std::path::Path) -> String {
+    let patterns: &[(&str, &[&str])] = &[
+        ("rs", &[r"(?m)^pub(?:\(crate\))?\s+(fn|struct|enum|trait)\s+(\w+)"]),
+        ("py", &[r"(?m)^(def|class)\s+(\w+)"]),
+        ("ts", &[r"(?m)^export\s+(?:default\s+)?(?:async\s+)?(function|class)\s+(\w+)"]),
+        ("js", &[r"(?m)^export\s+(?:default\s+)?(?:async\s+)?(function|class)\s+(\w+)"]),
+        ("go", &[r"(?m)^(func)\s+(\w+)"]),
+    ];
+
+    let mut sigs = Vec::new();
+    const MAX_SIGS: usize = 30;
+
+    let skip_dirs: &[&str] = &[
+        ".git", "node_modules", "target", "__pycache__", "venv", ".venv", "test", "tests",
+    ];
+
+    fn scan_dir(
+        dir: &std::path::Path,
+        base: &std::path::Path,
+        patterns: &[(&str, &[&str])],
+        sigs: &mut Vec<String>,
+        max_sigs: usize,
+        skip: &[&str],
+        depth: usize,
+    ) {
+        if sigs.len() >= max_sigs || depth > 4 {
+            return;
+        }
+
+        let mut entries: Vec<_> = match std::fs::read_dir(dir) {
+            Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+            Err(_) => return,
+        };
+        entries.sort_by_key(|e| e.file_name());
+
+        for entry in entries {
+            if sigs.len() >= max_sigs {
+                return;
+            }
+
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            if path.is_dir() {
+                if skip.contains(&name.as_str()) || name.starts_with('.') {
+                    continue;
+                }
+                scan_dir(&path, base, patterns, sigs, max_sigs, skip, depth + 1);
+            } else {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                for (pat_ext, regexes) in patterns {
+                    if ext != *pat_ext {
+                        continue;
+                    }
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        let rel = path.strip_prefix(base).unwrap_or(&path);
+                        for regex_str in *regexes {
+                            if let Ok(re) = regex::Regex::new(regex_str) {
+                                for caps in re.captures_iter(&content) {
+                                    if sigs.len() >= max_sigs {
+                                        return;
+                                    }
+                                    let kind = caps.get(1).map_or("", |m| m.as_str());
+                                    let name = caps.get(2).map_or("", |m| m.as_str());
+                                    sigs.push(format!(
+                                        "  {} {} ({})",
+                                        kind,
+                                        name,
+                                        rel.display()
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    scan_dir(workspace, workspace, patterns, &mut sigs, MAX_SIGS, skip_dirs, 0);
+    sigs.join("\n")
 }
 
 /// Build skills context section for the system prompt.

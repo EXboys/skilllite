@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 
-use crate::types::{EventSink, ToolDefinition, FunctionDef};
+use crate::types::{EventSink, ToolDefinition, FunctionDef, safe_truncate, safe_slice_from};
 
 // ─── Tool definition ────────────────────────────────────────────────────────
 
@@ -149,5 +149,30 @@ pub(super) async fn execute_run_command(
         result.push_str(&format!("Command failed (exit {}):\n{}", code, combined));
     }
 
-    Ok(result)
+    Ok(truncate_command_output(&result))
+}
+
+const MAX_COMMAND_OUTPUT_CHARS: usize = 8000;
+
+#[cfg(test)]
+pub(super) fn truncate_command_output_for_test(output: &str) -> String {
+    truncate_command_output(output)
+}
+
+fn truncate_command_output(output: &str) -> String {
+    if output.len() <= MAX_COMMAND_OUTPUT_CHARS {
+        return output.to_string();
+    }
+
+    let head_size = MAX_COMMAND_OUTPUT_CHARS * 2 / 3;
+    let tail_size = MAX_COMMAND_OUTPUT_CHARS / 3;
+    let head = safe_truncate(output, head_size);
+    let tail = safe_slice_from(output, output.len().saturating_sub(tail_size));
+
+    format!(
+        "{}\n\n[... output truncated: {} total chars, showing head + tail ...]\n\n{}",
+        head,
+        output.len(),
+        tail
+    )
 }
