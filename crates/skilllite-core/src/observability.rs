@@ -284,6 +284,76 @@ pub fn security_scan_rejected(skill_id: &str, scan_id: &str, issues_count: usize
     }
 }
 
+// ─── Edit audit events (agent layer) ────────────────────────────────────────
+
+/// Audit: edit_applied — agent wrote a file change via search_replace
+pub fn audit_edit_applied(
+    path: &str,
+    occurrences: usize,
+    first_changed_line: usize,
+    diff_excerpt: &str,
+) {
+    if let Some(audit) = get_audit_path() {
+        let record = json!({
+            "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "event": "edit_applied",
+            "category": "edit",
+            "source_layer": "agent",
+            "details": {
+                "path": path,
+                "occurrences": occurrences,
+                "first_changed_line": first_changed_line,
+                "diff_excerpt": diff_excerpt
+            }
+        });
+        append_jsonl(&audit, &record);
+    }
+}
+
+/// Audit: edit_previewed — agent computed a dry-run diff via preview_edit
+pub fn audit_edit_previewed(
+    path: &str,
+    occurrences: usize,
+    first_changed_line: usize,
+    diff_excerpt: &str,
+) {
+    if let Some(audit) = get_audit_path() {
+        let record = json!({
+            "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "event": "edit_previewed",
+            "category": "edit",
+            "source_layer": "agent",
+            "details": {
+                "path": path,
+                "occurrences": occurrences,
+                "first_changed_line": first_changed_line,
+                "diff_excerpt": diff_excerpt
+            }
+        });
+        append_jsonl(&audit, &record);
+    }
+}
+
+/// Audit: edit_failed — agent attempted an edit that failed (not found, non-unique, etc.)
+pub fn audit_edit_failed(path: &str, tool_name: &str, reason: &str) {
+    if let Some(audit) = get_audit_path() {
+        let record = json!({
+            "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "event": "edit_failed",
+            "category": "edit",
+            "source_layer": "agent",
+            "details": {
+                "path": path,
+                "tool": tool_name,
+                "reason": reason
+            }
+        });
+        append_jsonl(&audit, &record);
+    }
+}
+
+// ─── Security events ────────────────────────────────────────────────────────
+
 /// Security event: sandbox fallback (e.g. Seatbelt failed, using simple execution)
 pub fn security_sandbox_fallback(skill_id: &str, reason: &str) {
     tracing::warn!(

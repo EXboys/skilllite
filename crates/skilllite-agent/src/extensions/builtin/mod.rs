@@ -288,6 +288,7 @@ pub fn is_builtin_tool(name: &str) -> bool {
         "read_file"
             | "write_file"
             | "search_replace"
+            | "preview_edit"
             | "list_directory"
             | "file_exists"
             | "run_command"
@@ -346,6 +347,7 @@ pub fn execute_builtin_tool(
         "read_file" => file_ops::execute_read_file(&args, workspace),
         "write_file" => file_ops::execute_write_file(&args, workspace),
         "search_replace" => file_ops::execute_search_replace(&args, workspace),
+        "preview_edit" => file_ops::execute_preview_edit(&args, workspace),
         "list_directory" => file_ops::execute_list_directory(&args, workspace),
         "file_exists" => file_ops::execute_file_exists(&args, workspace),
         "write_output" => output::execute_write_output(&args, workspace),
@@ -484,16 +486,35 @@ mod tests {
 
         let args = serde_json::json!({
             "path": "test.txt",
-            "old_string": "hello",
-            "new_string": "hi",
+            "old_string": "hello world",
+            "new_string": "hi world",
             "replace_all": false
         });
         let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
         assert!(!result.is_error);
         assert!(result.content.contains("Successfully replaced 1 occurrence"));
+        assert!(result.content.contains("\"first_changed_line\": 1"));
+        assert!(result.content.contains("\"changed\": true"));
 
         let content = std::fs::read_to_string(&file_path).unwrap();
         assert_eq!(content, "hi world\nhello again\n");
+    }
+
+    #[test]
+    fn test_search_replace_requires_unique_match_by_default() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "hello world\nhello again\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "hello",
+            "new_string": "hi"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(result.is_error);
+        assert!(result.content.contains("requires a unique match by default"));
     }
 
     #[test]
@@ -568,7 +589,7 @@ mod tests {
         assert!(!result.is_error);
 
         let content = std::fs::read_to_string(&file_path).unwrap();
-        assert_eq!(content, "hinext line\n");
+        assert_eq!(content, "hi\nnext line\n");
     }
 
     #[test]
@@ -589,7 +610,7 @@ mod tests {
         assert!(!result.is_error);
 
         let content = std::fs::read_to_string(&file_path).unwrap();
-        assert_eq!(content, "foo \nquxbaz\n");
+        assert_eq!(content, "foo \nqux\nbaz\n");
     }
 
     #[test]
@@ -609,7 +630,7 @@ mod tests {
         assert!(!result.is_error);
 
         let content = std::fs::read_to_string(&file_path).unwrap();
-        assert_eq!(content, "price: $200");
+        assert_eq!(content, "price: $200\n");
     }
 
     #[test]
@@ -631,5 +652,27 @@ mod tests {
 
         let content = std::fs::read_to_string(&file_path).unwrap();
         assert_eq!(content, "<title>New Title</title>");
+    }
+
+    #[test]
+    fn test_preview_edit_does_not_write_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "alpha beta\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "alpha",
+            "new_string": "gamma"
+        });
+        let result = execute_builtin_tool("preview_edit", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("Preview edit"));
+        assert!(result.content.contains("\"changed\": true"));
+        assert!(result.content.contains("\"diff_excerpt\""));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "alpha beta\n");
     }
 }

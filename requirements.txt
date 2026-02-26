@@ -1,2 +1,3 @@
 openai
 mcp
+# Test edit added on 2026-02-26 to verify search_replace functionality

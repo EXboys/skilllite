@@ -93,6 +93,39 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_type: "function".to_string(),
             function: FunctionDef {
+                name: "preview_edit".to_string(),
+                description: "Preview a search_replace edit without writing to disk. Returns a structured diff summary (changed/occurrences/first_changed_line/diff_excerpt). Use this for high-risk edits before applying search_replace.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path (relative to workspace or absolute)"
+                        },
+                        "old_string": {
+                            "type": "string",
+                            "description": "Exact text to find and replace (must match including whitespace)"
+                        },
+                        "new_string": {
+                            "type": "string",
+                            "description": "Text to replace old_string with"
+                        },
+                        "replace_all": {
+                            "type": "boolean",
+                            "description": "If true, replace all occurrences. Default: false (requires unique match)."
+                        },
+                        "normalize_whitespace": {
+                            "type": "boolean",
+                            "description": "If true, allow trailing spaces/tabs before newline when matching old_string. Default: false."
+                        }
+                    },
+                    "required": ["path", "old_string", "new_string"]
+                }),
+            },
+        },
+        ToolDefinition {
+            tool_type: "function".to_string(),
+            function: FunctionDef {
                 name: "list_directory".to_string(),
                 description: "List files and directories in a given path. Supports recursive listing.".to_string(),
                 parameters: json!({
@@ -208,6 +241,15 @@ pub(super) fn execute_write_file(args: &Value, workspace: &Path) -> Result<Strin
 }
 
 pub(super) fn execute_search_replace(args: &Value, workspace: &Path) -> Result<String> {
+    execute_replace_like(args, workspace, true)
+}
+
+pub(super) fn execute_preview_edit(args: &Value, workspace: &Path) -> Result<String> {
+    execute_replace_like(args, workspace, false)
+}
+
+fn execute_replace_like(args: &Value, workspace: &Path, apply_changes: bool) -> Result<String> {
+    let tool_name = if apply_changes { "search_replace" } else { "preview_edit" };
     let path_str = get_path_arg(args, false)
         .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
     let old_string = args
@@ -225,6 +267,9 @@ pub(super) fn execute_search_replace(args: &Value, workspace: &Path) -> Result<S
         .unwrap_or(false);
 
     if is_sensitive_write_path(&path_str) {
+        skilllite_core::observability::audit_edit_failed(
+            &path_str, tool_name, "sensitive_path_blocked",
+        );
         anyhow::bail!(
             "Blocked: editing sensitive file '{}' is not allowed",
             path_str
@@ -234,61 +279,180 @@ pub(super) fn execute_search_replace(args: &Value, workspace: &Path) -> Result<S
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
 
     if !resolved.exists() {
+        skilllite_core::observability::audit_edit_failed(&path_str, tool_name, "file_not_found");
         anyhow::bail!("File not found: {}", path_str);
     }
     if resolved.is_dir() {
+        skilllite_core::observability::audit_edit_failed(&path_str, tool_name, "path_is_directory");
         anyhow::bail!("Path is a directory, not a file: {}", path_str);
     }
 
     let content = std::fs::read_to_string(&resolved)
         .with_context(|| format!("Failed to read file: {}", path_str))?;
 
-    let (count, new_content) = if old_string.is_empty() {
-        anyhow::bail!("old_string cannot be empty");
+    let match_result: Result<(usize, usize, usize, usize, String)> = if old_string.is_empty() {
+        Err(anyhow::anyhow!("old_string cannot be empty"))
     } else if normalize_whitespace {
         let escaped = regex::escape(old_string);
-        let pattern = format!(r"({})\s*", escaped);
+        let pattern = format!(r"({})([ \t]*)(\r?\n|$)", escaped);
         let re = regex::Regex::new(&pattern)
             .map_err(|e| anyhow::anyhow!("Invalid old_string for regex: {}", e))?;
-        let count = re.find_iter(&content).count();
+        let matches: Vec<_> = re.find_iter(&content).collect();
+        let count = matches.len();
         if count == 0 {
-            anyhow::bail!(
+            Err(anyhow::anyhow!(
                 "old_string not found in file (with normalize_whitespace). Ensure it matches (trailing whitespace is ignored)."
-            );
-        }
-        let repl = regex::NoExpand(new_string);
-        let new_content = if replace_all {
-            re.replace_all(&content, repl).into_owned()
+            ))
+        } else if !replace_all && count > 1 {
+            Err(anyhow::anyhow!(
+                "Found {} occurrences of old_string in {}. search_replace requires a unique match by default; add more context to old_string or set replace_all=true.",
+                count, path_str
+            ))
         } else {
-            re.replacen(&content, 1, repl).into_owned()
-        };
-        (count, new_content)
+            let first_caps = re
+                .captures(&content)
+                .ok_or_else(|| anyhow::anyhow!("Failed to capture first match for {}", path_str))?;
+            let first_match = first_caps
+                .get(0)
+                .ok_or_else(|| anyhow::anyhow!("Failed to capture first full match for {}", path_str))?;
+            let new_content = if replace_all {
+                re.replace_all(&content, |_caps: &regex::Captures| {
+                    let newline = _caps.get(3).map_or("", |m| m.as_str());
+                    format!("{}{}", new_string, newline)
+                })
+                .into_owned()
+            } else {
+                re.replacen(&content, 1, |_caps: &regex::Captures| {
+                    let newline = _caps.get(3).map_or("", |m| m.as_str());
+                    format!("{}{}", new_string, newline)
+                })
+                .into_owned()
+            };
+            Ok((
+                count,
+                if replace_all { count } else { 1 },
+                first_match.start(),
+                first_match.end() - first_match.start(),
+                new_content,
+            ))
+        }
     } else {
-        let count = if replace_all {
-            content.matches(old_string).count()
-        } else {
-            if content.contains(old_string) { 1 } else { 0 }
-        };
+        let count = content.matches(old_string).count();
         if count == 0 {
-            anyhow::bail!(
+            Err(anyhow::anyhow!(
                 "old_string not found in file. Ensure it matches exactly (including whitespace and newlines). Use normalize_whitespace: true to allow trailing whitespace."
-            );
-        }
-        let new_content = if replace_all {
-            content.replace(old_string, new_string)
+            ))
+        } else if !replace_all && count > 1 {
+            Err(anyhow::anyhow!(
+                "Found {} occurrences of old_string in {}. search_replace requires a unique match by default; add more context to old_string or set replace_all=true.",
+                count, path_str
+            ))
         } else {
-            content.replacen(old_string, new_string, 1)
-        };
-        (count, new_content)
+            let first_match_start = content.find(old_string).unwrap_or(0);
+            let new_content = if replace_all {
+                content.replace(old_string, new_string)
+            } else {
+                content.replacen(old_string, new_string, 1)
+            };
+            Ok((
+                count,
+                if replace_all { count } else { 1 },
+                first_match_start,
+                old_string.len(),
+                new_content,
+            ))
+        }
     };
 
-    std::fs::write(&resolved, &new_content)
-        .with_context(|| format!("Failed to write file: {}", path_str))?;
+    let (total_occurrences, replaced_occurrences, first_match_start, first_match_len, new_content) =
+        match match_result {
+            Ok(v) => v,
+            Err(e) => {
+                skilllite_core::observability::audit_edit_failed(
+                    &path_str,
+                    tool_name,
+                    &e.to_string(),
+                );
+                return Err(e);
+            }
+        };
 
-    Ok(format!(
-        "Successfully replaced {} occurrence(s) in {}",
-        count, path_str
-    ))
+    if content == new_content {
+        skilllite_core::observability::audit_edit_failed(
+            &path_str, tool_name, "no_change_produced",
+        );
+        anyhow::bail!("No changes were made: replacement produced identical content");
+    }
+
+    let first_changed_line = content[..first_match_start].bytes().filter(|b| *b == b'\n').count() + 1;
+    let old_excerpt = safe_excerpt(&content, first_match_start, first_match_len, 200);
+    let new_excerpt = safe_excerpt(&new_content, first_match_start, new_string.len(), 200);
+    let diff_excerpt = format!("- {}\n+ {}", old_excerpt, new_excerpt);
+
+    if apply_changes {
+        std::fs::write(&resolved, &new_content)
+            .with_context(|| format!("Failed to write file: {}", path_str))?;
+        skilllite_core::observability::audit_edit_applied(
+            &path_str, replaced_occurrences, first_changed_line, &diff_excerpt,
+        );
+    } else {
+        skilllite_core::observability::audit_edit_previewed(
+            &path_str, replaced_occurrences, first_changed_line, &diff_excerpt,
+        );
+    }
+
+    let result = json!({
+        "path": path_str,
+        "changed": true,
+        "occurrences": replaced_occurrences,
+        "total_occurrences": total_occurrences,
+        "first_changed_line": first_changed_line,
+        "diff_excerpt": diff_excerpt
+    });
+
+    if apply_changes {
+        Ok(format!(
+            "Successfully replaced {} occurrence(s) in {}\n{}",
+            replaced_occurrences,
+            path_str,
+            serde_json::to_string_pretty(&result)?
+        ))
+    } else {
+        Ok(format!(
+            "Preview edit for {} (no changes written)\n{}",
+            path_str,
+            serde_json::to_string_pretty(&result)?
+        ))
+    }
+}
+
+fn safe_excerpt(content: &str, start: usize, span_len: usize, max_len: usize) -> String {
+    let prefix = 80usize;
+    let suffix = 80usize;
+    let begin = floor_char_boundary(content, start.saturating_sub(prefix));
+    let end = ceil_char_boundary(content, (start + span_len + suffix).min(content.len()));
+    let mut excerpt = content[begin..end].replace('\n', "\\n");
+    if excerpt.len() > max_len {
+        excerpt.truncate(max_len);
+        excerpt.push_str("...");
+    }
+    excerpt
+}
+
+fn floor_char_boundary(s: &str, idx: usize) -> usize {
+    let mut i = idx.min(s.len());
+    while i > 0 && !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
+}
+
+fn ceil_char_boundary(s: &str, idx: usize) -> usize {
+    let mut i = idx.min(s.len());
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
 }
 
 pub(super) fn execute_list_directory(args: &Value, workspace: &Path) -> Result<String> {
