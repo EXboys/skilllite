@@ -1,7 +1,7 @@
 //! Built-in tools for the agent.
 //!
 //! Split into submodules by tool category:
-//! - `file_ops`:    read_file, write_file, search_replace, list_directory, file_exists
+//! - `file_ops`:    read_file, write_file, search_replace, insert_lines, list_directory, file_exists
 //! - `run_command`: run_command (shell execution with confirmation)
 //! - `output`:      write_output, list_output
 //! - `preview`:     preview_server (local HTTP file server)
@@ -289,6 +289,7 @@ pub fn is_builtin_tool(name: &str) -> bool {
             | "write_file"
             | "search_replace"
             | "preview_edit"
+            | "insert_lines"
             | "list_directory"
             | "file_exists"
             | "run_command"
@@ -348,6 +349,7 @@ pub fn execute_builtin_tool(
         "write_file" => file_ops::execute_write_file(&args, workspace),
         "search_replace" => file_ops::execute_search_replace(&args, workspace),
         "preview_edit" => file_ops::execute_preview_edit(&args, workspace),
+        "insert_lines" => file_ops::execute_insert_lines(&args, workspace),
         "list_directory" => file_ops::execute_list_directory(&args, workspace),
         "file_exists" => file_ops::execute_file_exists(&args, workspace),
         "write_output" => output::execute_write_output(&args, workspace),
@@ -674,5 +676,382 @@ mod tests {
 
         let content = std::fs::read_to_string(&file_path).unwrap();
         assert_eq!(content, "alpha beta\n");
+    }
+
+    // ─── P0: read_file line numbers + range ─────────────────────────────
+
+    #[test]
+    fn test_read_file_with_line_numbers() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "line1\nline2\nline3\n").unwrap();
+
+        let args = serde_json::json!({ "path": "test.txt" });
+        let result = execute_builtin_tool("read_file", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("1|line1"));
+        assert!(result.content.contains("2|line2"));
+        assert!(result.content.contains("3|line3"));
+    }
+
+    #[test]
+    fn test_read_file_with_range() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "aaa\nbbb\nccc\nddd\neee\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "start_line": 2,
+            "end_line": 4
+        });
+        let result = execute_builtin_tool("read_file", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("2|bbb"));
+        assert!(result.content.contains("3|ccc"));
+        assert!(result.content.contains("4|ddd"));
+        assert!(!result.content.contains("1|aaa"));
+        assert!(!result.content.contains("5|eee"));
+        assert!(result.content.contains("[Showing lines 2-4 of 5 total]"));
+    }
+
+    #[test]
+    fn test_read_file_range_beyond_end() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "only\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "start_line": 100
+        });
+        let result = execute_builtin_tool("read_file", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("File has 1 lines"));
+    }
+
+    // ─── P0: insert_lines ───────────────────────────────────────────────
+
+    #[test]
+    fn test_insert_lines_at_beginning() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "line1\nline2\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "line": 0,
+            "content": "inserted"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("Successfully inserted"));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "inserted\nline1\nline2\n");
+    }
+
+    #[test]
+    fn test_insert_lines_in_middle() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "line1\nline2\nline3\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "line": 1,
+            "content": "new_line"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "line1\nnew_line\nline2\nline3\n");
+    }
+
+    #[test]
+    fn test_insert_lines_at_end() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "line1\nline2\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "line": 2,
+            "content": "last_line"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "line1\nline2\nlast_line\n");
+    }
+
+    #[test]
+    fn test_insert_lines_multiline_content() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "aaa\nbbb\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "line": 1,
+            "content": "x1\nx2\nx3"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("\"lines_inserted\": 3"));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "aaa\nx1\nx2\nx3\nbbb\n");
+    }
+
+    #[test]
+    fn test_insert_lines_beyond_end_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "line1\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "line": 99,
+            "content": "nope"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(result.is_error);
+        assert!(result.content.contains("beyond end of file"));
+    }
+
+    #[test]
+    fn test_insert_lines_no_trailing_newline() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "hello\nworld").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "line": 2,
+            "content": "end"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(!result.is_error);
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "hello\nworld\nend\n");
+    }
+
+    // ─── P0: search_replace dry_run ─────────────────────────────────────
+
+    #[test]
+    fn test_search_replace_dry_run_no_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "alpha beta\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "alpha",
+            "new_string": "gamma",
+            "dry_run": true
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("Preview edit"));
+        assert!(result.content.contains("no changes written"));
+        assert!(result.content.contains("\"match_type\": \"exact\""));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert_eq!(content, "alpha beta\n");
+    }
+
+    // ─── P0: match_type in result ───────────────────────────────────────
+
+    #[test]
+    fn test_search_replace_match_type_exact() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "hello world\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "hello world",
+            "new_string": "hi world"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("\"match_type\": \"exact\""));
+    }
+
+    // ─── P0: fuzzy match — whitespace (Level 2) ─────────────────────────
+
+    #[test]
+    fn test_fuzzy_match_indent_difference() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.rs");
+        std::fs::write(
+            &file_path,
+            "fn main() {\n    let x = 1;\n    let y = 2;\n}\n",
+        )
+        .unwrap();
+
+        // old_string has 2-space indent instead of 4-space; multi-line prevents substring match
+        let args = serde_json::json!({
+            "path": "test.rs",
+            "old_string": "  let x = 1;\n  let y = 2;",
+            "new_string": "    let a = 10;\n    let b = 20;"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error, "Error: {}", result.content);
+        assert!(result.content.contains("\"match_type\": \"whitespace_fuzzy\""));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("let a = 10"));
+        assert!(content.contains("let b = 20"));
+    }
+
+    #[test]
+    fn test_fuzzy_match_trailing_whitespace_auto() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        // File has trailing spaces on the line
+        std::fs::write(&file_path, "hello world   \nnext\n").unwrap();
+
+        // old_string without trailing spaces — exact match fails because
+        // "hello world" is a substring of "hello world   ", but let's
+        // test the multi-line case
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "hello world   \nnext",
+            "new_string": "hi\nnext"
+        });
+        // Exact match succeeds here (substring match)
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("\"match_type\": \"exact\""));
+    }
+
+    #[test]
+    fn test_fuzzy_match_multiline_indent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.py");
+        std::fs::write(
+            &file_path,
+            "def foo():\n    x = 1\n    y = 2\n    return x + y\n",
+        )
+        .unwrap();
+
+        // old_string has no indentation
+        let args = serde_json::json!({
+            "path": "test.py",
+            "old_string": "x = 1\ny = 2",
+            "new_string": "    a = 10\n    b = 20"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("\"match_type\": \"whitespace_fuzzy\""));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("    a = 10\n    b = 20"));
+    }
+
+    // ─── P0: fuzzy match — blank lines (Level 3) ────────────────────────
+
+    #[test]
+    fn test_fuzzy_match_blank_line_difference() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        // Content has an extra blank line between the two lines
+        std::fs::write(&file_path, "aaa\n\nbbb\nccc\n").unwrap();
+
+        // old_string without the blank line
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "aaa\nbbb",
+            "new_string": "xxx\nyyy"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("\"match_type\": \"blank_line_fuzzy\""));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.starts_with("xxx\nyyy"));
+    }
+
+    // ─── P0: fuzzy match — Levenshtein similarity (Level 4) ─────────────
+
+    #[test]
+    fn test_fuzzy_match_similarity() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(
+            &file_path,
+            "fn calculate_total(items: &[Item]) -> f64 {\n    items.iter().map(|i| i.price).sum()\n}\n",
+        )
+        .unwrap();
+
+        // old_string has a minor typo / difference (calculate_totl instead of calculate_total)
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "fn calculate_totl(items: &[Item]) -> f64 {\n    items.iter().map(|i| i.price).sum()\n}",
+            "new_string": "fn calculate_total(items: &[Item]) -> u64 {\n    items.iter().map(|i| i.price as u64).sum()\n}"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(!result.is_error);
+        assert!(result.content.contains("similarity("));
+
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("-> u64"));
+    }
+
+    #[test]
+    fn test_fuzzy_match_low_similarity_fails() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let file_path = workspace.join("test.txt");
+        std::fs::write(&file_path, "completely different content here\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": "test.txt",
+            "old_string": "nothing even close to matching this at all",
+            "new_string": "replacement"
+        });
+        let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+        assert!(result.is_error);
+        assert!(result.content.contains("old_string not found"));
+    }
+
+    // ─── P0: insert_lines blocks sensitive paths ────────────────────────
+
+    #[test]
+    fn test_insert_lines_blocks_sensitive_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let env_path = workspace.join(".env");
+        std::fs::write(&env_path, "KEY=value\n").unwrap();
+
+        let args = serde_json::json!({
+            "path": ".env",
+            "line": 0,
+            "content": "INJECTED=bad"
+        });
+        let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+        assert!(result.is_error);
+        assert!(result.content.contains("Blocked"));
     }
 }
