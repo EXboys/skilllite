@@ -295,6 +295,54 @@ pub fn builtin_rules() -> Vec<PlanningRule> {
             instruction: "**分析AI稳定性/项目问题/历史消息** (ONLY when user explicitly asks to analyze chat/conversation): When the user asks to analyze recent AI stability, project issues, robustness, or conversation quality, you MUST use **chat_history** first to get the data, then analyze. chat_history is ONLY for analyzing past chat records — do NOT use it for comparing places, cities, companies, or external topics.".into(),
         },
         PlanningRule {
+            id: "direct_answer".into(),
+            priority: 98,
+            keywords: vec![
+                "直接回答".into(),
+                "不用查".into(),
+                "直接说".into(),
+                "just answer".into(),
+                "answer directly".into(),
+                "no need to search".into(),
+            ],
+            context_keywords: vec![],
+            tool_hint: None,
+            instruction: "**直接回答/不用查**: When the user explicitly says 直接回答, 不用查, 直接说, or similar (e.g. just answer, no need to search), you MUST return empty list `[]` and let the LLM answer directly. Do NOT plan any tools.".into(),
+        },
+        PlanningRule {
+            id: "code_refactor".into(),
+            priority: 85,
+            keywords: vec![
+                "refactor".into(),
+                "重构".into(),
+                "修改代码".into(),
+                "改成".into(),
+                "改成Result".into(),
+                "panic".into(),
+                "unwrap".into(),
+            ],
+            context_keywords: vec![],
+            tool_hint: Some("file_operation".into()),
+            instruction: "**代码重构/修改**: When the user asks to refactor code (e.g. panic改成Result, 修改API), plan: (1) grep_files to locate targets; (2) search_replace/insert_lines to modify; (3) run_command to verify (tests/build). tool_hint: file_operation.".into(),
+        },
+        PlanningRule {
+            id: "code_fix_test".into(),
+            priority: 84,
+            keywords: vec![
+                "修复".into(),
+                "fix".into(),
+                "bug".into(),
+                "添加测试".into(),
+                "加单元测试".into(),
+                "写测试".into(),
+                "add test".into(),
+                "unit test".into(),
+            ],
+            context_keywords: vec![],
+            tool_hint: Some("file_operation".into()),
+            instruction: "**修复bug/添加测试**: When the user asks to fix a bug or add tests, plan: (1) read_file/list_directory to understand codebase; (2) search_replace/insert_lines to fix or add tests; (3) run_command to run tests. tool_hint: file_operation.".into(),
+        },
+        PlanningRule {
             id: "output_to_file".into(),
             priority: 92,
             keywords: vec![
@@ -320,6 +368,14 @@ pub fn builtin_rules() -> Vec<PlanningRule> {
 pub fn full_examples_section() -> String {
     r#"Example 1 - Simple task (writing poetry):
 User request: "Write a poem praising spring"
+Return: []
+
+Example 1b - Translation (no tools needed):
+User request: "把这段英文翻译成中文" or "Translate this to English"
+Return: []
+
+Example 1c - Code explanation (no tools needed):
+User request: "解释一下这段代码的逻辑" or "What does this function do?"
 Return: []
 
 Example 2 - Task requiring tools:
@@ -372,7 +428,23 @@ Return: [{"id": 1, "description": "Generate the article content and use write_ou
 Example 11 - User asks to analyze AI stability / project issues (MUST use chat_history, NOT write_output):
 User request: "分析一下最近几次的ai的稳定性以及项目的问题" or "分析历史消息的健壮性"
 Return: [{"id": 1, "description": "Use chat_history to read recent conversation transcripts", "tool_hint": "chat_history", "completed": false}, {"id": 2, "description": "Analyze AI stability and project issues based on the transcripts", "tool_hint": "analysis", "completed": false}]
-Note: The user wants ANALYSIS of existing data, NOT a new article. Do NOT plan write_output."#
+Note: The user wants ANALYSIS of existing data, NOT a new article. Do NOT plan write_output.
+
+Example 12 - Multi-source aggregation (fetch A, fetch B, compare, output):
+User request: "对比 Rust 和 Go 的优缺点，输出到 output/report.md"
+Return: [{"id": 1, "description": "Use http-request to fetch current info about Rust", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Use http-request to fetch current info about Go", "tool_hint": "http-request", "completed": false}, {"id": 3, "description": "Analyze and compare, use write_output to save report", "tool_hint": "file_operation", "completed": false}]
+
+Example 13 - Long-chain coding task (refactor panic to Result):
+User request: "把 API 里所有 panic 改成 Result 返回"
+Return: [{"id": 1, "description": "Use grep_files to find panic locations in codebase", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Use search_replace to replace each panic with Result return", "tool_hint": "file_operation", "completed": false}, {"id": 3, "description": "Use run_command to run tests and verify", "tool_hint": "file_operation", "completed": false}]
+
+Example 14 - Vague request (explore then act):
+User request: "整理一下项目"
+Return: [{"id": 1, "description": "Use list_directory to explore project structure", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Analyze structure and organize files (move, rename, or document)", "tool_hint": "file_operation", "completed": false}]
+
+Example 15 - Mixed skill (weather + analysis + output):
+User request: "查深圳天气，适合的话写一段出游推荐，否则写宅家建议，保存到 output/advice.md"
+Return: [{"id": 1, "description": "Use weather skill to query Shenzhen weather", "tool_hint": "weather", "completed": false}, {"id": 2, "description": "Based on weather write recommendation, use write_output to save", "tool_hint": "file_operation", "completed": false}]"#
         .to_string()
 }
 
@@ -380,7 +452,7 @@ Note: The user wants ANALYSIS of existing data, NOT a new article. Do NOT plan w
 pub fn compact_examples_section(user_message: &str) -> String {
     let msg_lower = user_message.to_lowercase();
     let mut lines = vec![
-        "Example 1 - Simple (no tools): \"Write a poem\" → []".to_string(),
+        "Example 1 - Simple (no tools): \"Write a poem\", \"Translate X\", \"Explain this code\" → []".to_string(),
         "Example 2 - Tools: \"Calculate 123*456\" → [{\"id\":1,\"description\":\"Use calculator\",\"tool_hint\":\"calculator\",\"completed\":false}]".to_string(),
     ];
     // Detect city/place comparison context: chat_history is WRONG for these
@@ -402,6 +474,8 @@ pub fn compact_examples_section(user_message: &str) -> String {
         ("继续", "", "继续: use context to infer task, often http-request."),
         ("天气", "气象", "天气: weather skill."),
         ("官网", "网站", "官网/网站: write_output + preview_server, 2 tasks."),
+        ("refactor", "panic", "编码refactor: grep定位→search_replace→run_command测试."),
+        ("整理", "项目", "模糊请求: list_directory探索→分析执行."),
     ];
     let mut added = 0;
     for (k1, k2, text) in candidates {

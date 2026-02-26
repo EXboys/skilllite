@@ -221,7 +221,7 @@ impl TaskPlanner {
     }
 
     /// Parse the LLM response into a task list.
-    fn parse_task_list(&self, raw: &str) -> Result<Vec<Task>> {
+    pub(crate) fn parse_task_list(&self, raw: &str) -> Result<Vec<Task>> {
         let mut cleaned = raw.trim().to_string();
 
         // Strip markdown code fences
@@ -272,7 +272,7 @@ impl TaskPlanner {
     /// Build the planning prompt for task generation.
     /// When compact: filter rules by user message, use fewer examples.
     /// Weak models (7b, ollama, etc.) auto-get full prompt when SKILLLITE_COMPACT_PLANNING not set.
-    fn build_planning_prompt(&self, skills_info: &str, user_message: &str, model: Option<&str>) -> String {
+    pub(crate) fn build_planning_prompt(&self, skills_info: &str, user_message: &str, model: Option<&str>) -> String {
         let compact = get_compact_planning(model);
         let rules_section = if compact {
             let filtered: Vec<&PlanningRule> = filter_rules_for_user_message(&self.rules, user_message);
@@ -346,6 +346,16 @@ r#"You are a task planning assistant. Based on user requirements, determine whet
 3. **Dependency order**: Ensure tasks are arranged in correct dependency order
 4. **Verifiability**: Each task should have clear completion criteria
 
+### Decomposition Heuristics
+
+**First: Check if `[]` is correct** — If the task can be done by the LLM alone (no external data, no file I/O, no real-time info), return `[]`. Examples: translate, explain code, write poem, answer knowledge questions, summarize text.
+
+**Only when tools are needed**, apply:
+- **Three-phase model**: Data fetch → Process/analyze → Output. Most cross-domain tasks follow this pattern.
+- **Explicit dependencies**: Read/search first, then modify/write, finally verify (e.g. run tests).
+- **Granularity**: Each step should be completable with 1–2 tool calls. Avoid single steps that are too large or too fragmented.
+- **Ambiguity**: When the request is vague, prefer "explore + confirm" steps rather than guessing and returning [].
+
 ## Output Format
 
 Must return pure JSON format, no other text.
@@ -362,8 +372,8 @@ Example format:
   {{"id": 3, "description": "Use write_file to write main skill code", "tool_hint": "file_operation", "completed": false}},
   {{"id": 4, "description": "Verify the created skill is correct", "tool_hint": "analysis", "completed": false}}
 ]
-- If task can be completed directly by LLM, return: `[]`
-- If tools are needed, return task array, each task contains:
+- **Prefer `[]`** when the LLM can answer directly (translation, explanation, creative writing, Q&A, code review). Do NOT over-plan.
+- If tools are needed (file I/O, HTTP, weather, etc.), return task array, each task contains:
   - id: Task ID (number)
   - description: Task description
   - tool_hint: Suggested tool (skill name or "file_operation")
@@ -630,5 +640,56 @@ r#"You are an intelligent task execution assistant responsible for executing tas
              mark this task as completed (\"Task X completed\"), and proceed to the next task.",
             max_calls
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Phase 1 测试：验证规划 prompt 包含 [] 平衡与拆解原则
+    #[test]
+    fn test_planning_prompt_phase1_balance() {
+        let planner = TaskPlanner::new(None);
+        let prompt = planner.build_planning_prompt("None", "hello", None);
+
+        // [] 优先的平衡性内容
+        assert!(
+            prompt.contains("First: Check if `[]` is correct"),
+            "prompt should contain First check for []"
+        );
+        assert!(
+            prompt.contains("Prefer `[]`"),
+            "prompt should contain Prefer [] in output format"
+        );
+        assert!(
+            prompt.contains("Minimize Tool Usage"),
+            "prompt should contain Core Principle"
+        );
+
+        // Decomposition heuristics（仅当需要工具时）
+        assert!(
+            prompt.contains("Only when tools are needed"),
+            "prompt should qualify when to apply heuristics"
+        );
+        assert!(
+            prompt.contains("Three-phase model"),
+            "prompt should contain three-phase model"
+        );
+    }
+
+    /// Phase 1 测试：parse_task_list 能正确解析有效 JSON 与 []
+    #[test]
+    fn test_parse_task_list() {
+        let planner = TaskPlanner::new(None);
+
+        let json = r#"[{"id": 1, "description": "Use grep_files", "tool_hint": "file_operation", "completed": false}]"#;
+        let tasks = planner.parse_task_list(json).unwrap();
+        assert_eq!(tasks.len(), 1);
+        assert_eq!(tasks[0].description, "Use grep_files");
+        assert_eq!(tasks[0].tool_hint.as_deref(), Some("file_operation"));
+
+        let empty = planner.parse_task_list("[]").unwrap();
+        assert!(empty.is_empty());
     }
 }

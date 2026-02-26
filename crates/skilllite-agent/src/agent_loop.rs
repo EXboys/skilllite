@@ -662,6 +662,11 @@ async fn run_with_task_planning(
             result.content =
                 process_result_content(&client, &config.model, tool_name, &result.content).await;
 
+            // Phase 1 C1: When tool fails, append replan hint (task-planning mode only)
+            if result.is_error {
+                result.content.push_str("\n\nTip: Consider update_task_plan if the approach needs to change.");
+            }
+
             event_sink.on_tool_result(tool_name, &result.content, result.is_error);
             messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
 
