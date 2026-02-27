@@ -12,7 +12,7 @@
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  Agent Layer (optional)                            │
+│  Agent demo Layer (optional & demo)                            │
 │  Built-in chat, planning, memory, tools            │
 │  Binary: skilllite (full)                          │
 ├────────────────────────────────────────────────────┤
