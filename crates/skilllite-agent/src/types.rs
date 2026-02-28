@@ -243,7 +243,6 @@ impl ToolDefinition {
     }
 
     /// Convert to the specified format.
-    #[allow(dead_code)]
     pub fn to_format(&self, format: &ToolFormat) -> serde_json::Value {
         match format {
             ToolFormat::OpenAI => serde_json::to_value(self).unwrap_or_default(),
@@ -264,7 +263,6 @@ pub struct FunctionDef {
 #[derive(Debug, Clone)]
 pub struct ToolResult {
     pub tool_call_id: String,
-    #[allow(dead_code)]
     pub tool_name: String,
     pub content: String,
     pub is_error: bool,
@@ -272,7 +270,6 @@ pub struct ToolResult {
 
 impl ToolResult {
     /// Convert to Claude API tool_result format.
-    #[allow(dead_code)]
     pub fn to_claude_format(&self) -> serde_json::Value {
         serde_json::json!({
             "type": "tool_result",
@@ -283,7 +280,6 @@ impl ToolResult {
     }
 
     /// Convert to OpenAI API tool result message.
-    #[allow(dead_code)]
     pub fn to_openai_format(&self) -> serde_json::Value {
         serde_json::json!({
             "role": "tool",
@@ -293,7 +289,6 @@ impl ToolResult {
     }
 
     /// Convert to the specified format.
-    #[allow(dead_code)]
     pub fn to_format(&self, format: &ToolFormat) -> serde_json::Value {
         match format {
             ToolFormat::OpenAI => self.to_openai_format(),
@@ -447,7 +442,6 @@ pub trait EventSink: Send {
     /// Returns true if the user approves.
     fn on_confirmation_request(&mut self, prompt: &str) -> bool;
     /// Called for streaming text chunks.
-    #[allow(dead_code)]
     fn on_text_chunk(&mut self, _chunk: &str) {}
     /// Called when a task plan is generated. (Phase 2)
     fn on_task_plan(&mut self, _tasks: &[Task]) {}

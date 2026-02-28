@@ -27,7 +27,7 @@ pub enum ProtocolParams {
 /// 4. Add a match arm in lib.rs: `Commands::X { .. } => XHandler.serve(params)?`
 pub trait ProtocolHandler: Send + Sync {
     /// Protocol name for logging and diagnostics.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // required method in trait; callers use dynamic dispatch via serve()
     fn name(&self) -> &str;
 
     /// Start the protocol server. Blocks until shutdown.

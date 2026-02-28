@@ -97,7 +97,6 @@ pub(super) fn run_security_scan(skill_dir: &Path, metadata: &SkillMetadata) -> O
 // ─── Phase 2.5: .skilllite.lock dependency resolution ───────────────────────
 // Kept for future init_deps integration; metadata uses its own read_lock_file_packages.
 
-#[allow(dead_code)]
 /// Lock file structure for cached dependency resolution.
 #[derive(Debug, serde::Deserialize)]
 pub struct LockFile {
@@ -108,7 +107,6 @@ pub struct LockFile {
     pub resolver: String,
 }
 
-#[allow(dead_code)]
 /// Read and validate a `.skilllite.lock` file for a skill.
 /// Returns the resolved packages if the lock is fresh, None if stale or missing.
 pub fn read_lock_file(skill_dir: &Path, compatibility: Option<&str>) -> Option<Vec<String>> {
@@ -140,7 +138,6 @@ pub fn read_lock_file(skill_dir: &Path, compatibility: Option<&str>) -> Option<V
     Some(lock.resolved_packages)
 }
 
-#[allow(dead_code)]
 /// Write a `.skilllite.lock` file for a skill.
 pub fn write_lock_file(
     skill_dir: &Path,

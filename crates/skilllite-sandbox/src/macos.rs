@@ -703,7 +703,7 @@ fn generate_sandbox_profile_with_proxy(
 /// 5. PROCESS EXEC: Whitelist-only — only the resolved interpreter is allowed
 /// 6. PROCESS FORK: Denied by default
 /// 7. IPC/KERNEL: Block mach-register, mach-priv-task-port, iokit-open
-#[allow(dead_code)]
+#[allow(dead_code)] // called only from #[cfg(test)]
 fn generate_sandbox_profile(
     skill_dir: &Path,
     env_path: &Path,
@@ -906,6 +906,7 @@ fn generate_sandbox_profile(
 }
 
 /// Resolve a hostname to IP addresses
+#[allow(dead_code)] // called only from generate_sandbox_profile (test-only path)
 fn resolve_host_to_ips(host: &str) -> Option<Vec<String>> {
     // Parse host:port format
     let (hostname, port) = if let Some(idx) = host.rfind(':') {

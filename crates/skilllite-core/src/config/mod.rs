@@ -6,7 +6,6 @@
 //! - `schema`：LlmConfig、PathsConfig、AgentFeatureFlags
 //! - `env_keys`：key 常量（含 legacy 向后兼容）
 
-#[allow(dead_code)]
 pub mod env_keys;
 pub mod loader;
 pub mod schema;

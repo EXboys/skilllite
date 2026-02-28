@@ -23,7 +23,6 @@ use super::types::{get_output_dir, safe_truncate};
 /// Progressive disclosure mode.
 /// Summary/Standard/Full are used in tests and for API completeness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum PromptMode {
     /// 150-char description only.
     Summary,

@@ -109,7 +109,6 @@ impl Default for ProxyConfig {
 
 impl ProxyConfig {
     /// Create a config that blocks all network access
-    #[allow(dead_code)] // Reserved for explicit block-all API
     pub fn block_all() -> Self {
         Self {
             allowed_domains: Vec::new(),

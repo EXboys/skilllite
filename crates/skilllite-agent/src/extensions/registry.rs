@@ -126,7 +126,6 @@ impl<'a> ExtensionRegistry<'a> {
     }
 
     /// Check if any extension owns this tool name.
-    #[allow(dead_code)]
     pub fn owns_tool(&self, name: &str) -> bool {
         builtin::is_builtin_tool(name)
             || (self.enable_memory && memory::is_memory_tool(name))
