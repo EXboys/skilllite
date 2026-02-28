@@ -29,15 +29,15 @@ pub fn execute_with_limits(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
-        eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
+    if crate::common::env_compat_is_set("SKILLLITE_NO_SANDBOX", "SKILLBOX_NO_SANDBOX") {
+        tracing::warn!("Sandbox disabled via SKILLLITE_NO_SANDBOX - running without protection");
         crate::info_log!("[INFO] using simple execution (no sandbox-exec)");
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
 
     if security_policy::should_allow_playwright() && config.uses_playwright {
         crate::info_log!(
-            "[INFO] Skill {} uses Playwright; skipping sandbox (SKILLBOX_ALLOW_PLAYWRIGHT/L2)",
+            "[INFO] Skill {} uses Playwright; skipping sandbox (SKILLLITE_ALLOW_PLAYWRIGHT/L2)",
             config.name
         );
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
@@ -53,7 +53,7 @@ pub fn execute_with_limits(
             );
             Err(e.context(
                 "Sandbox execution failed. Refusing to fall back to unsandboxed execution. \
-                 Set SKILLBOX_NO_SANDBOX=1 to explicitly run without sandbox (not recommended)."
+                 Set SKILLLITE_NO_SANDBOX=1 to explicitly run without sandbox (not recommended)."
             ))
         }
     }
@@ -87,9 +87,9 @@ pub fn execute_simple_with_limits(
         cmd.env(k, v);
     }
 
-    // Add script arguments from SKILLBOX_SCRIPT_ARGS environment variable
+    // Add script arguments from SKILLLITE_SCRIPT_ARGS environment variable
     // This allows passing CLI arguments to scripts that use argparse
-    if let Ok(script_args) = std::env::var("SKILLBOX_SCRIPT_ARGS") {
+    if let Ok(script_args) = crate::common::env_compat("SKILLLITE_SCRIPT_ARGS", "SKILLBOX_SCRIPT_ARGS") {
         if !script_args.is_empty() {
             for arg in script_args.split_whitespace() {
                 cmd.arg(arg);
@@ -106,11 +106,13 @@ pub fn execute_simple_with_limits(
     cmd.stderr(Stdio::piped());
 
     // Set environment variables
-    cmd.env("SKILLBOX_SANDBOX", "0");
+    cmd.env("SKILLLITE_SANDBOX", "0");
+    cmd.env("SKILLBOX_SANDBOX", "0"); // legacy compat
     cmd.env("TMPDIR", work_dir);
 
     if !config.network_enabled {
-        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
+        cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
     }
 
     // Apply resource limits via pre_exec (kernel-enforced, not polling-only)
@@ -214,7 +216,7 @@ fn execute_with_sandbox(
         match ProxyManager::new(proxy_config) {
             Ok(mut manager) => {
                 if let Err(e) = manager.start() {
-                    eprintln!("[WARN] Failed to start network proxy: {}", e);
+                    tracing::warn!("Failed to start network proxy: {}", e);
                     None
                 } else {
                     crate::info_log!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
@@ -223,7 +225,7 @@ fn execute_with_sandbox(
                 }
             }
             Err(e) => {
-                eprintln!("[WARN] Failed to create network proxy: {}", e);
+                tracing::warn!("Failed to create network proxy: {}", e);
                 None
             }
         }
@@ -254,9 +256,9 @@ fn execute_with_sandbox(
     fs::write(&profile_path, &profile_content)?;
     let mut args = vec![entry_point.to_string()];
 
-    // Add script arguments from SKILLBOX_SCRIPT_ARGS environment variable
+    // Add script arguments from SKILLLITE_SCRIPT_ARGS environment variable
     // This allows passing CLI arguments to scripts that use argparse
-    if let Ok(script_args) = std::env::var("SKILLBOX_SCRIPT_ARGS") {
+    if let Ok(script_args) = crate::common::env_compat("SKILLLITE_SCRIPT_ARGS", "SKILLBOX_SCRIPT_ARGS") {
         if !script_args.is_empty() {
             // Split by whitespace - arguments should not contain spaces
             for arg in script_args.split_whitespace() {
@@ -280,7 +282,8 @@ fn execute_with_sandbox(
     cmd.stderr(Stdio::piped());
 
     // Set environment variables
-    cmd.env("SKILLBOX_SANDBOX", "1");
+    cmd.env("SKILLLITE_SANDBOX", "1");
+    cmd.env("SKILLBOX_SANDBOX", "1"); // legacy compat
     cmd.env("TMPDIR", work_dir);
     // Expose output dir for skills that save files (e.g. csdn-article, xiaohongshu-writer)
     if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
@@ -300,7 +303,7 @@ fn execute_with_sandbox(
     }
 
     // Apply resource limits using pre_exec (pure Rust, no script injection)
-    // Use limits from env (SKILLBOX_TIMEOUT_SECS, SKILLBOX_MAX_MEMORY_MB) so RLIMIT_CPU
+    // Use limits from env (SKILLLITE_TIMEOUT_SECS, SKILLLITE_MAX_MEMORY_MB) so RLIMIT_CPU
     // matches user's EXECUTION_TIMEOUT (e.g. 120s). Previously hardcoded 30s caused early kill.
     let memory_limit_mb = limits.max_memory_mb;
     let cpu_limit_secs = limits.timeout_secs;
@@ -311,7 +314,7 @@ fn execute_with_sandbox(
         cmd.pre_exec(move || {
             use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
             
-            // Memory limit - from SKILLBOX_MAX_MEMORY_MB
+            // Memory limit - from SKILLLITE_MAX_MEMORY_MB
             let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
             let mem_limit = rlimit {
                 rlim_cur: memory_limit_bytes,
@@ -319,7 +322,7 @@ fn execute_with_sandbox(
             };
             setrlimit(RLIMIT_AS, &mem_limit);
             
-            // CPU time limit - from SKILLBOX_TIMEOUT_SECS (matches EXECUTION_TIMEOUT)
+            // CPU time limit - from SKILLLITE_TIMEOUT_SECS (matches EXECUTION_TIMEOUT)
             let cpu_limit = rlimit {
                 rlim_cur: cpu_limit_secs,
                 rlim_max: cpu_limit_secs,
@@ -371,7 +374,7 @@ fn execute_with_sandbox(
     // Log if process was killed
     if was_killed {
         if let Some(reason) = &kill_reason {
-            eprintln!("[SECURITY] Process terminated due to: {}", reason);
+            tracing::error!("Process terminated due to: {}", reason);
         }
     }
 
@@ -748,7 +751,7 @@ fn generate_sandbox_profile(
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.bash_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.zsh_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/Library/Keychains\"))\n");
-    let legacy_relaxed = std::env::var("SKILLBOX_SANDBOX_LEVEL").map(|s| s.trim() == "2").unwrap_or(false);
+    let legacy_relaxed = crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL").map(|s| s.trim() == "2").unwrap_or(false);
     if !legacy_relaxed {
         profile.push_str("(deny file-read* (regex #\"/\\.git/\"))\n");
         profile.push_str("(deny file-read* (regex #\"/\\.env$\"))\n");

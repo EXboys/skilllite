@@ -2,7 +2,6 @@ use skilllite_core::observability;
 use crate::common::{DEFAULT_MAX_MEMORY_MB, DEFAULT_TIMEOUT_SECS};
 use crate::security::{format_scan_result, ScriptScanner, SecuritySeverity};
 use anyhow::Result;
-use std::env;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::time::Instant;
@@ -86,7 +85,7 @@ impl SandboxLevel {
         }
 
         // Read from environment variable
-        if let Ok(level_str) = env::var("SKILLBOX_SANDBOX_LEVEL") {
+        if let Ok(level_str) = crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL") {
             if let Ok(level) = level_str.parse::<u8>() {
                 return match level {
                     1 => Self::Level1,
@@ -94,7 +93,7 @@ impl SandboxLevel {
                     3 => Self::Level3,
                     _ => {
                         tracing::warn!(
-                            "Invalid SKILLBOX_SANDBOX_LEVEL: {}, using default (3)",
+                            "Invalid SKILLLITE_SANDBOX_LEVEL: {}, using default (3)",
                             level
                         );
                         Self::Level3
@@ -145,12 +144,12 @@ impl ResourceLimits {
 
     /// Load resource limits from environment variables
     pub fn from_env() -> Self {
-        let max_memory_mb = env::var("SKILLBOX_MAX_MEMORY_MB")
+        let max_memory_mb = crate::common::env_compat("SKILLLITE_MAX_MEMORY_MB", "SKILLBOX_MAX_MEMORY_MB")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(DEFAULT_MAX_MEMORY_MB);
 
-        let timeout_secs = env::var("SKILLBOX_TIMEOUT_SECS")
+        let timeout_secs = crate::common::env_compat("SKILLLITE_TIMEOUT_SECS", "SKILLBOX_TIMEOUT_SECS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(DEFAULT_TIMEOUT_SECS);
@@ -196,10 +195,10 @@ fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &st
     eprintln!();
 
     // Check if auto-approve is enabled via environment variable
-    if let Ok(val) = env::var("SKILLBOX_AUTO_APPROVE") {
+    if let Ok(val) = crate::common::env_compat("SKILLLITE_AUTO_APPROVE", "SKILLBOX_AUTO_APPROVE") {
         let val_lower = val.to_lowercase();
         if val_lower == "1" || val_lower == "true" || val_lower == "yes" {
-            tracing::info!("Auto-approved via SKILLBOX_AUTO_APPROVE={}", val);
+            tracing::info!("Auto-approved via SKILLLITE_AUTO_APPROVE={}", val);
             observability::audit_confirmation_response(skill_id, true, "auto");
             return true;
         }
@@ -277,7 +276,7 @@ pub fn run_in_sandbox_with_limits_and_level(
                 .collect();
             
             if !critical_issues.is_empty() || !high_issues.is_empty() {
-                let will_auto_approve = env::var("SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
+                let will_auto_approve = crate::common::env_compat("SKILLLITE_AUTO_APPROVE", "SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
                     let v = v.trim().to_lowercase();
                     v == "1" || v == "true" || v == "yes"
                 });
@@ -318,18 +317,18 @@ pub fn run_in_sandbox_with_limits_and_level(
                     &serde_json::Value::Array(issues_json),
                 );
 
-                let auto_approve_env = env::var("SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
+                let auto_approve_env = crate::common::env_compat("SKILLLITE_AUTO_APPROVE", "SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
                     let v = v.trim().to_lowercase();
                     v == "1" || v == "true" || v == "yes"
                 });
 
                 let approved = if auto_approve_env {
-                    tracing::info!("Auto-approved via SKILLBOX_AUTO_APPROVE (agent/daemon already confirmed)");
+                    tracing::info!("Auto-approved via SKILLLITE_AUTO_APPROVE (agent/daemon already confirmed)");
                     observability::audit_confirmation_response(&config.name, true, "auto");
                     true
                 } else if !io::stdin().is_terminal() {
                     tracing::warn!(
-                        "Non-TTY stdin: blocking {} severity issues (set SKILLBOX_AUTO_APPROVE=1 to override)",
+                        "Non-TTY stdin: blocking {} severity issues (set SKILLLITE_AUTO_APPROVE=1 to override)",
                         severity_str
                     );
                     observability::audit_confirmation_response(&config.name, false, "non-tty-blocked");

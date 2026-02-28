@@ -402,7 +402,7 @@ impl HttpProxy {
                     let config = Arc::clone(&config);
                     thread::spawn(move || {
                         if let Err(e) = Self::handle_client(stream, addr, config) {
-                            eprintln!("[HTTP Proxy] Error handling client {}: {}", addr, e);
+                            tracing::warn!("[HTTP Proxy] Error handling client {}: {}", addr, e);
                         }
                     });
                 }
@@ -411,7 +411,7 @@ impl HttpProxy {
                     thread::sleep(Duration::from_millis(10));
                 }
                 Err(e) => {
-                    eprintln!("[HTTP Proxy] Accept error: {}", e);
+                    tracing::error!("[HTTP Proxy] Accept error: {}", e);
                 }
             }
         }
@@ -489,7 +489,7 @@ impl HttpProxy {
         ) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("[HTTP Proxy] Failed to connect to {}: {}", target_addr, e);
+                tracing::warn!("[HTTP Proxy] Failed to connect to {}: {}", target_addr, e);
                 return Self::send_error(client, 502, &format!("Bad Gateway - {}", e));
             }
         };
@@ -701,7 +701,7 @@ impl Socks5Proxy {
                     let config = Arc::clone(&config);
                     thread::spawn(move || {
                         if let Err(e) = Self::handle_client(stream, addr, config) {
-                            eprintln!("[SOCKS5 Proxy] Error handling client {}: {}", addr, e);
+                            tracing::warn!("[SOCKS5 Proxy] Error handling client {}: {}", addr, e);
                         }
                     });
                 }
@@ -709,7 +709,7 @@ impl Socks5Proxy {
                     thread::sleep(Duration::from_millis(10));
                 }
                 Err(e) => {
-                    eprintln!("[SOCKS5 Proxy] Accept error: {}", e);
+                    tracing::error!("[SOCKS5 Proxy] Accept error: {}", e);
                 }
             }
         }
@@ -838,7 +838,7 @@ impl Socks5Proxy {
                     match TcpStream::connect_timeout(&addr, Duration::from_secs(30)) {
                         Ok(s) => s,
                         Err(e) => {
-                            eprintln!("[SOCKS5 Proxy] Failed to connect to {}: {}", target_addr, e);
+                            tracing::warn!("[SOCKS5 Proxy] Failed to connect to {}: {}", target_addr, e);
                             Self::send_reply(&mut client, 0x05)?; // Connection refused
                             return Ok(());
                         }
@@ -849,7 +849,7 @@ impl Socks5Proxy {
                 }
             }
             Err(e) => {
-                eprintln!("[SOCKS5 Proxy] Failed to resolve {}: {}", host, e);
+                tracing::warn!("[SOCKS5 Proxy] Failed to resolve {}: {}", host, e);
                 Self::send_reply(&mut client, 0x04)?; // Host unreachable
                 return Ok(());
             }

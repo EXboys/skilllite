@@ -83,7 +83,7 @@ pub(super) fn execute_preview_server(args: &Value, workspace: &Path) -> Result<S
     let serve_dir_str = serve_dir.to_string_lossy().to_string();
 
     {
-        let guard = ACTIVE_PREVIEW.lock().unwrap();
+        let guard = ACTIVE_PREVIEW.lock().map_err(|e| anyhow::anyhow!("Preview lock poisoned: {}", e))?;
         if let Some(ref state) = *guard {
             if state.serve_dir == serve_dir_str {
                 let url = build_preview_url(state.port, target_file.as_deref());
@@ -126,7 +126,7 @@ pub(super) fn execute_preview_server(args: &Value, workspace: &Path) -> Result<S
     };
 
     {
-        let mut guard = ACTIVE_PREVIEW.lock().unwrap();
+        let mut guard = ACTIVE_PREVIEW.lock().map_err(|e| anyhow::anyhow!("Preview lock poisoned: {}", e))?;
         *guard = Some(PreviewServerState {
             serve_dir: serve_dir_str.clone(),
             port: used_port,

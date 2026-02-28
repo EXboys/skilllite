@@ -10,6 +10,21 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 // ============================================================
+// Environment Variable Compatibility Layer
+// ============================================================
+
+/// Read an environment variable with backward-compatible fallback.
+/// Checks `SKILLLITE_*` (new name) first, then `SKILLBOX_*` (legacy name).
+pub fn env_compat(new_key: &str, old_key: &str) -> std::result::Result<String, std::env::VarError> {
+    std::env::var(new_key).or_else(|_| std::env::var(old_key))
+}
+
+/// Check if an environment variable is set (new name or legacy name).
+pub fn env_compat_is_set(new_key: &str, old_key: &str) -> bool {
+    std::env::var(new_key).is_ok() || std::env::var(old_key).is_ok()
+}
+
+// ============================================================
 // Resource Limits Constants (Single Source of Truth)
 // ============================================================
 

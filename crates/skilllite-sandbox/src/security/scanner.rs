@@ -78,7 +78,7 @@ impl ScriptScanner {
             .filter_map(|rule| match rule.compile() {
                 Ok(regex) => Some((rule.clone(), regex)),
                 Err(e) => {
-                    eprintln!("[WARN] Failed to compile rule '{}': {}", rule.id, e);
+                    tracing::warn!("Failed to compile rule '{}': {}", rule.id, e);
                     None
                 }
             })

@@ -12,7 +12,7 @@ use serde_json::json;
 use std::path::Path;
 use std::sync::Mutex;
 
-/// Mutex for exec_script: it uses process-global SKILLBOX_SCRIPT_ARGS env var,
+/// Mutex for exec_script: it uses process-global SKILLLITE_SCRIPT_ARGS env var,
 /// so concurrent exec calls must be serialized. run and bash do not need this.
 static EXEC_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -126,10 +126,10 @@ pub fn exec_script(
 
     let _guard = EXEC_ENV_MUTEX.lock().map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
     let _args_guard = if let Some(ref args_str) = args {
-        skilllite_core::config::set_env_var("SKILLBOX_SCRIPT_ARGS", args_str);
-        Some(ScopedEnvGuard("SKILLBOX_SCRIPT_ARGS"))
+        skilllite_core::config::set_env_var("SKILLLITE_SCRIPT_ARGS", args_str);
+        Some(ScopedEnvGuard("SKILLLITE_SCRIPT_ARGS"))
     } else {
-        skilllite_core::config::remove_env_var("SKILLBOX_SCRIPT_ARGS");
+        skilllite_core::config::remove_env_var("SKILLLITE_SCRIPT_ARGS");
         None
     };
 

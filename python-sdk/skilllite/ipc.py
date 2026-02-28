@@ -1,7 +1,7 @@
 """
 IPC client: JSON-RPC over stdio to skilllite serve --stdio.
 
-When SKILLBOX_USE_IPC=1, api.execute_code and benchmark use this instead of subprocess.
+When SKILLLITE_USE_IPC=1 (or legacy SKILLBOX_USE_IPC=1), api.execute_code and benchmark use this instead of subprocess.
 Supports concurrent requests: batch-sends to daemon so it receives multiple at once.
 """
 
@@ -28,7 +28,7 @@ _BATCH_DRAIN_DELAY_SEC = 0.005
 def _get_client() -> Optional["IPCClient"]:
     """Get or create singleton IPC client. Returns None if IPC disabled or binary missing."""
     global _client
-    if os.environ.get("SKILLBOX_USE_IPC") != "1":
+    if os.environ.get("SKILLLITE_USE_IPC", os.environ.get("SKILLBOX_USE_IPC")) != "1":
         return None
     with _lock:
         if _client is not None:
@@ -78,7 +78,7 @@ class IPCClient:
     def start(self) -> None:
         """Start the daemon process, writer thread, and response reader thread."""
         env = dict(os.environ)
-        env["SKILLBOX_AUTO_APPROVE"] = "1"
+        env["SKILLLITE_AUTO_APPROVE"] = "1"
         env["SKILLLITE_QUIET"] = "1"
         env["RUST_LOG"] = "error"  # Suppress INFO/WARN to stdout (IPC channel)
         self._process = subprocess.Popen(

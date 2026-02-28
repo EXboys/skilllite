@@ -351,16 +351,16 @@ pub fn is_network_blocked(policy: &ResolvedNetworkPolicy) -> bool {
 // Relaxed Mode (L2)
 // ============================================================================
 
-/// Check if relaxed mode is enabled (SKILLBOX_SANDBOX_LEVEL=2)
+/// Check if relaxed mode is enabled (SKILLLITE_SANDBOX_LEVEL=2 or legacy SKILLBOX_SANDBOX_LEVEL=2)
 pub fn is_relaxed_mode() -> bool {
-    std::env::var("SKILLBOX_SANDBOX_LEVEL")
+    crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL")
         .map(|s| s.trim() == "2")
         .unwrap_or(false)
 }
 
-/// Check if Playwright is explicitly allowed (SKILLBOX_ALLOW_PLAYWRIGHT=1)
+/// Check if Playwright is explicitly allowed (SKILLLITE_ALLOW_PLAYWRIGHT=1 or legacy SKILLBOX_ALLOW_PLAYWRIGHT=1)
 pub fn is_playwright_allowed() -> bool {
-    std::env::var("SKILLBOX_ALLOW_PLAYWRIGHT")
+    crate::common::env_compat("SKILLLITE_ALLOW_PLAYWRIGHT", "SKILLBOX_ALLOW_PLAYWRIGHT")
         .map(|s| s.trim() == "1" || s.trim().eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }

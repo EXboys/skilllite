@@ -17,7 +17,7 @@ use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
 /// Execute a skill in a Linux sandbox
-/// Sandbox is enabled by default. Set SKILLBOX_NO_SANDBOX=1 to disable.
+/// Sandbox is enabled by default. Set SKILLLITE_NO_SANDBOX=1 to disable.
 pub fn execute(
     skill_dir: &Path,
     runtime: &RuntimePaths,
@@ -41,20 +41,20 @@ pub fn execute_with_limits(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
-        eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
+    if crate::common::env_compat_is_set("SKILLLITE_NO_SANDBOX", "SKILLBOX_NO_SANDBOX") {
+        tracing::warn!("Sandbox disabled via SKILLLITE_NO_SANDBOX - running without protection");
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
     
     match execute_with_seccomp(skill_dir, runtime, config, input_json, limits) {
         Ok(result) => Ok(result),
         Err(e) => {
-            eprintln!("[INFO] Seccomp sandbox failed ({}), trying namespace isolation...", e);
+            tracing::info!("Seccomp sandbox failed ({}), trying namespace isolation...", e);
             match execute_with_namespaces(skill_dir, runtime, config, input_json, limits) {
                 Ok(result) => Ok(result),
                 Err(e2) => {
                     Err(anyhow::anyhow!(
-                        "All sandbox methods failed. Seccomp: {}. Namespace: {}. Set SKILLBOX_NO_SANDBOX=1 to run without sandbox (not recommended).",
+                        "All sandbox methods failed. Seccomp: {}. Namespace: {}. Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended).",
                         e, e2
                     ))
                 }
@@ -113,11 +113,13 @@ fn execute_simple_with_limits(
     cmd.stderr(Stdio::piped());
 
     // Set environment variables
-    cmd.env("SKILLBOX_SANDBOX", "0");
+    cmd.env("SKILLLITE_SANDBOX", "0");
+    cmd.env("SKILLBOX_SANDBOX", "0"); // legacy compat
     cmd.env("TMPDIR", work_dir);
 
     if !config.network_enabled {
-        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
+        cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
     }
 
     // Apply resource limits via pre_exec (kernel-enforced, not polling-only)
@@ -304,21 +306,21 @@ fn execute_with_bwrap(
         match ProxyManager::new(proxy_config) {
             Ok(mut manager) => {
                 if let Err(e) = manager.start() {
-                    eprintln!("[WARN] Failed to start network proxy: {}", e);
+                    tracing::warn!("Failed to start network proxy: {}", e);
                     None
                 } else {
-                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
+                    tracing::info!("Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
                              manager.http_port(), manager.socks5_port());
                     Some(manager)
                 }
             }
             Err(e) => {
-                eprintln!("[WARN] Failed to create network proxy: {}", e);
+                tracing::warn!("Failed to create network proxy: {}", e);
                 None
             }
         }
     } else if security_policy::is_allow_all_network(&network_policy) {
-        eprintln!("[INFO] Network access allowed for all domains (wildcard '*' configured)");
+        tracing::info!("Network access allowed for all domains (wildcard '*' configured)");
         None
     } else {
         None
@@ -384,7 +386,8 @@ fn execute_with_bwrap(
     }
     
     // Set environment
-    cmd.args(["--setenv", "SKILLBOX_SANDBOX", "1"]);
+    cmd.args(["--setenv", "SKILLLITE_SANDBOX", "1"]);
+    cmd.args(["--setenv", "SKILLBOX_SANDBOX", "1"]); // legacy compat
     cmd.args(["--setenv", "TMPDIR", "/tmp"]);
     cmd.args(["--setenv", "HOME", "/tmp"]);
     
@@ -414,7 +417,7 @@ fn execute_with_bwrap(
     // Generate seccomp BPF filter file for Unix socket blocking
     let seccomp_filter_path = work_dir.join("seccomp.bpf");
     if let Err(e) = generate_seccomp_bpf_file(&seccomp_filter_path) {
-        eprintln!("[WARN] Failed to generate seccomp filter: {}", e);
+        tracing::warn!("Failed to generate seccomp filter: {}", e);
     } else {
         // Apply seccomp filter via bwrap
         let filter_path_str = seccomp_filter_path.to_string_lossy();
@@ -655,21 +658,21 @@ fn execute_with_firejail(
         match ProxyManager::new(proxy_config) {
             Ok(mut manager) => {
                 if let Err(e) = manager.start() {
-                    eprintln!("[WARN] Failed to start network proxy: {}", e);
+                    tracing::warn!("Failed to start network proxy: {}", e);
                     None
                 } else {
-                    eprintln!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
+                    tracing::info!("Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
                              manager.http_port(), manager.socks5_port());
                     Some(manager)
                 }
             }
             Err(e) => {
-                eprintln!("[WARN] Failed to create network proxy: {}", e);
+                tracing::warn!("Failed to create network proxy: {}", e);
                 None
             }
         }
     } else if security_policy::is_allow_all_network(&network_policy) {
-        eprintln!("[INFO] Network access allowed for all domains (wildcard '*' configured)");
+        tracing::info!("Network access allowed for all domains (wildcard '*' configured)");
         None
     } else {
         None
@@ -710,9 +713,9 @@ fn execute_with_firejail(
     if security_policy::is_network_blocked(&network_policy) {
         cmd.args(["--net=none"]);
     } else if proxy_manager.is_some() {
-        eprintln!("[INFO] Network enabled with proxy filtering");
+        tracing::info!("Network enabled with proxy filtering");
     } else {
-        eprintln!("[INFO] Network enabled (wildcard or direct)");
+        tracing::info!("Network enabled (wildcard or direct)");
     }
     
     // Block sensitive directories using mandatory deny list from security module
@@ -738,7 +741,8 @@ fn execute_with_firejail(
     cmd.stderr(Stdio::piped());
     
     // Set environment
-    cmd.env("SKILLBOX_SANDBOX", "1");
+    cmd.env("SKILLLITE_SANDBOX", "1");
+    cmd.env("SKILLBOX_SANDBOX", "1"); // legacy compat
     cmd.env("TMPDIR", work_dir);
     if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
         cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
@@ -811,14 +815,16 @@ fn execute_with_namespaces(
     cmd.current_dir(skill_dir);
 
     // Set environment variables
-    cmd.env("SKILLBOX_SANDBOX", "1");
+    cmd.env("SKILLLITE_SANDBOX", "1");
+    cmd.env("SKILLBOX_SANDBOX", "1"); // legacy compat
     cmd.env("TMPDIR", work_dir);
     if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
         cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
     }
 
     if !config.network_enabled {
-        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
+        cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
     }
 
     // Create unshared namespaces

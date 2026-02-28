@@ -295,7 +295,7 @@ pub fn cmd_cursor(
         "command": cmd_executable,
         "args": cmd_args,
         "env": {
-            "SKILLBOX_SANDBOX_LEVEL": "3",
+            "SKILLLITE_SANDBOX_LEVEL": "3",
             "SKILLLITE_SKILLS_DIR": skills_dir_for_config
         }
     });
@@ -405,7 +405,7 @@ pub fn cmd_opencode(
         "type": "local",
         "command": command,
         "environment": {
-            "SKILLBOX_SANDBOX_LEVEL": "3",
+            "SKILLLITE_SANDBOX_LEVEL": "3",
             "SKILLLITE_SKILLS_DIR": skills_dir
         },
         "enabled": true

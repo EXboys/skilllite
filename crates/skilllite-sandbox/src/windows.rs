@@ -8,7 +8,7 @@
 //! ## Key principle
 //! If no adequate sandbox is available, execution is REFUSED rather than
 //! silently falling back to unprotected mode. Users must explicitly set
-//! SKILLBOX_NO_SANDBOX=1 to run without protection.
+//! SKILLLITE_NO_SANDBOX=1 to run without protection.
 
 #![cfg(target_os = "windows")]
 
@@ -28,8 +28,8 @@ pub fn execute_with_limits(
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    if std::env::var("SKILLBOX_NO_SANDBOX").is_ok() {
-        eprintln!("[WARN] Sandbox disabled via SKILLBOX_NO_SANDBOX - running without protection");
+    if crate::common::env_compat_is_set("SKILLLITE_NO_SANDBOX", "SKILLBOX_NO_SANDBOX") {
+        tracing::warn!("Sandbox disabled via SKILLLITE_NO_SANDBOX - running without protection");
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
 
@@ -45,21 +45,21 @@ pub fn execute_with_limits(
                     );
                     return Err(e.context(
                         "WSL2 sandbox execution failed. \
-                         Set SKILLBOX_NO_SANDBOX=1 to run without sandbox (not recommended)."
+                         Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended)."
                     ));
                 }
             }
         }
         Wsl2Status::Available { skilllite_missing } => {
-            eprintln!("[WARN] WSL2 is available but skilllite is not installed inside WSL.");
-            eprintln!("[WARN] Install it with: wsl -e sh -c 'cargo install --git https://github.com/user/skilllite skilllite'");
+            tracing::warn!("WSL2 is available but skilllite is not installed inside WSL.");
+            tracing::warn!("Install it with: wsl -e sh -c 'cargo install --git https://github.com/user/skilllite skilllite'");
             if skilllite_missing {
-                eprintln!("[WARN] Falling back to native Windows isolation (limited security).");
+                tracing::warn!("Falling back to native Windows isolation (limited security).");
             }
         }
         Wsl2Status::NotAvailable => {
-            eprintln!("[WARN] WSL2 is not available on this system.");
-            eprintln!("[WARN] For full security, install WSL2: wsl --install");
+            tracing::warn!("WSL2 is not available on this system.");
+            tracing::warn!("For full security, install WSL2: wsl --install");
         }
     }
 
@@ -73,7 +73,7 @@ pub fn execute_with_limits(
             );
             Err(e.context(
                 "Windows sandbox execution failed. No adequate isolation available. \
-                 Set SKILLBOX_NO_SANDBOX=1 to run without sandbox (not recommended)."
+                 Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended)."
             ))
         }
     }
@@ -232,8 +232,8 @@ fn execute_with_native_isolation(
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    eprintln!("[WARN] Using native Windows isolation - PARTIAL security only");
-    eprintln!("[WARN] File system and network are NOT isolated. For full security, install WSL2.");
+    tracing::warn!("Using native Windows isolation - PARTIAL security only");
+    tracing::warn!("File system and network are NOT isolated. For full security, install WSL2.");
     skilllite_core::observability::security_sandbox_fallback(
         &config.name,
         "windows_native_partial_isolation",
@@ -253,13 +253,15 @@ fn execute_with_native_isolation(
     cmd.current_dir(skill_dir);
 
     // Sanitized environment: only pass what the skill needs
-    cmd.env("SKILLBOX_SANDBOX", "1");
+    cmd.env("SKILLLITE_SANDBOX", "1");
+    cmd.env("SKILLBOX_SANDBOX", "1"); // legacy compat
     cmd.env("TMPDIR", work_dir);
     cmd.env("TEMP", work_dir);
     cmd.env("TMP", work_dir);
 
     if !config.network_enabled {
-        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
+        cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
     }
 
     for (k, v) in &resolved.extra_env {
@@ -275,7 +277,7 @@ fn execute_with_native_isolation(
     // Attach Job Object for resource limits (best-effort)
     let job_handle = attach_job_object(&child, &limits);
     if job_handle.is_err() {
-        eprintln!("[WARN] Failed to create Job Object: {}. Resource limits not enforced.", 
+        tracing::warn!("Failed to create Job Object: {}. Resource limits not enforced.",
                   job_handle.as_ref().err().unwrap());
     }
 
@@ -379,7 +381,7 @@ fn attach_job_object(
 // Simple execution (Level 1 / explicit no-sandbox)
 // ============================================================================
 
-/// Simple execution without sandbox (Level 1 or explicit SKILLBOX_NO_SANDBOX)
+/// Simple execution without sandbox (Level 1 or explicit SKILLLITE_NO_SANDBOX)
 pub fn execute_simple_with_limits(
     skill_dir: &Path,
     runtime: &RuntimePaths,
@@ -411,12 +413,14 @@ pub fn execute_simple_with_limits(
         .current_dir(skill_dir)
         .env("SKILL_INPUT_FILE", &input_file)
         .env("SKILL_INPUT", input_json)
-        .env("SKILLBOX_SANDBOX", "0");
+        .env("SKILLLITE_SANDBOX", "0")
+        .env("SKILLBOX_SANDBOX", "0"); // legacy compat
     for (k, v) in &resolved.extra_env {
         cmd.env(k, v);
     }
     if !config.network_enabled {
-        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
+        cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
     }
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -425,7 +429,7 @@ pub fn execute_simple_with_limits(
     let mut child = cmd.spawn().context("Failed to execute skill")?;
 
     if let Err(e) = attach_job_object(&child, &limits) {
-        eprintln!("[WARN] Failed to attach Job Object: {}. Resource limits not enforced.", e);
+        tracing::warn!("Failed to attach Job Object: {}. Resource limits not enforced.", e);
     }
 
     if let Some(mut stdin) = child.stdin.take() {

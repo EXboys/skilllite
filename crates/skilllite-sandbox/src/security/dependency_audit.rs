@@ -321,8 +321,8 @@ fn resolve_from_metadata_fields(
 
     if let Some(packages) = infer_packages_with_llm(&context, &language) {
         if !packages.is_empty() {
-            eprintln!(
-                "   🤖 LLM inferred {} package(s): {}",
+            tracing::info!(
+                "LLM inferred {} package(s): {}",
                 packages.len(),
                 packages.join(", ")
             );
@@ -340,8 +340,8 @@ fn resolve_from_metadata_fields(
     let whitelist_packages =
         skilllite_core::skill::deps::parse_compatibility_for_packages(Some(compat));
     if !whitelist_packages.is_empty() {
-        eprintln!(
-            "   📋 Whitelist matched {} package(s): {}",
+        tracing::info!(
+            "Whitelist matched {} package(s): {}",
             whitelist_packages.len(),
             whitelist_packages.join(", ")
         );
@@ -756,8 +756,8 @@ fn query_pypi(
                 } else {
                     &dep.version
                 };
-                eprintln!(
-                    "  ⚠ Failed to query PyPI for {} {}: {}",
+                tracing::warn!(
+                    "Failed to query PyPI for {} {}: {}",
                     dep.name, version_display, e
                 );
                 entries.push(PackageAuditEntry {
@@ -803,8 +803,8 @@ pub fn audit_skill_dependencies(
 
     // Backend 1: Custom commercial API (highest priority)
     if let Some(custom_url) = get_custom_api() {
-        eprintln!(
-            "🔍 Scanning {} dependencies via custom API ({})...",
+        tracing::info!(
+            "Scanning {} dependencies via custom API ({})...",
             deps.len(),
             custom_url
         );
@@ -826,8 +826,8 @@ pub fn audit_skill_dependencies(
         } else {
             String::new()
         };
-        eprintln!(
-            "🐍 Scanning {} Python dependencies via PyPI{}...",
+        tracing::info!(
+            "Scanning {} Python dependencies via PyPI{}...",
             pypi_deps.len(),
             mirror_note
         );
@@ -843,8 +843,8 @@ pub fn audit_skill_dependencies(
         } else {
             String::new()
         };
-        eprintln!(
-            "📦 Scanning {} npm dependencies via OSV{}...",
+        tracing::info!(
+            "Scanning {} npm dependencies via OSV{}...",
             npm_deps.len(),
             mirror_note
         );

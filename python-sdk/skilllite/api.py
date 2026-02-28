@@ -94,7 +94,7 @@ def execute_code(
         script_path = Path(tmpdir) / script_name
         script_path.write_text(code, encoding="utf-8")
 
-        # Use IPC when SKILLBOX_USE_IPC=1 (avoids process startup per call)
+        # Use IPC when SKILLLITE_USE_IPC=1 (avoids process startup per call)
         from .ipc import _get_client
 
         client = _get_client()
@@ -174,7 +174,7 @@ def run_skill(
         input_json: JSON string for skill input (e.g. '{"name": "Alice"}')
         sandbox_level: 1=no sandbox, 2=sandbox only, 3=sandbox+scan
         allow_network: Whether to allow network access
-        auto_approve: If True, set SKILLBOX_AUTO_APPROVE=1 (skip security confirmation prompt)
+        auto_approve: If True, set SKILLLITE_AUTO_APPROVE=1 (skip security confirmation prompt)
 
     Returns:
         Dict with success, stdout, stderr, exit_code, text
@@ -204,7 +204,7 @@ def run_skill(
 
     env = dict(os.environ)
     if auto_approve:
-        env["SKILLBOX_AUTO_APPROVE"] = "1"
+        env["SKILLLITE_AUTO_APPROVE"] = "1"
     # Suppress tracing when run programmatically (e.g. from langchain-skilllite)
     env.setdefault("SKILLLITE_QUIET", "1")
 

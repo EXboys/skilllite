@@ -347,10 +347,12 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            prop.insert(
-                "description".to_string(),
-                serde_json::json!(help_cap.get(1).unwrap().as_str()),
-            );
+            if let Some(m) = help_cap.get(1) {
+                prop.insert(
+                    "description".to_string(),
+                    serde_json::json!(m.as_str()),
+                );
+            }
         }
 
         // Extract type
@@ -358,7 +360,7 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            match type_cap.get(1).unwrap().as_str() {
+            match type_cap.get(1).map(|m| m.as_str()).unwrap_or("") {
                 "int" => {
                     prop.insert("type".to_string(), serde_json::json!("integer"));
                 }
@@ -377,7 +379,7 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            let action = action_cap.get(1).unwrap().as_str();
+            let action = action_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             if action == "store_true" || action == "store_false" {
                 prop.insert("type".to_string(), serde_json::json!("boolean"));
             }
@@ -388,7 +390,7 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            let nargs = nargs_cap.get(1).unwrap().as_str();
+            let nargs = nargs_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             if nargs == "*" || nargs == "+" || nargs.parse::<u32>().is_ok() {
                 prop.insert("type".to_string(), serde_json::json!("array"));
                 prop.insert("items".to_string(), serde_json::json!({"type": "string"}));
@@ -400,7 +402,7 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            let choices_str = choices_cap.get(1).unwrap().as_str();
+            let choices_str = choices_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             let choices: Vec<String> = regex::Regex::new(r#"['"]([^'"]+)['"]"#)
                 .ok()
                 .map(|re| {
@@ -419,7 +421,7 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            let val = default_cap.get(1).unwrap().as_str().trim();
+            let val = default_cap.get(1).map(|m| m.as_str()).unwrap_or("").trim();
             if val != "None" && val != "\"\"" && val != "''" {
                 let cleaned = val.trim_matches(|c| c == '"' || c == '\'');
                 prop.insert("default".to_string(), serde_json::json!(cleaned));

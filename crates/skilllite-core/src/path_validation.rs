@@ -13,7 +13,7 @@ pub fn get_allowed_root() -> Result<PathBuf> {
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     allowed_root
         .canonicalize()
-        .map_err(|e| anyhow::anyhow!("Invalid SKILLBOX_SKILLS_ROOT: {}", e))
+        .map_err(|e| anyhow::anyhow!("Invalid SKILLLITE_SKILLS_ROOT: {}", e))
 }
 
 /// Validate path is within allowed root. Prevents path traversal.

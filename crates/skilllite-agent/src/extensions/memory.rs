@@ -187,7 +187,7 @@ async fn execute_memory_search(
     let hits = if use_vec {
         #[cfg(feature = "memory_vector")]
         {
-            let ctx = embed_ctx.unwrap();
+            let ctx = embed_ctx.context("embed_ctx disappeared despite is_some() check")?;
             let embeddings = ctx
                 .client
                 .embed(&ctx.embed_config.model, &[query])

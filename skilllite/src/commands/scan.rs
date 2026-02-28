@@ -139,8 +139,9 @@ fn build_llm_prompt_hint(result: &serde_json::Value) -> String {
         if !described.is_empty() {
             hints.push("Scripts with descriptions:".to_string());
             for (path, desc) in described {
-                let truncated = if desc.len() > 100 {
-                    format!("{}...", &desc[..100])
+                let truncated = if desc.chars().count() > 100 {
+                    let end = desc.char_indices().nth(100).map(|(i, _)| i).unwrap_or(desc.len());
+                    format!("{}...", &desc[..end])
                 } else {
                     desc.to_string()
                 };
