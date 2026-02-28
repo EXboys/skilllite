@@ -26,11 +26,10 @@ fn warn_deprecated_env_vars() {
             }
         }
         if !hints.is_empty() {
-            eprintln!(
-                "[DEPRECATED] 以下环境变量已废弃，建议迁移：\n   {}",
+            tracing::warn!(
+                "[DEPRECATED] 以下环境变量已废弃，建议迁移：\n   {}\n   详见 docs/zh/ENV_REFERENCE.md",
                 hints.join("\n   ")
             );
-            eprintln!("   详见 docs/zh/ENV_REFERENCE.md");
         }
     });
 }
