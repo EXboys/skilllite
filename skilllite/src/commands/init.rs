@@ -376,13 +376,7 @@ fn audit_all_skills(skills_path: &Path, skills: &[String]) -> (Vec<String>, bool
                 use skilllite_sandbox::security::dependency_audit;
                 let metadata_hint = metadata::parse_skill_metadata(&skill_path)
                     .ok()
-                    .map(|meta| dependency_audit::MetadataHint {
-                        compatibility: meta.compatibility,
-                        resolved_packages: meta.resolved_packages,
-                        description: meta.description,
-                        language: meta.language,
-                        entry_point: meta.entry_point,
-                    });
+                    .map(super::metadata_into_hint);
                 match dependency_audit::audit_skill_dependencies(&skill_path, metadata_hint.as_ref()) {
                     Ok(result) => {
                         if result.vulnerable_count > 0 {
