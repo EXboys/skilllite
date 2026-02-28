@@ -154,7 +154,7 @@ pub fn serve_agent_rpc() -> Result<()> {
     loop {
         let mut line = String::new();
         {
-            let mut reader = reader_arc.lock().unwrap();
+            let mut reader = reader_arc.lock().map_err(|e| anyhow::anyhow!("stdin lock poisoned: {}", e))?;
             match reader.read_line(&mut line) {
                 Ok(0) => break,
                 Ok(_) => {}

@@ -52,7 +52,8 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_tree_path = Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)").unwrap();
+    let re_tree_path = Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)")
+        .expect("static regex re_tree_path");
     if let Some(cap) = re_tree_path.captures(source) {
         return ParsedSource {
             source_type: "github".into(),
@@ -63,7 +64,8 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_tree_branch = Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$").unwrap();
+    let re_tree_branch = Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$")
+        .expect("static regex re_tree_branch");
     if let Some(cap) = re_tree_branch.captures(source) {
         return ParsedSource {
             source_type: "github".into(),
@@ -74,7 +76,8 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_github = Regex::new(r"github\.com/([^/]+)/([^/]+?)(?:\.git)?/*$").unwrap();
+    let re_github = Regex::new(r"github\.com/([^/]+)/([^/]+?)(?:\.git)?/*$")
+        .expect("static regex re_github");
     if let Some(cap) = re_github.captures(source) {
         return ParsedSource {
             source_type: "github".into(),
@@ -85,7 +88,8 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_gitlab = Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").unwrap();
+    let re_gitlab = Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$")
+        .expect("static regex re_gitlab");
     if let Some(cap) = re_gitlab.captures(source) {
         let repo_path = &cap[1];
         if repo_path.contains('/') {
@@ -99,7 +103,8 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    let re_at_filter = Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").unwrap();
+    let re_at_filter = Regex::new(r"^([^/]+)/([^/@]+)@(.+)$")
+        .expect("static regex re_at_filter");
     if let Some(cap) = re_at_filter.captures(source) {
         if !source.contains(':') {
             return ParsedSource {
@@ -112,7 +117,8 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    let re_shorthand = Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").unwrap();
+    let re_shorthand = Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$")
+        .expect("static regex re_shorthand");
     if let Some(cap) = re_shorthand.captures(source) {
         if !source.contains(':') && !source.starts_with('.') {
             return ParsedSource {

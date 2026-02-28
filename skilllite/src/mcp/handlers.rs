@@ -180,13 +180,13 @@ fn parse_argparse_schema_from_path(script_path: &Path) -> Option<Value> {
         if let Some(help_cap) = regex::Regex::new(r#"help\s*=\s*['"]([^'"]+)['"]"#)
             .ok().and_then(|re| re.captures(kwargs_str))
         {
-            prop.insert("description".to_string(), json!(help_cap.get(1).unwrap().as_str()));
+            prop.insert("description".to_string(), json!(help_cap.get(1).map(|m| m.as_str()).unwrap_or("")));
         }
 
         if let Some(type_cap) = regex::Regex::new(r"type\s*=\s*(\w+)")
             .ok().and_then(|re| re.captures(kwargs_str))
         {
-            match type_cap.get(1).unwrap().as_str() {
+            match type_cap.get(1).map(|m| m.as_str()).unwrap_or("") {
                 "int" => { prop.insert("type".to_string(), json!("integer")); }
                 "float" => { prop.insert("type".to_string(), json!("number")); }
                 "bool" => { prop.insert("type".to_string(), json!("boolean")); }

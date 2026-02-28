@@ -122,7 +122,7 @@ pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
         {
             prop.insert(
                 "description".to_string(),
-                json!(help_cap.get(1).unwrap().as_str()),
+                json!(help_cap.get(1).map(|m| m.as_str()).unwrap_or("")),
             );
         }
 
@@ -130,7 +130,7 @@ pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            match type_cap.get(1).unwrap().as_str() {
+            match type_cap.get(1).map(|m| m.as_str()).unwrap_or("") {
                 "int" => {
                     let _ = prop.insert("type".to_string(), json!("integer"));
                 }
@@ -148,7 +148,7 @@ pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            let action = action_cap.get(1).unwrap().as_str();
+            let action = action_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             if action == "store_true" || action == "store_false" {
                 prop.insert("type".to_string(), json!("boolean"));
             }
@@ -158,7 +158,7 @@ pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            let nargs = nargs_cap.get(1).unwrap().as_str();
+            let nargs = nargs_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             if nargs == "*" || nargs == "+" || nargs.parse::<u32>().is_ok() {
                 prop.insert("type".to_string(), json!("array"));
                 prop.insert("items".to_string(), json!({"type": "string"}));
@@ -169,7 +169,7 @@ pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
             .ok()
             .and_then(|re| re.captures(kwargs_str))
         {
-            let choices_str = choices_cap.get(1).unwrap().as_str();
+            let choices_str = choices_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             let choices: Vec<String> = regex::Regex::new(r#"['"]([^'"]+)['"]"#)
                 .ok()
                 .map(|re| {

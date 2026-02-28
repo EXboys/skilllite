@@ -174,7 +174,7 @@ fn open_browser(url: &str) {
             .args(["/C", "start", url])
             .spawn()
     } else {
-        Ok(std::process::Command::new("true").spawn().unwrap())
+        std::process::Command::new("true").spawn()
     };
 }
 

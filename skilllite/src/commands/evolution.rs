@@ -3,7 +3,7 @@
 //! Provides `skilllite evolution {status,reset,disable,explain}` subcommands
 //! for inspecting, controlling, and debugging the self-evolution engine.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use std::path::PathBuf;
 
 fn chat_root() -> PathBuf {
@@ -294,10 +294,10 @@ pub fn cmd_disable(rule_id: &str) -> Result<()> {
             if !is_mutable {
                 anyhow::bail!("规则 '{}' 是种子规则（不可变），无法禁用", rule_id);
             }
-            rules[idx].as_object_mut().unwrap().insert(
-                "disabled".to_string(),
-                serde_json::Value::Bool(true),
-            );
+            rules[idx]
+                .as_object_mut()
+                .context("rule entry is not a JSON object")?
+                .insert("disabled".to_string(), serde_json::Value::Bool(true));
             let desc = rules[idx].get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
             let new_content = serde_json::to_string_pretty(&rules)?;
             std::fs::write(&rules_path, new_content)?;

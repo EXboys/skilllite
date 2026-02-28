@@ -261,8 +261,10 @@ fn ensure_node_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path: &
 fn which_python() -> Result<PathBuf> {
     for name in ["python3", "python"] {
         let out = Command::new(name).arg("--version").output();
-        if out.is_ok() && out.as_ref().unwrap().status.success() {
-            return Ok(PathBuf::from(name));
+        if let Ok(ref o) = out {
+            if o.status.success() {
+                return Ok(PathBuf::from(name));
+            }
         }
     }
     anyhow::bail!("python3 or python not found in PATH")

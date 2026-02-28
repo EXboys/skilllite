@@ -276,9 +276,8 @@ fn execute_with_native_isolation(
 
     // Attach Job Object for resource limits (best-effort)
     let job_handle = attach_job_object(&child, &limits);
-    if job_handle.is_err() {
-        tracing::warn!("Failed to create Job Object: {}. Resource limits not enforced.",
-                  job_handle.as_ref().err().unwrap());
+    if let Err(ref e) = job_handle {
+        tracing::warn!("Failed to create Job Object: {}. Resource limits not enforced.", e);
     }
 
     if let Some(mut stdin) = child.stdin.take() {
