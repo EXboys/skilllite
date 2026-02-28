@@ -32,6 +32,8 @@ pub struct LoadedSkill {
 }
 
 /// Load skills from directories, parse SKILL.md, generate tool definitions.
+/// Also loads evolved skills from `_evolved/` subdirectories (EVO-4),
+/// skipping archived ones based on `.meta.json`.
 pub fn load_skills(skill_dirs: &[String]) -> Vec<LoadedSkill> {
     let mut skills = Vec::new();
 
@@ -59,6 +61,51 @@ pub fn load_skills(skill_dirs: &[String]) -> Vec<LoadedSkill> {
                     }
                 }
             }
+        }
+
+        // EVO-4: load evolved skills from _evolved/ subdirectory
+        let evolved_dir = path.join("_evolved");
+        if evolved_dir.exists() && evolved_dir.is_dir() {
+            let evolved = load_evolved_skills(&evolved_dir);
+            tracing::debug!("Loaded {} evolved skills from {}", evolved.len(), evolved_dir.display());
+            skills.extend(evolved);
+        }
+    }
+
+    skills
+}
+
+/// Load evolved skills from `_evolved/` directory, filtering out archived ones.
+fn load_evolved_skills(evolved_dir: &Path) -> Vec<LoadedSkill> {
+    let mut skills = Vec::new();
+
+    let entries = match std::fs::read_dir(evolved_dir) {
+        Ok(e) => e,
+        Err(_) => return skills,
+    };
+
+    for entry in entries.flatten() {
+        let skill_dir = entry.path();
+        if !skill_dir.is_dir() || !skill_dir.join("SKILL.md").exists() {
+            continue;
+        }
+
+        // Check .meta.json for archived status
+        let meta_path = skill_dir.join(".meta.json");
+        if meta_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&meta_path) {
+                if let Ok(meta) = serde_json::from_str::<super::evolution::skill_synth::SkillMeta>(&content) {
+                    if meta.archived {
+                        tracing::debug!("Skipping archived evolved skill: {}", meta.name);
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if let Some(skill) = load_single_skill(&skill_dir) {
+            tracing::debug!("Loaded evolved skill: {}", skill.name);
+            skills.push(skill);
         }
     }
 

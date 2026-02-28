@@ -1,461 +1,88 @@
 //! Planning rules for task generation.
 //!
-//! Single source of truth for built-in rules. Edit this file to add or modify rules.
+//! EVO-2: Rules are loaded from `~/.skilllite/chat/prompts/rules.json` at runtime.
+//! Compiled-in seed data provides the fallback when no external file exists.
+//! Edit the external JSON file to add or modify rules without recompiling.
+//!
+//! EVO-3 fix: Workspace rules (per-project, from `init --use-llm`) are now **merged**
+//! with global rules (seed + evolved) instead of replacing them. This ensures evolved
+//! rules are never silently discarded when a workspace file exists.
 
+use std::path::Path;
+
+use super::evolution::seed;
 use super::types::PlanningRule;
 
-/// Built-in planning rules. Used when no external override is configured.
-pub fn builtin_rules() -> Vec<PlanningRule> {
-    vec![
-        PlanningRule {
-            id: "explicit_skill".into(),
-            priority: 100,
-            keywords: vec![],
-            context_keywords: vec![],
-            tool_hint: None,
-            instruction: "**If user says \"使用 XX skill\" / \"用 XX 技能\" / \"use XX skills\"**, you MUST add that skill to the task list. Do NOT return empty list.".into(),
-        },
-        PlanningRule {
-            id: "memory_write".into(),
-            priority: 95,
-            keywords: vec![
-                "memory_write".into(),
-                "生成向量记忆".into(),
-                "写入记忆".into(),
-                "保存到记忆".into(),
-                "向量记忆".into(),
-                "记忆存储".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("memory_write".into()),
-            instruction: "**生成向量记忆/写入记忆/memory_write**: When the user asks to generate vector memory, store memory, save to memory, or explicitly says \"使用 memory_write\", you MUST add a task with tool_hint: \"memory_write\". Use memory_write to store conversation summaries, user preferences, or facts. Do NOT return empty list.".into(),
-        },
-        PlanningRule {
-            id: "weather".into(),
-            priority: 90,
-            keywords: vec![
-                "天气".into(),
-                "气温".into(),
-                "气象".into(),
-                "今天天气".into(),
-                "明天天气".into(),
-                "适合出行吗".into(),
-                "适合出去玩吗".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("weather".into()),
-            instruction: "**天气/气象/天气预报**: When the user asks about weather, you MUST use **weather** skill. The LLM cannot provide real-time weather data; only the weather skill can. Return a task with tool_hint: \"weather\".".into(),
-        },
-        PlanningRule {
-            id: "place_attraction_intro".into(),
-            priority: 91,
-            keywords: vec![
-                "介绍一下".into(),
-                "介绍".into(),
-                "推荐".into(),
-                "攻略".into(),
-                "路线".into(),
-                "景点".into(),
-                "旅游".into(),
-                "步行".into(),
-                "漫步".into(),
-                "walk".into(),
-                "take a walk".into(),
-                "walking".into(),
-                "tour".into(),
-                "walking tour".into(),
-                "步行路线".into(),
-                "徒步".into(),
-            ],
-            context_keywords: vec![
-                "清迈".into(),
-                "曼谷".into(),
-                "普吉".into(),
-                "地方".into(),
-                "城市".into(),
-                "某地".into(),
-            ],
-            tool_hint: None,
-            instruction: "**介绍+地点/景点/旅游路线**: When the user asks to 介绍/推荐 a specific place, attraction, walking route, or tour (e.g. 介绍一下清迈的 take a walk, 推荐曼谷的景点), the LLM's knowledge may be stale or incomplete. You MUST add a task to fetch fresh information: use **agent-browser** if available (to open search and extract info), or **http-request** to fetch from web. Do NOT return empty list [] — place/attraction intros need up-to-date info.".into(),
-        },
-        PlanningRule {
-            id: "realtime_http".into(),
-            priority: 90,
-            keywords: vec![
-                "实时".into(),
-                "最新".into(),
-                "实时信息".into(),
-                "最新数据".into(),
-                "实时数据".into(),
-                "最新排名".into(),
-                "实时查询".into(),
-                "抓取网页".into(),
-                "获取最新".into(),
-                "fetch live data".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("http-request".into()),
-            instruction: "**实时/最新/实时信息**: When the user explicitly asks for real-time or latest data, you MUST use **http-request** skill. The LLM's knowledge has a cutoff; only HTTP requests can fetch current information. Return a task with tool_hint: \"http-request\".".into(),
-        },
-        PlanningRule {
-            id: "openclaw_web_tools".into(),
-            priority: 91,
-            keywords: vec![
-                "web_search".into(),
-                "web_fetch".into(),
-                "网页搜索".into(),
-                "搜索网页".into(),
-                "使用 web_search".into(),
-                "使用 web_fetch".into(),
-                "use web_search".into(),
-                "use web_fetch".into(),
-            ],
-            context_keywords: vec!["OpenClaw".into(), "ClawHub".into()],
-            tool_hint: Some("http-request".into()),
-            instruction: "**OpenClaw web_search/web_fetch 映射**: When the task requires web search or fetching URL content (OpenClaw: web_search, web_fetch), use **http-request** skill. For search: call Brave/Perplexity API. For fetch: GET url with extract_mode: markdown.".into(),
-        },
-        PlanningRule {
-            id: "agent_browser".into(),
-            priority: 90,
-            keywords: vec![
-                "agent-browser".into(),
-                "browser".into(),
-                "使用 browser".into(),
-                "use browser".into(),
-                "用 browser".into(),
-                "automate".into(),
-                "automation".into(),
-                "open a website".into(),
-                "fill out a form".into(),
-                "click a button".into(),
-                "take a screenshot".into(),
-                "scrape data".into(),
-                "scrape".into(),
-                "web interaction".into(),
-                "navigate".into(),
-                "snapshot".into(),
-                "浏览器".into(),
-                "自动化".into(),
-                "打开网站".into(),
-                "填写表单".into(),
-                "点击按钮".into(),
-                "截图".into(),
-                "抓取数据".into(),
-                "网页交互".into(),
-            ],
-            context_keywords: vec![
-                "website".into(),
-                "page".into(),
-                "form".into(),
-                "button".into(),
-                "screenshot".into(),
-                "data".into(),
-                "test".into(),
-                "login".into(),
-                "web app".into(),
-                "网站".into(),
-                "页面".into(),
-                "表单".into(),
-                "测试".into(),
-                "登录".into(),
-            ],
-            tool_hint: Some("agent-browser".into()),
-            instruction: "**Browser Automation (OpenClaw browser 映射)**: When user asks to interact with a website (navigate, fill forms, click, screenshot, scrape data, test, login, or automate any browser task), use **agent-browser** skill.".into(),
-        },
-        PlanningRule {
-            id: "external_comparison".into(),
-            priority: 92,
-            keywords: vec![
-                "对比".into(),
-                "比较".into(),
-                "优劣势".into(),
-                "优劣对比".into(),
-                "对比分析".into(),
-                "全方位".into(),
-                "全方位分析".into(),
-                "vs".into(),
-                "versus".into(),
-            ],
-            context_keywords: vec!["地方".into(), "城市".into(), "两地".into(), "城市对比".into()],
-            tool_hint: Some("http-request".into()),
-            instruction: "**对比/比较/优劣势** (places, cities, companies, topics): When the user asks to compare or analyze pros/cons of places, cities, companies, or external topics, PREFER **http-request** to fetch fresh data. Do NOT use chat_history — it is ONLY for past chat/conversation analysis. Plan: (1) http-request to fetch current info from web; (2) analysis. If user did not ask for 实时/最新 and task is general knowledge, you may return [] to let LLM answer directly.".into(),
-        },
-        PlanningRule {
-            id: "continue_context".into(),
-            priority: 85,
-            keywords: vec!["继续".into(), "继续未完成".into(), "继续之前".into(), "继续任务".into()],
-            context_keywords: vec![
-                "实时".into(),
-                "最新".into(),
-                "排名".into(),
-                "university".into(),
-                "QS".into(),
-                "官网".into(),
-                "需要用户自行查询".into(),
-                "请访问官网".into(),
-            ],
-            tool_hint: Some("http-request".into()),
-            instruction: "**继续/继续未完成的任务**: When the user says 继续, you MUST use the **conversation context** to understand what task to continue. If the context mentions real-time data, rankings, or similar, plan **http-request** to fetch the data.".into(),
-        },
-        PlanningRule {
-            id: "xiaohongshu".into(),
-            priority: 90,
-            keywords: vec!["小红书".into(), "种草文案".into(), "小红书图文".into(), "小红书笔记".into()],
-            context_keywords: vec![],
-            tool_hint: Some("xiaohongshu-writer".into()),
-            instruction: "**小红书/种草/图文笔记**: When the task involves 小红书 content, you MUST use **xiaohongshu-writer** skill.".into(),
-        },
-        PlanningRule {
-            id: "csdn_article".into(),
-            priority: 88,
-            keywords: vec!["csdn".into(), "CSDN".into(), "csdn文章".into(), "CSDN文章".into(), "csdn博客".into()],
-            context_keywords: vec!["文章".into(), "博客".into(), "写一篇".into()],
-            tool_hint: None,
-            instruction: "**CSDN 文章**: When the user asks to write a CSDN article or blog, output the complete Markdown directly in your response. Follow **csdn-article** skill format (title, summary block, body, code blocks with language, tags). Use **writing-helper** for style. Do NOT return empty task list — include at least one task to generate the article.".into(),
-        },
-        PlanningRule {
-            id: "frontend_design".into(),
-            priority: 92,
-            keywords: vec![
-                "官网".into(),
-                "网站".into(),
-                "网站设计".into(),
-                "设计网页".into(),
-                "设计页面".into(),
-                "前端设计".into(),
-                "页面设计".into(),
-                "landing page".into(),
-                "website".into(),
-                "web page".into(),
-                "homepage".into(),
-                "首页".into(),
-                "网站首页".into(),
-                "官方网站".into(),
-                "做个网站".into(),
-                "做一个网站".into(),
-                "生成网站".into(),
-                "生成页面".into(),
-                "生成网页".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("file_operation".into()),
-            instruction: "**官网/网站/网页设计**: When the user asks to design or generate a website, landing page, or web page, you MUST plan exactly TWO tasks: (1) Generate the complete HTML/CSS/JS and use **write_output** to save to index.html (tool_hint: file_operation); (2) Use **preview_server** to start local server and open in browser (tool_hint: file_operation). If a frontend-design skill exists, it is reference-only — use its design guidelines but output via write_output. Do NOT call the frontend-design skill directly. Do NOT return empty list — website generation requires file output + preview.".into(),
-        },
-        PlanningRule {
-            id: "html_preview".into(),
-            priority: 90,
-            keywords: vec![
-                "html渲染".into(),
-                "渲染出来".into(),
-                "预览".into(),
-                "在浏览器中打开".into(),
-                "html呈现".into(),
-                "网页渲染".into(),
-                "PPT".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("file_operation".into()),
-            instruction: "**HTML/PPT/渲染/预览**: When the user asks for HTML rendering or browser preview, use **write_output** + **preview_server**.".into(),
-        },
-        PlanningRule {
-            id: "chat_history".into(),
-            priority: 95,
-            keywords: vec![
-                "历史记录".into(),
-                "聊天记录".into(),
-                "聊天历史".into(),
-                "查看记录".into(),
-                "chat history".into(),
-                "conversation history".into(),
-                "past chat".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("chat_history".into()),
-            instruction: "**历史记录/聊天记录**: When the user asks to view, summarize, or analyze past chat/conversation history, you MUST use **chat_history** (built-in). Do NOT use list_directory or file_operation — chat_history reads directly from transcripts. Plan: (1) Use chat_history with date if specified; (2) Analyze/summarize the content.".into(),
-        },
-        PlanningRule {
-            id: "analyze_stability".into(),
-            priority: 85,
-            keywords: vec![
-                "分析稳定性".into(),
-                "分析项目问题".into(),
-                "分析历史消息".into(),
-                "分析健壮性".into(),
-                "分析最近".into(),
-                "ai稳定性".into(),
-                "项目问题".into(),
-                "历史消息".into(),
-                "最近几次".into(),
-                "健壮性".into(),
-                "analyze stability".into(),
-                "project issues".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("chat_history".into()),
-            instruction: "**分析AI稳定性/项目问题/历史消息** (ONLY when user explicitly asks to analyze chat/conversation): When the user asks to analyze recent AI stability, project issues, robustness, or conversation quality, you MUST use **chat_history** first to get the data, then analyze. chat_history is ONLY for analyzing past chat records — do NOT use it for comparing places, cities, companies, or external topics.".into(),
-        },
-        PlanningRule {
-            id: "direct_answer".into(),
-            priority: 98,
-            keywords: vec![
-                "直接回答".into(),
-                "不用查".into(),
-                "直接说".into(),
-                "just answer".into(),
-                "answer directly".into(),
-                "no need to search".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: None,
-            instruction: "**直接回答/不用查**: When the user explicitly says 直接回答, 不用查, 直接说, or similar (e.g. just answer, no need to search), you MUST return empty list `[]` and let the LLM answer directly. Do NOT plan any tools.".into(),
-        },
-        PlanningRule {
-            id: "code_refactor".into(),
-            priority: 85,
-            keywords: vec![
-                "refactor".into(),
-                "重构".into(),
-                "修改代码".into(),
-                "改成".into(),
-                "改成Result".into(),
-                "panic".into(),
-                "unwrap".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("file_operation".into()),
-            instruction: "**代码重构/修改**: When the user asks to refactor code (e.g. panic改成Result, 修改API), plan: (1) grep_files to locate targets; (2) search_replace/insert_lines to modify; (3) run_command to verify (tests/build). tool_hint: file_operation.".into(),
-        },
-        PlanningRule {
-            id: "code_fix_test".into(),
-            priority: 84,
-            keywords: vec![
-                "修复".into(),
-                "fix".into(),
-                "bug".into(),
-                "添加测试".into(),
-                "加单元测试".into(),
-                "写测试".into(),
-                "add test".into(),
-                "unit test".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("file_operation".into()),
-            instruction: "**修复bug/添加测试**: When the user asks to fix a bug or add tests, plan: (1) read_file/list_directory to understand codebase; (2) search_replace/insert_lines to fix or add tests; (3) run_command to run tests. tool_hint: file_operation.".into(),
-        },
-        PlanningRule {
-            id: "output_to_file".into(),
-            priority: 92,
-            keywords: vec![
-                "输出到".into(),
-                "输出到output".into(),
-                "保存到".into(),
-                "写到文件".into(),
-                "写入文件".into(),
-                "保存为".into(),
-                "输出到文件".into(),
-                "save to".into(),
-                "output to".into(),
-                "write to file".into(),
-            ],
-            context_keywords: vec![],
-            tool_hint: Some("file_operation".into()),
-            instruction: "**输出到 output/文件**: When the user explicitly asks to output, save, or write content to a file (e.g. 输出到output, 保存到文件, 写到 output), you MUST plan a file_operation task using **write_output**. Even if the content is an article, report, or markdown, saving to file requires the tool. Return a task with tool_hint: \"file_operation\" and description like \"Use write_output to save the generated content to output/<filename>\".".into(),
-        },
-    ]
+/// Load planning rules.
+///
+/// Resolution:
+/// 1. Global `~/.skilllite/chat/prompts/rules.json` (seed + evolved) — always loaded
+/// 2. Workspace `.skilllite/planning_rules.json` (per-project skill rules) — **merged on top**
+/// 3. Compiled-in seed data (fallback when no global file)
+///
+/// Merge semantics:
+/// - Workspace rule with same ID as an immutable (`mutable=false`) global rule → skipped
+/// - Workspace rule with same ID as a mutable global rule → overrides it
+/// - Workspace rule with a new ID → appended
+pub fn load_rules(workspace: Option<&Path>, chat_root: Option<&Path>) -> Vec<PlanningRule> {
+    // Base: global rules (seed + evolved)
+    let mut rules = if let Some(root) = chat_root {
+        seed::load_rules(root)
+    } else {
+        seed::load_rules(Path::new("/nonexistent"))
+    };
+
+    // Merge workspace-specific rules (per-project skill rules from `init --use-llm`)
+    if let Some(ws) = workspace {
+        let path = ws.join(".skilllite").join("planning_rules.json");
+        if path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                if let Ok(ws_rules) = serde_json::from_str::<Vec<PlanningRule>>(&content) {
+                    let ws_count = ws_rules.len();
+                    merge_workspace_rules(&mut rules, ws_rules);
+                    tracing::debug!("Merged {} workspace rules from {}", ws_count, path.display());
+                }
+            }
+        }
+    }
+
+    rules
 }
 
-/// Full examples section (all 11 examples) for non-compact mode.
-pub fn full_examples_section() -> String {
-    r#"Example 1 - Simple task (writing poetry):
-User request: "Write a poem praising spring"
-Return: []
+/// Merge workspace rules into the base rule set.
+///
+/// - Same ID + base is immutable → skip (seed rules cannot be overridden)
+/// - Same ID + base is mutable → override (workspace takes priority)
+/// - New ID → append
+fn merge_workspace_rules(base: &mut Vec<PlanningRule>, workspace: Vec<PlanningRule>) {
+    for ws_rule in workspace {
+        if let Some(pos) = base.iter().position(|r| r.id == ws_rule.id) {
+            if base[pos].mutable {
+                base[pos] = ws_rule;
+            }
+            // Immutable (seed) rules are never overridden — silently skip
+        } else {
+            base.push(ws_rule);
+        }
+    }
+}
 
-Example 1b - Translation (no tools needed):
-User request: "把这段英文翻译成中文" or "Translate this to English"
-Return: []
-
-Example 1c - Code explanation (no tools needed):
-User request: "解释一下这段代码的逻辑" or "What does this function do?"
-Return: []
-
-Example 2 - Task requiring tools:
-User request: "Calculate 123 * 456 + 789 for me"
-Return: [{"id": 1, "description": "Use calculator to compute expression", "tool_hint": "calculator", "completed": false}]
-
-Example 3 - User explicitly asks to use a skill (MUST use that skill):
-User request: "写一个关于本项目推广的小红书的图文，使用小红书的skills"
-Return: [{"id": 1, "description": "Use xiaohongshu-writer to generate 小红书 content with thumbnail", "tool_hint": "xiaohongshu-writer", "completed": false}]
-
-Example 4 - Weather query (MUST use weather skill, LLM cannot provide real-time data):
-User request: "深圳今天天气怎样，适合出去玩吗？"
-Return: [{"id": 1, "description": "Use weather skill to query real-time weather in Shenzhen", "tool_hint": "weather", "completed": false}]
-
-Example 5 - User asks for real-time/latest info (MUST use http-request):
-User request: "我需要更实时的信息" or "分析西安交大和清迈大学的对比，要最新数据"
-Return: [{"id": 1, "description": "Use http-request to fetch latest data from authoritative sources (QS, official sites)", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Analyze and compare based on fetched data", "tool_hint": "analysis", "completed": false}]
-
-Example 5b - User asks to compare places/cities (use http-request for fresh data, NOT chat_history):
-User request: "分析一下清迈和深圳这两个地方的优劣势对比" or "比较北京和上海"
-Return: [{"id": 1, "description": "Use http-request to fetch current information about both places", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Analyze and compare based on fetched data", "tool_hint": "analysis", "completed": false}]
-Note: chat_history is for past CONVERSATION only. Do NOT use it for place/city/topic comparison.
-
-Example 5c - User asks to introduce a place/attraction/walking route (MUST use agent-browser or http-request, NOT []):
-User request: "介绍一下take a walk，清迈的" or "推荐曼谷的步行路线" or "清迈有哪些值得去的景点"
-Return: [{"id": 1, "description": "Use agent-browser to open search and fetch info about the place/attraction/route", "tool_hint": "agent-browser", "completed": false}, {"id": 2, "description": "Summarize and present the introduction", "tool_hint": "analysis", "completed": false}]
-Note: Do NOT return []. Place/attraction intros need fresh web data.
-
-Example 6 - User says "继续" with context (MUST use context to infer task):
-User request: "继续为我那未完成的任务"
-Conversation context: [assistant previously said: "要完成西安交大与清迈大学的对比..."]
-Return: [{"id": 1, "description": "Use http-request to fetch QS rankings...", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Analyze and present comparison", "tool_hint": "analysis", "completed": false}]
-
-Example 7 - HTML/PPT rendering (MUST use write_output + preview_server):
-User request: "帮我设计一个关于skilllite的介绍和分析的ppt，你可以通过html渲染出来给我"
-Return: [{"id": 1, "description": "Use write_output to save HTML presentation to output/index.html", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Use preview_server to start local server and open in browser", "tool_hint": "file_operation", "completed": false}]
-
-Example 8 - Website / landing page design (MUST use write_output + preview_server, exactly 2 tasks):
-User request: "生成一个关于skilllite 的官网"
-Return: [{"id": 1, "description": "Design and generate complete website, save to output/index.html using write_output", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Use preview_server to open in browser", "tool_hint": "file_operation", "completed": false}]
-
-Example 9 - Chat history (MUST use chat_history, NOT list_directory or file_operation):
-User request: "查看20260216的历史记录" or "查看昨天的聊天记录"
-Return: [{"id": 1, "description": "Use chat_history to read transcript for the specified date", "tool_hint": "chat_history", "completed": false}, {"id": 2, "description": "Analyze and summarize the chat content", "tool_hint": "analysis", "completed": false}]
-
-Example 10 - User asks to output/save to file (MUST use write_output, even for articles):
-User request: "写一篇CSDN文章，输出到output" or "帮我写技术博客，保存到 output 目录"
-Return: [{"id": 1, "description": "Generate the article content and use write_output to save to output directory", "tool_hint": "file_operation", "completed": false}]
-
-Example 11 - User asks to analyze AI stability / project issues (MUST use chat_history, NOT write_output):
-User request: "分析一下最近几次的ai的稳定性以及项目的问题" or "分析历史消息的健壮性"
-Return: [{"id": 1, "description": "Use chat_history to read recent conversation transcripts", "tool_hint": "chat_history", "completed": false}, {"id": 2, "description": "Analyze AI stability and project issues based on the transcripts", "tool_hint": "analysis", "completed": false}]
-Note: The user wants ANALYSIS of existing data, NOT a new article. Do NOT plan write_output.
-
-Example 12 - Multi-source aggregation (fetch A, fetch B, compare, output):
-User request: "对比 Rust 和 Go 的优缺点，输出到 output/report.md"
-Return: [{"id": 1, "description": "Use http-request to fetch current info about Rust", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Use http-request to fetch current info about Go", "tool_hint": "http-request", "completed": false}, {"id": 3, "description": "Analyze and compare, use write_output to save report", "tool_hint": "file_operation", "completed": false}]
-
-Example 13 - Long-chain coding task (refactor panic to Result):
-User request: "把 API 里所有 panic 改成 Result 返回"
-Return: [{"id": 1, "description": "Use grep_files to find panic locations in codebase", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Use search_replace to replace each panic with Result return", "tool_hint": "file_operation", "completed": false}, {"id": 3, "description": "Use run_command to run tests and verify", "tool_hint": "file_operation", "completed": false}]
-
-Example 14 - Vague request (explore then act):
-User request: "整理一下项目"
-Return: [{"id": 1, "description": "Use list_directory to explore project structure", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Analyze structure and organize files (move, rename, or document)", "tool_hint": "file_operation", "completed": false}]
-
-Example 15 - Mixed skill (weather + analysis + output):
-User request: "查深圳天气，适合的话写一段出游推荐，否则写宅家建议，保存到 output/advice.md"
-Return: [{"id": 1, "description": "Use weather skill to query Shenzhen weather", "tool_hint": "weather", "completed": false}, {"id": 2, "description": "Based on weather write recommendation, use write_output to save", "tool_hint": "file_operation", "completed": false}]"#
-        .to_string()
+/// Load full examples text from disk or compiled-in seed.
+pub fn load_full_examples(chat_root: Option<&Path>) -> String {
+    if let Some(root) = chat_root {
+        return seed::load_examples(root);
+    }
+    include_str!("seed/examples.seed.md").to_string()
 }
 
 /// Compact examples section: core examples + up to 3 matched by user message keywords.
+/// Runtime logic preserved (cannot be fully externalized as it depends on user input).
 pub fn compact_examples_section(user_message: &str) -> String {
     let msg_lower = user_message.to_lowercase();
     let mut lines = vec![
         "Example 1 - Simple (no tools): \"Write a poem\", \"Translate X\", \"Explain this code\" → []".to_string(),
         "Example 2 - Tools: \"Calculate 123*456\" → [{\"id\":1,\"description\":\"Use calculator\",\"tool_hint\":\"calculator\",\"completed\":false}]".to_string(),
     ];
-    // Detect city/place comparison context: chat_history is WRONG for these
     let is_city_or_place = user_message.contains("城市")
         || user_message.contains("地方")
         || user_message.contains("对比")
@@ -485,7 +112,6 @@ pub fn compact_examples_section(user_message: &str) -> String {
         let matches = user_message.contains(k1)
             || msg_lower.contains(&k1.to_lowercase())
             || (!k2.is_empty() && (user_message.contains(k2) || msg_lower.contains(&k2.to_lowercase())));
-        // Skip 分析/稳定性 when context is city/place — avoid steering toward chat_history
         let skip = matches
             && k1 == "分析"
             && is_city_or_place;

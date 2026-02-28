@@ -514,4 +514,50 @@ pub enum Commands {
         #[arg(long, short = 's', default_value = ".skills")]
         skills_dir: String,
     },
+
+    /// Manage the self-evolution engine (EVO-5)
+    ///
+    /// Subcommands:
+    ///   status  — show evolution statistics, trends, and effectiveness
+    ///   reset   — reset to seed state (delete all evolved data)
+    ///   disable — disable a specific evolved rule
+    ///
+    /// Examples:
+    ///   skilllite evolution status
+    ///   skilllite evolution reset
+    ///   skilllite evolution disable evo_rule_xyz
+    #[cfg(feature = "agent")]
+    Evolution {
+        #[command(subcommand)]
+        action: EvolutionAction,
+    },
+}
+
+/// Evolution subcommands (EVO-5).
+#[cfg(feature = "agent")]
+#[derive(Subcommand, Debug)]
+pub enum EvolutionAction {
+    /// Show evolution statistics, effectiveness scores, trends, and time profile
+    Status,
+
+    /// Reset to seed state — delete all evolved rules, examples, and skills
+    Reset {
+        /// Skip confirmation prompt
+        #[arg(long, short)]
+        force: bool,
+    },
+
+    /// Disable a specific evolved rule by ID
+    Disable {
+        /// The rule ID to disable (e.g. "evo_rule_xyz")
+        #[arg(value_name = "RULE_ID")]
+        rule_id: String,
+    },
+
+    /// Show the origin, trigger history, and effectiveness of a specific rule
+    Explain {
+        /// The rule ID to explain
+        #[arg(value_name = "RULE_ID")]
+        rule_id: String,
+    },
 }

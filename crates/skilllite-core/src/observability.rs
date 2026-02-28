@@ -354,6 +354,32 @@ pub fn audit_edit_failed(path: &str, tool_name: &str, reason: &str) {
 
 // ─── Security events ────────────────────────────────────────────────────────
 
+// ─── Evolution audit events (EVO-5) ─────────────────────────────────────────
+
+/// Audit: evolution event — logged when evolution produces changes or rolls back.
+pub fn audit_evolution_event(
+    event_type: &str,
+    target_id: &str,
+    reason: &str,
+    txn_id: &str,
+) {
+    if let Some(path) = get_audit_path() {
+        let record = json!({
+            "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "event": "evolution",
+            "category": "evolution",
+            "source_layer": "agent",
+            "details": {
+                "type": event_type,
+                "target_id": target_id,
+                "reason": reason,
+                "txn_id": txn_id
+            }
+        });
+        append_jsonl(&path, &record);
+    }
+}
+
 /// Security event: sandbox fallback (e.g. Seatbelt failed, using simple execution)
 pub fn security_sandbox_fallback(skill_id: &str, reason: &str) {
     tracing::warn!(

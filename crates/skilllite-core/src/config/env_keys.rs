@@ -72,6 +72,13 @@ pub mod memory {
     pub const SKILLLITE_EMBEDDING_DIMENSION: &str = "SKILLLITE_EMBEDDING_DIMENSION";
 }
 
+/// 进化引擎
+pub mod evolution {
+    /// Evolution mode: "1" (default, all), "prompts", "memory", "skills", "0" (disabled).
+    pub const SKILLLITE_EVOLUTION: &str = "SKILLLITE_EVOLUTION";
+    pub const SKILLLITE_MAX_EVOLUTIONS_PER_DAY: &str = "SKILLLITE_MAX_EVOLUTIONS_PER_DAY";
+}
+
 /// 规划与 dependency-audit
 pub mod misc {
     pub const SKILLLITE_COMPACT_PLANNING: &str = "SKILLLITE_COMPACT_PLANNING";

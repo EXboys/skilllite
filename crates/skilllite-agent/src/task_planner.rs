@@ -1,15 +1,19 @@
 //! Task Planner: task planning and tracking for agentic loops.
 //!
-//! Ported from Python `core/task_planner.py` + `config/planning_rules.py`.
+//! EVO-2: Prompt templates are loaded from `~/.skilllite/chat/prompts/` at runtime.
+//! Compiled-in seed data provides the fallback when no external file exists.
 //!
 //! Responsibilities:
 //! - Generate task list from user message using LLM
 //! - Track task completion status
-//! - Build execution and task system prompts
-//! - Planning rules engine (rules defined in planning_rules.rs)
+//! - Build execution and task system prompts (from external templates)
+//! - Planning rules engine (rules loaded from file or seed)
+
+use std::path::Path;
 
 use anyhow::Result;
 
+use super::evolution::seed;
 use super::llm::LlmClient;
 use super::planning_rules;
 use super::skills::LoadedSkill;
@@ -28,33 +32,15 @@ fn resolve_output_dir() -> String {
     })
 }
 
-/// Load planning rules. Tries workspace/.skilllite/planning_rules.json first; falls back to built-in.
-fn load_planning_rules(workspace: Option<&std::path::Path>) -> Vec<PlanningRule> {
-    if let Some(ws) = workspace {
-        let path = ws.join(".skilllite").join("planning_rules.json");
-        if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
-                if let Ok(rules) = serde_json::from_str::<Vec<PlanningRule>>(&content) {
-                    if !rules.is_empty() {
-                        tracing::debug!("Loaded {} planning rules from {}", rules.len(), path.display());
-                        return rules;
-                    }
-                }
-            }
-        }
-    }
-    planning_rules::builtin_rules()
-}
-
 /// Filter rules by user message: include rules with empty keywords (always) or
-/// rules whose keywords match the user message. Reduces prompt size when compact mode is on.
+/// rules whose keywords match the user message.
 fn filter_rules_for_user_message<'a>(rules: &'a [PlanningRule], user_message: &str) -> Vec<&'a PlanningRule> {
     let msg_lower = user_message.to_lowercase();
     rules
         .iter()
         .filter(|r| {
             if r.keywords.is_empty() && r.context_keywords.is_empty() {
-                return true; // explicit_skill etc. — always include
+                return true;
             }
             let matches_keywords = r.keywords.iter().any(|k| {
                 user_message.contains(k.as_str()) || msg_lower.contains(&k.to_lowercase())
@@ -68,7 +54,6 @@ fn filter_rules_for_user_message<'a>(rules: &'a [PlanningRule], user_message: &s
 }
 
 /// Build the "## CRITICAL" rules section for the planning prompt.
-/// Ported from Python `planning_rules.py` `build_rules_section`.
 fn build_rules_section(rules: &[PlanningRule]) -> String {
     if rules.is_empty() {
         return String::new();
@@ -90,25 +75,32 @@ fn build_rules_section(rules: &[PlanningRule]) -> String {
 // ─── TaskPlanner ────────────────────────────────────────────────────────────
 
 /// Task planner: generates and tracks task lists for the agentic loop.
-/// Ported from Python `core/task_planner.py`.
 pub struct TaskPlanner {
     /// Current task list.
     pub task_list: Vec<Task>,
-    /// Planning rules.
+    /// Planning rules (loaded from file or seed).
     rules: Vec<PlanningRule>,
+    /// Chat data root for loading prompt templates.
+    chat_root: Option<std::path::PathBuf>,
+    /// EVO-5: Workspace path for project-level prompt overrides.
+    workspace: Option<std::path::PathBuf>,
 }
 
 impl TaskPlanner {
-    /// Create a new TaskPlanner. Loads from workspace/.skilllite/planning_rules.json if present.
-    pub fn new(workspace: Option<&std::path::Path>) -> Self {
+    /// Create a new TaskPlanner.
+    ///
+    /// `workspace`: per-project override directory.
+    /// `chat_root`: `~/.skilllite/chat/` for loading prompts from the seed system.
+    pub fn new(workspace: Option<&Path>, chat_root: Option<&Path>) -> Self {
         Self {
             task_list: Vec::new(),
-            rules: load_planning_rules(workspace),
+            rules: planning_rules::load_rules(workspace, chat_root),
+            chat_root: chat_root.map(|p| p.to_path_buf()),
+            workspace: workspace.map(|p| p.to_path_buf()),
         }
     }
 
     /// Generate task list from user message using LLM.
-    /// Ported from Python `TaskPlanner.generate_task_list`.
     pub async fn generate_task_list(
         &mut self,
         client: &LlmClient,
@@ -141,7 +133,6 @@ impl TaskPlanner {
             user_message
         );
         if let Some(ctx) = conversation_context {
-            // Only pass context when user says "继续" — otherwise it can confuse the model
             let needs_continue_context = user_message.contains("继续")
                 || user_message.contains("继续之前")
                 || user_message.contains("继续任务");
@@ -151,7 +142,6 @@ impl TaskPlanner {
                     ctx
                 ));
             } else {
-                // For new requests: pass truncated context to avoid model fixating on previous task
                 let max_ctx_bytes = 2000;
                 let ctx_truncated = if ctx.len() > max_ctx_bytes {
                     format!(
@@ -188,7 +178,6 @@ impl TaskPlanner {
 
                 match self.parse_task_list(&raw) {
                     Ok(mut tasks) => {
-                        // Auto-add SKILL.md writing task if skill creation detected
                         self.auto_enhance_tasks(&mut tasks);
                         self.task_list = tasks.clone();
                         Ok(tasks)
@@ -224,7 +213,6 @@ impl TaskPlanner {
     pub(crate) fn parse_task_list(&self, raw: &str) -> Result<Vec<Task>> {
         let mut cleaned = raw.trim().to_string();
 
-        // Strip markdown code fences
         if cleaned.starts_with("```json") {
             cleaned = cleaned[7..].to_string();
         }
@@ -241,7 +229,6 @@ impl TaskPlanner {
     }
 
     /// Auto-enhance tasks: add SKILL.md writing if skill creation is detected.
-    /// Ported from Python `generate_task_list` auto-enhancement logic.
     fn auto_enhance_tasks(&self, tasks: &mut Vec<Task>) {
         let has_skill_creation = tasks.iter().any(|t| {
             let desc_lower = t.description.to_lowercase();
@@ -269,9 +256,9 @@ impl TaskPlanner {
         }
     }
 
-    /// Build the planning prompt for task generation.
-    /// When compact: filter rules by user message, use fewer examples.
-    /// Weak models (7b, ollama, etc.) auto-get full prompt when SKILLLITE_COMPACT_PLANNING not set.
+    /// Build the planning prompt from the external template.
+    /// Placeholders: {{TODAY}}, {{YESTERDAY}}, {{RULES_SECTION}}, {{SKILLS_INFO}},
+    /// {{OUTPUT_DIR}}, {{EXAMPLES_SECTION}}.
     pub(crate) fn build_planning_prompt(&self, skills_info: &str, user_message: &str, model: Option<&str>) -> String {
         let compact = get_compact_planning(model);
         let rules_section = if compact {
@@ -283,112 +270,30 @@ impl TaskPlanner {
         let examples_section = if compact {
             planning_rules::compact_examples_section(user_message)
         } else {
-            planning_rules::full_examples_section()
+            planning_rules::load_full_examples(self.chat_root.as_deref())
         };
         let output_dir = resolve_output_dir();
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let yesterday = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
 
-        format!(
-r#"You are a task planning assistant. Based on user requirements, determine whether tools are needed and generate a task list.
+        let template = seed::load_prompt_file_with_project(
+            self.chat_root.as_deref().unwrap_or(Path::new("/nonexistent")),
+            self.workspace.as_deref(),
+            "planning.md",
+            include_str!("seed/planning.seed.md"),
+        );
 
-**Current date**: {} (yesterday = {}; for chat_history, pass this date when user says 昨天/昨天记录)
-
-## Core Principle: Minimize Tool Usage
-
-**Important**: Not all tasks require tools! Follow these principles:
-
-1. **Complete simple tasks directly**: If a task can be completed directly by the LLM (such as writing, translation, Q&A, creative generation, etc.), return an empty task list `[]` and let the LLM answer directly
-2. **Use tools only when necessary**: Only plan tool-using tasks when the task truly requires external capabilities (such as calculations, HTTP requests, file operations, data analysis, browser automation, etc.)
-3. **chat_history is ONLY for past conversation**: Use chat_history ONLY when the user explicitly asks to view, summarize, or analyze **past chat/conversation records** (e.g. 查看聊天记录, 分析历史消息). For analysis of external topics (places, cities, companies, products), prefer http-request for fresh data or return `[]` for LLM knowledge — do NOT use chat_history
-
-## Examples of tasks that DON'T need tools (return empty list `[]`)
-
-- Writing poems, articles, stories (EXCEPT 小红书/种草/图文笔记 - see below, EXCEPT when user asks to 输出到/保存到/写到文件 - see output_to_file rule)
-- Translating text
-- Answering knowledge-based questions (EXCEPT 天气/气象 - see below, EXCEPT 实时/最新 - see below, EXCEPT 介绍+具体地点/景点/路线 - see place_attraction_intro rule)
-- Code explanation, code review suggestions
-- Creative generation, brainstorming (EXCEPT 小红书 - see below, EXCEPT HTML/PPT rendering - see below, EXCEPT 网站/官网/网页设计 - see below)
-- Summarizing, rewriting, polishing text
-
-{rules_section}
-
-## Examples of tasks that NEED tools
-
-- **Complex or high-precision calculations** (use calculator only for: complex formulas, large numbers, scientific calculations, or when explicit precision is required)
-  - ❌ DON'T use calculator for: simple arithmetic (e.g., 0.85 * 0.3, 1 + 2), basic math you can do directly
-  - ✅ DO use calculator for: statistical formulas, matrix operations, financial calculations, or when handling large datasets
-- Sending HTTP requests (use http-request)
-- Reading/writing files (use built-in file operations)
-- Querying real-time weather (use weather)
-- Creating new Skills (use skill-creator)
-- **小红书/种草/图文笔记** (use xiaohongshu-writer - generates structured content + cover image)
-- **HTML/PPT/网页渲染** (use write_output to save HTML file, then preview_server to open in browser)
-- **官网/网站/网页设计** (use write_output to save HTML + preview_server to open in browser; if frontend-design skill available, use it)
-- **输出到 output/保存到文件** (when user says 输出到output, 保存到, 写到文件 — use write_output to persist content)
-- **Browser automation / screenshots / visiting websites** (use agent-browser or any matching skill)
-- **介绍+地点/景点/旅游路线** (e.g. 介绍一下清迈的 take a walk — use agent-browser or http-request for fresh info)
-
-## Available Resources
-
-**Available Skills**:
-{skills_info}
-
-**Built-in capabilities**: read_file, write_file, **search_replace** (precise text replacement in files), write_output (final results), list_directory, list_output (list output directory files), file_exists, chat_history (read past conversation by date), chat_plan (read task plan), **memory_write** (store persistent memory for future retrieval — use for 生成向量记忆/写入记忆/保存到记忆), **memory_search** (search memory by keywords), **memory_list** (list stored memory files), **update_task_plan** (revise task list when current plan is wrong/unusable), run_command (execute shell command, requires user confirmation), preview_server (start HTTP server to preview HTML in browser)
-
-**Output directory**: {output_dir}
-(When skills produce file outputs like screenshots or PDFs, instruct them to save directly to the output directory)
-
-## Planning Principles
-
-1. **Task decomposition**: Break down user requirements into specific, executable steps
-2. **Tool matching**: Select appropriate tools for each step (Skill or built-in file operations). **Match user intent to available skill descriptions** — if a skill's description matches what the user wants, use that skill.
-3. **Dependency order**: Ensure tasks are arranged in correct dependency order
-4. **Verifiability**: Each task should have clear completion criteria
-
-### Decomposition Heuristics
-
-**First: Check if `[]` is correct** — If the task can be done by the LLM alone (no external data, no file I/O, no real-time info), return `[]`. Examples: translate, explain code, write poem, answer knowledge questions, summarize text.
-
-**Only when tools are needed**, apply:
-- **Three-phase model**: Data fetch → Process/analyze → Output. Most cross-domain tasks follow this pattern.
-- **Explicit dependencies**: Read/search first, then modify/write, finally verify (e.g. run tests).
-- **Granularity**: Each step should be completable with 1–2 tool calls. Avoid single steps that are too large or too fragmented.
-- **Ambiguity**: When the request is vague, prefer "explore + confirm" steps rather than guessing and returning [].
-
-## Output Format
-
-Must return pure JSON format, no other text.
-Task list is an array, each task contains:
-- id: Task ID (number)
-- description: Task description (concise and clear, stating what to do)
-- tool_hint: Suggested tool (skill name or "file_operation" or "analysis")
-- completed: Whether completed (initially false)
-
-Example format:
-[
-  {{"id": 1, "description": "Use list_directory to view project structure", "tool_hint": "file_operation", "completed": false}},
-  {{"id": 2, "description": "Use skill-creator to create basic skill structure", "tool_hint": "skill-creator", "completed": false}},
-  {{"id": 3, "description": "Use write_file to write main skill code", "tool_hint": "file_operation", "completed": false}},
-  {{"id": 4, "description": "Verify the created skill is correct", "tool_hint": "analysis", "completed": false}}
-]
-- **Prefer `[]`** when the LLM can answer directly (translation, explanation, creative writing, Q&A, code review). Do NOT over-plan.
-- If tools are needed (file I/O, HTTP, weather, etc.), return task array, each task contains:
-  - id: Task ID (number)
-  - description: Task description
-  - tool_hint: Suggested tool (skill name or "file_operation")
-  - completed: false
-
-{examples_section}
-
-Return only JSON, no other content."#,
-            today,
-            yesterday
-        )
+        template
+            .replace("{{TODAY}}", &today)
+            .replace("{{YESTERDAY}}", &yesterday)
+            .replace("{{RULES_SECTION}}", &rules_section)
+            .replace("{{SKILLS_INFO}}", skills_info)
+            .replace("{{OUTPUT_DIR}}", &output_dir)
+            .replace("{{EXAMPLES_SECTION}}", &examples_section)
     }
 
-    /// Build the main execution system prompt for skill selection and file operations.
-    /// Ported from Python `TaskPlanner.build_execution_prompt`.
+    /// Build the main execution system prompt from the external template.
+    /// Placeholders: {{TODAY}}, {{YESTERDAY}}, {{SKILLS_LIST}}, {{OUTPUT_DIR}}.
     pub fn build_execution_prompt(&self, skills: &[LoadedSkill]) -> String {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let yesterday = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
@@ -401,7 +306,6 @@ Return only JSON, no other content."#,
                     .as_deref()
                     .unwrap_or("No description");
                 if s.metadata.entry_point.is_empty() && !s.metadata.is_bash_tool_skill() {
-                    // Reference-only: make it very clear this is NOT callable
                     format!("  - **{}**: {} ⛔ [Reference Only — NOT a callable tool, do NOT call it]", s.name, desc)
                 } else {
                     format!("  - **{}**: {}", s.name, desc)
@@ -411,75 +315,21 @@ Return only JSON, no other content."#,
         let skills_list_str = skills_list.join("\n");
         let output_dir = resolve_output_dir();
 
-        format!(
-r#"You are an intelligent task execution assistant responsible for executing tasks based on user requirements.
+        let template = seed::load_prompt_file_with_project(
+            self.chat_root.as_deref().unwrap_or(Path::new("/nonexistent")),
+            self.workspace.as_deref(),
+            "execution.md",
+            include_str!("seed/execution.seed.md"),
+        );
 
-**Current date**: {} (yesterday = {}; when calling chat_history for 昨天/昨天记录, pass date "{}")
-
-## CRITICAL: Plan is authority — execute strictly in order
-
-**The task plan is the single source of truth.** You MUST:
-1. Execute tasks ONE BY ONE in the given order. Do NOT skip or reorder.
-2. For each task, use ONLY the tool specified in its `tool_hint`. Do NOT improvise or switch to other tools.
-3. Declare "Task X completed" only after actually executing that task's required tool/action.
-4. **When tasks are unusable**: If a task's result is clearly not useful (e.g. chat_history returned irrelevant data for a city comparison), call **update_task_plan** to propose a revised plan, then continue with the new tasks.
-
-**Read the task's `tool_hint` field and follow STRICTLY:**
-
-- **tool_hint = "file_operation"** → Use ONLY built-in tools: `write_output`, `write_file`, `search_replace`, `preview_edit`, `preview_server`, `read_file`, `list_directory`, `file_exists`, `run_command`. ⛔ Do NOT call ANY skill tools. Generate the content yourself and save with write_output. Prefer **search_replace** for precise edits (change specific text) instead of read_file + write_file. For high-risk edits, call **preview_edit** first.
-- **tool_hint = "analysis"** → No tools needed, produce text analysis directly.
-- **tool_hint = "<skill_name>"** (e.g. "http-request", "calculator", "weather") → Call that specific skill tool directly. Do NOT use chat_history when tool_hint is http-request.
-
-## Built-in Tools
-
-1. **write_output**: Write final deliverables (HTML, reports, etc.) to the output directory `{output_dir}`. Path is relative to output dir. Use `append: true` to append. **For content >~6k chars**: split into multiple calls — first call overwrites, subsequent calls use `append: true`.
-2. **write_file**: Write/create files within the workspace. Use `append: true` to append. Same chunking rule for large content.
-3. **search_replace**: Replace exact text in a file (path, old_string, new_string, replace_all?, normalize_whitespace?). Use normalize_whitespace: true to tolerate trailing whitespace. Prefer over read_file+write_file for precise edits.
-4. **preview_edit**: Preview a search_replace edit (dry-run, no file write). Use before high-risk edits to verify changed lines and diff_excerpt.
-5. **preview_server**: Start local HTTP server to preview files in browser
-6. **read_file**: Read file content
-7. **list_directory**: List directory contents
-8. **file_exists**: Check if file exists
-9. **run_command**: Execute shell command (requires user confirmation)
-10. **update_task_plan**: When the current plan is wrong or a task's result is not useful, call with a new tasks array to replace the plan and continue with the revised tasks
-
-## Available Skills (only use when task tool_hint matches a skill name)
-
-{skills_list_str}
-
-## Output Directory
-
-**Output directory**: `{output_dir}`
-
-- **Final deliverables**: Use **write_output** with file_path relative to output dir (e.g. `index.html`)
-
-## Error Handling
-
-- If a tool fails, read the error message and fix the issue
-- When stuck, explain the situation to the user
-
-## Output Guidelines
-
-- After completing each task, explicitly declare: "Task X completed"
-- Give a complete summary at the end
-
-## ANTI-HALLUCINATION — ABSOLUTE RULE
-
-**You MUST actually EXECUTE each task before declaring "Task X completed".**
-
-- Execute tasks ONE BY ONE in order. Do NOT skip ahead.
-- Your FIRST response must be an ACTION (tool call), NOT a summary.
-- If a task requires a tool, call it FIRST, get the result, THEN declare completed.
-- **Do NOT improvise**: If Task 1 says http-request, call http-request — do NOT call chat_history or other tools instead.
-"#,
-            today,
-            yesterday,
-            yesterday
-        )
+        template
+            .replace("{{TODAY}}", &today)
+            .replace("{{YESTERDAY}}", &yesterday)
+            .replace("{{SKILLS_LIST}}", &skills_list_str)
+            .replace("{{OUTPUT_DIR}}", &output_dir)
     }
 
     /// Build system prompt with task list and execution guidance.
-    /// Ported from Python `TaskPlanner.build_task_system_prompt`.
     pub fn build_task_system_prompt(&self, skills: &[LoadedSkill]) -> String {
         let execution_prompt = self.build_execution_prompt(skills);
         let task_list_json =
@@ -500,10 +350,8 @@ r#"You are an intelligent task execution assistant responsible for executing tas
                 task.id, task.description, hint_str
             );
 
-            // Add direct call instruction based on tool_hint type
             if let Some(ref hint) = task.tool_hint {
                 if hint == "file_operation" {
-                    // Explicitly tell LLM to use built-in tools, NOT skills
                     direct_call_instruction = format!(
                         "\n\n⚡ **ACTION REQUIRED**: This is a file_operation task. \
                          Call `write_output` or `preview_server` NOW.\n\
@@ -511,7 +359,6 @@ r#"You are an intelligent task execution assistant responsible for executing tas
                          Generate the content yourself and save with `write_output`."
                     );
                 } else if hint != "analysis" {
-                    // Check if it's a real skill
                     let is_skill = skills.iter().any(|s| {
                         s.name == *hint
                             || s.tool_definitions.iter().any(|td| td.function.name == *hint)
@@ -550,8 +397,6 @@ r#"You are an intelligent task execution assistant responsible for executing tas
     }
 
     /// Check if tasks were completed based on LLM response content.
-    /// Looks for "Task X completed" pattern. Returns ALL matching task IDs.
-    /// Ported from Python `TaskPlanner.check_completion_in_content`.
     pub fn check_completion_in_content(&self, content: &str) -> Vec<u32> {
         if content.is_empty() {
             return Vec::new();
@@ -602,9 +447,7 @@ r#"You are an intelligent task execution assistant responsible for executing tas
         self.task_list.iter().find(|t| !t.completed)
     }
 
-
     /// Build a nudge message to push the LLM to continue working on tasks.
-    /// Ported from Python auto-nudge logic in `_run_openai`.
     pub fn build_nudge_message(&self) -> Option<String> {
         let current = self.current_task()?;
         let task_list_json =
@@ -632,7 +475,6 @@ r#"You are an intelligent task execution assistant responsible for executing tas
     }
 
     /// Build a per-task depth limit message.
-    /// Sent when a single task has used too many tool calls.
     pub fn build_depth_limit_message(&self, max_calls: usize) -> String {
         format!(
             "You have used {} tool calls for the current task. \
@@ -647,13 +489,11 @@ r#"You are an intelligent task execution assistant responsible for executing tas
 mod tests {
     use super::*;
 
-    /// Phase 1 测试：验证规划 prompt 包含 [] 平衡与拆解原则
     #[test]
     fn test_planning_prompt_phase1_balance() {
-        let planner = TaskPlanner::new(None);
+        let planner = TaskPlanner::new(None, None);
         let prompt = planner.build_planning_prompt("None", "hello", None);
 
-        // [] 优先的平衡性内容
         assert!(
             prompt.contains("First: Check if `[]` is correct"),
             "prompt should contain First check for []"
@@ -666,8 +506,6 @@ mod tests {
             prompt.contains("Minimize Tool Usage"),
             "prompt should contain Core Principle"
         );
-
-        // Decomposition heuristics（仅当需要工具时）
         assert!(
             prompt.contains("Only when tools are needed"),
             "prompt should qualify when to apply heuristics"
@@ -678,10 +516,9 @@ mod tests {
         );
     }
 
-    /// Phase 1 测试：parse_task_list 能正确解析有效 JSON 与 []
     #[test]
     fn test_parse_task_list() {
-        let planner = TaskPlanner::new(None);
+        let planner = TaskPlanner::new(None, None);
 
         let json = r#"[{"id": 1, "description": "Use grep_files", "tool_hint": "file_operation", "completed": false}]"#;
         let tasks = planner.parse_task_list(json).unwrap();
@@ -691,5 +528,30 @@ mod tests {
 
         let empty = planner.parse_task_list("[]").unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn test_planning_prompt_contains_placeholders_resolved() {
+        let planner = TaskPlanner::new(None, None);
+        let prompt = planner.build_planning_prompt("None", "hello", None);
+
+        // All placeholders should be resolved (no {{...}} remaining)
+        assert!(!prompt.contains("{{TODAY}}"));
+        assert!(!prompt.contains("{{YESTERDAY}}"));
+        assert!(!prompt.contains("{{RULES_SECTION}}"));
+        assert!(!prompt.contains("{{SKILLS_INFO}}"));
+        assert!(!prompt.contains("{{OUTPUT_DIR}}"));
+        assert!(!prompt.contains("{{EXAMPLES_SECTION}}"));
+    }
+
+    #[test]
+    fn test_execution_prompt_contains_placeholders_resolved() {
+        let planner = TaskPlanner::new(None, None);
+        let prompt = planner.build_execution_prompt(&[]);
+
+        assert!(!prompt.contains("{{TODAY}}"));
+        assert!(!prompt.contains("{{YESTERDAY}}"));
+        assert!(!prompt.contains("{{SKILLS_LIST}}"));
+        assert!(!prompt.contains("{{OUTPUT_DIR}}"));
     }
 }

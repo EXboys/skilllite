@@ -292,6 +292,16 @@ pub fn run_cli() -> Result<()> {
                     skills_dir: skills_dir.clone(),
                 })?;
         }
+        #[cfg(feature = "agent")]
+        Commands::Evolution { action } => {
+            use cli::EvolutionAction;
+            match action {
+                EvolutionAction::Status => commands::evolution::cmd_status()?,
+                EvolutionAction::Reset { force } => commands::evolution::cmd_reset(force)?,
+                EvolutionAction::Disable { rule_id } => commands::evolution::cmd_disable(&rule_id)?,
+                EvolutionAction::Explain { rule_id } => commands::evolution::cmd_explain(&rule_id)?,
+            }
+        }
     }
 
     Ok(())

@@ -6,8 +6,6 @@
 #[cfg(feature = "agent")]
 use anyhow::{Context, Result};
 #[cfg(feature = "agent")]
-use std::collections::HashMap;
-#[cfg(feature = "agent")]
 use std::fs;
 #[cfg(feature = "agent")]
 use std::path::{Path, PathBuf};
@@ -140,24 +138,48 @@ Example output: [{"id":"csdn_article","priority":88,"keywords":["csdn","CSDN","c
     let generated: Vec<PlanningRule> = serde_json::from_str(cleaned)
         .with_context(|| format!("Failed to parse LLM planning rules JSON: {}", &raw[..raw.len().min(200)]))?;
 
-    // Merge: builtin rules never overwritten. LLM only adds rules for skills in .skills/
-    // that don't already have a builtin rule (same id).
-    let mut by_id: HashMap<String, PlanningRule> = HashMap::new();
-    for r in planning_rules::builtin_rules() {
-        by_id.insert(r.id.clone(), r);
-    }
-    for r in generated {
-        by_id.entry(r.id.clone()).or_insert(r);
-    }
-    let mut merged: Vec<PlanningRule> = by_id.into_values().collect();
-    merged.sort_by(|a, b| b.priority.cmp(&a.priority));
+    // Dedup: check against all existing rules (seed + evolved + previous workspace)
+    let existing = planning_rules::load_rules(Some(workspace), None);
+    let existing_ids: std::collections::HashSet<String> =
+        existing.iter().map(|r| r.id.clone()).collect();
 
+    // Only keep generated rules that don't duplicate existing rules,
+    // and tag them with proper metadata for the evolution system.
+    let mut skill_rules: Vec<PlanningRule> = generated
+        .into_iter()
+        .filter(|r| !existing_ids.contains(&r.id))
+        .map(|mut r| {
+            r.mutable = true;
+            r.origin = "skill_init".to_string();
+            r
+        })
+        .collect();
+
+    // Preserve existing workspace-only rules from previous init runs
+    // (skip old seed copies that may exist in legacy workspace files).
     let out_dir = workspace.join(".skilllite");
+    let out_path: PathBuf = out_dir.join("planning_rules.json");
+    if out_path.exists() {
+        if let Ok(content) = fs::read_to_string(&out_path) {
+            if let Ok(prev_ws_rules) = serde_json::from_str::<Vec<PlanningRule>>(&content) {
+                for prev in prev_ws_rules {
+                    if prev.origin == "seed" || (!prev.mutable && prev.origin != "skill_init") {
+                        continue; // Skip old seed copies from legacy workspace files
+                    }
+                    if !skill_rules.iter().any(|r| r.id == prev.id) {
+                        skill_rules.push(prev);
+                    }
+                }
+            }
+        }
+    }
+
+    skill_rules.sort_by(|a, b| b.priority.cmp(&a.priority));
+
     fs::create_dir_all(&out_dir)
         .with_context(|| format!("Failed to create {}", out_dir.display()))?;
 
-    let out_path: PathBuf = out_dir.join("planning_rules.json");
-    let json = serde_json::to_string_pretty(&merged)
+    let json = serde_json::to_string_pretty(&skill_rules)
         .context("Failed to serialize planning rules")?;
     fs::write(&out_path, json)
         .with_context(|| format!("Failed to write {}", out_path.display()))?;

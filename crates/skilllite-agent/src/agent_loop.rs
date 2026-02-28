@@ -63,6 +63,7 @@ async fn run_simple_loop(
     event_sink: &mut dyn EventSink,
     session_key: Option<&str>,
 ) -> Result<AgentResult> {
+    let start_time = std::time::Instant::now();
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
     let embed_config = EmbeddingConfig::from_env();
@@ -79,13 +80,21 @@ async fn run_simple_loop(
     );
     let all_tools = registry.all_tool_definitions();
 
-    // Build system prompt
+    // Build system prompt (EVO-2: loaded from external file or seed)
+    let simple_chat_root = skilllite_executor::workspace_root(None)
+        .unwrap_or_else(|_| {
+            dirs::home_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join(".skilllite")
+        })
+        .join("chat");
     let system_prompt = prompt::build_system_prompt(
         config.system_prompt.as_deref(),
         skills,
         &config.workspace,
         session_key,
         config.enable_memory,
+        Some(&simple_chat_root),
     );
 
     // Build message list
@@ -98,10 +107,12 @@ async fn run_simple_loop(
     let mut documented_skills: HashSet<String> = HashSet::new();
 
     let mut total_tool_calls = 0usize;
+    let mut failed_tool_calls = 0usize;
     let mut iterations = 0usize;
     let mut no_tool_retries = 0usize;
     let max_no_tool_retries = 3;
     let mut context_overflow_retries = 0usize;
+    let mut tools_detail: Vec<ToolExecDetail> = Vec::new();
 
     let tools_ref = if all_tools.is_empty() {
         None
@@ -253,6 +264,14 @@ async fn run_simple_loop(
                 result.content =
                     process_result_content(&client, &config.model, tool_name, &result.content).await;
 
+                if result.is_error {
+                    failed_tool_calls += 1;
+                }
+                tools_detail.push(ToolExecDetail {
+                    tool: tool_name.clone(),
+                    success: !result.is_error,
+                });
+
                 event_sink.on_tool_result(tool_name, &result.content, result.is_error);
                 messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
 
@@ -267,7 +286,20 @@ async fn run_simple_loop(
         }
     }
 
-    Ok(build_agent_result(messages, total_tool_calls, iterations, Vec::new()))
+    let feedback = ExecutionFeedback {
+        total_tools: total_tool_calls,
+        failed_tools: failed_tool_calls,
+        replans: 0,
+        iterations,
+        elapsed_ms: start_time.elapsed().as_millis() as u64,
+        context_overflow_retries,
+        task_completed: true,
+        task_description: None,
+        rules_used: Vec::new(),
+        tools_detail,
+    };
+
+    Ok(build_agent_result(messages, total_tool_calls, iterations, Vec::new(), feedback))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -301,7 +333,14 @@ async fn run_with_task_planning(
     let all_tools = registry.all_tool_definitions();
 
     // ── Task planning ──────────────────────────────────────────────────────
-    let mut planner = TaskPlanner::new(Some(workspace));
+    let chat_root = skilllite_executor::workspace_root(None)
+        .unwrap_or_else(|_| {
+            dirs::home_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join(".skilllite")
+        })
+        .join("chat");
+    let mut planner = TaskPlanner::new(Some(workspace), Some(&chat_root));
 
     // Build conversation context from initial_messages (for "继续" detection)
     let conversation_context: Option<String> = if !initial_messages.is_empty() {
@@ -348,6 +387,7 @@ async fn run_with_task_planning(
             &config.workspace,
             session_key,
             config.enable_memory,
+            Some(&chat_root),
         )
     } else {
         let mut prompt = planner.build_task_system_prompt(skills);
@@ -367,13 +407,17 @@ async fn run_with_task_planning(
     messages.extend(initial_messages);
     messages.push(ChatMessage::user(user_message));
 
+    let start_time = std::time::Instant::now();
     let mut documented_skills: HashSet<String> = HashSet::new();
     let mut total_tool_calls = 0usize;
+    let mut failed_tool_calls = 0usize;
+    let mut replan_count = 0usize;
     let mut iterations = 0usize;
     let mut consecutive_no_tool = 0usize;
     let max_no_tool_retries = 3;
     let mut tool_calls_current_task = 0usize;
     let mut context_overflow_retries = 0usize;
+    let mut tools_detail: Vec<ToolExecDetail> = Vec::new();
 
     // Plan-based budget: effective_max = min(global, num_tasks * per_task)
     // When num_tasks=0 (planner returned empty), use max_iterations so we still run the loop
@@ -644,7 +688,9 @@ async fn run_with_task_planning(
 
             event_sink.on_tool_call(tool_name, arguments);
 
-            let mut result = if tool_name.as_str() == "update_task_plan" {
+            let is_replan = tool_name.as_str() == "update_task_plan";
+            let mut result = if is_replan {
+                replan_count += 1;
                 handle_update_task_plan(arguments, &mut planner, event_sink)
             } else {
                 execute_tool_call(
@@ -664,7 +710,14 @@ async fn run_with_task_planning(
 
             // Phase 1 C1: When tool fails, append replan hint (task-planning mode only)
             if result.is_error {
+                failed_tool_calls += 1;
                 result.content.push_str("\n\nTip: Consider update_task_plan if the approach needs to change.");
+            }
+            if !is_replan {
+                tools_detail.push(ToolExecDetail {
+                    tool: tool_name.clone(),
+                    success: !result.is_error,
+                });
             }
 
             event_sink.on_tool_result(tool_name, &result.content, result.is_error);
@@ -773,7 +826,20 @@ async fn run_with_task_planning(
         }
     }
 
-    Ok(build_agent_result(messages, total_tool_calls, iterations, planner.task_list.clone()))
+    let feedback = ExecutionFeedback {
+        total_tools: total_tool_calls,
+        failed_tools: failed_tool_calls,
+        replans: replan_count,
+        iterations,
+        elapsed_ms: start_time.elapsed().as_millis() as u64,
+        context_overflow_retries,
+        task_completed: planner.all_completed(),
+        task_description: None,
+        rules_used: Vec::new(),
+        tools_detail,
+    };
+
+    Ok(build_agent_result(messages, total_tool_calls, iterations, planner.task_list.clone(), feedback))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -992,6 +1058,7 @@ fn build_agent_result(
     tool_calls_count: usize,
     iterations: usize,
     task_plan: Vec<Task>,
+    feedback: ExecutionFeedback,
 ) -> AgentResult {
     let final_response = messages
         .iter()
@@ -1006,5 +1073,6 @@ fn build_agent_result(
         tool_calls_count,
         iterations,
         task_plan,
+        feedback,
     }
 }

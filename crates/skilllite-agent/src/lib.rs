@@ -11,3 +11,4 @@ pub mod task_planner;
 pub mod long_text;
 pub mod rpc;
 pub mod dependency_resolver;
+pub mod evolution;

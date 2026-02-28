@@ -14,6 +14,7 @@ use skilllite_executor::{
 };
 
 use super::agent_loop;
+use super::evolution;
 use super::extensions;
 use super::llm::LlmClient;
 use super::skills::LoadedSkill;
@@ -35,6 +36,8 @@ pub struct ChatSession {
     /// NOT the user's workspace directory.
     data_root: PathBuf,
     skills: Vec<LoadedSkill>,
+    /// EVO-3: handle for the idle evolution timer (cancelled and re-spawned each turn).
+    idle_evolution_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ChatSession {
@@ -50,12 +53,15 @@ impl ChatSession {
                     .join(".skilllite")
             })
             .join("chat");
+        // EVO-2: Ensure seed prompt/rules data exists on disk.
+        evolution::seed::ensure_seed_data(&data_root);
         Self {
             config,
             session_key: session_key.to_string(),
             session_id: None,
             data_root,
             skills,
+            idle_evolution_handle: None,
         }
     }
 
@@ -145,6 +151,10 @@ impl ChatSession {
     ) -> Result<String> {
         let _session_id = self.ensure_session()?;
 
+        // EVO-1: Classify previous turn's user feedback from this message.
+        // The feedback is attributed to the PREVIOUS decision, not the current one.
+        self.update_previous_feedback(user_message);
+
         // Read history from transcript
         let history = self.read_history()?;
         if !history.is_empty() {
@@ -227,7 +237,74 @@ impl ChatSession {
         // Append assistant response to transcript
         self.append_message("assistant", &result.response)?;
 
+        // EVO-1: Record execution decision (async-safe, <1ms with WAL).
+        // Only record meaningful turns (at least 1 tool call).
+        if result.feedback.total_tools >= 1 {
+            self.record_decision(&result.feedback);
+        }
+
+        // EVO-3: (Re)start idle evolution timer. Cancel previous timer if any.
+        self.restart_idle_evolution_timer();
+
         Ok(result.response)
+    }
+
+    // ─── EVO-3: Idle evolution trigger ─────────────────────────────────────
+
+    /// Cancel any existing idle timer and start a new 5-minute timer.
+    fn restart_idle_evolution_timer(&mut self) {
+        if let Some(handle) = self.idle_evolution_handle.take() {
+            handle.abort();
+        }
+        self.idle_evolution_handle = Some(spawn_idle_evolution(
+            self.data_root.clone(),
+            self.config.api_base.clone(),
+            self.config.api_key.clone(),
+            self.config.model.clone(),
+        ));
+    }
+
+    /// Graceful shutdown: flush evolution metrics, cancel idle timer.
+    pub fn shutdown(&mut self) {
+        if let Some(handle) = self.idle_evolution_handle.take() {
+            handle.abort();
+        }
+        shutdown_evolution(&self.data_root);
+    }
+
+    // ─── EVO-1: Feedback collection helpers ─────────────────────────────────
+
+    /// Record an execution decision to the evolution DB.
+    fn record_decision(&self, feedback: &ExecutionFeedback) {
+        if let Ok(conn) = evolution::feedback::open_evolution_db(&self.data_root) {
+            if let Err(e) = evolution::feedback::insert_decision(
+                &conn,
+                Some(&self.session_key),
+                feedback,
+                FeedbackSignal::Neutral,
+            ) {
+                tracing::warn!("Failed to record evolution decision: {}", e);
+            }
+            // Update daily metrics (best-effort)
+            let _ = evolution::feedback::update_daily_metrics(&conn);
+        }
+    }
+
+    /// Update the previous decision's feedback signal based on the current user message.
+    fn update_previous_feedback(&self, user_message: &str) {
+        let signal = classify_user_feedback(user_message);
+        if signal == FeedbackSignal::Neutral {
+            return;
+        }
+        if let Ok(conn) = evolution::feedback::open_evolution_db(&self.data_root) {
+            if let Err(e) = evolution::feedback::update_last_decision_feedback(
+                &conn,
+                &self.session_key,
+                signal,
+            ) {
+                tracing::debug!("Failed to update previous feedback: {}", e);
+            }
+        }
     }
 
     /// Append a message entry to the transcript.
@@ -616,6 +693,79 @@ impl ChatSession {
 
         Ok(())
     }
+}
+
+// ─── EVO-3: Evolution triggers ──────────────────────────────────────────────
+
+/// Idle evolution trigger: spawn background evolution if user has been idle for 5+ minutes.
+/// Returns a JoinHandle that can be awaited or dropped.
+///
+/// EVO-5: Respects SKILLLITE_EVOLUTION env var; emits user-visible messages.
+pub fn spawn_idle_evolution(
+    data_root: PathBuf,
+    api_base: String,
+    api_key: String,
+    model: String,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        // EVO-5: Skip if evolution is disabled
+        if evolution::EvolutionMode::from_env().is_disabled() {
+            tracing::debug!("Evolution disabled, skipping idle trigger");
+            return;
+        }
+
+        // Wait 5 minutes
+        tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+
+        tracing::debug!("Idle evolution trigger fired");
+        match evolution::run_evolution(&data_root, &api_base, &api_key, &model).await {
+            Ok(Some(txn_id)) => {
+                tracing::info!("Idle evolution completed: {}", txn_id);
+
+                // EVO-5: Emit user-visible evolution summary
+                if let Ok(conn) = evolution::feedback::open_evolution_db(&data_root) {
+                    let changes = query_recent_evolution_changes(&conn, &txn_id);
+                    let messages = evolution::format_evolution_changes(&changes);
+                    for msg in &messages {
+                        eprintln!("{}", msg);
+                    }
+
+                    let _ = evolution::check_auto_rollback(&conn, &data_root);
+                }
+            }
+            Ok(None) => tracing::debug!("Idle evolution: nothing to evolve"),
+            Err(e) => tracing::warn!("Idle evolution failed: {}", e),
+        }
+    })
+}
+
+/// Query recent evolution changes for a specific transaction.
+fn query_recent_evolution_changes(
+    conn: &rusqlite::Connection,
+    txn_id: &str,
+) -> Vec<(String, String)> {
+    let mut stmt = match conn.prepare(
+        "SELECT type, target_id FROM evolution_log WHERE version = ?1",
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    stmt.query_map(rusqlite::params![txn_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+        ))
+    })
+    .ok()
+    .into_iter()
+    .flatten()
+    .filter_map(|r| r.ok())
+    .collect()
+}
+
+/// Shutdown hook: flush metrics, no LLM calls. Called before process exit.
+pub fn shutdown_evolution(data_root: &std::path::Path) {
+    evolution::on_shutdown(data_root);
 }
 
 /// Convert a transcript entry to a ChatMessage.

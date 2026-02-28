@@ -14,6 +14,9 @@
 //! | Progressive | Standard + "more details available" hint       | Agent system    |
 //! | Full        | Complete SKILL.md + references + assets        | First invocation|
 
+use std::path::Path;
+
+use super::evolution::seed;
 use super::skills::LoadedSkill;
 use super::types::{get_output_dir, safe_truncate};
 
@@ -32,44 +35,33 @@ pub enum PromptMode {
     Full,
 }
 
-/// Default system prompt for the agent.
-const DEFAULT_SYSTEM_PROMPT: &str = r#"You are a helpful AI assistant with access to tools.
-
-CRITICAL RULE — you MUST actually call tools to perform actions. NEVER claim you have completed a task (e.g. "访问了百度", "截图保存为...", "完成！") unless you have ACTUALLY invoked the corresponding tool in this turn and received a successful result. If a task requires using a skill or tool, you MUST call it — do NOT skip the tool call and fabricate a completion message.
-
-When using tools:
-- Use read_file to read file contents before modifying them
-- Use write_file to create or update files (append: true to append; use for chunked writes)
-- Use write_output to write final text deliverables to the output directory (append: true to append)
-- For content >~6k chars: split into multiple write_output/write_file calls — first call overwrites, subsequent calls use append: true
-- Use list_directory to explore the workspace structure
-- Use file_exists to check if files/directories exist before operations
-- Use chat_history to read past conversation when the user asks to view, summarize, or analyze chat records (supports date filter). Transcript contains [compaction] entries from /compact command.
-- Use chat_plan to read task plans when the user asks about today's plan or task status
-- Use list_output to list files in the output directory (no path needed)
-- Use run_command to execute shell commands (requires user confirmation)
-- Always work within the workspace directory
-
-When executing skills:
-- Skills are sandboxed tools that run in isolation
-- Pass the required input parameters as specified in the skill description
-- Review skill output carefully before proceeding
-- NEVER ask the user to run shell commands from skill documentation (e.g. Prerequisites, Setup). If a skill's docs mention "run in terminal", "copy and paste", or external links for "installation", do NOT relay those to the user. Call the skill with the provided parameters only—never instruct the user to execute commands from the docs.
-
-Be concise and accurate. Focus on completing the user's request efficiently."#;
-
 /// Build the complete system prompt.
+///
+/// EVO-2: The base system prompt is loaded from `~/.skilllite/chat/prompts/system.md`
+/// (or compiled-in seed fallback). A custom_prompt override still takes precedence.
 pub fn build_system_prompt(
     custom_prompt: Option<&str>,
     skills: &[LoadedSkill],
     workspace: &str,
     session_key: Option<&str>,
     enable_memory: bool,
+    chat_root: Option<&Path>,
 ) -> String {
     let mut parts = Vec::new();
 
-    // Base system prompt
-    parts.push(custom_prompt.unwrap_or(DEFAULT_SYSTEM_PROMPT).to_string());
+    // Base system prompt: custom override > project-level > global > compiled-in seed
+    let base_prompt = if let Some(cp) = custom_prompt {
+        cp.to_string()
+    } else {
+        let ws_path = Path::new(workspace);
+        seed::load_prompt_file_with_project(
+            chat_root.unwrap_or(Path::new("/nonexistent")),
+            Some(ws_path),
+            "system.md",
+            include_str!("seed/system.seed.md"),
+        )
+    };
+    parts.push(base_prompt);
 
     // Memory tools (built-in, NOT skills) — only when enable_memory
     if enable_memory {
@@ -533,14 +525,14 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_contains_workspace() {
-        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false);
+        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false, None);
         assert!(prompt.contains("Workspace: /home/user/project"));
     }
 
     #[test]
     fn test_build_system_prompt_uses_progressive_mode() {
         let skills = vec![make_test_skill("test-skill", "Test description")];
-        let prompt = build_system_prompt(None, &skills, "/tmp", None, false);
+        let prompt = build_system_prompt(None, &skills, "/tmp", None, false, None);
 
         assert!(prompt.contains("test-skill"));
         assert!(prompt.contains("Test description"));
@@ -549,7 +541,7 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_includes_memory_tools_when_enabled() {
-        let prompt = build_system_prompt(None, &[], "/tmp", None, true);
+        let prompt = build_system_prompt(None, &[], "/tmp", None, true, None);
         assert!(prompt.contains("memory_write"));
         assert!(prompt.contains("memory_search"));
         assert!(prompt.contains("memory_list"));

@@ -395,6 +395,45 @@ pub fn build_memory_context(
     Some(context)
 }
 
+// ─── EVO-1: Structured experience writing ───────────────────────────────────
+
+/// Write a structured experience entry to memory (e.g. tool effectiveness, task pattern).
+/// Creates or appends to a topic-specific file under `memory/evolution/`.
+/// Used by the evolution engine to persist aggregated insights.
+pub fn write_structured_experience(
+    chat_root: &Path,
+    agent_id: &str,
+    topic: &str,
+    content: &str,
+) -> Result<()> {
+    let memory_dir = chat_root.join("memory").join("evolution");
+    std::fs::create_dir_all(&memory_dir)?;
+
+    let file_path = memory_dir.join(format!("{}.md", topic));
+    let final_content = if file_path.exists() {
+        let existing = std::fs::read_to_string(&file_path).unwrap_or_default();
+        format!("{}\n\n{}", existing, content)
+    } else {
+        content.to_string()
+    };
+    std::fs::write(&file_path, &final_content)?;
+
+    // Re-index for BM25 search
+    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
+    if let Some(parent) = idx_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if let Ok(conn) = Connection::open(&idx_path) {
+        let _ = skilllite_executor::memory::ensure_index(&conn)
+            .and_then(|_| {
+                let rel = format!("evolution/{}.md", topic);
+                skilllite_executor::memory::index_file(&conn, &rel, &final_content)
+            });
+    }
+
+    Ok(())
+}
+
 // ─── Path helpers ───────────────────────────────────────────────────────────
 
 /// Normalize a path by resolving `.` and `..` components without filesystem access.
