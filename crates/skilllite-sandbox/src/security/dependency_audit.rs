@@ -29,6 +29,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use super::malicious_packages::{check_malicious_packages, MaliciousPackageHit};
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 /// A parsed dependency with name, version, and ecosystem.
@@ -76,6 +78,10 @@ pub struct DependencyAuditResult {
     pub total_vulns: usize,
     pub backend: AuditBackend,
     pub entries: Vec<PackageAuditEntry>,
+    /// Packages matched by the offline malicious-package library (B4).
+    /// Populated before any network call — zero-latency, zero-network.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub malicious: Vec<MaliciousPackageHit>,
 }
 
 /// Metadata hint for dependency inference when no explicit dependency files exist.
@@ -789,6 +795,23 @@ pub fn audit_skill_dependencies(
     metadata_hint: Option<&MetadataHint>,
 ) -> Result<DependencyAuditResult> {
     let deps = collect_dependencies(skill_dir, metadata_hint);
+
+    // ── B4: Offline malicious-package check (zero-network, instant) ──────────
+    // Run BEFORE any network call so installs are blocked even in --scan-offline mode.
+    let malicious_hits = check_malicious_packages(
+        deps.iter().map(|d| (d.name.as_str(), d.ecosystem.as_str())),
+    );
+    if !malicious_hits.is_empty() {
+        for hit in &malicious_hits {
+            tracing::warn!(
+                "🔴 Malicious package detected (offline DB): {} [{}] — {}",
+                hit.name,
+                hit.ecosystem,
+                hit.reason
+            );
+        }
+    }
+
     if deps.is_empty() {
         return Ok(DependencyAuditResult {
             scanned: 0,
@@ -796,6 +819,7 @@ pub fn audit_skill_dependencies(
             total_vulns: 0,
             backend: AuditBackend::Native,
             entries: Vec::new(),
+            malicious: malicious_hits,
         });
     }
 
@@ -809,7 +833,7 @@ pub fn audit_skill_dependencies(
             custom_url
         );
         let entries = query_osv_batch(&agent, &deps, &custom_url)?;
-        return Ok(build_result(entries, AuditBackend::Custom(custom_url)));
+        return Ok(build_result(entries, AuditBackend::Custom(custom_url), malicious_hits));
     }
 
     // Backend 2+3: Native — PyPI for Python, OSV for npm
@@ -852,10 +876,14 @@ pub fn audit_skill_dependencies(
         all_entries.extend(osv_entries);
     }
 
-    Ok(build_result(all_entries, AuditBackend::Native))
+    Ok(build_result(all_entries, AuditBackend::Native, malicious_hits))
 }
 
-fn build_result(entries: Vec<PackageAuditEntry>, backend: AuditBackend) -> DependencyAuditResult {
+fn build_result(
+    entries: Vec<PackageAuditEntry>,
+    backend: AuditBackend,
+    malicious: Vec<MaliciousPackageHit>,
+) -> DependencyAuditResult {
     let vulnerable_count = entries.iter().filter(|e| !e.vulns.is_empty()).count();
     let total_vulns: usize = entries.iter().map(|e| e.vulns.len()).sum();
     let scanned = entries.len();
@@ -865,6 +893,7 @@ fn build_result(entries: Vec<PackageAuditEntry>, backend: AuditBackend) -> Depen
         total_vulns,
         backend,
         entries,
+        malicious,
     }
 }
 
@@ -872,24 +901,52 @@ fn build_result(entries: Vec<PackageAuditEntry>, backend: AuditBackend) -> Depen
 
 /// Format audit result for human-readable terminal display.
 pub fn format_audit_result(result: &DependencyAuditResult) -> String {
-    if result.scanned == 0 {
-        return "ℹ  No dependencies detected (no files, lock, or inferred packages).".to_string();
+    let mut lines: Vec<String> = Vec::new();
+
+    // ── B4: Offline malicious-package hits (shown first, highest priority) ───
+    if !result.malicious.is_empty() {
+        lines.push(format!(
+            "🔴 Malicious Package Library: {} known-malicious package(s) detected!",
+            result.malicious.len()
+        ));
+        lines.push(String::new());
+        for hit in &result.malicious {
+            lines.push(format!(
+                "  ☠️  {} [{}]",
+                hit.name, hit.ecosystem
+            ));
+            lines.push(format!("     └─ {}", hit.reason));
+        }
+        lines.push(String::new());
     }
 
-    if result.vulnerable_count == 0 {
+    if result.scanned == 0 {
+        if result.malicious.is_empty() {
+            return "ℹ  No dependencies detected (no files, lock, or inferred packages).".to_string();
+        }
+        return lines.join("\n");
+    }
+
+    if result.vulnerable_count == 0 && result.malicious.is_empty() {
         return format!(
             "✅ Scanned {} dependencies — no known vulnerabilities found.",
             result.scanned
         );
     }
 
-    let mut lines = vec![
-        format!(
-            "⚠️  Supply Chain Audit: {}/{} packages have known vulnerabilities ({} total)",
-            result.vulnerable_count, result.scanned, result.total_vulns
-        ),
-        String::new(),
-    ];
+    if result.vulnerable_count == 0 {
+        lines.push(format!(
+            "✅ Scanned {} dependencies — no known CVE vulnerabilities found.",
+            result.scanned
+        ));
+        return lines.join("\n");
+    }
+
+    lines.push(format!(
+        "⚠️  Supply Chain Audit: {}/{} packages have known vulnerabilities ({} total)",
+        result.vulnerable_count, result.scanned, result.total_vulns
+    ));
+    lines.push(String::new());
 
     for entry in &result.entries {
         if entry.vulns.is_empty() {
@@ -1061,9 +1118,10 @@ mod tests {
                 vulns: vec![],
             },
         ];
-        let result = build_result(entries, AuditBackend::Native);
+        let result = build_result(entries, AuditBackend::Native, vec![]);
         assert_eq!(result.scanned, 2);
         assert_eq!(result.vulnerable_count, 1);
         assert_eq!(result.total_vulns, 1);
+        assert!(result.malicious.is_empty());
     }
 }

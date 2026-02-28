@@ -125,6 +125,8 @@ impl ScriptScanner {
 
         self.scan_with_rules(content, &language, &mut issues);
         self.scan_entropy(content, &language, &mut issues);
+        self.scan_base64(content, &language, &mut issues);
+        self.scan_multistage_payload(content, &language, &mut issues);
 
         let is_safe = issues
             .iter()
@@ -190,6 +192,230 @@ impl ScriptScanner {
         }
     }
 
+    // ─── B2: Base64 payload detection ────────────────────────────────────────
+
+    /// Detect long base64 literals and explicit base64-decode calls (B2).
+    ///
+    /// Severity rules:
+    /// - Quoted base64 literal ≥ 50 chars + decode call on same line + dangerous decoded
+    ///   content → **Critical**
+    /// - Quoted base64 literal ≥ 50 chars + decode call on same line → **High**
+    /// - Explicit decode call (b64decode / atob / Buffer.from base64) without visible
+    ///   literal, or long literal alone → **Medium**
+    fn scan_base64(&self, content: &str, language: &str, issues: &mut Vec<SecurityIssue>) {
+        // Regex: quoted base64 string of ≥ 50 base64-alphabet chars (with optional padding)
+        let b64_literal_re =
+            match Regex::new(r#"['"]([A-Za-z0-9+/]{50,}={0,2})['"]"#) {
+                Ok(r) => r,
+                Err(_) => return,
+            };
+
+        // Language-specific decode-call patterns
+        let decode_re_py =
+            Regex::new(r"base64\s*\.\s*(?:b64decode|decodebytes|decode)\s*\(|codecs\s*\.\s*decode\s*\(")
+                .unwrap_or_else(|_| Regex::new(r"$^").unwrap());
+        let decode_re_js =
+            Regex::new(r#"atob\s*\(|Buffer\s*\.\s*from\s*\([^)]*['"]base64['"]"#)
+                .unwrap_or_else(|_| Regex::new(r"$^").unwrap());
+
+        let decode_re: &Regex = match language {
+            "python" => &decode_re_py,
+            "javascript" | "node" => &decode_re_js,
+            _ => return, // unknown language — skip
+        };
+
+        for (line_idx, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || Self::is_comment_line(trimmed, language) {
+                continue;
+            }
+
+            let has_decode_call = decode_re.is_match(line);
+            let b64_cap = b64_literal_re.captures(line);
+
+            match (has_decode_call, b64_cap) {
+                // decode call + visible base64 literal on the same line
+                (true, Some(cap)) => {
+                    let b64_str = &cap[1];
+                    let (severity, detail) =
+                        if let Some(danger) = analyze_decoded_base64(b64_str) {
+                            (
+                                SecuritySeverity::Critical,
+                                format!(
+                                    "Base64 decode call with literal that decodes to dangerous content: {}",
+                                    danger
+                                ),
+                            )
+                        } else {
+                            (
+                                SecuritySeverity::High,
+                                format!(
+                                    "Base64 decode call with embedded literal ({} chars) — \
+                                     possible encoded payload",
+                                    b64_str.len()
+                                ),
+                            )
+                        };
+                    issues.push(SecurityIssue {
+                        rule_id: "base64-encoded-payload".to_string(),
+                        severity,
+                        issue_type: SecurityIssueType::EncodedPayload,
+                        line_number: line_idx + 1,
+                        description: detail,
+                        code_snippet: trimmed.chars().take(120).collect(),
+                    });
+                }
+                // decode call without visible literal
+                (true, None) => {
+                    issues.push(SecurityIssue {
+                        rule_id: "base64-decode-call".to_string(),
+                        severity: SecuritySeverity::Medium,
+                        issue_type: SecurityIssueType::EncodedPayload,
+                        line_number: line_idx + 1,
+                        description:
+                            "Base64/codec decode call detected — verify the decoded content is safe"
+                                .to_string(),
+                        code_snippet: trimmed.chars().take(120).collect(),
+                    });
+                }
+                // long base64 literal without an explicit decode call on this line
+                (false, Some(cap)) => {
+                    let b64_str = &cap[1];
+                    issues.push(SecurityIssue {
+                        rule_id: "base64-literal".to_string(),
+                        severity: SecuritySeverity::Medium,
+                        issue_type: SecurityIssueType::EncodedPayload,
+                        line_number: line_idx + 1,
+                        description: format!(
+                            "Long base64-encoded string literal ({} chars) — possible encoded payload",
+                            b64_str.len()
+                        ),
+                        code_snippet: trimmed.chars().take(120).collect(),
+                    });
+                }
+                (false, None) => {}
+            }
+        }
+    }
+
+    // ─── B3: Multi-stage payload detection ───────────────────────────────────
+
+    /// Detect "download → decode → execute" chain patterns across a file (B3).
+    ///
+    /// Three families are matched over all lines:
+    /// - **Download**: urllib/requests/fetch/curl/wget…
+    /// - **Decode**: base64.b64decode/codecs.decode/bytes.fromhex/atob…
+    /// - **Execute**: exec/eval/subprocess/os.system/child_process/spawn…
+    ///
+    /// Severity:
+    /// - 2 out of 3 families → **High** (suspicious combination)
+    /// - All 3 families → **Critical** (classic staged payload chain)
+    fn scan_multistage_payload(
+        &self,
+        content: &str,
+        language: &str,
+        issues: &mut Vec<SecurityIssue>,
+    ) {
+        let (dl_re, dec_re, exec_re) = match language {
+            "python" => (
+                Regex::new(
+                    r"urllib\.request|requests\s*\.\s*(?:get|post|Session)|httplib|http\.client\
+                      |wget\.download|urlopen\s*\(",
+                )
+                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                Regex::new(
+                    r"base64\s*\.\s*(?:b64decode|decodebytes|decode)|codecs\s*\.\s*decode\
+                      |bytes\.fromhex\s*\(",
+                )
+                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                Regex::new(
+                    r"(?:^|[^.\w])exec\s*\(|eval\s*\(|subprocess\s*\.\s*(?:run|call|Popen)\
+                      |os\s*\.\s*system\s*\(",
+                )
+                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+            ),
+            "javascript" | "node" => (
+                Regex::new(
+                    r#"fetch\s*\(|axios\s*\.\s*(?:get|post)|http\s*\.\s*(?:get|request)\s*\(|https\s*\.\s*(?:get|request)\s*\(|require\s*\(\s*['"]node-fetch['"]"#,
+                )
+                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                Regex::new(
+                    r#"atob\s*\(|Buffer\s*\.\s*from\s*\([^)]*['"]base64['"]|\.toString\s*\(\s*['"]base64['"]"#,
+                )
+                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                Regex::new(
+                    r#"eval\s*\(|new\s+Function\s*\(|child_process\s*\.\s*(?:exec|spawn|execSync)|require\s*\(\s*['"]vm['"]"#,
+                )
+                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+            ),
+            _ => return,
+        };
+
+        let mut dl_line: Option<usize> = None;
+        let mut dec_line: Option<usize> = None;
+        let mut exec_line: Option<usize> = None;
+
+        for (line_idx, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || Self::is_comment_line(trimmed, language) {
+                continue;
+            }
+            if dl_line.is_none() && dl_re.is_match(line) {
+                dl_line = Some(line_idx + 1);
+            }
+            if dec_line.is_none() && dec_re.is_match(line) {
+                dec_line = Some(line_idx + 1);
+            }
+            if exec_line.is_none() && exec_re.is_match(line) {
+                exec_line = Some(line_idx + 1);
+            }
+        }
+
+        let matched: Vec<(&str, usize)> = [
+            ("download", dl_line),
+            ("decode", dec_line),
+            ("execute", exec_line),
+        ]
+        .iter()
+        .filter_map(|(name, opt)| opt.map(|ln| (*name, ln)))
+        .collect();
+
+        if matched.len() >= 2 {
+            let severity = if matched.len() == 3 {
+                SecuritySeverity::Critical
+            } else {
+                SecuritySeverity::High
+            };
+            let stages: Vec<String> = matched
+                .iter()
+                .map(|(name, ln)| format!("{}(line {})", name, ln))
+                .collect();
+            let description = format!(
+                "Multi-stage payload chain detected: {} — \
+                 {} out of 3 stages (download/decode/execute) found in this file",
+                stages.join(" → "),
+                matched.len()
+            );
+            // Report at the first matched line
+            let first_line = matched.iter().map(|(_, ln)| *ln).min().unwrap_or(1);
+            issues.push(SecurityIssue {
+                rule_id: "multistage-payload".to_string(),
+                severity,
+                issue_type: SecurityIssueType::MultiStagePayload,
+                line_number: first_line,
+                description,
+                code_snippet: format!(
+                    "stages: {}",
+                    matched
+                        .iter()
+                        .map(|(n, _)| *n)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            });
+        }
+    }
+
     /// Scan for high-entropy lines that indicate obfuscated / encoded payloads.
     ///
     /// Lines shorter than `MIN_LEN` chars are skipped (too short to be meaningful).
@@ -248,6 +474,81 @@ fn shannon_entropy(s: &str) -> f64 {
             -p * p.log2()
         })
         .sum()
+}
+
+// ─── Base64 helpers (no external crate) ──────────────────────────────────────
+
+/// Decode a standard base64 string. Returns `None` on invalid input.
+///
+/// Pure Rust, ~25 lines — avoids adding a `base64` crate dependency.
+fn base64_decode_safe(input: &str) -> Option<Vec<u8>> {
+    const TABLE: [u8; 128] = {
+        let mut t = [255u8; 128];
+        let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut i = 0usize;
+        while i < chars.len() {
+            t[chars[i] as usize] = i as u8;
+            i += 1;
+        }
+        t
+    };
+    let input = input.trim_end_matches('=');
+    let mut out = Vec::with_capacity(input.len() * 3 / 4 + 1);
+    let bytes = input.as_bytes();
+    let mut buf = 0u32;
+    let mut bits = 0u32;
+    for &b in bytes {
+        if b as usize >= 128 {
+            return None;
+        }
+        let val = TABLE[b as usize];
+        if val == 255 {
+            return None;
+        }
+        buf = (buf << 6) | val as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+            buf &= (1 << bits) - 1;
+        }
+    }
+    Some(out)
+}
+
+/// Try to decode a base64 string and check if the decoded bytes contain
+/// known dangerous patterns. Returns a short reason string if dangerous.
+fn analyze_decoded_base64(b64: &str) -> Option<&'static str> {
+    let decoded = base64_decode_safe(b64)?;
+    // Work with both raw bytes and lossy UTF-8
+    let text = String::from_utf8_lossy(&decoded);
+    let lower = text.to_lowercase();
+
+    // Shell execution
+    if lower.contains("/bin/sh") || lower.contains("/bin/bash") || lower.contains("cmd.exe") {
+        return Some("decoded content contains shell reference (/bin/sh, bash, cmd.exe)");
+    }
+    // Download tools
+    if lower.contains("wget ") || lower.contains("curl ") || lower.contains("powershell") {
+        return Some("decoded content contains download tool (wget/curl/powershell)");
+    }
+    // Privilege escalation
+    if lower.contains("chmod +x") || lower.contains("chmod 777") || lower.contains("sudo ") {
+        return Some("decoded content contains privilege escalation (chmod/sudo)");
+    }
+    // Code execution functions
+    if lower.contains("exec(") || lower.contains("eval(") || lower.contains("import socket") {
+        return Some("decoded content contains code execution (exec/eval/socket)");
+    }
+    // Subprocess / os
+    if lower.contains("subprocess") || lower.contains("os.system") {
+        return Some("decoded content contains subprocess/os.system call");
+    }
+    // Network reverse shell indicators
+    if lower.contains("connect(") && (lower.contains("socket") || lower.contains("127.0.0")) {
+        return Some("decoded content contains socket connect — possible reverse shell");
+    }
+    None
 }
 
 /// Detect programming language from file extension

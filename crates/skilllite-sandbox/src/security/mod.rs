@@ -54,6 +54,8 @@
 pub mod default_rules;
 #[cfg(feature = "audit")]
 pub mod dependency_audit;
+#[cfg(feature = "audit")]
+pub mod malicious_packages;
 pub mod policy;
 pub mod rules;
 pub mod scanner;

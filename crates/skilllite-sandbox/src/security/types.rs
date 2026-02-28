@@ -42,8 +42,14 @@ pub enum SecurityIssueType {
     ProcessExecution,
     SystemAccess,
     DangerousModule,
-    /// High-entropy line detected — likely obfuscated/encoded payload
+    /// High-entropy line detected — likely obfuscated/encoded payload (B1)
     ObfuscatedCode,
+    /// Long base64 literal / decode call detected — possible encoded payload (B2)
+    EncodedPayload,
+    /// Multi-stage chain detected: download → decode → execute (B3)
+    MultiStagePayload,
+    /// Package name matches the offline malicious-package library (B4)
+    MaliciousPackage,
     /// Scan process failed (timeout, IO error, etc.) — fail-secure
     ScanError,
 }
@@ -59,6 +65,9 @@ impl std::fmt::Display for SecurityIssueType {
             SecurityIssueType::SystemAccess => write!(f, "System Access"),
             SecurityIssueType::DangerousModule => write!(f, "Dangerous Module"),
             SecurityIssueType::ObfuscatedCode => write!(f, "Obfuscated Code"),
+            SecurityIssueType::EncodedPayload => write!(f, "Encoded Payload"),
+            SecurityIssueType::MultiStagePayload => write!(f, "Multi-Stage Payload"),
+            SecurityIssueType::MaliciousPackage => write!(f, "Malicious Package"),
             SecurityIssueType::ScanError => write!(f, "Scan Error"),
         }
     }
