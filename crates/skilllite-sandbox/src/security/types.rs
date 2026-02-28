@@ -42,6 +42,8 @@ pub enum SecurityIssueType {
     ProcessExecution,
     SystemAccess,
     DangerousModule,
+    /// High-entropy line detected — likely obfuscated/encoded payload
+    ObfuscatedCode,
     /// Scan process failed (timeout, IO error, etc.) — fail-secure
     ScanError,
 }
@@ -56,6 +58,7 @@ impl std::fmt::Display for SecurityIssueType {
             SecurityIssueType::ProcessExecution => write!(f, "Process Execution"),
             SecurityIssueType::SystemAccess => write!(f, "System Access"),
             SecurityIssueType::DangerousModule => write!(f, "Dangerous Module"),
+            SecurityIssueType::ObfuscatedCode => write!(f, "Obfuscated Code"),
             SecurityIssueType::ScanError => write!(f, "Scan Error"),
         }
     }

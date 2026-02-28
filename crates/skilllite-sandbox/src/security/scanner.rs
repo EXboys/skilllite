@@ -124,6 +124,7 @@ impl ScriptScanner {
         let mut issues = Vec::new();
 
         self.scan_with_rules(content, &language, &mut issues);
+        self.scan_entropy(content, &language, &mut issues);
 
         let is_safe = issues
             .iter()
@@ -188,6 +189,65 @@ impl ScriptScanner {
             _ => false,
         }
     }
+
+    /// Scan for high-entropy lines that indicate obfuscated / encoded payloads.
+    ///
+    /// Lines shorter than `MIN_LEN` chars are skipped (too short to be meaningful).
+    /// Lines whose Shannon entropy exceeds `THRESHOLD` bits/char are flagged as
+    /// `SecuritySeverity::Medium` with issue type `ObfuscatedCode`.
+    fn scan_entropy(&self, content: &str, language: &str, issues: &mut Vec<SecurityIssue>) {
+        /// Minimum printable characters required before entropy is computed.
+        const MIN_LEN: usize = 20;
+        /// Entropy threshold in bits per character (base-2).
+        const THRESHOLD: f64 = 4.5;
+
+        for (line_idx, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+
+            // Skip blank lines and comment lines
+            if trimmed.len() < MIN_LEN || Self::is_comment_line(trimmed, language) {
+                continue;
+            }
+
+            if shannon_entropy(trimmed) > THRESHOLD {
+                issues.push(SecurityIssue {
+                    rule_id: "entropy-obfuscation".to_string(),
+                    severity: SecuritySeverity::Medium,
+                    issue_type: SecurityIssueType::ObfuscatedCode,
+                    line_number: line_idx + 1,
+                    description: format!(
+                        "High-entropy line ({:.2} bits/char > {:.1} threshold) — possible obfuscated or encoded payload",
+                        shannon_entropy(trimmed),
+                        THRESHOLD,
+                    ),
+                    code_snippet: trimmed.chars().take(120).collect(),
+                });
+            }
+        }
+    }
+}
+
+/// Compute Shannon entropy (bits per character) of a string.
+///
+/// H = -∑ p_i · log₂(p_i)  where p_i = count(byte_i) / total_bytes
+///
+/// Returns 0.0 for empty strings.
+fn shannon_entropy(s: &str) -> f64 {
+    if s.is_empty() {
+        return 0.0;
+    }
+    let mut freq = [0u32; 256];
+    for &b in s.as_bytes() {
+        freq[b as usize] += 1;
+    }
+    let total = s.len() as f64;
+    freq.iter()
+        .filter(|&&c| c > 0)
+        .map(|&c| {
+            let p = c as f64 / total;
+            -p * p.log2()
+        })
+        .sum()
 }
 
 /// Detect programming language from file extension
