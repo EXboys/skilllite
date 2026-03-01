@@ -182,7 +182,7 @@
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLLITE_HIGH_RISK_CONFIRM` | string | `write_key_path,run_command,network` | 逗号分隔：需发消息确认的高危操作。可选值：`write_key_path`（写 package.json、Cargo.toml 等关键路径）、`run_command`（执行 shell 命令）、`network`（网络 skill 执行）。`none`=全部跳过确认；`all`=全部确认 |
+| `SKILLLITE_HIGH_RISK_CONFIRM` | string | `write_key_path,run_command,network` | 逗号分隔：需发消息确认的高危操作。注：.env、.key、.git/config 等配置和密码文件读取已直接拒绝 |
 
 ---
 

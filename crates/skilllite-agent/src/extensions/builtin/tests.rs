@@ -256,6 +256,59 @@ fn test_read_file_range_beyond_end() {
     assert!(result.content.contains("File has 1 lines"));
 }
 
+// ─── P0: read_file blocks .env/.key/.git/config，其他文件过滤敏感信息 ───
+
+#[test]
+fn test_read_file_blocks_sensitive_paths() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    std::fs::write(workspace.join(".env"), "API_KEY=sk-secret\n").unwrap();
+    std::fs::write(workspace.join("secret.key"), "private key").unwrap();
+    std::fs::write(workspace.join("cert.pem"), "cert").unwrap();
+
+    for path in [".env", "secret.key", "cert.pem"] {
+        let args = serde_json::json!({ "path": path });
+        let result = execute_builtin_tool("read_file", &args.to_string(), workspace, None);
+        assert!(result.is_error);
+        assert!(result.content.contains("Blocked: reading sensitive file"));
+        assert!(result.content.contains(path));
+    }
+}
+
+#[test]
+fn test_read_file_redacts_sensitive_in_other_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    std::fs::write(
+        workspace.join("config.json"),
+        r#"{"api_key": "sk-secret123", "model": "gpt4", "password": "mypwd"}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        workspace.join("README.md"),
+        "Setup: set API_KEY=sk-abcdefghij1234567890 in your env\n",
+    )
+    .unwrap();
+
+    let args = serde_json::json!({ "path": "config.json" });
+    let result = execute_builtin_tool("read_file", &args.to_string(), workspace, None);
+    assert!(!result.is_error);
+    assert!(result.content.contains(r#""api_key": "[REDACTED]""#));
+    assert!(result.content.contains(r#""password": "[REDACTED]""#));
+    assert!(result.content.contains(r#""model": "gpt4"#));
+    assert!(result.content.contains("Sensitive values"));
+
+    let args2 = serde_json::json!({ "path": "README.md" });
+    let result2 = execute_builtin_tool("read_file", &args2.to_string(), workspace, None);
+    assert!(!result2.is_error);
+    // API_KEY=xxx 被脱敏为 API_KEY=[REDACTED]，或 sk-xxx 被脱敏为 sk-[REDACTED]
+    assert!(
+        result2.content.contains("API_KEY=[REDACTED]") || result2.content.contains("sk-[REDACTED]"),
+        "expected sensitive value redaction, got: {}",
+        result2.content
+    );
+}
+
 // ─── P0: insert_lines ───────────────────────────────────────────────
 
 #[test]
@@ -964,4 +1017,24 @@ fn test_run_command_no_truncation_short() {
     let short = "hello world";
     let result = run_command::truncate_command_output_for_test(short);
     assert_eq!(result, short);
+}
+
+// ─── run_command blocks sensitive file read ────────────────────────────────
+
+#[tokio::test]
+async fn test_run_command_blocks_cat_env() {
+    use super::run_command;
+    use crate::types::SilentEventSink;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    std::fs::write(workspace.join(".env"), "API_KEY=sk-secret\n").unwrap();
+
+    let mut sink = SilentEventSink;
+    let args = serde_json::json!({ "command": "cat .env" });
+    let result = run_command::execute_run_command(&args, workspace, &mut sink).await;
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("Blocked"));
+    assert!(err.to_string().contains("sensitive file"));
 }

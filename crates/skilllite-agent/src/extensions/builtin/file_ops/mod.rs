@@ -11,10 +11,9 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 
-use crate::types::{ToolDefinition, FunctionDef};
+use crate::types::{EventSink, ToolDefinition, FunctionDef};
 
-use crate::types::EventSink;
-use super::{get_path_arg, is_key_write_path, is_sensitive_write_path, list_dir_impl, resolve_within_workspace, resolve_within_workspace_or_output};
+use super::{get_path_arg, is_key_write_path, is_sensitive_read_path, is_sensitive_write_path, filter_sensitive_content_in_text, list_dir_impl, resolve_within_workspace, resolve_within_workspace_or_output};
 use crate::high_risk;
 
 pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
@@ -23,7 +22,7 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "read_file".to_string(),
-                description: "Read the contents of a file. Returns UTF-8 text with line numbers (N|line). Use start_line/end_line for partial reads to save context.".to_string(),
+                description: "Read the contents of a file. Returns UTF-8 text with line numbers (N|line). Use start_line/end_line for partial reads to save context. Blocks .env, .key, .git/config. Other files have sensitive values (API_KEY, password, etc.) redacted.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -207,11 +206,20 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
         anyhow::bail!("Path is a directory, not a file: {}", path_str);
     }
 
+    // A11: .env、.key、.git/config 等配置和密码文件直接拒绝
+    if is_sensitive_read_path(&path_str) {
+        anyhow::bail!(
+            "Blocked: reading sensitive file '{}' (.env, .key, .git/config, etc.) is not allowed",
+            path_str
+        );
+    }
+
     let start_line = args.get("start_line").and_then(|v| v.as_u64()).map(|v| v as usize);
     let end_line = args.get("end_line").and_then(|v| v.as_u64()).map(|v| v as usize);
 
     match std::fs::read_to_string(&resolved) {
         Ok(content) => {
+            let (content, was_redacted) = filter_sensitive_content_in_text(&content);
             let lines: Vec<&str> = content.lines().collect();
             let total = lines.len();
 
@@ -232,6 +240,10 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
 
             if start_line.is_some() || end_line.is_some() {
                 output.push_str(&format!("\n[Showing lines {}-{} of {} total]", start, end, total));
+            }
+
+            if was_redacted {
+                output.push_str("\n\n[⚠️ Sensitive values (API_KEY, PASSWORD, etc.) have been redacted]");
             }
 
             Ok(output)

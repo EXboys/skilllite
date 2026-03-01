@@ -46,6 +46,96 @@ pub(super) fn is_sensitive_write_path(path: &str) -> bool {
     false
 }
 
+/// 敏感路径（读操作复用与写相同的模式）
+pub(super) fn is_sensitive_read_path(path: &str) -> bool {
+    is_sensitive_write_path(path)
+}
+
+/// 其他文件中需脱敏的 key（KEY=value 或 "key": "value" 格式，小写匹配）
+const SENSITIVE_KEYS: &[&str] = &[
+    "api_key", "apikey", "api-key",
+    "password", "passwd", "pwd",
+    "secret", "secret_key", "secretkey",
+    "token", "access_token", "refresh_token",
+    "credential", "credentials",
+    "private_key", "privatekey",
+    "access_key", "accesskey",
+    "auth", "authorization",
+];
+
+/// 对任意内容做敏感信息过滤（用于 read_file、run_command 等）
+pub(crate) fn filter_sensitive_content_in_text(content: &str) -> (String, bool) {
+    let mut out = String::with_capacity(content.len());
+    let mut redacted = false;
+
+    for line in content.lines() {
+        let (filtered, r) = filter_line_sensitive(line);
+        if r {
+            redacted = true;
+        }
+        out.push_str(&filtered);
+        out.push('\n');
+    }
+    if !content.ends_with('\n') && !out.is_empty() {
+        out.pop();
+    }
+
+    // 脱敏 API key 等格式：sk-xxx, Bearer xxx
+    let before = out.clone();
+    out = redact_api_key_patterns(&out);
+    if out != before {
+        redacted = true;
+    }
+
+    (out, redacted)
+}
+
+fn filter_line_sensitive(line: &str) -> (String, bool) {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return (line.to_string(), false);
+    }
+
+    let mut out = line.to_string();
+    let mut redacted = false;
+
+    // KEY=value 格式
+    if let Some(eq) = trimmed.find('=') {
+        let key = trimmed[..eq].trim().to_lowercase().replace('-', "_");
+        let key_clean: String = key.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
+        if SENSITIVE_KEYS.iter().any(|k| key_clean == *k || key_clean.ends_with(k)) {
+            if let Some(pos) = out.find('=') {
+                out = format!("{}[REDACTED]", &out[..=pos]);
+                redacted = true;
+            }
+        }
+    }
+
+    // JSON "key": "value" 格式（一行可能有多处）
+    for k in SENSITIVE_KEYS {
+        let pat = format!(r#""{}"\s*:\s*"[^"]*""#, k);
+        if let Ok(re) = regex::Regex::new(&pat) {
+            if re.is_match(&out) {
+                out = re.replace_all(&out, format!(r#""{}": "[REDACTED]""#, k)).to_string();
+                redacted = true;
+            }
+        }
+    }
+
+    (out, redacted)
+}
+
+fn redact_api_key_patterns(s: &str) -> String {
+    let mut out = s.to_string();
+    if let Ok(re) = regex::Regex::new(r"sk-[a-zA-Z0-9]{20,}") {
+        out = re.replace_all(&out, "sk-[REDACTED]").to_string();
+    }
+    if let Ok(re) = regex::Regex::new(r"(?i)Bearer\s+[a-zA-Z0-9._-]{20,}") {
+        out = re.replace_all(&out, "Bearer [REDACTED]").to_string();
+    }
+    out
+}
+
 /// A11: 是否为关键路径（需确认，非敏感路径直接 block）
 pub(super) fn is_key_write_path(path: &str) -> bool {
     let lower = path.replace('\\', "/").to_lowercase();

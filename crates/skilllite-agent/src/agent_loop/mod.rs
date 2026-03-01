@@ -6,11 +6,16 @@
 //! Ported from Python `AgenticLoop._run_openai`. Single implementation
 //! that works for both CLI and RPC via the `EventSink` trait.
 //!
-//! Two code paths, selected by `config.enable_task_planning`:
-//!   - `run_simple_loop`: original Phase 1 logic, nearly unchanged
-//!   - `run_with_task_planning`: Phase 2 with TaskPlanner, Auto-Nudge, etc.
+//! Sub-modules:
+//!   - `planning`   — pre-loop setup, LLM task-list generation, checkpoint saving
+//!   - `execution`  — tool-call batch processing, progressive disclosure, depth limits
+//!   - `reflection` — no-tool response handling, hallucination guard, auto-nudge
+//!   - `helpers`    — shared low-level utilities (tool execution, result processing, …)
 
 mod helpers;
+mod planning;
+mod execution;
+mod reflection;
 
 use anyhow::Result;
 use std::collections::HashSet;
@@ -22,13 +27,12 @@ use skilllite_core::config::EmbeddingConfig;
 use super::prompt;
 use super::skills::LoadedSkill;
 use super::soul::Soul;
-use super::task_planner::TaskPlanner;
 use super::types::*;
 
-use helpers::{
-    handle_update_task_plan, execute_tool_call, process_result_content,
-    inject_progressive_disclosure, build_agent_result,
-};
+use helpers::build_agent_result;
+use execution::{ExecutionState, execute_tool_batch_planning, execute_tool_batch_simple};
+use planning::{PlanningResult, run_planning_phase, maybe_save_checkpoint, build_task_focus_message};
+use reflection::{ReflectionOutcome, reflect_simple, reflect_planning, check_completion_after_tools};
 
 /// Maximum number of context overflow recovery retries before giving up.
 const MAX_CONTEXT_OVERFLOW_RETRIES: usize = 3;
@@ -53,14 +57,9 @@ pub async fn run_agent_loop(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Simple loop (Phase 1 — original logic, enhanced for Phase 2 tools)
+// Simple loop (Phase 1)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/// Original agent loop: no task planning.
-/// Nearly identical to Phase 1, with Phase 2 enhancements:
-///   - run_command / write_output / preview_server support
-///   - env-configurable context overflow recovery chars
-///   - LLM summarization for very long tool results
 async fn run_simple_loop(
     config: &AgentConfig,
     initial_messages: Vec<ChatMessage>,
@@ -74,255 +73,127 @@ async fn run_simple_loop(
     let workspace = Path::new(&config.workspace);
     let embed_config = EmbeddingConfig::from_env();
     let embed_ctx = (config.enable_memory_vector && !config.api_key.is_empty())
-        .then(|| MemoryVectorContext {
-            client: &client,
-            embed_config: &embed_config,
-        });
+        .then(|| MemoryVectorContext { client: &client, embed_config: &embed_config });
 
     let registry = extensions::ExtensionRegistry::new(
-        config.enable_memory,
-        config.enable_memory_vector,
-        skills,
+        config.enable_memory, config.enable_memory_vector, skills,
     );
     let all_tools = registry.all_tool_definitions();
 
-    // Build system prompt (EVO-2: loaded from external file or seed)
-    let simple_chat_root = skilllite_executor::workspace_root(None)
+    // Build system prompt and initial message list
+    let chat_root = skilllite_executor::workspace_root(None)
         .unwrap_or_else(|_| {
-            dirs::home_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join(".skilllite")
+            dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join(".skilllite")
         })
         .join("chat");
     let soul = Soul::auto_load(config.soul_path.as_deref(), &config.workspace);
     let system_prompt = prompt::build_system_prompt(
-        config.system_prompt.as_deref(),
-        skills,
-        &config.workspace,
-        session_key,
-        config.enable_memory,
-        Some(&simple_chat_root),
-        soul.as_ref(),
+        config.system_prompt.as_deref(), skills, &config.workspace,
+        session_key, config.enable_memory, Some(&chat_root), soul.as_ref(),
     );
-
-    // Build message list
     let mut messages = Vec::new();
     messages.push(ChatMessage::system(&system_prompt));
     messages.extend(initial_messages);
     messages.push(ChatMessage::user(user_message));
 
-    // Progressive disclosure: track which skills have had full docs injected
     let mut documented_skills: HashSet<String> = HashSet::new();
-
-    let mut total_tool_calls = 0usize;
-    let mut failed_tool_calls = 0usize;
-    let mut consecutive_failures = 0usize;
-    let mut iterations = 0usize;
+    let mut state = ExecutionState::new();
     let mut no_tool_retries = 0usize;
     let max_no_tool_retries = 3;
-    let mut context_overflow_retries = 0usize;
-    let mut tools_detail: Vec<ToolExecDetail> = Vec::new();
 
-    let tools_ref = if all_tools.is_empty() {
-        None
-    } else {
-        Some(all_tools.as_slice())
-    };
+    let tools_ref = if all_tools.is_empty() { None } else { Some(all_tools.as_slice()) };
 
     loop {
-        if iterations >= config.max_iterations {
+        if state.iterations >= config.max_iterations {
             tracing::warn!("Agent loop reached max iterations ({})", config.max_iterations);
             break;
         }
-        iterations += 1;
+        state.iterations += 1;
 
-        // Call LLM
+        // ── LLM call (with context-overflow recovery) ─────────────────────
         let response = match client
-            .chat_completion_stream(
-                &config.model,
-                &messages,
-                tools_ref,
-                config.temperature,
-                event_sink,
-            )
+            .chat_completion_stream(&config.model, &messages, tools_ref, config.temperature, event_sink)
             .await
         {
-            Ok(resp) => {
-                context_overflow_retries = 0;
-                resp
-            }
+            Ok(resp) => { state.context_overflow_retries = 0; resp }
             Err(e) => {
-                let err_msg = e.to_string();
-                if llm::is_context_overflow_error(&err_msg) {
-                    context_overflow_retries += 1;
-                    if context_overflow_retries >= MAX_CONTEXT_OVERFLOW_RETRIES {
-                        tracing::error!(
-                            "Context overflow persists after {} retries, giving up",
-                            MAX_CONTEXT_OVERFLOW_RETRIES
-                        );
+                if llm::is_context_overflow_error(&e.to_string()) {
+                    state.context_overflow_retries += 1;
+                    if state.context_overflow_retries >= MAX_CONTEXT_OVERFLOW_RETRIES {
+                        tracing::error!("Context overflow persists after {} retries, giving up", MAX_CONTEXT_OVERFLOW_RETRIES);
                         return Err(e);
                     }
-                    let recovery_chars = get_tool_result_recovery_max_chars();
-                    tracing::warn!(
-                        "Context overflow (attempt {}/{}), truncating tool messages to {} chars",
-                        context_overflow_retries, MAX_CONTEXT_OVERFLOW_RETRIES, recovery_chars
-                    );
-                    llm::truncate_tool_messages(&mut messages, recovery_chars);
+                    let rc = get_tool_result_recovery_max_chars();
+                    tracing::warn!("Context overflow (attempt {}/{}), truncating to {} chars", state.context_overflow_retries, MAX_CONTEXT_OVERFLOW_RETRIES, rc);
+                    llm::truncate_tool_messages(&mut messages, rc);
                     continue;
                 }
                 return Err(e);
             }
         };
 
-        // Extract the first choice
-        let choice = response
-            .choices
-            .into_iter()
-            .next()
+        let choice = response.choices.into_iter().next()
             .ok_or_else(|| anyhow::anyhow!("No choices in LLM response"))?;
-
         let assistant_content = choice.message.content.clone();
         let tool_calls = choice.message.tool_calls.clone();
 
         // Add assistant message to history
         if let Some(ref tcs) = tool_calls {
-            messages.push(ChatMessage::assistant_with_tool_calls(
-                assistant_content.as_deref(),
-                tcs.clone(),
-            ));
+            messages.push(ChatMessage::assistant_with_tool_calls(assistant_content.as_deref(), tcs.clone()));
         } else if let Some(ref content) = assistant_content {
             messages.push(ChatMessage::assistant(content));
         }
 
-        // No tool calls: check if we should continue or stop
-        if tool_calls.is_none() || tool_calls.as_ref().map_or(true, |tc| tc.is_empty()) {
-            // Anti-hallucination nudge: if this is the first iteration and
-            // tools are available but the LLM chose not to call any, nudge
-            // it once.  This catches the common pattern where the model
-            // fabricates a "completed" response instead of actually invoking
-            // tools.  No content inspection needed — the structural signal
-            // (tools available + none called on turn 1) is sufficient.
-            if iterations == 1 && !all_tools.is_empty() && no_tool_retries == 0 {
-                tracing::info!("First iteration produced no tool calls with {} tools available, nudging", all_tools.len());
-                // Remove the text-only assistant message so it doesn't
-                // pollute the conversation history.
-                if let Some(last) = messages.last() {
-                    if last.role == "assistant" {
-                        messages.pop();
-                    }
-                }
-                messages.push(ChatMessage::user(
-                    "You responded with text but did not call any tools. \
-                     If the task requires action (browsing, file I/O, computation, etc.), \
-                     you MUST call the appropriate tool functions. Do not describe what you \
-                     would do — actually do it by invoking the tools."
-                ));
-                no_tool_retries += 1;
-                continue;
-            }
+        let has_tool_calls = tool_calls.as_ref().map_or(false, |tc| !tc.is_empty());
 
-            // Notify event sink of final text
-            if let Some(ref content) = assistant_content {
-                event_sink.on_text(content);
-            }
-
-            no_tool_retries += 1;
-            if no_tool_retries >= max_no_tool_retries {
-                break;
-            }
-
-            if assistant_content.is_some() {
-                break;
-            }
-
-            continue;
-        }
-
-        // Process tool calls
-        no_tool_retries = 0;
-        if let Some(tool_calls) = tool_calls {
-            // Progressive disclosure
-            if inject_progressive_disclosure(
-                &tool_calls,
-                skills,
-                &mut documented_skills,
-                &mut messages,
+        // ── Reflection phase (no tool calls) ─────────────────────────────
+        if !has_tool_calls {
+            match reflect_simple(
+                &assistant_content, all_tools.len(), state.iterations,
+                &mut no_tool_retries, max_no_tool_retries, event_sink, &mut messages,
             ) {
-                continue;
-            }
-
-            // Execute each tool call
-            for tc in &tool_calls {
-                let tool_name = &tc.function.name;
-                let arguments = &tc.function.arguments;
-
-                event_sink.on_tool_call(tool_name, arguments);
-
-                let mut result = execute_tool_call(
-                    &registry,
-                    tool_name,
-                    arguments,
-                    workspace,
-                    event_sink,
-                    embed_ctx.as_ref(),
-                )
-                .await;
-                result.tool_call_id = tc.id.clone();
-
-                // Process long content (sync fast path → async LLM summarization fallback)
-                result.content =
-                    process_result_content(&client, &config.model, tool_name, &result.content).await;
-
-                if result.is_error {
-                    failed_tool_calls += 1;
-                    consecutive_failures += 1;
-                } else {
-                    consecutive_failures = 0;
-                }
-                tools_detail.push(ToolExecDetail {
-                    tool: tool_name.clone(),
-                    success: !result.is_error,
-                });
-
-                event_sink.on_tool_result(tool_name, &result.content, result.is_error);
-                messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
-
-                total_tool_calls += 1;
+                ReflectionOutcome::Nudge(msg) => { messages.push(ChatMessage::user(&msg)); continue; }
+                ReflectionOutcome::Break | ReflectionOutcome::AllDone => break,
+                ReflectionOutcome::Continue => continue,
             }
         }
 
-        // A4: Stop on consecutive failure limit (run mode)
-        if let Some(limit) = config.max_consecutive_failures {
-            if consecutive_failures >= limit {
-                tracing::warn!(
-                    "Stopping: {} consecutive tool failures (limit: {})",
-                    consecutive_failures, limit
-                );
-                break;
-            }
+        // ── Execution phase (tool calls present) ──────────────────────────
+        no_tool_retries = 0;
+        let tool_calls = match tool_calls { Some(tc) => tc, None => continue };
+
+        let outcome = execute_tool_batch_simple(
+            &tool_calls, &registry, workspace, event_sink, embed_ctx.as_ref(),
+            &client, &config.model, skills, &mut messages, &mut documented_skills,
+            &mut state, config.max_consecutive_failures,
+        ).await;
+
+        if outcome.disclosure_injected { continue; }
+        if outcome.failure_limit_reached {
+            tracing::warn!("Stopping: {} consecutive tool failures", state.consecutive_failures);
+            break;
         }
 
-        // Check tool call depth limit
-        if total_tool_calls >= config.max_iterations * config.max_tool_calls_per_task {
+        // Global tool call depth limit
+        if state.total_tool_calls >= config.max_iterations * config.max_tool_calls_per_task {
             tracing::warn!("Agent loop reached total tool call limit");
             break;
         }
     }
 
     let feedback = ExecutionFeedback {
-        total_tools: total_tool_calls,
-        failed_tools: failed_tool_calls,
+        total_tools: state.total_tool_calls,
+        failed_tools: state.failed_tool_calls,
         replans: 0,
-        iterations,
+        iterations: state.iterations,
         elapsed_ms: start_time.elapsed().as_millis() as u64,
-        context_overflow_retries,
+        context_overflow_retries: state.context_overflow_retries,
         task_completed: true,
         task_description: None,
         rules_used: Vec::new(),
-        tools_detail,
+        tools_detail: state.tools_detail,
     };
-
-    Ok(build_agent_result(messages, total_tool_calls, iterations, Vec::new(), feedback))
+    Ok(build_agent_result(messages, state.total_tool_calls, state.iterations, Vec::new(), feedback))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -330,7 +201,7 @@ async fn run_simple_loop(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /// Agent loop with task planning: TaskPlanner + Auto-Nudge + per-task depth.
-/// Ported from Python `AgenticLoop._run_openai` with task planning enabled.
+/// Uses planning / execution / reflection sub-modules as building blocks.
 async fn run_with_task_planning(
     config: &AgentConfig,
     initial_messages: Vec<ChatMessage>,
@@ -339,527 +210,145 @@ async fn run_with_task_planning(
     event_sink: &mut dyn EventSink,
     session_key: Option<&str>,
 ) -> Result<AgentResult> {
+    let start_time = std::time::Instant::now();
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let workspace = Path::new(&config.workspace);
     let embed_config = EmbeddingConfig::from_env();
     let embed_ctx = (config.enable_memory_vector && !config.api_key.is_empty())
-        .then(|| MemoryVectorContext {
-            client: &client,
-            embed_config: &embed_config,
-        });
+        .then(|| MemoryVectorContext { client: &client, embed_config: &embed_config });
 
     let registry = extensions::ExtensionRegistry::new(
-        config.enable_memory,
-        config.enable_memory_vector,
-        skills,
+        config.enable_memory, config.enable_memory_vector, skills,
     );
     let all_tools = registry.all_tool_definitions();
 
-    // ── Task planning ──────────────────────────────────────────────────────
-    let chat_root = skilllite_executor::workspace_root(None)
-        .unwrap_or_else(|_| {
-            dirs::home_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join(".skilllite")
-        })
-        .join("chat");
-    let mut planner = TaskPlanner::new(Some(workspace), Some(&chat_root));
+    // ── Planning phase ─────────────────────────────────────────────────────
+    let PlanningResult { mut planner, mut messages, chat_root, .. } =
+        run_planning_phase(config, initial_messages, user_message, skills, event_sink,
+                           session_key, &client, workspace).await?;
 
-    // Build conversation context from initial_messages (for "继续" detection)
-    let conversation_context: Option<String> = if !initial_messages.is_empty() {
-        let ctx: Vec<String> = initial_messages
-            .iter()
-            .filter_map(|m| {
-                m.content
-                    .as_ref()
-                    .map(|c| format!("[{}] {}", m.role, c))
-            })
-            .collect();
-        if ctx.is_empty() {
-            None
-        } else {
-            Some(ctx.join("\n"))
-        }
-    } else {
-        None
-    };
-
-    // A8: Load SOUL before planning so scope rules can be injected into planning prompt
-    let soul = Soul::auto_load(config.soul_path.as_deref(), &config.workspace);
-
-    // A5: Goal boundaries — run mode: hybrid (regex + LLM fallback when SKILLLITE_GOAL_LLM_EXTRACT=1)
-    let effective_boundaries = if session_key == Some("run") {
-        match helpers::extract_goal_boundaries_hybrid(&client, &config.model, user_message).await {
-            Ok(gb) => Some(gb),
-            Err(e) => {
-                tracing::warn!("Goal boundaries extraction failed: {}, using regex only", e);
-                Some(super::goal_boundaries::extract_goal_boundaries(user_message))
-            }
-        }
-    } else {
-        config.goal_boundaries.clone()
-    };
-
-    // Generate task list via LLM (A5: goal boundaries, A8: SOUL scope rules)
-    let _tasks = planner
-        .generate_task_list(
-            &client,
-            &config.model,
-            user_message,
-            skills,
-            conversation_context.as_deref(),
-            effective_boundaries.as_ref(),
-            soul.as_ref(),
-        )
-        .await?;
-
-    // Notify event sink of the plan
-    event_sink.on_task_plan(&planner.task_list);
-
-    // ── Unified path: ALWAYS run with tools ─────────────────────────────
-    // No "empty plan = no tools" branch. Planner may return [] for simple
-    // queries; we still pass tools so LLM can use them if needed.
-    // When planner is empty: use standard prompt (no task list). When non-empty: use task-aware prompt.
-
-    // soul already loaded above (before planning)
-    let system_prompt = if planner.is_empty() {
-        prompt::build_system_prompt(
-            config.system_prompt.as_deref(),
-            skills,
-            &config.workspace,
-            session_key,
-            config.enable_memory,
-            Some(&chat_root),
-            soul.as_ref(),
-        )
-    } else {
-        let mut prompt = planner.build_task_system_prompt(skills, effective_boundaries.as_ref());
-        // Prepend SOUL block to task-planning prompt when soul is provided
-        if let Some(s) = &soul {
-            prompt = format!("{}\n\n{}", s.to_system_prompt_block(), prompt);
-        }
-        if let Some(sk) = session_key {
-            prompt.push_str(&format!(
-                "\n\nCurrent session: {} — use session_key '{}' for chat_history and chat_plan.\n\
-                 /compact compresses conversation; result appears as [compaction] in chat_history. \
-                 When user asks about 最新的/compact or /compact效果, read chat_history with session_key '{}'.",
-                sk, sk, sk
-            ));
-        }
-        prompt
-    };
-
-    let mut messages = Vec::new();
-    messages.push(ChatMessage::system(&system_prompt));
-    messages.extend(initial_messages);
-    messages.push(ChatMessage::user(user_message));
-
-    // A13: Save initial checkpoint for run mode (enables --resume)
-    if session_key == Some("run") {
-        let cp = crate::run_checkpoint::RunCheckpoint::new(
-            user_message.to_string(),
-            config.workspace.clone(),
-            planner.task_list.clone(),
-            messages.clone(),
-        );
-        if let Err(e) = crate::run_checkpoint::save_checkpoint(&chat_root, &cp) {
-            tracing::debug!("Checkpoint save failed: {}", e);
-        }
-    }
-
-    let start_time = std::time::Instant::now();
+    let mut state = ExecutionState::new();
     let mut documented_skills: HashSet<String> = HashSet::new();
-    let mut total_tool_calls = 0usize;
-    let mut failed_tool_calls = 0usize;
-    let mut consecutive_failures = 0usize;
-    let mut replan_count = 0usize;
-    let mut iterations = 0usize;
     let mut consecutive_no_tool = 0usize;
     let max_no_tool_retries = 3;
-    let mut tool_calls_current_task = 0usize;
-    let mut context_overflow_retries = 0usize;
-    let mut tools_detail: Vec<ToolExecDetail> = Vec::new();
 
-    // Plan-based budget: effective_max = min(global, num_tasks * per_task)
-    // When num_tasks=0 (planner returned empty), use max_iterations so we still run the loop
+    // Plan-based budget: min(global, num_tasks × per_task); fall back to max_iterations when empty
     let num_tasks = planner.task_list.len();
-    let effective_max = if num_tasks == 0 {
-        config.max_iterations
-    } else {
-        config
-            .max_iterations
-            .min(num_tasks * config.max_tool_calls_per_task)
-    };
+    let effective_max = if num_tasks == 0 { config.max_iterations }
+                        else { config.max_iterations.min(num_tasks * config.max_tool_calls_per_task) };
 
-    let tools_ref = if all_tools.is_empty() {
-        None
-    } else {
-        Some(all_tools.as_slice())
-    };
+    let tools_ref = if all_tools.is_empty() { None } else { Some(all_tools.as_slice()) };
 
     loop {
-        if iterations >= effective_max {
-            tracing::warn!(
-                "Agent loop reached effective max iterations ({})",
-                effective_max
-            );
+        if state.iterations >= effective_max {
+            tracing::warn!("Agent loop reached effective max iterations ({})", effective_max);
             break;
         }
-        iterations += 1;
+        state.iterations += 1;
 
-        // ── Suppress streaming for hallucination-prone iterations ────
-        // When no tools have been called yet and the plan requires tool
-        // execution, the LLM will very likely hallucinate a "completed"
-        // summary.  Use non-streaming call so the user never sees it.
-        let suppress_stream = total_tool_calls == 0 && {
-            planner.task_list.iter().any(|t| {
-                !t.completed
-                    && t.tool_hint
-                        .as_ref()
-                        .map_or(false, |h| h != "analysis")
-            })
-        };
+        // ── Suppress streaming for hallucination-prone iterations ─────────────
+        let suppress_stream = state.total_tool_calls == 0
+            && planner.task_list.iter().any(|t| {
+                !t.completed && t.tool_hint.as_ref().map_or(false, |h| h != "analysis")
+            });
 
-        // Call LLM (with shared context overflow recovery for both paths)
+        // ── LLM call (with context-overflow recovery) ─────────────────────────
         let llm_result = if suppress_stream {
-            client
-                .chat_completion(&config.model, &messages, tools_ref, config.temperature)
-                .await
+            client.chat_completion(&config.model, &messages, tools_ref, config.temperature).await
         } else {
-            client
-                .chat_completion_stream(
-                    &config.model, &messages, tools_ref, config.temperature, event_sink,
-                )
-                .await
+            client.chat_completion_stream(&config.model, &messages, tools_ref, config.temperature, event_sink).await
         };
 
         let response = match llm_result {
-            Ok(resp) => {
-                context_overflow_retries = 0;
-                resp
-            }
+            Ok(resp) => { state.context_overflow_retries = 0; resp }
             Err(e) => {
-                let err_msg = e.to_string();
-                if llm::is_context_overflow_error(&err_msg) {
-                    context_overflow_retries += 1;
-                    if context_overflow_retries >= MAX_CONTEXT_OVERFLOW_RETRIES {
-                        tracing::error!(
-                            "Context overflow persists after {} retries, giving up",
-                            MAX_CONTEXT_OVERFLOW_RETRIES
-                        );
+                if llm::is_context_overflow_error(&e.to_string()) {
+                    state.context_overflow_retries += 1;
+                    if state.context_overflow_retries >= MAX_CONTEXT_OVERFLOW_RETRIES {
+                        tracing::error!("Context overflow persists after {} retries, giving up", MAX_CONTEXT_OVERFLOW_RETRIES);
                         return Err(e);
                     }
-                    let recovery_chars = get_tool_result_recovery_max_chars();
-                    tracing::warn!(
-                        "Context overflow (attempt {}/{}), truncating tool messages to {} chars",
-                        context_overflow_retries, MAX_CONTEXT_OVERFLOW_RETRIES, recovery_chars
-                    );
-                    llm::truncate_tool_messages(&mut messages, recovery_chars);
+                    let rc = get_tool_result_recovery_max_chars();
+                    tracing::warn!("Context overflow (attempt {}/{}), truncating to {} chars",
+                                   state.context_overflow_retries, MAX_CONTEXT_OVERFLOW_RETRIES, rc);
+                    llm::truncate_tool_messages(&mut messages, rc);
                     continue;
                 }
                 return Err(e);
             }
         };
 
-        let choice = response
-            .choices
-            .into_iter()
-            .next()
+        let choice = response.choices.into_iter().next()
             .ok_or_else(|| anyhow::anyhow!("No choices in LLM response"))?;
-
         let assistant_content = choice.message.content.clone();
         let tool_calls = choice.message.tool_calls.clone();
 
-        // Add assistant message to history
         if let Some(ref tcs) = tool_calls {
-            messages.push(ChatMessage::assistant_with_tool_calls(
-                assistant_content.as_deref(),
-                tcs.clone(),
-            ));
+            messages.push(ChatMessage::assistant_with_tool_calls(assistant_content.as_deref(), tcs.clone()));
         } else if let Some(ref content) = assistant_content {
             messages.push(ChatMessage::assistant(content));
         }
 
-        let has_tool_calls = tool_calls
-            .as_ref()
-            .map_or(false, |tc| !tc.is_empty());
+        let has_tool_calls = tool_calls.as_ref().map_or(false, |tc| !tc.is_empty());
 
-        // If streaming was suppressed but the LLM did return tool calls
-        // (not a hallucination), emit the assistant text now so the user
-        // can see it.
+        // Emit suppressed text when LLM did return real tool calls (not a hallucination)
         if suppress_stream && has_tool_calls {
-            if let Some(ref content) = assistant_content {
-                event_sink.on_text(content);
-            }
+            if let Some(ref content) = assistant_content { event_sink.on_text(content); }
         }
 
+        // ── Reflection phase (no tool calls) ──────────────────────────────────
         if !has_tool_calls {
-            // ── Hallucination guard: no tools executed yet ───────────────
-            // If no tool calls have been made AT ALL and the plan contains
-            // pending tasks that require tool execution, reject silently.
-            // Since we used non-streaming above, the user saw nothing.
-            if suppress_stream {
-                // Pop the hallucinated assistant message from history
-                if let Some(last) = messages.last() {
-                    if last.role == "assistant" {
-                        messages.pop();
-                    }
-                }
-                tracing::info!(
-                    "Anti-hallucination: silently rejected text-only response \
-                     (no tools executed yet, plan requires tool tasks)"
-                );
-                consecutive_no_tool += 1;
-
-                if consecutive_no_tool >= max_no_tool_retries {
-                    tracing::warn!(
-                        "LLM failed to start execution after {} attempts, stopping",
-                        max_no_tool_retries
-                    );
-                    break;
-                }
-
-                // Send a strong nudge forcing actual execution
-                if let Some(nudge) = planner.build_nudge_message() {
-                    messages.push(ChatMessage::user(&format!(
-                        "CRITICAL: You just described what you would do but did NOT \
-                         actually execute anything. The task plan has been generated — \
-                         now you must EXECUTE each task step by step. Call the required \
-                         tools NOW.\n\n{}",
-                        nudge
-                    )));
+            match reflect_planning(
+                &assistant_content, suppress_stream, &mut planner,
+                &mut consecutive_no_tool, max_no_tool_retries,
+                state.tool_calls_current_task, state.total_tool_calls,
+                event_sink, &mut messages,
+            ) {
+                ReflectionOutcome::Nudge(msg) => { messages.push(ChatMessage::user(&msg)); continue; }
+                ReflectionOutcome::Continue => {
+                    // Progress was made (task completed via text) — reset per-task counter
+                    state.tool_calls_current_task = 0;
+                    consecutive_no_tool = 0;
                     continue;
                 }
-                break;
+                ReflectionOutcome::Break | ReflectionOutcome::AllDone => break,
             }
+        }
 
-            // ── Normal completion check (post first iteration) ──────────
-            // LLM has been through at least one work iteration — accept
-            // text-based "Task X completed" claims, but validate each one.
-            let mut made_progress = false;
-            if let Some(ref content) = assistant_content {
-                let completed_ids = planner.check_completion_in_content(content);
-                // Snapshot the counter BEFORE processing completions so that
-                // ALL tasks in this batch benefit from tool calls made in
-                // previous iterations. The old code reset the counter after
-                // each task, which caused Tasks 2, 3, … in the same response
-                // to be falsely rejected.
-                let had_tool_calls_for_batch = tool_calls_current_task > 0;
-                // Fallback: if we've executed any tools in this session, trust completion
-                // claims for tool-requiring tasks (avoids false rejection when counter
-                // was reset but tools were run in a prior iteration).
-                let session_had_tools = total_tool_calls > 0;
-                for completed_id in completed_ids {
-                    // Anti-hallucination: reject completion claims for tasks
-                    // that require tool execution when no tool calls were made
-                    // since the last batch of completions.
-                    let task_needs_tool = planner.task_list.iter()
-                        .find(|t| t.id == completed_id)
-                        .map_or(false, |t| {
-                            t.tool_hint.as_ref().map_or(false, |h| h != "analysis")
-                        });
-                    if task_needs_tool && !had_tool_calls_for_batch && !session_had_tools {
-                        tracing::info!(
-                            "Anti-hallucination: rejected text-only completion for task {} \
-                             (requires tool but no tool calls made since last completion batch)",
-                            completed_id
-                        );
-                        continue;
-                    }
-                    planner.mark_completed(completed_id);
-                    event_sink.on_task_progress(completed_id, true);
-                    made_progress = true;
-                }
-                // Reset counter AFTER the entire batch so the NEXT iteration
-                // also needs its own tool calls before tasks can be completed.
-                if made_progress {
-                    tool_calls_current_task = 0;
-                    consecutive_no_tool = 0;
-                }
-            }
+        // ── Execution phase (tool calls present) ──────────────────────────────
+        consecutive_no_tool = 0;
+        let tool_calls = match tool_calls { Some(tc) => tc, None => continue };
 
-            // All tasks done → finish
-            if planner.all_completed() {
-                if let Some(ref content) = assistant_content {
-                    event_sink.on_text(content);
-                }
-                tracing::info!("All tasks completed, ending iteration");
-                break;
-            }
+        let outcome = execute_tool_batch_planning(
+            &tool_calls, &registry, workspace, event_sink, embed_ctx.as_ref(),
+            &client, &config.model, &mut planner, skills, &mut messages,
+            &mut documented_skills, &mut state,
+            config.max_tool_calls_per_task, config.max_consecutive_failures,
+        ).await;
 
-            // Tasks remain but no progress → nudge or bail
-            if !made_progress {
-                consecutive_no_tool += 1;
-            }
-
-            if consecutive_no_tool >= max_no_tool_retries {
-                tracing::warn!(
-                    "LLM failed to make progress after {} attempts, stopping",
-                    max_no_tool_retries
-                );
-                if let Some(ref content) = assistant_content {
-                    event_sink.on_text(content);
-                }
-                break;
-            }
-
-            // If progress was made (some tasks completed), skip the nudge
-            if made_progress {
-                continue;
-            }
-
-            // Auto-nudge: pending tasks remain, push LLM to continue
-            if let Some(nudge) = planner.build_nudge_message() {
-                tracing::info!(
-                    "Auto-nudge (attempt {}): pending tasks remain, continuing",
-                    consecutive_no_tool
-                );
-                messages.push(ChatMessage::user(&nudge));
-                continue;
-            }
-
-            // No nudge available, emit and break
-            if let Some(ref content) = assistant_content {
-                event_sink.on_text(content);
-            }
+        if outcome.disclosure_injected { continue; }
+        if outcome.failure_limit_reached {
+            tracing::warn!("Stopping: {} consecutive tool failures", state.consecutive_failures);
             break;
         }
-
-        // ── Process tool calls ─────────────────────────────────────────────
-        consecutive_no_tool = 0;
-        let tool_calls = match tool_calls {
-            Some(tc) => tc,
-            None => continue,
-        };
-
-        // Progressive disclosure
-        if inject_progressive_disclosure(
-            &tool_calls,
-            skills,
-            &mut documented_skills,
-            &mut messages,
-        ) {
-            continue;
-        }
-
-        // Execute each tool call
-        for tc in &tool_calls {
-            let tool_name = &tc.function.name;
-            let arguments = &tc.function.arguments;
-
-            event_sink.on_tool_call(tool_name, arguments);
-
-            let is_replan = tool_name.as_str() == "update_task_plan";
-            let mut result = if is_replan {
-                replan_count += 1;
-                handle_update_task_plan(arguments, &mut planner, event_sink)
-            } else {
-                execute_tool_call(
-                    &registry,
-                    tool_name,
-                    arguments,
-                    workspace,
-                    event_sink,
-                    embed_ctx.as_ref(),
-                )
-                .await
-            };
-            result.tool_call_id = tc.id.clone();
-
-            result.content =
-                process_result_content(&client, &config.model, tool_name, &result.content).await;
-
-            // Phase 1 C1: When tool fails, append replan hint (task-planning mode only)
-            if result.is_error {
-                failed_tool_calls += 1;
-                consecutive_failures += 1;
-                result.content.push_str("\n\nTip: Consider update_task_plan if the approach needs to change.");
-            } else {
-                consecutive_failures = 0;
-            }
-            if !is_replan {
-                tools_detail.push(ToolExecDetail {
-                    tool: tool_name.clone(),
-                    success: !result.is_error,
-                });
-            }
-
-            event_sink.on_tool_result(tool_name, &result.content, result.is_error);
-            messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
-
-            total_tool_calls += 1;
-            tool_calls_current_task += 1;
-        }
-
-        // ── A4: Stop on consecutive failure limit (run mode) ────────────────
-        if let Some(limit) = config.max_consecutive_failures {
-            if consecutive_failures >= limit {
-                tracing::warn!(
-                    "Stopping: {} consecutive tool failures (limit: {})",
-                    consecutive_failures, limit
-                );
-                break;
-            }
-        }
-
-        // ── Per-task depth limit ───────────────────────────────────────────
-        if tool_calls_current_task >= config.max_tool_calls_per_task {
+        if outcome.depth_limit_reached {
             let depth_msg = planner.build_depth_limit_message(config.max_tool_calls_per_task);
             messages.push(ChatMessage::user(&depth_msg));
-            tracing::debug!(
-                "Per-task depth limit reached ({} calls), requesting summary",
-                config.max_tool_calls_per_task
-            );
+            state.tool_calls_current_task = 0; // reset so next task gets its full quota
         }
 
-        // ── Check task completion after tool execution ───────────────────
-        // After tool execution, allow completing consecutive tasks when the
-        // LLM called tools for multiple tasks in a single batch.
-        // Update current_task_id after each completion so the next task
-        // in sequence can also be completed.
-        if let Some(ref content) = assistant_content {
-            let completed_ids = planner.check_completion_in_content(content);
-            let mut current_task_id = planner.current_task().map(|t| t.id);
-            for completed_id in completed_ids {
-                if let Some(cid) = current_task_id {
-                    if completed_id > cid {
-                        tracing::info!(
-                            "Anti-hallucination: ignoring premature completion for task {} \
-                             (current task is {})",
-                            completed_id, cid
-                        );
-                        continue;
-                    }
-                }
-                planner.mark_completed(completed_id);
-                event_sink.on_task_progress(completed_id, true);
-                // Update current_task_id so the next consecutive task
-                // can also be completed in this batch.
-                current_task_id = planner.current_task().map(|t| t.id);
-            }
-        }
+        // ── Post-tool completion check ─────────────────────────────────────────
+        check_completion_after_tools(&assistant_content, &mut planner, event_sink);
 
         if planner.all_completed() {
             tracing::info!("All tasks completed, ending iteration");
-            // Skip redundant final-summary request when the current response already
-            // contains substantial content (already streamed). Avoids duplicate output.
-            let has_substantial_response = assistant_content
-                .as_ref()
-                .map_or(false, |c| c.trim().len() > 50);
-            if !has_substantial_response {
-                // No substantial response yet — fetch a brief final summary
-                let final_response = client
-                    .chat_completion_stream(
-                        &config.model,
-                        &messages,
-                        None, // no tools for final summary
-                        config.temperature,
-                        event_sink,
-                    )
-                    .await;
-                if let Ok(resp) = final_response {
-                    if let Some(choice) = resp.choices.into_iter().next() {
-                        if let Some(ref content) = choice.message.content {
+            let has_substantial = assistant_content.as_ref().map_or(false, |c| c.trim().len() > 50);
+            if !has_substantial {
+                if let Ok(resp) = client.chat_completion_stream(
+                    &config.model, &messages, None, config.temperature, event_sink,
+                ).await {
+                    if let Some(ch) = resp.choices.into_iter().next() {
+                        if let Some(ref content) = ch.message.content {
                             event_sink.on_text(content);
                             messages.push(ChatMessage::assistant(content));
                         }
@@ -869,71 +358,34 @@ async fn run_with_task_planning(
             break;
         }
 
-        // A13: Save checkpoint after each iteration (run mode) for --resume
-        if session_key == Some("run") {
-            let cp = crate::run_checkpoint::RunCheckpoint::new(
-                user_message.to_string(),
-                config.workspace.clone(),
-                planner.task_list.clone(),
-                messages.clone(),
-            );
-            if let Err(e) = crate::run_checkpoint::save_checkpoint(&chat_root, &cp) {
-                tracing::debug!("Checkpoint save failed: {}", e);
-            }
-        }
+        // A13: Per-iteration checkpoint (run mode) for --resume
+        maybe_save_checkpoint(session_key, user_message, config, &planner, &messages, &chat_root);
 
-        // Update task focus: inject task progress as system message
-        if let Some(current) = planner.current_task() {
-            let task_list_json =
-                serde_json::to_string_pretty(&planner.task_list)
-                    .unwrap_or_else(|_| "[]".to_string());
-            let tool_hint = current.tool_hint.as_deref().unwrap_or("");
-            let focus_msg = if tool_hint == "file_operation" {
-                format!(
-                    "Task progress update:\n{}\n\n\
-                     Current task to execute: Task {} - {}\n\n\
-                     ⚡ Use `write_output` or `preview_server` NOW. \
-                     ⛔ Do NOT call any skill tools.",
-                    task_list_json, current.id, current.description
-                )
-            } else if !tool_hint.is_empty() && tool_hint != "analysis" {
-                format!(
-                    "Task progress update:\n{}\n\n\
-                     Current task to execute: Task {} - {}\n\n\
-                     ⚡ Call `{}` DIRECTLY. Do NOT explore files first.",
-                    task_list_json, current.id, current.description, tool_hint
-                )
-            } else {
-                format!(
-                    "Task progress update:\n{}\n\n\
-                     Current task to execute: Task {} - {}\n\n\
-                     Please continue to focus on completing the current task.",
-                    task_list_json, current.id, current.description
-                )
-            };
+        // Task focus: inject progress update as system message
+        if let Some(focus_msg) = build_task_focus_message(&planner) {
             messages.push(ChatMessage::system(&focus_msg));
         }
 
-        // Total tool call limit
-        if total_tool_calls >= effective_max * config.max_tool_calls_per_task {
+        // Global tool call depth limit
+        if state.total_tool_calls >= effective_max * config.max_tool_calls_per_task {
             tracing::warn!("Agent loop reached total tool call limit");
             break;
         }
     }
 
     let feedback = ExecutionFeedback {
-        total_tools: total_tool_calls,
-        failed_tools: failed_tool_calls,
-        replans: replan_count,
-        iterations,
+        total_tools: state.total_tool_calls,
+        failed_tools: state.failed_tool_calls,
+        replans: state.replan_count,
+        iterations: state.iterations,
         elapsed_ms: start_time.elapsed().as_millis() as u64,
-        context_overflow_retries,
+        context_overflow_retries: state.context_overflow_retries,
         task_completed: planner.all_completed(),
         task_description: None,
         rules_used: Vec::new(),
-        tools_detail,
+        tools_detail: state.tools_detail,
     };
 
-    Ok(build_agent_result(messages, total_tool_calls, iterations, planner.task_list.clone(), feedback))
+    Ok(build_agent_result(messages, state.total_tool_calls, state.iterations, planner.task_list, feedback))
 }
 

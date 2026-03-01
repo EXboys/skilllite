@@ -7,6 +7,8 @@ use std::path::Path;
 use crate::high_risk;
 use crate::types::{EventSink, ToolDefinition, FunctionDef, safe_truncate, safe_slice_from};
 
+use super::helpers::filter_sensitive_content_in_text;
+
 // ─── Tool definition ────────────────────────────────────────────────────────
 
 pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
@@ -14,7 +16,7 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
         tool_type: "function".to_string(),
         function: FunctionDef {
             name: "run_command".to_string(),
-            description: "Execute a shell command in the workspace directory. Requires user confirmation before execution. Dangerous commands (rm -rf, curl|bash, etc.) are flagged with extra warnings. Timeout: 300 seconds.".to_string(),
+            description: "Execute a shell command in the workspace directory. Requires user confirmation before execution. Blocks reading sensitive files (cat .env, cat .key, etc.). Dangerous commands (rm -rf, curl|bash, etc.) are flagged with extra warnings. Timeout: 300 seconds.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -39,8 +41,29 @@ const DANGEROUS_PATTERNS: &[(&str, &str)] = &[
     (r"chmod\s+(-[a-zA-Z]*R|--recursive)\s+777", "recursive chmod 777 — insecure permission change"),
 ];
 
+/// 检测是否尝试读取敏感文件（cat .env 等），直接 block 不可绕过
+const SENSITIVE_FILE_READ_PATTERNS: &[(&str, &str)] = &[
+    (r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.env", "reading .env file"),
+    (r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.key", "reading .key file"),
+    (r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.pem", "reading .pem file"),
+    (r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.git/config", "reading .git/config"),
+    (r"(?i)\.\s+[^\n;|]*\.env\b", "sourcing .env file"),
+    (r"(?i)source\s+[^\n;|]*\.env", "sourcing .env file"),
+];
+
 fn check_dangerous_command(cmd: &str) -> Option<String> {
     for (pattern, reason) in DANGEROUS_PATTERNS {
+        if let Ok(re) = regex::Regex::new(pattern) {
+            if re.is_match(cmd) {
+                return Some(reason.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn check_sensitive_file_read(cmd: &str) -> Option<String> {
+    for (pattern, reason) in SENSITIVE_FILE_READ_PATTERNS {
         if let Ok(re) = regex::Regex::new(pattern) {
             if re.is_match(cmd) {
                 return Some(reason.to_string());
@@ -64,6 +87,15 @@ pub(super) async fn execute_run_command(
 
     if cmd.trim().is_empty() {
         anyhow::bail!("command must not be empty");
+    }
+
+    // A11: 禁止通过 run_command 绕过敏感文件读取（cat .env 等直接 block）
+    if let Some(reason) = check_sensitive_file_read(cmd) {
+        anyhow::bail!(
+            "Blocked: command attempts to read sensitive file ({}). \
+             .env, .key, .git/config, .pem cannot be read via run_command.",
+            reason
+        );
     }
 
     // A11: run_command 可配置为跳过确认
@@ -136,21 +168,37 @@ pub(super) async fn execute_run_command(
         if stdout_text.is_empty() && stderr_text.is_empty() {
             result.push_str("Command succeeded (exit 0)");
         } else {
-            result.push_str(&format!("Command succeeded (exit 0):\n{}", stdout_text));
-            if !stderr_text.is_empty() {
-                result.push_str(&format!("\n[stderr]: {}", stderr_text));
+            let (filtered_stdout, redacted) = filter_sensitive_content_in_text(&stdout_text);
+            let filtered_stderr = if !stderr_text.is_empty() {
+                filter_sensitive_content_in_text(&stderr_text).0
+            } else {
+                String::new()
+            };
+            result.push_str(&format!("Command succeeded (exit 0):\n{}", filtered_stdout));
+            if !filtered_stderr.is_empty() {
+                result.push_str(&format!("\n[stderr]: {}", filtered_stderr));
+            }
+            if redacted {
+                result.push_str("\n\n[⚠️ Sensitive values (API_KEY, PASSWORD, etc.) have been redacted]");
             }
         }
     } else {
         let code = status.code().unwrap_or(-1);
-        let combined = if !stdout_text.is_empty() && !stderr_text.is_empty() {
-            format!("{}\n[stderr]: {}", stdout_text, stderr_text)
+        let (combined, redacted) = if !stdout_text.is_empty() && !stderr_text.is_empty() {
+            let (f_stdout, r1) = filter_sensitive_content_in_text(&stdout_text);
+            let (f_stderr, r2) = filter_sensitive_content_in_text(&stderr_text);
+            (format!("{}\n[stderr]: {}", f_stdout, f_stderr), r1 || r2)
         } else if !stderr_text.is_empty() {
-            stderr_text
+            let (f, r) = filter_sensitive_content_in_text(&stderr_text);
+            (f, r)
         } else {
-            stdout_text
+            let (f, r) = filter_sensitive_content_in_text(&stdout_text);
+            (f, r)
         };
         result.push_str(&format!("Command failed (exit {}):\n{}", code, combined));
+        if redacted {
+            result.push_str("\n\n[⚠️ Sensitive values (API_KEY, PASSWORD, etc.) have been redacted]");
+        }
     }
 
     Ok(truncate_command_output(&result))
