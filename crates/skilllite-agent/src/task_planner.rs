@@ -18,6 +18,7 @@ use super::goal_boundaries::GoalBoundaries;
 use super::llm::LlmClient;
 use super::planning_rules;
 use super::skills::LoadedSkill;
+use super::soul::Soul;
 use super::types::*;
 
 /// Resolve the output directory path for prompt injection.
@@ -105,6 +106,7 @@ impl TaskPlanner {
     ///
     /// `goal_boundaries`: Optional extracted boundaries (scope, exclusions, completion conditions)
     /// to inject into planning. Used in run mode for long-running tasks.
+    /// `soul`: Optional SOUL identity document; when present, Scope & Boundaries are injected (A8).
     pub async fn generate_task_list(
         &mut self,
         client: &LlmClient,
@@ -113,6 +115,7 @@ impl TaskPlanner {
         skills: &[LoadedSkill],
         conversation_context: Option<&str>,
         goal_boundaries: Option<&GoalBoundaries>,
+        soul: Option<&Soul>,
     ) -> Result<Vec<Task>> {
         let skills_info = if skills.is_empty() {
             "None".to_string()
@@ -131,7 +134,7 @@ impl TaskPlanner {
                 .join("\n")
         };
 
-        let planning_prompt = self.build_planning_prompt(&skills_info, user_message, Some(model));
+        let planning_prompt = self.build_planning_prompt(&skills_info, user_message, Some(model), soul);
 
         let mut user_content = format!(
             "**PRIMARY — Plan ONLY based on this**:\nUser request: {}\n\n",
@@ -270,8 +273,14 @@ impl TaskPlanner {
 
     /// Build the planning prompt from the external template.
     /// Placeholders: {{TODAY}}, {{YESTERDAY}}, {{RULES_SECTION}}, {{SKILLS_INFO}},
-    /// {{OUTPUT_DIR}}, {{EXAMPLES_SECTION}}.
-    pub(crate) fn build_planning_prompt(&self, skills_info: &str, user_message: &str, model: Option<&str>) -> String {
+    /// {{OUTPUT_DIR}}, {{EXAMPLES_SECTION}}, {{SOUL_SCOPE_BLOCK}} (A8).
+    pub(crate) fn build_planning_prompt(
+        &self,
+        skills_info: &str,
+        user_message: &str,
+        model: Option<&str>,
+        soul: Option<&Soul>,
+    ) -> String {
         let compact = get_compact_planning(model);
         let rules_section = if compact {
             let filtered: Vec<&PlanningRule> = filter_rules_for_user_message(&self.rules, user_message);
@@ -295,6 +304,10 @@ impl TaskPlanner {
             include_str!("seed/planning.seed.md"),
         );
 
+        let soul_scope = soul
+            .and_then(|s| s.to_planning_scope_block())
+            .unwrap_or_default();
+
         template
             .replace("{{TODAY}}", &today)
             .replace("{{YESTERDAY}}", &yesterday)
@@ -302,6 +315,7 @@ impl TaskPlanner {
             .replace("{{SKILLS_INFO}}", skills_info)
             .replace("{{OUTPUT_DIR}}", &output_dir)
             .replace("{{EXAMPLES_SECTION}}", &examples_section)
+            .replace("{{SOUL_SCOPE_BLOCK}}", &soul_scope)
     }
 
     /// Build the main execution system prompt from the external template.
@@ -376,6 +390,8 @@ impl TaskPlanner {
                          ⛔ Do NOT call any skill tools (skill-creator, frontend-design, etc.). \
                          Generate the content yourself and save with `write_output`."
                     );
+                } else if hint == "memory_search" {
+                    direct_call_instruction = "\n\n⚡ **ACTION REQUIRED**: This is an exploration task. Call `memory_search` NOW with appropriate query to find relevant memory.".to_string();
                 } else if hint != "analysis" {
                     let is_skill = skills.iter().any(|s| {
                         s.name == *hint
@@ -404,7 +420,7 @@ impl TaskPlanner {
              ## Current Task List\n\n\
              {}\n\n\
              ## Execution Rules\n\n\
-             1. **MATCH tool_hint**: If tool_hint is \"file_operation\" → use ONLY built-in tools (write_output, preview_server). If tool_hint is a skill name → call that skill.\n\
+             1. **MATCH tool_hint**: If tool_hint is \"file_operation\" → use built-in tools (read_file, write_output, preview_server). If tool_hint is \"memory_search\" → call memory_search. If tool_hint is a skill name → call that skill.\n\
              2. **Strict sequential execution**: Execute tasks in order, do not skip tasks\n\
              3. **Focus on current task**: Focus only on the current task\n\
              4. **Explicit completion declaration**: After completing a task, declare: \"Task X completed\"\n\
@@ -522,7 +538,7 @@ mod tests {
     #[test]
     fn test_planning_prompt_phase1_balance() {
         let planner = TaskPlanner::new(None, None);
-        let prompt = planner.build_planning_prompt("None", "hello", None);
+        let prompt = planner.build_planning_prompt("None", "hello", None, None);
 
         assert!(
             prompt.contains("First: Check if `[]` is correct"),
@@ -563,7 +579,7 @@ mod tests {
     #[test]
     fn test_planning_prompt_contains_placeholders_resolved() {
         let planner = TaskPlanner::new(None, None);
-        let prompt = planner.build_planning_prompt("None", "hello", None);
+        let prompt = planner.build_planning_prompt("None", "hello", None, None);
 
         // All placeholders should be resolved (no {{...}} remaining)
         assert!(!prompt.contains("{{TODAY}}"));
@@ -572,6 +588,7 @@ mod tests {
         assert!(!prompt.contains("{{SKILLS_INFO}}"));
         assert!(!prompt.contains("{{OUTPUT_DIR}}"));
         assert!(!prompt.contains("{{EXAMPLES_SECTION}}"));
+        assert!(!prompt.contains("{{SOUL_SCOPE_BLOCK}}"));
     }
 
     #[test]

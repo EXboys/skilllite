@@ -235,6 +235,23 @@ impl Soul {
         }
     }
 
+    /// Render the SOUL Scope & Boundaries as a planning constraint block (A8).
+    ///
+    /// Injected into the planning prompt so the LLM respects "in scope" / "out of scope"
+    /// when generating task lists. Planning must NOT create tasks that violate these rules.
+    pub fn to_planning_scope_block(&self) -> Option<String> {
+        if self.scope_and_boundaries.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "\n## SOUL Scope & Boundaries (MANDATORY for planning)\n\
+             When generating the task list, you MUST respect these boundaries.\n\
+             ONLY plan tasks that fall within scope. Do NOT plan any task that violates \"Will Not Do\" / out-of-scope rules.\n\n\
+             {}\n",
+            self.scope_and_boundaries.trim()
+        ))
+    }
+
     /// Render the SOUL as a system prompt injection block.
     ///
     /// Only non-empty sections are included to keep the prompt lean.
@@ -315,6 +332,19 @@ I specialize in SkillLite plugin development.
         assert!(block.contains("Identity"));
         assert!(block.contains("Core Beliefs"));
         assert!(block.contains("read-only"));
+    }
+
+    #[test]
+    fn test_to_planning_scope_block() {
+        let soul = Soul::parse(SAMPLE_SOUL, "SOUL.md");
+        let block = soul.to_planning_scope_block().unwrap();
+        assert!(block.contains("SOUL Scope & Boundaries"));
+        assert!(block.contains("MANDATORY"));
+        assert!(block.contains("WILL NOT"));
+        assert!(block.contains("modify SOUL.md"));
+
+        let empty_soul = Soul::parse("", "empty.md");
+        assert!(empty_soul.to_planning_scope_block().is_none());
     }
 
     #[test]

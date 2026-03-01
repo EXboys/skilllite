@@ -384,6 +384,9 @@ async fn run_with_task_planning(
         None
     };
 
+    // A8: Load SOUL before planning so scope rules can be injected into planning prompt
+    let soul = Soul::auto_load(config.soul_path.as_deref(), &config.workspace);
+
     // A5: Goal boundaries — run mode: hybrid (regex + LLM fallback when SKILLLITE_GOAL_LLM_EXTRACT=1)
     let effective_boundaries = if session_key == Some("run") {
         match helpers::extract_goal_boundaries_hybrid(&client, &config.model, user_message).await {
@@ -397,7 +400,7 @@ async fn run_with_task_planning(
         config.goal_boundaries.clone()
     };
 
-    // Generate task list via LLM (A5: inject goal boundaries when in run mode)
+    // Generate task list via LLM (A5: goal boundaries, A8: SOUL scope rules)
     let _tasks = planner
         .generate_task_list(
             &client,
@@ -406,6 +409,7 @@ async fn run_with_task_planning(
             skills,
             conversation_context.as_deref(),
             effective_boundaries.as_ref(),
+            soul.as_ref(),
         )
         .await?;
 
@@ -417,7 +421,7 @@ async fn run_with_task_planning(
     // queries; we still pass tools so LLM can use them if needed.
     // When planner is empty: use standard prompt (no task list). When non-empty: use task-aware prompt.
 
-    let soul = Soul::auto_load(config.soul_path.as_deref(), &config.workspace);
+    // soul already loaded above (before planning)
     let system_prompt = if planner.is_empty() {
         prompt::build_system_prompt(
             config.system_prompt.as_deref(),
