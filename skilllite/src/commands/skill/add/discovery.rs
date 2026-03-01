@@ -4,9 +4,8 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use skilllite_core::skill::discovery::SKILL_SEARCH_DIRS;
 use skilllite_core::skill::metadata;
-
-const SKILL_SEARCH_DIRS: &[&str] = &["skills", ".skills", ".agents/skills", ".claude/skills", "."];
 
 pub(super) fn discover_skills(
     repo_dir: &Path,
@@ -65,51 +64,8 @@ pub(super) fn discover_skills(
         return candidates;
     }
 
-    let mut seen = std::collections::HashSet::new();
-    for search_dir in SKILL_SEARCH_DIRS {
-        let search_path = repo_dir.join(search_dir);
-        if !search_path.is_dir() {
-            continue;
-        }
-        if *search_dir == "." {
-            if let Ok(entries) = fs::read_dir(&search_path) {
-                let mut children: Vec<_> = entries.flatten().collect();
-                children.sort_by_key(|e| e.file_name());
-                for entry in children {
-                    let p = entry.path();
-                    if p.is_dir() && p.join("SKILL.md").exists() {
-                        if let Ok(real) = p.canonicalize() {
-                            if seen.insert(real) {
-                                candidates.push(p);
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            if search_path.join("SKILL.md").exists() {
-                if let Ok(real) = search_path.canonicalize() {
-                    if seen.insert(real) {
-                        candidates.push(search_path.clone());
-                    }
-                }
-            }
-            if let Ok(entries) = fs::read_dir(&search_path) {
-                let mut children: Vec<_> = entries.flatten().collect();
-                children.sort_by_key(|e| e.file_name());
-                for entry in children {
-                    let p = entry.path();
-                    if p.is_dir() && p.join("SKILL.md").exists() {
-                        if let Ok(real) = p.canonicalize() {
-                            if seen.insert(real) {
-                                candidates.push(p);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let mut candidates =
+        skilllite_core::skill::discovery::discover_skills_in_workspace(repo_dir, None);
 
     if let Some(filter) = skill_filter {
         candidates.retain(|c| {

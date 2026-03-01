@@ -33,31 +33,17 @@ pub async fn run_single_task(
 
     let skill_dirs = skill_dirs
         .map(|s| s.to_vec())
-        .unwrap_or_else(|| auto_discover_skill_dirs(workspace));
+        .unwrap_or_else(|| {
+            skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
+                Path::new(workspace),
+                Some(&[".skills", "skills"]),
+            )
+        });
     let loaded_skills = skills::load_skills(&skill_dirs);
 
     let mut session = ChatSession::new(config, session_key, loaded_skills);
     let mut sink = SilentEventSink;
     session.run_turn(description, &mut sink).await
-}
-
-fn auto_discover_skill_dirs(workspace: &str) -> Vec<String> {
-    let ws = Path::new(workspace);
-    let mut dirs = Vec::new();
-    for name in &[".skills", "skills"] {
-        let dir = ws.join(name);
-        if dir.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() && path.join("SKILL.md").exists() {
-                        dirs.push(path.to_string_lossy().to_string());
-                    }
-                }
-            }
-        }
-    }
-    dirs
 }
 
 /// Clear session (OpenClaw-style): summarize to memory, archive transcript, reset counts.
@@ -146,24 +132,10 @@ pub fn run_chat(
 
     // Auto-discover skill directories if none specified
     let (effective_skill_dirs, was_auto_discovered) = if skill_dirs.is_empty() {
-        let ws = Path::new(&config.workspace);
-        let mut auto_dirs = Vec::new();
-        for name in &[".skills", "skills"] {
-            let dir = ws.join(name);
-            if dir.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(&dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_dir() && path.join("SKILL.md").exists() {
-                            auto_dirs.push(path.to_string_lossy().to_string());
-                        }
-                    }
-                }
-                if auto_dirs.is_empty() {
-                    auto_dirs.push(dir.to_string_lossy().to_string());
-                }
-            }
-        }
+        let auto_dirs = skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
+            Path::new(&config.workspace),
+            Some(&[".skills", "skills"]),
+        );
         let has_skills = !auto_dirs.is_empty();
         (auto_dirs, has_skills)
     } else {
@@ -288,24 +260,10 @@ pub fn run_agent_run(
     config.workspace = effective_workspace;
 
     let (effective_skill_dirs, was_auto_discovered) = if skill_dirs.is_empty() {
-        let ws = Path::new(&config.workspace);
-        let mut auto_dirs = Vec::new();
-        for name in &[".skills", "skills"] {
-            let dir = ws.join(name);
-            if dir.is_dir() {
-                if let Ok(entries) = std::fs::read_dir(&dir) {
-                    for entry in entries.flatten() {
-                        let path = entry.path();
-                        if path.is_dir() && path.join("SKILL.md").exists() {
-                            auto_dirs.push(path.to_string_lossy().to_string());
-                        }
-                    }
-                }
-                if auto_dirs.is_empty() {
-                    auto_dirs.push(dir.to_string_lossy().to_string());
-                }
-            }
-        }
+        let auto_dirs = skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
+            Path::new(&config.workspace),
+            Some(&[".skills", "skills"]),
+        );
         let has_skills = !auto_dirs.is_empty();
         (auto_dirs, has_skills)
     } else {

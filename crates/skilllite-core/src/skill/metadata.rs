@@ -412,6 +412,13 @@ fn extract_yaml_front_matter_with_detection(content: &str, skill_dir: &Path) -> 
     extract_yaml_front_matter_impl(content, Some(skill_dir))
 }
 
+/// Normalize YAML continuation lines: "   : text" (indent + colon + space + text) is a common
+/// pattern for multiline values. Standard YAML parses ":" as a new key; we merge into previous.
+fn normalize_yaml_continuation_lines(yaml: &str) -> String {
+    let re = Regex::new(r"\n(\s+):(\s+)").expect("regex valid");
+    re.replace_all(yaml, " ").to_string()
+}
+
 /// Extract YAML front matter from markdown content
 fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Result<SkillMetadata> {
     // Match YAML front matter between --- delimiters
@@ -427,7 +434,11 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         .ok_or_else(|| anyhow::anyhow!("Failed to extract YAML content"))?
         .as_str();
 
-    let front_matter: FrontMatter = serde_yaml::from_str(yaml_content)
+    // Normalize continuation lines: "   : text" (indent + colon + space + text) is a common
+    // pattern for multiline values. YAML parses ":" as a new key; we merge into previous line.
+    let yaml_content = normalize_yaml_continuation_lines(yaml_content);
+
+    let front_matter: FrontMatter = serde_yaml::from_str(&yaml_content)
         .with_context(|| "Failed to parse YAML front matter")?;
 
     // Auto-detect entry_point from scripts/ directory
@@ -612,6 +623,23 @@ mod tests {
         // From description (arithmetic)
         let caps = infer_capabilities_from_compatibility("", "foo", "basic arithmetic operations");
         assert_eq!(caps, vec!["calc"]);
+    }
+
+    #[test]
+    fn test_parse_yaml_continuation_lines() {
+        // "   : text" continuation format (common in SKILL.md, invalid in strict YAML)
+        let content = r#"---
+name: agent-browser
+description: Browser automation CLI for AI agents.
+   : Requires Node.js with agent-browser Use when the user needs to interact with websites.
+allowed-tools: Bash(agent-browser:*)
+---
+"#;
+        let metadata = extract_yaml_front_matter(content)
+            .expect("continuation lines should be normalized");
+        assert_eq!(metadata.name, "agent-browser");
+        assert!(metadata.description.as_ref().unwrap().contains("Browser automation CLI"));
+        assert!(metadata.description.as_ref().unwrap().contains("Requires Node.js"));
     }
 
     #[test]

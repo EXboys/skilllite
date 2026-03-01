@@ -281,7 +281,10 @@ async fn handle_agent_chat(
             .filter_map(|d| d.as_str().map(|s| s.to_string()))
             .collect()
     } else {
-        auto_discover_skill_dirs(&config.workspace)
+        skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
+            Path::new(&config.workspace),
+            Some(&[".skills", "skills"]),
+        )
     };
 
     let loaded_skills = skills::load_skills(&skill_dirs);
@@ -316,21 +319,3 @@ async fn handle_agent_chat(
     Ok(())
 }
 
-fn auto_discover_skill_dirs(workspace: &str) -> Vec<String> {
-    let ws = Path::new(workspace);
-    let mut dirs = Vec::new();
-    for name in &[".skills", "skills"] {
-        let dir = ws.join(name);
-        if dir.is_dir() {
-            if let Ok(entries) = std::fs::read_dir(&dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() && path.join("SKILL.md").exists() {
-                        dirs.push(path.to_string_lossy().to_string());
-                    }
-                }
-            }
-        }
-    }
-    dirs
-}
