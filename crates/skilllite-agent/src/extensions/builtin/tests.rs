@@ -15,7 +15,7 @@ fn test_search_replace_first_occurrence() {
         "new_string": "hi world",
         "replace_all": false
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("Successfully replaced 1 occurrence"));
     assert!(result.content.contains("\"first_changed_line\": 1"));
@@ -37,7 +37,7 @@ fn test_search_replace_requires_unique_match_by_default() {
         "old_string": "hello",
         "new_string": "hi"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(result.is_error);
     assert!(result.content.contains("requires a unique match by default"));
 }
@@ -55,7 +55,7 @@ fn test_search_replace_all() {
         "new_string": "qux",
         "replace_all": true
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("Successfully replaced 3 occurrence"));
 
@@ -75,7 +75,7 @@ fn test_search_replace_old_string_not_found() {
         "old_string": "xyz",
         "new_string": "abc"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(result.is_error);
     assert!(result.content.contains("old_string not found"));
 }
@@ -92,7 +92,7 @@ fn test_search_replace_blocks_sensitive_path() {
         "old_string": "KEY=value",
         "new_string": "KEY=modified"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(result.is_error);
     assert!(result.content.contains("Blocked"));
 }
@@ -110,7 +110,7 @@ fn test_search_replace_normalize_whitespace_trailing() {
         "new_string": "hi",
         "normalize_whitespace": true
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -131,7 +131,7 @@ fn test_search_replace_normalize_whitespace_replace_all() {
         "replace_all": true,
         "normalize_whitespace": true
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -151,7 +151,7 @@ fn test_search_replace_normalize_whitespace_literal_replacement() {
         "new_string": "price: $200",
         "normalize_whitespace": true
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -172,7 +172,7 @@ fn test_search_replace_output_directory() {
         "old_string": "Old Title",
         "new_string": "New Title"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -191,7 +191,7 @@ fn test_preview_edit_does_not_write_file() {
         "old_string": "alpha",
         "new_string": "gamma"
     });
-    let result = execute_builtin_tool("preview_edit", &args.to_string(), workspace);
+    let result = execute_builtin_tool("preview_edit", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("Preview edit"));
     assert!(result.content.contains("\"changed\": true"));
@@ -211,7 +211,7 @@ fn test_read_file_with_line_numbers() {
     std::fs::write(&file_path, "line1\nline2\nline3\n").unwrap();
 
     let args = serde_json::json!({ "path": "test.txt" });
-    let result = execute_builtin_tool("read_file", &args.to_string(), workspace);
+    let result = execute_builtin_tool("read_file", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("1|line1"));
     assert!(result.content.contains("2|line2"));
@@ -230,7 +230,7 @@ fn test_read_file_with_range() {
         "start_line": 2,
         "end_line": 4
     });
-    let result = execute_builtin_tool("read_file", &args.to_string(), workspace);
+    let result = execute_builtin_tool("read_file", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("2|bbb"));
     assert!(result.content.contains("3|ccc"));
@@ -251,7 +251,7 @@ fn test_read_file_range_beyond_end() {
         "path": "test.txt",
         "start_line": 100
     });
-    let result = execute_builtin_tool("read_file", &args.to_string(), workspace);
+    let result = execute_builtin_tool("read_file", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("File has 1 lines"));
 }
@@ -270,7 +270,7 @@ fn test_insert_lines_at_beginning() {
         "line": 0,
         "content": "inserted"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("Successfully inserted"));
 
@@ -290,7 +290,7 @@ fn test_insert_lines_in_middle() {
         "line": 1,
         "content": "new_line"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -309,7 +309,7 @@ fn test_insert_lines_at_end() {
         "line": 2,
         "content": "last_line"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -328,7 +328,7 @@ fn test_insert_lines_multiline_content() {
         "line": 1,
         "content": "x1\nx2\nx3"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("\"lines_inserted\": 3"));
 
@@ -348,7 +348,7 @@ fn test_insert_lines_beyond_end_fails() {
         "line": 99,
         "content": "nope"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(result.is_error);
     assert!(result.content.contains("beyond end of file"));
 }
@@ -365,7 +365,7 @@ fn test_insert_lines_no_trailing_newline() {
         "line": 2,
         "content": "end"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -387,7 +387,7 @@ fn test_search_replace_dry_run_no_write() {
         "new_string": "gamma",
         "dry_run": true
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("Preview edit"));
     assert!(result.content.contains("no changes written"));
@@ -411,7 +411,7 @@ fn test_search_replace_match_type_exact() {
         "old_string": "hello world",
         "new_string": "hi world"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("\"match_type\": \"exact\""));
 }
@@ -435,7 +435,7 @@ fn test_fuzzy_match_indent_difference() {
         "old_string": "  let x = 1;\n  let y = 2;",
         "new_string": "    let a = 10;\n    let b = 20;"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error, "Error: {}", result.content);
     assert!(result.content.contains("\"match_type\": \"whitespace_fuzzy\""));
 
@@ -461,7 +461,7 @@ fn test_fuzzy_match_trailing_whitespace_auto() {
         "new_string": "hi\nnext"
     });
     // Exact match succeeds here (substring match)
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("\"match_type\": \"exact\""));
 }
@@ -483,7 +483,7 @@ fn test_fuzzy_match_multiline_indent() {
         "old_string": "x = 1\ny = 2",
         "new_string": "    a = 10\n    b = 20"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("\"match_type\": \"whitespace_fuzzy\""));
 
@@ -507,7 +507,7 @@ fn test_fuzzy_match_blank_line_difference() {
         "old_string": "aaa\nbbb",
         "new_string": "xxx\nyyy"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("\"match_type\": \"blank_line_fuzzy\""));
 
@@ -534,7 +534,7 @@ fn test_fuzzy_match_similarity() {
         "old_string": "fn calculate_totl(items: &[Item]) -> f64 {\n    items.iter().map(|i| i.price).sum()\n}",
         "new_string": "fn calculate_total(items: &[Item]) -> u64 {\n    items.iter().map(|i| i.price as u64).sum()\n}"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("similarity("));
 
@@ -554,7 +554,7 @@ fn test_fuzzy_match_low_similarity_fails() {
         "old_string": "nothing even close to matching this at all",
         "new_string": "replacement"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(result.is_error);
     assert!(result.content.contains("old_string not found"));
 }
@@ -573,7 +573,7 @@ fn test_insert_lines_blocks_sensitive_path() {
         "line": 0,
         "content": "INJECTED=bad"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(result.is_error);
     assert!(result.content.contains("Blocked"));
 }
@@ -588,7 +588,7 @@ fn test_grep_files_basic_match() {
     std::fs::write(workspace.join("b.txt"), "hello rust\nbaz\n").unwrap();
 
     let args = serde_json::json!({ "pattern": "hello" });
-    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("a.txt:1:hello world"));
     assert!(result.content.contains("b.txt:1:hello rust"));
@@ -602,7 +602,7 @@ fn test_grep_files_regex_pattern() {
     std::fs::write(workspace.join("code.rs"), "fn main() {\n    let x = 42;\n}\n").unwrap();
 
     let args = serde_json::json!({ "pattern": r"fn\s+\w+" });
-    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("code.rs:1:fn main()"));
 }
@@ -615,7 +615,7 @@ fn test_grep_files_include_filter() {
     std::fs::write(workspace.join("b.py"), "match_me\n").unwrap();
 
     let args = serde_json::json!({ "pattern": "match_me", "include": "*.rs" });
-    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("a.rs:1:match_me"));
     assert!(!result.content.contains("b.py"));
@@ -628,7 +628,7 @@ fn test_grep_files_no_match() {
     std::fs::write(workspace.join("a.txt"), "hello\n").unwrap();
 
     let args = serde_json::json!({ "pattern": "xyz_not_here" });
-    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("No matches found"));
 }
@@ -643,7 +643,7 @@ fn test_grep_files_skips_git_dir() {
     std::fs::write(workspace.join("src.txt"), "find_me\n").unwrap();
 
     let args = serde_json::json!({ "pattern": "find_me" });
-    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("src.txt"));
     assert!(!result.content.contains(".git"));
@@ -658,7 +658,7 @@ fn test_grep_files_recursive() {
     std::fs::write(sub.join("nested.txt"), "deep_match\n").unwrap();
 
     let args = serde_json::json!({ "pattern": "deep_match" });
-    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("sub/deep/nested.txt:1:deep_match"));
 }
@@ -669,7 +669,7 @@ fn test_grep_files_invalid_regex() {
     let workspace = tmp.path();
 
     let args = serde_json::json!({ "pattern": "[invalid" });
-    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace);
+    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
     assert!(result.is_error);
     assert!(result.content.contains("Invalid regex"));
 }
@@ -688,7 +688,7 @@ fn test_search_replace_creates_backup() {
         "old_string": "original",
         "new_string": "modified"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("\"backup\""));
     assert!(result.content.contains("edit-backups"));
@@ -706,7 +706,7 @@ fn test_insert_lines_creates_backup() {
         "line": 0,
         "content": "prepended"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("\"backup\""));
     assert!(result.content.contains("edit-backups"));
@@ -725,7 +725,7 @@ fn test_dry_run_no_backup() {
         "new_string": "gamma",
         "dry_run": true
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("\"backup\": null"));
 }
@@ -749,7 +749,7 @@ fn test_validation_warns_on_invalid_json() {
         "old_string": "{\"key\": \"value\"}",
         "new_string": "{\"key\": \"value\""
     });
-    let result = execute_builtin_tool("search_replace", &args2.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args2.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("JSON syntax warning"));
 }
@@ -766,7 +766,7 @@ fn test_validation_warns_on_unmatched_bracket() {
         "old_string": "fn main() {\n    println!(\"hi\");\n}",
         "new_string": "fn main() {\n    println!(\"hi\");\n"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("validation_warning"));
     assert!(result.content.contains("Unclosed"));
@@ -784,7 +784,7 @@ fn test_validation_no_warning_on_valid_code() {
         "old_string": "1 + 2",
         "new_string": "3 + 4"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("\"validation_warning\": null"));
 }
@@ -802,7 +802,7 @@ fn test_search_replace_multibyte_content_no_panic() {
         "old_string": "**轻量级 AI Agent 安全引擎**，内置原生系统级沙箱，零依赖，本地执行。",
         "new_string": "**A lightweight AI Agent secure engine** with built-in sandbox, zero deps."
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error, "Error: {}", result.content);
     assert!(result.content.contains("\"match_type\": \"exact\""));
 
@@ -822,7 +822,7 @@ fn test_validation_warns_on_invalid_yaml() {
         "old_string": "nested:\n  a: 1",
         "new_string": "nested:\n  a: 1\n  b: [unclosed"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
     assert!(result.content.contains("YAML syntax warning") || result.content.contains("Unclosed"));
 }
@@ -845,7 +845,7 @@ fn test_failure_hint_shows_closest_match_context() {
         "old_string": "completely_unrelated_string_that_wont_match_anything_at_all_xyz"
     ,   "new_string": "replacement"
     });
-    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace);
+    let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(result.is_error);
     assert!(result.content.contains("Closest match found at line"));
     assert!(result.content.contains("similarity:"));
@@ -870,7 +870,7 @@ fn test_insert_lines_auto_indent() {
         "line": 2,
         "content": "let z = 3;"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -893,7 +893,7 @@ fn test_insert_lines_no_indent_when_content_already_indented() {
         "line": 1,
         "content": "    y = 2"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -916,7 +916,7 @@ fn test_insert_lines_no_indent_at_top_level() {
         "line": 1,
         "content": "new_line"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();
@@ -939,7 +939,7 @@ fn test_insert_lines_multiline_auto_indent() {
         "line": 1,
         "content": "let y = 2;\nlet z = 3;"
     });
-    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace);
+    let result = execute_builtin_tool("insert_lines", &args.to_string(), workspace, None);
     assert!(!result.is_error);
 
     let content = std::fs::read_to_string(&file_path).unwrap();

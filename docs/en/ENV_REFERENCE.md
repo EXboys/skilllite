@@ -178,6 +178,14 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 
 ---
 
+## A11 High-Risk Tool Confirmation <small>[Advanced]</small>
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_HIGH_RISK_CONFIRM` | string | `write_key_path,run_command,network` | Comma-separated: high-risk ops requiring confirmation. Values: `write_key_path` (write to package.json, Cargo.toml, etc.), `run_command` (shell execution), `network` (network skill execution). `none`=skip all; `all`=confirm all |
+
+---
+
 ## Debug & Advanced <small>[Advanced/Internal]</small>
 
 | Variable | Type | Default | Description |

@@ -8,6 +8,7 @@ use std::path::Path;
 use skilllite_sandbox::runner::{ResourceLimits, SandboxConfig, SandboxLevel};
 use skilllite_core::skill::metadata::{self, SkillMetadata};
 
+use crate::high_risk;
 use crate::types::{EventSink, ToolResult};
 
 use super::LoadedSkill;
@@ -101,6 +102,27 @@ fn execute_skill_inner(
             // Cache confirmation
             CONFIRMED_SKILLS.with(|cache| {
                 cache.borrow_mut().insert(skill.name.clone(), code_hash);
+            });
+        }
+    }
+
+    // A11: 网络 skill 执行前确认
+    if high_risk::confirm_network() && metadata.network.enabled {
+        let network_cache_key = format!("{}:network", skill.name);
+        let already_network_confirmed = CONFIRMED_SKILLS.with(|cache| {
+            let cache = cache.borrow();
+            cache.get(&network_cache_key).is_some()
+        });
+        if !already_network_confirmed {
+            let msg = format!(
+                "⚠️ 网络访问确认\n\nSkill '{}' 将发起网络请求。\n\n确认执行?",
+                skill.name
+            );
+            if !event_sink.on_confirmation_request(&msg) {
+                return Ok("Execution cancelled: network skill not confirmed by user.".to_string());
+            }
+            CONFIRMED_SKILLS.with(|cache| {
+                cache.borrow_mut().insert(network_cache_key, "confirmed".to_string());
             });
         }
     }

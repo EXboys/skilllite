@@ -12,6 +12,27 @@ use crate::types;
 
 const SENSITIVE_PATTERNS: &[&str] = &[".env", ".git/config", ".key"];
 
+/// A11: 关键路径 — 需要确认但非完全禁止（如 package.json、Cargo.toml、配置文件等）
+const KEY_PATH_PATTERNS: &[&str] = &[
+    "package.json",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "Cargo.toml",
+    "Cargo.lock",
+    "requirements.txt",
+    "pyproject.toml",
+    "Pipfile",
+    "tsconfig.json",
+    "jsconfig.json",
+    "vite.config.",
+    "webpack.config.",
+    ".config.",
+    "dockerfile",
+    "Dockerfile",
+    "Makefile",
+];
+
 pub(super) fn is_sensitive_write_path(path: &str) -> bool {
     let lower = path.to_lowercase();
     for pattern in SENSITIVE_PATTERNS {
@@ -21,6 +42,26 @@ pub(super) fn is_sensitive_write_path(path: &str) -> bool {
     }
     if lower.ends_with(".key") || lower.ends_with(".pem") {
         return true;
+    }
+    false
+}
+
+/// A11: 是否为关键路径（需确认，非敏感路径直接 block）
+pub(super) fn is_key_write_path(path: &str) -> bool {
+    let lower = path.replace('\\', "/").to_lowercase();
+    let basename = std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    for pattern in KEY_PATH_PATTERNS {
+        if lower.ends_with(pattern)
+            || lower.contains(&format!("/{}", pattern))
+            || basename == *pattern
+            || basename.starts_with(pattern)
+        {
+            return true;
+        }
     }
     false
 }

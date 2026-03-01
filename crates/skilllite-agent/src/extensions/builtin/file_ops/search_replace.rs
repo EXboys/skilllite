@@ -4,20 +4,30 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-use super::super::{get_path_arg, is_sensitive_write_path, resolve_within_workspace_or_output};
+use super::super::{get_path_arg, is_key_write_path, is_sensitive_write_path, resolve_within_workspace_or_output};
+use crate::high_risk;
+use crate::types::EventSink;
 
 const FUZZY_THRESHOLD: f64 = 0.85;
 
-pub(super) fn execute_search_replace(args: &Value, workspace: &Path) -> Result<String> {
-    execute_replace_like(args, workspace, true)
+pub(super) fn execute_search_replace(
+    args: &Value,
+    workspace: &Path,
+    event_sink: Option<&mut dyn EventSink>,
+) -> Result<String> {
+    execute_replace_like(args, workspace, true, event_sink)
 }
 
 /// Backward-compatible handler: preview_edit is now search_replace with dry_run=true.
 pub(super) fn execute_preview_edit(args: &Value, workspace: &Path) -> Result<String> {
-    execute_replace_like(args, workspace, false)
+    execute_replace_like(args, workspace, false, None)
 }
 
-pub(super) fn execute_insert_lines(args: &Value, workspace: &Path) -> Result<String> {
+pub(super) fn execute_insert_lines(
+    args: &Value,
+    workspace: &Path,
+    event_sink: Option<&mut dyn EventSink>,
+) -> Result<String> {
     let path_str = get_path_arg(args, false)
         .ok_or_else(|| anyhow::anyhow!("'path' is required"))?;
     let line_num = args
@@ -34,6 +44,19 @@ pub(super) fn execute_insert_lines(args: &Value, workspace: &Path) -> Result<Str
             "Blocked: editing sensitive file '{}' is not allowed",
             path_str
         );
+    }
+
+    // A11: 关键路径确认
+    if high_risk::confirm_write_key_path() && is_key_write_path(&path_str) {
+        if let Some(sink) = event_sink {
+            let msg = format!(
+                "⚠️ 关键路径编辑确认\n\n路径: {}\n操作: insert_lines (在第 {} 行后插入)\n\n确认执行?",
+                path_str, args.get("line").and_then(|v| v.as_u64()).unwrap_or(0)
+            );
+            if !sink.on_confirmation_request(&msg) {
+                return Ok("User cancelled: edit to key path not confirmed".to_string());
+            }
+        }
     }
 
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
@@ -117,7 +140,12 @@ pub(super) fn execute_insert_lines(args: &Value, workspace: &Path) -> Result<Str
     ))
 }
 
-fn execute_replace_like(args: &Value, workspace: &Path, apply_changes: bool) -> Result<String> {
+fn execute_replace_like(
+    args: &Value,
+    workspace: &Path,
+    apply_changes: bool,
+    event_sink: Option<&mut dyn EventSink>,
+) -> Result<String> {
     let dry_run = args
         .get("dry_run")
         .and_then(|v| v.as_bool())
@@ -159,6 +187,21 @@ fn execute_replace_like(args: &Value, workspace: &Path, apply_changes: bool) -> 
             "Blocked: editing sensitive file '{}' is not allowed",
             path_str
         );
+    }
+
+    // A11: 关键路径确认（仅在实际写入时）
+    if should_write && high_risk::confirm_write_key_path() && is_key_write_path(&path_str) {
+        if let Some(sink) = event_sink {
+            let new_preview = new_string.chars().take(100).collect::<String>();
+            let suffix = if new_string.len() > 100 { "..." } else { "" };
+            let msg = format!(
+                "⚠️ 关键路径编辑确认\n\n路径: {}\n操作: search_replace\n替换预览: {}{}\n\n确认执行?",
+                path_str, new_preview, suffix
+            );
+            if !sink.on_confirmation_request(&msg) {
+                return Ok("User cancelled: edit to key path not confirmed".to_string());
+            }
+        }
     }
 
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;

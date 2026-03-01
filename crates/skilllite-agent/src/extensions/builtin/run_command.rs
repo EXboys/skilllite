@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 
+use crate::high_risk;
 use crate::types::{EventSink, ToolDefinition, FunctionDef, safe_truncate, safe_slice_from};
 
 // ─── Tool definition ────────────────────────────────────────────────────────
@@ -65,20 +66,23 @@ pub(super) async fn execute_run_command(
         anyhow::bail!("command must not be empty");
     }
 
-    let confirm_msg = if let Some(danger_reason) = check_dangerous_command(cmd) {
-        format!(
-            "⚠️ Dangerous command detected\n\n\
-             Pattern that may cause serious harm: {}\n\n\
-             Command: {}\n\n\
-             Please verify before confirming execution.",
-            danger_reason, cmd
-        )
-    } else {
-        format!("About to execute command:\n  {}\n\nConfirm execution?", cmd)
-    };
+    // A11: run_command 可配置为跳过确认
+    if high_risk::confirm_run_command() {
+        let confirm_msg = if let Some(danger_reason) = check_dangerous_command(cmd) {
+            format!(
+                "⚠️ Dangerous command detected\n\n\
+                 Pattern that may cause serious harm: {}\n\n\
+                 Command: {}\n\n\
+                 Please verify before confirming execution.",
+                danger_reason, cmd
+            )
+        } else {
+            format!("About to execute command:\n  {}\n\nConfirm execution?", cmd)
+        };
 
-    if !event_sink.on_confirmation_request(&confirm_msg) {
-        return Ok("User cancelled command execution".to_string());
+        if !event_sink.on_confirmation_request(&confirm_msg) {
+            return Ok("User cancelled command execution".to_string());
+        }
     }
 
     use tokio::io::{AsyncBufReadExt, BufReader};

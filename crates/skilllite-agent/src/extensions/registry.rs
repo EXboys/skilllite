@@ -147,7 +147,7 @@ impl<'a> ExtensionRegistry<'a> {
             if builtin::is_async_builtin_tool(tool_name) {
                 builtin::execute_async_builtin_tool(tool_name, arguments, workspace, event_sink).await
             } else {
-                builtin::execute_builtin_tool(tool_name, arguments, workspace)
+                builtin::execute_builtin_tool(tool_name, arguments, workspace, Some(event_sink))
             }
         } else if self.enable_memory && memory::is_memory_tool(tool_name) {
             memory::execute_memory_tool(

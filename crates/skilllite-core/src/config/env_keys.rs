@@ -83,6 +83,14 @@ pub mod evolution {
     pub const SKILLLITE_EVOLUTION_DECISION_THRESHOLD: &str = "SKILLLITE_EVOLUTION_DECISION_THRESHOLD";
 }
 
+/// A11: 高危工具确认 — 可配置哪些操作需发消息确认
+pub mod high_risk {
+    /// SKILLLITE_HIGH_RISK_CONFIRM: 逗号分隔，如 "write_key_path,run_command,network"。
+    /// 可选值: write_key_path, run_command, network。默认 "write_key_path,run_command,network"。
+    /// "none" 表示全部跳过确认；"all" 等同默认。
+    pub const SKILLLITE_HIGH_RISK_CONFIRM: &str = "SKILLLITE_HIGH_RISK_CONFIRM";
+}
+
 /// 规划与 dependency-audit
 pub mod misc {
     pub const SKILLLITE_COMPACT_PLANNING: &str = "SKILLLITE_COMPACT_PLANNING";

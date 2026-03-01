@@ -69,6 +69,7 @@ pub fn execute_builtin_tool(
     tool_name: &str,
     arguments: &str,
     workspace: &Path,
+    event_sink: Option<&mut dyn EventSink>,
 ) -> ToolResult {
     let (args, was_recovered) = match serde_json::from_str(arguments) {
         Ok(v) => (v, false),
@@ -105,10 +106,10 @@ pub fn execute_builtin_tool(
 
     let result = match tool_name {
         "read_file" => file_ops::execute_read_file(&args, workspace),
-        "write_file" => file_ops::execute_write_file(&args, workspace),
-        "search_replace" => file_ops::execute_search_replace(&args, workspace),
+        "write_file" => file_ops::execute_write_file(&args, workspace, event_sink),
+        "search_replace" => file_ops::execute_search_replace(&args, workspace, event_sink),
         "preview_edit" => file_ops::execute_preview_edit(&args, workspace),
-        "insert_lines" => file_ops::execute_insert_lines(&args, workspace),
+        "insert_lines" => file_ops::execute_insert_lines(&args, workspace, event_sink),
         "grep_files" => file_ops::execute_grep_files(&args, workspace),
         "list_directory" => file_ops::execute_list_directory(&args, workspace),
         "file_exists" => file_ops::execute_file_exists(&args, workspace),

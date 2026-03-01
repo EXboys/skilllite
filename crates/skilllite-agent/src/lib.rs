@@ -1,3 +1,4 @@
+pub mod high_risk;
 pub mod llm;
 pub mod extensions;
 pub mod goal_boundaries;

@@ -13,7 +13,9 @@ use std::path::Path;
 
 use crate::types::{ToolDefinition, FunctionDef};
 
-use super::{get_path_arg, is_sensitive_write_path, list_dir_impl, resolve_within_workspace, resolve_within_workspace_or_output};
+use crate::types::EventSink;
+use super::{get_path_arg, is_key_write_path, is_sensitive_write_path, list_dir_impl, resolve_within_workspace, resolve_within_workspace_or_output};
+use crate::high_risk;
 
 pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
     vec![
@@ -248,7 +250,11 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
     }
 }
 
-pub(super) fn execute_write_file(args: &Value, workspace: &Path) -> Result<String> {
+pub(super) fn execute_write_file(
+    args: &Value,
+    workspace: &Path,
+    event_sink: Option<&mut dyn EventSink>,
+) -> Result<String> {
     let path_str = get_path_arg(args, false)
         .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
     let content = args
@@ -262,6 +268,21 @@ pub(super) fn execute_write_file(args: &Value, workspace: &Path) -> Result<Strin
             "Blocked: writing to sensitive file '{}' is not allowed",
             path_str
         );
+    }
+
+    // A11: 关键路径确认
+    if high_risk::confirm_write_key_path() && is_key_write_path(&path_str) {
+        if let Some(sink) = event_sink {
+            let preview = content.chars().take(200).collect::<String>();
+            let suffix = if content.len() > 200 { "..." } else { "" };
+            let msg = format!(
+                "⚠️ 关键路径写入确认\n\n路径: {}\n内容预览 (前200字符):\n{}\n{}\n\n确认写入?",
+                path_str, preview, suffix
+            );
+            if !sink.on_confirmation_request(&msg) {
+                return Ok("User cancelled: write to key path not confirmed".to_string());
+            }
+        }
     }
 
     let resolved = resolve_within_workspace(&path_str, workspace)?;
@@ -293,16 +314,24 @@ pub(super) fn execute_write_file(args: &Value, workspace: &Path) -> Result<Strin
     ))
 }
 
-pub(super) fn execute_search_replace(args: &Value, workspace: &Path) -> Result<String> {
-    search_replace::execute_search_replace(args, workspace)
+pub(super) fn execute_search_replace(
+    args: &Value,
+    workspace: &Path,
+    event_sink: Option<&mut dyn EventSink>,
+) -> Result<String> {
+    search_replace::execute_search_replace(args, workspace, event_sink)
 }
 
 pub(super) fn execute_preview_edit(args: &Value, workspace: &Path) -> Result<String> {
     search_replace::execute_preview_edit(args, workspace)
 }
 
-pub(super) fn execute_insert_lines(args: &Value, workspace: &Path) -> Result<String> {
-    search_replace::execute_insert_lines(args, workspace)
+pub(super) fn execute_insert_lines(
+    args: &Value,
+    workspace: &Path,
+    event_sink: Option<&mut dyn EventSink>,
+) -> Result<String> {
+    search_replace::execute_insert_lines(args, workspace, event_sink)
 }
 
 pub(super) fn execute_grep_files(args: &Value, workspace: &Path) -> Result<String> {
