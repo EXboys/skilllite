@@ -13,7 +13,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use super::evolution::seed;
+use skilllite_evolution::seed;
 use super::goal_boundaries::GoalBoundaries;
 use super::llm::LlmClient;
 use super::planning_rules;

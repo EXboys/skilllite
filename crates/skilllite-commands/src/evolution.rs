@@ -19,8 +19,8 @@ fn chat_root() -> PathBuf {
 /// `skilllite evolution status` — show evolution statistics, effectiveness, trends.
 pub fn cmd_status() -> Result<()> {
     let root = chat_root();
-    let conn = skilllite_agent::evolution::feedback::open_evolution_db(&root)?;
-    let mode = skilllite_agent::evolution::EvolutionMode::from_env();
+    let conn = skilllite_evolution::feedback::open_evolution_db(&root)?;
+    let mode = skilllite_evolution::EvolutionMode::from_env();
 
     // Header
     println!("╭─────────────────────────────────────────────╮");
@@ -30,11 +30,11 @@ pub fn cmd_status() -> Result<()> {
 
     // Mode
     let mode_str = match &mode {
-        skilllite_agent::evolution::EvolutionMode::All => "全部启用 ✅",
-        skilllite_agent::evolution::EvolutionMode::PromptsOnly => "仅 Prompts",
-        skilllite_agent::evolution::EvolutionMode::MemoryOnly => "仅 Memory",
-        skilllite_agent::evolution::EvolutionMode::SkillsOnly => "仅 Skills",
-        skilllite_agent::evolution::EvolutionMode::Disabled => "已禁用 ⏸️  (已有进化产物冻结生效中)",
+        skilllite_evolution::EvolutionMode::All => "全部启用 ✅",
+        skilllite_evolution::EvolutionMode::PromptsOnly => "仅 Prompts",
+        skilllite_evolution::EvolutionMode::MemoryOnly => "仅 Memory",
+        skilllite_evolution::EvolutionMode::SkillsOnly => "仅 Skills",
+        skilllite_evolution::EvolutionMode::Disabled => "已禁用 ⏸️  (已有进化产物冻结生效中)",
     };
     println!("进化模式: {}", mode_str);
     println!();
@@ -72,7 +72,7 @@ pub fn cmd_status() -> Result<()> {
     let unprocessed: i64 = conn
         .query_row("SELECT COUNT(*) FROM decisions WHERE evolved = 0", [], |r| r.get(0))
         .unwrap_or(0);
-    let pending = skilllite_agent::evolution::skill_synth::list_pending_skills(&root);
+    let pending = skilllite_evolution::skill_synth::list_pending_skills(&root);
 
     println!("📥 进化队列与待确认");
     // A9+EVO-5: 人机并存 — 两种触发：周期性、决策数阈值（已移除空闲5分钟触发以简化逻辑）
@@ -230,7 +230,7 @@ pub fn cmd_status() -> Result<()> {
 
     // Time trends
     println!("🕐 活跃时段分布 (最近 30 天)");
-    match skilllite_agent::evolution::feedback::query_peak_hours(&conn) {
+    match skilllite_evolution::feedback::query_peak_hours(&conn) {
         Ok(peaks) if !peaks.is_empty() => {
             let peak_strs: Vec<String> = peaks
                 .iter()
@@ -241,7 +241,7 @@ pub fn cmd_status() -> Result<()> {
         _ => println!("  (暂无数据)"),
     }
 
-    match skilllite_agent::evolution::feedback::query_weekday_activity(&conn) {
+    match skilllite_evolution::feedback::query_weekday_activity(&conn) {
         Ok(days) if !days.is_empty() => {
             print!("  星期分布: ");
             let day_strs: Vec<String> = days
@@ -269,7 +269,7 @@ pub fn cmd_reset(force: bool) -> Result<()> {
     let root = chat_root();
 
     // Re-seed prompts (overwrite evolved rules/examples with seed data)
-    skilllite_agent::evolution::seed::ensure_seed_data_force(&root);
+    skilllite_evolution::seed::ensure_seed_data_force(&root);
     println!("✅ Prompts 已重置为种子状态");
 
     // Remove evolved skills (includes _pending)
@@ -287,7 +287,7 @@ pub fn cmd_reset(force: bool) -> Result<()> {
     }
 
     // Clear evolution log entries (but keep decisions for future re-evolution)
-    if let Ok(conn) = skilllite_agent::evolution::feedback::open_evolution_db(&root) {
+    if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&root) {
         conn.execute("DELETE FROM evolution_log", [])?;
         println!("✅ 已清空进化日志");
     }
@@ -412,11 +412,11 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
             }
 
             // Evolution history from SQLite
-            let conn = skilllite_agent::evolution::feedback::open_evolution_db(&root)?;
+            let conn = skilllite_evolution::feedback::open_evolution_db(&root)?;
 
             println!();
             println!("进化历史:");
-            let history = skilllite_agent::evolution::feedback::query_rule_history(&conn, rule_id)?;
+            let history = skilllite_evolution::feedback::query_rule_history(&conn, rule_id)?;
             if history.is_empty() {
                 println!("  (无进化历史 — 可能是种子规则)");
             } else {
@@ -427,7 +427,7 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
             }
 
             // Effectiveness from decisions
-            let eff = skilllite_agent::evolution::feedback::compute_effectiveness(&conn, rule_id)?;
+            let eff = skilllite_evolution::feedback::compute_effectiveness(&conn, rule_id)?;
             if eff >= 0.0 {
                 println!();
                 println!("实测效果: {:.0}% (基于关联决策计算)", eff * 100.0);
@@ -444,7 +444,7 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
 /// `skilllite evolution confirm <skill_name>` — move pending skill to confirmed (A10).
 pub fn cmd_confirm(skill_name: &str) -> Result<()> {
     let root = chat_root();
-    skilllite_agent::evolution::skill_synth::confirm_pending_skill(&root, skill_name)?;
+    skilllite_evolution::skill_synth::confirm_pending_skill(&root, skill_name)?;
     println!("✅ Skill '{}' 已确认加入", skill_name);
     Ok(())
 }
@@ -452,7 +452,7 @@ pub fn cmd_confirm(skill_name: &str) -> Result<()> {
 /// `skilllite evolution reject <skill_name>` — remove pending skill without adding (A10).
 pub fn cmd_reject(skill_name: &str) -> Result<()> {
     let root = chat_root();
-    skilllite_agent::evolution::skill_synth::reject_pending_skill(&root, skill_name)?;
+    skilllite_evolution::skill_synth::reject_pending_skill(&root, skill_name)?;
     println!("✅ Skill '{}' 已拒绝", skill_name);
     Ok(())
 }
@@ -467,9 +467,13 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
         anyhow::bail!("API key required. Set OPENAI_API_KEY env var.");
     }
 
+    let llm = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key);
+    let adapter = skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
+
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
-    let txn_opt = rt.block_on(skilllite_agent::evolution::run_evolution(
+    let txn_opt = rt.block_on(skilllite_evolution::run_evolution(
         &root,
+        &adapter,
         &config.api_base,
         &config.api_key,
         &config.model,
@@ -478,15 +482,15 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
     let task_id = uuid::Uuid::new_v4().to_string();
     let response = match txn_opt {
         Some(txn_id) => {
-            let conn = skilllite_agent::evolution::feedback::open_evolution_db(&root)?;
-            let changes = skilllite_agent::evolution::query_changes_by_txn(&conn, &txn_id);
+            let conn = skilllite_evolution::feedback::open_evolution_db(&root)?;
+            let changes = skilllite_evolution::query_changes_by_txn(&conn, &txn_id);
 
             let new_skill = changes
                 .iter()
                 .find(|(t, _)| t == "skill_pending" || t == "skill_refined")
                 .and_then(|(_, skill_name)| build_new_skill(&root, skill_name, &txn_id));
 
-            let summary: Vec<String> = skilllite_agent::evolution::format_evolution_changes(&changes);
+            let summary: Vec<String> = skilllite_evolution::format_evolution_changes(&changes);
             let response_text = if summary.is_empty() {
                 format!("Evolution completed (txn={})", txn_id)
             } else {

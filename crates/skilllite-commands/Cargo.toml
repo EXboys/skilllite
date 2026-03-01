@@ -13,6 +13,7 @@ audit = ["skilllite-sandbox/audit", "dep:ureq", "dep:zip"]
 
 [dependencies]
 skilllite-core = { path = "../skilllite-core" }
+skilllite-evolution = { path = "../skilllite-evolution" }
 skilllite-sandbox = { path = "../skilllite-sandbox" }
 skilllite-agent = { path = "../skilllite-agent", optional = true }
 

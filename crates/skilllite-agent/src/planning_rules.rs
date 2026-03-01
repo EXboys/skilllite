@@ -10,7 +10,7 @@
 
 use std::path::Path;
 
-use super::evolution::seed;
+use skilllite_evolution::seed;
 use super::types::PlanningRule;
 
 /// Load planning rules.

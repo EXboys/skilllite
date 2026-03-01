@@ -56,7 +56,7 @@ impl ChatSession {
             })
             .join("chat");
         // EVO-2: Ensure seed prompt/rules data exists on disk.
-        evolution::seed::ensure_seed_data(&data_root);
+        skilllite_evolution::seed::ensure_seed_data(&data_root);
         let mut session = Self {
             config,
             session_key: session_key.to_string(),
@@ -289,7 +289,7 @@ impl ChatSession {
 
     /// Start periodic evolution timer (every 30 min). Does not reset on user turns.
     fn start_periodic_evolution_timer(&mut self) {
-        if evolution::EvolutionMode::from_env().is_disabled() {
+        if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
             return;
         }
         let interval_secs: u64 = std::env::var(evo_env_keys::SKILLLITE_EVOLUTION_INTERVAL_SECS)
@@ -307,17 +307,17 @@ impl ChatSession {
 
     /// A9: If unprocessed decisions >= threshold, spawn evolution (runs even when user is active).
     fn maybe_trigger_evolution_by_decision_count(&self) {
-        if evolution::EvolutionMode::from_env().is_disabled() {
+        if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
             return;
         }
         let threshold: i64 = std::env::var(evo_env_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(10);
-        let Ok(conn) = evolution::feedback::open_evolution_db(&self.data_root) else {
+        let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&self.data_root) else {
             return;
         };
-        let Ok(count) = evolution::feedback::count_unprocessed_decisions(&conn) else {
+        let Ok(count) = skilllite_evolution::feedback::count_unprocessed_decisions(&conn) else {
             return;
         };
         if count >= threshold {
@@ -334,17 +334,17 @@ impl ChatSession {
 
     /// Record an execution decision to the evolution DB.
     fn record_decision(&self, feedback: &ExecutionFeedback) {
-        if let Ok(conn) = evolution::feedback::open_evolution_db(&self.data_root) {
-            if let Err(e) = evolution::feedback::insert_decision(
+        if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&self.data_root) {
+            let input = evolution::execution_feedback_to_decision_input(feedback);
+            if let Err(e) = skilllite_evolution::feedback::insert_decision(
                 &conn,
                 Some(&self.session_key),
-                feedback,
-                FeedbackSignal::Neutral,
+                &input,
+                evolution::to_evolution_feedback(FeedbackSignal::Neutral),
             ) {
                 tracing::warn!("Failed to record evolution decision: {}", e);
             }
-            // Update daily metrics (best-effort)
-            let _ = evolution::feedback::update_daily_metrics(&conn);
+            let _ = skilllite_evolution::feedback::update_daily_metrics(&conn);
         }
     }
 
@@ -354,11 +354,11 @@ impl ChatSession {
         if signal == FeedbackSignal::Neutral {
             return;
         }
-        if let Ok(conn) = evolution::feedback::open_evolution_db(&self.data_root) {
-            if let Err(e) = evolution::feedback::update_last_decision_feedback(
+        if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&self.data_root) {
+            if let Err(e) = skilllite_evolution::feedback::update_last_decision_feedback(
                 &conn,
                 &self.session_key,
-                signal,
+                evolution::to_evolution_feedback(signal),
             ) {
                 tracing::debug!("Failed to update previous feedback: {}", e);
             }
@@ -762,15 +762,17 @@ async fn run_evolution_and_emit_summary(
     api_key: &str,
     model: &str,
 ) {
-    match evolution::run_evolution(data_root, api_base, api_key, model).await {
+    let llm = LlmClient::new(api_base, api_key);
+    let adapter = evolution::EvolutionLlmAdapter { llm: &llm };
+    match skilllite_evolution::run_evolution(data_root, &adapter, api_base, api_key, model).await {
         Ok(Some(txn_id)) => {
             tracing::info!("Evolution completed: {}", txn_id);
-            if let Ok(conn) = evolution::feedback::open_evolution_db(data_root) {
-                let changes = query_recent_evolution_changes(&conn, &txn_id);
-                for msg in &evolution::format_evolution_changes(&changes) {
+            if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(data_root) {
+                let changes = skilllite_evolution::query_changes_by_txn(&conn, &txn_id);
+                for msg in &skilllite_evolution::format_evolution_changes(&changes) {
                     eprintln!("{}", msg);
                 }
-                let _ = evolution::check_auto_rollback(&conn, data_root);
+                let _ = skilllite_evolution::check_auto_rollback(&conn, data_root);
             }
         }
         Ok(None) => tracing::debug!("Evolution: nothing to evolve"),
@@ -787,7 +789,7 @@ pub fn spawn_periodic_evolution(
     interval_secs: u64,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        if evolution::EvolutionMode::from_env().is_disabled() {
+        if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
             tracing::debug!("Evolution disabled, skipping periodic trigger");
             return;
         }
@@ -808,7 +810,7 @@ pub fn spawn_evolution_once(
     model: String,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        if evolution::EvolutionMode::from_env().is_disabled() {
+        if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
             return;
         }
         tracing::debug!("Decision-count evolution trigger fired");
@@ -816,33 +818,9 @@ pub fn spawn_evolution_once(
     })
 }
 
-/// Query recent evolution changes for a specific transaction.
-fn query_recent_evolution_changes(
-    conn: &rusqlite::Connection,
-    txn_id: &str,
-) -> Vec<(String, String)> {
-    let mut stmt = match conn.prepare(
-        "SELECT type, target_id FROM evolution_log WHERE version = ?1",
-    ) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
-    stmt.query_map(rusqlite::params![txn_id], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, Option<String>>(1)?.unwrap_or_default(),
-        ))
-    })
-    .ok()
-    .into_iter()
-    .flatten()
-    .filter_map(|r| r.ok())
-    .collect()
-}
-
 /// Shutdown hook: flush metrics, no LLM calls. Called before process exit.
 pub fn shutdown_evolution(data_root: &std::path::Path) {
-    evolution::on_shutdown(data_root);
+    skilllite_evolution::on_shutdown(data_root);
 }
 
 /// Convert a transcript entry to a ChatMessage.

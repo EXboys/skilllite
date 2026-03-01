@@ -12,14 +12,20 @@ use std::path::Path;
 use anyhow::Result;
 use rusqlite::{params, Connection};
 
-use super::super::llm::LlmClient;
-use super::super::types::ChatMessage;
-use super::{gatekeeper_l1_path, gatekeeper_l3_content, log_evolution_event};
+use skilllite_sandbox::security::scanner::ScriptScanner;
+
+use crate::feedback;
+use crate::gatekeeper_l1_path;
+use crate::gatekeeper_l3_content;
+use crate::log_evolution_event;
+use crate::prompt_learner;
+use crate::EvolutionLlm;
+use crate::EvolutionMessage;
 
 const SKILL_GENERATION_PROMPT: &str =
-    include_str!("../seed/evolution_prompts/skill_generation.seed.md");
+    include_str!("seed/evolution_prompts/skill_generation.seed.md");
 const SKILL_REFINEMENT_PROMPT: &str =
-    include_str!("../seed/evolution_prompts/skill_refinement.seed.md");
+    include_str!("seed/evolution_prompts/skill_refinement.seed.md");
 
 const MAX_EVOLVED_SKILLS: usize = 20;
 const MAX_REFINE_ROUNDS: usize = 2;
@@ -56,10 +62,9 @@ impl SkillMeta {
 
 /// Run skill evolution: generate new skills or refine existing ones.
 /// Returns a list of (change_type, id) pairs for changelog.
-pub async fn evolve_skills(
+pub async fn evolve_skills<L: EvolutionLlm>(
     chat_root: &Path,
-    api_base: &str,
-    api_key: &str,
+    llm: &L,
     model: &str,
     txn_id: &str,
     generate: bool,
@@ -67,7 +72,7 @@ pub async fn evolve_skills(
     let mut changes = Vec::new();
 
     if generate {
-        match generate_skill(chat_root, api_base, api_key, model, txn_id).await {
+        match generate_skill(chat_root, llm, model, txn_id).await {
             Ok(Some(name)) => {
                 // A10: New skills enter pending queue until user confirms
                 changes.push(("skill_pending".to_string(), name));
@@ -78,7 +83,7 @@ pub async fn evolve_skills(
             }
         }
     } else {
-        match refine_weakest_skill(chat_root, api_base, api_key, model, txn_id).await {
+        match refine_weakest_skill(chat_root, llm, model, txn_id).await {
             Ok(Some(name)) => {
                 changes.push(("skill_refined".to_string(), name));
             }
@@ -147,12 +152,11 @@ pub fn reject_pending_skill(chat_root: &Path, skill_name: &str) -> Result<()> {
     Ok(())
 }
 
-// ─── Skill generation ───────────────────────────────────────────────────────
+// ─── Skill generation ─────────────────────────────────────────────────────
 
-async fn generate_skill(
+async fn generate_skill<L: EvolutionLlm>(
     chat_root: &Path,
-    api_base: &str,
-    api_key: &str,
+    llm: &L,
     model: &str,
     txn_id: &str,
 ) -> Result<Option<String>> {
@@ -172,7 +176,7 @@ async fn generate_skill(
 
     // Query repeated patterns from decisions
     let (patterns, executions) = {
-        let conn = super::feedback::open_evolution_db(chat_root)?;
+        let conn = feedback::open_evolution_db(chat_root)?;
         let patterns = query_repeated_patterns(&conn)?;
         let executions = if !patterns.is_empty() {
             query_pattern_executions(&conn, &patterns)?
@@ -193,19 +197,8 @@ async fn generate_skill(
         .replace("{{successful_executions}}", &executions)
         .replace("{{existing_skills}}", &existing_skills);
 
-    let llm = LlmClient::new(api_base, api_key);
-    let messages = vec![ChatMessage::user(&prompt)];
-    let response = llm
-        .chat_completion(model, &messages, None, Some(0.3))
-        .await?;
-
-    let content = response
-        .choices
-        .first()
-        .and_then(|c| c.message.content.as_deref())
-        .unwrap_or("")
-        .trim()
-        .to_string();
+    let messages = vec![EvolutionMessage::user(&prompt)];
+    let content = llm.complete(&messages, model, 0.3).await?.trim().to_string();
 
     let parsed = match parse_skill_generation_response(&content) {
         Ok(Some(s)) => s,
@@ -240,19 +233,34 @@ async fn generate_skill(
     let scan_result = run_l4_scan(&parsed.script_content, &script_path)?;
     if !scan_result {
         // Enter refinement loop
-        tracing::info!("L4 scan failed for generated skill '{}', entering refinement loop", parsed.name);
+        tracing::info!(
+            "L4 scan failed for generated skill '{}', entering refinement loop",
+            parsed.name
+        );
         let refined = refine_loop(
-            chat_root, api_base, api_key, model,
-            &skill_dir, &parsed.name, &parsed.description, &parsed.entry_point,
-            &parsed.script_content, "Security scan found critical/high issues",
+            chat_root,
+            llm,
+            model,
+            &skill_dir,
+            &parsed.name,
+            &parsed.description,
+            &parsed.entry_point,
+            &parsed.script_content,
+            "Security scan found critical/high issues",
             "security_scan",
-        ).await?;
+        )
+        .await?;
 
         match refined {
             Some(fixed_script) => {
                 write_skill_files(
-                    &skill_dir, &skill_md_path, &script_path,
-                    &parsed.skill_md_content, &fixed_script, &parsed.name, txn_id,
+                    &skill_dir,
+                    &skill_md_path,
+                    &script_path,
+                    &parsed.skill_md_content,
+                    &fixed_script,
+                    &parsed.name,
+                    txn_id,
                 )?;
             }
             None => {
@@ -263,12 +271,20 @@ async fn generate_skill(
         }
     } else {
         write_skill_files(
-            &skill_dir, &skill_md_path, &script_path,
-            &parsed.skill_md_content, &parsed.script_content, &parsed.name, txn_id,
+            &skill_dir,
+            &skill_md_path,
+            &script_path,
+            &parsed.skill_md_content,
+            &parsed.script_content,
+            &parsed.name,
+            txn_id,
         )?;
     }
 
-    tracing::info!("Generated evolved skill (pending confirmation): {}", parsed.name);
+    tracing::info!(
+        "Generated evolved skill (pending confirmation): {}",
+        parsed.name
+    );
     Ok(Some(parsed.name))
 }
 
@@ -314,10 +330,9 @@ fn write_skill_files(
 
 /// Retry fixing a skill script up to MAX_REFINE_ROUNDS times.
 /// Each round sends the error trace to LLM for targeted fix.
-async fn refine_loop(
+async fn refine_loop<L: EvolutionLlm>(
     _chat_root: &Path,
-    api_base: &str,
-    api_key: &str,
+    llm: &L,
     model: &str,
     skill_dir: &Path,
     skill_name: &str,
@@ -334,7 +349,9 @@ async fn refine_loop(
     for round in 1..=MAX_REFINE_ROUNDS {
         tracing::info!(
             "Refinement round {}/{} for skill '{}'",
-            round, MAX_REFINE_ROUNDS, skill_name
+            round,
+            MAX_REFINE_ROUNDS,
+            skill_name
         );
 
         let prompt = SKILL_REFINEMENT_PROMPT
@@ -345,19 +362,8 @@ async fn refine_loop(
             .replace("{{error_trace}}", &current_error)
             .replace("{{failure_type}}", failure_type);
 
-        let llm = LlmClient::new(api_base, api_key);
-        let messages = vec![ChatMessage::user(&prompt)];
-        let response = llm
-            .chat_completion(model, &messages, None, Some(0.3))
-            .await?;
-
-        let content = response
-            .choices
-            .first()
-            .and_then(|c| c.message.content.as_deref())
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        let messages = vec![EvolutionMessage::user(&prompt)];
+        let content = llm.complete(&messages, model, 0.3).await?.trim().to_string();
 
         let parsed = match parse_refinement_response(&content) {
             Ok(Some(r)) => r,
@@ -366,7 +372,11 @@ async fn refine_loop(
                 return Ok(None);
             }
             Err(e) => {
-                tracing::warn!("Failed to parse refinement output (round {}): {}", round, e);
+                tracing::warn!(
+                    "Failed to parse refinement output (round {}): {}",
+                    round,
+                    e
+                );
                 return Ok(None);
             }
         };
@@ -382,7 +392,9 @@ async fn refine_loop(
         if scan_ok {
             tracing::info!(
                 "Refinement succeeded for '{}' in round {}: {}",
-                skill_name, round, parsed.fix_summary
+                skill_name,
+                round,
+                parsed.fix_summary
             );
             return Ok(Some(parsed.fixed_script));
         }
@@ -396,17 +408,17 @@ async fn refine_loop(
 
     tracing::warn!(
         "Skill '{}' still failing after {} refinement rounds, abandoning",
-        skill_name, MAX_REFINE_ROUNDS
+        skill_name,
+        MAX_REFINE_ROUNDS
     );
     Ok(None)
 }
 
 // ─── Refine weakest existing skill ──────────────────────────────────────────
 
-async fn refine_weakest_skill(
+async fn refine_weakest_skill<L: EvolutionLlm>(
     chat_root: &Path,
-    api_base: &str,
-    api_key: &str,
+    llm: &L,
     model: &str,
     txn_id: &str,
 ) -> Result<Option<String>> {
@@ -446,10 +458,7 @@ async fn refine_weakest_skill(
             continue;
         }
         if weakest.as_ref().map_or(true, |(_, _, r)| rate < *r) {
-            let name = entry
-                .file_name()
-                .to_string_lossy()
-                .to_string();
+            let name = entry.file_name().to_string_lossy().to_string();
             weakest = Some((name, meta, rate));
         }
     }
@@ -474,7 +483,7 @@ async fn refine_weakest_skill(
 
     // Query recent failure traces
     let error_trace = {
-        let conn = super::feedback::open_evolution_db(chat_root)?;
+        let conn = feedback::open_evolution_db(chat_root)?;
         query_skill_failures(&conn, &skill_name)?
     };
 
@@ -485,9 +494,16 @@ async fn refine_weakest_skill(
     let desc = extract_description_from_skill_md(&skill_md);
 
     let fixed = refine_loop(
-        chat_root, api_base, api_key, model,
-        &skill_dir, &skill_name, &desc, &entry_point,
-        &current_script, &error_trace, "execution_failure",
+        chat_root,
+        llm,
+        model,
+        &skill_dir,
+        &skill_name,
+        &desc,
+        &entry_point,
+        &current_script,
+        &error_trace,
+        "execution_failure",
     )
     .await?;
 
@@ -496,15 +512,21 @@ async fn refine_weakest_skill(
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755));
+            let _ = std::fs::set_permissions(
+                &script_path,
+                std::fs::Permissions::from_mode(0o755),
+            );
         }
 
         // Log evolution event
-        if let Ok(conn) = super::feedback::open_evolution_db(chat_root) {
+        if let Ok(conn) = feedback::open_evolution_db(chat_root) {
             let _ = log_evolution_event(
-                &conn, chat_root,
-                "skill_refined", &skill_name,
-                "Refined after low success rate", txn_id,
+                &conn,
+                chat_root,
+                "skill_refined",
+                &skill_name,
+                "Refined after low success rate",
+                txn_id,
             );
         }
 
@@ -550,7 +572,9 @@ fn retire_skills(chat_root: &Path, txn_id: &str) -> Result<Vec<(String, String)>
             continue;
         }
 
-        let should_retire = if meta.call_count >= 3 && meta.success_rate() < RETIRE_LOW_SUCCESS_RATE {
+        let should_retire = if meta.call_count >= 3
+            && meta.success_rate() < RETIRE_LOW_SUCCESS_RATE
+        {
             Some(format!(
                 "success rate {:.0}% < {:.0}% threshold",
                 meta.success_rate() * 100.0,
@@ -560,7 +584,10 @@ fn retire_skills(chat_root: &Path, txn_id: &str) -> Result<Vec<(String, String)>
             if let Ok(last_dt) = chrono::DateTime::parse_from_rfc3339(last) {
                 let days = (now - last_dt.with_timezone(&chrono::Utc)).num_days();
                 if days >= RETIRE_UNUSED_DAYS {
-                    Some(format!("unused for {} days (threshold: {})", days, RETIRE_UNUSED_DAYS))
+                    Some(format!(
+                        "unused for {} days (threshold: {})",
+                        days, RETIRE_UNUSED_DAYS
+                    ))
                 } else {
                     None
                 }
@@ -588,11 +615,8 @@ fn retire_skills(chat_root: &Path, txn_id: &str) -> Result<Vec<(String, String)>
             let name = entry.file_name().to_string_lossy().to_string();
             tracing::info!("Retired skill '{}': {}", name, reason);
 
-            if let Ok(conn) = super::feedback::open_evolution_db(chat_root) {
-                let _ = log_evolution_event(
-                    &conn, chat_root,
-                    "skill_retired", &name, &reason, txn_id,
-                );
+            if let Ok(conn) = feedback::open_evolution_db(chat_root) {
+                let _ = log_evolution_event(&conn, chat_root, "skill_retired", &name, &reason, txn_id);
             }
 
             retired.push(("skill_retired".to_string(), name));
@@ -605,8 +629,6 @@ fn retire_skills(chat_root: &Path, txn_id: &str) -> Result<Vec<(String, String)>
 // ─── L4 security scan ───────────────────────────────────────────────────────
 
 fn run_l4_scan(script_content: &str, script_path: &Path) -> Result<bool> {
-    use skilllite_sandbox::security::scanner::ScriptScanner;
-
     let scanner = ScriptScanner::new();
     let result = scanner.scan_content(script_content, script_path)?;
     if !result.is_safe {
@@ -642,7 +664,8 @@ pub fn track_skill_usage(evolved_dir: &Path, skill_name: &str, success: bool) {
     }
     meta.last_used = Some(chrono::Utc::now().to_rfc3339());
 
-    let _ = std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default());
+    let _ =
+        std::fs::write(&meta_path, serde_json::to_string_pretty(&meta).unwrap_or_default());
 }
 
 // ─── Query helpers ──────────────────────────────────────────────────────────
@@ -665,7 +688,10 @@ fn query_repeated_patterns(conn: &Connection) -> Result<String> {
             let succ: i64 = row.get(2)?;
             Ok(format!(
                 "- 模式: {} | 出现: {}次 | 成功: {}次 ({:.0}%)",
-                desc, cnt, succ, succ as f64 / cnt as f64 * 100.0
+                desc,
+                cnt,
+                succ,
+                succ as f64 / cnt as f64 * 100.0
             ))
         })?
         .filter_map(|r| r.ok())
@@ -736,12 +762,22 @@ fn list_existing_skill_names(chat_root: &Path) -> String {
     }
 
     let mut names: Vec<String> = Vec::new();
-    for entry in std::fs::read_dir(&evolved_dir).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+    for entry in std::fs::read_dir(&evolved_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
         if name.starts_with('_') {
             if name == "_pending" && path.is_dir() {
-                for e in std::fs::read_dir(&path).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+                for e in std::fs::read_dir(&path)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|e| e.ok())
+                {
                     if e.path().is_dir() && e.path().join("SKILL.md").exists() {
                         names.push(format!("- {}", e.file_name().to_string_lossy()));
                     }
@@ -766,7 +802,12 @@ fn count_active_evolved_skills(evolved_dir: &Path) -> usize {
         return 0;
     }
     let mut count = 0;
-    for entry in std::fs::read_dir(evolved_dir).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+    for entry in std::fs::read_dir(evolved_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
         // Skip meta dirs like _pending when counting top-level
@@ -821,7 +862,7 @@ fn extract_description_from_skill_md(content: &str) -> String {
     String::new()
 }
 
-// ─── Response parsing ───────────────────────────────────────────────────────
+// ─── Response parsing ──────────────────────────────────────────────────────
 
 struct GeneratedSkill {
     name: String,
@@ -837,10 +878,10 @@ struct RefinedSkill {
 }
 
 fn parse_skill_generation_response(content: &str) -> Result<Option<GeneratedSkill>> {
-    let json_str = super::prompt_learner::extract_json_block(content);
+    let json_str = prompt_learner::extract_json_block(content);
 
-    let parsed: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| anyhow::anyhow!("Failed to parse skill generation JSON: {}", e))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).map_err(|e| anyhow::anyhow!("Failed to parse skill generation JSON: {}", e))?;
 
     if let Some(skip) = parsed.get("skip_reason").and_then(|v| v.as_str()) {
         if !skip.is_empty() && skip != "null" {
@@ -895,10 +936,10 @@ fn parse_skill_generation_response(content: &str) -> Result<Option<GeneratedSkil
 }
 
 fn parse_refinement_response(content: &str) -> Result<Option<RefinedSkill>> {
-    let json_str = super::prompt_learner::extract_json_block(content);
+    let json_str = prompt_learner::extract_json_block(content);
 
-    let parsed: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| anyhow::anyhow!("Failed to parse refinement JSON: {}", e))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_str).map_err(|e| anyhow::anyhow!("Failed to parse refinement JSON: {}", e))?;
 
     if let Some(skip) = parsed.get("skip_reason").and_then(|v| v.as_str()) {
         if !skip.is_empty() && skip != "null" {
@@ -963,7 +1004,8 @@ mod tests {
 
     #[test]
     fn test_parse_skill_generation_skipped() {
-        let json = serde_json::json!({"skill": null, "skip_reason": "no repeated pattern"}).to_string();
+        let json =
+            serde_json::json!({"skill": null, "skip_reason": "no repeated pattern"}).to_string();
         let result = parse_skill_generation_response(&json).unwrap();
         assert!(result.is_none());
     }
@@ -1044,15 +1086,23 @@ mod tests {
             name: "skill-a".into(),
             source_session: String::new(),
             created_at: String::new(),
-            success_count: 5, failure_count: 0, call_count: 5,
-            last_used: None, archived: false, generation_txn: String::new(),
+            success_count: 5,
+            failure_count: 0,
+            call_count: 5,
+            last_used: None,
+            archived: false,
+            generation_txn: String::new(),
         };
         std::fs::write(s1.join(".meta.json"), serde_json::to_string(&meta1).unwrap()).unwrap();
 
         // Archived skill
         let s2 = evolved_dir.join("skill-b");
         std::fs::create_dir_all(&s2).unwrap();
-        let meta2 = SkillMeta { archived: true, name: "skill-b".into(), ..meta1.clone() };
+        let meta2 = SkillMeta {
+            archived: true,
+            name: "skill-b".into(),
+            ..meta1.clone()
+        };
         std::fs::write(s2.join(".meta.json"), serde_json::to_string(&meta2).unwrap()).unwrap();
 
         assert_eq!(count_active_evolved_skills(&evolved_dir), 1);
@@ -1079,7 +1129,11 @@ mod tests {
             archived: false,
             generation_txn: String::new(),
         };
-        std::fs::write(s1.join(".meta.json"), serde_json::to_string_pretty(&meta).unwrap()).unwrap();
+        std::fs::write(
+            s1.join(".meta.json"),
+            serde_json::to_string_pretty(&meta).unwrap(),
+        )
+        .unwrap();
 
         // Also create the memory dir and DB for logging
         let mem_dir = chat_root.join("memory");
@@ -1090,9 +1144,8 @@ mod tests {
         assert_eq!(retired[0].1, "bad-skill");
 
         // Verify meta.archived is now true
-        let updated: SkillMeta = serde_json::from_str(
-            &std::fs::read_to_string(s1.join(".meta.json")).unwrap()
-        ).unwrap();
+        let updated: SkillMeta =
+            serde_json::from_str(&std::fs::read_to_string(s1.join(".meta.json")).unwrap()).unwrap();
         assert!(updated.archived);
     }
 

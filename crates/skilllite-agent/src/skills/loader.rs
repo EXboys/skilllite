@@ -27,7 +27,7 @@ pub(super) fn load_evolved_skills(evolved_dir: &Path) -> Vec<LoadedSkill> {
         let meta_path = skill_dir.join(".meta.json");
         if meta_path.exists() {
             if let Ok(content) = std::fs::read_to_string(&meta_path) {
-                if let Ok(meta) = serde_json::from_str::<crate::evolution::skill_synth::SkillMeta>(&content) {
+                if let Ok(meta) = serde_json::from_str::<skilllite_evolution::skill_synth::SkillMeta>(&content) {
                     if meta.archived {
                         tracing::debug!("Skipping archived evolved skill: {}", meta.name);
                         continue;

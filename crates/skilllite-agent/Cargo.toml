@@ -12,8 +12,11 @@ memory_vector = ["dep:sqlite-vec", "dep:zerocopy", "skilllite-executor/memory_ve
 
 [dependencies]
 skilllite-core = { path = "../skilllite-core" }
+skilllite-evolution = { path = "../skilllite-evolution" }
 skilllite-sandbox = { path = "../skilllite-sandbox" }
 skilllite-executor = { path = "../skilllite-executor" }
+
+async-trait = "0.1"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"

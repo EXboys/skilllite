@@ -1,22 +1,56 @@
 //! Evolution feedback collection and evaluation system (EVO-1).
-//!
-//! Manages four SQLite tables in `memory/default.sqlite`:
-//!   - `decisions`: per-task execution records (flow data)
-//!   - `decision_rules`: decision–rule mapping (N:M, precise JOIN queries)
-//!   - `evolution_log`: evolution product records (for EGL stats + rollback)
-//!   - `evolution_metrics`: daily system-level trend metrics
-//!
-//! Also exports a human-readable `DECISIONS.md` from SQLite data.
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
 use std::path::Path;
 
-use crate::types::{ExecutionFeedback, FeedbackSignal};
+// ─── Decision input (agent converts ExecutionFeedback to this) ─────────────────
+
+/// Input for recording a decision. The agent converts its ExecutionFeedback to this.
+#[derive(Debug, Clone, Default)]
+pub struct DecisionInput {
+    pub total_tools: usize,
+    pub failed_tools: usize,
+    pub replans: usize,
+    pub elapsed_ms: u64,
+    pub task_completed: bool,
+    pub task_description: Option<String>,
+    pub rules_used: Vec<String>,
+    pub tools_detail: Vec<ToolExecDetail>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ToolExecDetail {
+    pub tool: String,
+    pub success: bool,
+}
+
+/// User feedback signal for the last decision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedbackSignal {
+    ExplicitPositive,
+    ExplicitNegative,
+    Neutral,
+}
+
+impl Default for FeedbackSignal {
+    fn default() -> Self {
+        Self::Neutral
+    }
+}
+
+impl FeedbackSignal {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::ExplicitPositive => "pos",
+            Self::ExplicitNegative => "neg",
+            Self::Neutral => "neutral",
+        }
+    }
+}
 
 // ─── Schema ─────────────────────────────────────────────────────────────────
 
-/// Ensure all evolution tables exist (idempotent, called on session start).
 pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         r#"
@@ -72,11 +106,10 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
 
 // ─── Decision recording ─────────────────────────────────────────────────────
 
-/// Insert a decision record after each task execution. <1ms with WAL mode.
 pub fn insert_decision(
     conn: &Connection,
     session_id: Option<&str>,
-    feedback: &ExecutionFeedback,
+    feedback: &DecisionInput,
     user_feedback: FeedbackSignal,
 ) -> Result<i64> {
     let tools_detail_json = serde_json::to_string(&feedback.tools_detail).unwrap_or_default();
@@ -99,7 +132,6 @@ pub fn insert_decision(
     )?;
     let decision_id = conn.last_insert_rowid();
 
-    // Insert associated rules
     if !feedback.rules_used.is_empty() {
         let mut stmt = conn.prepare(
             "INSERT INTO decision_rules (decision_id, rule_id) VALUES (?1, ?2)",
@@ -112,14 +144,11 @@ pub fn insert_decision(
     Ok(decision_id)
 }
 
-/// Count unprocessed decisions (evolved = 0). Used by A9 decision-count trigger.
 pub fn count_unprocessed_decisions(conn: &Connection) -> Result<i64> {
     conn.query_row("SELECT COUNT(*) FROM decisions WHERE evolved = 0", [], |r| r.get(0))
         .map_err(Into::into)
 }
 
-/// Update feedback signal for the most recent decision in a session.
-/// Called when we classify the user's next message.
 pub fn update_last_decision_feedback(
     conn: &Connection,
     session_id: &str,
@@ -135,8 +164,6 @@ pub fn update_last_decision_feedback(
 
 // ─── Effectiveness aggregation ──────────────────────────────────────────────
 
-/// Compute effectiveness for a specific rule via JOIN (precise, no LIKE).
-/// Returns -1.0 if insufficient samples (<3).
 pub fn compute_effectiveness(conn: &Connection, rule_id: &str) -> Result<f32> {
     let result: Result<(i64, i64), _> = conn.query_row(
         "SELECT
@@ -160,74 +187,8 @@ pub fn compute_effectiveness(conn: &Connection, rule_id: &str) -> Result<f32> {
     }
 }
 
-/// Aggregate tool effectiveness (replaces tool_effectiveness.json).
-pub fn query_tool_effectiveness(conn: &Connection) -> Result<Vec<ToolEffectivenessRow>> {
-    let mut stmt = conn.prepare(
-        "SELECT
-            json_extract(value, '$.tool') as tool_name,
-            COUNT(*) as total,
-            SUM(CASE WHEN json_extract(value, '$.success') THEN 1 ELSE 0 END) as successes
-         FROM decisions, json_each(decisions.tools_detail)
-         WHERE ts > datetime('now', '-30 days')
-         GROUP BY tool_name
-         ORDER BY total DESC",
-    )?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(ToolEffectivenessRow {
-                tool: row.get(0)?,
-                total: row.get(1)?,
-                successes: row.get(2)?,
-            })
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(rows)
-}
-
-/// Aggregate task patterns (replaces task_patterns.json).
-pub fn query_task_patterns(conn: &Connection) -> Result<Vec<TaskPatternRow>> {
-    let mut stmt = conn.prepare(
-        "SELECT task_description, COUNT(*) as freq,
-                AVG(CASE WHEN task_completed THEN 1.0 ELSE 0.0 END) as success_rate
-         FROM decisions
-         WHERE task_description IS NOT NULL AND ts > datetime('now', '-30 days')
-         GROUP BY task_description ORDER BY freq DESC LIMIT 20",
-    )?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(TaskPatternRow {
-                description: row.get(0)?,
-                frequency: row.get(1)?,
-                success_rate: row.get(2)?,
-            })
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(rows)
-}
-
-/// Aggregate failure lessons (replaces error_lessons.json).
-pub fn query_failure_lessons(conn: &Connection) -> Result<Vec<FailureLessonRow>> {
-    let mut stmt = conn.prepare(
-        "SELECT task_description, feedback, COUNT(*) as freq
-         FROM decisions
-         WHERE failed_tools > 0 AND ts > datetime('now', '-30 days')
-         GROUP BY task_description ORDER BY freq DESC LIMIT 20",
-    )?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(FailureLessonRow {
-                description: row.get(0)?,
-                feedback: row.get(1)?,
-                frequency: row.get(2)?,
-            })
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(rows)
-}
-
 // ─── System-level metrics ───────────────────────────────────────────────────
 
-/// Compute and upsert daily system-level metrics for today.
 pub fn update_daily_metrics(conn: &Connection) -> Result<()> {
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
@@ -262,8 +223,6 @@ pub fn update_daily_metrics(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// EGL (Evolutionary Generality Loss) — convergence metric (Yunjue Agent inspired).
-/// EGL = new_evolution_products / total_triggered_tasks * 1000.
 fn compute_egl(conn: &Connection, date: &str) -> Result<f64> {
     let new_items: i64 = conn
         .query_row(
@@ -289,18 +248,11 @@ fn compute_egl(conn: &Connection, date: &str) -> Result<f64> {
     Ok(new_items as f64 / total_triggers as f64 * 1000.0)
 }
 
-// ─── EVO-5: Time trends (user profile extension) ────────────────────────────
+// ─── Time trends ─────────────────────────────────────────────────────────────
 
-/// Hourly activity distribution (0-23).
-#[derive(Debug, serde::Serialize)]
-pub struct HourlyActivity {
-    pub hour: i32,
-    pub count: i64,
-    pub success_rate: f64,
-}
+const WEEKDAY_NAMES: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/// Weekday activity distribution (0=Sunday, 6=Saturday).
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug)]
 pub struct WeekdayActivity {
     pub weekday: i32,
     pub weekday_name: &'static str,
@@ -309,31 +261,6 @@ pub struct WeekdayActivity {
     pub dominant_task: Option<String>,
 }
 
-const WEEKDAY_NAMES: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-/// Aggregate decisions by hour of day (last 30 days).
-pub fn query_hourly_activity(conn: &Connection) -> Result<Vec<HourlyActivity>> {
-    let mut stmt = conn.prepare(
-        "SELECT CAST(strftime('%H', ts) AS INTEGER) as hour,
-                COUNT(*) as cnt,
-                AVG(CASE WHEN task_completed = 1 THEN 1.0 ELSE 0.0 END) as sr
-         FROM decisions
-         WHERE ts > datetime('now', '-30 days') AND total_tools >= 2
-         GROUP BY hour ORDER BY hour",
-    )?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok(HourlyActivity {
-                hour: row.get(0)?,
-                count: row.get(1)?,
-                success_rate: row.get(2)?,
-            })
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(rows)
-}
-
-/// Aggregate decisions by weekday (last 30 days), with dominant task type.
 pub fn query_weekday_activity(conn: &Connection) -> Result<Vec<WeekdayActivity>> {
     let mut stmt = conn.prepare(
         "SELECT CAST(strftime('%w', ts) AS INTEGER) as wd,
@@ -356,7 +283,6 @@ pub fn query_weekday_activity(conn: &Connection) -> Result<Vec<WeekdayActivity>>
         })?
         .collect::<std::result::Result<Vec<_>, _>>()?;
 
-    // Fill dominant task for each weekday
     for entry in &mut results {
         if let Ok(task) = conn.query_row(
             "SELECT task_description FROM decisions
@@ -374,7 +300,6 @@ pub fn query_weekday_activity(conn: &Connection) -> Result<Vec<WeekdayActivity>>
     Ok(results)
 }
 
-/// Peak activity hours (top 3 most active hours).
 pub fn query_peak_hours(conn: &Connection) -> Result<Vec<(i32, i64)>> {
     let mut stmt = conn.prepare(
         "SELECT CAST(strftime('%H', ts) AS INTEGER) as hour, COUNT(*) as cnt
@@ -382,37 +307,16 @@ pub fn query_peak_hours(conn: &Connection) -> Result<Vec<(i32, i64)>> {
          WHERE ts > datetime('now', '-30 days') AND total_tools >= 2
          GROUP BY hour ORDER BY cnt DESC LIMIT 3",
     )?;
-    let rows = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(rows)
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-// ─── Archival ───────────────────────────────────────────────────────────────
+// ─── Export ─────────────────────────────────────────────────────────────────
 
-/// Archive old decisions to prevent unbounded growth.
-/// Keeps the most recent `keep` records, CASCADE deletes decision_rules.
-pub fn archive_old_decisions(conn: &Connection, keep: i64) -> Result<usize> {
-    let count: i64 = conn.query_row("SELECT COUNT(*) FROM decisions", [], |r| r.get(0))?;
-    if count <= keep {
-        return Ok(0);
-    }
-    let deleted = conn.execute(
-        "DELETE FROM decisions WHERE id NOT IN
-         (SELECT id FROM decisions ORDER BY ts DESC LIMIT ?1)",
-        params![keep],
-    )?;
-    Ok(deleted)
-}
-
-// ─── DECISIONS.md export ────────────────────────────────────────────────────
-
-/// Export recent evolution decisions to a human-readable Markdown file.
 pub fn export_decisions_md(conn: &Connection, output_path: &Path) -> Result<()> {
     let mut md = String::from(
         "# SkillLite 进化决策记录\n\n\
-         > 自动维护。每次进化事件追加一行。\n\
-         > 用户可手动编辑：删除不想要的进化、添加备注。\n\n\
+         > 自动维护。每次进化事件追加一行。\n\n\
          ## 进化决策\n\n\
          | 日期 | 决策 | 效果 |\n\
          |------|------|------|\n",
@@ -433,7 +337,7 @@ pub fn export_decisions_md(conn: &Connection, output_path: &Path) -> Result<()> 
 
     for row in rows {
         let (ts, etype, target_id, reason) = row?;
-        let date = &ts[..10]; // YYYY-MM-DD
+        let date = &ts[..10.min(ts.len())];
         let target = target_id.unwrap_or_default();
         let reason_text = reason.unwrap_or_default();
 
@@ -451,7 +355,6 @@ pub fn export_decisions_md(conn: &Connection, output_path: &Path) -> Result<()> 
         md.push_str(&format!("| {} | {} | {} |\n", date, desc, icon));
     }
 
-    // System metrics summary
     md.push_str("\n## 系统指标趋势 (最近7天)\n\n");
     md.push_str("| 日期 | 首次成功率 | 平均replan | 用户纠正率 | EGL |\n");
     md.push_str("|------|-----------|-----------|-----------|-----|\n");
@@ -475,11 +378,7 @@ pub fn export_decisions_md(conn: &Connection, output_path: &Path) -> Result<()> 
         let (date, fsr, avg_r, ucr, egl) = m?;
         md.push_str(&format!(
             "| {} | {:.0}% | {:.1} | {:.0}% | {:.1} |\n",
-            date,
-            fsr * 100.0,
-            avg_r,
-            ucr * 100.0,
-            egl
+            date, fsr * 100.0, avg_r, ucr * 100.0, egl
         ));
     }
 
@@ -490,32 +389,8 @@ pub fn export_decisions_md(conn: &Connection, output_path: &Path) -> Result<()> 
     Ok(())
 }
 
-// ─── Data types ─────────────────────────────────────────────────────────────
+// ─── Rule history ───────────────────────────────────────────────────────────
 
-#[derive(Debug)]
-pub struct ToolEffectivenessRow {
-    pub tool: String,
-    pub total: i64,
-    pub successes: i64,
-}
-
-#[derive(Debug)]
-pub struct TaskPatternRow {
-    pub description: String,
-    pub frequency: i64,
-    pub success_rate: f64,
-}
-
-#[derive(Debug)]
-pub struct FailureLessonRow {
-    pub description: Option<String>,
-    pub feedback: String,
-    pub frequency: i64,
-}
-
-// ─── EVO-5: High-level query helpers for CLI ────────────────────────────────
-
-/// Evolution history for a specific target_id.
 #[derive(Debug)]
 pub struct EvolutionHistoryEntry {
     pub ts: String,
@@ -524,31 +399,26 @@ pub struct EvolutionHistoryEntry {
     pub txn_id: String,
 }
 
-/// Query evolution history for a given target_id.
 pub fn query_rule_history(conn: &Connection, target_id: &str) -> Result<Vec<EvolutionHistoryEntry>> {
     let mut stmt = conn.prepare(
         "SELECT ts, type, reason, version FROM evolution_log
          WHERE target_id = ?1 ORDER BY ts DESC LIMIT 10",
     )?;
-    let rows = stmt
-        .query_map(params![target_id], |row| {
-            Ok(EvolutionHistoryEntry {
-                ts: row.get(0)?,
-                event_type: row.get(1)?,
-                reason: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
-                txn_id: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
-            })
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(rows)
+    let rows = stmt.query_map(params![target_id], |row| {
+        Ok(EvolutionHistoryEntry {
+            ts: row.get(0)?,
+            event_type: row.get(1)?,
+            reason: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
+            txn_id: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+        })
+    })?;
+    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(Into::into)
 }
 
-// ─── EVO-6: External rule promotion ─────────────────────────────────────────
+// ─── Promotable external rules ──────────────────────────────────────────────
 
-/// Find external rules (origin="external") with effectiveness ≥ 0.7 that
-/// haven't yet been promoted to priority 65 (i.e., still at 45-55 range).
 pub fn find_promotable_external_rules(conn: &Connection, chat_root: &Path) -> Result<Vec<String>> {
-    let rules = super::seed::load_rules(chat_root);
+    let rules = crate::seed::load_rules(chat_root);
     let mut promotable = Vec::new();
     for rule in rules.iter().filter(|r| r.origin == "external" && r.priority < 65) {
         let eff = compute_effectiveness(conn, &rule.id)?;
@@ -561,8 +431,6 @@ pub fn find_promotable_external_rules(conn: &Connection, chat_root: &Path) -> Re
 
 // ─── Open evolution DB ──────────────────────────────────────────────────────
 
-/// Open (or create) the evolution SQLite database, ensuring all tables exist.
-/// Reuses the memory/default.sqlite path.
 pub fn open_evolution_db(chat_root: &Path) -> Result<Connection> {
     let db_path = chat_root.join("memory").join("default.sqlite");
     if let Some(parent) = db_path.parent() {
@@ -572,143 +440,4 @@ pub fn open_evolution_db(chat_root: &Path) -> Result<Connection> {
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
     ensure_evolution_tables(&conn)?;
     Ok(conn)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::types::ToolExecDetail;
-
-    fn test_db() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
-        ensure_evolution_tables(&conn).unwrap();
-        conn
-    }
-
-    #[test]
-    fn test_insert_and_query_decision() {
-        let conn = test_db();
-        let feedback = ExecutionFeedback {
-            total_tools: 5,
-            failed_tools: 1,
-            replans: 0,
-            iterations: 3,
-            elapsed_ms: 1200,
-            context_overflow_retries: 0,
-            task_completed: true,
-            task_description: Some("debug a Rust project".into()),
-            rules_used: vec!["rule_grep_first".into()],
-            tools_detail: vec![
-                ToolExecDetail { tool: "read_file".into(), success: true },
-                ToolExecDetail { tool: "run_command".into(), success: false },
-            ],
-        };
-
-        let id = insert_decision(&conn, Some("test-session"), &feedback, FeedbackSignal::Neutral).unwrap();
-        assert!(id > 0);
-
-        // Verify decision_rules association
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM decision_rules WHERE decision_id = ?1",
-                params![id],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count, 1);
-    }
-
-    #[test]
-    fn test_effectiveness_insufficient_samples() {
-        let conn = test_db();
-        let eff = compute_effectiveness(&conn, "nonexistent_rule").unwrap();
-        assert_eq!(eff, -1.0);
-    }
-
-    #[test]
-    fn test_archive_old_decisions() {
-        let conn = test_db();
-        let feedback = ExecutionFeedback::default();
-        for _ in 0..15 {
-            insert_decision(&conn, Some("s"), &feedback, FeedbackSignal::Neutral).unwrap();
-        }
-        let deleted = archive_old_decisions(&conn, 10).unwrap();
-        assert_eq!(deleted, 5);
-        let remaining: i64 = conn
-            .query_row("SELECT COUNT(*) FROM decisions", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(remaining, 10);
-    }
-
-    #[test]
-    fn test_update_feedback() {
-        let conn = test_db();
-        let feedback = ExecutionFeedback::default();
-        insert_decision(&conn, Some("s1"), &feedback, FeedbackSignal::Neutral).unwrap();
-        update_last_decision_feedback(&conn, "s1", FeedbackSignal::ExplicitPositive).unwrap();
-
-        let fb: String = conn
-            .query_row(
-                "SELECT feedback FROM decisions WHERE session_id = 's1' ORDER BY ts DESC LIMIT 1",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(fb, "pos");
-    }
-
-    // ─── EVO-5 tests ────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_time_trends_empty() {
-        let conn = test_db();
-        let hourly = query_hourly_activity(&conn).unwrap();
-        assert!(hourly.is_empty());
-        let weekday = query_weekday_activity(&conn).unwrap();
-        assert!(weekday.is_empty());
-        let peaks = query_peak_hours(&conn).unwrap();
-        assert!(peaks.is_empty());
-    }
-
-    #[test]
-    fn test_time_trends_with_data() {
-        let conn = test_db();
-        let feedback = ExecutionFeedback {
-            total_tools: 5,
-            failed_tools: 0,
-            task_completed: true,
-            ..Default::default()
-        };
-        for _ in 0..5 {
-            insert_decision(&conn, Some("s"), &feedback, FeedbackSignal::Neutral).unwrap();
-        }
-        let hourly = query_hourly_activity(&conn).unwrap();
-        assert!(!hourly.is_empty(), "should have activity for current hour");
-        assert_eq!(hourly[0].count, 5);
-
-        let peaks = query_peak_hours(&conn).unwrap();
-        assert!(!peaks.is_empty());
-    }
-
-    #[test]
-    fn test_rule_history_empty() {
-        let conn = test_db();
-        let history = query_rule_history(&conn, "nonexistent").unwrap();
-        assert!(history.is_empty());
-    }
-
-    #[test]
-    fn test_rule_history_with_data() {
-        let conn = test_db();
-        conn.execute(
-            "INSERT INTO evolution_log (ts, type, target_id, reason, version)
-             VALUES (datetime('now'), 'rule_added', 'test_rule', 'test reason', 'evo_001')",
-            [],
-        ).unwrap();
-        let history = query_rule_history(&conn, "test_rule").unwrap();
-        assert_eq!(history.len(), 1);
-        assert_eq!(history[0].event_type, "rule_added");
-        assert_eq!(history[0].reason, "test reason");
-    }
 }

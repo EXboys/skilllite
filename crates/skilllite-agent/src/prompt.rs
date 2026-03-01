@@ -16,7 +16,7 @@
 
 use std::path::Path;
 
-use super::evolution::seed;
+use skilllite_evolution::seed;
 use super::skills::LoadedSkill;
 use super::soul::Soul;
 use super::types::{get_output_dir, safe_truncate};

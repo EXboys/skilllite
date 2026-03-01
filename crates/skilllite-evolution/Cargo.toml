@@ -1,0 +1,26 @@
+[package]
+name = "skilllite-evolution"
+version = "0.1.9"
+edition = "2021"
+authors = ["EX <boyex345@gmail.com>"]
+description = "SkillLite Evolution: self-evolving prompts, skills, and memory"
+license = "MIT"
+
+[dependencies]
+skilllite-core = { path = "../skilllite-core" }
+skilllite-sandbox = { path = "../skilllite-sandbox" }
+
+async-trait = "0.1"
+anyhow = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-util"] }
+dirs = "5.0"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile = "3.10"

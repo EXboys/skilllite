@@ -13,9 +13,15 @@ use std::path::Path;
 use anyhow::Result;
 use rusqlite::Connection;
 
-use super::super::llm::LlmClient;
-use super::super::types::{ChatMessage, PlanningRule, SourceEntry, SourceRegistry};
-use super::{atomic_write, gatekeeper_l3_content, log_evolution_event};
+use skilllite_core::planning::{PlanningRule, SourceEntry, SourceRegistry};
+
+use crate::atomic_write;
+use crate::feedback;
+use crate::gatekeeper_l3_content;
+use crate::log_evolution_event;
+use crate::seed;
+use crate::EvolutionLlm;
+use crate::EvolutionMessage;
 
 // ─── Configuration constants ─────────────────────────────────────────────────
 
@@ -36,7 +42,7 @@ const RETIRE_QUALITY_THRESHOLD: f32 = 0.20;
 const RETIRE_MIN_FETCHES: u32 = 30;
 
 const EXTERNAL_KNOWLEDGE_PROMPT: &str =
-    include_str!("../seed/evolution_prompts/external_knowledge.seed.md");
+    include_str!("seed/evolution_prompts/external_knowledge.seed.md");
 
 // ─── Guard: should we run? ────────────────────────────────────────────────────
 
@@ -78,10 +84,7 @@ pub fn should_run_external_learning(conn: &Connection) -> bool {
 
 /// Sort sources: CN region first, then by accessibility_score × quality_score descending.
 fn prioritize_sources(sources: &[SourceEntry]) -> Vec<&SourceEntry> {
-    let mut enabled: Vec<&SourceEntry> = sources
-        .iter()
-        .filter(|s| s.enabled)
-        .collect();
+    let mut enabled: Vec<&SourceEntry> = sources.iter().filter(|s| s.enabled).collect();
 
     enabled.sort_by(|a, b| {
         // CN sources always before global
@@ -108,7 +111,8 @@ fn prioritize_sources(sources: &[SourceEntry]) -> Vec<&SourceEntry> {
 /// Update accessibility score with EMA: new = α×result + (1-α)×old
 fn update_accessibility(source: &mut SourceEntry, success: bool) {
     let result = if success { 1.0_f32 } else { 0.0_f32 };
-    source.accessibility_score = EMA_ALPHA * result + (1.0 - EMA_ALPHA) * source.accessibility_score;
+    source.accessibility_score =
+        EMA_ALPHA * result + (1.0 - EMA_ALPHA) * source.accessibility_score;
     if success {
         source.fetch_success_count += 1;
     } else {
@@ -172,16 +176,20 @@ fn parse_juejin_json(raw: &str) -> Vec<(String, String)> {
         return Vec::new();
     };
     let items = v["data"].as_array().cloned().unwrap_or_default();
-    items.iter().take(10).filter_map(|item| {
-        let title = item["article_info"]["title"].as_str()?.to_string();
-        let brief = item["article_info"]["brief_content"]
-            .as_str()
-            .unwrap_or("")
-            .chars()
-            .take(120)
-            .collect::<String>();
-        Some((title, brief))
-    }).collect()
+    items
+        .iter()
+        .take(10)
+        .filter_map(|item| {
+            let title = item["article_info"]["title"].as_str()?.to_string();
+            let brief = item["article_info"]["brief_content"]
+                .as_str()
+                .unwrap_or("")
+                .chars()
+                .take(120)
+                .collect::<String>();
+            Some((title, brief))
+        })
+        .collect()
 }
 
 fn parse_infoq_json(raw: &str) -> Vec<(String, String)> {
@@ -189,16 +197,20 @@ fn parse_infoq_json(raw: &str) -> Vec<(String, String)> {
         return Vec::new();
     };
     let items = v["data"].as_array().cloned().unwrap_or_default();
-    items.iter().take(10).filter_map(|item| {
-        let title = item["article"]["title"].as_str()?.to_string();
-        let summary = item["article"]["summary"]
-            .as_str()
-            .unwrap_or("")
-            .chars()
-            .take(120)
-            .collect::<String>();
-        Some((title, summary))
-    }).collect()
+    items
+        .iter()
+        .take(10)
+        .filter_map(|item| {
+            let title = item["article"]["title"].as_str()?.to_string();
+            let summary = item["article"]["summary"]
+                .as_str()
+                .unwrap_or("")
+                .chars()
+                .take(120)
+                .collect::<String>();
+            Some((title, summary))
+        })
+        .collect()
 }
 
 fn parse_rss(raw: &str) -> Vec<(String, String)> {
@@ -249,6 +261,22 @@ fn parse_github_trending(raw: &str) -> Vec<(String, String)> {
     results
 }
 
+fn parse_hn_algolia_json(raw: &str) -> Vec<(String, String)> {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return Vec::new();
+    };
+    let hits = v["hits"].as_array().cloned().unwrap_or_default();
+    hits
+        .iter()
+        .take(10)
+        .filter_map(|hit| {
+            let title = hit["title"].as_str()?.to_string();
+            let url = hit["url"].as_str().unwrap_or("").to_string();
+            Some((title, url))
+        })
+        .collect()
+}
+
 fn extract_xml_tag(text: &str, tag: &str) -> Option<String> {
     let open = format!("<{}", tag);
     let close = format!("</{}>", tag);
@@ -285,12 +313,11 @@ fn strip_html_basic(html: &str) -> String {
 // ─── LLM rule extraction ──────────────────────────────────────────────────────
 
 /// Extract planning rules from article content using LLM.
-async fn extract_rules_from_content(
+async fn extract_rules_from_content<L: EvolutionLlm>(
     articles: &[(String, String)],
     domains: &[String],
     existing_summary: &str,
-    api_base: &str,
-    api_key: &str,
+    llm: &L,
     model: &str,
 ) -> Result<Vec<PlanningRule>> {
     if articles.is_empty() {
@@ -318,17 +345,8 @@ async fn extract_rules_from_content(
         .replace("{{article_content}}", &article_content)
         .replace("{{existing_rules_summary}}", existing_summary);
 
-    let llm = LlmClient::new(api_base, api_key);
-    let messages = vec![ChatMessage::user(&prompt)];
-    let response = llm.chat_completion(model, &messages, None, Some(0.3)).await?;
-
-    let content = response
-        .choices
-        .first()
-        .and_then(|c| c.message.content.as_deref())
-        .unwrap_or("")
-        .trim()
-        .to_string();
+    let messages = vec![EvolutionMessage::user(&prompt)];
+    let content = llm.complete(&messages, model, 0.3).await?.trim().to_string();
 
     if content.is_empty() {
         return Ok(Vec::new());
@@ -341,14 +359,22 @@ fn parse_external_rule_response(content: &str) -> Result<Vec<PlanningRule>> {
     // Strip markdown code fences if present
     let json_str = extract_json_array(content);
 
-    let arr: Vec<serde_json::Value> = serde_json::from_str(&json_str)
-        .map_err(|e| anyhow::anyhow!("Failed to parse external rule JSON: {}: raw={:.200}", e, content))?;
+    let arr: Vec<serde_json::Value> = serde_json::from_str(&json_str).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to parse external rule JSON: {}: raw={:.200}",
+            e,
+            content
+        )
+    })?;
 
     let mut rules = Vec::new();
     for val in arr {
         let id = val["id"].as_str().unwrap_or("").to_string();
         if id.is_empty() || !id.starts_with("ext_") {
-            tracing::warn!("External rule rejected: id '{}' must start with 'ext_'", id);
+            tracing::warn!(
+                "External rule rejected: id '{}' must start with 'ext_'",
+                id
+            );
             continue;
         }
         let instruction = val["instruction"].as_str().unwrap_or("").to_string();
@@ -408,7 +434,7 @@ fn extract_json_array(content: &str) -> String {
     }
 }
 
-// ─── Source registry evolution ────────────────────────────────────────────────
+// ─── Source registry evolution ───────────────────────────────────────────────
 
 /// Apply pause/retire logic to sources based on accessibility + quality scores.
 fn evolve_sources(sources: &mut Vec<SourceEntry>) -> Vec<(String, String)> {
@@ -425,7 +451,9 @@ fn evolve_sources(sources: &mut Vec<SourceEntry>) -> Vec<(String, String)> {
             source.enabled = false;
             tracing::info!(
                 "Pausing source {} (accessibility={:.2}, fails={})",
-                source.id, source.accessibility_score, source.fetch_fail_count
+                source.id,
+                source.accessibility_score,
+                source.fetch_fail_count
             );
             changes.push(("source_paused".to_string(), source.id.clone()));
         }
@@ -437,7 +465,11 @@ fn evolve_sources(sources: &mut Vec<SourceEntry>) -> Vec<(String, String)> {
             && total_fetches >= RETIRE_MIN_FETCHES
         {
             source.enabled = false;
-            tracing::info!("Retiring source {} (quality={:.2})", source.id, source.quality_score);
+            tracing::info!(
+                "Retiring source {} (quality={:.2})",
+                source.id,
+                source.quality_score
+            );
             changes.push(("source_retired".to_string(), source.id.clone()));
         }
     }
@@ -458,7 +490,10 @@ fn save_sources(chat_root: &Path, registry: &SourceRegistry) -> Result<()> {
 }
 
 /// Merge new external rules into existing rules.json, skipping duplicates.
-fn merge_external_rules(chat_root: &Path, new_rules: Vec<PlanningRule>) -> Result<Vec<(String, String)>> {
+fn merge_external_rules(
+    chat_root: &Path,
+    new_rules: Vec<PlanningRule>,
+) -> Result<Vec<(String, String)>> {
     if new_rules.is_empty() {
         return Ok(Vec::new());
     }
@@ -507,9 +542,8 @@ pub fn apply_external_rule_promotions(
     if !rules_path.exists() {
         return Ok(Vec::new());
     }
-    let mut rules: Vec<PlanningRule> = serde_json::from_str(
-        &std::fs::read_to_string(&rules_path)?
-    )?;
+    let mut rules: Vec<PlanningRule> =
+        serde_json::from_str(&std::fs::read_to_string(&rules_path)?)?;
     let mut changes = Vec::new();
     for rule in rules.iter_mut() {
         if promotions.contains(&rule.id) && rule.origin == "external" && rule.priority < 65 {
@@ -530,16 +564,15 @@ pub fn apply_external_rule_promotions(
 ///
 /// Gated by `SKILLLITE_EXTERNAL_LEARNING=1`. If not enabled, returns Ok(empty).
 /// Opens its own SQLite connection so the future is `Send`.
-pub async fn run_external_learning(
+pub async fn run_external_learning<L: EvolutionLlm>(
     chat_root: &Path,
-    api_base: &str,
-    api_key: &str,
+    llm: &L,
     model: &str,
     txn_id: &str,
 ) -> Result<Vec<(String, String)>> {
     // Phase 1: sync DB check (drop before any await)
     let should_run = {
-        let conn = super::feedback::open_evolution_db(chat_root)?;
+        let conn = feedback::open_evolution_db(chat_root)?;
         let run = should_run_external_learning(&conn);
         run // conn dropped here
     };
@@ -550,8 +583,8 @@ pub async fn run_external_learning(
     tracing::info!("EVO-6: Starting external learning run (txn={})", txn_id);
 
     // Load sources and existing rules (sync, no await)
-    let mut registry = super::seed::load_sources(chat_root);
-    let existing_rules = super::seed::load_rules(chat_root);
+    let mut registry = seed::load_sources(chat_root);
+    let existing_rules = seed::load_rules(chat_root);
     let existing_summary = existing_rules
         .iter()
         .map(|r| format!("- {}: {}", r.id, r.instruction))
@@ -603,10 +636,11 @@ pub async fn run_external_learning(
             &articles,
             &source.domains,
             &existing_summary,
-            api_base,
-            api_key,
+            llm,
             model,
-        ).await {
+        )
+        .await
+        {
             Ok(rules) => rules,
             Err(e) => {
                 tracing::warn!("EVO-6: Rule extraction failed for {}: {}", source.id, e);
@@ -616,7 +650,9 @@ pub async fn run_external_learning(
 
         tracing::info!(
             "EVO-6: Source {} → {} articles → {} candidate rules",
-            source.id, articles.len(), new_rules.len()
+            source.id,
+            articles.len(),
+            new_rules.len()
         );
 
         // Merge rules into rules.json
@@ -636,8 +672,8 @@ pub async fn run_external_learning(
 
     // Check promote external rules whose effectiveness has improved
     let promoted = {
-        let conn = super::feedback::open_evolution_db(chat_root)?;
-        let promotable = super::feedback::find_promotable_external_rules(&conn, chat_root)?;
+        let conn = feedback::open_evolution_db(chat_root)?;
+        let promotable = feedback::find_promotable_external_rules(&conn, chat_root)?;
         promotable
         // conn dropped here
     };
@@ -652,12 +688,18 @@ pub async fn run_external_learning(
 
     // Phase 4: log to DB (sync)
     {
-        let conn = super::feedback::open_evolution_db(chat_root)?;
+        let conn = feedback::open_evolution_db(chat_root)?;
         // Log the run itself for daily-cap tracking
         log_evolution_event(
-            &conn, chat_root,
-            "external_fetch_run", "",
-            &format!("{} sources fetched, {} changes", to_fetch.len(), all_changes.len()),
+            &conn,
+            chat_root,
+            "external_fetch_run",
+            "",
+            &format!(
+                "{} sources fetched, {} changes",
+                to_fetch.len(),
+                all_changes.len()
+            ),
             txn_id,
         )?;
         // Log individual changes
@@ -666,16 +708,24 @@ pub async fn run_external_learning(
         }
     }
 
-    tracing::info!("EVO-6: External learning complete — {} changes", all_changes.len());
+    tracing::info!(
+        "EVO-6: External learning complete — {} changes",
+        all_changes.len()
+    );
     Ok(all_changes)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{SourceEntry, SourceRegistry};
+    use skilllite_core::planning::{SourceEntry, SourceRegistry};
 
-    fn make_source(id: &str, region: &str, accessibility: f32, quality: f32) -> SourceEntry {
+    fn make_source(
+        id: &str,
+        region: &str,
+        accessibility: f32,
+        quality: f32,
+    ) -> SourceEntry {
         SourceEntry {
             id: id.to_string(),
             name: id.to_string(),
@@ -704,7 +754,10 @@ mod tests {
             make_source("cn_b", "cn", 0.5, 0.5),
             make_source("cn_a", "cn", 0.9, 0.9),
         ];
-        let registry = SourceRegistry { version: 1, sources };
+        let registry = SourceRegistry {
+            version: 1,
+            sources,
+        };
         let prioritized = prioritize_sources(&registry.sources);
         assert_eq!(prioritized[0].region, "cn");
         assert_eq!(prioritized[1].region, "cn");
@@ -821,7 +874,7 @@ mod tests {
         std::env::remove_var("SKILLLITE_EXTERNAL_LEARNING");
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
-        crate::evolution::feedback::ensure_evolution_tables(&conn).unwrap();
+        feedback::ensure_evolution_tables(&conn).unwrap();
         assert!(!should_run_external_learning(&conn));
     }
 
@@ -829,7 +882,7 @@ mod tests {
     fn test_merge_external_rules_no_duplicates() {
         let tmp = tempfile::TempDir::new().unwrap();
         let chat_root = tmp.path();
-        crate::evolution::seed::ensure_seed_data(chat_root);
+        seed::ensure_seed_data(chat_root);
 
         let new_rule = PlanningRule {
             id: "ext_test_rule".to_string(),
@@ -852,19 +905,9 @@ mod tests {
 
         // Second merge: duplicate — should not add again
         let changes2 = merge_external_rules(chat_root, vec![new_rule]).unwrap();
-        assert!(changes2.is_empty(), "duplicate rule should not be added again");
+        assert!(
+            changes2.is_empty(),
+            "duplicate rule should not be added again"
+        );
     }
 }
-
-fn parse_hn_algolia_json(raw: &str) -> Vec<(String, String)> {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(raw) else {
-        return Vec::new();
-    };
-    let hits = v["hits"].as_array().cloned().unwrap_or_default();
-    hits.iter().take(10).filter_map(|hit| {
-        let title = hit["title"].as_str()?.to_string();
-        let url = hit["url"].as_str().unwrap_or("").to_string();
-        Some((title, url))
-    }).collect()
-}
-
