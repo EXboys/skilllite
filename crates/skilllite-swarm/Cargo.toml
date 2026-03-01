@@ -9,11 +9,14 @@ license = "MIT"
 [dependencies]
 skilllite-core = { path = "../skilllite-core" }
 mdns-sd = "0.18"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "net", "rt", "signal"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 local-ip-address = "0.6"
-ctrlc = "3"
+axum = { version = "0.7", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+futures-util = "0.3"
+bytes = "1.0"

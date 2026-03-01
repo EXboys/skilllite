@@ -10,12 +10,13 @@
 //! This module provides shared security helpers, the tool definition registry,
 //! and the dispatch layer that routes tool calls to the appropriate submodule.
 
+mod chat_data;
+mod delegate_swarm;
 mod file_ops;
 mod helpers;
-mod run_command;
 mod output;
 mod preview;
-mod chat_data;
+mod run_command;
 
 #[cfg(test)]
 mod tests;
@@ -35,6 +36,7 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
     tools.extend(output::tool_definitions());
     tools.extend(preview::tool_definitions());
     tools.extend(chat_data::tool_definitions());
+    tools.extend(delegate_swarm::tool_definitions());
     tools
 }
 
@@ -58,11 +60,12 @@ pub fn is_builtin_tool(name: &str) -> bool {
             | "chat_plan"
             | "list_output"
             | "update_task_plan"
+            | "delegate_to_swarm"
     )
 }
 
 pub fn is_async_builtin_tool(name: &str) -> bool {
-    matches!(name, "run_command" | "preview_server")
+    matches!(name, "run_command" | "preview_server" | "delegate_to_swarm")
 }
 
 pub fn execute_builtin_tool(
@@ -120,6 +123,9 @@ pub fn execute_builtin_tool(
         "update_task_plan" => Err(anyhow::anyhow!(
             "update_task_plan is only available in task-planning mode; it must be handled by the agent loop"
         )),
+        "delegate_to_swarm" => Err(anyhow::anyhow!(
+            "delegate_to_swarm is async; it must be handled by the agent loop"
+        )),
         _ => Err(anyhow::anyhow!("Unknown built-in tool: {}", tool_name)),
     };
 
@@ -174,6 +180,7 @@ pub async fn execute_async_builtin_tool(
     let result = match tool_name {
         "run_command" => run_command::execute_run_command(&args, workspace, event_sink).await,
         "preview_server" => preview::execute_preview_server(&args, workspace),
+        "delegate_to_swarm" => delegate_swarm::execute_delegate_to_swarm(&args, workspace).await,
         _ => Err(anyhow::anyhow!("Unknown async built-in tool: {}", tool_name)),
     };
 

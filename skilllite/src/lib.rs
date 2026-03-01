@@ -5,6 +5,8 @@ mod commands;
 mod mcp;
 mod protocol;
 mod stdio_rpc;
+#[cfg(all(feature = "agent", feature = "swarm"))]
+mod swarm_executor;
 
 use anyhow::Result;
 use clap::Parser;
@@ -353,10 +355,26 @@ pub fn run_cli() -> Result<()> {
         }
         Commands::Swarm { listen, skills_dir } => {
             let capability_tags = aggregate_capability_tags(skills_dir.as_deref());
-            protocol::SwarmHandler.serve(protocol::ProtocolParams::P2p {
-                listen_addr: listen,
-                capability_tags,
-            })?;
+            #[cfg(feature = "swarm")]
+            {
+                #[cfg(feature = "agent")]
+                let executor: Option<std::sync::Arc<dyn skilllite_swarm::TaskExecutor>> =
+                    Some(std::sync::Arc::new(swarm_executor::AgentTaskExecutor));
+                #[cfg(not(feature = "agent"))]
+                let executor: Option<std::sync::Arc<dyn skilllite_swarm::TaskExecutor>> = None;
+                protocol::SwarmHandler.serve(protocol::ProtocolParams::P2p {
+                    listen_addr: listen,
+                    capability_tags,
+                    executor,
+                })?;
+            }
+            #[cfg(not(feature = "swarm"))]
+            {
+                protocol::SwarmHandler.serve(protocol::ProtocolParams::P2p {
+                    listen_addr: listen,
+                    capability_tags,
+                })?;
+            }
         }
         Commands::Mcp { skills_dir } => {
             protocol::McpHandler

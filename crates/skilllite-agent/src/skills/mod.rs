@@ -45,7 +45,7 @@ pub fn load_skills(skill_dirs: &[String]) -> Vec<LoadedSkill> {
     for dir_path in skill_dirs {
         let path = Path::new(dir_path);
         if !path.exists() || !path.is_dir() {
-            tracing::warn!("Skill directory not found: {}", dir_path);
+            tracing::debug!("Skill directory not found: {}", dir_path);
             continue;
         }
 

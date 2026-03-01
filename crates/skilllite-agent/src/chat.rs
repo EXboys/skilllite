@@ -9,6 +9,51 @@ use super::chat_session::ChatSession;
 use super::skills;
 use super::types::*;
 
+/// Run a single task (one turn) and return AgentResult.
+/// Used by P2P swarm when routing decides to execute locally.
+pub async fn run_single_task(
+    workspace: &str,
+    session_key: &str,
+    description: &str,
+) -> Result<AgentResult> {
+    let mut config = AgentConfig::from_env();
+    config.workspace = workspace.to_string();
+    config.enable_task_planning = false; // Single task, no planning
+    config.enable_memory = true;
+
+    if config.api_key.is_empty() {
+        anyhow::bail!("API key required for swarm task execution. Set OPENAI_API_KEY.");
+    }
+
+    skilllite_core::config::ensure_default_output_dir();
+
+    let skill_dirs = auto_discover_skill_dirs(workspace);
+    let loaded_skills = skills::load_skills(&skill_dirs);
+
+    let mut session = ChatSession::new(config, session_key, loaded_skills);
+    let mut sink = SilentEventSink;
+    session.run_turn(description, &mut sink).await
+}
+
+fn auto_discover_skill_dirs(workspace: &str) -> Vec<String> {
+    let ws = Path::new(workspace);
+    let mut dirs = Vec::new();
+    for name in &[".skills", "skills"] {
+        let dir = ws.join(name);
+        if dir.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_dir() && path.join("SKILL.md").exists() {
+                        dirs.push(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+    dirs
+}
+
 /// Clear session (OpenClaw-style): summarize to memory, archive transcript, reset counts.
 /// Called by `skilllite clear-session` and Assistant. Loads .env from workspace.
 pub fn run_clear_session(session_key: &str, workspace: &str) -> Result<()> {

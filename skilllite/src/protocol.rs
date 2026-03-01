@@ -28,49 +28,7 @@ use crate::mcp;
 use crate::stdio_rpc;
 
 // Re-export protocol types from skilllite-core for Entry Layer handlers.
-pub use skilllite_core::protocol::{NewSkill, NodeResult};
-
-// ─── Standard Node I/O Types (input side) ────────────────────────────────────
-//
-// NodeContext and NodeTask are input types; NodeResult/NewSkill are in skilllite-core.
-
-/// Execution context attached to every [`NodeTask`].
-///
-/// Provides the agent with workspace identity, session continuity, and the
-/// capability tags the caller intends to use.  Remote P2P peers use
-/// `required_capabilities` to decide whether to accept the task.
-// Not yet wired to a caller — defined here for the future P2P routing layer.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodeContext {
-    /// Workspace path (local execution) or originating node ID (P2P).
-    pub workspace: String,
-    /// Session key for memory/transcript continuity (matches `ChatSession` key).
-    pub session_key: String,
-    /// Capability tags the caller expects to exercise (e.g. `["python", "web"]`).
-    /// Populated from `SKILL.md` `metadata.capabilities` at the call site.
-    #[serde(default)]
-    pub required_capabilities: Vec<String>,
-}
-
-/// Standard task unit — the universal input for local execution and P2P routing.
-///
-/// `description` is a natural-language goal; `context` carries the identity and
-/// capability requirements.  The P2P Discovery layer matches `required_capabilities`
-/// against peer capability registries to select the best node.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodeTask {
-    /// Unique task identifier (UUIDv4 or monotonic counter string).
-    pub id: String,
-    /// Natural-language description of what the agent should accomplish.
-    pub description: String,
-    /// Execution context (workspace, session, capabilities).
-    pub context: NodeContext,
-    /// Optional hint for which skill or tool to prefer (e.g. `"web-scraper"`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_hint: Option<String>,
-}
+pub use skilllite_core::protocol::{NewSkill, NodeContext, NodeResult, NodeTask};
 
 // ─── Protocol Parameters ─────────────────────────────────────────────────────
 
@@ -93,15 +51,14 @@ pub enum ProtocolParams {
     AgentRpc,
 
     /// Swarm node (`skilllite swarm --listen <ADDR>`).
-    ///
-    /// **Placeholder** — `SwarmHandler` serves a stub; full mDNS discovery
-    /// and Gossip sync will be implemented in `skilllite-swarm` crate.
     P2p {
         /// mDNS / Libp2p listen address (e.g. `"0.0.0.0:7700"`).
         listen_addr: String,
         /// Capability tags advertised to peers.
-        /// Populated from installed skills' `SKILL.md` `metadata.capabilities`.
         capability_tags: Vec<String>,
+        /// Executor for local task execution (when swarm+agent enabled).
+        #[cfg(feature = "swarm")]
+        executor: Option<std::sync::Arc<dyn skilllite_swarm::TaskExecutor>>,
     },
 }
 
@@ -185,15 +142,18 @@ impl ProtocolHandler for SwarmHandler {
     fn name(&self) -> &str { "swarm" }
 
     fn serve(&self, params: ProtocolParams) -> Result<()> {
-        let ProtocolParams::P2p { listen_addr, capability_tags } = params else {
-            anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
-        };
         #[cfg(feature = "swarm")]
         {
-            skilllite_swarm::serve_swarm(&listen_addr, capability_tags)
+            let ProtocolParams::P2p { listen_addr, capability_tags, executor } = params else {
+                anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
+            };
+            skilllite_swarm::serve_swarm(&listen_addr, capability_tags, executor)
         }
         #[cfg(not(feature = "swarm"))]
         {
+            let ProtocolParams::P2p { listen_addr, capability_tags } = params else {
+                anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
+            };
             tracing::info!(
                 listen = %listen_addr,
                 capabilities = ?capability_tags,
