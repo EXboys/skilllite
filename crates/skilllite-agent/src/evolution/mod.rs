@@ -619,6 +619,27 @@ async fn run_evolution_inner(
     Ok(Some(txn_id))
 }
 
+/// Query evolution changes for a given transaction (for NodeResult.new_skill wiring).
+pub fn query_changes_by_txn(conn: &Connection, txn_id: &str) -> Vec<(String, String)> {
+    let mut stmt = match conn.prepare(
+        "SELECT type, target_id FROM evolution_log WHERE version = ?1",
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    stmt.query_map(params![txn_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+        ))
+    })
+    .ok()
+    .into_iter()
+    .flatten()
+    .filter_map(|r| r.ok())
+    .collect()
+}
+
 // ─── EVO-5: User-visible evolution event formatting ──────────────────────────
 
 /// Format evolution changes into user-visible messages.

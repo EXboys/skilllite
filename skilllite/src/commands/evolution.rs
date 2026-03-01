@@ -1,10 +1,13 @@
 //! EVO-5: Evolution management CLI commands.
 //!
-//! Provides `skilllite evolution {status,reset,disable,explain}` subcommands
+//! Provides `skilllite evolution {status,reset,disable,explain,run}` subcommands
 //! for inspecting, controlling, and debugging the self-evolution engine.
 
 use anyhow::{Context, Result};
 use std::path::PathBuf;
+
+use skilllite_agent::types::AgentConfig;
+use skilllite_core::protocol::{NewSkill, NodeResult};
 
 fn chat_root() -> PathBuf {
     dirs::home_dir()
@@ -438,4 +441,103 @@ pub fn cmd_reject(skill_name: &str) -> Result<()> {
     skilllite_agent::evolution::skill_synth::reject_pending_skill(&root, skill_name)?;
     println!("✅ Skill '{}' 已拒绝", skill_name);
     Ok(())
+}
+
+/// `skilllite evolution run` — run evolution once synchronously, output NodeResult with new_skill.
+pub fn cmd_run(json_output: bool) -> Result<()> {
+    let root = chat_root();
+    skilllite_core::config::ensure_default_output_dir();
+
+    let config = AgentConfig::from_env();
+    if config.api_key.is_empty() {
+        anyhow::bail!("API key required. Set OPENAI_API_KEY env var.");
+    }
+
+    let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
+    let txn_opt = rt.block_on(skilllite_agent::evolution::run_evolution(
+        &root,
+        &config.api_base,
+        &config.api_key,
+        &config.model,
+    ))?;
+
+    let task_id = uuid::Uuid::new_v4().to_string();
+    let response = match txn_opt {
+        Some(txn_id) => {
+            let conn = skilllite_agent::evolution::feedback::open_evolution_db(&root)?;
+            let changes = skilllite_agent::evolution::query_changes_by_txn(&conn, &txn_id);
+
+            let new_skill = changes
+                .iter()
+                .find(|(t, _)| t == "skill_pending" || t == "skill_refined")
+                .and_then(|(_, skill_name)| build_new_skill(&root, skill_name, &txn_id));
+
+            let summary: Vec<String> = skilllite_agent::evolution::format_evolution_changes(&changes);
+            let response_text = if summary.is_empty() {
+                format!("Evolution completed (txn={})", txn_id)
+            } else {
+                summary.join("\n")
+            };
+
+            NodeResult {
+                task_id: task_id.clone(),
+                response: response_text,
+                task_completed: true,
+                tool_calls: 0,
+                new_skill,
+            }
+        }
+        None => NodeResult {
+            task_id: task_id.clone(),
+            response: "Evolution: nothing to evolve".to_string(),
+            task_completed: true,
+            tool_calls: 0,
+            new_skill: None,
+        },
+    };
+
+    if json_output {
+        println!("{}", serde_json::to_string_pretty(&response)?);
+    } else {
+        println!("{}", response.response);
+        if let Some(ref ns) = response.new_skill {
+            println!();
+            println!("🆕 NewSkill: {} (path: {})", ns.name, ns.path);
+            println!("   → 确认: skilllite evolution confirm {}", ns.name);
+        }
+    }
+
+    Ok(())
+}
+
+fn build_new_skill(chat_root: &PathBuf, skill_name: &str, txn_id: &str) -> Option<NewSkill> {
+    let pending_path = chat_root
+        .join("skills")
+        .join("_evolved")
+        .join("_pending")
+        .join(skill_name);
+    let evolved_path = chat_root
+        .join("skills")
+        .join("_evolved")
+        .join(skill_name);
+
+    let (path, skill_dir) = if pending_path.exists() {
+        (pending_path.clone(), pending_path)
+    } else if evolved_path.exists() {
+        (evolved_path.clone(), evolved_path)
+    } else {
+        return None;
+    };
+
+    let description = skilllite_core::skill::metadata::parse_skill_metadata(&skill_dir)
+        .ok()
+        .and_then(|m| m.description)
+        .unwrap_or_else(|| skill_name.to_string());
+
+    Some(NewSkill {
+        name: skill_name.to_string(),
+        description,
+        path: path.to_string_lossy().to_string(),
+        txn_id: txn_id.to_string(),
+    })
 }

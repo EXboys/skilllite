@@ -342,6 +342,7 @@ pub fn run_cli() -> Result<()> {
                 EvolutionAction::Explain { rule_id } => commands::evolution::cmd_explain(&rule_id)?,
                 EvolutionAction::Confirm { skill_name } => commands::evolution::cmd_confirm(&skill_name)?,
                 EvolutionAction::Reject { skill_name } => commands::evolution::cmd_reject(&skill_name)?,
+                EvolutionAction::Run { json } => commands::evolution::cmd_run(json)?,
             }
         }
     }

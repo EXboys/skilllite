@@ -15,7 +15,7 @@ default = ["sandbox", "audit", "agent"]
 sandbox = []
 audit = ["skilllite-sandbox/audit", "dep:ureq"]
 executor = ["sandbox", "dep:skilllite-executor"]
-agent = ["executor", "dep:skilllite-agent", "dep:tokio", "dep:reqwest", "dep:rustyline"]
+agent = ["executor", "dep:skilllite-agent", "dep:tokio", "dep:reqwest", "dep:rustyline", "dep:uuid"]
 # 仅用于 skilllite-sandbox 构建，含 sandbox+audit，不在 default 中
 sandbox_binary = ["sandbox", "audit"]
 # Memory 向量检索：启用后 memory_search 使用语义搜索（需配置 embedding API）
@@ -43,6 +43,7 @@ tempfile = "3.10"
 tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "time", "io-util", "process"] }
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["json", "stream", "rustls-tls"] }
 rustyline = { version = "14", optional = true }
+uuid = { version = "1", optional = true, features = ["v4"] }
 
 # Audit feature: lightweight sync HTTP client for ClawHub registry
 ureq = { version = "2", optional = true, features = ["json"] }

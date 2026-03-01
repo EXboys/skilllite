@@ -369,7 +369,7 @@ impl AgentResult {
             response: self.response.clone(),
             task_completed: self.feedback.task_completed,
             tool_calls: self.feedback.total_tools,
-            new_skill: None, // TODO: wire from skill_synth when EVO-5 NewSkill接线完成
+            new_skill: None, // agent_chat: N/A. Use `skilllite evolution run --json` for NewSkill output.
         }
     }
 }

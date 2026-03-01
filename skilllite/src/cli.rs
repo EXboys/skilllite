@@ -611,4 +611,11 @@ pub enum EvolutionAction {
         #[arg(value_name = "SKILL_NAME")]
         skill_name: String,
     },
+
+    /// Run evolution once synchronously — outputs NodeResult with new_skill when skill produced
+    Run {
+        /// Output result as JSON (NodeResult format) for machine consumption
+        #[arg(long)]
+        json: bool,
+    },
 }
