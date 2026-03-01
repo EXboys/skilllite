@@ -75,7 +75,21 @@ pub fn cmd_status() -> Result<()> {
     let pending = skilllite_agent::evolution::skill_synth::list_pending_skills(&root);
 
     println!("📥 进化队列与待确认");
-    println!("  进化队列: {} 条决策待处理 (空闲 5 分钟或周期性触发时进化)", unprocessed);
+    // A9+EVO-5: 人机并存 — 两种触发：周期性、决策数阈值（已移除空闲5分钟触发以简化逻辑）
+    let interval_secs: u64 = std::env::var(skilllite_core::config::env_keys::evolution::SKILLLITE_EVOLUTION_INTERVAL_SECS)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1800);
+    let threshold: i64 = std::env::var(skilllite_core::config::env_keys::evolution::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10);
+    println!(
+        "  进化队列: {} 条决策待处理 (每{}分钟周期 / 决策数≥{} 时进化)",
+        unprocessed,
+        interval_secs / 60,
+        threshold
+    );
     if !pending.is_empty() {
         println!("  待确认 Skill: {}", pending.join(", "));
         println!("    → 确认: skilllite evolution confirm <name>");

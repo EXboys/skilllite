@@ -162,7 +162,7 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** Periodic trigger interval (seconds). Evolution runs every 30 min in background, even when user is active |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** Decision-count trigger. When unprocessed decisions ≥ this value, evolution is triggered |
 
-**Evolution triggers (A9)**: In addition to idle (5 min) trigger, periodic (every 30 min) and decision-count triggers allow evolution in background even during active user interaction.
+**Evolution triggers (A9)**: Periodic (every 30 min) + decision-count triggers allow evolution in background even during active user interaction.
 
 ---
 

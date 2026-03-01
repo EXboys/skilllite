@@ -38,8 +38,6 @@ pub struct ChatSession {
     /// NOT the user's workspace directory.
     data_root: PathBuf,
     skills: Vec<LoadedSkill>,
-    /// EVO-3: handle for the idle evolution timer (cancelled and re-spawned each turn).
-    idle_evolution_handle: Option<tokio::task::JoinHandle<()>>,
     /// A9: handle for periodic evolution (every N minutes, does not reset on turn).
     periodic_evolution_handle: Option<tokio::task::JoinHandle<()>>,
 }
@@ -65,7 +63,6 @@ impl ChatSession {
             session_id: None,
             data_root,
             skills,
-            idle_evolution_handle: None,
             periodic_evolution_handle: None,
         };
         // A9: Start periodic evolution timer (runs every 30 min even when user is active)
@@ -277,32 +274,11 @@ impl ChatSession {
             self.maybe_trigger_evolution_by_decision_count();
         }
 
-        // EVO-3: (Re)start idle evolution timer. Cancel previous timer if any.
-        self.restart_idle_evolution_timer();
-
         Ok(result)
-    }
-
-    // ─── EVO-3: Idle evolution trigger ─────────────────────────────────────
-
-    /// Cancel any existing idle timer and start a new 5-minute timer.
-    fn restart_idle_evolution_timer(&mut self) {
-        if let Some(handle) = self.idle_evolution_handle.take() {
-            handle.abort();
-        }
-        self.idle_evolution_handle = Some(spawn_idle_evolution(
-            self.data_root.clone(),
-            self.config.api_base.clone(),
-            self.config.api_key.clone(),
-            self.config.model.clone(),
-        ));
     }
 
     /// Graceful shutdown: flush evolution metrics, cancel evolution timers.
     pub fn shutdown(&mut self) {
-        if let Some(handle) = self.idle_evolution_handle.take() {
-            handle.abort();
-        }
         if let Some(handle) = self.periodic_evolution_handle.take() {
             handle.abort();
         }
@@ -777,9 +753,9 @@ impl ChatSession {
     }
 }
 
-// ─── EVO-3 + A9: Evolution triggers ─────────────────────────────────────────
+// ─── A9: Evolution triggers (periodic + decision-count) ─────────────────────
 
-/// Run evolution once and emit summary. Shared by idle, periodic, and decision-count triggers.
+/// Run evolution once and emit summary. Shared by periodic and decision-count triggers.
 async fn run_evolution_and_emit_summary(
     data_root: &PathBuf,
     api_base: &str,
@@ -800,25 +776,6 @@ async fn run_evolution_and_emit_summary(
         Ok(None) => tracing::debug!("Evolution: nothing to evolve"),
         Err(e) => tracing::warn!("Evolution failed: {}", e),
     }
-}
-
-/// Idle evolution trigger: spawn background evolution if user has been idle for 5+ minutes.
-/// EVO-5: Respects SKILLLITE_EVOLUTION env var; emits user-visible messages.
-pub fn spawn_idle_evolution(
-    data_root: PathBuf,
-    api_base: String,
-    api_key: String,
-    model: String,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        if evolution::EvolutionMode::from_env().is_disabled() {
-            tracing::debug!("Evolution disabled, skipping idle trigger");
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-        tracing::debug!("Idle evolution trigger fired");
-        run_evolution_and_emit_summary(&data_root, &api_base, &api_key, &model).await;
-    })
 }
 
 /// A9: Periodic evolution trigger — runs every N seconds, even when user is active.
