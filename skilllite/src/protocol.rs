@@ -177,8 +177,8 @@ impl ProtocolHandler for AgentRpcHandler {
 
 /// Swarm P2P mesh handler (`skilllite swarm --listen <ADDR>`).
 ///
-/// Placeholder: blocks and logs. Full implementation (mDNS, routing, Gossip)
-/// will live in `skilllite-swarm` crate.
+/// When `swarm` feature is enabled, delegates to `skilllite-swarm` for full
+/// mDNS discovery and daemon loop. Otherwise serves a placeholder.
 pub struct SwarmHandler;
 
 impl ProtocolHandler for SwarmHandler {
@@ -188,13 +188,19 @@ impl ProtocolHandler for SwarmHandler {
         let ProtocolParams::P2p { listen_addr, capability_tags } = params else {
             anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
         };
-        tracing::info!(
-            listen = %listen_addr,
-            capabilities = ?capability_tags,
-            "Swarm daemon started (placeholder — mDNS/Gossip not yet implemented)"
-        );
-        // Block until Ctrl+C; full impl will run mDNS discovery loop
-        std::thread::park();
-        Ok(())
+        #[cfg(feature = "swarm")]
+        {
+            skilllite_swarm::serve_swarm(&listen_addr, capability_tags)
+        }
+        #[cfg(not(feature = "swarm"))]
+        {
+            tracing::info!(
+                listen = %listen_addr,
+                capabilities = ?capability_tags,
+                "Swarm daemon started (placeholder — build with --features swarm for mDNS)"
+            );
+            std::thread::park();
+            Ok(())
+        }
     }
 }

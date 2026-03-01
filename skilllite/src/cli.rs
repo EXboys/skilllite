@@ -543,11 +543,16 @@ pub enum Commands {
     ///
     /// Examples:
     ///   skilllite swarm --listen 0.0.0.0:7700
+    ///   skilllite swarm --listen 0.0.0.0:7700 --skills-dir .skills
     #[command(name = "swarm")]
     Swarm {
         /// Listen address (e.g. 0.0.0.0:7700)
         #[arg(long, short = 'l', default_value = "0.0.0.0:7700")]
         listen: String,
+
+        /// Skills directory for capability aggregation (default: .skills, skills)
+        #[arg(long, short = 's')]
+        skills_dir: Option<Vec<String>>,
     },
 
     /// Run MCP (Model Context Protocol) server over stdio

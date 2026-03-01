@@ -1,0 +1,19 @@
+[package]
+name = "skilllite-swarm"
+version = "0.1.0"
+edition = "2021"
+authors = ["EX <boyex345@gmail.com>"]
+description = "SkillLite P2P swarm: mDNS discovery, peer mesh, task routing"
+license = "MIT"
+
+[dependencies]
+skilllite-core = { path = "../skilllite-core" }
+mdns-sd = "0.18"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+local-ip-address = "0.6"
+ctrlc = "3"

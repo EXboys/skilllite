@@ -11,7 +11,7 @@ keywords = ["agent", "skills", "sandbox", "security"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = ["sandbox", "audit", "agent"]
+default = ["sandbox", "audit", "agent", "swarm"]
 sandbox = []
 audit = ["skilllite-sandbox/audit", "dep:ureq"]
 executor = ["sandbox", "dep:skilllite-executor"]
@@ -20,12 +20,15 @@ agent = ["executor", "dep:skilllite-agent", "dep:tokio", "dep:reqwest", "dep:rus
 sandbox_binary = ["sandbox", "audit"]
 # Memory 向量检索：启用后 memory_search 使用语义搜索（需配置 embedding API）
 memory_vector = ["executor", "agent", "skilllite-agent/memory_vector"]
+# P2P 组网：mDNS 发现、Swarm 守护进程
+swarm = ["dep:skilllite-swarm"]
 
 [dependencies]
 skilllite-core = { path = "../crates/skilllite-core" }
 skilllite-sandbox = { path = "../crates/skilllite-sandbox" }
 skilllite-executor = { path = "../crates/skilllite-executor", optional = true }
 skilllite-agent = { path = "../crates/skilllite-agent", optional = true }
+skilllite-swarm = { path = "../crates/skilllite-swarm", optional = true }
 
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }

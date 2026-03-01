@@ -10,7 +10,32 @@ use anyhow::Result;
 use clap::Parser;
 use cli::{Cli, Commands};
 use protocol::ProtocolHandler;
+use std::collections::HashSet;
 use std::io::Read;
+
+/// Aggregate capability tags from skills. When agent feature is on, loads skills
+/// from the given dirs (or [".skills", "skills"] if None) and collects capabilities.
+#[cfg(feature = "agent")]
+fn aggregate_capability_tags(skills_dir: Option<&[String]>) -> Vec<String> {
+    let dirs: Vec<String> = skills_dir
+        .map(|s| s.to_vec())
+        .unwrap_or_else(|| vec![".skills".into(), "skills".into()]);
+    let loaded = skilllite_agent::skills::load_skills(&dirs);
+    let mut caps = HashSet::new();
+    for skill in &loaded {
+        for c in &skill.metadata.capabilities {
+            caps.insert(c.clone());
+        }
+    }
+    let mut v: Vec<_> = caps.into_iter().collect();
+    v.sort();
+    v
+}
+
+#[cfg(not(feature = "agent"))]
+fn aggregate_capability_tags(_skills_dir: Option<&[String]>) -> Vec<String> {
+    vec![]
+}
 
 /// Run the CLI — parses args and dispatches to command handlers.
 /// Used by both `skilllite` (full) and `skilllite-sandbox` (minimal) binaries.
@@ -326,10 +351,11 @@ pub fn run_cli() -> Result<()> {
             protocol::AgentRpcHandler
                 .serve(protocol::ProtocolParams::AgentRpc)?;
         }
-        Commands::Swarm { listen } => {
+        Commands::Swarm { listen, skills_dir } => {
+            let capability_tags = aggregate_capability_tags(skills_dir.as_deref());
             protocol::SwarmHandler.serve(protocol::ProtocolParams::P2p {
                 listen_addr: listen,
-                capability_tags: vec![], // TODO: aggregate from skills
+                capability_tags,
             })?;
         }
         Commands::Mcp { skills_dir } => {
