@@ -390,7 +390,8 @@ pub fn handle_list_tools(params: &Value) -> Result<Value> {
                     "skill_dir": skill_dir_str,
                     "script_path": script_path,
                     "entry_point": entry_point,
-                    "is_bash": is_bash
+                    "is_bash": is_bash,
+                    "capabilities": skill.metadata.capabilities
                 }),
             );
         }

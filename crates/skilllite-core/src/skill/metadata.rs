@@ -37,6 +37,12 @@ struct FrontMatter {
     /// Optional: Whether skill requires elevated permissions (e.g. full filesystem)
     #[serde(default, rename = "requires_elevated_permissions")]
     pub requires_elevated_permissions: Option<bool>,
+
+    /// Optional: Capability tags for P2P discovery and task routing.
+    /// Examples: ["python", "web", "ml", "data"]
+    /// Can also be nested under `metadata.capabilities` for backward compat.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 /// Parsed pattern from `allowed-tools: Bash(agent-browser:*)`
@@ -117,6 +123,13 @@ pub struct SkillMetadata {
 
     /// Whether skill requires elevated permissions (e.g. full filesystem access)
     pub requires_elevated_permissions: bool,
+
+    /// Capability tags for P2P Discovery routing.
+    ///
+    /// Sourced from SKILL.md front matter `capabilities:` (top-level, preferred) or
+    /// `metadata.capabilities` (array nested under the `metadata:` key, for backward compat).
+    /// Example SKILL.md: `capabilities: ["python", "web", "ml"]`
+    pub capabilities: Vec<String>,
 }
 
 impl SkillMetadata {
@@ -403,6 +416,24 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         .requires_elevated_permissions
         .unwrap_or(false);
 
+    // Resolve capabilities: top-level `capabilities:` field takes priority;
+    // fall back to `metadata.capabilities` array for skills that nest it there.
+    let capabilities = if !front_matter.capabilities.is_empty() {
+        front_matter.capabilities.clone()
+    } else {
+        front_matter
+            .metadata
+            .as_ref()
+            .and_then(|m| m.get("capabilities"))
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
     let metadata = SkillMetadata {
         name: front_matter.name.clone(),
         entry_point,
@@ -419,6 +450,7 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         resolved_packages,
         allowed_tools: front_matter.allowed_tools.clone(),
         requires_elevated_permissions: requires_elevated,
+        capabilities,
     };
 
     // Validate required fields

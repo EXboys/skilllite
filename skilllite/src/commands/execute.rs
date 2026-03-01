@@ -115,6 +115,7 @@ pub fn exec_script(
             resolved_packages: None,
             allowed_tools: None,
             requires_elevated_permissions: false,
+            capabilities: Vec::new(),
         };
         (meta, std::path::PathBuf::new())
     };

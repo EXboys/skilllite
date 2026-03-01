@@ -323,7 +323,8 @@ pub fn run_cli() -> Result<()> {
         }
         #[cfg(feature = "agent")]
         Commands::AgentRpc => {
-            skilllite_agent::rpc::serve_agent_rpc()?;
+            protocol::AgentRpcHandler
+                .serve(protocol::ProtocolParams::AgentRpc)?;
         }
         Commands::Mcp { skills_dir } => {
             protocol::McpHandler
