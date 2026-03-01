@@ -9,6 +9,7 @@
 
 pub mod llm;
 pub mod extensions;
+pub mod goal_boundaries;
 pub mod skills;
 pub mod prompt;
 pub mod agent_loop;

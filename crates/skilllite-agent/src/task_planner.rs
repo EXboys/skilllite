@@ -14,6 +14,7 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::evolution::seed;
+use super::goal_boundaries::GoalBoundaries;
 use super::llm::LlmClient;
 use super::planning_rules;
 use super::skills::LoadedSkill;
@@ -101,6 +102,9 @@ impl TaskPlanner {
     }
 
     /// Generate task list from user message using LLM.
+    ///
+    /// `goal_boundaries`: Optional extracted boundaries (scope, exclusions, completion conditions)
+    /// to inject into planning. Used in run mode for long-running tasks.
     pub async fn generate_task_list(
         &mut self,
         client: &LlmClient,
@@ -108,6 +112,7 @@ impl TaskPlanner {
         user_message: &str,
         skills: &[LoadedSkill],
         conversation_context: Option<&str>,
+        goal_boundaries: Option<&GoalBoundaries>,
     ) -> Result<Vec<Task>> {
         let skills_info = if skills.is_empty() {
             "None".to_string()
@@ -132,6 +137,13 @@ impl TaskPlanner {
             "**PRIMARY — Plan ONLY based on this**:\nUser request: {}\n\n",
             user_message
         );
+        // A5: Inject goal boundaries when available (run mode)
+        if let Some(gb) = goal_boundaries {
+            if !gb.is_empty() {
+                user_content.push_str(&gb.to_planning_block());
+                user_content.push_str("\n\n");
+            }
+        }
         if let Some(ctx) = conversation_context {
             let needs_continue_context = user_message.contains("继续")
                 || user_message.contains("继续之前")
@@ -330,7 +342,13 @@ impl TaskPlanner {
     }
 
     /// Build system prompt with task list and execution guidance.
-    pub fn build_task_system_prompt(&self, skills: &[LoadedSkill]) -> String {
+    ///
+    /// `goal_boundaries`: Optional extracted boundaries to inject (A5, run mode).
+    pub fn build_task_system_prompt(
+        &self,
+        skills: &[LoadedSkill],
+        goal_boundaries: Option<&GoalBoundaries>,
+    ) -> String {
         let execution_prompt = self.build_execution_prompt(skills);
         let task_list_json =
             serde_json::to_string_pretty(&self.task_list).unwrap_or_else(|_| "[]".to_string());
@@ -375,8 +393,13 @@ impl TaskPlanner {
             }
         }
 
+        let boundaries_block = match goal_boundaries {
+            Some(gb) if !gb.is_empty() => format!("\n\n{}\n", gb.to_planning_block()),
+            _ => String::new(),
+        };
+
         format!(
-            "{}\n\
+            "{}{}\n\
              ---\n\n\
              ## Current Task List\n\n\
              {}\n\n\
@@ -390,6 +413,7 @@ impl TaskPlanner {
              {}{}\n\n\
              ⚠️ **Important**: You must explicitly declare after completing each task so the system can track progress.",
             execution_prompt,
+            boundaries_block,
             task_list_json,
             current_task_info,
             direct_call_instruction

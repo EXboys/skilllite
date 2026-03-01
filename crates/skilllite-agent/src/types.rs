@@ -85,6 +85,14 @@ pub struct AgentConfig {
     /// Path to SOUL.md identity document (optional).
     /// Resolution: explicit path > .skilllite/SOUL.md > ~/.skilllite/SOUL.md
     pub soul_path: Option<String>,
+
+    /// [Run mode] Max consecutive tool failures before stopping (prevents infinite retry loops).
+    /// None = no limit (chat mode). Some(N) = stop after N consecutive failures (run mode).
+    pub max_consecutive_failures: Option<usize>,
+
+    /// [Run mode] Extracted goal boundaries (scope, exclusions, completion conditions).
+    /// Injected into planning when set.
+    pub goal_boundaries: Option<super::goal_boundaries::GoalBoundaries>,
 }
 
 impl Default for AgentConfig {
@@ -107,6 +115,8 @@ impl Default for AgentConfig {
             enable_memory_vector: false,
             verbose: false,
             soul_path: None,
+            max_consecutive_failures: None,
+            goal_boundaries: None,
         }
     }
 }

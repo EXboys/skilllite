@@ -167,6 +167,7 @@ pub fn run_agent_run(
     goal: String,
     max_iterations: usize,
     verbose: bool,
+    max_failures: Option<usize>,
 ) -> Result<()> {
     let mut config = AgentConfig::from_env();
     if let Some(base) = api_base {
@@ -186,6 +187,13 @@ pub fn run_agent_run(
     config.verbose = verbose;
     config.enable_task_planning = true;
     config.enable_memory = true;
+    // A4: Failure retry limit — prevents infinite loops on repeated failures
+    config.max_consecutive_failures = match max_failures {
+        Some(0) => None,       // 0 = no limit
+        Some(n) => Some(n),
+        None => Some(5),       // default: stop after 5 consecutive failures
+    };
+    // A5: Goal boundaries extracted in agent_loop (hybrid: regex + optional LLM fallback)
 
     if config.api_key.is_empty() {
         anyhow::bail!(

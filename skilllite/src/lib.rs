@@ -46,6 +46,7 @@ pub fn run_cli() -> Result<()> {
             workspace,
             skill_dirs,
             max_iterations,
+            max_failures,
         } => {
             if let Some(g) = goal {
                 #[cfg(feature = "agent")]
@@ -60,6 +61,7 @@ pub fn run_cli() -> Result<()> {
                         g,
                         max_iterations,
                         true,
+                        max_failures,
                     )?;
                 }
                 #[cfg(not(feature = "agent"))]

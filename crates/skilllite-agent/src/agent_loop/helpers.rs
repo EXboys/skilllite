@@ -6,7 +6,10 @@ use std::path::Path;
 
 use serde_json::Value;
 
+use anyhow::Result;
+
 use super::super::extensions::{self};
+use super::super::goal_boundaries::{self, GoalBoundaries};
 use super::super::llm::LlmClient;
 use super::super::long_text;
 use super::super::prompt;
@@ -218,6 +221,76 @@ pub(super) fn inject_progressive_disclosure(
     )));
 
     true
+}
+
+/// Extract goal boundaries via LLM (fallback when regex returns empty).
+/// Enabled by SKILLLITE_GOAL_LLM_EXTRACT=1.
+pub(super) async fn extract_goal_boundaries_llm(
+    client: &LlmClient,
+    model: &str,
+    goal: &str,
+) -> Result<GoalBoundaries> {
+    const PROMPT: &str = r#"Extract goal boundaries from the user's goal. Return JSON only:
+{"scope": "...", "exclusions": "...", "completion_conditions": "..."}
+- scope: what is in scope for this goal (optional, null if unclear)
+- exclusions: what to avoid or exclude (optional, null if unclear)
+- completion_conditions: when the task is considered done (optional, null if unclear)
+Use null for any field you cannot infer. Output only valid JSON, no markdown, no other text."#;
+
+    let messages = vec![
+        ChatMessage::system(PROMPT),
+        ChatMessage::user(goal),
+    ];
+
+    let resp = client
+        .chat_completion(model, &messages, None, Some(0.2))
+        .await?;
+
+    let raw = resp
+        .choices
+        .first()
+        .and_then(|c| c.message.content.clone())
+        .unwrap_or_default();
+
+    let raw = raw.trim();
+    let json_str = if raw.starts_with("```json") {
+        raw.trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim()
+    } else if raw.starts_with("```") {
+        raw.trim_start_matches("```").trim_end_matches("```").trim()
+    } else {
+        raw
+    };
+
+    let v: Value = serde_json::from_str(json_str).map_err(|e| anyhow::anyhow!("Goal boundaries JSON parse error: {}", e))?;
+
+    let scope = v.get("scope").and_then(|s| s.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let exclusions = v.get("exclusions").and_then(|s| s.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let completion_conditions = v.get("completion_conditions").and_then(|s| s.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+
+    Ok(GoalBoundaries {
+        scope,
+        exclusions,
+        completion_conditions,
+    })
+}
+
+/// Hybrid extraction: regex first, LLM fallback when regex returns empty.
+/// LLM fallback only when SKILLLITE_GOAL_LLM_EXTRACT=1.
+pub(super) async fn extract_goal_boundaries_hybrid(
+    client: &LlmClient,
+    model: &str,
+    goal: &str,
+) -> Result<GoalBoundaries> {
+    let regex_result = goal_boundaries::extract_goal_boundaries(goal);
+    if !regex_result.is_empty() {
+        return Ok(regex_result);
+    }
+    if std::env::var("SKILLLITE_GOAL_LLM_EXTRACT").as_deref() == Ok("1") {
+        tracing::info!("Goal boundaries regex empty, trying LLM extraction");
+        extract_goal_boundaries_llm(client, model, goal).await
+    } else {
+        Ok(regex_result)
+    }
 }
 
 /// Build the final `AgentResult` from the message history.

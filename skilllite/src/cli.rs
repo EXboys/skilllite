@@ -64,6 +64,10 @@ pub enum Commands {
         /// [Agent run] Maximum agent loop iterations
         #[arg(long, default_value = "50")]
         max_iterations: usize,
+
+        /// [Agent run] Max consecutive tool failures before stopping (default: 5, 0 = no limit)
+        #[arg(long)]
+        max_failures: Option<usize>,
     },
 
     /// Execute a specific script directly in sandbox (no SKILL.md entry_point required)

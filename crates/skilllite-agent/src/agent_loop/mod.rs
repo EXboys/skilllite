@@ -116,6 +116,7 @@ async fn run_simple_loop(
 
     let mut total_tool_calls = 0usize;
     let mut failed_tool_calls = 0usize;
+    let mut consecutive_failures = 0usize;
     let mut iterations = 0usize;
     let mut no_tool_retries = 0usize;
     let max_no_tool_retries = 3;
@@ -274,6 +275,9 @@ async fn run_simple_loop(
 
                 if result.is_error {
                     failed_tool_calls += 1;
+                    consecutive_failures += 1;
+                } else {
+                    consecutive_failures = 0;
                 }
                 tools_detail.push(ToolExecDetail {
                     tool: tool_name.clone(),
@@ -284,6 +288,17 @@ async fn run_simple_loop(
                 messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
 
                 total_tool_calls += 1;
+            }
+        }
+
+        // A4: Stop on consecutive failure limit (run mode)
+        if let Some(limit) = config.max_consecutive_failures {
+            if consecutive_failures >= limit {
+                tracing::warn!(
+                    "Stopping: {} consecutive tool failures (limit: {})",
+                    consecutive_failures, limit
+                );
+                break;
             }
         }
 
@@ -369,7 +384,20 @@ async fn run_with_task_planning(
         None
     };
 
-    // Generate task list via LLM
+    // A5: Goal boundaries — run mode: hybrid (regex + LLM fallback when SKILLLITE_GOAL_LLM_EXTRACT=1)
+    let effective_boundaries = if session_key == Some("run") {
+        match helpers::extract_goal_boundaries_hybrid(&client, &config.model, user_message).await {
+            Ok(gb) => Some(gb),
+            Err(e) => {
+                tracing::warn!("Goal boundaries extraction failed: {}, using regex only", e);
+                Some(super::goal_boundaries::extract_goal_boundaries(user_message))
+            }
+        }
+    } else {
+        config.goal_boundaries.clone()
+    };
+
+    // Generate task list via LLM (A5: inject goal boundaries when in run mode)
     let _tasks = planner
         .generate_task_list(
             &client,
@@ -377,6 +405,7 @@ async fn run_with_task_planning(
             user_message,
             skills,
             conversation_context.as_deref(),
+            effective_boundaries.as_ref(),
         )
         .await?;
 
@@ -400,7 +429,7 @@ async fn run_with_task_planning(
             soul.as_ref(),
         )
     } else {
-        let mut prompt = planner.build_task_system_prompt(skills);
+        let mut prompt = planner.build_task_system_prompt(skills, effective_boundaries.as_ref());
         // Prepend SOUL block to task-planning prompt when soul is provided
         if let Some(s) = &soul {
             prompt = format!("{}\n\n{}", s.to_system_prompt_block(), prompt);
@@ -425,6 +454,7 @@ async fn run_with_task_planning(
     let mut documented_skills: HashSet<String> = HashSet::new();
     let mut total_tool_calls = 0usize;
     let mut failed_tool_calls = 0usize;
+    let mut consecutive_failures = 0usize;
     let mut replan_count = 0usize;
     let mut iterations = 0usize;
     let mut consecutive_no_tool = 0usize;
@@ -725,7 +755,10 @@ async fn run_with_task_planning(
             // Phase 1 C1: When tool fails, append replan hint (task-planning mode only)
             if result.is_error {
                 failed_tool_calls += 1;
+                consecutive_failures += 1;
                 result.content.push_str("\n\nTip: Consider update_task_plan if the approach needs to change.");
+            } else {
+                consecutive_failures = 0;
             }
             if !is_replan {
                 tools_detail.push(ToolExecDetail {
@@ -739,6 +772,17 @@ async fn run_with_task_planning(
 
             total_tool_calls += 1;
             tool_calls_current_task += 1;
+        }
+
+        // ── A4: Stop on consecutive failure limit (run mode) ────────────────
+        if let Some(limit) = config.max_consecutive_failures {
+            if consecutive_failures >= limit {
+                tracing::warn!(
+                    "Stopping: {} consecutive tool failures (limit: {})",
+                    consecutive_failures, limit
+                );
+                break;
+            }
         }
 
         // ── Per-task depth limit ───────────────────────────────────────────
