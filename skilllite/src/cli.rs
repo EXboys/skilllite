@@ -558,7 +558,7 @@ pub enum Commands {
     /// Examples:
     ///   skilllite evolution status
     ///   skilllite evolution reset
-    ///   skilllite evolution disable evo_rule_xyz
+    ///   skilllite evolution confirm <name>
     #[cfg(feature = "agent")]
     Evolution {
         #[command(subcommand)]
@@ -592,5 +592,19 @@ pub enum EvolutionAction {
         /// The rule ID to explain
         #[arg(value_name = "RULE_ID")]
         rule_id: String,
+    },
+
+    /// Confirm a pending evolved skill (A10) — move from _pending to _evolved
+    Confirm {
+        /// Skill name to confirm
+        #[arg(value_name = "SKILL_NAME")]
+        skill_name: String,
+    },
+
+    /// Reject a pending evolved skill (A10) — remove without adding
+    Reject {
+        /// Skill name to reject
+        #[arg(value_name = "SKILL_NAME")]
+        skill_name: String,
     },
 }

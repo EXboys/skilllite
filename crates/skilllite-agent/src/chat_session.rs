@@ -13,6 +13,8 @@ use skilllite_executor::{
     transcript,
 };
 
+use skilllite_core::config::env_keys::evolution as evo_env_keys;
+
 use super::agent_loop;
 use super::evolution;
 use super::extensions;
@@ -38,6 +40,8 @@ pub struct ChatSession {
     skills: Vec<LoadedSkill>,
     /// EVO-3: handle for the idle evolution timer (cancelled and re-spawned each turn).
     idle_evolution_handle: Option<tokio::task::JoinHandle<()>>,
+    /// A9: handle for periodic evolution (every N minutes, does not reset on turn).
+    periodic_evolution_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ChatSession {
@@ -55,14 +59,18 @@ impl ChatSession {
             .join("chat");
         // EVO-2: Ensure seed prompt/rules data exists on disk.
         evolution::seed::ensure_seed_data(&data_root);
-        Self {
+        let mut session = Self {
             config,
             session_key: session_key.to_string(),
             session_id: None,
             data_root,
             skills,
             idle_evolution_handle: None,
-        }
+            periodic_evolution_handle: None,
+        };
+        // A9: Start periodic evolution timer (runs every 30 min even when user is active)
+        session.start_periodic_evolution_timer();
+        session
     }
 
     /// Ensure session and transcript exist, return session_id.
@@ -241,6 +249,8 @@ impl ChatSession {
         // Only record meaningful turns (at least 1 tool call).
         if result.feedback.total_tools >= 1 {
             self.record_decision(&result.feedback);
+            // A9: Decision-count trigger — if unprocessed decisions >= threshold, spawn evolution
+            self.maybe_trigger_evolution_by_decision_count();
         }
 
         // EVO-3: (Re)start idle evolution timer. Cancel previous timer if any.
@@ -264,12 +274,60 @@ impl ChatSession {
         ));
     }
 
-    /// Graceful shutdown: flush evolution metrics, cancel idle timer.
+    /// Graceful shutdown: flush evolution metrics, cancel evolution timers.
     pub fn shutdown(&mut self) {
         if let Some(handle) = self.idle_evolution_handle.take() {
             handle.abort();
         }
+        if let Some(handle) = self.periodic_evolution_handle.take() {
+            handle.abort();
+        }
         shutdown_evolution(&self.data_root);
+    }
+
+    // ─── A9: Periodic + decision-count evolution triggers ────────────────────
+
+    /// Start periodic evolution timer (every 30 min). Does not reset on user turns.
+    fn start_periodic_evolution_timer(&mut self) {
+        if evolution::EvolutionMode::from_env().is_disabled() {
+            return;
+        }
+        let interval_secs: u64 = std::env::var(evo_env_keys::SKILLLITE_EVOLUTION_INTERVAL_SECS)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1800); // 30 min default
+        let data_root = self.data_root.clone();
+        let api_base = self.config.api_base.clone();
+        let api_key = self.config.api_key.clone();
+        let model = self.config.model.clone();
+        self.periodic_evolution_handle = Some(spawn_periodic_evolution(
+            data_root, api_base, api_key, model, interval_secs,
+        ));
+    }
+
+    /// A9: If unprocessed decisions >= threshold, spawn evolution (runs even when user is active).
+    fn maybe_trigger_evolution_by_decision_count(&self) {
+        if evolution::EvolutionMode::from_env().is_disabled() {
+            return;
+        }
+        let threshold: i64 = std::env::var(evo_env_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
+        let Ok(conn) = evolution::feedback::open_evolution_db(&self.data_root) else {
+            return;
+        };
+        let Ok(count) = evolution::feedback::count_unprocessed_decisions(&conn) else {
+            return;
+        };
+        if count >= threshold {
+            tracing::debug!("Decision-count trigger: {} unprocessed >= {}, spawning evolution", count, threshold);
+            let data_root = self.data_root.clone();
+            let api_base = self.config.api_base.clone();
+            let api_key = self.config.api_key.clone();
+            let model = self.config.model.clone();
+            spawn_evolution_once(data_root, api_base, api_key, model);
+        }
     }
 
     // ─── EVO-1: Feedback collection helpers ─────────────────────────────────
@@ -695,11 +753,32 @@ impl ChatSession {
     }
 }
 
-// ─── EVO-3: Evolution triggers ──────────────────────────────────────────────
+// ─── EVO-3 + A9: Evolution triggers ─────────────────────────────────────────
+
+/// Run evolution once and emit summary. Shared by idle, periodic, and decision-count triggers.
+async fn run_evolution_and_emit_summary(
+    data_root: &PathBuf,
+    api_base: &str,
+    api_key: &str,
+    model: &str,
+) {
+    match evolution::run_evolution(data_root, api_base, api_key, model).await {
+        Ok(Some(txn_id)) => {
+            tracing::info!("Evolution completed: {}", txn_id);
+            if let Ok(conn) = evolution::feedback::open_evolution_db(data_root) {
+                let changes = query_recent_evolution_changes(&conn, &txn_id);
+                for msg in &evolution::format_evolution_changes(&changes) {
+                    eprintln!("{}", msg);
+                }
+                let _ = evolution::check_auto_rollback(&conn, data_root);
+            }
+        }
+        Ok(None) => tracing::debug!("Evolution: nothing to evolve"),
+        Err(e) => tracing::warn!("Evolution failed: {}", e),
+    }
+}
 
 /// Idle evolution trigger: spawn background evolution if user has been idle for 5+ minutes.
-/// Returns a JoinHandle that can be awaited or dropped.
-///
 /// EVO-5: Respects SKILLLITE_EVOLUTION env var; emits user-visible messages.
 pub fn spawn_idle_evolution(
     data_root: PathBuf,
@@ -708,34 +787,51 @@ pub fn spawn_idle_evolution(
     model: String,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        // EVO-5: Skip if evolution is disabled
         if evolution::EvolutionMode::from_env().is_disabled() {
             tracing::debug!("Evolution disabled, skipping idle trigger");
             return;
         }
-
-        // Wait 5 minutes
         tokio::time::sleep(std::time::Duration::from_secs(300)).await;
-
         tracing::debug!("Idle evolution trigger fired");
-        match evolution::run_evolution(&data_root, &api_base, &api_key, &model).await {
-            Ok(Some(txn_id)) => {
-                tracing::info!("Idle evolution completed: {}", txn_id);
+        run_evolution_and_emit_summary(&data_root, &api_base, &api_key, &model).await;
+    })
+}
 
-                // EVO-5: Emit user-visible evolution summary
-                if let Ok(conn) = evolution::feedback::open_evolution_db(&data_root) {
-                    let changes = query_recent_evolution_changes(&conn, &txn_id);
-                    let messages = evolution::format_evolution_changes(&changes);
-                    for msg in &messages {
-                        eprintln!("{}", msg);
-                    }
-
-                    let _ = evolution::check_auto_rollback(&conn, &data_root);
-                }
-            }
-            Ok(None) => tracing::debug!("Idle evolution: nothing to evolve"),
-            Err(e) => tracing::warn!("Idle evolution failed: {}", e),
+/// A9: Periodic evolution trigger — runs every N seconds, even when user is active.
+pub fn spawn_periodic_evolution(
+    data_root: PathBuf,
+    api_base: String,
+    api_key: String,
+    model: String,
+    interval_secs: u64,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        if evolution::EvolutionMode::from_env().is_disabled() {
+            tracing::debug!("Evolution disabled, skipping periodic trigger");
+            return;
         }
+        let interval = std::time::Duration::from_secs(interval_secs);
+        loop {
+            tokio::time::sleep(interval).await;
+            tracing::debug!("Periodic evolution trigger fired (every {}s)", interval_secs);
+            run_evolution_and_emit_summary(&data_root, &api_base, &api_key, &model).await;
+        }
+    })
+}
+
+/// A9: Decision-count trigger — spawn evolution once when threshold is met.
+pub fn spawn_evolution_once(
+    data_root: PathBuf,
+    api_base: String,
+    api_key: String,
+    model: String,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        if evolution::EvolutionMode::from_env().is_disabled() {
+            return;
+        }
+        tracing::debug!("Decision-count evolution trigger fired");
+        run_evolution_and_emit_summary(&data_root, &api_base, &api_key, &model).await;
     })
 }
 

@@ -633,6 +633,7 @@ pub fn format_evolution_changes(changes: &[(String, String)]) -> Vec<String> {
                 "rule_retired" => format!("\u{1f5d1}\u{fe0f} 已退役低效规则: {}", id),
                 "example_added" => format!("\u{1f4d6} 已新增示例: {}", id),
                 "skill_generated" => format!("\u{2728} 已自动生成 Skill: {}", id),
+                "skill_pending" => format!("\u{1f4a1} 新 Skill {} 待确认（运行 `skilllite evolution confirm {}` 加入）", id, id),
                 "skill_refined" => format!("\u{1f527} 已优化 Skill: {}", id),
                 "skill_retired" => format!("\u{1f4e6} 已归档 Skill: {}", id),
                 "auto_rollback" => format!("\u{26a0}\u{fe0f} 检测到质量下降，已自动回滚: {}", id),
@@ -1008,7 +1009,7 @@ mod tests {
     fn test_format_evolution_changes() {
         let changes = vec![
             ("rule_added".to_string(), "grep_first".to_string()),
-            ("skill_generated".to_string(), "daily_report".to_string()),
+            ("skill_pending".to_string(), "daily_report".to_string()),
             ("auto_rollback".to_string(), "evo_001".to_string()),
             ("unknown_type".to_string(), "x".to_string()),
         ];
@@ -1016,6 +1017,8 @@ mod tests {
         assert_eq!(messages.len(), 3, "unknown_type should be filtered");
         assert!(messages[0].contains("grep_first"));
         assert!(messages[1].contains("daily_report"));
+        assert!(messages[1].contains("待确认"));
+        assert!(messages[1].contains("confirm"));
         assert!(messages[2].contains("evo_001"));
     }
 }

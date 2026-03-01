@@ -1,7 +1,7 @@
 //! Security commands: security scan, dependency audit.
 
 use skilllite_core::path_validation::validate_path_under_root;
-use skilllite_sandbox::security::{format_scan_result, format_scan_result_json, ScriptScanner};
+use skilllite_sandbox::security::{format_scan_result_compact, format_scan_result_json, ScriptScanner};
 use anyhow::Result;
 
 /// Perform security scan on a script.
@@ -25,7 +25,7 @@ pub fn security_scan_script(
         println!("{}", format_scan_result_json(&scan_result));
     } else {
         println!("Security Scan Results for: {}\n", path.display());
-        println!("{}", format_scan_result(&scan_result));
+        println!("{}", format_scan_result_compact(&scan_result));
     }
 
     Ok(())

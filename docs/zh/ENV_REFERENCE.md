@@ -153,6 +153,19 @@
 
 ---
 
+## 进化引擎 <small>[高级]</small>
+
+| 变量 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `SKILLLITE_EVOLUTION` | string | `1` | 进化模式：`1`/`true` 全部启用，`0`/`false` 禁用，`prompts`/`memory`/`skills` 仅启用对应维度 |
+| `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | 每日进化次数上限 |
+| `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** 周期性触发间隔（秒）。每 30 分钟触发一次进化，即使用户活跃也会在后台进化 |
+| `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** 决策数触发阈值。当未处理决策数 ≥ 此值时触发进化 |
+
+**进化触发策略（A9）**：除空闲 5 分钟触发外，新增周期性触发（每 30 分钟）和决策数触发（每 N 条 decisions），即使用户持续交互也能在后台进化。
+
+---
+
 ## 可观测性与审计 <small>[高级]</small>
 
 | 变量 | 类型 | 默认值 | 说明 |

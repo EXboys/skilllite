@@ -77,6 +77,10 @@ pub mod evolution {
     /// Evolution mode: "1" (default, all), "prompts", "memory", "skills", "0" (disabled).
     pub const SKILLLITE_EVOLUTION: &str = "SKILLLITE_EVOLUTION";
     pub const SKILLLITE_MAX_EVOLUTIONS_PER_DAY: &str = "SKILLLITE_MAX_EVOLUTIONS_PER_DAY";
+    /// A9: Periodic evolution interval (seconds). Default 1800 (30 min). Evolution runs even when user is active.
+    pub const SKILLLITE_EVOLUTION_INTERVAL_SECS: &str = "SKILLLITE_EVOLUTION_INTERVAL_SECS";
+    /// A9: Decision count threshold. When unprocessed decisions >= this, trigger evolution. Default 10.
+    pub const SKILLLITE_EVOLUTION_DECISION_THRESHOLD: &str = "SKILLLITE_EVOLUTION_DECISION_THRESHOLD";
 }
 
 /// 规划与 dependency-audit

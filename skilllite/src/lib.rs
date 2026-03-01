@@ -336,6 +336,8 @@ pub fn run_cli() -> Result<()> {
                 EvolutionAction::Reset { force } => commands::evolution::cmd_reset(force)?,
                 EvolutionAction::Disable { rule_id } => commands::evolution::cmd_disable(&rule_id)?,
                 EvolutionAction::Explain { rule_id } => commands::evolution::cmd_explain(&rule_id)?,
+                EvolutionAction::Confirm { skill_name } => commands::evolution::cmd_confirm(&skill_name)?,
+                EvolutionAction::Reject { skill_name } => commands::evolution::cmd_reject(&skill_name)?,
             }
         }
     }

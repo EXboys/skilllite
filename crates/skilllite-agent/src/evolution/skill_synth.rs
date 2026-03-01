@@ -5,6 +5,7 @@
 //! - **Retire**: low success rate or unused skills → archive
 //!
 //! All evolved skills live in `chat/skills/_evolved/` with `.meta.json` metadata.
+//! A10: Newly generated skills go to `_evolved/_pending/` until user confirms.
 
 use std::path::Path;
 
@@ -68,7 +69,8 @@ pub async fn evolve_skills(
     if generate {
         match generate_skill(chat_root, api_base, api_key, model, txn_id).await {
             Ok(Some(name)) => {
-                changes.push(("skill_generated".to_string(), name));
+                // A10: New skills enter pending queue until user confirms
+                changes.push(("skill_pending".to_string(), name));
             }
             Ok(None) => {}
             Err(e) => {
@@ -94,6 +96,57 @@ pub async fn evolve_skills(
     Ok(changes)
 }
 
+// ─── A10: Pending skill confirmation ────────────────────────────────────────
+
+/// List skill names in the pending queue (awaiting user confirmation).
+pub fn list_pending_skills(chat_root: &Path) -> Vec<String> {
+    let pending_dir = chat_root.join("skills").join("_evolved").join("_pending");
+    if !pending_dir.exists() {
+        return Vec::new();
+    }
+    std::fs::read_dir(&pending_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_dir() && e.path().join("SKILL.md").exists())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect()
+}
+
+/// Move a pending skill to confirmed (_evolved/). Returns Ok(()) on success.
+pub fn confirm_pending_skill(chat_root: &Path, skill_name: &str) -> Result<()> {
+    let pending_dir = chat_root.join("skills").join("_evolved").join("_pending");
+    let evolved_dir = chat_root.join("skills").join("_evolved");
+    let src = pending_dir.join(skill_name);
+    let dst = evolved_dir.join(skill_name);
+
+    if !src.exists() {
+        anyhow::bail!("待确认 Skill '{}' 不存在", skill_name);
+    }
+    if dst.exists() {
+        anyhow::bail!("Skill '{}' 已存在，请先删除或重命名", skill_name);
+    }
+
+    std::fs::rename(&src, &dst)?;
+    tracing::info!("Skill '{}' 已确认加入", skill_name);
+    Ok(())
+}
+
+/// Reject (remove) a pending skill without adding it.
+pub fn reject_pending_skill(chat_root: &Path, skill_name: &str) -> Result<()> {
+    let pending_dir = chat_root.join("skills").join("_evolved").join("_pending");
+    let src = pending_dir.join(skill_name);
+
+    if !src.exists() {
+        anyhow::bail!("待确认 Skill '{}' 不存在", skill_name);
+    }
+
+    std::fs::remove_dir_all(&src)?;
+    tracing::info!("Skill '{}' 已拒绝", skill_name);
+    Ok(())
+}
+
 // ─── Skill generation ───────────────────────────────────────────────────────
 
 async fn generate_skill(
@@ -104,8 +157,10 @@ async fn generate_skill(
     txn_id: &str,
 ) -> Result<Option<String>> {
     let evolved_dir = chat_root.join("skills").join("_evolved");
+    // A10: New skills go to _pending until user confirms
+    let pending_dir = evolved_dir.join("_pending");
 
-    // Check cap
+    // Check cap (count both confirmed and pending)
     let current_count = count_active_evolved_skills(&evolved_dir);
     if current_count >= MAX_EVOLVED_SKILLS {
         tracing::debug!(
@@ -171,8 +226,8 @@ async fn generate_skill(
         return Ok(None);
     }
 
-    // Write skill files to _evolved/ directory
-    let skill_dir = evolved_dir.join(&parsed.name);
+    // A10: Write to _pending/ until user confirms
+    let skill_dir = pending_dir.join(&parsed.name);
     if !gatekeeper_l1_path(chat_root, &skill_dir) {
         anyhow::bail!("L1 rejected skill directory: {}", skill_dir.display());
     }
@@ -188,7 +243,7 @@ async fn generate_skill(
         tracing::info!("L4 scan failed for generated skill '{}', entering refinement loop", parsed.name);
         let refined = refine_loop(
             chat_root, api_base, api_key, model,
-            &parsed.name, &parsed.description, &parsed.entry_point,
+            &skill_dir, &parsed.name, &parsed.description, &parsed.entry_point,
             &parsed.script_content, "Security scan found critical/high issues",
             "security_scan",
         ).await?;
@@ -213,7 +268,7 @@ async fn generate_skill(
         )?;
     }
 
-    tracing::info!("Generated evolved skill: {}", parsed.name);
+    tracing::info!("Generated evolved skill (pending confirmation): {}", parsed.name);
     Ok(Some(parsed.name))
 }
 
@@ -260,10 +315,11 @@ fn write_skill_files(
 /// Retry fixing a skill script up to MAX_REFINE_ROUNDS times.
 /// Each round sends the error trace to LLM for targeted fix.
 async fn refine_loop(
-    chat_root: &Path,
+    _chat_root: &Path,
     api_base: &str,
     api_key: &str,
     model: &str,
+    skill_dir: &Path,
     skill_name: &str,
     skill_desc: &str,
     entry_point: &str,
@@ -273,11 +329,7 @@ async fn refine_loop(
 ) -> Result<Option<String>> {
     let mut current_script = initial_script.to_string();
     let mut current_error = initial_error.to_string();
-    let script_path = chat_root
-        .join("skills")
-        .join("_evolved")
-        .join(skill_name)
-        .join(entry_point);
+    let script_path = skill_dir.join(entry_point);
 
     for round in 1..=MAX_REFINE_ROUNDS {
         tracing::info!(
@@ -371,6 +423,10 @@ async fn refine_weakest_skill(
         if !skill_dir.is_dir() {
             continue;
         }
+        // A10: Skip _pending (meta directory)
+        if entry.file_name().to_string_lossy().starts_with('_') {
+            continue;
+        }
         let meta_path = skill_dir.join(".meta.json");
         if !meta_path.exists() {
             continue;
@@ -430,7 +486,7 @@ async fn refine_weakest_skill(
 
     let fixed = refine_loop(
         chat_root, api_base, api_key, model,
-        &skill_name, &desc, &entry_point,
+        &skill_dir, &skill_name, &desc, &entry_point,
         &current_script, &error_trace, "execution_failure",
     )
     .await?;
@@ -473,6 +529,10 @@ fn retire_skills(chat_root: &Path, txn_id: &str) -> Result<Vec<(String, String)>
     for entry in std::fs::read_dir(&evolved_dir)?.flatten() {
         let skill_dir = entry.path();
         if !skill_dir.is_dir() {
+            continue;
+        }
+        // A10: Skip _pending (meta directory)
+        if entry.file_name().to_string_lossy().starts_with('_') {
             continue;
         }
         let meta_path = skill_dir.join(".meta.json");
@@ -675,14 +735,24 @@ fn list_existing_skill_names(chat_root: &Path) -> String {
         return "(无已有 Skill)".to_string();
     }
 
-    let names: Vec<String> = std::fs::read_dir(&evolved_dir)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.path().is_dir())
-        .map(|e| format!("- {}", e.file_name().to_string_lossy()))
-        .collect();
+    let mut names: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(&evolved_dir).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.starts_with('_') {
+            if name == "_pending" && path.is_dir() {
+                for e in std::fs::read_dir(&path).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+                    if e.path().is_dir() && e.path().join("SKILL.md").exists() {
+                        names.push(format!("- {}", e.file_name().to_string_lossy()));
+                    }
+                }
+            }
+            continue;
+        }
+        if path.is_dir() && path.join("SKILL.md").exists() {
+            names.push(format!("- {}", name));
+        }
+    }
 
     if names.is_empty() {
         "(无已有 Skill)".to_string()
@@ -695,23 +765,41 @@ fn count_active_evolved_skills(evolved_dir: &Path) -> usize {
     if !evolved_dir.exists() {
         return 0;
     }
-    std::fs::read_dir(evolved_dir)
-        .ok()
-        .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            let meta_path = e.path().join(".meta.json");
-            if !meta_path.exists() {
-                return e.path().is_dir();
+    let mut count = 0;
+    for entry in std::fs::read_dir(evolved_dir).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().into_owned();
+        // Skip meta dirs like _pending when counting top-level
+        if name.starts_with('_') {
+            // Count skills inside _pending (A10)
+            if name == "_pending" && path.is_dir() {
+                count += std::fs::read_dir(&path)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|e| e.ok())
+                    .filter(|e| e.path().join(".meta.json").exists())
+                    .count();
             }
-            std::fs::read_to_string(&meta_path)
-                .ok()
-                .and_then(|s| serde_json::from_str::<SkillMeta>(&s).ok())
-                .map(|m| !m.archived)
-                .unwrap_or(true)
-        })
-        .count()
+            continue;
+        }
+        if !path.is_dir() {
+            continue;
+        }
+        let meta_path = path.join(".meta.json");
+        if !meta_path.exists() {
+            continue;
+        }
+        if std::fs::read_to_string(&meta_path)
+            .ok()
+            .and_then(|s| serde_json::from_str::<SkillMeta>(&s).ok())
+            .map(|m| !m.archived)
+            .unwrap_or(true)
+        {
+            count += 1;
+        }
+    }
+    count
 }
 
 fn detect_entry_point(skill_dir: &Path) -> String {

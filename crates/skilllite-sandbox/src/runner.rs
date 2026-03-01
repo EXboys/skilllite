@@ -1,6 +1,6 @@
 use skilllite_core::observability;
 use crate::common::{DEFAULT_MAX_MEMORY_MB, DEFAULT_TIMEOUT_SECS};
-use crate::security::{format_scan_result, ScriptScanner, SecuritySeverity};
+use crate::security::{format_scan_result_compact, ScriptScanner, SecuritySeverity};
 use anyhow::Result;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
@@ -281,7 +281,7 @@ pub fn run_in_sandbox_with_limits_and_level(
                     v == "1" || v == "true" || v == "yes"
                 });
                 if !will_auto_approve {
-                    eprintln!("{}", format_scan_result(&scan_result));
+                    eprintln!("{}", format_scan_result_compact(&scan_result));
                 }
 
                 let severity_str = if !critical_issues.is_empty() {
@@ -346,7 +346,7 @@ pub fn run_in_sandbox_with_limits_and_level(
             }
             
             if !scan_result.issues.is_empty() && critical_issues.is_empty() && high_issues.is_empty() {
-                eprintln!("{}", format_scan_result(&scan_result));
+                eprintln!("{}", format_scan_result_compact(&scan_result));
             }
         }
     }

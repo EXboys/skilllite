@@ -88,13 +88,16 @@ pub fn cmd_status() -> Result<()> {
             .into_iter()
             .flatten()
             .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().into_owned();
+                !name.starts_with('_') && e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+            })
             .filter(|e| {
                 let meta = e.path().join(".meta.json");
                 if meta.exists() {
                     if let Ok(content) = std::fs::read_to_string(&meta) {
                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
-                            return v.get("status").and_then(|s| s.as_str()) != Some("archived");
+                            return v.get("archived").and_then(|v| v.as_bool()).unwrap_or(false) == false;
                         }
                     }
                 }
@@ -102,6 +105,12 @@ pub fn cmd_status() -> Result<()> {
             })
             .count();
         println!("  进化 Skill 数: {} (活跃)", active);
+    }
+
+    // A10: Pending skills (awaiting confirmation)
+    let pending = skilllite_agent::evolution::skill_synth::list_pending_skills(&root);
+    if !pending.is_empty() {
+        println!("  待确认 Skill: {} (运行 `skilllite evolution confirm <name>` 加入)", pending.join(", "));
     }
     println!();
 
@@ -168,6 +177,7 @@ pub fn cmd_status() -> Result<()> {
             "rule_added" => "✅",
             "example_added" => "📖",
             "skill_generated" => "✨",
+            "skill_pending" => "🆕",
             "skill_refined" => "🔧",
             "auto_rollback" => "⚠️ ",
             t if t.contains("retired") => "🗑️ ",
@@ -234,7 +244,7 @@ pub fn cmd_reset(force: bool) -> Result<()> {
     skilllite_agent::evolution::seed::ensure_seed_data_force(&root);
     println!("✅ Prompts 已重置为种子状态");
 
-    // Remove evolved skills
+    // Remove evolved skills (includes _pending)
     let evolved_dir = root.join("skills").join("_evolved");
     if evolved_dir.exists() {
         let count = std::fs::read_dir(&evolved_dir)
@@ -245,7 +255,7 @@ pub fn cmd_reset(force: bool) -> Result<()> {
             .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
             .count();
         std::fs::remove_dir_all(&evolved_dir)?;
-        println!("✅ 已删除 {} 个进化 Skill", count);
+        println!("✅ 已删除 {} 个进化 Skill（含待确认）", count);
     }
 
     // Clear evolution log entries (but keep decisions for future re-evolution)
@@ -400,5 +410,21 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
         }
     }
 
+    Ok(())
+}
+
+/// `skilllite evolution confirm <skill_name>` — move pending skill to confirmed (A10).
+pub fn cmd_confirm(skill_name: &str) -> Result<()> {
+    let root = chat_root();
+    skilllite_agent::evolution::skill_synth::confirm_pending_skill(&root, skill_name)?;
+    println!("✅ Skill '{}' 已确认加入", skill_name);
+    Ok(())
+}
+
+/// `skilllite evolution reject <skill_name>` — remove pending skill without adding (A10).
+pub fn cmd_reject(skill_name: &str) -> Result<()> {
+    let root = chat_root();
+    skilllite_agent::evolution::skill_synth::reject_pending_skill(&root, skill_name)?;
+    println!("✅ Skill '{}' 已拒绝", skill_name);
     Ok(())
 }

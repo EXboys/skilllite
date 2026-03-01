@@ -112,6 +112,12 @@ pub fn insert_decision(
     Ok(decision_id)
 }
 
+/// Count unprocessed decisions (evolved = 0). Used by A9 decision-count trigger.
+pub fn count_unprocessed_decisions(conn: &Connection) -> Result<i64> {
+    conn.query_row("SELECT COUNT(*) FROM decisions WHERE evolved = 0", [], |r| r.get(0))
+        .map_err(Into::into)
+}
+
 /// Update feedback signal for the most recent decision in a session.
 /// Called when we classify the user's next message.
 pub fn update_last_decision_feedback(

@@ -153,6 +153,19 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 
 ---
 
+## Evolution Engine <small>[Advanced]</small>
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_EVOLUTION` | string | `1` | Evolution mode: `1`/`true` all enabled, `0`/`false` disabled, `prompts`/`memory`/`skills` for specific dimensions only |
+| `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | Daily evolution cap |
+| `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** Periodic trigger interval (seconds). Evolution runs every 30 min in background, even when user is active |
+| `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** Decision-count trigger. When unprocessed decisions ≥ this value, evolution is triggered |
+
+**Evolution triggers (A9)**: In addition to idle (5 min) trigger, periodic (every 30 min) and decision-count triggers allow evolution in background even during active user interaction.
+
+---
+
 ## Observability & Audit <small>[Advanced]</small>
 
 | Variable | Type | Default | Description |
