@@ -18,6 +18,7 @@ use std::path::Path;
 
 use super::evolution::seed;
 use super::skills::LoadedSkill;
+use super::soul::Soul;
 use super::types::{get_output_dir, safe_truncate};
 
 /// Progressive disclosure mode.
@@ -45,8 +46,14 @@ pub fn build_system_prompt(
     session_key: Option<&str>,
     enable_memory: bool,
     chat_root: Option<&Path>,
+    soul: Option<&Soul>,
 ) -> String {
     let mut parts = Vec::new();
+
+    // SOUL block: injected first so it acts as the agent's "constitution"
+    if let Some(s) = soul {
+        parts.push(s.to_system_prompt_block());
+    }
 
     // Base system prompt: custom override > project-level > global > compiled-in seed
     let base_prompt = if let Some(cp) = custom_prompt {
@@ -524,14 +531,14 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_contains_workspace() {
-        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false, None);
+        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false, None, None);
         assert!(prompt.contains("Workspace: /home/user/project"));
     }
 
     #[test]
     fn test_build_system_prompt_uses_progressive_mode() {
         let skills = vec![make_test_skill("test-skill", "Test description")];
-        let prompt = build_system_prompt(None, &skills, "/tmp", None, false, None);
+        let prompt = build_system_prompt(None, &skills, "/tmp", None, false, None, None);
 
         assert!(prompt.contains("test-skill"));
         assert!(prompt.contains("Test description"));
@@ -540,7 +547,7 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_includes_memory_tools_when_enabled() {
-        let prompt = build_system_prompt(None, &[], "/tmp", None, true, None);
+        let prompt = build_system_prompt(None, &[], "/tmp", None, true, None, None);
         assert!(prompt.contains("memory_write"));
         assert!(prompt.contains("memory_search"));
         assert!(prompt.contains("memory_list"));

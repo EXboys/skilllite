@@ -21,6 +21,7 @@ use super::llm::{self, LlmClient};
 use skilllite_core::config::EmbeddingConfig;
 use super::prompt;
 use super::skills::LoadedSkill;
+use super::soul::Soul;
 use super::task_planner::TaskPlanner;
 use super::types::*;
 
@@ -93,6 +94,7 @@ async fn run_simple_loop(
                 .join(".skilllite")
         })
         .join("chat");
+    let soul = Soul::auto_load(config.soul_path.as_deref(), &config.workspace);
     let system_prompt = prompt::build_system_prompt(
         config.system_prompt.as_deref(),
         skills,
@@ -100,6 +102,7 @@ async fn run_simple_loop(
         session_key,
         config.enable_memory,
         Some(&simple_chat_root),
+        soul.as_ref(),
     );
 
     // Build message list
@@ -385,6 +388,7 @@ async fn run_with_task_planning(
     // queries; we still pass tools so LLM can use them if needed.
     // When planner is empty: use standard prompt (no task list). When non-empty: use task-aware prompt.
 
+    let soul = Soul::auto_load(config.soul_path.as_deref(), &config.workspace);
     let system_prompt = if planner.is_empty() {
         prompt::build_system_prompt(
             config.system_prompt.as_deref(),
@@ -393,9 +397,14 @@ async fn run_with_task_planning(
             session_key,
             config.enable_memory,
             Some(&chat_root),
+            soul.as_ref(),
         )
     } else {
         let mut prompt = planner.build_task_system_prompt(skills);
+        // Prepend SOUL block to task-planning prompt when soul is provided
+        if let Some(s) = &soul {
+            prompt = format!("{}\n\n{}", s.to_system_prompt_block(), prompt);
+        }
         if let Some(sk) = session_key {
             prompt.push_str(&format!(
                 "\n\nCurrent session: {} — use session_key '{}' for chat_history and chat_plan.\n\

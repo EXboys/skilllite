@@ -56,6 +56,7 @@ pub fn run_chat(
     plan: bool,
     no_plan: bool,
     no_memory: bool,
+    soul_path: Option<String>,
 ) -> Result<()> {
     let mut config = AgentConfig::from_env();
     if let Some(base) = api_base {
@@ -73,6 +74,7 @@ pub fn run_chat(
     config.max_iterations = max_iterations;
     config.system_prompt = system_prompt;
     config.verbose = verbose;
+    config.soul_path = soul_path;
 
     skilllite_core::config::ensure_default_output_dir();
 

@@ -2,6 +2,7 @@ pub mod llm;
 pub mod extensions;
 pub mod skills;
 pub mod prompt;
+pub mod soul;
 pub mod agent_loop;
 pub mod chat;
 pub mod chat_session;

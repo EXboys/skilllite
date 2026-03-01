@@ -219,6 +219,11 @@ pub enum Commands {
         /// Disable memory tools (default: memory enabled)
         #[arg(long)]
         no_memory: bool,
+
+        /// Path to SOUL.md identity document (optional).
+        /// Resolution order: --soul > .skilllite/SOUL.md > ~/.skilllite/SOUL.md
+        #[arg(long)]
+        soul: Option<String>,
     },
 
     // ─── Phase 3: CLI Migration Commands (flat, no nesting) ────────────

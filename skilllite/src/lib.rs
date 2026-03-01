@@ -157,6 +157,7 @@ pub fn run_cli() -> Result<()> {
             plan,
             no_plan,
             no_memory,
+            soul,
         } => {
             skilllite_agent::chat::run_chat(
                 api_base,
@@ -172,6 +173,7 @@ pub fn run_cli() -> Result<()> {
                 plan,
                 no_plan,
                 no_memory,
+                soul,
             )?;
         }
 

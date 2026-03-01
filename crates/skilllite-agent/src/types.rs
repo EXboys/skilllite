@@ -82,6 +82,9 @@ pub struct AgentConfig {
     pub enable_memory_vector: bool,
     /// Verbose output
     pub verbose: bool,
+    /// Path to SOUL.md identity document (optional).
+    /// Resolution: explicit path > .skilllite/SOUL.md > ~/.skilllite/SOUL.md
+    pub soul_path: Option<String>,
 }
 
 impl Default for AgentConfig {
@@ -103,6 +106,7 @@ impl Default for AgentConfig {
             enable_memory: true,
             enable_memory_vector: false,
             verbose: false,
+            soul_path: None,
         }
     }
 }
