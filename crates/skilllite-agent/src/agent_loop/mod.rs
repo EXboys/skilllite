@@ -454,6 +454,19 @@ async fn run_with_task_planning(
     messages.extend(initial_messages);
     messages.push(ChatMessage::user(user_message));
 
+    // A13: Save initial checkpoint for run mode (enables --resume)
+    if session_key == Some("run") {
+        let cp = crate::run_checkpoint::RunCheckpoint::new(
+            user_message.to_string(),
+            config.workspace.clone(),
+            planner.task_list.clone(),
+            messages.clone(),
+        );
+        if let Err(e) = crate::run_checkpoint::save_checkpoint(&chat_root, &cp) {
+            tracing::debug!("Checkpoint save failed: {}", e);
+        }
+    }
+
     let start_time = std::time::Instant::now();
     let mut documented_skills: HashSet<String> = HashSet::new();
     let mut total_tool_calls = 0usize;
@@ -854,6 +867,19 @@ async fn run_with_task_planning(
                 }
             }
             break;
+        }
+
+        // A13: Save checkpoint after each iteration (run mode) for --resume
+        if session_key == Some("run") {
+            let cp = crate::run_checkpoint::RunCheckpoint::new(
+                user_message.to_string(),
+                config.workspace.clone(),
+                planner.task_list.clone(),
+                messages.clone(),
+            );
+            if let Err(e) = crate::run_checkpoint::save_checkpoint(&chat_root, &cp) {
+                tracing::debug!("Checkpoint save failed: {}", e);
+            }
         }
 
         // Update task focus: inject task progress as system message

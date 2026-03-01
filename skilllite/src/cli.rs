@@ -68,6 +68,10 @@ pub enum Commands {
         /// [Agent run] Max consecutive tool failures before stopping (default: 5, 0 = no limit)
         #[arg(long)]
         max_failures: Option<usize>,
+
+        /// [Agent run] Resume from last checkpoint (A13: 断点续跑)
+        #[arg(long)]
+        resume: bool,
     },
 
     /// Execute a specific script directly in sandbox (no SKILL.md entry_point required)

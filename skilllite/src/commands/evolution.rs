@@ -65,6 +65,23 @@ pub fn cmd_status() -> Result<()> {
     println!("  自动回滚次数: {}", rollback_count);
     println!();
 
+    // A14: 进化队列与待确认列表
+    let unprocessed: i64 = conn
+        .query_row("SELECT COUNT(*) FROM decisions WHERE evolved = 0", [], |r| r.get(0))
+        .unwrap_or(0);
+    let pending = skilllite_agent::evolution::skill_synth::list_pending_skills(&root);
+
+    println!("📥 进化队列与待确认");
+    println!("  进化队列: {} 条决策待处理 (空闲 5 分钟或周期性触发时进化)", unprocessed);
+    if !pending.is_empty() {
+        println!("  待确认 Skill: {}", pending.join(", "));
+        println!("    → 确认: skilllite evolution confirm <name>");
+        println!("    → 拒绝: skilllite evolution reject <name>");
+    } else {
+        println!("  待确认 Skill: (无)");
+    }
+    println!();
+
     // Evolved rules summary
     let rules_path = root.join("prompts").join("rules.json");
     if rules_path.exists() {
@@ -105,12 +122,6 @@ pub fn cmd_status() -> Result<()> {
             })
             .count();
         println!("  进化 Skill 数: {} (活跃)", active);
-    }
-
-    // A10: Pending skills (awaiting confirmation)
-    let pending = skilllite_agent::evolution::skill_synth::list_pending_skills(&root);
-    if !pending.is_empty() {
-        println!("  待确认 Skill: {} (运行 `skilllite evolution confirm <name>` 加入)", pending.join(", "));
     }
     println!();
 

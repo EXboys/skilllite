@@ -157,14 +157,38 @@ impl ChatSession {
         user_message: &str,
         event_sink: &mut dyn EventSink,
     ) -> Result<String> {
+        self.run_turn_inner(user_message, event_sink, None).await
+    }
+
+    /// A13: Run with overridden history (for --resume from checkpoint).
+    pub async fn run_turn_with_history(
+        &mut self,
+        user_message: &str,
+        event_sink: &mut dyn EventSink,
+        history_override: Vec<ChatMessage>,
+    ) -> Result<String> {
+        self.run_turn_inner(user_message, event_sink, Some(history_override))
+            .await
+    }
+
+    async fn run_turn_inner(
+        &mut self,
+        user_message: &str,
+        event_sink: &mut dyn EventSink,
+        history_override: Option<Vec<ChatMessage>>,
+    ) -> Result<String> {
         let _session_id = self.ensure_session()?;
 
         // EVO-1: Classify previous turn's user feedback from this message.
         // The feedback is attributed to the PREVIOUS decision, not the current one.
         self.update_previous_feedback(user_message);
 
-        // Read history from transcript
-        let history = self.read_history()?;
+        // Read history from transcript (or use override for resume)
+        let history = if let Some(h) = history_override {
+            h
+        } else {
+            self.read_history()?
+        };
         if !history.is_empty() {
             tracing::debug!(
                 session_key = %self.session_key,

@@ -1,5 +1,6 @@
 pub mod high_risk;
 pub mod llm;
+pub mod run_checkpoint;
 pub mod extensions;
 pub mod goal_boundaries;
 pub mod skills;

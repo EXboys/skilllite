@@ -157,6 +157,7 @@ pub fn run_chat(
 /// Run agent in unattended mode: one-time goal, continuous execution until done/timeout.
 /// Replan (update_task_plan) does not wait for user — agent continues immediately.
 /// Confirmations (run_command, L3 skill scan) are auto-approved.
+/// A13: When resume=true, load checkpoint and continue from last state.
 pub fn run_agent_run(
     api_base: Option<String>,
     api_key: Option<String>,
@@ -168,6 +169,7 @@ pub fn run_agent_run(
     max_iterations: usize,
     verbose: bool,
     max_failures: Option<usize>,
+    resume: bool,
 ) -> Result<()> {
     let mut config = AgentConfig::from_env();
     if let Some(base) = api_base {
@@ -202,6 +204,37 @@ pub fn run_agent_run(
     }
 
     skilllite_core::config::ensure_default_output_dir();
+
+    // A13: Resume from checkpoint
+    let (effective_goal, effective_workspace, history_override) = if resume {
+        let chat_root = skilllite_executor::workspace_root(None)
+            .unwrap_or_else(|_| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| std::path::PathBuf::from("."))
+                    .join(".skilllite")
+            })
+            .join("chat");
+        match super::run_checkpoint::load_checkpoint(&chat_root)? {
+            Some(cp) => {
+                let resume_msg = super::run_checkpoint::build_resume_message(&cp);
+                // Use checkpoint messages as history; skip first (system) since agent_loop adds its own
+                let history: Vec<ChatMessage> = cp
+                    .messages
+                    .into_iter()
+                    .skip(1)
+                    .collect();
+                eprintln!("📂 从断点续跑 (run_id: {})", cp.run_id);
+                (resume_msg, cp.workspace, Some(history))
+            }
+            None => {
+                anyhow::bail!("无可用断点。请先运行 `skilllite run --goal \"...\"` 以创建断点。");
+            }
+        }
+    } else {
+        (goal, config.workspace.clone(), None)
+    };
+
+    config.workspace = effective_workspace;
 
     let (effective_skill_dirs, was_auto_discovered) = if skill_dirs.is_empty() {
         let ws = Path::new(&config.workspace);
@@ -241,17 +274,23 @@ pub fn run_agent_run(
             format!("{} … +{} more", names[..5].join(", "), names.len() - 5)
         };
         eprintln!("│  📦 {}", list);
-        eprintln!("│  🎯 Goal: {}", goal);
+        eprintln!("│  🎯 Goal: {}", effective_goal.lines().next().unwrap_or(&effective_goal));
         eprintln!("└───────────────────────────────────────────────────────────\n");
     }
 
     let rt = tokio::runtime::Runtime::new()
         .context("Failed to create tokio runtime")?;
 
+    let history_override = history_override;
     rt.block_on(async {
         let mut session = ChatSession::new(config, "run", loaded_skills);
         let mut sink = RunModeEventSink::new(verbose);
-        let _ = session.run_turn(&goal, &mut sink).await?;
+        let result = if let Some(history) = history_override {
+            session.run_turn_with_history(&effective_goal, &mut sink, history).await
+        } else {
+            session.run_turn(&effective_goal, &mut sink).await
+        };
+        let _ = result?;
         // Response already streamed via sink during run_turn — no extra println
         Ok(())
     })

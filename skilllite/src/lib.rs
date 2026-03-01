@@ -47,10 +47,12 @@ pub fn run_cli() -> Result<()> {
             skill_dirs,
             max_iterations,
             max_failures,
+            resume,
         } => {
-            if let Some(g) = goal {
+            if resume || goal.is_some() {
                 #[cfg(feature = "agent")]
                 {
+                    let g = goal.unwrap_or_else(|| "".to_string());
                     skilllite_agent::chat::run_agent_run(
                         None,
                         None,
@@ -62,6 +64,7 @@ pub fn run_cli() -> Result<()> {
                         max_iterations,
                         true,
                         max_failures,
+                        resume,
                     )?;
                 }
                 #[cfg(not(feature = "agent"))]
@@ -93,7 +96,7 @@ pub fn run_cli() -> Result<()> {
                 println!("{}", result);
             } else {
                 anyhow::bail!(
-                    "Use either: skilllite run <SKILL_DIR> '<INPUT_JSON>'  OR  skilllite run --goal \"...\" [--soul SOUL.md]"
+                    "Use either: skilllite run <SKILL_DIR> '<INPUT_JSON>'  OR  skilllite run --goal \"...\" [--soul SOUL.md]  OR  skilllite run --resume"
                 );
             }
         }
