@@ -251,8 +251,8 @@ pub fn run_agent_run(
     rt.block_on(async {
         let mut session = ChatSession::new(config, "run", loaded_skills);
         let mut sink = RunModeEventSink::new(verbose);
-        let response = session.run_turn(&goal, &mut sink).await?;
-        println!("\n{}", response);
+        let _ = session.run_turn(&goal, &mut sink).await?;
+        // Response already streamed via sink during run_turn — no extra println
         Ok(())
     })
 }

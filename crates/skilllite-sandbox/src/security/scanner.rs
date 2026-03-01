@@ -181,15 +181,38 @@ impl ScriptScanner {
         }
     }
 
-    /// Check if a line is a comment
+    /// Check if a line is a comment or docstring delimiter
     fn is_comment_line(line: &str, language: &str) -> bool {
         match language {
-            "python" => line.starts_with('#'),
+            "python" => {
+                line.starts_with('#')
+                    || line.starts_with("\"\"\"")
+                    || line.starts_with("'''")
+            }
             "javascript" | "node" => {
                 line.starts_with("//") || line.starts_with("/*") || line.starts_with('*')
             }
             _ => false,
         }
+    }
+
+    /// Returns true if the string has a significant proportion of CJK characters.
+    /// Used to skip entropy checks on natural-language lines (e.g. Chinese comments).
+    fn has_significant_cjk(s: &str, min_ratio: f64) -> bool {
+        if s.is_empty() {
+            return false;
+        }
+        let total = s.chars().count() as f64;
+        let cjk_count = s
+            .chars()
+            .filter(|c| {
+                let u = *c as u32;
+                (0x4E00..=0x9FFF).contains(&u)      // CJK Unified Ideographs
+                    || (0x3400..=0x4DBF).contains(&u) // CJK Ext A
+                    || (0x3000..=0x303F).contains(&u) // CJK punctuation
+            })
+            .count() as f64;
+        cjk_count / total >= min_ratio
     }
 
     // ─── B2: Base64 payload detection ────────────────────────────────────────
@@ -426,16 +449,29 @@ impl ScriptScanner {
         const MIN_LEN: usize = 20;
         /// Entropy threshold in bits per character (base-2).
         const THRESHOLD: f64 = 4.5;
+        /// Higher threshold for lines with any CJK — mixed code + Chinese strings.
+        const THRESHOLD_CJK: f64 = 5.2;
 
         for (line_idx, line) in content.lines().enumerate() {
             let trimmed = line.trim();
 
-            // Skip blank lines and comment lines
+            // Skip blank lines, comment lines, and docstring delimiters
             if trimmed.len() < MIN_LEN || Self::is_comment_line(trimmed, language) {
                 continue;
             }
 
-            if shannon_entropy(trimmed) > THRESHOLD {
+            // Skip lines with significant CJK (≥15%) — natural language, not obfuscated
+            if Self::has_significant_cjk(trimmed, 0.15) {
+                continue;
+            }
+
+            let threshold = if Self::has_significant_cjk(trimmed, 0.03) {
+                THRESHOLD_CJK
+            } else {
+                THRESHOLD
+            };
+
+            if shannon_entropy(trimmed) > threshold {
                 issues.push(SecurityIssue {
                     rule_id: "entropy-obfuscation".to_string(),
                     severity: SecuritySeverity::Medium,
@@ -444,7 +480,7 @@ impl ScriptScanner {
                     description: format!(
                         "High-entropy line ({:.2} bits/char > {:.1} threshold) — possible obfuscated or encoded payload",
                         shannon_entropy(trimmed),
-                        THRESHOLD,
+                        threshold,
                     ),
                     code_snippet: trimmed.chars().take(120).collect(),
                 });

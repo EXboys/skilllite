@@ -828,21 +828,28 @@ async fn run_with_task_planning(
 
         if planner.all_completed() {
             tracing::info!("All tasks completed, ending iteration");
-            // All done — get final summary from LLM (without tools)
-            let final_response = client
-                .chat_completion_stream(
-                    &config.model,
-                    &messages,
-                    None, // no tools for final summary
-                    config.temperature,
-                    event_sink,
-                )
-                .await;
-            if let Ok(resp) = final_response {
-                if let Some(choice) = resp.choices.into_iter().next() {
-                    if let Some(ref content) = choice.message.content {
-                        event_sink.on_text(content);
-                        messages.push(ChatMessage::assistant(content));
+            // Skip redundant final-summary request when the current response already
+            // contains substantial content (already streamed). Avoids duplicate output.
+            let has_substantial_response = assistant_content
+                .as_ref()
+                .map_or(false, |c| c.trim().len() > 50);
+            if !has_substantial_response {
+                // No substantial response yet — fetch a brief final summary
+                let final_response = client
+                    .chat_completion_stream(
+                        &config.model,
+                        &messages,
+                        None, // no tools for final summary
+                        config.temperature,
+                        event_sink,
+                    )
+                    .await;
+                if let Ok(resp) = final_response {
+                    if let Some(choice) = resp.choices.into_iter().next() {
+                        if let Some(ref content) = choice.message.content {
+                            event_sink.on_text(content);
+                            messages.push(ChatMessage::assistant(content));
+                        }
                     }
                 }
             }
