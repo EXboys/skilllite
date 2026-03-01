@@ -29,25 +29,43 @@ pub enum RouteTarget {
     NoMatch,
 }
 
+/// Extract port from "host:port" addr.
+fn port_from_addr(addr: &str) -> Option<u16> {
+    addr.rsplit_once(':').and_then(|(_, p)| p.parse().ok())
+}
+
 /// Collect all peers that match required capabilities (for fallback retry).
-/// Prefer LAN IP (10.x, 192.168.x) over 127.0.0.1 to avoid stale mDNS loopback records.
+/// Dedupe by port (same node may appear as 127.0.0.1:PORT and LAN_IP:PORT via mDNS).
+/// Prefer 127.0.0.1 over LAN IP for same port — more reliable for same-machine forwarding.
 fn matching_peers(required: &[String], peers: &[PeerInfo]) -> Vec<PeerInfo> {
     if required.is_empty() {
         return vec![];
     }
-    let mut matching: Vec<_> = peers
+    let matching: Vec<_> = peers
         .iter()
         .filter(|p| capabilities_match(required, &p.capabilities))
         .cloned()
         .collect();
-    // Prefer non-loopback addr first (stale mDNS may advertise 127.0.0.1 for dead nodes)
+    // Dedupe by port: same node can appear as 127.0.0.1:7701 and 10.x:7701. Prefer loopback.
+    let mut by_port: std::collections::HashMap<u16, PeerInfo> = std::collections::HashMap::new();
+    for p in matching {
+        if let Some(port) = port_from_addr(&p.addr) {
+            let entry = by_port.entry(port).or_insert_with(|| p.clone());
+            // Prefer 127.0.0.1 over LAN IP for same port (same-machine forwarding)
+            if p.addr.starts_with("127.") && !entry.addr.starts_with("127.") {
+                *entry = p;
+            }
+        }
+    }
+    let mut matching: Vec<_> = by_port.into_values().collect();
+    // Sort: prefer 127.0.0.1 first, then by addr for stable order
     matching.sort_by(|a, b| {
         let a_loopback = a.addr.starts_with("127.");
         let b_loopback = b.addr.starts_with("127.");
         match (a_loopback, b_loopback) {
-            (true, false) => std::cmp::Ordering::Greater,  // a after b
-            (false, true) => std::cmp::Ordering::Less,    // a before b
-            _ => std::cmp::Ordering::Equal,
+            (true, false) => std::cmp::Ordering::Less,   // loopback first
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.addr.cmp(&b.addr),
         }
     });
     matching
@@ -149,6 +167,39 @@ mod tests {
         }];
         let target = route_task(&task, &local, &peers);
         assert!(matches!(target, RouteTarget::Forward(ref v) if v.len() == 1 && v[0].instance_name == "peer1"));
+    }
+
+    #[test]
+    fn test_matching_peers_dedup_by_port_prefer_loopback() {
+        // Same node can appear as 127.0.0.1:7701 and 10.55.157.245:7701 via mDNS.
+        // Should dedupe by port and prefer 127.0.0.1 for same-machine forwarding.
+        let task = NodeTask {
+            id: "t1".into(),
+            description: "1+1=?".into(),
+            context: skilllite_core::protocol::NodeContext {
+                workspace: ".".into(),
+                session_key: "test".into(),
+                required_capabilities: vec!["calc".into()],
+            },
+            tool_hint: None,
+        };
+        let local: Vec<String> = vec![];
+        let peers = vec![
+            PeerInfo {
+                instance_name: "peer-lan".into(),
+                addr: "10.55.157.245:7701".into(),
+                capabilities: vec!["calc".into()],
+            },
+            PeerInfo {
+                instance_name: "peer-loopback".into(),
+                addr: "127.0.0.1:7701".into(),
+                capabilities: vec!["calc".into(), "math".into()],
+            },
+        ];
+        let target = route_task(&task, &local, &peers);
+        let RouteTarget::Forward(v) = target else { panic!("expected Forward") };
+        assert_eq!(v.len(), 1, "should dedupe to one peer by port");
+        assert!(v[0].addr.starts_with("127."), "should prefer 127.0.0.1 over LAN IP");
     }
 
     #[test]

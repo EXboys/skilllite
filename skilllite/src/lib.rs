@@ -376,6 +376,7 @@ pub fn run_cli() -> Result<()> {
                 protocol::SwarmHandler.serve(protocol::ProtocolParams::P2p {
                     listen_addr: listen,
                     capability_tags,
+                    skills_dir: skills_dir.clone(),
                 })?;
             }
         }
