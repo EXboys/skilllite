@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::commands::skill;
+use crate::skill;
 use skilllite_core::skill::dependency_resolver;
 use skilllite_core::skill::metadata;
 
@@ -97,7 +97,7 @@ pub fn cmd_init(
         eprintln!("📋 Step 5/6: Generating planning rules...");
         let workspace = std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."));
-        match crate::commands::planning_rules_gen::generate_planning_rules(
+        match crate::planning_rules_gen::generate_planning_rules(
             &workspace,
             &skills_path,
             &skills,
@@ -138,7 +138,7 @@ fn resolve_path(dir: &str) -> PathBuf {
 /// SKILLLITE_SKILLS_REPO (default: EXboys/skilllite). Returns true if skills were downloaded.
 ///
 /// Shared by `init` and `quickstart` commands.
-pub(crate) fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool> {
+pub fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool> {
     if skills_path.exists() {
         let has_skills = fs::read_dir(skills_path)
             .map(|entries| {
@@ -166,7 +166,7 @@ pub(crate) fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool>
 }
 
 /// Count skills in the directory (subdirs with SKILL.md). Used for status messages.
-pub(crate) fn count_skills(skills_path: &Path) -> usize {
+pub fn count_skills(skills_path: &Path) -> usize {
     discover_all_skills(skills_path).len()
 }
 
@@ -376,7 +376,7 @@ fn audit_all_skills(skills_path: &Path, skills: &[String]) -> (Vec<String>, bool
                 use skilllite_sandbox::security::dependency_audit;
                 let metadata_hint = metadata::parse_skill_metadata(&skill_path)
                     .ok()
-                    .map(super::metadata_into_hint);
+                    .map(crate::metadata_into_hint);
                 match dependency_audit::audit_skill_dependencies(&skill_path, metadata_hint.as_ref()) {
                     Ok(result) => {
                         if result.vulnerable_count > 0 {

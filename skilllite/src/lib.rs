@@ -1,7 +1,6 @@
 //! SkillLite CLI library — shared by skilllite and skilllite-sandbox binaries.
 
 mod cli;
-mod commands;
 mod mcp;
 mod protocol;
 mod stdio_rpc;
@@ -112,7 +111,7 @@ pub fn run_cli() -> Result<()> {
                     skilllite_sandbox::runner::SandboxLevel::from_env_or_cli(sandbox_level);
                 let limits = skilllite_sandbox::runner::ResourceLimits::from_env()
                     .with_cli_overrides(max_memory, timeout);
-                let result = commands::execute::run_skill(
+                let result = skilllite_commands::execute::run_skill(
                     &sd,
                     &input_json,
                     allow_network,
@@ -149,7 +148,7 @@ pub fn run_cli() -> Result<()> {
                 skilllite_sandbox::runner::SandboxLevel::from_env_or_cli(sandbox_level);
             let limits = skilllite_sandbox::runner::ResourceLimits::from_env()
                 .with_cli_overrides(max_memory, timeout);
-            let result = commands::execute::exec_script(
+            let result = skilllite_commands::execute::exec_script(
                 &skill_dir,
                 &script_path,
                 &input_json,
@@ -168,7 +167,7 @@ pub fn run_cli() -> Result<()> {
             timeout,
             cwd,
         } => {
-            let result = commands::execute::bash_command(
+            let result = skilllite_commands::execute::bash_command(
                 &skill_dir,
                 &command,
                 cache_dir.as_ref(),
@@ -181,15 +180,15 @@ pub fn run_cli() -> Result<()> {
             skill_dir,
             preview_lines,
         } => {
-            let result = commands::scan::scan_skill(&skill_dir, preview_lines)?;
+            let result = skilllite_commands::scan::scan_skill(&skill_dir, preview_lines)?;
             println!("{}", result);
         }
         Commands::Validate { skill_dir } => {
-            commands::execute::validate_skill(&skill_dir)?;
+            skilllite_commands::execute::validate_skill(&skill_dir)?;
             println!("Skill validation passed!");
         }
         Commands::Info { skill_dir } => {
-            commands::execute::show_skill_info(&skill_dir)?;
+            skilllite_commands::execute::show_skill_info(&skill_dir)?;
         }
         Commands::SecurityScan {
             script_path,
@@ -198,7 +197,7 @@ pub fn run_cli() -> Result<()> {
             allow_process_exec,
             json,
         } => {
-            commands::security::security_scan_script(
+            skilllite_commands::security::security_scan_script(
                 &script_path,
                 allow_network,
                 allow_file_ops,
@@ -250,17 +249,17 @@ pub fn run_cli() -> Result<()> {
             list,
             scan_offline,
         } => {
-            commands::skill::cmd_add(&source, &skills_dir, force, list, scan_offline)?;
+            skilllite_commands::skill::cmd_add(&source, &skills_dir, force, list, scan_offline)?;
         }
         Commands::Remove {
             skill_name,
             skills_dir,
             force,
         } => {
-            commands::skill::cmd_remove(&skill_name, &skills_dir, force)?;
+            skilllite_commands::skill::cmd_remove(&skill_name, &skills_dir, force)?;
         }
         Commands::List { skills_dir, json, scan } => {
-            commands::skill::cmd_list(&skills_dir, json, scan)?;
+            skilllite_commands::skill::cmd_list(&skills_dir, json, scan)?;
         }
         #[cfg(feature = "agent")]
         Commands::ListTools { skills_dir, format } => {
@@ -276,7 +275,7 @@ pub fn run_cli() -> Result<()> {
             skills_dir,
             json,
         } => {
-            commands::skill::cmd_show(&skill_name, &skills_dir, json)?;
+            skilllite_commands::skill::cmd_show(&skill_name, &skills_dir, json)?;
         }
         Commands::Verify {
             target,
@@ -284,7 +283,7 @@ pub fn run_cli() -> Result<()> {
             json,
             strict,
         } => {
-            commands::skill::cmd_verify(&target, &skills_dir, json, strict)?;
+            skilllite_commands::skill::cmd_verify(&target, &skills_dir, json, strict)?;
         }
         Commands::InitCursor {
             project_dir,
@@ -292,32 +291,32 @@ pub fn run_cli() -> Result<()> {
             global,
             force,
         } => {
-            commands::ide::cmd_cursor(project_dir.as_deref(), &skills_dir, global, force)?;
+            skilllite_commands::ide::cmd_cursor(project_dir.as_deref(), &skills_dir, global, force)?;
         }
         Commands::InitOpencode {
             project_dir,
             skills_dir,
             force,
         } => {
-            commands::ide::cmd_opencode(project_dir.as_deref(), &skills_dir, force)?;
+            skilllite_commands::ide::cmd_opencode(project_dir.as_deref(), &skills_dir, force)?;
         }
         #[cfg(feature = "audit")]
         Commands::DependencyAudit { skill_dir, json } => {
-            commands::security::dependency_audit_skill(&skill_dir, json)?;
+            skilllite_commands::security::dependency_audit_skill(&skill_dir, json)?;
         }
         Commands::CleanEnv { dry_run, force } => {
-            commands::env::cmd_clean(dry_run, force)?;
+            skilllite_commands::env::cmd_clean(dry_run, force)?;
         }
         Commands::Reindex {
             skills_dir,
             verbose,
             rebuild_manifest,
         } => {
-            commands::reindex::cmd_reindex(&skills_dir, verbose, rebuild_manifest)?;
+            skilllite_commands::reindex::cmd_reindex(&skills_dir, verbose, rebuild_manifest)?;
         }
         #[cfg(feature = "agent")]
         Commands::Quickstart { skills_dir } => {
-            commands::quickstart::cmd_quickstart(&skills_dir)?;
+            skilllite_commands::quickstart::cmd_quickstart(&skills_dir)?;
         }
         #[cfg(feature = "agent")]
         Commands::Init {
@@ -328,7 +327,7 @@ pub fn run_cli() -> Result<()> {
             force,
             use_llm,
         } => {
-            commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict, force, use_llm)?;
+            skilllite_commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict, force, use_llm)?;
         }
         #[cfg(not(feature = "agent"))]
         Commands::Init {
@@ -339,7 +338,7 @@ pub fn run_cli() -> Result<()> {
             force,
             ..
         } => {
-            commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict, force, false)?;
+            skilllite_commands::init::cmd_init(&skills_dir, skip_deps, skip_audit, strict, force, false)?;
         }
         #[cfg(feature = "agent")]
         Commands::ClearSession {
@@ -390,13 +389,13 @@ pub fn run_cli() -> Result<()> {
         Commands::Evolution { action } => {
             use cli::EvolutionAction;
             match action {
-                EvolutionAction::Status => commands::evolution::cmd_status()?,
-                EvolutionAction::Reset { force } => commands::evolution::cmd_reset(force)?,
-                EvolutionAction::Disable { rule_id } => commands::evolution::cmd_disable(&rule_id)?,
-                EvolutionAction::Explain { rule_id } => commands::evolution::cmd_explain(&rule_id)?,
-                EvolutionAction::Confirm { skill_name } => commands::evolution::cmd_confirm(&skill_name)?,
-                EvolutionAction::Reject { skill_name } => commands::evolution::cmd_reject(&skill_name)?,
-                EvolutionAction::Run { json } => commands::evolution::cmd_run(json)?,
+                EvolutionAction::Status => skilllite_commands::evolution::cmd_status()?,
+                EvolutionAction::Reset { force } => skilllite_commands::evolution::cmd_reset(force)?,
+                EvolutionAction::Disable { rule_id } => skilllite_commands::evolution::cmd_disable(&rule_id)?,
+                EvolutionAction::Explain { rule_id } => skilllite_commands::evolution::cmd_explain(&rule_id)?,
+                EvolutionAction::Confirm { skill_name } => skilllite_commands::evolution::cmd_confirm(&skill_name)?,
+                EvolutionAction::Reject { skill_name } => skilllite_commands::evolution::cmd_reject(&skill_name)?,
+                EvolutionAction::Run { json } => skilllite_commands::evolution::cmd_run(json)?,
             }
         }
     }

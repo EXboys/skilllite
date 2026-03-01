@@ -17,7 +17,7 @@ use source::{parse_source, fetch_from_clawhub, clone_repo};
 use discovery::{discover_skills, copy_skill, install_skill_deps};
 use admission::{scan_candidate_skills, AdmissionRisk};
 
-pub(in crate::commands::skill) use admission::scan_candidate_skills_fast;
+pub(in crate::skill) use admission::scan_candidate_skills_fast;
 
 pub fn cmd_add(
     source: &str,

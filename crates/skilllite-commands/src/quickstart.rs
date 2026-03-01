@@ -271,11 +271,11 @@ fn prompt_api_key(env_var_name: &str) -> Result<String> {
 fn ensure_skills(skills_path: &Path) -> Result<()> {
     eprintln!("📦 Step 2/3: Checking skills...");
 
-    let downloaded = crate::commands::init::ensure_skills_dir(skills_path, false)?;
+    let downloaded = crate::init::ensure_skills_dir(skills_path, false)?;
     if downloaded {
         eprintln!("   ✅ Downloaded skills into {}", skills_path.display());
     } else {
-        let count = crate::commands::init::count_skills(skills_path);
+        let count = crate::init::count_skills(skills_path);
         eprintln!("   ✅ Found {} skill(s) in {}", count, skills_path.display());
     }
 

@@ -65,14 +65,14 @@ fn collect_script_files(skill_path: &Path, meta: &metadata::SkillMetadata) -> Ve
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(in crate::commands::skill) enum AdmissionRisk {
+pub(in crate::skill) enum AdmissionRisk {
     Safe,
     Suspicious,
     Malicious,
 }
 
 impl AdmissionRisk {
-    pub(in crate::commands::skill) fn as_str(self) -> &'static str {
+    pub(in crate::skill) fn as_str(self) -> &'static str {
         match self {
             Self::Safe => "safe",
             Self::Suspicious => "suspicious",
@@ -91,10 +91,10 @@ impl AdmissionRisk {
 }
 
 #[derive(Debug, Clone)]
-pub(in crate::commands::skill) struct SkillScanReport {
-    pub(in crate::commands::skill) name: String,
-    pub(in crate::commands::skill) risk: AdmissionRisk,
-    pub(in crate::commands::skill) messages: Vec<String>,
+pub(in crate::skill) struct SkillScanReport {
+    pub(in crate::skill) name: String,
+    pub(in crate::skill) risk: AdmissionRisk,
+    pub(in crate::skill) messages: Vec<String>,
 }
 
 fn sample_scripts_for_llm(script_files: &[PathBuf], max_files: usize, max_chars: usize) -> String {
@@ -197,7 +197,7 @@ pub(super) fn scan_candidate_skills(
     scan_candidate_skills_inner(candidates, scan_offline, scan_offline)
 }
 
-pub(in crate::commands::skill) fn scan_candidate_skills_fast(candidates: &[(String, PathBuf)]) -> Vec<SkillScanReport> {
+pub(in crate::skill) fn scan_candidate_skills_fast(candidates: &[(String, PathBuf)]) -> Vec<SkillScanReport> {
     scan_candidate_skills_inner(candidates, true, false)
 }
 
@@ -326,7 +326,7 @@ fn scan_candidate_skills_inner(
 
             let metadata_hint = metadata::parse_skill_metadata(skill_path)
                 .ok()
-                .map(crate::commands::metadata_into_hint);
+                .map(crate::metadata_into_hint);
             match dependency_audit::audit_skill_dependencies(skill_path, metadata_hint.as_ref()) {
                 Ok(result) => {
                     if result.vulnerable_count > 0 {

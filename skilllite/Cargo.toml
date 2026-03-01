@@ -13,9 +13,9 @@ categories = ["command-line-utilities", "development-tools"]
 [features]
 default = ["sandbox", "audit", "agent", "swarm"]
 sandbox = []
-audit = ["skilllite-sandbox/audit", "dep:ureq"]
+audit = ["skilllite-sandbox/audit", "skilllite-commands/audit", "dep:ureq"]
 executor = ["sandbox", "dep:skilllite-executor"]
-agent = ["executor", "dep:skilllite-agent", "dep:tokio", "dep:reqwest", "dep:rustyline", "dep:uuid"]
+agent = ["executor", "dep:skilllite-agent", "skilllite-commands/agent", "dep:tokio", "dep:reqwest", "dep:rustyline", "dep:uuid"]
 # 仅用于 skilllite-sandbox 构建，含 sandbox+audit，不在 default 中
 sandbox_binary = ["sandbox", "audit"]
 # Memory 向量检索：启用后 memory_search 使用语义搜索（需配置 embedding API）
@@ -26,6 +26,7 @@ swarm = ["dep:skilllite-swarm"]
 [dependencies]
 skilllite-core = { path = "../crates/skilllite-core" }
 skilllite-sandbox = { path = "../crates/skilllite-sandbox" }
+skilllite-commands = { path = "../crates/skilllite-commands", default-features = false }
 skilllite-executor = { path = "../crates/skilllite-executor", optional = true }
 skilllite-agent = { path = "../crates/skilllite-agent", optional = true }
 skilllite-swarm = { path = "../crates/skilllite-swarm", optional = true }

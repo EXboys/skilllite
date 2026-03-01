@@ -14,7 +14,7 @@
 //! Response: `{"jsonrpc":"2.0","id":1,"result":{...}}` or `{"jsonrpc":"2.0","id":1,"error":{...}}`
 
 use anyhow::{Context, Result};
-use crate::commands::execute;
+use skilllite_commands::execute;
 use skilllite_core::path_validation;
 use skilllite_sandbox::runner::{ResourceLimits, SandboxLevel};
 use serde_json::{json, Value};

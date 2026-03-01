@@ -1,0 +1,30 @@
+[package]
+name = "skilllite-commands"
+version = "0.1.9"
+edition = "2021"
+authors = ["EX <boyex345@gmail.com>"]
+description = "SkillLite CLI command implementations"
+license = "MIT"
+
+[features]
+default = []
+agent = ["dep:skilllite-agent", "dep:tokio", "dep:uuid", "dep:rustyline"]
+audit = ["skilllite-sandbox/audit", "dep:ureq", "dep:zip"]
+
+[dependencies]
+skilllite-core = { path = "../skilllite-core" }
+skilllite-sandbox = { path = "../skilllite-sandbox" }
+skilllite-agent = { path = "../skilllite-agent", optional = true }
+
+anyhow = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+regex = "1.10"
+dirs = "5.0"
+tempfile = "3.10"
+zip = { version = "0.6", optional = true }
+ureq = { version = "2", optional = true, features = ["json"] }
+tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "time", "io-util"] }
+uuid = { version = "1", optional = true, features = ["v4"] }
+rustyline = { version = "14", optional = true }

@@ -1,4 +1,4 @@
-//! Phase 3 CLI commands — skill management, IDE integration, environment management.
+//! SkillLite CLI commands — skill management, IDE integration, environment management.
 //!
 //! These modules implement pure management commands migrated from Python CLI.
 //! They depend ONLY on the skill/env layer (Layer 1-2), NOT on the agent layer (Layer 3).
