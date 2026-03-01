@@ -133,10 +133,14 @@ async fn handle_task(
                     .into_response();
             }
             let start = std::time::Instant::now();
-            let result = exec.execute(task);
+            let exec = exec.clone();
+            let result = tokio::task::spawn_blocking(move || exec.execute(task)).await;
             if let Ok(mut cur) = state.current_task.lock() {
                 *cur = None;
             }
+            let result = result
+                .map_err(|e| anyhow::anyhow!("{:?}", e))
+                .and_then(|r| r.map_err(|e| anyhow::anyhow!("{}", e)));
             match result {
                 Ok(res) => {
                     tracing::info!(task_id = %task_id, elapsed_ms = start.elapsed().as_millis(), "Task completed");
@@ -305,28 +309,23 @@ pub fn serve_swarm(
         "Swarm daemon running (mDNS + HTTP). POST /task, GET /status for execution feedback. Ctrl+C to stop."
     );
 
+    // ctrlc: force exit on Ctrl+C — tokio::signal::ctrl_c() can fail to fire on macOS
+    // when runtime is busy; ctrlc runs in a dedicated thread and exits immediately.
+    ctrlc::set_handler(move || {
+        tracing::info!("Ctrl+C received, exiting...");
+        std::process::exit(0);
+    })
+    .context("Failed to set Ctrl+C handler")?;
+
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let std_listener = std::net::TcpListener::bind(listen_addr)
             .context("Failed to bind TCP listener")?;
         let listener = tokio::net::TcpListener::from_std(std_listener)?;
-        let server = axum::serve(listener, app);
-
-        tokio::select! {
-            r = server => {
-                if let Err(e) = r {
-                    tracing::error!("HTTP server error: {}", e);
-                }
-            }
-            _ = tokio::signal::ctrl_c() => {
-                tracing::info!("Ctrl+C received, shutting down swarm...");
-                shutdown.store(true, Ordering::SeqCst);
-            }
-        }
+        axum::serve(listener, app).await?;
         Ok::<(), anyhow::Error>(())
     })?;
 
-    discovery.shutdown()?;
-    tracing::info!("Swarm daemon stopped");
+    let _ = discovery.shutdown();
     Ok(())
 }
