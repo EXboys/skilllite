@@ -95,6 +95,18 @@ pub struct MetadataHint {
     pub entry_point: String,
 }
 
+impl From<skilllite_core::skill::metadata::SkillMetadata> for MetadataHint {
+    fn from(m: skilllite_core::skill::metadata::SkillMetadata) -> Self {
+        Self {
+            compatibility: m.compatibility,
+            resolved_packages: m.resolved_packages,
+            description: m.description,
+            language: m.language,
+            entry_point: m.entry_point,
+        }
+    }
+}
+
 // ─── Dependency file parsers ────────────────────────────────────────────────
 
 /// Parse Python `requirements.txt` / `pip freeze` output.

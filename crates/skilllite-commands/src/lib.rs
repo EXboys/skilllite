@@ -20,24 +20,6 @@ pub mod execute;
 pub mod scan;
 pub mod security;
 
-// ─── Cross-crate conversions ────────────────────────────────────────────────
-// skilllite-core::SkillMetadata → skilllite-sandbox::MetadataHint
-// Placed here because the binary crate depends on both, while the library
-// crates are independent of each other.
-// (Cannot use `impl From` due to Rust orphan rules.)
-
-pub fn metadata_into_hint(
-    m: skilllite_core::skill::metadata::SkillMetadata,
-) -> skilllite_sandbox::security::dependency_audit::MetadataHint {
-    skilllite_sandbox::security::dependency_audit::MetadataHint {
-        compatibility: m.compatibility,
-        resolved_packages: m.resolved_packages,
-        description: m.description,
-        language: m.language,
-        entry_point: m.entry_point,
-    }
-}
-
 pub mod skill;
 pub mod ide;
 pub mod env;

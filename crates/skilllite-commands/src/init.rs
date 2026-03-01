@@ -373,10 +373,10 @@ fn audit_all_skills(skills_path: &Path, skills: &[String]) -> (Vec<String>, bool
                 || skill_path.join("package.json").exists();
 
             if has_deps {
-                use skilllite_sandbox::security::dependency_audit;
+                use skilllite_sandbox::security::dependency_audit::{self, MetadataHint};
                 let metadata_hint = metadata::parse_skill_metadata(&skill_path)
                     .ok()
-                    .map(crate::metadata_into_hint);
+                    .map(MetadataHint::from);
                 match dependency_audit::audit_skill_dependencies(&skill_path, metadata_hint.as_ref()) {
                     Ok(result) => {
                         if result.vulnerable_count > 0 {
