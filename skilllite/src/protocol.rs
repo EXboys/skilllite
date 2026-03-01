@@ -92,11 +92,10 @@ pub enum ProtocolParams {
     /// Used by the Tauri desktop assistant and Python/TS SDK streaming clients.
     AgentRpc,
 
-    /// P2P mesh node (`skilllite p2p --listen <ADDR>`).
+    /// Swarm node (`skilllite swarm --listen <ADDR>`).
     ///
-    /// **Placeholder** — `P2pHandler` is not yet implemented.
-    /// When implemented, this variant drives the mDNS discovery loop and
-    /// the Gossip-based `NewSkill` sync protocol.
+    /// **Placeholder** — `SwarmHandler` serves a stub; full mDNS discovery
+    /// and Gossip sync will be implemented in `skilllite-swarm` crate.
     P2p {
         /// mDNS / Libp2p listen address (e.g. `"0.0.0.0:7700"`).
         listen_addr: String,
@@ -173,5 +172,29 @@ impl ProtocolHandler for AgentRpcHandler {
             ProtocolParams::AgentRpc => skilllite_agent::rpc::serve_agent_rpc(),
             _ => anyhow::bail!("AgentRpcHandler requires ProtocolParams::AgentRpc"),
         }
+    }
+}
+
+/// Swarm P2P mesh handler (`skilllite swarm --listen <ADDR>`).
+///
+/// Placeholder: blocks and logs. Full implementation (mDNS, routing, Gossip)
+/// will live in `skilllite-swarm` crate.
+pub struct SwarmHandler;
+
+impl ProtocolHandler for SwarmHandler {
+    fn name(&self) -> &str { "swarm" }
+
+    fn serve(&self, params: ProtocolParams) -> Result<()> {
+        let ProtocolParams::P2p { listen_addr, capability_tags } = params else {
+            anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
+        };
+        tracing::info!(
+            listen = %listen_addr,
+            capabilities = ?capability_tags,
+            "Swarm daemon started (placeholder — mDNS/Gossip not yet implemented)"
+        );
+        // Block until Ctrl+C; full impl will run mDNS discovery loop
+        std::thread::park();
+        Ok(())
     }
 }

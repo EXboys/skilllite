@@ -326,6 +326,12 @@ pub fn run_cli() -> Result<()> {
             protocol::AgentRpcHandler
                 .serve(protocol::ProtocolParams::AgentRpc)?;
         }
+        Commands::Swarm { listen } => {
+            protocol::SwarmHandler.serve(protocol::ProtocolParams::P2p {
+                listen_addr: listen,
+                capability_tags: vec![], // TODO: aggregate from skills
+            })?;
+        }
         Commands::Mcp { skills_dir } => {
             protocol::McpHandler
                 .serve(protocol::ProtocolParams::Mcp {

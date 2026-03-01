@@ -535,6 +535,21 @@ pub enum Commands {
     #[command(name = "agent-rpc")]
     AgentRpc,
 
+    /// Run swarm node — P2P mesh daemon for multi-agent collaboration
+    ///
+    /// Starts a long-running daemon that advertises capabilities via mDNS,
+    /// discovers peers, and participates in task routing and NewSkill Gossip.
+    /// Blocks until Ctrl+C.
+    ///
+    /// Examples:
+    ///   skilllite swarm --listen 0.0.0.0:7700
+    #[command(name = "swarm")]
+    Swarm {
+        /// Listen address (e.g. 0.0.0.0:7700)
+        #[arg(long, short = 'l', default_value = "0.0.0.0:7700")]
+        listen: String,
+    },
+
     /// Run MCP (Model Context Protocol) server over stdio
     ///
     /// Implements the standard MCP JSON-RPC 2.0 protocol for IDE integration.
