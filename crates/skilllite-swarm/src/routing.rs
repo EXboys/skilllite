@@ -23,13 +23,41 @@ pub fn capabilities_match(required: &[String], available: &[String]) -> bool {
 pub enum RouteTarget {
     /// Execute locally (this node has matching capabilities).
     Local,
-    /// Forward to this peer.
-    Forward(PeerInfo),
+    /// Forward to peer(s). First is primary; rest are fallbacks when primary fails.
+    Forward(Vec<PeerInfo>),
     /// No matching node found — cannot route.
     NoMatch,
 }
 
+/// Collect all peers that match required capabilities (for fallback retry).
+/// Prefer LAN IP (10.x, 192.168.x) over 127.0.0.1 to avoid stale mDNS loopback records.
+fn matching_peers(required: &[String], peers: &[PeerInfo]) -> Vec<PeerInfo> {
+    if required.is_empty() {
+        return vec![];
+    }
+    let mut matching: Vec<_> = peers
+        .iter()
+        .filter(|p| capabilities_match(required, &p.capabilities))
+        .cloned()
+        .collect();
+    // Prefer non-loopback addr first (stale mDNS may advertise 127.0.0.1 for dead nodes)
+    matching.sort_by(|a, b| {
+        let a_loopback = a.addr.starts_with("127.");
+        let b_loopback = b.addr.starts_with("127.");
+        match (a_loopback, b_loopback) {
+            (true, false) => std::cmp::Ordering::Greater,  // a after b
+            (false, true) => std::cmp::Ordering::Less,    // a before b
+            _ => std::cmp::Ordering::Equal,
+        }
+    });
+    matching
+}
+
 /// Decide routing for a NodeTask given local capabilities and discovered peers.
+///
+/// **Skill sharing**: When `required_capabilities` is empty, prefer forwarding to a peer
+/// that has capabilities over executing locally with none. This enables "蜂群共享技能" —
+/// a node without skills forwards to peers that have them.
 pub fn route_task(
     task: &NodeTask,
     local_capabilities: &[String],
@@ -37,17 +65,42 @@ pub fn route_task(
 ) -> RouteTarget {
     let required = &task.context.required_capabilities;
 
-    if capabilities_match(required, local_capabilities) {
-        return RouteTarget::Local;
+    // Explicit required: match local or peer
+    if !required.is_empty() {
+        if capabilities_match(required, local_capabilities) {
+            return RouteTarget::Local;
+        }
+        let matching = matching_peers(required, peers);
+        if !matching.is_empty() {
+            return RouteTarget::Forward(matching);
+        }
+        return RouteTarget::NoMatch;
     }
 
-    for peer in peers {
-        if capabilities_match(required, &peer.capabilities) {
-            return RouteTarget::Forward(peer.clone());
+    // required is empty — "skill sharing" mode: prefer peer with capabilities over local without
+    let local_has_caps = !local_capabilities.is_empty();
+    let peers_with_caps: Vec<PeerInfo> = peers
+        .iter()
+        .filter(|p| !p.capabilities.is_empty())
+        .cloned()
+        .collect();
+
+    if !local_has_caps && !peers_with_caps.is_empty() {
+        // Prefer peer with most capabilities; dedupe by addr (same port = same node, avoid stale mDNS)
+        let mut sorted: Vec<_> = peers_with_caps;
+        sorted.sort_by(|a, b| b.capabilities.len().cmp(&a.capabilities.len()));
+        let mut seen_addr = std::collections::HashSet::new();
+        let deduped: Vec<_> = sorted
+            .into_iter()
+            .filter(|p| seen_addr.insert(p.addr.clone()))
+            .collect();
+        if !deduped.is_empty() {
+            return RouteTarget::Forward(deduped);
         }
     }
 
-    RouteTarget::NoMatch
+    // Local has caps, or no peer has caps — execute locally
+    RouteTarget::Local
 }
 
 /// Executor trait: called when routing decides to execute locally.
@@ -74,5 +127,49 @@ mod tests {
     #[test]
     fn test_capabilities_match_missing() {
         assert!(!capabilities_match(&["python".into(), "ml".into()], &["python".into()]));
+    }
+
+    #[test]
+    fn test_route_skill_sharing_empty_required_local_no_caps_peer_has_caps() {
+        let task = NodeTask {
+            id: "t1".into(),
+            description: "1+1=?".into(),
+            context: skilllite_core::protocol::NodeContext {
+                workspace: ".".into(),
+                session_key: "test".into(),
+                required_capabilities: vec![],
+            },
+            tool_hint: None,
+        };
+        let local: Vec<String> = vec![];
+        let peers = vec![PeerInfo {
+            instance_name: "peer1".into(),
+            addr: "127.0.0.1:7701".into(),
+            capabilities: vec!["calc".into()],
+        }];
+        let target = route_task(&task, &local, &peers);
+        assert!(matches!(target, RouteTarget::Forward(ref v) if v.len() == 1 && v[0].instance_name == "peer1"));
+    }
+
+    #[test]
+    fn test_route_skill_sharing_empty_required_local_has_caps() {
+        let task = NodeTask {
+            id: "t1".into(),
+            description: "1+1=?".into(),
+            context: skilllite_core::protocol::NodeContext {
+                workspace: ".".into(),
+                session_key: "test".into(),
+                required_capabilities: vec![],
+            },
+            tool_hint: None,
+        };
+        let local = vec!["calc".into()];
+        let peers = vec![PeerInfo {
+            instance_name: "peer1".into(),
+            addr: "127.0.0.1:7701".into(),
+            capabilities: vec!["calc".into(), "web".into()],
+        }];
+        let target = route_task(&task, &local, &peers);
+        assert!(matches!(target, RouteTarget::Local));
     }
 }

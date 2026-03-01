@@ -357,6 +357,50 @@ fn merge_openclaw_requires(
     Some(merged)
 }
 
+/// Infer capability tags from official Agent Skills fields (compatibility, name, description).
+/// Enables P2P routing without requiring custom `capabilities` field.
+/// Keywords are matched case-insensitively.
+fn infer_capabilities_from_compatibility(
+    compatibility: &str,
+    name: &str,
+    description: &str,
+) -> Vec<String> {
+    let mut caps = std::collections::HashSet::new();
+    let s = format!("{} {} {}", compatibility, name, description).to_lowercase();
+
+    // (keyword, capability_tag)
+    let rules: &[(&str, &str)] = &[
+        ("python", "python"),
+        ("network", "web"),
+        ("网络", "web"),
+        ("http", "web"),
+        ("internet", "web"),
+        ("node.js", "node"),
+        ("nodejs", "node"),
+        ("playwright", "browser"),
+        ("agent-browser", "browser"),
+        ("chromium", "browser"),
+        ("browser", "browser"),
+        ("pandas", "data"),
+        ("numpy", "data"),
+        ("data-analysis", "data"),
+        ("calculator", "calc"),
+        ("计算", "calc"),
+        ("arithmetic", "calc"),
+        ("math", "calc"),
+    ];
+
+    for (keyword, tag) in rules {
+        if s.contains(keyword) {
+            caps.insert(tag.to_string());
+        }
+    }
+
+    let mut v: Vec<_> = caps.into_iter().collect();
+    v.sort();
+    v
+}
+
 /// Extract YAML front matter from markdown content (for tests without skill_dir)
 #[cfg(test)]
 fn extract_yaml_front_matter(content: &str) -> Result<SkillMetadata> {
@@ -416,8 +460,8 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
         .requires_elevated_permissions
         .unwrap_or(false);
 
-    // Resolve capabilities: top-level `capabilities:` field takes priority;
-    // fall back to `metadata.capabilities` array for skills that nest it there.
+    // Resolve capabilities: top-level `capabilities:` > metadata.capabilities > infer from compatibility.
+    // compatibility is official Agent Skills field; inferring from it enables routing without custom fields.
     let capabilities = if !front_matter.capabilities.is_empty() {
         front_matter.capabilities.clone()
     } else {
@@ -431,7 +475,14 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
                     .filter_map(|v| v.as_str().map(String::from))
                     .collect()
             })
-            .unwrap_or_default()
+            .filter(|v: &Vec<String>| !v.is_empty())
+            .unwrap_or_else(|| {
+                infer_capabilities_from_compatibility(
+                    compatibility.as_deref().unwrap_or(""),
+                    &front_matter.name,
+                    front_matter.description.as_deref().unwrap_or(""),
+                )
+            })
     };
 
     let metadata = SkillMetadata {
@@ -544,6 +595,26 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_infer_capabilities_from_compatibility() {
+        // From compatibility
+        let caps = infer_capabilities_from_compatibility(
+            "Requires Python 3.x, network access",
+            "test",
+            "",
+        );
+        assert!(caps.contains(&"python".to_string()));
+        assert!(caps.contains(&"web".to_string()));
+
+        // From name (calculator)
+        let caps = infer_capabilities_from_compatibility("", "calculator", "");
+        assert_eq!(caps, vec!["calc"]);
+
+        // From description (arithmetic)
+        let caps = infer_capabilities_from_compatibility("", "foo", "basic arithmetic operations");
+        assert_eq!(caps, vec!["calc"]);
+    }
+
+    #[test]
     fn test_parse_yaml_front_matter_with_compatibility() {
         let content = r#"---
 name: test-skill
@@ -563,6 +634,9 @@ This is a test skill.
         assert!(metadata.network.enabled);
         // When network is enabled via compatibility, allow all domains with "*" wildcard
         assert_eq!(metadata.network.outbound, vec!["*"]);
+        // Capabilities inferred from compatibility (no explicit capabilities)
+        assert!(metadata.capabilities.contains(&"python".to_string()));
+        assert!(metadata.capabilities.contains(&"web".to_string()));
     }
 
     #[test]

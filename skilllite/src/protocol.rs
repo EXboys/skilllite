@@ -56,6 +56,8 @@ pub enum ProtocolParams {
         listen_addr: String,
         /// Capability tags advertised to peers.
         capability_tags: Vec<String>,
+        /// Skills directory (for loading .env from project root when cwd differs).
+        skills_dir: Option<Vec<String>>,
         /// Executor for local task execution (when swarm+agent enabled).
         #[cfg(feature = "swarm")]
         executor: Option<std::sync::Arc<dyn skilllite_swarm::TaskExecutor>>,
@@ -144,14 +146,14 @@ impl ProtocolHandler for SwarmHandler {
     fn serve(&self, params: ProtocolParams) -> Result<()> {
         #[cfg(feature = "swarm")]
         {
-            let ProtocolParams::P2p { listen_addr, capability_tags, executor } = params else {
+            let ProtocolParams::P2p { listen_addr, capability_tags, skills_dir, executor } = params else {
                 anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
             };
-            skilllite_swarm::serve_swarm(&listen_addr, capability_tags, executor)
+            skilllite_swarm::serve_swarm(&listen_addr, capability_tags, skills_dir.as_deref(), executor)
         }
         #[cfg(not(feature = "swarm"))]
         {
-            let ProtocolParams::P2p { listen_addr, capability_tags } = params else {
+            let ProtocolParams::P2p { listen_addr, capability_tags, .. } = params else {
                 anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
             };
             tracing::info!(

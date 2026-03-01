@@ -11,10 +11,14 @@ use super::types::*;
 
 /// Run a single task (one turn) and return AgentResult.
 /// Used by P2P swarm when routing decides to execute locally.
+///
+/// When `skill_dirs` is `Some`, loads skills from those directories (e.g. swarm's `--skills-dir`).
+/// When `None`, auto-discovers from `workspace/.skills` and `workspace/skills`.
 pub async fn run_single_task(
     workspace: &str,
     session_key: &str,
     description: &str,
+    skill_dirs: Option<&[String]>,
 ) -> Result<AgentResult> {
     let mut config = AgentConfig::from_env();
     config.workspace = workspace.to_string();
@@ -27,7 +31,9 @@ pub async fn run_single_task(
 
     skilllite_core::config::ensure_default_output_dir();
 
-    let skill_dirs = auto_discover_skill_dirs(workspace);
+    let skill_dirs = skill_dirs
+        .map(|s| s.to_vec())
+        .unwrap_or_else(|| auto_discover_skill_dirs(workspace));
     let loaded_skills = skills::load_skills(&skill_dirs);
 
     let mut session = ChatSession::new(config, session_key, loaded_skills);

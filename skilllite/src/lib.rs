@@ -359,12 +359,15 @@ pub fn run_cli() -> Result<()> {
             {
                 #[cfg(feature = "agent")]
                 let executor: Option<std::sync::Arc<dyn skilllite_swarm::TaskExecutor>> =
-                    Some(std::sync::Arc::new(swarm_executor::AgentTaskExecutor));
+                    Some(std::sync::Arc::new(swarm_executor::AgentTaskExecutor::new(
+                        skills_dir.clone(),
+                    )));
                 #[cfg(not(feature = "agent"))]
                 let executor: Option<std::sync::Arc<dyn skilllite_swarm::TaskExecutor>> = None;
                 protocol::SwarmHandler.serve(protocol::ProtocolParams::P2p {
                     listen_addr: listen,
                     capability_tags,
+                    skills_dir: skills_dir.clone(),
                     executor,
                 })?;
             }

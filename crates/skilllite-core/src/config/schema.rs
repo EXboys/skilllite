@@ -188,7 +188,7 @@ impl ObservabilityConfig {
         let log_level = env_or(
             obv_keys::SKILLLITE_LOG_LEVEL,
             obv_keys::LOG_LEVEL_ALIASES,
-            || "skilllite=info".to_string(),
+            || "skilllite=info,skilllite_swarm=info".to_string(),
         );
         let log_json = env_bool(obv_keys::SKILLLITE_LOG_JSON, obv_keys::LOG_JSON_ALIASES, false);
         let audit_log = env_optional(obv_keys::SKILLLITE_AUDIT_LOG, obv_keys::AUDIT_LOG_ALIASES);

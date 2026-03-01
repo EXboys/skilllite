@@ -69,7 +69,70 @@ async fn handle_task(
     Json(task): Json<NodeTask>,
 ) -> impl IntoResponse {
     let peers = state.peers.lock().map(|p| p.clone()).unwrap_or_default();
-    let target = route_task(&task, &state.local_capabilities, &peers);
+
+    // When required_capabilities is empty, optionally infer via LLM (SKILLLITE_SWARM_LLM_ROUTING=1)
+    let required = if task.context.required_capabilities.is_empty() {
+        let all_tags: Vec<String> = {
+            let mut s = std::collections::HashSet::new();
+            s.extend(state.local_capabilities.iter().cloned());
+            for p in &peers {
+                s.extend(p.capabilities.iter().cloned());
+            }
+            let mut v: Vec<_> = s.into_iter().collect();
+            v.sort();
+            v
+        };
+        let inferred = crate::llm_routing::infer_required_capabilities(
+            &task.description,
+            &all_tags,
+        )
+        .await;
+        if inferred.is_empty() {
+            task.context.required_capabilities.clone()
+        } else {
+            inferred
+        }
+    } else {
+        task.context.required_capabilities.clone()
+    };
+
+    // Route with effective required_capabilities
+    let mut task_for_route = task.clone();
+    task_for_route.context.required_capabilities = required.clone();
+    let target = route_task(&task_for_route, &state.local_capabilities, &peers);
+
+    // Log routing decision for observability
+    match &target {
+        RouteTarget::Local => {
+            tracing::info!(
+                task_id = %task.id,
+                local_caps = ?state.local_capabilities,
+                required = ?required,
+                "Routing: LOCAL (capabilities match)"
+            );
+        }
+        RouteTarget::Forward(peers) => {
+            let peer = &peers[0];
+            tracing::info!(
+                task_id = %task.id,
+                peer = %peer.instance_name,
+                peer_addr = %peer.addr,
+                peer_caps = ?peer.capabilities,
+                required = ?required,
+                fallback_count = peers.len().saturating_sub(1),
+                "Routing: FORWARD to peer"
+            );
+        }
+        RouteTarget::NoMatch => {
+            tracing::info!(
+                task_id = %task.id,
+                required = ?required,
+                local_caps = ?state.local_capabilities,
+                peer_count = peers.len(),
+                "Routing: NO_MATCH (no local or peer has required capabilities)"
+            );
+        }
+    }
 
     match target {
         RouteTarget::Local => {
@@ -159,57 +222,57 @@ async fn handle_task(
                 }
             }
         }
-        RouteTarget::Forward(peer) => {
+        RouteTarget::Forward(peers) => {
             tracing::info!(task_id = %task.id, "Task received, forwarding to peer...");
-            let url = format!("http://{}/task", peer.addr);
-            tracing::info!(task_id = %task.id, peer = %peer.instance_name, "Forwarding task to peer");
             let client = reqwest::Client::new();
-            match client
-                .post(&url)
-                .json(&task)
-                .timeout(Duration::from_secs(30))
-                .send()
-                .await
-            {
-                Ok(resp) if resp.status().is_success() => {
-                    match resp.json::<NodeResult>().await {
-                        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
-                        Err(e) => (
-                            StatusCode::BAD_GATEWAY,
-                            Json(serde_json::json!({
-                                "error": "invalid_peer_response",
-                                "message": e.to_string()
-                            })),
-                        )
-                            .into_response(),
+            let mut last_err = String::new();
+            for (i, peer) in peers.iter().enumerate() {
+                let url = format!("http://{}/task", peer.addr);
+                tracing::info!(
+                    task_id = %task.id,
+                    peer = %peer.instance_name,
+                    peer_addr = %peer.addr,
+                    attempt = i + 1,
+                    total = peers.len(),
+                    "Forwarding task to peer"
+                );
+                match client
+                    .post(&url)
+                    .json(&task)
+                    .timeout(Duration::from_secs(120))
+                    .send()
+                    .await
+                {
+                    Ok(resp) if resp.status().is_success() => {
+                        match resp.json::<NodeResult>().await {
+                            Ok(result) => return (StatusCode::OK, Json(result)).into_response(),
+                            Err(e) => {
+                                last_err = e.to_string();
+                                tracing::warn!(task_id = %task.id, peer = %peer.instance_name, "Peer returned invalid JSON: {}", last_err);
+                            }
+                        }
+                    }
+                    Ok(resp) => {
+                        let status = resp.status();
+                        let body = resp.text().await.unwrap_or_default();
+                        last_err = format!("status={} body={}", status, body);
+                        tracing::warn!(task_id = %task.id, peer = %peer.instance_name, status = %status, "Peer returned error: {}", body);
+                    }
+                    Err(e) => {
+                        last_err = e.to_string();
+                        tracing::warn!(task_id = %task.id, peer = %peer.instance_name, err = %e, "Forward to peer failed, trying next");
                     }
                 }
-                Ok(resp) => {
-                    let status = resp.status();
-                    let body = resp.text().await.unwrap_or_default();
-                    tracing::warn!(task_id = %task.id, status = %status, "Peer returned error: {}", body);
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({
-                            "error": "peer_error",
-                            "status": status.as_u16(),
-                            "message": body
-                        })),
-                    )
-                        .into_response()
-                }
-                Err(e) => {
-                    tracing::warn!(task_id = %task.id, err = %e, "Forward to peer failed");
-                    (
-                        StatusCode::BAD_GATEWAY,
-                        Json(serde_json::json!({
-                            "error": "forward_failed",
-                            "message": e.to_string()
-                        })),
-                    )
-                        .into_response()
-                }
             }
+            tracing::warn!(task_id = %task.id, "All peers failed for forward");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(serde_json::json!({
+                    "error": "forward_failed",
+                    "message": last_err
+                })),
+            )
+                .into_response()
         }
         RouteTarget::NoMatch => {
             tracing::info!(
@@ -233,13 +296,42 @@ async fn handle_task(
 /// Run the swarm daemon: register via mDNS, browse for peers, serve HTTP task API, block until Ctrl+C.
 ///
 /// - `executor`: Optional. When set, local tasks are executed via this; otherwise returns 503.
+/// - Sets `SKILLLITE_SWARM_URL` so agent's delegate_to_swarm can route to this swarm (skill sharing).
+/// - When `skills_dir` is set, loads .env from its parent (project root) so OPENAI_API_KEY is available for LLM routing.
 pub fn serve_swarm(
     listen_addr: &str,
     capability_tags: Vec<String>,
+    skills_dir: Option<&[String]>,
     executor: Option<Arc<dyn TaskExecutor>>,
 ) -> Result<()> {
+    // Load .env from project root (parent of skills_dir) so LLM routing works when started from different cwd
+    if let Some(dirs) = skills_dir.and_then(|d| d.first()) {
+        let path = std::path::Path::new(dirs);
+        let mut tried = false;
+        if let Ok(canonical) = path.canonicalize() {
+            for dir in canonical.ancestors().take(3) {
+                let env_path = dir.join(".env");
+                if env_path.exists() {
+                    skilllite_core::config::load_dotenv_from_dir(dir);
+                    tracing::debug!(env_dir = ?dir, "Loaded .env from project for LLM routing");
+                    tried = true;
+                    break;
+                }
+            }
+        }
+        if !tried {
+            path.parent().map(|p| skilllite_core::config::load_dotenv_from_dir(p));
+        }
+    }
+
     let (host, port) = parse_listen_addr(listen_addr)?;
     let instance_name = uuid::Uuid::new_v4().to_string();
+
+    // Enable delegate_to_swarm to route to this node (for skill sharing)
+    let swarm_url = format!("http://127.0.0.1:{}", port);
+    if std::env::var("SKILLLITE_SWARM_URL").is_err() {
+        std::env::set_var("SKILLLITE_SWARM_URL", &swarm_url);
+    }
 
     let discovery = Discovery::new()?;
     discovery.register(&instance_name, &host, port, &capability_tags)?;
@@ -276,6 +368,12 @@ pub fn serve_swarm(
                         if let Some(existing) = p.iter_mut().find(|x| x.instance_name == info.instance_name) {
                             *existing = info;
                         } else {
+                            tracing::info!(
+                                peer = %info.instance_name,
+                                addr = %info.addr,
+                                capabilities = ?info.capabilities,
+                                "Peer discovered via mDNS"
+                            );
                             p.push(info);
                         }
                     }
@@ -303,9 +401,11 @@ pub fn serve_swarm(
         .route("/status", get(handle_status))
         .with_state(state);
 
+    let llm_routing = std::env::var("SKILLLITE_SWARM_LLM_ROUTING").as_deref() != Ok("0");
     tracing::info!(
         listen = %listen_addr,
         instance = %instance_name,
+        llm_routing = llm_routing,
         "Swarm daemon running (mDNS + HTTP). POST /task, GET /status for execution feedback. Ctrl+C to stop."
     );
 

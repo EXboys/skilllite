@@ -2,6 +2,7 @@
 name: calculator
 description: A simple calculator that can add, subtract, multiply, and divide numbers. Use when the user needs to perform basic arithmetic operations.
 license: MIT
+capabilities: ["calc", "math"]
 metadata:
   author: skillLite
   version: "1.0"

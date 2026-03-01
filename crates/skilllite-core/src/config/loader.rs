@@ -34,6 +34,41 @@ fn warn_deprecated_env_vars() {
     });
 }
 
+/// Load .env from a specific directory (does not overwrite existing vars).
+/// Used by swarm to load from project root when started from a different cwd.
+pub fn load_dotenv_from_dir(dir: &std::path::Path) {
+    let path = dir.join(".env");
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if let Some(eq_pos) = line.find('=') {
+                let key = line[..eq_pos].trim();
+                let mut value = line[eq_pos + 1..].trim();
+                if let Some(hash_pos) = value.find('#') {
+                    let before_hash = value[..hash_pos].trim_end();
+                    if !before_hash.contains('"') && !before_hash.contains('\'') {
+                        value = before_hash;
+                    }
+                }
+                if (value.starts_with('"') && value.ends_with('"'))
+                    || (value.starts_with('\'') && value.ends_with('\''))
+                {
+                    value = &value[1..value.len() - 1];
+                }
+                if !key.is_empty() && env::var(key).is_err() {
+                    #[allow(unsafe_code)]
+                    unsafe {
+                        env::set_var(key, value);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// 加载当前目录下的 `.env` 到环境变量（不覆盖已存在的变量）
 pub fn load_dotenv() {
     use std::sync::Once;

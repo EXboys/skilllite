@@ -7,6 +7,7 @@
 
 mod discovery;
 mod handler;
+mod llm_routing;
 mod routing;
 
 pub use discovery::{Discovery, PeerInfo};
