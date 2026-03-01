@@ -157,6 +157,9 @@ impl EmbeddingConfig {
             ("text-embedding-v3", 1024)
         } else if base_lower.contains("api.deepseek.com") {
             ("deepseek-embedding", 1536)
+        } else if base_lower.contains("generativelanguage.googleapis.com") {
+            // Google Gemini API (OpenAI 兼容端点)
+            ("gemini-embedding-001", 3072)
         } else if base_lower.contains("localhost:11434") || base_lower.contains("127.0.0.1:11434") {
             // Ollama
             ("nomic-embed-text", 768)
