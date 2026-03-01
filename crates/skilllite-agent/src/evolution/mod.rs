@@ -9,6 +9,7 @@
 //! and `evolution_metrics` tables in `memory/default.sqlite`, and the
 //! externalized prompt/rules data in `prompts/`.
 
+pub mod external_learner;
 pub mod feedback;
 pub mod prompt_learner;
 pub mod seed;
@@ -600,6 +601,21 @@ async fn run_evolution_inner(
         tracing::info!("Evolution txn={} complete: {}", txn_id, reason);
     }
 
+    // EVO-6: External learning (optional, gated by SKILLLITE_EXTERNAL_LEARNING=1)
+    match external_learner::run_external_learning(chat_root, api_base, api_key, model, &txn_id)
+        .await
+    {
+        Ok(ext_changes) => {
+            if !ext_changes.is_empty() {
+                tracing::info!("EVO-6: {} external changes applied", ext_changes.len());
+                all_changes.extend(ext_changes);
+            }
+        }
+        Err(e) => {
+            tracing::warn!("EVO-6 external learning failed (non-fatal): {}", e);
+        }
+    }
+
     Ok(Some(txn_id))
 }
 
@@ -622,6 +638,12 @@ pub fn format_evolution_changes(changes: &[(String, String)]) -> Vec<String> {
                 "auto_rollback" => format!("\u{26a0}\u{fe0f} 检测到质量下降，已自动回滚: {}", id),
                 "reusable_promoted" => format!("\u{2b06}\u{fe0f} 规则晋升为通用: {}", id),
                 "reusable_demoted" => format!("\u{2b07}\u{fe0f} 规则降级为低效: {}", id),
+                // EVO-6: External learning change types
+                "external_rule_added" => format!("\u{1f310} 已从外部来源学习规则: {}", id),
+                "external_rule_promoted" => format!("\u{2b06}\u{fe0f} 外部规则晋升为优质: {}", id),
+                "source_paused" => format!("\u{23f8}\u{fe0f} 信源可达性过低，已暂停: {}", id),
+                "source_retired" => format!("\u{1f5d1}\u{fe0f} 已退役低质量信源: {}", id),
+                "source_discovered" => format!("\u{1f50d} 发现新信源: {}", id),
                 _ => return None,
             };
             Some(msg)

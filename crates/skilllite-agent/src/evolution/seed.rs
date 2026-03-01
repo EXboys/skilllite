@@ -1,4 +1,4 @@
-//! Seed data management for the self-evolving engine (EVO-2).
+//! Seed data management for the self-evolving engine (EVO-2 + EVO-6).
 //!
 //! Compiled-in seed data → `~/.skilllite/chat/prompts/` on first run.
 //! After that, runtime reads from disk (user-editable).
@@ -6,13 +6,14 @@
 
 use std::path::{Path, PathBuf};
 
-use super::super::types::PlanningRule;
+use super::super::types::{PlanningRule, SourceEntry, SourceRegistry};
 
 /// Bump this when seed data changes to trigger re-seeding on upgrade.
 const SEED_VERSION: u32 = 1;
 
 // Compiled-in seed data (include_str! embeds file content into the binary).
 const SEED_RULES: &str = include_str!("../seed/rules.seed.json");
+const SEED_SOURCES: &str = include_str!("../seed/sources.seed.json");
 const SEED_SYSTEM: &str = include_str!("../seed/system.seed.md");
 const SEED_PLANNING: &str = include_str!("../seed/planning.seed.md");
 const SEED_EXECUTION: &str = include_str!("../seed/execution.seed.md");
@@ -47,13 +48,15 @@ pub fn ensure_seed_data(chat_root: &Path) {
     if !rules_exist {
         // First install: write all seed files
         write_seed_file(&dir, "rules.json", SEED_RULES);
+        write_seed_file(&dir, "sources.json", SEED_SOURCES);
         write_seed_file(&dir, "system.md", SEED_SYSTEM);
         write_seed_file(&dir, "planning.md", SEED_PLANNING);
         write_seed_file(&dir, "execution.md", SEED_EXECUTION);
         write_seed_file(&dir, "examples.md", SEED_EXAMPLES);
     } else {
-        // Upgrade: merge seed rules with existing user rules (preserve user edits).
+        // Upgrade: merge seed rules/sources with existing (preserve user edits).
         merge_seed_rules(&dir);
+        merge_seed_sources(&dir);
         // Overwrite templates only if they haven't been customized.
         write_if_unchanged(&dir, "system.md", SEED_SYSTEM);
         write_if_unchanged(&dir, "planning.md", SEED_PLANNING);
@@ -74,6 +77,7 @@ pub fn ensure_seed_data_force(chat_root: &Path) {
         return;
     }
     write_seed_file(&dir, "rules.json", SEED_RULES);
+    write_seed_file(&dir, "sources.json", SEED_SOURCES);
     write_seed_file(&dir, "system.md", SEED_SYSTEM);
     write_seed_file(&dir, "planning.md", SEED_PLANNING);
     write_seed_file(&dir, "execution.md", SEED_EXECUTION);
@@ -139,6 +143,53 @@ fn merge_seed_rules(dir: &Path) {
     }
 }
 
+/// Merge seed sources into existing sources.json, preserving evolved/user sources.
+fn merge_seed_sources(dir: &Path) {
+    let sources_path = dir.join("sources.json");
+    let seed_registry: SourceRegistry = match serde_json::from_str(SEED_SOURCES) {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!("Failed to parse SEED_SOURCES: {}", e);
+            return;
+        }
+    };
+
+    let mut existing_registry: SourceRegistry = if sources_path.exists() {
+        std::fs::read_to_string(&sources_path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_else(|| SourceRegistry { version: 1, sources: Vec::new() })
+    } else {
+        SourceRegistry { version: 1, sources: Vec::new() }
+    };
+
+    for seed_src in &seed_registry.sources {
+        let already_exists = existing_registry.sources.iter().any(|s| s.id == seed_src.id);
+        if !already_exists {
+            existing_registry.sources.push(seed_src.clone());
+        }
+        // Immutable seed sources get their static fields updated on upgrade,
+        // but runtime counters (fetch counts, accessibility, etc.) are preserved.
+        if let Some(existing) = existing_registry
+            .sources
+            .iter_mut()
+            .find(|s| s.id == seed_src.id && !s.mutable)
+        {
+            existing.name = seed_src.name.clone();
+            existing.url = seed_src.url.clone();
+            existing.source_type = seed_src.source_type.clone();
+            existing.parser = seed_src.parser.clone();
+            existing.region = seed_src.region.clone();
+            existing.language = seed_src.language.clone();
+            existing.domains = seed_src.domains.clone();
+        }
+    }
+
+    if let Ok(json) = serde_json::to_string_pretty(&existing_registry) {
+        write_seed_file(dir, "sources.json", &json);
+    }
+}
+
 // ─── Public loaders ─────────────────────────────────────────────────────────
 
 /// Load planning rules from disk, falling back to compiled-in seed.
@@ -156,6 +207,30 @@ pub fn load_rules(chat_root: &Path) -> Vec<PlanningRule> {
     }
     // Fallback to compiled-in seed
     serde_json::from_str(SEED_RULES).unwrap_or_default()
+}
+
+/// Load source registry from disk, falling back to compiled-in seed.
+pub fn load_sources(chat_root: &Path) -> SourceRegistry {
+    let path = prompts_dir(chat_root).join("sources.json");
+    if path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            if let Ok(registry) = serde_json::from_str::<SourceRegistry>(&content) {
+                if !registry.sources.is_empty() {
+                    tracing::debug!(
+                        "Loaded {} sources from {}",
+                        registry.sources.len(),
+                        path.display()
+                    );
+                    return registry;
+                }
+            }
+        }
+    }
+    // Fallback to compiled-in seed
+    serde_json::from_str(SEED_SOURCES).unwrap_or_else(|_| SourceRegistry {
+        version: 1,
+        sources: Vec::new(),
+    })
 }
 
 /// Load the system prompt template from disk, falling back to compiled-in seed.

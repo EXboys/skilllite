@@ -537,6 +537,22 @@ pub fn query_rule_history(conn: &Connection, target_id: &str) -> Result<Vec<Evol
     Ok(rows)
 }
 
+// ─── EVO-6: External rule promotion ─────────────────────────────────────────
+
+/// Find external rules (origin="external") with effectiveness ≥ 0.7 that
+/// haven't yet been promoted to priority 65 (i.e., still at 45-55 range).
+pub fn find_promotable_external_rules(conn: &Connection, chat_root: &Path) -> Result<Vec<String>> {
+    let rules = super::seed::load_rules(chat_root);
+    let mut promotable = Vec::new();
+    for rule in rules.iter().filter(|r| r.origin == "external" && r.priority < 65) {
+        let eff = compute_effectiveness(conn, &rule.id)?;
+        if eff >= 0.7 {
+            promotable.push(rule.id.clone());
+        }
+    }
+    Ok(promotable)
+}
+
 // ─── Open evolution DB ──────────────────────────────────────────────────────
 
 /// Open (or create) the evolution SQLite database, ensuring all tables exist.

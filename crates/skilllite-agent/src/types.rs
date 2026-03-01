@@ -676,6 +676,67 @@ fn default_origin() -> String {
     "seed".to_string()
 }
 
+// ─── EVO-6: External source registry ─────────────────────────────────────────
+
+fn default_source_quality() -> f32 {
+    0.70
+}
+
+fn default_source_accessibility() -> f32 {
+    0.80
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+/// A single external information source entry in the source registry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceEntry {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    /// "json_api", "rss", or "html"
+    pub source_type: String,
+    /// Parser name: "juejin", "rss_generic", "infoq_cn", "hn_algolia", "github_trending_html"
+    pub parser: String,
+    /// "cn" or "global"
+    pub region: String,
+    pub language: String,
+    #[serde(default)]
+    pub domains: Vec<String>,
+    /// Long-term quality signal (0.0–1.0).
+    #[serde(default = "default_source_quality")]
+    pub quality_score: f32,
+    /// EMA-smoothed fetch accessibility (0.0–1.0, α=0.3).
+    #[serde(default = "default_source_accessibility")]
+    pub accessibility_score: f32,
+    /// Total planning rules this source has contributed.
+    #[serde(default)]
+    pub rules_contributed: u32,
+    #[serde(default)]
+    pub fetch_success_count: u32,
+    #[serde(default)]
+    pub fetch_fail_count: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_fetched: Option<String>,
+    /// Whether the evolution engine can modify or retire this source.
+    #[serde(default)]
+    pub mutable: bool,
+    /// "seed", "evolved", or "discovered"
+    #[serde(default = "default_origin")]
+    pub origin: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+/// The full source registry, versioned for schema evolution.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SourceRegistry {
+    pub version: u32,
+    pub sources: Vec<SourceEntry>,
+}
+
 // ─── Phase 2: Environment config helpers ───────────────────────────────────
 //
 // Ported from Python `config/env_config.py`.
