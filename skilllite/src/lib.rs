@@ -36,32 +36,64 @@ pub fn run_cli() -> Result<()> {
         Commands::Run {
             skill_dir,
             input_json,
+            soul,
+            goal,
             allow_network,
             cache_dir,
             max_memory,
             timeout,
             sandbox_level,
+            workspace,
+            skill_dirs,
+            max_iterations,
         } => {
-            let input_json = if input_json == "-" {
-                let mut s = String::new();
-                std::io::stdin().read_to_string(&mut s)?;
-                s
+            if let Some(g) = goal {
+                #[cfg(feature = "agent")]
+                {
+                    skilllite_agent::chat::run_agent_run(
+                        None,
+                        None,
+                        None,
+                        workspace,
+                        skill_dirs,
+                        soul,
+                        g,
+                        max_iterations,
+                        true,
+                    )?;
+                }
+                #[cfg(not(feature = "agent"))]
+                {
+                    anyhow::bail!(
+                        "Agent run mode requires the agent feature. Build with: cargo build --features agent"
+                    );
+                }
+            } else if let (Some(sd), Some(ij)) = (skill_dir, input_json) {
+                let input_json = if ij == "-" {
+                    let mut s = String::new();
+                    std::io::stdin().read_to_string(&mut s)?;
+                    s
+                } else {
+                    ij
+                };
+                let sandbox_level =
+                    skilllite_sandbox::runner::SandboxLevel::from_env_or_cli(sandbox_level);
+                let limits = skilllite_sandbox::runner::ResourceLimits::from_env()
+                    .with_cli_overrides(max_memory, timeout);
+                let result = commands::execute::run_skill(
+                    &sd,
+                    &input_json,
+                    allow_network,
+                    cache_dir.as_ref(),
+                    limits,
+                    sandbox_level,
+                )?;
+                println!("{}", result);
             } else {
-                input_json
-            };
-            let sandbox_level =
-                skilllite_sandbox::runner::SandboxLevel::from_env_or_cli(sandbox_level);
-            let limits = skilllite_sandbox::runner::ResourceLimits::from_env()
-                .with_cli_overrides(max_memory, timeout);
-            let result = commands::execute::run_skill(
-                &skill_dir,
-                &input_json,
-                allow_network,
-                cache_dir.as_ref(),
-                limits,
-                sandbox_level,
-            )?;
-            println!("{}", result);
+                anyhow::bail!(
+                    "Use either: skilllite run <SKILL_DIR> '<INPUT_JSON>'  OR  skilllite run --goal \"...\" [--soul SOUL.md]"
+                );
+            }
         }
         Commands::Exec {
             skill_dir,

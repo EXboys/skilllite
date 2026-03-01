@@ -625,6 +625,54 @@ impl EventSink for TerminalEventSink {
     }
 }
 
+/// Event sink for unattended run mode: same output as TerminalEventSink,
+/// but auto-approves confirmation requests (run_command, L3 skill scan).
+/// Replan (update_task_plan) never waits — agent continues immediately.
+pub struct RunModeEventSink {
+    inner: TerminalEventSink,
+}
+
+impl RunModeEventSink {
+    pub fn new(verbose: bool) -> Self {
+        Self {
+            inner: TerminalEventSink::new(verbose),
+        }
+    }
+}
+
+impl EventSink for RunModeEventSink {
+    fn on_turn_start(&mut self) {
+        self.inner.on_turn_start();
+    }
+    fn on_text(&mut self, text: &str) {
+        self.inner.on_text(text);
+    }
+    fn on_text_chunk(&mut self, chunk: &str) {
+        self.inner.on_text_chunk(chunk);
+    }
+    fn on_tool_call(&mut self, name: &str, arguments: &str) {
+        self.inner.on_tool_call(name, arguments);
+    }
+    fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool) {
+        self.inner.on_tool_result(name, result, is_error);
+    }
+    fn on_confirmation_request(&mut self, prompt: &str) -> bool {
+        if !prompt.is_empty() {
+            for line in prompt.lines() {
+                eprintln!("{}", line);
+            }
+        }
+        eprintln!("  [run mode: auto-approved]");
+        true
+    }
+    fn on_task_plan(&mut self, tasks: &[Task]) {
+        self.inner.on_task_plan(tasks);
+    }
+    fn on_task_progress(&mut self, task_id: u32, completed: bool) {
+        self.inner.on_task_progress(task_id, completed);
+    }
+}
+
 // ─── Phase 2: Task planning types ──────────────────────────────────────────
 
 /// A task in the task plan.

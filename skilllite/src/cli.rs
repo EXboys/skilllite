@@ -11,15 +11,27 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    /// Run a skill with the given input (requires entry_point in SKILL.md)
+    /// Run a skill or agent.
+    ///
+    /// Two modes (mutually exclusive):
+    ///   skilllite run <SKILL_DIR> '<INPUT_JSON>'     — Run a skill (requires entry_point)
+    ///   skilllite run --soul SOUL.md --goal "..."   — Agent run: one-time goal, continuous execution, replan without waiting
     Run {
-        /// Path to the skill directory
+        /// Path to the skill directory (required for skill mode)
         #[arg(value_name = "SKILL_DIR")]
-        skill_dir: String,
+        skill_dir: Option<String>,
 
-        /// Input JSON string
+        /// Input JSON string (required for skill mode)
         #[arg(value_name = "INPUT_JSON")]
-        input_json: String,
+        input_json: Option<String>,
+
+        /// [Agent run] Path to SOUL.md identity document
+        #[arg(long)]
+        soul: Option<String>,
+
+        /// [Agent run] Goal to achieve (continuous execution until done/timeout)
+        #[arg(long)]
+        goal: Option<String>,
 
         /// Allow network access (override SKILL.md policy)
         #[arg(long, default_value = "false")]
@@ -40,6 +52,18 @@ pub enum Commands {
         /// Sandbox level: 1=no sandbox, 2=sandbox only, 3=sandbox+scan (default: from env or 3)
         #[arg(long)]
         sandbox_level: Option<u8>,
+
+        /// [Agent run] Workspace directory (default: current directory)
+        #[arg(long, short)]
+        workspace: Option<String>,
+
+        /// [Agent run] Skills directories (default: auto-discover .skills, skills)
+        #[arg(long, short = 's')]
+        skill_dirs: Vec<String>,
+
+        /// [Agent run] Maximum agent loop iterations
+        #[arg(long, default_value = "50")]
+        max_iterations: usize,
     },
 
     /// Execute a specific script directly in sandbox (no SKILL.md entry_point required)

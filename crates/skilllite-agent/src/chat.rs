@@ -154,6 +154,101 @@ pub fn run_chat(
     }
 }
 
+/// Run agent in unattended mode: one-time goal, continuous execution until done/timeout.
+/// Replan (update_task_plan) does not wait for user — agent continues immediately.
+/// Confirmations (run_command, L3 skill scan) are auto-approved.
+pub fn run_agent_run(
+    api_base: Option<String>,
+    api_key: Option<String>,
+    model: Option<String>,
+    workspace: Option<String>,
+    skill_dirs: Vec<String>,
+    soul_path: Option<String>,
+    goal: String,
+    max_iterations: usize,
+    verbose: bool,
+) -> Result<()> {
+    let mut config = AgentConfig::from_env();
+    if let Some(base) = api_base {
+        config.api_base = base;
+    }
+    if let Some(key) = api_key {
+        config.api_key = key;
+    }
+    if let Some(m) = model {
+        config.model = m;
+    }
+    if let Some(ws) = workspace {
+        config.workspace = ws;
+    }
+    config.max_iterations = max_iterations;
+    config.soul_path = soul_path;
+    config.verbose = verbose;
+    config.enable_task_planning = true;
+    config.enable_memory = true;
+
+    if config.api_key.is_empty() {
+        anyhow::bail!(
+            "API key required. Set OPENAI_API_KEY env var or use --api-key flag."
+        );
+    }
+
+    skilllite_core::config::ensure_default_output_dir();
+
+    let (effective_skill_dirs, was_auto_discovered) = if skill_dirs.is_empty() {
+        let ws = Path::new(&config.workspace);
+        let mut auto_dirs = Vec::new();
+        for name in &[".skills", "skills"] {
+            let dir = ws.join(name);
+            if dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() && path.join("SKILL.md").exists() {
+                            auto_dirs.push(path.to_string_lossy().to_string());
+                        }
+                    }
+                }
+                if auto_dirs.is_empty() {
+                    auto_dirs.push(dir.to_string_lossy().to_string());
+                }
+            }
+        }
+        let has_skills = !auto_dirs.is_empty();
+        (auto_dirs, has_skills)
+    } else {
+        (skill_dirs, false)
+    };
+
+    let loaded_skills = skills::load_skills(&effective_skill_dirs);
+    if !loaded_skills.is_empty() {
+        eprintln!("┌─ Run mode ───────────────────────────────────────────────");
+        if was_auto_discovered {
+            eprintln!("│  🔍 Auto-discovered {} skill(s)", loaded_skills.len());
+        }
+        let names: Vec<&str> = loaded_skills.iter().map(|s| s.name.as_str()).collect();
+        let list = if names.len() <= 6 {
+            names.join(", ")
+        } else {
+            format!("{} … +{} more", names[..5].join(", "), names.len() - 5)
+        };
+        eprintln!("│  📦 {}", list);
+        eprintln!("│  🎯 Goal: {}", goal);
+        eprintln!("└───────────────────────────────────────────────────────────\n");
+    }
+
+    let rt = tokio::runtime::Runtime::new()
+        .context("Failed to create tokio runtime")?;
+
+    rt.block_on(async {
+        let mut session = ChatSession::new(config, "run", loaded_skills);
+        let mut sink = RunModeEventSink::new(verbose);
+        let response = session.run_turn(&goal, &mut sink).await?;
+        println!("\n{}", response);
+        Ok(())
+    })
+}
+
 /// Format agent/API errors for user-friendly display in chat UI.
 fn format_chat_error(e: &anyhow::Error) -> String {
     let s = e.to_string();
