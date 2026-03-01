@@ -27,11 +27,12 @@ use serde::{Deserialize, Serialize};
 use crate::mcp;
 use crate::stdio_rpc;
 
-// ─── Standard Node I/O Types ────────────────────────────────────────────────
+// Re-export protocol types from skilllite-core for Entry Layer handlers.
+pub use skilllite_core::protocol::{NewSkill, NodeResult};
+
+// ─── Standard Node I/O Types (input side) ────────────────────────────────────
 //
-// These types are the shared "currency" across all protocol handlers and the
-// future P2P routing layer.  They intentionally carry only what a remote peer
-// (or a routing layer) needs to understand — not the full agent internals.
+// NodeContext and NodeTask are input types; NodeResult/NewSkill are in skilllite-core.
 
 /// Execution context attached to every [`NodeTask`].
 ///
@@ -69,46 +70,6 @@ pub struct NodeTask {
     /// Optional hint for which skill or tool to prefer (e.g. `"web-scraper"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_hint: Option<String>,
-}
-
-/// An evolved skill produced during task execution.
-///
-/// Emitted in [`NodeResult::new_skill`] when the Evolution Engine synthesises
-/// or refines a skill as a side-effect of completing a task.  P2P peers that
-/// receive a `NodeResult` containing `new_skill` can optionally import it
-/// after sandbox verification (Gossip sync).
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NewSkill {
-    /// Skill name — matches the `name` field in `SKILL.md`.
-    pub name: String,
-    /// Human-readable description of what the skill does.
-    pub description: String,
-    /// Local filesystem path where the skill was installed.
-    pub path: String,
-    /// Evolution transaction ID — used for rollback via `skilllite evolution reset`.
-    pub txn_id: String,
-}
-
-/// Standard result unit — the universal output for local execution and P2P routing.
-///
-/// Maps to `AgentResult` internally; fields are intentionally kept minimal so
-/// that routing layers and remote peers can parse results without knowing agent
-/// internals.
-#[allow(dead_code)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NodeResult {
-    /// Echoed task ID (matches [`NodeTask::id`]).
-    pub task_id: String,
-    /// Agent's final response text.
-    pub response: String,
-    /// Whether the agent marked the task as completed.
-    pub task_completed: bool,
-    /// Total tool calls made during execution.
-    pub tool_calls: usize,
-    /// Newly synthesised skill, if the Evolution Engine produced one.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub new_skill: Option<NewSkill>,
 }
 
 // ─── Protocol Parameters ─────────────────────────────────────────────────────

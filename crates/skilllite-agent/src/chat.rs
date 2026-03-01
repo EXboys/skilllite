@@ -143,8 +143,8 @@ pub fn run_chat(
         rt.block_on(async {
             let mut session = ChatSession::new(config, &session_key, loaded_skills);
             let mut sink = TerminalEventSink::new(verbose);
-            let response = session.run_turn(&msg, &mut sink).await?;
-            println!("\n{}", response);
+            let result = session.run_turn(&msg, &mut sink).await?;
+            println!("\n{}", result.response);
             Ok(())
         })
     } else {

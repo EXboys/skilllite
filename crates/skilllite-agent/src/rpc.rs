@@ -31,7 +31,7 @@
 //! {"event": "task_plan", "data": {"tasks": [...]}}
 //! {"event": "task_progress", "data": {"task_id": 1, "completed": true}}
 //! {"event": "confirmation_request", "data": {"prompt": "Execute rm -rf?"}}
-//! {"event": "done", "data": {"response": "...", "tool_calls_count": 3, "iterations": 2}}
+//! {"event": "done", "data": {"task_id": "...", "response": "...", "task_completed": true, "tool_calls": 3, "new_skill": null}}
 //! {"event": "error", "data": {"message": "..."}}
 //! ```
 //!
@@ -45,6 +45,7 @@ use serde_json::{json, Value};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
+use uuid::Uuid;
 
 use super::types::*;
 use super::{chat_session::ChatSession, skills};
@@ -289,12 +290,19 @@ async fn handle_agent_chat(
     let mut sink = RpcEventSink::new(writer.clone(), reader);
 
     match session.run_turn(message, &mut sink).await {
-        Ok(response) => {
-            emit_event(
-                &writer,
-                "done",
-                json!({ "response": response }),
-            );
+        Ok(agent_result) => {
+            let task_id = Uuid::new_v4().to_string();
+            let node_result = agent_result.to_node_result(&task_id);
+            let data = serde_json::to_value(&node_result).unwrap_or_else(|_| {
+                serde_json::json!({
+                    "task_id": task_id,
+                    "response": agent_result.response,
+                    "task_completed": agent_result.feedback.task_completed,
+                    "tool_calls": agent_result.feedback.total_tools,
+                    "new_skill": serde_json::Value::Null
+                })
+            });
+            emit_event(&writer, "done", data);
         }
         Err(e) => {
             emit_event(

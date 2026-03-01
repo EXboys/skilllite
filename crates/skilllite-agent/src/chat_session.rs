@@ -156,7 +156,7 @@ impl ChatSession {
         &mut self,
         user_message: &str,
         event_sink: &mut dyn EventSink,
-    ) -> Result<String> {
+    ) -> Result<AgentResult> {
         self.run_turn_inner(user_message, event_sink, None).await
     }
 
@@ -166,7 +166,7 @@ impl ChatSession {
         user_message: &str,
         event_sink: &mut dyn EventSink,
         history_override: Vec<ChatMessage>,
-    ) -> Result<String> {
+    ) -> Result<AgentResult> {
         self.run_turn_inner(user_message, event_sink, Some(history_override))
             .await
     }
@@ -176,7 +176,7 @@ impl ChatSession {
         user_message: &str,
         event_sink: &mut dyn EventSink,
         history_override: Option<Vec<ChatMessage>>,
-    ) -> Result<String> {
+    ) -> Result<AgentResult> {
         let _session_id = self.ensure_session()?;
 
         // EVO-1: Classify previous turn's user feedback from this message.
@@ -280,7 +280,7 @@ impl ChatSession {
         // EVO-3: (Re)start idle evolution timer. Cancel previous timer if any.
         self.restart_idle_evolution_timer();
 
-        Ok(result.response)
+        Ok(result)
     }
 
     // ─── EVO-3: Idle evolution trigger ─────────────────────────────────────

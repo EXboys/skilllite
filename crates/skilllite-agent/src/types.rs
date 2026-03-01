@@ -360,6 +360,20 @@ pub struct AgentResult {
     pub feedback: ExecutionFeedback,
 }
 
+impl AgentResult {
+    /// Convert to protocol-layer [`NodeResult`] for stdio_rpc/agent_chat/P2P.
+    /// `task_id` is echoed back; use a generated UUID when the caller did not provide one.
+    pub fn to_node_result(&self, task_id: impl Into<String>) -> skilllite_core::protocol::NodeResult {
+        skilllite_core::protocol::NodeResult {
+            task_id: task_id.into(),
+            response: self.response.clone(),
+            task_completed: self.feedback.task_completed,
+            tool_calls: self.feedback.total_tools,
+            new_skill: None, // TODO: wire from skill_synth when EVO-5 NewSkill接线完成
+        }
+    }
+}
+
 // ─── EVO-1: Execution feedback types ────────────────────────────────────────
 
 /// Structured feedback collected from each agent loop execution.
