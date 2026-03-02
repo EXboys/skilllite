@@ -57,6 +57,41 @@ pub(super) struct ToolBatchOutcome {
     pub depth_limit_reached: bool,
 }
 
+// ── Auto-mark on skill success ─────────────────────────────────────────────────
+
+/// If the tool result contains `"success": true` and the tool matches the current
+/// task's tool_hint, mark that task completed. Reduces redundant retries when the
+/// LLM doesn't call update_task_plan.
+fn try_auto_mark_task_on_success(
+    planner: &mut TaskPlanner,
+    tool_name: &str,
+    result_content: &str,
+    event_sink: &mut dyn EventSink,
+) {
+    let task_id = match planner.current_task() {
+        Some(t) => {
+            let h = t.tool_hint.as_deref().map(|x| x.replace('-', "_").to_lowercase());
+            let tn = tool_name.replace('-', "_").to_lowercase();
+            if h.as_deref() == Some(tn.as_str()) { t.id } else { return }
+        }
+        None => return,
+    };
+    // Check for success in JSON (skills typically return {"success": true, ...})
+    if !result_content.contains("\"success\"") || !result_content.contains("true") {
+        return;
+    }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(result_content) {
+        if v.get("success").and_then(|s| s.as_bool()) != Some(true) {
+            return;
+        }
+    } else {
+        return;
+    }
+    planner.mark_completed(task_id);
+    event_sink.on_task_progress(task_id, true);
+    tracing::info!("Auto-marked task {} completed (skill {} succeeded)", task_id, tool_name);
+}
+
 // ── Planning-mode batch ───────────────────────────────────────────────────────
 
 /// Execute a batch of tool calls in **planning mode** (supports `update_task_plan`).
@@ -105,6 +140,10 @@ pub(super) async fn execute_tool_batch_planning(
             result.content.push_str("\n\nTip: Consider update_task_plan if the approach needs to change.");
         } else {
             state.consecutive_failures = 0;
+            // Auto-mark task when skill succeeds and matches current task's tool_hint
+            if !is_replan {
+                try_auto_mark_task_on_success(planner, tool_name, &result.content, event_sink);
+            }
         }
         if !is_replan {
             state.tools_detail.push(ToolExecDetail { tool: tool_name.clone(), success: !result.is_error });

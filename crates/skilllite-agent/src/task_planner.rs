@@ -437,23 +437,42 @@ impl TaskPlanner {
     }
 
     /// Check if tasks were completed based on LLM response content.
+    /// Supports both English and Chinese completion phrases.
     pub fn check_completion_in_content(&self, content: &str) -> Vec<u32> {
         if content.is_empty() {
             return Vec::new();
         }
         let content_lower = content.to_lowercase();
+        let content_zh = content;
         let mut completed_ids = Vec::new();
         for task in &self.task_list {
             if !task.completed {
+                // English patterns
                 let pattern1 = format!("task {} completed", task.id);
                 let pattern2 = format!("task{} completed", task.id);
                 let pattern3 = format!("task {} complete", task.id);
                 let pattern4 = format!("✅ task {}", task.id);
-                if content_lower.contains(&pattern1)
+                let en_match = content_lower.contains(&pattern1)
                     || content_lower.contains(&pattern2)
                     || content_lower.contains(&pattern3)
-                    || content_lower.contains(&pattern4)
-                {
+                    || content_lower.contains(&pattern4);
+
+                // Chinese patterns (LLM often responds in Chinese)
+                let zh_task = format!("任务{}已完成", task.id);
+                let zh_task_spaced = format!("任务 {} 已完成", task.id);
+                let zh_marked = format!("任务{}为已完成", task.id);
+                let zh_marked_spaced = format!("任务 {} 为已完成", task.id);
+                let zh_single = self.task_list.len() == 1
+                    && (content_zh.contains("标记为已完成")
+                        || content_zh.contains("标记此任务已完成")
+                        || (content_zh.contains("标记") && content_zh.contains("已完成")));
+                let zh_match = content_zh.contains(&zh_task)
+                    || content_zh.contains(&zh_task_spaced)
+                    || content_zh.contains(&zh_marked)
+                    || content_zh.contains(&zh_marked_spaced)
+                    || zh_single;
+
+                if en_match || zh_match {
                     completed_ids.push(task.id);
                 }
             }
