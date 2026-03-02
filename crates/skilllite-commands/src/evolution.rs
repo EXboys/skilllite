@@ -11,10 +11,16 @@ use skilllite_core::config::env_keys::paths;
 use skilllite_core::protocol::{NewSkill, NodeResult};
 
 fn chat_root() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".skilllite")
-        .join("chat")
+    let data_root = std::env::var("SKILLLITE_WORKSPACE")
+        .ok()
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".skilllite")
+        });
+    data_root.join("chat")
 }
 
 /// Resolve workspace for project-level skill evolution.

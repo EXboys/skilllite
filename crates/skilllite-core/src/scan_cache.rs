@@ -22,10 +22,16 @@ struct CachedEntry {
 }
 
 fn cache_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".skilllite")
-        .join(CACHE_FILENAME)
+    let root = std::env::var("SKILLLITE_WORKSPACE")
+        .ok()
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".skilllite")
+        });
+    root.join(CACHE_FILENAME)
 }
 
 /// Compute SHA256 hash of content for cache key.

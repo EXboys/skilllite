@@ -743,8 +743,7 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 // ─── Auto-backup (II2) ─────────────────────────────────────────────────────
 
 fn backup_file_before_edit(resolved: &Path) -> Option<String> {
-    let home = dirs::home_dir()?;
-    let backup_dir = home.join(".skilllite").join("edit-backups");
+    let backup_dir = skilllite_executor::skilllite_data_root().join("edit-backups");
     std::fs::create_dir_all(&backup_dir).ok()?;
 
     let filename = resolved.file_name()?.to_string_lossy().to_string();

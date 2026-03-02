@@ -24,9 +24,7 @@ use super::types::*;
 /// Resolve the output directory path for prompt injection.
 fn resolve_output_dir() -> String {
     get_output_dir().unwrap_or_else(|| {
-        dirs::home_dir()
-            .unwrap_or_else(|| std::path::PathBuf::from("."))
-            .join(".skilllite")
+        skilllite_executor::skilllite_data_root()
             .join("chat")
             .join("output")
             .to_string_lossy()
@@ -82,6 +80,8 @@ pub struct TaskPlanner {
     pub task_list: Vec<Task>,
     /// Planning rules (loaded from file or seed).
     rules: Vec<PlanningRule>,
+    /// Rules filtered by actually available skills (computed lazily).
+    available_rules: Vec<PlanningRule>,
     /// Chat data root for loading prompt templates.
     chat_root: Option<std::path::PathBuf>,
     /// EVO-5: Workspace path for project-level prompt overrides.
@@ -94,12 +94,36 @@ impl TaskPlanner {
     /// `workspace`: per-project override directory.
     /// `chat_root`: `~/.skilllite/chat/` for loading prompts from the seed system.
     pub fn new(workspace: Option<&Path>, chat_root: Option<&Path>) -> Self {
+        let rules = planning_rules::load_rules(workspace, chat_root);
         Self {
             task_list: Vec::new(),
-            rules: planning_rules::load_rules(workspace, chat_root),
+            available_rules: rules.clone(),
+            rules,
             chat_root: chat_root.map(|p| p.to_path_buf()),
             workspace: workspace.map(|p| p.to_path_buf()),
         }
+    }
+
+    /// Filter out rules whose tool_hint references a skill that isn't loaded.
+    /// Builtin hints (file_operation, chat_history, memory_write, memory_search, analysis)
+    /// are always allowed.
+    fn filter_rules_by_available_skills(rules: &[PlanningRule], skills: &[LoadedSkill]) -> Vec<PlanningRule> {
+        const BUILTIN_HINTS: &[&str] = &[
+            "file_operation", "chat_history", "memory_write", "memory_search", "analysis",
+        ];
+        rules.iter().filter(|r| {
+            match r.tool_hint.as_deref() {
+                None => true,
+                Some(hint) => {
+                    BUILTIN_HINTS.contains(&hint)
+                    || skills.iter().any(|s| {
+                        s.name == hint
+                        || s.name.replace('-', "_") == hint.replace('-', "_")
+                        || s.tool_definitions.iter().any(|td| td.function.name == hint.replace('-', "_"))
+                    })
+                }
+            }
+        }).cloned().collect()
     }
 
     /// Generate task list from user message using LLM.
@@ -117,6 +141,8 @@ impl TaskPlanner {
         goal_boundaries: Option<&GoalBoundaries>,
         soul: Option<&Soul>,
     ) -> Result<Vec<Task>> {
+        self.available_rules = Self::filter_rules_by_available_skills(&self.rules, skills);
+
         let skills_info = if skills.is_empty() {
             "None".to_string()
         } else {
@@ -283,10 +309,10 @@ impl TaskPlanner {
     ) -> String {
         let compact = get_compact_planning(model);
         let rules_section = if compact {
-            let filtered: Vec<&PlanningRule> = filter_rules_for_user_message(&self.rules, user_message);
+            let filtered: Vec<&PlanningRule> = filter_rules_for_user_message(&self.available_rules, user_message);
             build_rules_section(&filtered.iter().map(|r| (*r).clone()).collect::<Vec<_>>())
         } else {
-            build_rules_section(&self.rules)
+            build_rules_section(&self.available_rules)
         };
         let examples_section = if compact {
             planning_rules::compact_examples_section(user_message)

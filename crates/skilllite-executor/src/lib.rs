@@ -6,8 +6,17 @@ pub mod transcript;
 
 use anyhow::Result;
 
-/// Resolve skilllite data root (~/.skilllite). Used for chat, memory, etc.
+/// Resolve skilllite data root.
+///
+/// Priority: SKILLLITE_WORKSPACE env var (used by evotown for per-agent isolation)
+///         → ~/.skilllite (default for standalone usage)
 pub fn skilllite_data_root() -> std::path::PathBuf {
+    if let Ok(ws) = std::env::var("SKILLLITE_WORKSPACE") {
+        let p = std::path::PathBuf::from(ws);
+        if p.is_absolute() {
+            return p;
+        }
+    }
     dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join(".skilllite")
