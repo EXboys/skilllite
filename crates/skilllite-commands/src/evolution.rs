@@ -573,7 +573,15 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
                         hint.push_str("\n\n提示: 进化需要 task_description。当前待处理决策均无 task_description。");
                         hint.push_str("\n请使用最新构建: cargo build && ./target/debug/skilllite run --goal \"...\"");
                     } else if total == 0 {
-                        hint.push_str("\n\n提示: 进化队列为空。请先运行 skilllite run 或 skilllite chat 积累决策。");
+                        let all_count: i64 = conn
+                            .query_row("SELECT COUNT(*) FROM decisions", [], |r| r.get(0))
+                            .unwrap_or(0);
+                        if all_count > 0 {
+                            hint.push_str("\n\n提示: 待处理决策队列为空。已有决策均已进化完毕（已进化）。");
+                            hint.push_str("\n请执行新任务积累新决策后再触发进化。");
+                        } else {
+                            hint.push_str("\n\n提示: 进化队列为空。请先运行 skilllite run 或 skilllite chat 积累决策。");
+                        }
                     }
                 }
             }

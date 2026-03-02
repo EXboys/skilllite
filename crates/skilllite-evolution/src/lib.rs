@@ -606,6 +606,9 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         let _ = feedback::update_daily_metrics(&conn);
 
         if all_changes.is_empty() {
+            // 即使无变更也记录一次，便于前端时间线展示进化运行记录
+            let reason = "进化运行完成，无新规则/技能产出";
+            let _ = log_evolution_event(&conn, chat_root, "evolution_run", "run", reason, &txn_id);
             return Ok(None);
         }
 

@@ -104,26 +104,45 @@ impl TaskPlanner {
         }
     }
 
+    /// Builtin tool_hint values that don't require a loaded skill.
+    const BUILTIN_HINTS: &'static [&'static str] = &[
+        "file_operation", "chat_history", "memory_write", "memory_search", "analysis",
+    ];
+
     /// Filter out rules whose tool_hint references a skill that isn't loaded.
-    /// Builtin hints (file_operation, chat_history, memory_write, memory_search, analysis)
-    /// are always allowed.
     fn filter_rules_by_available_skills(rules: &[PlanningRule], skills: &[LoadedSkill]) -> Vec<PlanningRule> {
-        const BUILTIN_HINTS: &[&str] = &[
-            "file_operation", "chat_history", "memory_write", "memory_search", "analysis",
-        ];
         rules.iter().filter(|r| {
             match r.tool_hint.as_deref() {
                 None => true,
-                Some(hint) => {
-                    BUILTIN_HINTS.contains(&hint)
-                    || skills.iter().any(|s| {
-                        s.name == hint
-                        || s.name.replace('-', "_") == hint.replace('-', "_")
-                        || s.tool_definitions.iter().any(|td| td.function.name == hint.replace('-', "_"))
-                    })
-                }
+                Some(hint) => Self::is_hint_available(hint, skills),
             }
         }).cloned().collect()
+    }
+
+    /// Check if a tool_hint is available (builtin or loaded skill).
+    fn is_hint_available(hint: &str, skills: &[LoadedSkill]) -> bool {
+        Self::BUILTIN_HINTS.contains(&hint)
+            || skills.iter().any(|s| {
+                s.name == hint
+                || s.name.replace('-', "_") == hint.replace('-', "_")
+                || s.tool_definitions.iter().any(|td| td.function.name == hint.replace('-', "_"))
+            })
+    }
+
+    /// Strip tool_hints that reference unavailable skills from LLM-generated tasks.
+    /// The LLM may hallucinate tool names even when they're not in the prompt.
+    fn sanitize_task_hints(tasks: &mut [Task], skills: &[LoadedSkill]) {
+        for task in tasks.iter_mut() {
+            if let Some(ref hint) = task.tool_hint {
+                if !Self::is_hint_available(hint, skills) {
+                    tracing::info!(
+                        "Stripped unavailable tool_hint '{}' from task {}: {}",
+                        hint, task.id, task.description
+                    );
+                    task.tool_hint = None;
+                }
+            }
+        }
     }
 
     /// Generate task list from user message using LLM.
@@ -219,6 +238,7 @@ impl TaskPlanner {
 
                 match self.parse_task_list(&raw) {
                     Ok(mut tasks) => {
+                        Self::sanitize_task_hints(&mut tasks, skills);
                         self.auto_enhance_tasks(&mut tasks);
                         self.task_list = tasks.clone();
                         Ok(tasks)
