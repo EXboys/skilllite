@@ -140,7 +140,7 @@ async fn extract_rules<L: EvolutionLlm>(
 
     if !changes.is_empty() {
         let path = chat_root.join("prompts").join("rules.json");
-        if !gatekeeper_l1_path(chat_root, &path) {
+        if !gatekeeper_l1_path(chat_root, &path, None) {
             anyhow::bail!("Gatekeeper L1: rules.json path outside allowed directories");
         }
         let json = serde_json::to_string_pretty(&all_rules)?;
@@ -315,7 +315,7 @@ async fn generate_examples<L: EvolutionLlm>(
         return Ok(Vec::new());
     }
 
-    if !gatekeeper_l1_path(chat_root, &examples_path) {
+    if !gatekeeper_l1_path(chat_root, &examples_path, None) {
         anyhow::bail!("Gatekeeper L1: examples.json path outside allowed directories");
     }
 

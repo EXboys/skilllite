@@ -75,31 +75,23 @@ pub fn discover_skills_in_workspace(
 
 /// Discover skill directories for `load_skills`, as `Vec<String>`.
 ///
-/// When no skills are found in subdirs, returns existing parent dirs
-/// (e.g. `.skills`, `skills`) as fallback so `load_skills` can scan them.
-/// This matches the previous chat/rpc behavior.
+/// Returns parent dirs (e.g. `.skills`, `skills`) so `load_skills` can:
+/// - scan subdirs for regular skills
+/// - load evolved skills from `_evolved/` (EVO-4)
+/// Using parent dirs ensures both regular and evolved skills are loaded.
 pub fn discover_skill_dirs_for_loading(
     workspace: &Path,
     search_dirs: Option<&[&str]>,
 ) -> Vec<String> {
-    let discovered = discover_skills_in_workspace(workspace, search_dirs);
-    if !discovered.is_empty() {
-        return discovered
-            .into_iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect();
-    }
-
-    // Fallback: return parent dirs that exist (load_skills will scan them)
     let dirs = search_dirs.unwrap_or(SKILL_SEARCH_DIRS);
-    let mut fallback = Vec::new();
+    let mut result = Vec::new();
     for d in dirs {
         let p = workspace.join(d);
         if p.is_dir() {
-            fallback.push(p.to_string_lossy().to_string());
+            result.push(p.to_string_lossy().to_string());
         }
     }
-    fallback
+    result
 }
 
 #[cfg(test)]

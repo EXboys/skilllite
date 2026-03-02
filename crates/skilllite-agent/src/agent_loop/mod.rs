@@ -189,7 +189,7 @@ async fn run_simple_loop(
         elapsed_ms: start_time.elapsed().as_millis() as u64,
         context_overflow_retries: state.context_overflow_retries,
         task_completed: true,
-        task_description: None,
+        task_description: Some(user_message.to_string()),
         rules_used: Vec::new(),
         tools_detail: state.tools_detail,
     };
@@ -381,7 +381,7 @@ async fn run_with_task_planning(
         elapsed_ms: start_time.elapsed().as_millis() as u64,
         context_overflow_retries: state.context_overflow_retries,
         task_completed: planner.all_completed(),
-        task_description: None,
+        task_description: Some(user_message.to_string()),
         rules_used: Vec::new(),
         tools_detail: state.tools_detail,
     };

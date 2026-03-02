@@ -19,12 +19,22 @@
     "origin": "seed"
   },
   {
+    "id": "seed_weather_forecast",
+    "priority": 95,
+    "keywords": ["明天", "后天", "未来几天", "未来", "预报", "forecast", "tomorrow", "后天天气", "大后天"],
+    "context_keywords": ["天气", "气温", "气象"],
+    "tool_hint": "check-weather-forecast",
+    "instruction": "**明天/后天/未来天气预报**: When the user asks about tomorrow, day after, or future weather (e.g. 明天天气, 后天深圳天气, 未来几天预报), use **check-weather-forecast** skill. The weather skill only provides real-time data; check-weather-forecast supports day_offset (0=today, 1=tomorrow, 2=day after). Return tool_hint: \"check-weather-forecast\".",
+    "mutable": false,
+    "origin": "seed"
+  },
+  {
     "id": "seed_weather",
     "priority": 90,
-    "keywords": ["天气", "气温", "气象", "今天天气", "明天天气", "适合出行吗", "适合出去玩吗"],
+    "keywords": ["天气", "气温", "气象", "今天天气", "适合出行吗", "适合出去玩吗"],
     "context_keywords": [],
     "tool_hint": "weather",
-    "instruction": "**天气/气象/天气预报**: When the user asks about weather, you MUST use **weather** skill. The LLM cannot provide real-time weather data; only the weather skill can. Return a task with tool_hint: \"weather\".",
+    "instruction": "**天气/气象（实时）**: When the user asks about current/today's weather (no 明天/后天/未来), use **weather** skill for real-time data. For tomorrow/future, use check-weather-forecast instead. Return a task with tool_hint: \"weather\".",
     "mutable": false,
     "origin": "seed"
   },

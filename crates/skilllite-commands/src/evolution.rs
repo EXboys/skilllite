@@ -4,9 +4,10 @@
 //! for inspecting, controlling, and debugging the self-evolution engine.
 
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use skilllite_agent::types::AgentConfig;
+use skilllite_core::config::env_keys::paths;
 use skilllite_core::protocol::{NewSkill, NodeResult};
 
 fn chat_root() -> PathBuf {
@@ -14,6 +15,22 @@ fn chat_root() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".skilllite")
         .join("chat")
+}
+
+/// Resolve workspace for project-level skill evolution.
+/// Uses SKILLLITE_WORKSPACE env or current_dir. Returns workspace/.skills.
+fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
+    let ws: PathBuf = workspace
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| std::env::var(paths::SKILLLITE_WORKSPACE).ok().map(PathBuf::from))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let ws = if ws.is_absolute() {
+        ws
+    } else {
+        std::env::current_dir().ok()?.join(ws)
+    };
+    Some(ws.join(".skills"))
 }
 
 /// `skilllite evolution status` — show evolution statistics, effectiveness, trends.
@@ -68,11 +85,13 @@ pub fn cmd_status() -> Result<()> {
     println!("  自动回滚次数: {}", rollback_count);
     println!();
 
-    // A14: 进化队列与待确认列表
+    // A14: 进化队列与待确认列表（项目级 skill 待确认）
     let unprocessed: i64 = conn
         .query_row("SELECT COUNT(*) FROM decisions WHERE evolved = 0", [], |r| r.get(0))
         .unwrap_or(0);
-    let pending = skilllite_evolution::skill_synth::list_pending_skills(&root);
+    let pending = resolve_skills_root(None)
+        .map(|sr| skilllite_evolution::skill_synth::list_pending_skills_with_review(&sr))
+        .unwrap_or_default();
 
     println!("📥 进化队列与待确认");
     // A9+EVO-5: 人机并存 — 两种触发：周期性、决策数阈值（已移除空闲5分钟触发以简化逻辑）
@@ -91,9 +110,22 @@ pub fn cmd_status() -> Result<()> {
         threshold
     );
     if !pending.is_empty() {
-        println!("  待确认 Skill: {}", pending.join(", "));
+        let items: Vec<String> = pending
+            .iter()
+            .map(|(name, needs_review)| {
+                if *needs_review {
+                    format!("{} (需审核)", name)
+                } else {
+                    name.clone()
+                }
+            })
+            .collect();
+        println!("  待确认 Skill: {}", items.join(", "));
         println!("    → 确认: skilllite evolution confirm <name>");
         println!("    → 拒绝: skilllite evolution reject <name>");
+        if pending.iter().any(|(_, r)| *r) {
+            println!("    💡 需审核: L4 未通过（如网络请求类），请在 SKILL.md 中声明 compatibility: network access 后 confirm");
+        }
     } else {
         println!("  待确认 Skill: (无)");
     }
@@ -114,9 +146,10 @@ pub fn cmd_status() -> Result<()> {
         }
     }
 
-    // Evolved skills count
-    let evolved_dir = root.join("skills").join("_evolved");
-    if evolved_dir.exists() {
+    // Evolved skills count (project-level)
+    if let Some(skills_root) = resolve_skills_root(None) {
+        let evolved_dir = skills_root.join("_evolved");
+        if evolved_dir.exists() {
         let active = std::fs::read_dir(&evolved_dir)
             .ok()
             .into_iter()
@@ -139,6 +172,7 @@ pub fn cmd_status() -> Result<()> {
             })
             .count();
         println!("  进化 Skill 数: {} (活跃)", active);
+        }
     }
     println!();
 
@@ -272,9 +306,9 @@ pub fn cmd_reset(force: bool) -> Result<()> {
     skilllite_evolution::seed::ensure_seed_data_force(&root);
     println!("✅ Prompts 已重置为种子状态");
 
-    // Remove evolved skills (includes _pending)
-    let evolved_dir = root.join("skills").join("_evolved");
-    if evolved_dir.exists() {
+    // Remove evolved skills (project-level, includes _pending)
+    let evolved_dir = resolve_skills_root(None).map(|sr| sr.join("_evolved"));
+    if let Some(evolved_dir) = evolved_dir.filter(|p| p.exists()) {
         let count = std::fs::read_dir(&evolved_dir)
             .ok()
             .into_iter()
@@ -378,6 +412,10 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
             println!("╰─────────────────────────────────────────────╯");
             println!();
 
+            // rules.json uses "instruction" (seed + evolved), some schemas use description/condition/action
+            if let Some(inst) = rule.get("instruction").and_then(|v| v.as_str()) {
+                println!("规则: {}", inst);
+            }
             if let Some(desc) = rule.get("description").and_then(|v| v.as_str()) {
                 println!("描述: {}", desc);
             }
@@ -386,6 +424,12 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
             }
             if let Some(action) = rule.get("action").and_then(|v| v.as_str()) {
                 println!("动作: {}", action);
+            }
+            if let Some(th) = rule.get("tool_hint").and_then(|v| v.as_str()).filter(|s| !s.is_empty() && *s != "null") {
+                println!("建议工具: {}", th);
+            }
+            if let Some(r) = rule.get("rationale").and_then(|v| v.as_str()) {
+                println!("依据: {}", r);
             }
 
             let mutable = rule.get("mutable").and_then(|v| v.as_bool()).unwrap_or(true);
@@ -442,24 +486,29 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
 }
 
 /// `skilllite evolution confirm <skill_name>` — move pending skill to confirmed (A10).
+/// Skills are project-level: moves from _pending to _evolved within workspace/.skills/.
 pub fn cmd_confirm(skill_name: &str) -> Result<()> {
-    let root = chat_root();
-    skilllite_evolution::skill_synth::confirm_pending_skill(&root, skill_name)?;
+    let skills_root = resolve_skills_root(None)
+        .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。"))?;
+    skilllite_evolution::skill_synth::confirm_pending_skill(&skills_root, skill_name)?;
     println!("✅ Skill '{}' 已确认加入", skill_name);
     Ok(())
 }
 
 /// `skilllite evolution reject <skill_name>` — remove pending skill without adding (A10).
 pub fn cmd_reject(skill_name: &str) -> Result<()> {
-    let root = chat_root();
-    skilllite_evolution::skill_synth::reject_pending_skill(&root, skill_name)?;
+    let skills_root = resolve_skills_root(None)
+        .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。"))?;
+    skilllite_evolution::skill_synth::reject_pending_skill(&skills_root, skill_name)?;
     println!("✅ Skill '{}' 已拒绝", skill_name);
     Ok(())
 }
 
 /// `skilllite evolution run` — run evolution once synchronously, output NodeResult with new_skill.
+/// Skills are written to workspace/.skills/_evolved/ (project-level).
 pub fn cmd_run(json_output: bool) -> Result<()> {
     let root = chat_root();
+    let skills_root = resolve_skills_root(None);
     skilllite_core::config::ensure_default_output_dir();
 
     let config = AgentConfig::from_env();
@@ -473,10 +522,12 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
     let txn_opt = rt.block_on(skilllite_evolution::run_evolution(
         &root,
+        skills_root.as_deref(),
         &adapter,
         &config.api_base,
         &config.api_key,
         &config.model,
+        true, // force: manual trigger bypasses decision thresholds
     ))?;
 
     let task_id = uuid::Uuid::new_v4().to_string();
@@ -488,7 +539,9 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
             let new_skill = changes
                 .iter()
                 .find(|(t, _)| t == "skill_pending" || t == "skill_refined")
-                .and_then(|(_, skill_name)| build_new_skill(&root, skill_name, &txn_id));
+                .and_then(|(_, skill_name)| {
+                    skills_root.as_ref().and_then(|sr| build_new_skill(sr, skill_name, &txn_id))
+                });
 
             let summary: Vec<String> = skilllite_evolution::format_evolution_changes(&changes);
             let response_text = if summary.is_empty() {
@@ -505,13 +558,27 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
                 new_skill,
             }
         }
-        None => NodeResult {
-            task_id: task_id.clone(),
-            response: "Evolution: nothing to evolve".to_string(),
-            task_completed: true,
-            tool_calls: 0,
-            new_skill: None,
-        },
+        None => {
+            // Diagnostic: help user understand why
+            let mut hint = String::from("Evolution: nothing to evolve");
+            if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&root) {
+                if let Ok((total, with_desc)) = skilllite_evolution::feedback::count_decisions_with_task_desc(&conn) {
+                    if total > 0 && with_desc == 0 {
+                        hint.push_str("\n\n提示: 进化需要 task_description。当前待处理决策均无 task_description。");
+                        hint.push_str("\n请使用最新构建: cargo build && ./target/debug/skilllite run --goal \"...\"");
+                    } else if total == 0 {
+                        hint.push_str("\n\n提示: 进化队列为空。请先运行 skilllite run 或 skilllite chat 积累决策。");
+                    }
+                }
+            }
+            NodeResult {
+                task_id: task_id.clone(),
+                response: hint,
+                task_completed: true,
+                tool_calls: 0,
+                new_skill: None,
+            }
+        }
     };
 
     if json_output {
@@ -528,14 +595,12 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
     Ok(())
 }
 
-fn build_new_skill(chat_root: &PathBuf, skill_name: &str, txn_id: &str) -> Option<NewSkill> {
-    let pending_path = chat_root
-        .join("skills")
+fn build_new_skill(skills_root: &Path, skill_name: &str, txn_id: &str) -> Option<NewSkill> {
+    let pending_path = skills_root
         .join("_evolved")
         .join("_pending")
         .join(skill_name);
-    let evolved_path = chat_root
-        .join("skills")
+    let evolved_path = skills_root
         .join("_evolved")
         .join(skill_name);
 

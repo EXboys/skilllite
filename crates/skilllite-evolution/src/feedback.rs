@@ -149,6 +149,18 @@ pub fn count_unprocessed_decisions(conn: &Connection) -> Result<i64> {
         .map_err(Into::into)
 }
 
+/// Diagnostic: count unprocessed decisions with/without task_description.
+/// Evolution requires task_description to learn from decisions.
+pub fn count_decisions_with_task_desc(conn: &Connection) -> Result<(i64, i64)> {
+    let total: i64 = conn.query_row("SELECT COUNT(*) FROM decisions WHERE evolved = 0", [], |r| r.get(0))?;
+    let with_desc: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM decisions WHERE evolved = 0 AND task_description IS NOT NULL",
+        [],
+        |r| r.get(0),
+    )?;
+    Ok((total, with_desc))
+}
+
 pub fn update_last_decision_feedback(
     conn: &Connection,
     session_id: &str,

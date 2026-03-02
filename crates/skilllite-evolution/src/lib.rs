@@ -152,10 +152,15 @@ pub struct EvolutionScope {
 }
 
 pub fn should_evolve(conn: &Connection) -> Result<EvolutionScope> {
-    should_evolve_with_mode(conn, EvolutionMode::from_env())
+    should_evolve_impl(conn, EvolutionMode::from_env(), false)
 }
 
 pub fn should_evolve_with_mode(conn: &Connection, mode: EvolutionMode) -> Result<EvolutionScope> {
+    should_evolve_impl(conn, mode, false)
+}
+
+/// When force=true (e.g. manual `skilllite evolution run`), bypass decision thresholds.
+fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Result<EvolutionScope> {
     if mode.is_disabled() {
         return Ok(EvolutionScope::default());
     }
@@ -175,18 +180,20 @@ pub fn should_evolve_with_mode(conn: &Connection, mode: EvolutionMode) -> Result
         return Ok(EvolutionScope::default());
     }
 
-    let last_evo_hours: f64 = conn
-        .query_row(
-            "SELECT COALESCE(
-                (julianday('now') - julianday(MAX(ts))) * 24,
-                999.0
-            ) FROM evolution_log",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap_or(999.0);
-    if last_evo_hours < 1.0 {
-        return Ok(EvolutionScope::default());
+    if !force {
+        let last_evo_hours: f64 = conn
+            .query_row(
+                "SELECT COALESCE(
+                    (julianday('now') - julianday(MAX(ts))) * 24,
+                    999.0
+                ) FROM evolution_log",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(999.0);
+        if last_evo_hours < 1.0 {
+            return Ok(EvolutionScope::default());
+        }
     }
 
     let (meaningful, failures, replans): (i64, i64, i64) = conn.query_row(
@@ -221,25 +228,41 @@ pub fn should_evolve_with_mode(conn: &Connection, mode: EvolutionMode) -> Result
         .unwrap_or(0);
 
     let mut scope = EvolutionScope {
-        decision_ids: ids,
+        decision_ids: ids.clone(),
         ..Default::default()
     };
 
-    if mode.skills_enabled() && meaningful >= 3 && (failures > 0 || repeated_patterns > 0) {
-        scope.skills = true;
-        scope.skill_action = if repeated_patterns > 0 {
-            SkillAction::Generate
-        } else {
-            SkillAction::Refine
-        };
-    }
-
-    if mode.memory_enabled() && meaningful >= 3 {
-        scope.memory = true;
-    }
-
-    if mode.prompts_enabled() && meaningful >= 5 && (failures >= 2 || replans >= 2) {
-        scope.prompts = true;
+    if force && !ids.is_empty() {
+        // Manual trigger: bypass thresholds, enable all enabled modes
+        if mode.skills_enabled() {
+            scope.skills = true;
+            scope.skill_action = if repeated_patterns > 0 {
+                SkillAction::Generate
+            } else {
+                SkillAction::Refine
+            };
+        }
+        if mode.memory_enabled() {
+            scope.memory = true;
+        }
+        if mode.prompts_enabled() {
+            scope.prompts = true;
+        }
+    } else {
+        if mode.skills_enabled() && meaningful >= 3 && (failures > 0 || repeated_patterns > 0) {
+            scope.skills = true;
+            scope.skill_action = if repeated_patterns > 0 {
+                SkillAction::Generate
+            } else {
+                SkillAction::Refine
+            };
+        }
+        if mode.memory_enabled() && meaningful >= 3 {
+            scope.memory = true;
+        }
+        if mode.prompts_enabled() && meaningful >= 5 && (failures >= 2 || replans >= 2) {
+            scope.prompts = true;
+        }
     }
 
     Ok(scope)
@@ -249,10 +272,18 @@ pub fn should_evolve_with_mode(conn: &Connection, mode: EvolutionMode) -> Result
 
 const ALLOWED_EVOLUTION_PATHS: &[&str] = &["prompts", "memory", "skills/_evolved"];
 
-pub fn gatekeeper_l1_path(chat_root: &Path, target: &Path) -> bool {
+/// L1 path gatekeeper. When skills_root is Some, also allows target under skills_root/_evolved
+/// (project-level skill evolution).
+pub fn gatekeeper_l1_path(chat_root: &Path, target: &Path, skills_root: Option<&Path>) -> bool {
     for allowed in ALLOWED_EVOLUTION_PATHS {
         let allowed_dir = chat_root.join(allowed);
         if target.starts_with(&allowed_dir) {
+            return true;
+        }
+    }
+    if let Some(sr) = skills_root {
+        let evolved = sr.join("_evolved");
+        if target.starts_with(&evolved) {
             return true;
         }
     }
@@ -476,18 +507,22 @@ pub fn mark_decisions_evolved(conn: &Connection, ids: &[i64]) -> Result<()> {
 /// Run a full evolution cycle.
 ///
 /// Returns the txn_id if evolution produced changes, None otherwise.
+/// When force=true (manual trigger), bypass decision thresholds.
+/// skills_root: project-level dir (workspace/.skills). When None, skips skill evolution.
 pub async fn run_evolution<L: EvolutionLlm>(
     chat_root: &Path,
+    skills_root: Option<&Path>,
     llm: &L,
     api_base: &str,
     api_key: &str,
     model: &str,
+    force: bool,
 ) -> Result<Option<String>> {
     if !try_start_evolution() {
         return Ok(None);
     }
 
-    let result = run_evolution_inner(chat_root, llm, api_base, api_key, model).await;
+    let result = run_evolution_inner(chat_root, skills_root, llm, api_base, api_key, model, force).await;
 
     finish_evolution();
     result
@@ -495,16 +530,18 @@ pub async fn run_evolution<L: EvolutionLlm>(
 
 async fn run_evolution_inner<L: EvolutionLlm>(
     chat_root: &Path,
+    skills_root: Option<&Path>,
     llm: &L,
     _api_base: &str,
     _api_key: &str,
     model: &str,
+    force: bool,
 ) -> Result<Option<String>> {
     let (scope, txn_id, snapshot_files) = {
         let conn = feedback::open_evolution_db(chat_root)?;
-        let scope = should_evolve(&conn)?;
+        let scope = should_evolve_impl(&conn, EvolutionMode::from_env(), force)?;
         if !scope.prompts && !scope.memory && !scope.skills {
-            mark_decisions_evolved(&conn, &scope.decision_ids)?;
+            // Do NOT mark decisions as evolved when no evolution ran — keep them for next run
             return Ok(None);
         }
         let txn_id = format!("evo_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
@@ -539,8 +576,9 @@ async fn run_evolution_inner<L: EvolutionLlm>(
     }
 
     if scope.skills {
-        let generate = matches!(scope.skill_action, SkillAction::Generate);
-        match skill_synth::evolve_skills(chat_root, llm, model, &txn_id, generate).await {
+        // Always try generate path (success-based → failure-based 补全 → refine)
+        let generate = true;
+        match skill_synth::evolve_skills(chat_root, skills_root, llm, model, &txn_id, generate, force).await {
             Ok(changes) => {
                 if !changes.is_empty() {
                     reason_parts.push(format!("{} skill changes", changes.len()));

@@ -39,6 +39,7 @@ pub struct LoadedSkill {
 /// Load skills from directories, parse SKILL.md, generate tool definitions.
 /// Also loads evolved skills from `_evolved/` subdirectories (EVO-4),
 /// skipping archived ones based on `.meta.json`.
+/// Skills are project-level only: evolution writes to workspace/.skills/_evolved/.
 pub fn load_skills(skill_dirs: &[String]) -> Vec<LoadedSkill> {
     let mut skills = Vec::new();
 

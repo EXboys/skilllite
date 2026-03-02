@@ -297,11 +297,12 @@ impl ChatSession {
             .and_then(|v| v.parse().ok())
             .unwrap_or(1800); // 30 min default
         let data_root = self.data_root.clone();
+        let workspace = self.config.workspace.clone();
         let api_base = self.config.api_base.clone();
         let api_key = self.config.api_key.clone();
         let model = self.config.model.clone();
         self.periodic_evolution_handle = Some(spawn_periodic_evolution(
-            data_root, api_base, api_key, model, interval_secs,
+            data_root, workspace, api_base, api_key, model, interval_secs,
         ));
     }
 
@@ -323,10 +324,11 @@ impl ChatSession {
         if count >= threshold {
             tracing::debug!("Decision-count trigger: {} unprocessed >= {}, spawning evolution", count, threshold);
             let data_root = self.data_root.clone();
+            let workspace = self.config.workspace.clone();
             let api_base = self.config.api_base.clone();
             let api_key = self.config.api_key.clone();
             let model = self.config.model.clone();
-            spawn_evolution_once(data_root, api_base, api_key, model);
+            spawn_evolution_once(data_root, workspace, api_base, api_key, model);
         }
     }
 
@@ -756,15 +758,41 @@ impl ChatSession {
 // ─── A9: Evolution triggers (periodic + decision-count) ─────────────────────
 
 /// Run evolution once and emit summary. Shared by periodic and decision-count triggers.
+/// workspace: project root for skill evolution (skills written to workspace/.skills/_evolved/).
 async fn run_evolution_and_emit_summary(
     data_root: &PathBuf,
+    workspace: &str,
     api_base: &str,
     api_key: &str,
     model: &str,
 ) {
+    let skills_root = if workspace.is_empty() {
+        None
+    } else {
+        let ws = std::path::Path::new(workspace);
+        let sr = if ws.is_absolute() {
+            ws.join(".skills")
+        } else {
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+                .join(workspace)
+                .join(".skills")
+        };
+        Some(sr)
+    };
     let llm = LlmClient::new(api_base, api_key);
     let adapter = evolution::EvolutionLlmAdapter { llm: &llm };
-    match skilllite_evolution::run_evolution(data_root, &adapter, api_base, api_key, model).await {
+    let skills_root_ref = skills_root.as_deref();
+    match skilllite_evolution::run_evolution(
+        data_root,
+        skills_root_ref,
+        &adapter,
+        api_base,
+        api_key,
+        model,
+        false,
+    )
+    .await
+    {
         Ok(Some(txn_id)) => {
             tracing::info!("Evolution completed: {}", txn_id);
             if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(data_root) {
@@ -783,6 +811,7 @@ async fn run_evolution_and_emit_summary(
 /// A9: Periodic evolution trigger — runs every N seconds, even when user is active.
 pub fn spawn_periodic_evolution(
     data_root: PathBuf,
+    workspace: String,
     api_base: String,
     api_key: String,
     model: String,
@@ -797,7 +826,7 @@ pub fn spawn_periodic_evolution(
         loop {
             tokio::time::sleep(interval).await;
             tracing::debug!("Periodic evolution trigger fired (every {}s)", interval_secs);
-            run_evolution_and_emit_summary(&data_root, &api_base, &api_key, &model).await;
+            run_evolution_and_emit_summary(&data_root, workspace.as_str(), &api_base, &api_key, &model).await;
         }
     })
 }
@@ -805,6 +834,7 @@ pub fn spawn_periodic_evolution(
 /// A9: Decision-count trigger — spawn evolution once when threshold is met.
 pub fn spawn_evolution_once(
     data_root: PathBuf,
+    workspace: String,
     api_base: String,
     api_key: String,
     model: String,
@@ -814,7 +844,7 @@ pub fn spawn_evolution_once(
             return;
         }
         tracing::debug!("Decision-count evolution trigger fired");
-        run_evolution_and_emit_summary(&data_root, &api_base, &api_key, &model).await;
+        run_evolution_and_emit_summary(&data_root, workspace.as_str(), &api_base, &api_key, &model).await;
     })
 }
 

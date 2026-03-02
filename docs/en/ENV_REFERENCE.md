@@ -164,6 +164,10 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 
 **Evolution triggers (A9)**: Periodic (every 30 min) + decision-count triggers allow evolution in background even during active user interaction.
 
+**Skill generation failure**: If you see `Failed to parse skill generation JSON: EOF`, the LLM output was likely truncated. Try increasing `SKILLLITE_MAX_TOKENS` (e.g. 16384) and retry.
+
+**Skills needing review (L4 failed)**: Network-request skills may be saved as draft when L4 security scan fails. Run `skilllite evolution status` to see `(needs review)`. Add `compatibility: Requires Python 3.x, network access` to SKILL.md front matter, then run `skilllite evolution confirm <name>`.
+
 ---
 
 ## Observability & Audit <small>[Advanced]</small>

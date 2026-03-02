@@ -618,7 +618,7 @@ pub enum EvolutionAction {
         rule_id: String,
     },
 
-    /// Confirm a pending evolved skill (A10) — move from _pending to _evolved
+    /// Confirm a pending evolved skill (A10) — move from _pending to _evolved (project-level)
     Confirm {
         /// Skill name to confirm
         #[arg(value_name = "SKILL_NAME")]
