@@ -97,6 +97,9 @@ python-sdk/skilllite/bins/skilllite.exe
 
 # Separate repository (langchain-skilllite has its own git repo)
 langchain-skilllite/
+
+# Separate repository (evotown published to github.com/EXboys/evotown)
+evotown/
 test/
 
 .skilllite.lock
