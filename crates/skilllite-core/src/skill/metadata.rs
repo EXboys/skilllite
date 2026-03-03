@@ -3,6 +3,22 @@ use regex::Regex;
 use serde::Deserialize;
 use std::fs;
 use std::path::Path;
+use std::sync::LazyLock;
+
+// ─── Pre-compiled Regex statics ───────────────────────────────────────────────
+
+/// Matches YAML continuation lines: newline + indent + colon + space.
+static YAML_CONTINUATION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\n(\s+):(\s+)").expect("YAML_CONTINUATION_RE is valid"));
+
+/// Matches YAML front matter between --- delimiters (dotall mode).
+static YAML_FRONT_MATTER_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?s)^---\s*\n(.*?)\n---").expect("YAML_FRONT_MATTER_RE is valid")
+});
+
+/// Matches `Bash(...)` patterns inside allowed_tools strings.
+static ALLOWED_TOOLS_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Bash\(([^)]+)\)").expect("ALLOWED_TOOLS_RE is valid"));
 
 /// Front matter data (official Agent Skills fields per Claude specification)
 /// See: https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/specification
@@ -62,10 +78,9 @@ pub struct BashToolPattern {
 ///   - `"Bash(agent-browser:*), Bash(npm:*)"` -> two patterns
 ///   - `"Read, Edit, Bash(mycli:*)"` -> one BashToolPattern (non-Bash tools ignored)
 pub fn parse_allowed_tools(raw: &str) -> Vec<BashToolPattern> {
-    let re = Regex::new(r"Bash\(([^)]+)\)").expect("allowed-tools regex is valid");
     let mut patterns = Vec::new();
 
-    for cap in re.captures_iter(raw) {
+    for cap in ALLOWED_TOOLS_RE.captures_iter(raw) {
         if let Some(inner) = cap.get(1) {
             let pattern_str = inner.as_str().trim();
             // Extract command prefix: everything before the first ':'
@@ -415,17 +430,13 @@ fn extract_yaml_front_matter_with_detection(content: &str, skill_dir: &Path) -> 
 /// Normalize YAML continuation lines: "   : text" (indent + colon + space + text) is a common
 /// pattern for multiline values. Standard YAML parses ":" as a new key; we merge into previous.
 fn normalize_yaml_continuation_lines(yaml: &str) -> String {
-    let re = Regex::new(r"\n(\s+):(\s+)").expect("regex valid");
-    re.replace_all(yaml, " ").to_string()
+    YAML_CONTINUATION_RE.replace_all(yaml, " ").to_string()
 }
 
 /// Extract YAML front matter from markdown content
 fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Result<SkillMetadata> {
     // Match YAML front matter between --- delimiters
-    let re = Regex::new(r"(?s)^---\s*\n(.*?)\n---")
-        .expect("SKILL.md front matter regex is valid");
-
-    let captures = re
+    let captures = YAML_FRONT_MATTER_RE
         .captures(content)
         .ok_or_else(|| anyhow::anyhow!("No YAML front matter found in SKILL.md"))?;
 

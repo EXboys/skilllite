@@ -12,6 +12,64 @@ use anyhow::{Context, Result};
 use regex::Regex;
 use std::fs;
 use std::path::Path;
+use std::sync::LazyLock;
+
+// ─── Pre-compiled Regex statics (compiled once, reused every scan) ────────────
+
+// scan_base64 patterns
+static B64_LITERAL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"['"]([A-Za-z0-9+/]{50,}={0,2})['"]"#).expect("B64_LITERAL_RE is valid")
+});
+static DECODE_RE_PY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"base64\s*\.\s*(?:b64decode|decodebytes|decode)\s*\(|codecs\s*\.\s*decode\s*\(",
+    )
+    .expect("DECODE_RE_PY is valid")
+});
+static DECODE_RE_JS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"atob\s*\(|Buffer\s*\.\s*from\s*\([^)]*['"]base64['"]"#)
+        .expect("DECODE_RE_JS is valid")
+});
+
+// scan_multistage patterns — Python
+static MS_DL_PY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"urllib\.request|requests\s*\.\s*(?:get|post|Session)|httplib|http\.client|wget\.download|urlopen\s*\(",
+    )
+    .expect("MS_DL_PY is valid")
+});
+static MS_DEC_PY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"base64\s*\.\s*(?:b64decode|decodebytes|decode)|codecs\s*\.\s*decode|bytes\.fromhex\s*\(",
+    )
+    .expect("MS_DEC_PY is valid")
+});
+static MS_EXEC_PY: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?:^|[^.\w])exec\s*\(|eval\s*\(|subprocess\s*\.\s*(?:run|call|Popen)|os\s*\.\s*system\s*\(",
+    )
+    .expect("MS_EXEC_PY is valid")
+});
+
+// scan_multistage patterns — JavaScript/Node
+static MS_DL_JS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"fetch\s*\(|axios\s*\.\s*(?:get|post)|http\s*\.\s*(?:get|request)\s*\(|https\s*\.\s*(?:get|request)\s*\(|require\s*\(\s*['"]node-fetch['"]"#,
+    )
+    .expect("MS_DL_JS is valid")
+});
+static MS_DEC_JS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"atob\s*\(|Buffer\s*\.\s*from\s*\([^)]*['"]base64['"]|\.toString\s*\(\s*['"]base64['"]"#,
+    )
+    .expect("MS_DEC_JS is valid")
+});
+static MS_EXEC_JS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"eval\s*\(|new\s+Function\s*\(|child_process\s*\.\s*(?:exec|spawn|execSync)|require\s*\(\s*['"]vm['"]"#,
+    )
+    .expect("MS_EXEC_JS is valid")
+});
 
 /// Script scanner for detecting security issues
 pub struct ScriptScanner {
@@ -226,27 +284,10 @@ impl ScriptScanner {
     /// - Explicit decode call (b64decode / atob / Buffer.from base64) without visible
     ///   literal, or long literal alone → **Medium**
     fn scan_base64(&self, content: &str, language: &str, issues: &mut Vec<SecurityIssue>) {
-        // Regex: quoted base64 string of ≥ 50 base64-alphabet chars (with optional padding)
-        let b64_literal_re =
-            match Regex::new(r#"['"]([A-Za-z0-9+/]{50,}={0,2})['"]"#) {
-                Ok(r) => r,
-                Err(_) => return,
-            };
-
-        // Language-specific decode-call patterns
-        // never_match: a regex that matches nothing — used as safe fallback when a
-        // complex pattern fails to compile (should not happen in practice).
-        let never_match = || Regex::new(r"$^").expect("$^ is a valid never-matching regex");
-        let decode_re_py =
-            Regex::new(r"base64\s*\.\s*(?:b64decode|decodebytes|decode)\s*\(|codecs\s*\.\s*decode\s*\(")
-                .unwrap_or_else(|_| never_match());
-        let decode_re_js =
-            Regex::new(r#"atob\s*\(|Buffer\s*\.\s*from\s*\([^)]*['"]base64['"]"#)
-                .unwrap_or_else(|_| never_match());
-
+        // Use pre-compiled static Regex (compiled once per process via LazyLock).
         let decode_re: &Regex = match language {
-            "python" => &decode_re_py,
-            "javascript" | "node" => &decode_re_js,
+            "python" => &DECODE_RE_PY,
+            "javascript" | "node" => &DECODE_RE_JS,
             _ => return, // unknown language — skip
         };
 
@@ -257,7 +298,7 @@ impl ScriptScanner {
             }
 
             let has_decode_call = decode_re.is_match(line);
-            let b64_cap = b64_literal_re.captures(line);
+            let b64_cap = B64_LITERAL_RE.captures(line);
 
             match (has_decode_call, b64_cap) {
                 // decode call + visible base64 literal on the same line
@@ -342,40 +383,10 @@ impl ScriptScanner {
         language: &str,
         issues: &mut Vec<SecurityIssue>,
     ) {
-        // never_match: safe fallback when a complex pattern fails to compile.
-        let never_match = || Regex::new(r"$^").expect("$^ is a valid never-matching regex");
-        let (dl_re, dec_re, exec_re) = match language {
-            "python" => (
-                Regex::new(
-                    r"urllib\.request|requests\s*\.\s*(?:get|post|Session)|httplib|http\.client\
-                      |wget\.download|urlopen\s*\(",
-                )
-                .unwrap_or_else(|_| never_match()),
-                Regex::new(
-                    r"base64\s*\.\s*(?:b64decode|decodebytes|decode)|codecs\s*\.\s*decode\
-                      |bytes\.fromhex\s*\(",
-                )
-                .unwrap_or_else(|_| never_match()),
-                Regex::new(
-                    r"(?:^|[^.\w])exec\s*\(|eval\s*\(|subprocess\s*\.\s*(?:run|call|Popen)\
-                      |os\s*\.\s*system\s*\(",
-                )
-                .unwrap_or_else(|_| never_match()),
-            ),
-            "javascript" | "node" => (
-                Regex::new(
-                    r#"fetch\s*\(|axios\s*\.\s*(?:get|post)|http\s*\.\s*(?:get|request)\s*\(|https\s*\.\s*(?:get|request)\s*\(|require\s*\(\s*['"]node-fetch['"]"#,
-                )
-                .unwrap_or_else(|_| never_match()),
-                Regex::new(
-                    r#"atob\s*\(|Buffer\s*\.\s*from\s*\([^)]*['"]base64['"]|\.toString\s*\(\s*['"]base64['"]"#,
-                )
-                .unwrap_or_else(|_| never_match()),
-                Regex::new(
-                    r#"eval\s*\(|new\s+Function\s*\(|child_process\s*\.\s*(?:exec|spawn|execSync)|require\s*\(\s*['"]vm['"]"#,
-                )
-                .unwrap_or_else(|_| never_match()),
-            ),
+        // Use pre-compiled static Regex (compiled once per process via LazyLock).
+        let (dl_re, dec_re, exec_re): (&Regex, &Regex, &Regex) = match language {
+            "python" => (&MS_DL_PY, &MS_DEC_PY, &MS_EXEC_PY),
+            "javascript" | "node" => (&MS_DL_JS, &MS_DEC_JS, &MS_EXEC_JS),
             _ => return,
         };
 
@@ -476,7 +487,8 @@ impl ScriptScanner {
                 THRESHOLD
             };
 
-            if shannon_entropy(trimmed) > threshold {
+            let entropy = shannon_entropy(trimmed);
+            if entropy > threshold {
                 issues.push(SecurityIssue {
                     rule_id: "entropy-obfuscation".to_string(),
                     severity: SecuritySeverity::Medium,
@@ -484,7 +496,7 @@ impl ScriptScanner {
                     line_number: line_idx + 1,
                     description: format!(
                         "High-entropy line ({:.2} bits/char > {:.1} threshold) — possible obfuscated or encoded payload",
-                        shannon_entropy(trimmed),
+                        entropy,
                         threshold,
                     ),
                     code_snippet: trimmed.chars().take(120).collect(),
