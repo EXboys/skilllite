@@ -11,7 +11,6 @@ use anyhow::Result;
 use super::helpers::extract_goal_boundaries_hybrid;
 use super::super::goal_boundaries;
 use super::super::llm::LlmClient;
-use super::super::long_text;
 use super::super::prompt;
 use super::super::skills::LoadedSkill;
 use super::super::soul::Soul;
@@ -100,11 +99,17 @@ pub(super) async fn run_planning_phase(
             config.enable_memory,
             Some(&chat_root),
             soul.as_ref(),
+            config.context_append.as_deref(),
         )
     } else {
         let mut p = planner.build_task_system_prompt(skills, effective_boundaries.as_ref());
         if let Some(s) = &soul {
             p = format!("{}\n\n{}", s.to_system_prompt_block(), p);
+        }
+        if let Some(ref ctx) = config.context_append {
+            if !ctx.is_empty() {
+                p.push_str(&format!("\n\n{}", ctx.trim()));
+            }
         }
         if let Some(sk) = session_key {
             p.push_str(&format!(
@@ -117,17 +122,12 @@ pub(super) async fn run_planning_phase(
         p
     };
 
-    // Guard against context overflow from oversized user messages.
-    // Note: goal-boundary extraction and task-list generation above use the original
-    // user_message intentionally — they work on the raw intent/structure.
-    let processed_user_message =
-        long_text::maybe_process_user_input(client, &config.model, user_message).await;
-
-    // Assemble initial messages
+    // Assemble initial messages.
+    // user_message is already compressed by chat_session before reaching here.
     let mut messages = Vec::new();
     messages.push(ChatMessage::system(&system_prompt));
     messages.extend(initial_messages);
-    messages.push(ChatMessage::user(&processed_user_message));
+    messages.push(ChatMessage::user(user_message));
 
     // A13: Save initial checkpoint for --resume
     maybe_save_checkpoint(session_key, user_message, config, &planner, &messages, &chat_root);

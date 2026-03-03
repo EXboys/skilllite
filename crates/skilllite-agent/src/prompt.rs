@@ -47,6 +47,7 @@ pub fn build_system_prompt(
     enable_memory: bool,
     chat_root: Option<&Path>,
     soul: Option<&Soul>,
+    context_append: Option<&str>,
 ) -> String {
     let mut parts = Vec::new();
 
@@ -137,6 +138,13 @@ pub fn build_system_prompt(
                     content
                 ));
             }
+        }
+    }
+
+    // Optional caller-provided context (e.g. from RPC params.context.append)
+    if let Some(append) = context_append {
+        if !append.is_empty() {
+            parts.push(format!("\n\n{}", append.trim()));
         }
     }
 
@@ -532,14 +540,14 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_contains_workspace() {
-        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false, None, None);
+        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false, None, None, None);
         assert!(prompt.contains("Workspace: /home/user/project"));
     }
 
     #[test]
     fn test_build_system_prompt_uses_progressive_mode() {
         let skills = vec![make_test_skill("test-skill", "Test description")];
-        let prompt = build_system_prompt(None, &skills, "/tmp", None, false, None, None);
+        let prompt = build_system_prompt(None, &skills, "/tmp", None, false, None, None, None);
 
         assert!(prompt.contains("test-skill"));
         assert!(prompt.contains("Test description"));
@@ -548,7 +556,7 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_includes_memory_tools_when_enabled() {
-        let prompt = build_system_prompt(None, &[], "/tmp", None, true, None, None);
+        let prompt = build_system_prompt(None, &[], "/tmp", None, true, None, None, None);
         assert!(prompt.contains("memory_write"));
         assert!(prompt.contains("memory_search"));
         assert!(prompt.contains("memory_list"));

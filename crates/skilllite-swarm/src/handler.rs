@@ -192,7 +192,9 @@ async fn handle_task(
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, "application/x-ndjson")
                     .body(body)
-                    .unwrap()
+                    // SAFETY: StatusCode::OK and "application/x-ndjson" are statically valid;
+                    // builder failure is structurally impossible here.
+                    .expect("valid status and header — Response::builder cannot fail")
                     .into_response();
             }
             let start = std::time::Instant::now();

@@ -19,6 +19,7 @@ use super::agent_loop;
 use super::evolution;
 use super::extensions;
 use super::llm::LlmClient;
+use super::long_text;
 use super::skills::LoadedSkill;
 use super::types::*;
 
@@ -232,7 +233,29 @@ impl ChatSession {
             history
         };
 
+        // ── Guard #1: truncate oversized user messages already in history ──────
+        // Handles old transcripts written before the compression fix.
+        // Sync simple truncation only — no LLM call here, too expensive per-turn.
+        {
+            let max_chars = get_user_input_max_chars();
+            for msg in history.iter_mut() {
+                if msg.role == "user" {
+                    if let Some(ref content) = msg.content {
+                        if content.len() > max_chars {
+                            tracing::debug!(
+                                len = content.len(),
+                                max_chars,
+                                "Truncating oversized historical user message"
+                            );
+                            msg.content = Some(long_text::truncate_content(content, max_chars));
+                        }
+                    }
+                }
+            }
+        }
+
         // Build memory context (if enabled) — inject relevant memories as system context
+        // Uses original user_message for accurate intent-based vector search.
         if self.config.enable_memory {
             let workspace = std::path::Path::new(&self.config.workspace);
             if let Some(mem_ctx) = extensions::build_memory_context(workspace, "default", user_message) {
@@ -240,16 +263,25 @@ impl ChatSession {
             }
         }
 
-        // Append user message to transcript
-        self.append_message("user", user_message)?;
+        // ── Guard #2: compress current user message if oversized ─────────────
+        // Processed BEFORE transcript write so the stored version is already
+        // compressed — read_history on next turn gets the compressed version directly.
+        let client = LlmClient::new(&self.config.api_base, &self.config.api_key);
+        let effective_user_message =
+            long_text::maybe_process_user_input(&client, &self.config.model, user_message).await;
+
+        // Append (compressed) user message to transcript
+        self.append_message("user", &effective_user_message)?;
 
         event_sink.on_turn_start();
 
-        // Run the agent loop
+        // Run the agent loop — receives the already-compressed message.
+        // Note: update_previous_feedback and build_memory_context above intentionally
+        // use the original user_message for accurate intent matching.
         let result = agent_loop::run_agent_loop(
             &self.config,
             history,
-            user_message,
+            &effective_user_message,
             &self.skills,
             event_sink,
             Some(&self.session_key),

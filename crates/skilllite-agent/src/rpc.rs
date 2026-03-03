@@ -18,6 +18,7 @@
 //! {"method": "agent_chat", "params": {
 //!     "message": "user input",
 //!     "session_key": "default",
+//!     "context": { "append": "optional string to append to system prompt" },
 //!     "config": { "model": "gpt-4o", ... }  // optional overrides
 //! }}
 //! ```
@@ -269,6 +270,9 @@ async fn handle_agent_chat(
         }
         if let Some(plan) = overrides.get("enable_task_planning").and_then(|v| v.as_bool()) {
             config.enable_task_planning = plan;
+        }
+        if let Some(sp) = overrides.get("soul_path").and_then(|v| v.as_str()) {
+            config.soul_path = Some(sp.to_string());
         }
     }
 

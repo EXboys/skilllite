@@ -86,6 +86,10 @@ pub struct AgentConfig {
     /// Resolution: explicit path > .skilllite/SOUL.md > ~/.skilllite/SOUL.md
     pub soul_path: Option<String>,
 
+    /// Optional extra context to append to system prompt (e.g. from RPC params.context.append).
+    /// Generic extension point for callers to inject domain-specific rules without modifying SkillLite.
+    pub context_append: Option<String>,
+
     /// [Run mode] Max consecutive tool failures before stopping (prevents infinite retry loops).
     /// None = no limit (chat mode). Some(N) = stop after N consecutive failures (run mode).
     pub max_consecutive_failures: Option<usize>,
@@ -115,6 +119,7 @@ impl Default for AgentConfig {
             enable_memory_vector: false,
             verbose: false,
             soul_path: None,
+            context_append: None,
             max_consecutive_failures: None,
             goal_boundaries: None,
         }

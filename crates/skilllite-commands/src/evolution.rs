@@ -493,10 +493,22 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
 
 /// `skilllite evolution confirm <skill_name>` — move pending skill to confirmed (A10).
 /// Skills are project-level: moves from _pending to _evolved within workspace/.skills/.
+/// Logs skill_confirmed to evolution.log for EvoTown reward (human-approved = effective).
 pub fn cmd_confirm(skill_name: &str) -> Result<()> {
     let skills_root = resolve_skills_root(None)
         .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。"))?;
     skilllite_evolution::skill_synth::confirm_pending_skill(&skills_root, skill_name)?;
+    let root = chat_root();
+    if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&root) {
+        let _ = skilllite_evolution::log_evolution_event(
+            &conn,
+            &root,
+            "skill_confirmed",
+            skill_name,
+            "user confirmed",
+            "",
+        );
+    }
     println!("✅ Skill '{}' 已确认加入", skill_name);
     Ok(())
 }

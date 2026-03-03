@@ -234,12 +234,15 @@ impl ScriptScanner {
             };
 
         // Language-specific decode-call patterns
+        // never_match: a regex that matches nothing — used as safe fallback when a
+        // complex pattern fails to compile (should not happen in practice).
+        let never_match = || Regex::new(r"$^").expect("$^ is a valid never-matching regex");
         let decode_re_py =
             Regex::new(r"base64\s*\.\s*(?:b64decode|decodebytes|decode)\s*\(|codecs\s*\.\s*decode\s*\(")
-                .unwrap_or_else(|_| Regex::new(r"$^").unwrap());
+                .unwrap_or_else(|_| never_match());
         let decode_re_js =
             Regex::new(r#"atob\s*\(|Buffer\s*\.\s*from\s*\([^)]*['"]base64['"]"#)
-                .unwrap_or_else(|_| Regex::new(r"$^").unwrap());
+                .unwrap_or_else(|_| never_match());
 
         let decode_re: &Regex = match language {
             "python" => &decode_re_py,
@@ -339,37 +342,39 @@ impl ScriptScanner {
         language: &str,
         issues: &mut Vec<SecurityIssue>,
     ) {
+        // never_match: safe fallback when a complex pattern fails to compile.
+        let never_match = || Regex::new(r"$^").expect("$^ is a valid never-matching regex");
         let (dl_re, dec_re, exec_re) = match language {
             "python" => (
                 Regex::new(
                     r"urllib\.request|requests\s*\.\s*(?:get|post|Session)|httplib|http\.client\
                       |wget\.download|urlopen\s*\(",
                 )
-                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                .unwrap_or_else(|_| never_match()),
                 Regex::new(
                     r"base64\s*\.\s*(?:b64decode|decodebytes|decode)|codecs\s*\.\s*decode\
                       |bytes\.fromhex\s*\(",
                 )
-                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                .unwrap_or_else(|_| never_match()),
                 Regex::new(
                     r"(?:^|[^.\w])exec\s*\(|eval\s*\(|subprocess\s*\.\s*(?:run|call|Popen)\
                       |os\s*\.\s*system\s*\(",
                 )
-                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                .unwrap_or_else(|_| never_match()),
             ),
             "javascript" | "node" => (
                 Regex::new(
                     r#"fetch\s*\(|axios\s*\.\s*(?:get|post)|http\s*\.\s*(?:get|request)\s*\(|https\s*\.\s*(?:get|request)\s*\(|require\s*\(\s*['"]node-fetch['"]"#,
                 )
-                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                .unwrap_or_else(|_| never_match()),
                 Regex::new(
                     r#"atob\s*\(|Buffer\s*\.\s*from\s*\([^)]*['"]base64['"]|\.toString\s*\(\s*['"]base64['"]"#,
                 )
-                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                .unwrap_or_else(|_| never_match()),
                 Regex::new(
                     r#"eval\s*\(|new\s+Function\s*\(|child_process\s*\.\s*(?:exec|spawn|execSync)|require\s*\(\s*['"]vm['"]"#,
                 )
-                .unwrap_or_else(|_| Regex::new(r"$^").unwrap()),
+                .unwrap_or_else(|_| never_match()),
             ),
             _ => return,
         };
