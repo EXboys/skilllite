@@ -19,6 +19,38 @@ use super::types::{self, ChatMessage, chunk_str, safe_slice_from, safe_truncate}
 
 mod filter;
 
+/// Guard user input against context overflow.
+///
+/// * If `input.len() <= SKILLLITE_USER_INPUT_MAX_CHARS` → pass through unchanged.
+/// * Otherwise → chunked LLM summarization via the same pipeline as tool results.
+///
+/// Unlike tool results (which have a cheap truncation tier), user inputs always use
+/// LLM summarization when over the limit — truncation would silently drop intent.
+/// A short notice is prepended so the model knows the input was compressed.
+pub async fn maybe_process_user_input(
+    client: &LlmClient,
+    model: &str,
+    input: &str,
+) -> String {
+    let max_chars = types::get_user_input_max_chars();
+    if input.len() <= max_chars {
+        return input.to_string();
+    }
+
+    tracing::warn!(
+        len = input.len(),
+        max_chars,
+        "User input exceeds limit — summarizing via LLM"
+    );
+
+    let summary = summarize_long_content(client, model, input).await;
+    format!(
+        "[注：用户输入过长（{} 字符），已通过 LLM 总结，原始内容已压缩]\n\n{}",
+        input.len(),
+        summary
+    )
+}
+
 /// Simple truncation with notice.
 pub fn truncate_content(content: &str, max_chars: usize) -> String {
     if content.len() <= max_chars {

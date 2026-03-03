@@ -11,6 +11,7 @@ use anyhow::Result;
 use super::helpers::extract_goal_boundaries_hybrid;
 use super::super::goal_boundaries;
 use super::super::llm::LlmClient;
+use super::super::long_text;
 use super::super::prompt;
 use super::super::skills::LoadedSkill;
 use super::super::soul::Soul;
@@ -116,11 +117,17 @@ pub(super) async fn run_planning_phase(
         p
     };
 
+    // Guard against context overflow from oversized user messages.
+    // Note: goal-boundary extraction and task-list generation above use the original
+    // user_message intentionally — they work on the raw intent/structure.
+    let processed_user_message =
+        long_text::maybe_process_user_input(client, &config.model, user_message).await;
+
     // Assemble initial messages
     let mut messages = Vec::new();
     messages.push(ChatMessage::system(&system_prompt));
     messages.extend(initial_messages);
-    messages.push(ChatMessage::user(user_message));
+    messages.push(ChatMessage::user(&processed_user_message));
 
     // A13: Save initial checkpoint for --resume
     maybe_save_checkpoint(session_key, user_message, config, &planner, &messages, &chat_root);

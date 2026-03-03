@@ -811,6 +811,14 @@ pub fn get_max_tokens() -> usize {
     env_usize("SKILLLITE_MAX_TOKENS", 8192)
 }
 
+/// Max chars for a single user input message before truncation/summarization.
+/// `SKILLLITE_USER_INPUT_MAX_CHARS`. Default 30000 (~7.5k tokens).
+/// Inputs shorter than this pass through unchanged; longer inputs are
+/// truncated (if ≤ `SKILLLITE_SUMMARIZE_THRESHOLD`) or LLM-summarized.
+pub fn get_user_input_max_chars() -> usize {
+    env_usize("SKILLLITE_USER_INPUT_MAX_CHARS", 30000)
+}
+
 /// Max chars per tool result. `SKILLLITE_TOOL_RESULT_MAX_CHARS`.
 /// Default raised from 8000→12000 to better accommodate HTML/code tool results
 /// without triggering unnecessary truncation.

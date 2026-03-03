@@ -23,6 +23,7 @@ use std::path::Path;
 
 use super::extensions::{self, MemoryVectorContext};
 use super::llm::{self, LlmClient};
+use super::long_text;
 use skilllite_core::config::EmbeddingConfig;
 use super::prompt;
 use super::skills::LoadedSkill;
@@ -91,10 +92,14 @@ async fn run_simple_loop(
         config.system_prompt.as_deref(), skills, &config.workspace,
         session_key, config.enable_memory, Some(&chat_root), soul.as_ref(),
     );
+    // Guard against context overflow from oversized user messages
+    let processed_user_message =
+        long_text::maybe_process_user_input(&client, &config.model, user_message).await;
+
     let mut messages = Vec::new();
     messages.push(ChatMessage::system(&system_prompt));
     messages.extend(initial_messages);
-    messages.push(ChatMessage::user(user_message));
+    messages.push(ChatMessage::user(&processed_user_message));
 
     let mut documented_skills: HashSet<String> = HashSet::new();
     let mut state = ExecutionState::new();

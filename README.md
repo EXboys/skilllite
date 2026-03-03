@@ -2,7 +2,7 @@
 
 [中文文档](./docs/zh/README.md)
 
-**The AI Agent engine that learns from every task — and stays safe doing it.**
+**A lightweight secure Self-evolution engine built in Rust, featuring a built-in native system-level sandbox, zero dependencies, and fully local execution..**
 
 AI Agents need to evolve — learning better prompts, accumulating memory, and generating new skills from experience. But self-evolution is inherently risky: evolved code can be malicious, evolved rules can jailbreak. **SkillLite solves this with a single binary**: an immutable security core constrains all evolution, so your Agent gets smarter without compromising safety. Zero dependencies, local-first, LLM-agnostic.
 
