@@ -33,10 +33,26 @@ impl RuntimeResolver for RuntimePaths {
                 interpreter: self.python.clone(),
                 extra_env: Vec::new(),
             }),
-            "bash" => Some(ResolvedRuntime {
-                interpreter: PathBuf::from("bash"),
-                extra_env: Vec::new(),
-            }),
+            "bash" => {
+                // Bash-tool skills (e.g. agent-browser) may use npm CLI — add node_modules/.bin to PATH
+                let mut extra_env = Vec::new();
+                if let Some(ref nm) = self.node_modules {
+                    let bin = nm.join(".bin");
+                    if bin.exists() {
+                        let bin_str = bin.to_string_lossy().to_string();
+                        let sep = if cfg!(windows) { ";" } else { ":" };
+                        if let Ok(path) = std::env::var("PATH") {
+                            extra_env.push(("PATH".to_string(), format!("{}{}{}", bin_str, sep, path)));
+                        } else {
+                            extra_env.push(("PATH".to_string(), bin_str));
+                        }
+                    }
+                }
+                Some(ResolvedRuntime {
+                    interpreter: PathBuf::from("bash"),
+                    extra_env,
+                })
+            }
             "node" => {
                 let mut extra_env = Vec::new();
                 if let Some(ref node_modules) = self.node_modules {
