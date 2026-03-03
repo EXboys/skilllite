@@ -2,6 +2,15 @@
 //!
 //! Persists scan results to ~/.skilllite/scan-cache.json. Key = content_hash (SHA256 of
 //! skill_md + script_samples). Same hash within TTL avoids redundant LLM calls.
+//!
+//! ## Concurrency safety
+//!
+//! `put_cached` uses a write-to-temp-then-rename strategy so that concurrent
+//! processes never see a partially-written (corrupt) JSON file.  On POSIX,
+//! `rename(2)` is atomic: the destination path atomically switches from the
+//! old content to the new content.  If two processes write at the same time
+//! the last rename wins (last-writer-wins), which is acceptable for a cache —
+//! the losing entry will simply be recomputed on the next miss.
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -64,6 +73,9 @@ pub fn get_cached(content_hash: &str) -> Result<Option<(String, String)>> {
 }
 
 /// Store LLM admission result in cache.
+///
+/// Uses an atomic write (temp file + rename) to prevent concurrent processes
+/// from producing a partially-written / corrupt cache file.
 pub fn put_cached(content_hash: &str, risk: &str, reason: &str) -> Result<()> {
     let path = cache_path();
     let parent = path.parent().unwrap_or(path.as_path());
@@ -91,7 +103,17 @@ pub fn put_cached(content_hash: &str, risk: &str, reason: &str) -> Result<()> {
         },
     );
     let content = serde_json::to_string_pretty(&map)?;
-    fs::write(&path, content)?;
+
+    // Atomic write: write to a per-process temp file, then rename.
+    // rename(2) is atomic on POSIX — readers never see a partial write.
+    let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
+    fs::write(&tmp_path, content.as_bytes())
+        .map_err(|e| anyhow::anyhow!("write scan-cache tmp: {}", e))?;
+    if let Err(e) = fs::rename(&tmp_path, &path) {
+        // Best-effort cleanup of the temp file; ignore the secondary error.
+        let _ = fs::remove_file(&tmp_path);
+        return Err(anyhow::anyhow!("atomic rename scan-cache: {}", e));
+    }
     Ok(())
 }
 

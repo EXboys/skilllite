@@ -276,11 +276,18 @@ pub fn run_in_sandbox_with_limits_and_level(
                 .collect();
             
             if !critical_issues.is_empty() || !high_issues.is_empty() {
-                let will_auto_approve = crate::common::env_compat("SKILLLITE_AUTO_APPROVE", "SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
+                // Compute once; used both for suppressing the scan report and
+                // for the approval decision below.
+                let auto_approve_env = crate::common::env_compat(
+                    "SKILLLITE_AUTO_APPROVE",
+                    "SKILLBOX_AUTO_APPROVE",
+                )
+                .is_ok_and(|v| {
                     let v = v.trim().to_lowercase();
                     v == "1" || v == "true" || v == "yes"
                 });
-                if !will_auto_approve {
+
+                if !auto_approve_env {
                     eprintln!("{}", format_scan_result_compact(&scan_result));
                 }
 
@@ -316,11 +323,6 @@ pub fn run_in_sandbox_with_limits_and_level(
                     severity_str,
                     &serde_json::Value::Array(issues_json),
                 );
-
-                let auto_approve_env = crate::common::env_compat("SKILLLITE_AUTO_APPROVE", "SKILLBOX_AUTO_APPROVE").is_ok_and(|v| {
-                    let v = v.trim().to_lowercase();
-                    v == "1" || v == "true" || v == "yes"
-                });
 
                 let approved = if auto_approve_env {
                     tracing::info!("Auto-approved via SKILLLITE_AUTO_APPROVE (agent/daemon already confirmed)");
