@@ -65,6 +65,22 @@
       "installed_at": "2026-02-24T05:08:26.722659Z",
       "admission_risk": "safe"
     },
+    "find-skills": {
+      "name": "find-skills",
+      "source": "vercel-labs/skills@find-skills",
+      "version": null,
+      "hash": "c1720ff6ac18832a05d91cd913eee8781310e9f376ce77b8d5fc25a32e530a89",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-03T16:11:16.561431Z",
+      "installed_at": "2026-03-03T16:11:16.561431Z",
+      "admission_risk": "safe"
+    },
     "frontend-design": {
       "name": "frontend-design",
       "source": "reindex-local",
