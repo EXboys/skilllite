@@ -342,6 +342,32 @@ fn execute_with_bwrap(
     if Path::new("/sbin").exists() {
         cmd.args(["--ro-bind", "/sbin", "/sbin"]);
     }
+
+    // Mount the minimum /etc files required for a working runtime inside the sandbox.
+    //
+    // • ld.so.cache / ld.so.conf[.d] — dynamic linker; lets the loader find
+    //   libraries that live in non-standard paths (e.g. /usr/local/lib on
+    //   Debian-based Docker images, where Python's libpython3.x resides).
+    //
+    // • resolv.conf / nsswitch.conf / hosts — DNS/name resolution; required
+    //   when the skill makes network calls (e.g. http-request).  Without
+    //   these files the resolver returns SERVFAIL / -3 (name resolution failure)
+    //   even though the network namespace is shared.
+    for etc_file in &[
+        "/etc/ld.so.cache",
+        "/etc/ld.so.conf",
+        "/etc/ld.so.conf.d",
+        "/etc/resolv.conf",
+        "/etc/nsswitch.conf",
+        "/etc/hosts",
+        // CA certificate bundle — required for TLS/HTTPS verification
+        "/etc/ssl/certs",
+        "/etc/ca-certificates.conf",
+    ] {
+        if Path::new(etc_file).exists() {
+            cmd.args(["--ro-bind", etc_file, etc_file]);
+        }
+    }
     
     // Mount skill directory as read-only
     let skill_dir_str = skill_dir.to_string_lossy();
@@ -375,8 +401,24 @@ fn execute_with_bwrap(
     // Create minimal /dev
     cmd.args(["--dev", "/dev"]);
     
-    // Create /proc (needed for Python)
-    cmd.args(["--proc", "/proc"]);
+    // Create /proc.
+    // On bare metal / macOS we can mount a real procfs via --proc.
+    // Inside Docker, even with seccomp:unconfined, mounting procfs from a user
+    // namespace is blocked by the container runtime (AppArmor / capability
+    // restrictions).  Detect the container environment and fall back to an
+    // empty directory so Python can still start (it does not require a real
+    // /proc for HTTP requests or most common skill workloads).
+    let in_container = Path::new("/.dockerenv").exists()
+        || std::fs::read_to_string("/proc/1/cgroup")
+            .map(|s| s.contains("docker") || s.contains("containerd") || s.contains("kubepods"))
+            .unwrap_or(false);
+    if in_container {
+        // Empty directory – avoids "Can't mount proc: Operation not permitted"
+        cmd.args(["--dir", "/proc"]);
+    } else {
+        // Real procfs – fully isolated process view on bare-metal / macOS
+        cmd.args(["--proc", "/proc"]);
+    }
     
     // Network isolation (from security_policy - aligns with macOS)
     if security_policy::is_network_blocked(&network_policy) {
@@ -414,14 +456,33 @@ fn execute_with_bwrap(
         }
     }
     
-    // Generate seccomp BPF filter file for Unix socket blocking
+    // Generate seccomp BPF filter file for Unix socket blocking.
+    //
+    // bwrap --seccomp FD expects an *open file descriptor* (integer), not a
+    // path.  We open the BPF file here, keep the raw fd alive across the
+    // fork (into_raw_fd intentionally leaks ownership), and in pre_exec we
+    // dup2 it to the well-known slot 3 so that bwrap can read it.
     let seccomp_filter_path = work_dir.join("seccomp.bpf");
-    if let Err(e) = generate_seccomp_bpf_file(&seccomp_filter_path) {
-        tracing::warn!("Failed to generate seccomp filter: {}", e);
-    } else {
-        // Apply seccomp filter via bwrap
-        let filter_path_str = seccomp_filter_path.to_string_lossy();
-        cmd.args(["--seccomp", "3", &filter_path_str]);
+    let seccomp_raw_fd: Option<i32> = match generate_seccomp_bpf_file(&seccomp_filter_path) {
+        Err(e) => {
+            tracing::warn!("Failed to generate seccomp filter: {}", e);
+            None
+        }
+        Ok(()) => {
+            use std::os::unix::io::IntoRawFd;
+            match fs::File::open(&seccomp_filter_path) {
+                Ok(f) => Some(f.into_raw_fd()),
+                Err(e) => {
+                    tracing::warn!("Failed to open seccomp BPF file: {}", e);
+                    None
+                }
+            }
+        }
+    };
+
+    // Only add --seccomp when we successfully opened the BPF file.
+    if seccomp_raw_fd.is_some() {
+        cmd.args(["--seccomp", "3"]);
     }
     
     // Add the program and arguments
@@ -445,7 +506,10 @@ fn execute_with_bwrap(
 
     unsafe {
         cmd.pre_exec(move || {
-            use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
+            use nix::libc::{
+                rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC,
+                dup2, fcntl, close, F_GETFD, F_SETFD, FD_CLOEXEC,
+            };
 
             let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
             let mem_limit = rlimit {
@@ -473,10 +537,21 @@ fn execute_with_bwrap(
             };
             setrlimit(RLIMIT_NPROC, &nproc_limit);
 
+            // If we have an open seccomp BPF fd, dup2 it to FD 3 and clear
+            // CLOEXEC so bwrap can read it after execve.
+            if let Some(src_fd) = seccomp_raw_fd {
+                const SECCOMP_BWRAP_FD: i32 = 3;
+                if dup2(src_fd, SECCOMP_BWRAP_FD) >= 0 {
+                    let flags = fcntl(SECCOMP_BWRAP_FD, F_GETFD, 0);
+                    fcntl(SECCOMP_BWRAP_FD, F_SETFD, flags & !FD_CLOEXEC);
+                    close(src_fd);
+                }
+            }
+
             Ok(())
         });
     }
-    
+
     // Spawn the process
     let mut child = cmd.spawn().with_context(|| "Failed to spawn bwrap sandbox")?;
     
