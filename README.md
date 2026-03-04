@@ -281,6 +281,14 @@ cp .env.example .env   # Edit: BASE_URL, API_KEY, MODEL
 
 ---
 
+## Evolution Arena (Evotown)
+
+[Evotown](./evotown/) is an evolution testing platform that puts evolution engines (e.g. SkillLite) in a controlled environment for **evolution effect validation**.
+
+![Evotown — Evolution Arena](./docs/images/Evotown.png)
+
+---
+
 ## 💡 Usage
 
 ### Direct Skill Execution
