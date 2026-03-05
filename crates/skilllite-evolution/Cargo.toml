@@ -1,6 +1,6 @@
 [package]
 name = "skilllite-evolution"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2021"
 authors = ["EX <boyex345@gmail.com>"]
 description = "SkillLite Evolution: self-evolving prompts, skills, and memory"

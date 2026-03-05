@@ -1,6 +1,6 @@
 # SkillLite Project Architecture
 
-> **Note**: This document is synced to the v0.1.9 architecture. The Python SDK is a thin bridge layer (~600 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`; all logic lives in the Rust binary.
+> **Note**: This document is synced to the v0.1.10 architecture. The Python SDK is a thin bridge layer (~600 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`; all logic lives in the Rust binary.
 
 ## Overview
 
@@ -145,7 +145,7 @@ skillLite/
 │                   └── chat_data.rs   # chat_history, chat_plan
 │
 ├── python-sdk/                    # Python SDK (thin bridge layer)
-│   ├── pyproject.toml             # Package config (v0.1.9, zero runtime deps)
+│   ├── pyproject.toml             # Package config (v0.1.10, zero runtime deps)
 │   └── skilllite/
 │       ├── __init__.py            # Exports: chat, run_skill, scan_code, execute_code
 │       ├── api.py                 # Core API (subprocess calls to skilllite binary)

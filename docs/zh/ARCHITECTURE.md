@@ -1,6 +1,6 @@
 # SkillLite 项目架构文档
 
-> **说明**：本文档已同步至 v0.1.9 架构。Python SDK 为薄桥接层（~600 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`，逻辑集中在 Rust 二进制。
+> **说明**：本文档已同步至 v0.1.10 架构。Python SDK 为薄桥接层（~600 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`，逻辑集中在 Rust 二进制。
 
 ## 📋 项目概述
 
@@ -143,7 +143,7 @@ skillLite/
 │                   └── chat_data.rs   # chat_history, chat_plan
 │
 ├── python-sdk/                    # Python SDK (薄桥接层)
-│   ├── pyproject.toml             # 包配置 (v0.1.9, 零运行时依赖)
+│   ├── pyproject.toml             # 包配置 (v0.1.10, 零运行时依赖)
 │   └── skilllite/
 │       ├── __init__.py            # 导出 chat, run_skill, scan_code, execute_code
 │       ├── api.py                 # 核心 API (subprocess 调用 skilllite 二进制)
