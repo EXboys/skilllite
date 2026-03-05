@@ -103,13 +103,13 @@ done
 SKILLBOX_BIN=""
 if command -v skilllite &> /dev/null; then
     SKILLBOX_BIN=$(which skilllite)
-elif [ -f "$PROJECT_ROOT/skilllite/target/release/skilllite" ]; then
-    SKILLBOX_BIN="$PROJECT_ROOT/skilllite/target/release/skilllite"
+elif [ -f "$PROJECT_ROOT/target/release/skilllite" ]; then
+    SKILLBOX_BIN="$PROJECT_ROOT/target/release/skilllite"
 else
     echo -e "${YELLOW}SkillBox binary not found. Building...${NC}"
     cd "$PROJECT_ROOT/skilllite"
     cargo build --release
-    SKILLBOX_BIN="$PROJECT_ROOT/skilllite/target/release/skilllite"
+    SKILLBOX_BIN="$PROJECT_ROOT/target/release/skilllite"
 fi
 
 echo -e "${GREEN}SkillBox binary: $SKILLBOX_BIN${NC}"

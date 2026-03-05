@@ -37,7 +37,7 @@ High-concurrency performance comparison test suite for comparing SkillLite with 
 ## Test Environment
 
 - **Operating System**: macOS
-- **SkillLite**: Rust Native Sandbox (Seatbelt)，二进制位于 `skilllite/target/release/skilllite`
+- **SkillLite**: Rust Native Sandbox (Seatbelt)，二进制位于 `target/release/skilllite`
 - **Docker**: python:3.11-slim image (~150MB)
 - **Network**: Download 28 Mbps / Upload 28 Mbps
 
