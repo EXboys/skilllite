@@ -71,8 +71,8 @@ jobs:
       - name: Cache cargo build
         uses: actions/cache@v4
         with:
-          path: skilllite/target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-${{ hashFiles('skilllite/Cargo.lock', 'skilllite/Cargo.toml') }}
+          path: target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-${{ hashFiles('Cargo.lock', 'skilllite/Cargo.toml') }}
 
       - name: Install cross-compilation tools (Linux ARM64)
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -81,9 +81,8 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Verify Cargo.lock (required for rustls, no OpenSSL)
-        working-directory: ./skilllite
         run: |
-          test -f Cargo.lock || (echo "ERROR: Cargo.lock missing - ensure skilllite/Cargo.lock is committed" && exit 1)
+          test -f Cargo.lock || (echo "ERROR: Cargo.lock missing - ensure Cargo.lock is committed" && exit 1)
           grep -q openssl Cargo.lock && (echo "ERROR: Cargo.lock contains openssl - run 'cargo update' locally and commit" && exit 1) || true
 
       - name: Build skilllite (full)
@@ -102,19 +101,19 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          cd skilllite/target/${{ matrix.target }}/release
+          cd target/${{ matrix.target }}/release
           tar -czf ${{ matrix.asset_name }}.tar.gz ${{ matrix.artifact_name }}
           tar -czf ${{ matrix.asset_name }}-sandbox.tar.gz skilllite-sandbox
-          mv *.tar.gz ../../../../
+          mv *.tar.gz ../../../
 
       - name: Create zips (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          cd skilllite/target/${{ matrix.target }}/release
+          cd target/${{ matrix.target }}/release
           Compress-Archive -Path ${{ matrix.artifact_name }} -DestinationPath ${{ matrix.asset_name }}.zip
           Compress-Archive -Path skilllite-sandbox.exe -DestinationPath ${{ matrix.asset_name }}-sandbox.zip
-          Move-Item *.zip ../../../../
+          Move-Item *.zip ../../../
 
       - name: Upload skilllite artifact (Unix)
         if: runner.os != 'Windows'
