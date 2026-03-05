@@ -335,26 +335,45 @@ fn attach_job_object(
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::JobObjects::*;
 
+    #[repr(C)]
+    struct IoCounters {
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    struct JobObjectExtendedLimitInfo {
+        basic: JOBOBJECT_BASIC_LIMIT_INFORMATION,
+        io_info: IoCounters,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
     unsafe {
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
-        if job == 0 {
+        if job.is_null() {
             anyhow::bail!("CreateJobObjectW failed");
         }
 
-        // Set resource limits
-        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
-        info.BasicLimitInformation.LimitFlags =
+        let mut info: JobObjectExtendedLimitInfo = std::mem::zeroed();
+        info.basic.LimitFlags =
             JOB_OBJECT_LIMIT_PROCESS_MEMORY
             | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
             | JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        info.ProcessMemoryLimit = (limits.max_memory_mb * 1024 * 1024) as usize;
-        info.BasicLimitInformation.ActiveProcessLimit = 10;
+        info.process_memory_limit = (limits.max_memory_mb * 1024 * 1024) as usize;
+        info.basic.ActiveProcessLimit = 10;
 
         let set_ok = SetInformationJobObject(
             job,
             JobObjectExtendedLimitInformation,
             &info as *const _ as *const _,
-            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            std::mem::size_of::<JobObjectExtendedLimitInfo>() as u32,
         );
         if set_ok == 0 {
             CloseHandle(job);
