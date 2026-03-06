@@ -613,7 +613,26 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         }
 
         let reason = reason_parts.join("; ");
-        append_changelog(chat_root, &txn_id, &snapshot_files, &all_changes, &reason)?;
+
+        // 只记录内容真正发生变化的文件：用快照与当前版本逐一对比。
+        // snapshot_files 是进化前备份的全量清单，但实际修改的往往只是其中一部分
+        // （如 rules.json / examples.json），planning.md 等通常未被触碰。
+        let snap_dir = versions_dir(chat_root).join(&txn_id);
+        let prompts_dir = chat_root.join("prompts");
+        let modified_files: Vec<String> = snapshot_files
+            .iter()
+            .filter(|fname| {
+                let snap_path = snap_dir.join(fname);
+                let curr_path = prompts_dir.join(fname);
+                match (std::fs::read(&snap_path), std::fs::read(&curr_path)) {
+                    (Ok(old), Ok(new)) => old != new,
+                    _ => false,
+                }
+            })
+            .cloned()
+            .collect();
+
+        append_changelog(chat_root, &txn_id, &modified_files, &all_changes, &reason)?;
 
         let decisions_path = chat_root.join("DECISIONS.md");
         let _ = feedback::export_decisions_md(&conn, &decisions_path);
