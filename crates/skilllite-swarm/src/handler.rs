@@ -21,7 +21,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::discovery::{parse_capabilities_from_txt, Discovery};
-use crate::routing::{route_task, RouteTarget, TaskExecutor};
+use crate::routing::{capabilities_match, route_task, RouteTarget, TaskExecutor};
 
 /// Parse listen address "host:port" into (host, port).
 fn parse_listen_addr(addr: &str) -> Result<(String, u16)> {
@@ -38,6 +38,8 @@ fn parse_listen_addr(addr: &str) -> Result<(String, u16)> {
 /// Shared state for the HTTP server.
 #[derive(Clone)]
 struct AppState {
+    /// This node's instance name (for "I can" response in can-do).
+    instance_name: String,
     local_capabilities: Vec<String>,
     peers: Arc<std::sync::Mutex<Vec<crate::discovery::PeerInfo>>>,
     executor: Option<Arc<dyn TaskExecutor>>,
@@ -53,6 +55,33 @@ async fn handle_status(State(state): State<AppState>) -> impl IntoResponse {
         None => ("idle", serde_json::Value::Null),
     };
     (StatusCode::OK, Json(serde_json::json!({ "status": status, "current_task_id": task_id_val })))
+}
+
+#[derive(serde::Deserialize)]
+struct CanDoQuery {
+    /// Comma-separated capability tags (e.g. "python,web").
+    required: Option<String>,
+}
+
+/// GET /can-do — "谁能做" broadcast target: respond "我来" when local capabilities match.
+/// Query: ?required=tag1,tag2. Returns { "can_do": true, "instance_name": "..." } or can_do: false.
+async fn handle_can_do(State(state): State<AppState>, Query(q): Query<CanDoQuery>) -> impl IntoResponse {
+    let required: Vec<String> = q
+        .required
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let can_do = capabilities_match(&required, &state.local_capabilities);
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "can_do": can_do,
+            "instance_name": state.instance_name,
+        })),
+    )
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -99,7 +128,37 @@ async fn handle_task(
     // Route with effective required_capabilities
     let mut task_for_route = task.clone();
     task_for_route.context.required_capabilities = required.clone();
-    let target = route_task(&task_for_route, &state.local_capabilities, &peers);
+    let mut target = route_task(&task_for_route, &state.local_capabilities, &peers);
+
+    // NoMatch 时广播「谁能做」→ 收集「我来」再转发（简单路由）
+    if matches!(&target, RouteTarget::NoMatch) && !required.is_empty() && !peers.is_empty() {
+        let can_do_query = required.join(",");
+        let client = reqwest::Client::new();
+        let mut respondents: Vec<crate::discovery::PeerInfo> = Vec::new();
+        for peer in &peers {
+            let url = format!("http://{}/can-do?required={}", peer.addr, urlencoding::encode(&can_do_query));
+            match client.get(&url).timeout(Duration::from_secs(3)).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(json) = resp.json::<serde_json::Value>().await {
+                        if json.get("can_do").and_then(|v| v.as_bool()).unwrap_or(false) {
+                            respondents.push(peer.clone());
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !respondents.is_empty() {
+            let n = respondents.len();
+            target = RouteTarget::Forward(respondents);
+            tracing::info!(
+                task_id = %task.id,
+                required = ?required,
+                respondent_count = n,
+                "Routing: broadcast who-can-do → forward to respondent(s)"
+            );
+        }
+    }
 
     // Log routing decision for observability
     match &target {
@@ -392,6 +451,7 @@ pub fn serve_swarm(
     });
 
     let state = AppState {
+        instance_name: instance_name.clone(),
         local_capabilities: capability_tags.clone(),
         peers,
         executor,
@@ -401,6 +461,7 @@ pub fn serve_swarm(
     let app = Router::new()
         .route("/task", post(handle_task))
         .route("/status", get(handle_status))
+        .route("/can-do", get(handle_can_do))
         .with_state(state);
 
     let llm_routing = std::env::var("SKILLLITE_SWARM_LLM_ROUTING").as_deref() != Ok("0");
