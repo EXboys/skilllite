@@ -1,6 +1,6 @@
 [package]
 name = "skilllite-executor"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 authors = ["EX <boyex345@gmail.com>"]
 description = "SkillLite Executor: session, transcript, memory storage"
