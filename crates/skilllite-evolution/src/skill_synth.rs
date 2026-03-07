@@ -89,7 +89,13 @@ pub async fn evolve_skills<L: EvolutionLlm>(
     // When force=true and generate=false (Refine path), try Generate with relaxed threshold first.
     // This handles "skill capability insufficient" (e.g. weather can't do forecast) with only 2 runs.
     let try_generate = generate || (force && !generate);
-    let min_pattern_count = if force { 2 } else { 3 };
+    // SKILLLITE_MIN_PATTERN_COUNT: unified threshold for both CLI and agent session triggers.
+    // CLI (force=true) defaults to 2; agent session trigger (force=false) defaults to 3.
+    // Override via env var to share the same value across both paths.
+    let min_pattern_count: u32 = std::env::var("SKILLLITE_MIN_PATTERN_COUNT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(if force { 2 } else { 3 });
 
     if try_generate {
         // 既总结成功经验，也总结失败经验，两者同等重要
