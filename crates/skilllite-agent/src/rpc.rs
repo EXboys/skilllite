@@ -216,6 +216,10 @@ pub fn serve_agent_rpc() -> Result<()> {
             "ping" => {
                 emit_event(&writer, "pong", json!({}));
             }
+            "confirm" => {
+                // 进程管理端在 confirmation_request 后发送 confirm；若 agent_chat 已结束，
+                // 主循环会读到滞后的 confirm。静默忽略，避免报 Unknown method 错误。
+            }
             _ => {
                 emit_event(
                     &writer,
