@@ -1,6 +1,6 @@
 //! Transcript store: *.jsonl append-only, tree structure.
 //!
-//! Entry types: message, custom_message, custom, compaction, branch_summary.
+//! Entry types: message, tool_call, tool_result, custom_message, custom, compaction, branch_summary.
 //!
 //! Time-based segmentation (aligned with OpenClaw): files are named
 //! `{session_key}-YYYY-MM-DD.jsonl` so each day gets a new file. Legacy
@@ -27,6 +27,27 @@ pub enum TranscriptEntry {
         content: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         tool_calls: Option<serde_json::Value>,
+    },
+    /// Tool call request - independent entry for complete traceability (aligned with OpenAI Agents SDK tracing)
+    ToolCall {
+        id: String,
+        parent_id: Option<String>,
+        tool_call_id: String,
+        name: String,
+        arguments: String,
+        timestamp: String,
+    },
+    /// Tool execution result - independent entry for complete traceability
+    ToolResult {
+        id: String,
+        parent_id: Option<String>,
+        tool_call_id: String,
+        name: String,
+        result: String,
+        is_error: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        elapsed_ms: Option<u64>,
+        timestamp: String,
     },
     CustomMessage {
         id: String,
@@ -61,6 +82,8 @@ impl TranscriptEntry {
         match self {
             Self::Session { id, .. } => Some(id),
             Self::Message { id, .. } => Some(id),
+            Self::ToolCall { id, .. } => Some(id),
+            Self::ToolResult { id, .. } => Some(id),
             Self::CustomMessage { id, .. } => Some(id),
             Self::Custom { id, .. } => Some(id),
             Self::Compaction { id, .. } => Some(id),

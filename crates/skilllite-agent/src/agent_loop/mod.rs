@@ -168,7 +168,7 @@ async fn run_simple_loop(
         let outcome = execute_tool_batch_simple(
             &tool_calls, &registry, workspace, event_sink, embed_ctx.as_ref(),
             &client, &config.model, skills, &mut messages, &mut documented_skills,
-            &mut state, config.max_consecutive_failures,
+            &mut state, config.max_consecutive_failures, session_key,
         ).await;
 
         if outcome.disclosure_injected { continue; }
@@ -328,7 +328,7 @@ async fn run_with_task_planning(
             &tool_calls, &registry, workspace, event_sink, embed_ctx.as_ref(),
             &client, &config.model, &mut planner, skills, &mut messages,
             &mut documented_skills, &mut state,
-            config.max_tool_calls_per_task, config.max_consecutive_failures,
+            config.max_tool_calls_per_task, config.max_consecutive_failures, session_key,
         ).await;
 
         if outcome.disclosure_injected { continue; }
