@@ -97,6 +97,12 @@ pub struct AgentConfig {
     /// [Run mode] Extracted goal boundaries (scope, exclusions, completion conditions).
     /// Injected into planning when set.
     pub goal_boundaries: Option<super::goal_boundaries::GoalBoundaries>,
+
+    /// When true, exclude conversation history from the planning prompt.
+    /// Use when each task is self-contained and history from previous turns would
+    /// corrupt planning (e.g. multi-turn agent orchestration, batch task dispatch).
+    /// Default: false.
+    pub skip_history_for_planning: bool,
 }
 
 impl Default for AgentConfig {
@@ -122,6 +128,7 @@ impl Default for AgentConfig {
             context_append: None,
             max_consecutive_failures: None,
             goal_boundaries: None,
+            skip_history_for_planning: false,
         }
     }
 }

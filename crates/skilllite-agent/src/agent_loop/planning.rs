@@ -49,8 +49,14 @@ pub(super) async fn run_planning_phase(
 
     let mut planner = TaskPlanner::new(Some(workspace), Some(&chat_root));
 
-    // Build conversation context for "继续" detection
-    let conversation_context: Option<String> = {
+    // Build conversation context for "继续" detection.
+    // Callers can set config.skip_history_for_planning=true to exclude transcript history
+    // from the planning prompt (e.g. when each task is self-contained and history would
+    // corrupt planning with unrelated tasks from previous turns).
+    let conversation_context: Option<String> = if config.skip_history_for_planning {
+        tracing::debug!("skip_history_for_planning=true: excluding transcript from planning prompt");
+        None
+    } else {
         let ctx: Vec<String> = initial_messages
             .iter()
             .filter_map(|m| m.content.as_ref().map(|c| format!("[{}] {}", m.role, c)))

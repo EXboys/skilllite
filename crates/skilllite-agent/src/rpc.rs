@@ -274,6 +274,13 @@ async fn handle_agent_chat(
         if let Some(sp) = overrides.get("soul_path").and_then(|v| v.as_str()) {
             config.soul_path = Some(sp.to_string());
         }
+        if let Some(skip) = overrides.get("skip_history_for_planning").and_then(|v| v.as_bool()) {
+            config.skip_history_for_planning = skip;
+        }
+    }
+    // params.context.append — was documented but not parsed
+    if let Some(ctx) = params.get("context").and_then(|c| c.get("append")).and_then(|a| a.as_str()) {
+        config.context_append = Some(ctx.to_string());
     }
 
     if config.api_key.is_empty() {
