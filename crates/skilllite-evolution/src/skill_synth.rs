@@ -86,9 +86,11 @@ pub async fn evolve_skills<L: EvolutionLlm>(
     };
     let mut changes = Vec::new();
 
-    // When force=true and generate=false (Refine path), try Generate with relaxed threshold first.
-    // This handles "skill capability insufficient" (e.g. weather can't do forecast) with only 2 runs.
-    let try_generate = generate || (force && !generate);
+    // try_generate: true when the caller requested generation, OR when force=true (CLI mode).
+    // force=true enables generation even on the "refine-only" path — this catches capability gaps
+    // (e.g. the agent repeatedly fails at weather forecasts) with a relaxed pattern threshold.
+    // Note: `generate || (force && !generate)` simplifies to `generate || force`.
+    let try_generate = generate || force;
     // SKILLLITE_MIN_PATTERN_COUNT: unified threshold for both CLI and agent session triggers.
     // CLI (force=true) defaults to 2; agent session trigger (force=false) defaults to 3.
     // Override via env var to share the same value across both paths.
@@ -232,16 +234,19 @@ async fn generate_skill<L: EvolutionLlm>(
         return Ok(None);
     }
 
-    // Query repeated patterns from decisions
+    // Query repeated patterns from decisions.
+    // query_repeated_patterns returns (display_string, task_desc_list):
+    // - display_string: human-readable summary injected into the LLM prompt
+    // - task_desc_list: raw descriptions used to filter *matching* executions
     let (patterns, executions) = {
         let conn = feedback::open_evolution_db(chat_root)?;
-        let patterns = query_repeated_patterns(&conn, min_pattern_count)?;
-        let executions = if !patterns.is_empty() {
-            query_pattern_executions(&conn, &patterns)?
+        let (patterns_display, pattern_descs) = query_repeated_patterns(&conn, min_pattern_count)?;
+        let executions = if !pattern_descs.is_empty() {
+            query_pattern_executions(&conn, &pattern_descs)?
         } else {
             String::new()
         };
-        (patterns, executions)
+        (patterns_display, executions)
     };
 
     if patterns.is_empty() {
@@ -1123,7 +1128,10 @@ fn query_failed_executions(conn: &Connection) -> Result<String> {
     Ok(rows.join("\n"))
 }
 
-fn query_repeated_patterns(conn: &Connection, min_count: u32) -> Result<String> {
+/// Returns `(display_string, task_desc_list)`.
+/// `display_string` is the human-readable summary sent to the LLM prompt.
+/// `task_desc_list` is the raw task descriptions used to filter matching executions.
+fn query_repeated_patterns(conn: &Connection, min_count: u32) -> Result<(String, Vec<String>)> {
     let min_i64 = min_count as i64;
     let mut stmt = conn.prepare(
         "SELECT task_description, COUNT(*) as cnt,
@@ -1135,35 +1143,60 @@ fn query_repeated_patterns(conn: &Connection, min_count: u32) -> Result<String> 
          ORDER BY cnt DESC LIMIT 5",
     )?;
 
-    let rows: Vec<String> = stmt
+    let mut display_rows: Vec<String> = Vec::new();
+    let mut task_descs: Vec<String> = Vec::new();
+
+    for row in stmt
         .query_map(params![min_i64], |row| {
             let desc: String = row.get(0)?;
             let cnt: i64 = row.get(1)?;
             let succ: i64 = row.get(2)?;
-            Ok(format!(
-                "- 模式: {} | 出现: {}次 | 成功: {}次 ({:.0}%)",
-                desc,
-                cnt,
-                succ,
-                succ as f64 / cnt as f64 * 100.0
-            ))
+            Ok((desc, cnt, succ))
         })?
         .filter_map(|r| r.ok())
-        .collect();
+    {
+        let (desc, cnt, succ) = row;
+        display_rows.push(format!(
+            "- 模式: {} | 出现: {}次 | 成功: {}次 ({:.0}%)",
+            desc,
+            cnt,
+            succ,
+            succ as f64 / cnt as f64 * 100.0
+        ));
+        task_descs.push(desc);
+    }
 
-    Ok(rows.join("\n"))
+    Ok((display_rows.join("\n"), task_descs))
 }
 
-fn query_pattern_executions(conn: &Connection, _patterns: &str) -> Result<String> {
-    let mut stmt = conn.prepare(
+/// Query successful executions that belong to the given pattern descriptions.
+/// This ensures the executions passed to the LLM are actually related to the
+/// repeated patterns, rather than arbitrary recent successes.
+fn query_pattern_executions(conn: &Connection, task_descriptions: &[String]) -> Result<String> {
+    if task_descriptions.is_empty() {
+        return Ok(String::new());
+    }
+
+    // Build a parameterized IN clause: ?1, ?2, … ?N  (max 5, from LIMIT 5 above)
+    let placeholders = task_descriptions
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("?{}", i + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let sql = format!(
         "SELECT task_description, tools_detail, elapsed_ms
          FROM decisions
-         WHERE evolved = 0 AND task_completed = 1 AND task_description IS NOT NULL
+         WHERE evolved = 0 AND task_completed = 1 AND task_description IN ({})
          ORDER BY ts DESC LIMIT 10",
-    )?;
+        placeholders
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
 
     let rows: Vec<String> = stmt
-        .query_map([], |row| {
+        .query_map(rusqlite::params_from_iter(task_descriptions.iter()), |row| {
             let desc: String = row.get(0)?;
             let tools: Option<String> = row.get(1)?;
             let elapsed: i64 = row.get(2)?;
