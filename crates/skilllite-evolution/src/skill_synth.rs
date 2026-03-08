@@ -272,7 +272,38 @@ async fn generate_skill<L: EvolutionLlm>(
         }
     };
 
-    // L3 content check on both script and SKILL.md
+    let name =
+        generate_skill_inner(parsed, chat_root, skills_root, &pending_dir, txn_id, llm, model)
+            .await?;
+    if let Some(ref n) = name {
+        tracing::info!("Generated evolved skill (pending confirmation): {}", n);
+    }
+    Ok(name)
+}
+
+/// Shared post-parse pipeline used by both `generate_skill` and
+/// `generate_skill_from_failures`.
+///
+/// Steps performed:
+///   1. L3 content gatekeeper (script + SKILL.md)
+///   2. L1 path gatekeeper → create skill directory under `pending_dir`
+///   3. L4 security scan
+///      - Pass  → syntax-refine + write (needs_review = false)
+///      - Fail  → refine_loop
+///          - Fixed  → syntax-refine + write (needs_review = false)
+///          - Unfixable → syntax-refine + write as draft (needs_review = true)
+///
+/// Returns `Ok(Some(name))` on success, `Ok(None)` when any gatekeeper rejects.
+async fn generate_skill_inner<L: EvolutionLlm>(
+    parsed: GeneratedSkill,
+    chat_root: &Path,
+    skills_root: &Path,
+    pending_dir: &Path,
+    txn_id: &str,
+    llm: &L,
+    model: &str,
+) -> Result<Option<String>> {
+    // ── L3 content gatekeepers ──────────────────────────────────────────────
     if let Err(e) = gatekeeper_l3_content(&parsed.script_content) {
         tracing::warn!("L3 rejected generated skill script: {}", e);
         return Ok(None);
@@ -282,21 +313,23 @@ async fn generate_skill<L: EvolutionLlm>(
         return Ok(None);
     }
 
-    // A10: Write to _pending/ until user confirms
+    // ── L1 path gatekeeper + directory creation ─────────────────────────────
+    // A10: New skills land in _pending/ until the user confirms them.
     let skill_dir = pending_dir.join(&parsed.name);
     if !gatekeeper_l1_path(chat_root, &skill_dir, Some(skills_root)) {
-        anyhow::bail!("L1 rejected skill directory: {}", skill_dir.display());
+        tracing::warn!("L1 rejected skill directory: {}", skill_dir.display());
+        return Ok(None);
     }
     std::fs::create_dir_all(&skill_dir)?;
 
     let script_path = skill_dir.join(&parsed.entry_point);
     let skill_md_path = skill_dir.join("SKILL.md");
 
-    // L4: security scan before writing (allow_network if skill declares it)
+    // ── L4 security scan ────────────────────────────────────────────────────
     let needs_network = skill_md_needs_network(&parsed.skill_md_content);
     let scan_result = run_l4_scan(&parsed.script_content, &script_path, needs_network)?;
+
     if !scan_result {
-        // Enter refinement loop
         tracing::info!(
             "L4 scan failed for generated skill '{}', entering refinement loop",
             parsed.name
@@ -340,7 +373,7 @@ async fn generate_skill<L: EvolutionLlm>(
                 )?;
             }
             None => {
-                // L4 未通过也保存为 draft，供人工审核（如网络请求类需在 SKILL.md 声明 compatibility）
+                // L4 unfixable → save as draft for human review
                 let final_script = prepare_script_with_syntax_refine(
                     llm,
                     model,
@@ -392,10 +425,6 @@ async fn generate_skill<L: EvolutionLlm>(
         )?;
     }
 
-    tracing::info!(
-        "Generated evolved skill (pending confirmation): {}",
-        parsed.name
-    );
     Ok(Some(parsed.name))
 }
 
@@ -449,124 +478,13 @@ async fn generate_skill_from_failures<L: EvolutionLlm>(
         }
     };
 
-    if let Err(e) = gatekeeper_l3_content(&parsed.script_content) {
-        tracing::warn!("L3 rejected failure-driven skill script: {}", e);
-        return Ok(None);
+    let name =
+        generate_skill_inner(parsed, chat_root, skills_root, &pending_dir, txn_id, llm, model)
+            .await?;
+    if let Some(ref n) = name {
+        tracing::info!("Generated failure-driven skill (补全): {}", n);
     }
-    if let Err(e) = gatekeeper_l3_content(&parsed.skill_md_content) {
-        tracing::warn!("L3 rejected failure-driven SKILL.md: {}", e);
-        return Ok(None);
-    }
-
-    let skill_dir = pending_dir.join(&parsed.name);
-    if !gatekeeper_l1_path(chat_root, &skill_dir, Some(skills_root)) {
-        return Ok(None);
-    }
-    std::fs::create_dir_all(&skill_dir)?;
-
-    let script_path = skill_dir.join(&parsed.entry_point);
-    let skill_md_path = skill_dir.join("SKILL.md");
-
-    let needs_network = skill_md_needs_network(&parsed.skill_md_content);
-    let scan_result = run_l4_scan(&parsed.script_content, &script_path, needs_network)?;
-
-    if !scan_result {
-        let refined = refine_loop(
-            llm,
-            model,
-            &skill_dir,
-            &parsed.name,
-            &parsed.description,
-            &parsed.entry_point,
-            &parsed.script_content,
-            "Security scan found critical/high issues",
-            "security_scan",
-            needs_network,
-        )
-        .await?;
-
-        match refined {
-            Some(fixed_script) => {
-                let final_script = prepare_script_with_syntax_refine(
-                    llm,
-                    model,
-                    &skill_dir,
-                    &parsed.name,
-                    &parsed.description,
-                    &parsed.entry_point,
-                    &fixed_script,
-                    needs_network,
-                )
-                .await?;
-                write_skill_files(
-                    &skill_dir,
-                    &skill_md_path,
-                    &script_path,
-                    &parsed.skill_md_content,
-                    &final_script,
-                    &parsed.name,
-                    txn_id,
-                    false,
-                )?;
-            }
-            None => {
-                // L4 未通过也保存为 draft，供人工审核
-                let final_script = prepare_script_with_syntax_refine(
-                    llm,
-                    model,
-                    &skill_dir,
-                    &parsed.name,
-                    &parsed.description,
-                    &parsed.entry_point,
-                    &parsed.script_content,
-                    needs_network,
-                )
-                .await?;
-                write_skill_files(
-                    &skill_dir,
-                    &skill_md_path,
-                    &script_path,
-                    &parsed.skill_md_content,
-                    &final_script,
-                    &parsed.name,
-                    txn_id,
-                    true,
-                )?;
-                tracing::info!(
-                    "Skill '{}' saved as draft (L4 未通过，需人工审核后 confirm)",
-                    parsed.name
-                );
-            }
-        }
-    } else {
-        let final_script = prepare_script_with_syntax_refine(
-            llm,
-            model,
-            &skill_dir,
-            &parsed.name,
-            &parsed.description,
-            &parsed.entry_point,
-            &parsed.script_content,
-            needs_network,
-        )
-        .await?;
-        write_skill_files(
-            &skill_dir,
-            &skill_md_path,
-            &script_path,
-            &parsed.skill_md_content,
-            &final_script,
-            &parsed.name,
-            txn_id,
-            false,
-        )?;
-    }
-
-    tracing::info!(
-        "Generated failure-driven skill (补全): {}",
-        parsed.name
-    );
-    Ok(Some(parsed.name))
+    Ok(name)
 }
 
 /// Fix common LLM error: write('\\n') broken into write('\\n') across lines (unterminated string).
