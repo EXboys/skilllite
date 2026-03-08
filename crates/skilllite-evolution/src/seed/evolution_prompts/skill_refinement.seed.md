@@ -25,6 +25,8 @@
 ## 失败类型
 {{failure_type}}
 
+（若为 syntax_error，常见原因：LLM 输出被截断导致标识符不完整，如 sys.stder→sys.stderr、sys.stdou→sys.stdout，请补全或修正语法）
+
 ## 输出格式
 严格输出以下 JSON，不要添加任何额外文字或 markdown 代码块标记：
 {

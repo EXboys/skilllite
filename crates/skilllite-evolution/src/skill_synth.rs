@@ -312,12 +312,23 @@ async fn generate_skill<L: EvolutionLlm>(
 
         match refined {
             Some(fixed_script) => {
+                let final_script = prepare_script_with_syntax_refine(
+                    llm,
+                    model,
+                    &skill_dir,
+                    &parsed.name,
+                    &parsed.description,
+                    &parsed.entry_point,
+                    &fixed_script,
+                    needs_network,
+                )
+                .await?;
                 write_skill_files(
                     &skill_dir,
                     &skill_md_path,
                     &script_path,
                     &parsed.skill_md_content,
-                    &fixed_script,
+                    &final_script,
                     &parsed.name,
                     txn_id,
                     false,
@@ -325,12 +336,23 @@ async fn generate_skill<L: EvolutionLlm>(
             }
             None => {
                 // L4 未通过也保存为 draft，供人工审核（如网络请求类需在 SKILL.md 声明 compatibility）
+                let final_script = prepare_script_with_syntax_refine(
+                    llm,
+                    model,
+                    &skill_dir,
+                    &parsed.name,
+                    &parsed.description,
+                    &parsed.entry_point,
+                    &parsed.script_content,
+                    needs_network,
+                )
+                .await?;
                 write_skill_files(
                     &skill_dir,
                     &skill_md_path,
                     &script_path,
                     &parsed.skill_md_content,
-                    &parsed.script_content,
+                    &final_script,
                     &parsed.name,
                     txn_id,
                     true,
@@ -342,12 +364,23 @@ async fn generate_skill<L: EvolutionLlm>(
             }
         }
     } else {
+        let final_script = prepare_script_with_syntax_refine(
+            llm,
+            model,
+            &skill_dir,
+            &parsed.name,
+            &parsed.description,
+            &parsed.entry_point,
+            &parsed.script_content,
+            needs_network,
+        )
+        .await?;
         write_skill_files(
             &skill_dir,
             &skill_md_path,
             &script_path,
             &parsed.skill_md_content,
-            &parsed.script_content,
+            &final_script,
             &parsed.name,
             txn_id,
             false,
@@ -449,12 +482,23 @@ async fn generate_skill_from_failures<L: EvolutionLlm>(
 
         match refined {
             Some(fixed_script) => {
+                let final_script = prepare_script_with_syntax_refine(
+                    llm,
+                    model,
+                    &skill_dir,
+                    &parsed.name,
+                    &parsed.description,
+                    &parsed.entry_point,
+                    &fixed_script,
+                    needs_network,
+                )
+                .await?;
                 write_skill_files(
                     &skill_dir,
                     &skill_md_path,
                     &script_path,
                     &parsed.skill_md_content,
-                    &fixed_script,
+                    &final_script,
                     &parsed.name,
                     txn_id,
                     false,
@@ -462,12 +506,23 @@ async fn generate_skill_from_failures<L: EvolutionLlm>(
             }
             None => {
                 // L4 未通过也保存为 draft，供人工审核
+                let final_script = prepare_script_with_syntax_refine(
+                    llm,
+                    model,
+                    &skill_dir,
+                    &parsed.name,
+                    &parsed.description,
+                    &parsed.entry_point,
+                    &parsed.script_content,
+                    needs_network,
+                )
+                .await?;
                 write_skill_files(
                     &skill_dir,
                     &skill_md_path,
                     &script_path,
                     &parsed.skill_md_content,
-                    &parsed.script_content,
+                    &final_script,
                     &parsed.name,
                     txn_id,
                     true,
@@ -479,12 +534,23 @@ async fn generate_skill_from_failures<L: EvolutionLlm>(
             }
         }
     } else {
+        let final_script = prepare_script_with_syntax_refine(
+            llm,
+            model,
+            &skill_dir,
+            &parsed.name,
+            &parsed.description,
+            &parsed.entry_point,
+            &parsed.script_content,
+            needs_network,
+        )
+        .await?;
         write_skill_files(
             &skill_dir,
             &skill_md_path,
             &script_path,
             &parsed.skill_md_content,
-            &parsed.script_content,
+            &final_script,
             &parsed.name,
             txn_id,
             false,
@@ -505,6 +571,19 @@ fn fix_llm_newline_in_strings(script: &str) -> String {
         .replace("write(\"\n\")", "write(\"\\n\")")
 }
 
+/// Fix common LLM truncation errors (token limit / streaming cut-off).
+/// e.g. sys.stder → sys.stderr, sys.stdou → sys.stdout
+/// Order matters: fix double-r from sys.stderr first, then sys.stder.
+fn fix_llm_common_truncations(script: &str) -> String {
+    let s = script
+        .replace("sys.stderrr", "sys.stderr")
+        .replace("sys.stdoutt", "sys.stdout")
+        .replace("sys.stdinn", "sys.stdin");
+    s.replace("sys.stder", "sys.stderr")
+        .replace("sys.stdou", "sys.stdout")
+        .replace("sys.stdi", "sys.stdin")
+}
+
 fn write_skill_files(
     skill_dir: &Path,
     skill_md_path: &Path,
@@ -520,7 +599,7 @@ fn write_skill_files(
         std::fs::create_dir_all(parent)?;
     }
     std::fs::write(skill_md_path, skill_md)?;
-    let script = fix_llm_newline_in_strings(script);
+    let script = fix_llm_common_truncations(&fix_llm_newline_in_strings(script));
     std::fs::write(script_path, &script)?;
 
     // Validate Python script syntax (py_compile) for .py scripts
@@ -568,6 +647,60 @@ fn validate_python_syntax(script_path: &Path) -> Result<()> {
         anyhow::bail!("Syntax error: {}", stderr.trim());
     }
     Ok(())
+}
+
+/// Apply fix_llm, validate syntax, and if validation fails, use LLM to refine.
+/// Returns the final script (possibly refined). Used before write_skill_files.
+async fn prepare_script_with_syntax_refine<L: EvolutionLlm>(
+    llm: &L,
+    model: &str,
+    skill_dir: &Path,
+    skill_name: &str,
+    skill_desc: &str,
+    entry_point: &str,
+    script: &str,
+    allow_network: bool,
+) -> Result<String> {
+    let fixed = fix_llm_common_truncations(&fix_llm_newline_in_strings(script));
+    if !entry_point.ends_with(".py") {
+        return Ok(fixed);
+    }
+    let tmp = tempfile::TempDir::new().map_err(|e| anyhow::anyhow!("TempDir: {}", e))?;
+    let tmp_script = tmp.path().join(entry_point);
+    if let Some(p) = tmp_script.parent() {
+        std::fs::create_dir_all(p)?;
+    }
+    std::fs::write(&tmp_script, &fixed)?;
+    if let Err(e) = validate_python_syntax(&tmp_script) {
+        let err_msg = e.to_string();
+        tracing::warn!(
+            "Syntax validation failed for '{}', attempting LLM refine: {}",
+            skill_name,
+            err_msg
+        );
+        if let Some(refined) = refine_loop(
+            llm,
+            model,
+            skill_dir,
+            skill_name,
+            skill_desc,
+            entry_point,
+            &fixed,
+            &err_msg,
+            "syntax_error",
+            allow_network,
+        )
+        .await?
+        {
+            tracing::info!("Syntax refine succeeded for '{}'", skill_name);
+            return Ok(refined);
+        }
+        tracing::warn!(
+            "Syntax refine failed for '{}', keeping fix_llm result",
+            skill_name
+        );
+    }
+    Ok(fixed)
 }
 
 // ─── Refinement loop (Yunjue-inspired iterative refinement) ─────────────────

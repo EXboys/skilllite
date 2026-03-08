@@ -101,12 +101,14 @@ async fn run_simple_loop(
     let mut state = ExecutionState::new();
     let mut no_tool_retries = 0usize;
     let max_no_tool_retries = 3;
+    let mut task_completed = true;
 
     let tools_ref = if all_tools.is_empty() { None } else { Some(all_tools.as_slice()) };
 
     loop {
         if state.iterations >= config.max_iterations {
             tracing::warn!("Agent loop reached max iterations ({})", config.max_iterations);
+            task_completed = false;
             break;
         }
         state.iterations += 1;
@@ -172,12 +174,14 @@ async fn run_simple_loop(
         if outcome.disclosure_injected { continue; }
         if outcome.failure_limit_reached {
             tracing::warn!("Stopping: {} consecutive tool failures", state.consecutive_failures);
+            task_completed = false;
             break;
         }
 
         // Global tool call depth limit
         if state.total_tool_calls >= config.max_iterations * config.max_tool_calls_per_task {
             tracing::warn!("Agent loop reached total tool call limit");
+            task_completed = false;
             break;
         }
     }
@@ -189,7 +193,7 @@ async fn run_simple_loop(
         iterations: state.iterations,
         elapsed_ms: start_time.elapsed().as_millis() as u64,
         context_overflow_retries: state.context_overflow_retries,
-        task_completed: true,
+        task_completed,
         task_description: Some(user_message.to_string()),
         rules_used: Vec::new(),
         tools_detail: state.tools_detail,

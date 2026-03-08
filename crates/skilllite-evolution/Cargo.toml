@@ -20,6 +20,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-util"] }
 dirs = "5.0"
+tempfile = "3.10"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
