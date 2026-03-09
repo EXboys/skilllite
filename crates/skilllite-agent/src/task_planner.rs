@@ -234,6 +234,7 @@ impl TaskPlanner {
                     .choices
                     .first()
                     .and_then(|c| c.message.content.clone())
+                    .filter(|s| !s.trim().is_empty())
                     .unwrap_or_else(|| "[]".to_string());
 
                 match self.parse_task_list(&raw) {
@@ -271,22 +272,92 @@ impl TaskPlanner {
     }
 
     /// Parse the LLM response into a task list.
+    ///
+    /// Handles common LLM output quirks:
+    /// - `<think>…</think>` reasoning blocks (MiniMax, DeepSeek, Qwen3)
+    /// - Markdown code fences around JSON
+    /// - Natural-language preamble before the JSON array
+    /// - Empty or whitespace-only responses
     pub(crate) fn parse_task_list(&self, raw: &str) -> Result<Vec<Task>> {
         let mut cleaned = raw.trim().to_string();
 
+        // Strip <think>…</think> blocks (reasoning models)
+        while let Some(start) = cleaned.find("<think>") {
+            if let Some(end) = cleaned.find("</think>") {
+                let end_tag_end = end + "</think>".len();
+                cleaned = format!("{}{}", &cleaned[..start], &cleaned[end_tag_end..]);
+            } else {
+                // Unclosed <think> — drop everything from <think> onwards
+                cleaned = cleaned[..start].to_string();
+                break;
+            }
+        }
+        let cleaned = cleaned.trim().to_string();
+
+        if cleaned.is_empty() {
+            anyhow::bail!("LLM returned empty content (after stripping think blocks)");
+        }
+
+        // Strip markdown code fences
+        let cleaned = Self::strip_code_fences(&cleaned);
+
+        // Try direct parse first (fast path)
+        if let Ok(tasks) = serde_json::from_str::<Vec<Task>>(&cleaned) {
+            return Ok(tasks);
+        }
+
+        // Fallback: extract the first JSON array from the text
+        if let Some(json_str) = Self::extract_json_array(&cleaned) {
+            if let Ok(tasks) = serde_json::from_str::<Vec<Task>>(&json_str) {
+                return Ok(tasks);
+            }
+        }
+
+        tracing::debug!("parse_task_list raw (first 500 chars): {}", &raw[..raw.len().min(500)]);
+        anyhow::bail!("No valid JSON task array found in LLM response")
+    }
+
+    /// Strip markdown code fences (```` ```json ... ``` ````) from content.
+    fn strip_code_fences(s: &str) -> String {
+        let mut cleaned = s.trim().to_string();
         if cleaned.starts_with("```json") {
             cleaned = cleaned[7..].to_string();
-        }
-        if cleaned.starts_with("```") {
+        } else if cleaned.starts_with("```") {
             cleaned = cleaned[3..].to_string();
         }
         if cleaned.ends_with("```") {
             cleaned = cleaned[..cleaned.len() - 3].to_string();
         }
-        let cleaned = cleaned.trim();
+        cleaned.trim().to_string()
+    }
 
-        let tasks: Vec<Task> = serde_json::from_str(cleaned)?;
-        Ok(tasks)
+    /// Try to extract the first JSON array from mixed text content.
+    /// Scans for `[` and finds the matching `]`, handling nesting.
+    fn extract_json_array(s: &str) -> Option<String> {
+        let start = s.find('[')?;
+        let bytes = s.as_bytes();
+        let mut depth = 0i32;
+        let mut in_string = false;
+        let mut escape_next = false;
+        for (i, &b) in bytes[start..].iter().enumerate() {
+            if escape_next {
+                escape_next = false;
+                continue;
+            }
+            match b {
+                b'\\' if in_string => escape_next = true,
+                b'"' => in_string = !in_string,
+                b'[' if !in_string => depth += 1,
+                b']' if !in_string => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(s[start..start + i + 1].to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     /// Auto-enhance tasks: add SKILL.md writing if skill creation is detected.

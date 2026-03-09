@@ -190,7 +190,7 @@ async fn execute_memory_search(
             let ctx = embed_ctx.context("embed_ctx disappeared despite is_some() check")?;
             let embeddings = ctx
                 .client
-                .embed(&ctx.embed_config.model, &[query])
+                .embed(&ctx.embed_config.model, &[query], Some(&ctx.embed_config.api_base), Some(&ctx.embed_config.api_key))
                 .await
                 .context("Embedding API failed")?;
             let query_emb = embeddings.first().context("No embedding returned")?;
@@ -286,7 +286,7 @@ async fn execute_memory_write(
             let chunks = skilllite_executor::memory::chunk_content_for_embed(&final_content);
             if !chunks.is_empty() {
                 let texts: Vec<&str> = chunks.iter().map(|s| s.as_str()).collect();
-                match ctx.client.embed(&ctx.embed_config.model, &texts).await {
+                match ctx.client.embed(&ctx.embed_config.model, &texts, Some(&ctx.embed_config.api_base), Some(&ctx.embed_config.api_key)).await {
                     Ok(embeddings) if embeddings.len() == chunks.len() => {
                         skilllite_executor::memory::ensure_vec0_table(&conn, ctx.embed_config.dimension)?;
                         skilllite_executor::memory::index_file_vec(&conn, rel_path, &chunks, &embeddings)?;

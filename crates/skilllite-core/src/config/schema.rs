@@ -129,15 +129,29 @@ impl AgentFeatureFlags {
 pub struct EmbeddingConfig {
     pub model: String,
     pub dimension: usize,
+    pub api_base: String,
+    pub api_key: String,
 }
 
 impl EmbeddingConfig {
     pub fn from_env() -> Self {
         super::loader::load_dotenv();
+        // 支持独立的 embedding API 配置
         let api_base = super::loader::env_or(
-            llm::API_BASE,
-            llm::API_BASE_ALIASES,
-            || "https://api.openai.com/v1".to_string(),
+            "SKILLLITE_EMBEDDING_BASE_URL",
+            &["EMBEDDING_BASE_URL"],
+            || {
+                super::loader::env_or(
+                    llm::API_BASE,
+                    llm::API_BASE_ALIASES,
+                    || "https://api.openai.com/v1".to_string(),
+                )
+            },
+        );
+        let api_key = super::loader::env_or(
+            "SKILLLITE_EMBEDDING_API_KEY",
+            &["EMBEDDING_API_KEY"],
+            || super::loader::env_or(llm::API_KEY, llm::API_KEY_ALIASES, || "".to_string()),
         );
         let (default_model, default_dim) = Self::default_for_base(&api_base);
         let model = super::loader::env_or(
@@ -148,7 +162,7 @@ impl EmbeddingConfig {
         let dimension = super::loader::env_optional("SKILLLITE_EMBEDDING_DIMENSION", &[])
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(default_dim);
-        Self { model, dimension }
+        Self { model, dimension, api_base, api_key }
     }
 
     /// 按 api_base 推断默认 embedding 模型和维度
@@ -165,6 +179,9 @@ impl EmbeddingConfig {
         } else if base_lower.contains("localhost:11434") || base_lower.contains("127.0.0.1:11434") {
             // Ollama
             ("nomic-embed-text", 768)
+        } else if base_lower.contains("minimax") {
+            // MiniMax embedding
+            ("text-embedding-01",  1536)
         } else if base_lower.contains("api.openai.com") {
             ("text-embedding-3-small", 1536)
         } else {

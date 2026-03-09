@@ -96,12 +96,22 @@ impl LlmClient {
 
     /// Embed text(s) using OpenAI-compatible /embeddings API.
     /// Returns one embedding vector per input string. Used when memory_vector feature is enabled.
+    /// If custom_url and custom_key are provided, use them instead of self.api_base/self.api_key.
+    ///
+    /// Handles both OpenAI-standard format (`{"data": [{"embedding": [...]}]}`)
+    /// and Dashscope native format (`{"output": {"embeddings": [{"embedding": [...]}]}}`).
     #[allow(dead_code)]
-    pub async fn embed(&self, model: &str, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+    pub async fn embed(&self, model: &str, texts: &[&str], custom_url: Option<&str>, custom_key: Option<&str>) -> Result<Vec<Vec<f32>>> {
         if texts.is_empty() {
             return Ok(Vec::new());
         }
-        let url = format!("{}/embeddings", self.api_base);
+        let api_base = custom_url.unwrap_or(&self.api_base);
+        let api_key = custom_key.unwrap_or(&self.api_key);
+        let url = if api_base.to_lowercase().contains("minimax") {
+            format!("{}/text/embeddings", api_base)
+        } else {
+            format!("{}/embeddings", api_base)
+        };
         let input: Value = if texts.len() == 1 {
             json!(texts[0])
         } else {
@@ -111,7 +121,7 @@ impl LlmClient {
         let resp = self
             .http
             .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
@@ -123,12 +133,34 @@ impl LlmClient {
             anyhow::bail!("Embedding API error ({}): {}", status, body_text);
         }
         let json: Value = resp.json().await.context("Failed to parse embedding response")?;
-        let data = json
-            .get("data")
-            .and_then(|d| d.as_array())
-            .context("Missing 'data' in embedding response")?;
-        let mut embeddings = Vec::with_capacity(data.len());
-        for item in data {
+
+        // Try OpenAI-standard format: {"data": [{"embedding": [...]}]}
+        if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
+            return Self::extract_embeddings_from_items(data);
+        }
+
+        // Fallback: Dashscope native format: {"output": {"embeddings": [{"embedding": [...]}]}}
+        if let Some(items) = json.get("output")
+            .and_then(|o| o.get("embeddings"))
+            .and_then(|e| e.as_array())
+        {
+            tracing::debug!("Embedding response uses Dashscope native format (output.embeddings)");
+            return Self::extract_embeddings_from_items(items);
+        }
+
+        // Log the unexpected response shape for debugging
+        let preview = serde_json::to_string(&json).unwrap_or_default();
+        let preview = &preview[..preview.len().min(500)];
+        anyhow::bail!(
+            "Unexpected embedding response format (no 'data' or 'output.embeddings'): {}",
+            preview
+        )
+    }
+
+    /// Extract embedding vectors from a JSON array of items, each containing an "embedding" field.
+    fn extract_embeddings_from_items(items: &[Value]) -> Result<Vec<Vec<f32>>> {
+        let mut embeddings = Vec::with_capacity(items.len());
+        for item in items {
             let emb = item
                 .get("embedding")
                 .and_then(|e| e.as_array())
