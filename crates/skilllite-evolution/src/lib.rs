@@ -196,17 +196,27 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
         }
     }
 
+    // 最近 100 条 + 7 天时间窗口
+    let recent_condition = "ts >= datetime('now', '-7 days')";
+    let recent_limit = 100;
+
     let (meaningful, failures, replans): (i64, i64, i64) = conn.query_row(
-        "SELECT
-            COUNT(CASE WHEN total_tools >= 2 THEN 1 END),
-            COUNT(CASE WHEN failed_tools > 0 THEN 1 END),
-            COUNT(CASE WHEN replans > 0 THEN 1 END)
-         FROM decisions WHERE evolved = 0",
+        &format!(
+            "SELECT
+                COUNT(CASE WHEN total_tools >= 2 THEN 1 END),
+                COUNT(CASE WHEN failed_tools > 0 THEN 1 END),
+                COUNT(CASE WHEN replans > 0 THEN 1 END)
+             FROM decisions WHERE {}",
+            recent_condition
+        ),
         [],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
 
-    let mut stmt = conn.prepare("SELECT id FROM decisions WHERE evolved = 0")?;
+    let mut stmt = conn.prepare(&format!(
+        "SELECT id FROM decisions WHERE {} ORDER BY ts DESC LIMIT {}",
+        recent_condition, recent_limit
+    ))?;
     let ids: Vec<i64> = stmt
         .query_map([], |row| row.get(0))?
         .filter_map(|r| r.ok())
@@ -214,14 +224,17 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
 
     let repeated_patterns: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM (
+            &format!(
+                "SELECT COUNT(*) FROM (
                 SELECT task_description, COUNT(*) as cnt,
                        SUM(CASE WHEN task_completed = 1 THEN 1 ELSE 0 END) as successes
                 FROM decisions
-                WHERE evolved = 0 AND task_description IS NOT NULL
+                WHERE {} AND task_description IS NOT NULL
                 GROUP BY task_description
                 HAVING cnt >= 3 AND CAST(successes AS REAL) / cnt >= 0.8
             )",
+                recent_condition
+            ),
             [],
             |row| row.get(0),
         )

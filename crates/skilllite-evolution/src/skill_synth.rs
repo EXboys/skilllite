@@ -983,18 +983,25 @@ pub fn track_skill_usage(evolved_dir: &Path, skill_name: &str, success: bool) {
 
 // ─── Query helpers ──────────────────────────────────────────────────────────
 
+/// Returns the SQL condition for recent decisions: last 100 records within 7 days
+fn recent_decisions_condition() -> (&'static str, i64) {
+    ("ts >= datetime('now', '-7 days')", 100)
+}
+
 /// Query patterns that repeat but have LOW success rate (for failure-driven skill generation).
 fn query_failed_patterns(conn: &Connection, min_count: u32) -> Result<String> {
+    let (recent_cond, recent_limit) = recent_decisions_condition();
     let min_i64 = min_count as i64;
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare(&format!(
         "SELECT task_description, COUNT(*) as cnt,
                 SUM(CASE WHEN task_completed = 1 THEN 1 ELSE 0 END) as successes
          FROM decisions
-         WHERE evolved = 0 AND task_description IS NOT NULL
+         WHERE {} AND task_description IS NOT NULL
          GROUP BY task_description
          HAVING cnt >= ?1 AND CAST(successes AS REAL) / cnt < 0.5
-         ORDER BY cnt DESC LIMIT 5",
-    )?;
+         ORDER BY cnt DESC LIMIT {}",
+        recent_cond, recent_limit
+    ))?;
 
     let rows: Vec<String> = stmt
         .query_map(params![min_i64], |row| {
@@ -1021,12 +1028,14 @@ fn query_failed_patterns(conn: &Connection, min_count: u32) -> Result<String> {
 
 /// Query recent failed executions (for failure-driven prompt).
 fn query_failed_executions(conn: &Connection) -> Result<String> {
-    let mut stmt = conn.prepare(
+    let (recent_cond, recent_limit) = recent_decisions_condition();
+    let mut stmt = conn.prepare(&format!(
         "SELECT task_description, tools_detail, feedback
          FROM decisions
-         WHERE evolved = 0 AND (task_completed = 0 OR failed_tools > 0) AND task_description IS NOT NULL
-         ORDER BY ts DESC LIMIT 10",
-    )?;
+         WHERE {} AND (task_completed = 0 OR failed_tools > 0) AND task_description IS NOT NULL
+         ORDER BY ts DESC LIMIT {}",
+        recent_cond, recent_limit
+    ))?;
 
     let rows: Vec<String> = stmt
         .query_map([], |row| {
@@ -1050,16 +1059,18 @@ fn query_failed_executions(conn: &Connection) -> Result<String> {
 /// `display_string` is the human-readable summary sent to the LLM prompt.
 /// `task_desc_list` is the raw task descriptions used to filter matching executions.
 fn query_repeated_patterns(conn: &Connection, min_count: u32) -> Result<(String, Vec<String>)> {
+    let (recent_cond, recent_limit) = recent_decisions_condition();
     let min_i64 = min_count as i64;
-    let mut stmt = conn.prepare(
+    let mut stmt = conn.prepare(&format!(
         "SELECT task_description, COUNT(*) as cnt,
                 SUM(CASE WHEN task_completed = 1 THEN 1 ELSE 0 END) as successes
          FROM decisions
-         WHERE evolved = 0 AND task_description IS NOT NULL
+         WHERE {} AND task_description IS NOT NULL
          GROUP BY task_description
          HAVING cnt >= ?1 AND CAST(successes AS REAL) / cnt >= 0.8
-         ORDER BY cnt DESC LIMIT 5",
-    )?;
+         ORDER BY cnt DESC LIMIT {}",
+        recent_cond, recent_limit
+    ))?;
 
     let mut display_rows: Vec<String> = Vec::new();
     let mut task_descs: Vec<String> = Vec::new();
@@ -1103,12 +1114,14 @@ fn query_pattern_executions(conn: &Connection, task_descriptions: &[String]) -> 
         .collect::<Vec<_>>()
         .join(", ");
 
+    let (recent_cond, recent_limit) = recent_decisions_condition();
+
     let sql = format!(
         "SELECT task_description, tools_detail, elapsed_ms
          FROM decisions
-         WHERE evolved = 0 AND task_completed = 1 AND task_description IN ({})
-         ORDER BY ts DESC LIMIT 10",
-        placeholders
+         WHERE {} AND task_completed = 1 AND task_description IN ({})
+         ORDER BY ts DESC LIMIT {}",
+        recent_cond, placeholders, recent_limit
     );
 
     let mut stmt = conn.prepare(&sql)?;
