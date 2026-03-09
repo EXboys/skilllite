@@ -12,14 +12,14 @@ use super::transcript::{
     append_entry, ensure_session_header, read_entries_for_session, transcript_path_today,
     TranscriptEntry,
 };
-use super::workspace_root;
+use super::chat_root_for_rpc;
 
 pub fn handle_session_create(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
     let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
 
-    let root = workspace_root(workspace_path)?;
+    let root = chat_root_for_rpc(workspace_path)?;
     let sessions_path = root.join("sessions.json");
 
     let mut store = SessionStore::load(&sessions_path)?;
@@ -41,7 +41,7 @@ pub fn handle_session_get(params: &Value) -> Result<Value> {
     let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
 
-    let root = workspace_root(workspace_path)?;
+    let root = chat_root_for_rpc(workspace_path)?;
     let store = SessionStore::load(&root.join("sessions.json"))?;
 
     let entry = store.get(session_key).context("Session not found")?;
@@ -62,7 +62,7 @@ pub fn handle_session_update(params: &Value) -> Result<Value> {
     let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
 
-    let root = workspace_root(workspace_path)?;
+    let root = chat_root_for_rpc(workspace_path)?;
     let sessions_path = root.join("sessions.json");
     let mut store = SessionStore::load(&sessions_path)?;
 
@@ -94,7 +94,7 @@ pub fn handle_transcript_append(params: &Value) -> Result<Value> {
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
     let entry_json = p.get("entry").context("entry required")?;
 
-    let root = workspace_root(workspace_path)?;
+    let root = chat_root_for_rpc(workspace_path)?;
     let transcripts_dir = root.join("transcripts");
     let transcript_path = transcript_path_today(&transcripts_dir, session_key);
 
@@ -128,7 +128,7 @@ pub fn handle_transcript_read(params: &Value) -> Result<Value> {
     let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
 
-    let root = workspace_root(workspace_path)?;
+    let root = chat_root_for_rpc(workspace_path)?;
     let transcripts_dir = root.join("transcripts");
 
     let entries = read_entries_for_session(&transcripts_dir, session_key)?;
@@ -142,8 +142,8 @@ pub fn handle_transcript_read(params: &Value) -> Result<Value> {
 
 /// Resolve plans directory. Use chat root for consistency with ChatSession/chat_data.
 fn plans_dir_for_workspace(workspace_path: Option<&str>) -> Result<std::path::PathBuf> {
-    let root = workspace_root(workspace_path)?;
-    Ok(root.join("chat").join("plans"))
+    let root = chat_root_for_rpc(workspace_path)?;
+    Ok(root.join("plans"))
 }
 
 /// Write plan to plans/{session_key}-{date}.jsonl (append). OpenClaw-style plan storage.
@@ -248,7 +248,7 @@ pub fn handle_transcript_ensure(params: &Value) -> Result<Value> {
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
     let cwd = p.get("cwd").and_then(|v| v.as_str());
 
-    let root = workspace_root(workspace_path)?;
+    let root = chat_root_for_rpc(workspace_path)?;
     let transcripts_dir = root.join("transcripts");
     let transcript_path = transcript_path_today(&transcripts_dir, session_key);
 
@@ -264,7 +264,7 @@ pub fn handle_memory_write(params: &Value) -> Result<Value> {
     let append = p.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
     let agent_id = p.get("agent_id").and_then(|v| v.as_str()).unwrap_or("default");
 
-    let root = workspace_root(workspace_path)?;
+    let root = chat_root_for_rpc(workspace_path)?;
     let full_path = root.join("memory").join(rel_path);
 
     if rel_path.is_empty() || rel_path.contains("..") || rel_path.starts_with('/') {
@@ -305,7 +305,7 @@ pub fn handle_memory_search(params: &Value) -> Result<Value> {
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
     let agent_id = p.get("agent_id").and_then(|v| v.as_str()).unwrap_or("default");
 
-    let root = workspace_root(workspace_path)?;
+    let root = chat_root_for_rpc(workspace_path)?;
     let idx_path = index_path(&root, agent_id);
 
     if !idx_path.exists() {
