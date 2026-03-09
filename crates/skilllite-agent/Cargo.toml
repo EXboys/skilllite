@@ -9,9 +9,10 @@ license = "MIT"
 [features]
 default = []
 memory_vector = ["dep:sqlite-vec", "dep:zerocopy", "skilllite-executor/memory_vector"]
+async-resolve = []
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core" }
+skilllite-core = { path = "../skilllite-core", features = ["async-resolve"] }
 skilllite-evolution = { path = "../skilllite-evolution" }
 skilllite-sandbox = { path = "../skilllite-sandbox" }
 skilllite-executor = { path = "../skilllite-executor" }

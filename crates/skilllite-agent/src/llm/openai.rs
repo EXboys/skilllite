@@ -11,6 +11,47 @@ use crate::types::{
 
 use super::{ChatCompletionResponse, Choice, ChoiceMessage, LlmClient};
 
+/// MiniMax Coding Plan 不支持 `system` role (error 2013)。
+/// 将所有 system 消息提取合并，注入到第一条 user 消息开头，保留指令语义。
+fn transform_messages_for_minimax(messages: &[ChatMessage]) -> Vec<ChatMessage> {
+    let mut system_parts: Vec<&str> = Vec::new();
+    let mut rest: Vec<ChatMessage> = Vec::new();
+
+    for msg in messages {
+        if msg.role == "system" {
+            if let Some(ref content) = msg.content {
+                if !content.is_empty() {
+                    system_parts.push(content);
+                }
+            }
+        } else {
+            rest.push(msg.clone());
+        }
+    }
+
+    if system_parts.is_empty() {
+        return rest;
+    }
+
+    let system_block = format!(
+        "<instructions>\n{}\n</instructions>",
+        system_parts.join("\n\n")
+    );
+
+    if let Some(first_user) = rest.iter_mut().find(|m| m.role == "user") {
+        let original = first_user.content.as_deref().unwrap_or("");
+        first_user.content = Some(format!("{}\n\n{}", system_block, original));
+    } else {
+        rest.insert(0, ChatMessage::user(&system_block));
+    }
+
+    rest
+}
+
+fn is_minimax(api_base: &str) -> bool {
+    api_base.to_lowercase().contains("minimax")
+}
+
 impl LlmClient {
     pub(super) async fn openai_chat_completion(
         &self,
@@ -21,10 +62,18 @@ impl LlmClient {
     ) -> Result<ChatCompletionResponse> {
         let url = format!("{}/chat/completions", self.api_base);
 
+        let effective_messages: Vec<ChatMessage>;
+        let msgs: &[ChatMessage] = if is_minimax(&self.api_base) {
+            effective_messages = transform_messages_for_minimax(messages);
+            &effective_messages
+        } else {
+            messages
+        };
+
         let mut body = json!({
             "model": model,
             "max_tokens": get_max_tokens(),
-            "messages": messages,
+            "messages": msgs,
         });
 
         if let Some(temp) = temperature {
@@ -71,10 +120,18 @@ impl LlmClient {
     ) -> Result<ChatCompletionResponse> {
         let url = format!("{}/chat/completions", self.api_base);
 
+        let effective_messages: Vec<ChatMessage>;
+        let msgs: &[ChatMessage] = if is_minimax(&self.api_base) {
+            effective_messages = transform_messages_for_minimax(messages);
+            &effective_messages
+        } else {
+            messages
+        };
+
         let mut body = json!({
             "model": model,
             "max_tokens": get_max_tokens(),
-            "messages": messages,
+            "messages": msgs,
             "stream": true,
         });
 

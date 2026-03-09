@@ -453,3 +453,188 @@ mod tests {
     }
 
 }
+
+// ─── LLM-based resolution (async) ──────────────────────────────────────────────
+
+/// Trait for LLM-based dependency resolution.
+/// Implement this trait in agent crate to enable async LLM inference.
+#[cfg(feature = "async-resolve")]
+#[async_trait::async_trait]
+pub trait LlmProvider: Send + Sync {
+    /// Call LLM to extract package names from compatibility string.
+    /// Returns the LLM response content, or None if the call fails.
+    async fn extract_packages(&self, model: &str, prompt: &str) -> Option<String>;
+}
+
+#[cfg(feature = "async-resolve")]
+mod async_resolve {
+    use super::*;
+
+    /// Use LLM to extract package names from compatibility string, then verify
+    /// each against the real package registry (PyPI / npm).
+    pub async fn resolve_from_llm<L: LlmProvider>(
+        llm: &L,
+        model: &str,
+        compatibility: &str,
+        language: &str,
+    ) -> Option<Vec<String>> {
+        let prompt = format!(
+            "Extract the exact installable package names from this compatibility string.\n\
+             Language: {}\n\
+             Compatibility: \"{}\"\n\n\
+             Rules:\n\
+             - Only return package names that can be installed via pip (Python) or npm (Node.js).\n\
+             - Do NOT include standard library modules (os, sys, json, etc.).\n\
+             - Do NOT include language runtimes (Python, Node.js).\n\
+             - Do NOT include system tools (git, docker, etc.).\n\
+             - Return one package name per line, nothing else.\n\
+             - If no installable packages, return NONE.\n\n\
+             Output:",
+            language, compatibility
+        );
+
+        let resp = llm.extract_packages(model, &prompt).await?;
+        let text = resp.trim();
+
+        if text.eq_ignore_ascii_case("NONE") || text.is_empty() {
+            return None;
+        }
+
+        let candidates: Vec<String> = text
+            .lines()
+            .map(|l| {
+                l.trim().trim_matches(
+                    |c: char| !c.is_alphanumeric() && c != '-' && c != '_' && c != '.',
+                )
+            })
+            .filter(|l| !l.is_empty())
+            .map(|l| l.to_lowercase())
+            .collect();
+
+        if candidates.is_empty() {
+            return None;
+        }
+
+        let mut verified = Vec::new();
+        for pkg in &candidates {
+            if verify_package(pkg, language).await {
+                verified.push(pkg.clone());
+            } else {
+                tracing::debug!("LLM-suggested package '{}' failed verification", pkg);
+            }
+        }
+
+        if verified.is_empty() {
+            None
+        } else {
+            Some(verified)
+        }
+    }
+
+    async fn verify_package(name: &str, language: &str) -> bool {
+        let url = match language {
+            "python" => format!("https://pypi.org/pypi/{}/json", name),
+            "node" => format!("https://registry.npmjs.org/{}", name),
+            _ => return false,
+        };
+
+        let client = match reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(5))
+            .build()
+        {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+
+        match client.head(&url).send().await {
+            Ok(resp) => resp.status().is_success(),
+            Err(_) => false,
+        }
+    }
+
+    /// Full async resolution: Lock → LLM → Whitelist.
+    pub async fn resolve_packages<L: LlmProvider>(
+        skill_dir: &Path,
+        compatibility: Option<&str>,
+        language: &str,
+        llm: Option<&L>,
+        model: Option<&str>,
+        allow_unknown: bool,
+    ) -> Result<ResolvedDependencies> {
+        if let Some(packages) = resolve_from_lock(skill_dir, compatibility) {
+            tracing::debug!("Resolved from lock: {:?}", packages);
+            return Ok(ResolvedDependencies {
+                packages,
+                resolver: ResolverKind::Lock,
+                unknown_packages: Vec::new(),
+            });
+        }
+
+        let compat_str = compatibility.unwrap_or("");
+
+        if !compat_str.is_empty() {
+            if let (Some(client), Some(model)) = (llm, model) {
+                match resolve_from_llm(client, model, compat_str, language).await {
+                    Some(packages) if !packages.is_empty() => {
+                        let unknown = if allow_unknown {
+                            Vec::new()
+                        } else {
+                            validate_against_whitelist(&packages, language)
+                        };
+
+                        let _ = write_lock(
+                            skill_dir,
+                            compatibility,
+                            language,
+                            &packages,
+                            &ResolverKind::Llm,
+                        );
+
+                        return Ok(ResolvedDependencies {
+                            packages,
+                            resolver: ResolverKind::Llm,
+                            unknown_packages: unknown,
+                        });
+                    }
+                    _ => {
+                        tracing::debug!("LLM inference returned no packages, falling through");
+                    }
+                }
+            }
+        }
+
+        if !compat_str.is_empty() {
+            let packages = resolve_from_whitelist(compat_str, language);
+            if !packages.is_empty() {
+                let unknown = if allow_unknown {
+                    Vec::new()
+                } else {
+                    validate_against_whitelist(&packages, language)
+                };
+
+                let _ = write_lock(
+                    skill_dir,
+                    compatibility,
+                    language,
+                    &packages,
+                    &ResolverKind::Whitelist,
+                );
+
+                return Ok(ResolvedDependencies {
+                    packages,
+                    resolver: ResolverKind::Whitelist,
+                    unknown_packages: unknown,
+                });
+            }
+        }
+
+        Ok(ResolvedDependencies {
+            packages: Vec::new(),
+            resolver: ResolverKind::None,
+            unknown_packages: Vec::new(),
+        })
+    }
+}
+
+#[cfg(feature = "async-resolve")]
+pub use async_resolve::{resolve_from_llm, resolve_packages};

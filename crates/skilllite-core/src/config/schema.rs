@@ -49,6 +49,8 @@ impl LlmConfig {
             "deepseek-chat"
         } else if api_base.contains("dashscope.aliyuncs.com") {
             "qwen-plus"
+        } else if api_base.contains("minimax") {
+            "MiniMax-M2.5"
         } else {
             "gpt-4o"
         }

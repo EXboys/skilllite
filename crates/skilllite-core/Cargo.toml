@@ -20,5 +20,14 @@ chrono = { version = "0.4", features = ["serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
+# Optional: async support for LLM-based dependency resolution
+reqwest = { version = "0.12", features = ["json"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+async-trait = { version = "0.1", optional = true }
+
+[features]
+default = []
+async-resolve = ["dep:reqwest", "dep:tokio", "dep:async-trait"]
+
 [dev-dependencies]
 tempfile = "3.10"

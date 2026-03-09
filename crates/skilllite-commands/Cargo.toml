@@ -8,11 +8,11 @@ license = "MIT"
 
 [features]
 default = []
-agent = ["dep:skilllite-agent", "dep:tokio", "dep:uuid", "dep:rustyline"]
+agent = ["dep:skilllite-agent", "dep:tokio", "dep:uuid", "dep:rustyline", "skilllite-core/async-resolve"]
 audit = ["skilllite-sandbox/audit", "dep:ureq", "dep:zip"]
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core" }
+skilllite-core = { path = "../skilllite-core", features = ["async-resolve"] }
 skilllite-evolution = { path = "../skilllite-evolution" }
 skilllite-sandbox = { path = "../skilllite-sandbox" }
 skilllite-agent = { path = "../skilllite-agent", optional = true }
