@@ -268,6 +268,7 @@ impl LlmClient {
                     } else {
                         Some(text_content)
                     },
+                    reasoning_content: None,
                     tool_calls: if tool_calls.is_empty() {
                         None
                     } else {
@@ -447,6 +448,7 @@ impl LlmClient {
                     } else {
                         Some(text_content)
                     },
+                    reasoning_content: None,
                     tool_calls: if tool_calls.is_empty() {
                         None
                     } else {

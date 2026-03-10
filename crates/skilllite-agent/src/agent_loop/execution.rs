@@ -51,7 +51,7 @@ fn write_tool_to_transcript(
     };
     let transcripts_dir = data_root.join("transcripts");
     let t_path = match skilllite_executor::transcript::transcript_path_today(&transcripts_dir, session_key) {
-        p if p.parent().map(|p| std::fs::create_dir_all(p).is_ok()).unwrap_or(false) => p,
+        p if p.parent().map(|p| skilllite_fs::create_dir_all(p).is_ok()).unwrap_or(false) => p,
         _ => return,
     };
 

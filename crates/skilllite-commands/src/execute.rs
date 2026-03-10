@@ -318,7 +318,7 @@ fn detect_script_language(script_path: &Path) -> Result<String> {
         "ts" => Ok("node".to_string()),
         "sh" | "bash" => Ok("shell".to_string()),
         "" => {
-            if let Ok(content) = std::fs::read_to_string(script_path) {
+            if let Ok(content) = skilllite_fs::read_file(script_path) {
                 if let Some(first_line) = content.lines().next() {
                     if first_line.starts_with("#!") {
                         if first_line.contains("python") {

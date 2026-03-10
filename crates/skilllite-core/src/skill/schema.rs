@@ -30,9 +30,8 @@ pub fn detect_multi_script_tools(skill_dir: &Path, skill_name: &str) -> Vec<Mult
     let mut tools = Vec::new();
 
     for (ext, lang) in &extensions {
-        if let Ok(entries) = std::fs::read_dir(&scripts_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
+        if let Ok(entries) = skilllite_fs::read_dir(&scripts_dir) {
+            for (path, _is_dir) in entries {
                 let fname = path
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
@@ -82,7 +81,7 @@ pub fn detect_multi_script_tools(skill_dir: &Path, skill_name: &str) -> Vec<Mult
 
 /// Parse Python script for argparse `add_argument` calls and generate JSON schema.
 pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
-    let content = std::fs::read_to_string(script_path).ok()?;
+    let content = skilllite_fs::read_file(script_path).ok()?;
 
     let arg_re = regex::Regex::new(
         r#"\.add_argument\s*\(\s*['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?([^)]*)\)"#,

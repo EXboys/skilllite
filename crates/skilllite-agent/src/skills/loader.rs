@@ -12,21 +12,20 @@ use super::LoadedSkill;
 pub(super) fn load_evolved_skills(evolved_dir: &Path) -> Vec<LoadedSkill> {
     let mut skills = Vec::new();
 
-    let entries = match std::fs::read_dir(evolved_dir) {
+    let entries = match skilllite_fs::read_dir(evolved_dir) {
         Ok(e) => e,
         Err(_) => return skills,
     };
 
-    for entry in entries.flatten() {
-        let skill_dir = entry.path();
-        if !skill_dir.is_dir() || !skill_dir.join("SKILL.md").exists() {
+    for (skill_dir, is_dir) in entries {
+        if !is_dir || !skill_dir.join("SKILL.md").exists() {
             continue;
         }
 
         // Check .meta.json for archived status
         let meta_path = skill_dir.join(".meta.json");
         if meta_path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&meta_path) {
+            if let Ok(content) = skilllite_fs::read_file(&meta_path) {
                 if let Ok(meta) = serde_json::from_str::<skilllite_evolution::skill_synth::SkillMeta>(&content) {
                     if meta.archived {
                         tracing::debug!("Skipping archived evolved skill: {}", meta.name);
@@ -154,9 +153,11 @@ fn detect_multi_script_tools(
     let mut entries = HashMap::new();
 
     for (ext, _lang) in &extensions {
-        if let Ok(dir_entries) = std::fs::read_dir(&scripts_dir) {
-            for entry in dir_entries.flatten() {
-                let path = entry.path();
+        if let Ok(dir_entries) = skilllite_fs::read_dir(&scripts_dir) {
+            for (path, is_dir) in dir_entries {
+                if is_dir {
+                    continue;
+                }
                 let fname = path.file_name().map(|n| n.to_string_lossy().to_string());
                 let fname = match fname {
                     Some(f) => f,
@@ -245,7 +246,7 @@ fn infer_entry_point_schema(skill_dir: &Path, metadata: &SkillMetadata) -> Optio
 /// Ported from Python `tool_builder.py` `_parse_argparse_schema`.
 
 fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
-    let content = std::fs::read_to_string(script_path).ok()?;
+    let content = skilllite_fs::read_file(script_path).ok()?;
 
     let arg_re = regex::Regex::new(
         r#"\.add_argument\s*\(\s*['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?([^)]*)\)"#,

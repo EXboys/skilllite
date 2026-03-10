@@ -131,7 +131,7 @@ pub fn build_system_prompt(
         parts.push("\n\n## Bash-Tool Skills Documentation\n".to_string());
         for skill in bash_skills {
             let skill_md_path = skill.skill_dir.join("SKILL.md");
-            if let Ok(content) = std::fs::read_to_string(&skill_md_path) {
+            if let Ok(content) = skilllite_fs::read_file(&skill_md_path) {
                 parts.push(format!(
                     "### {}\n\n{}\n",
                     skill.name,
@@ -183,26 +183,25 @@ fn build_workspace_index(workspace: &str) -> Option<String> {
             return;
         }
 
-        let mut entries: Vec<_> = match std::fs::read_dir(dir) {
-            Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+        let mut entries = match skilllite_fs::read_dir(dir) {
+            Ok(v) => v,
             Err(_) => return,
         };
-        entries.sort_by_key(|e| e.file_name());
+        entries.sort_by_key(|(p, _)| p.file_name().unwrap_or_default().to_owned());
 
-        for entry in entries {
+        for (path, is_dir) in entries {
             if *total >= max_chars {
                 return;
             }
 
-            let name = entry.file_name().to_string_lossy().to_string();
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
             if name.starts_with('.') && depth == 0 {
                 continue;
             }
 
-            let path = entry.path();
             let prefix = "  ".repeat(depth);
 
-            if path.is_dir() {
+            if is_dir {
                 if skip.contains(&name.as_str()) {
                     continue;
                 }
@@ -265,21 +264,20 @@ fn extract_signatures(workspace: &std::path::Path) -> String {
             return;
         }
 
-        let mut entries: Vec<_> = match std::fs::read_dir(dir) {
-            Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+        let mut entries = match skilllite_fs::read_dir(dir) {
+            Ok(v) => v,
             Err(_) => return,
         };
-        entries.sort_by_key(|e| e.file_name());
+        entries.sort_by_key(|(p, _)| p.file_name().unwrap_or_default().to_owned());
 
-        for entry in entries {
+        for (path, is_dir) in entries {
             if sigs.len() >= max_sigs {
                 return;
             }
 
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().to_string();
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
 
-            if path.is_dir() {
+            if is_dir {
                 if skip.contains(&name.as_str()) || name.starts_with('.') {
                     continue;
                 }
@@ -290,7 +288,7 @@ fn extract_signatures(workspace: &std::path::Path) -> String {
                     if ext != *pat_ext {
                         continue;
                     }
-                    if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(content) = skilllite_fs::read_file(&path) {
                         let rel = path.strip_prefix(base).unwrap_or(&path);
                         for regex_str in *regexes {
                             if let Ok(re) = regex::Regex::new(regex_str) {
@@ -418,7 +416,7 @@ pub fn get_skill_full_docs(skill: &LoadedSkill) -> Option<String> {
     let skill_md_path = skill.skill_dir.join("SKILL.md");
     let mut parts = Vec::new();
 
-    if let Ok(content) = std::fs::read_to_string(&skill_md_path) {
+    if let Ok(content) = skilllite_fs::read_file(&skill_md_path) {
         let notice = if skilllite_core::skill::skill_md_security::has_skill_md_high_risk_patterns(&content) {
             SKILL_MD_SECURITY_NOTICE
         } else {
@@ -435,11 +433,10 @@ pub fn get_skill_full_docs(skill: &LoadedSkill) -> Option<String> {
     // Include reference files if present
     let refs_dir = skill.skill_dir.join("references");
     if refs_dir.is_dir() {
-        if let Ok(entries) = std::fs::read_dir(&refs_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_file() {
-                    if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Ok(entries) = skilllite_fs::read_dir(&refs_dir) {
+            for (path, is_dir) in entries {
+                if !is_dir {
+                    if let Ok(content) = skilllite_fs::read_file(&path) {
                         let name = path.file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_default();

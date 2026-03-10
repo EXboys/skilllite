@@ -205,6 +205,11 @@ pub struct Choice {
 pub struct ChoiceMessage {
     pub role: String,
     pub content: Option<String>,
+    /// Reasoning/thinking content returned separately by reasoning models
+    /// (e.g. DeepSeek R1 via official API or vLLM with --reasoning-parser).
+    /// When present, `content` already excludes the thinking — no tag stripping needed.
+    #[serde(default)]
+    pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
 }
 

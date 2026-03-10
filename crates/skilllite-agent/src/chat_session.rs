@@ -79,7 +79,7 @@ impl ChatSession {
 
         // Ensure data_root directory exists
         if !self.data_root.exists() {
-            std::fs::create_dir_all(&self.data_root)?;
+            skilllite_fs::create_dir_all(&self.data_root)?;
         }
 
         let sessions_path = self.data_root.join("sessions.json");
@@ -651,7 +651,7 @@ impl ChatSession {
         for path in paths {
             let archived =
                 std::path::PathBuf::from(format!("{}.archived.{}", path.display(), timestamp));
-            std::fs::rename(&path, &archived)?;
+            skilllite_fs::rename(&path, &archived)?;
         }
         Ok(())
     }
@@ -745,24 +745,24 @@ impl ChatSession {
         // Write to memory/YYYY-MM-DD.md (durable, searchable)
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let memory_dir = self.data_root.join("memory");
-        std::fs::create_dir_all(&memory_dir)?;
+        skilllite_fs::create_dir_all(&memory_dir)?;
         let memory_path = memory_dir.join(format!("{}.md", today));
         let final_content = if memory_path.exists() {
             format!(
                 "{}\n{}",
-                std::fs::read_to_string(&memory_path).unwrap_or_default(),
+                skilllite_fs::read_file(&memory_path).unwrap_or_default(),
                 memory_entry
             )
         } else {
             memory_entry.trim_start().to_string()
         };
-        std::fs::write(&memory_path, &final_content)?;
+        skilllite_fs::write_file(&memory_path, &final_content)?;
 
         // Index for BM25 search
         let rel_path = format!("{}.md", today);
         let idx_path = executor_memory::index_path(&self.data_root, &self.session_key);
         if let Some(parent) = idx_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            skilllite_fs::create_dir_all(parent)?;
         }
         if let Ok(conn) = rusqlite::Connection::open(&idx_path) {
             let _ = executor_memory::ensure_index(&conn)

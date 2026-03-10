@@ -24,11 +24,11 @@ pub(super) fn compute_skill_hash(skill_dir: &Path, metadata: &SkillMetadata) -> 
             .unwrap_or_else(|| skill_dir.join("SKILL.md"))
     };
 
-    if let Ok(content) = std::fs::read(&entry_path) {
+    if let Ok(content) = skilllite_fs::read_bytes(&entry_path) {
         hasher.update(&content);
     }
     // Also include SKILL.md content
-    if let Ok(skill_md) = std::fs::read(skill_dir.join("SKILL.md")) {
+    if let Ok(skill_md) = skilllite_fs::read_bytes(&skill_dir.join("SKILL.md")) {
         hasher.update(&skill_md);
     }
 
@@ -43,7 +43,7 @@ pub(super) fn run_security_scan(skill_dir: &Path, metadata: &SkillMetadata) -> O
     // 1. Scan SKILL.md for supply chain / agent-driven social engineering patterns
     let skill_md_path = skill_dir.join("SKILL.md");
     if skill_md_path.exists() {
-        if let Ok(content) = std::fs::read_to_string(&skill_md_path) {
+        if let Ok(content) = skilllite_fs::read_file(&skill_md_path) {
             let alerts = skilllite_core::skill::skill_md_security::scan_skill_md_suspicious_patterns(&content);
             if !alerts.is_empty() {
                 report_parts.push("SKILL.md security alerts (supply chain / agent-driven social engineering):".to_string());
@@ -115,7 +115,7 @@ pub fn read_lock_file(skill_dir: &Path, compatibility: Option<&str>) -> Option<V
         return None;
     }
 
-    let content = std::fs::read_to_string(&lock_path).ok()?;
+    let content = skilllite_fs::read_file(&lock_path).ok()?;
     let lock: LockFile = serde_json::from_str(&content).ok()?;
 
     // Check staleness via compatibility hash
@@ -166,7 +166,7 @@ pub fn write_lock_file(
     });
 
     let lock_path = skill_dir.join(".skilllite.lock");
-    std::fs::write(&lock_path, serde_json::to_string_pretty(&lock)? + "\n")?;
+    skilllite_fs::write_file(&lock_path, &(serde_json::to_string_pretty(&lock)? + "\n"))?;
 
     Ok(())
 }

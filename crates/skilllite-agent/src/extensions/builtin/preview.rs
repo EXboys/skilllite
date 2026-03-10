@@ -227,7 +227,7 @@ fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {
         }
 
         if normalized.is_file() {
-            match std::fs::read(&normalized) {
+            match skilllite_fs::read_bytes(&normalized) {
                 Ok(content) => {
                     let mime = guess_mime(&normalized);
                     let resp = format!(
@@ -273,19 +273,16 @@ fn serve_directory_fallback(stream: &mut std::net::TcpStream, serve_dir: &Path) 
     use std::io::Write;
 
     let mut html_with_mtime: Vec<(String, std::time::SystemTime)> = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(serve_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_file() {
+    if let Ok(entries) = skilllite_fs::read_dir(serve_dir) {
+        for (path, is_dir) in entries {
+            if !is_dir {
                 if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
                     if ext == "html" || ext == "htm" {
-                        if let (Some(name), Ok(meta)) = (
+                        if let (Some(name), Ok(mtime)) = (
                             path.file_name().and_then(|n| n.to_str()),
-                            path.metadata(),
+                            skilllite_fs::modified_time(&path),
                         ) {
-                            if let Ok(mtime) = meta.modified() {
-                                html_with_mtime.push((name.to_string(), mtime));
-                            }
+                            html_with_mtime.push((name.to_string(), mtime));
                         }
                     }
                 }
@@ -307,10 +304,10 @@ fn serve_directory_fallback(stream: &mut std::net::TcpStream, serve_dir: &Path) 
         let _ = stream.write_all(resp.as_bytes());
     } else {
         let mut all_files: Vec<String> = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(serve_dir) {
-            for entry in entries.flatten() {
-                if entry.path().is_file() {
-                    if let Some(name) = entry.file_name().to_str() {
+        if let Ok(entries) = skilllite_fs::read_dir(serve_dir) {
+            for (path, is_dir) in entries {
+                if !is_dir {
+                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                         if !name.starts_with('.') {
                             all_files.push(name.to_string());
                         }

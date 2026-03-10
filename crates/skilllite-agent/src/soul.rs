@@ -147,7 +147,7 @@ impl Soul {
 
     /// Load a SOUL.md file from disk.
     pub fn load(path: &Path) -> Result<Self> {
-        let content = std::fs::read_to_string(path)
+        let content = skilllite_fs::read_file(path)
             .map_err(|e| anyhow::anyhow!("Failed to read SOUL.md at {}: {}", path.display(), e))?;
         Ok(Self::parse(&content, &path.to_string_lossy()))
     }
@@ -218,12 +218,12 @@ impl Soul {
             return None; // Safety guard: never overwrite
         }
         if let Some(parent) = path.parent() {
-            if std::fs::create_dir_all(parent).is_err() {
+            if skilllite_fs::create_dir_all(parent).is_err() {
                 tracing::warn!("SOUL bootstrap: failed to create dir {}", parent.display());
                 return None;
             }
         }
-        match std::fs::write(path, SEED_SOUL) {
+        match skilllite_fs::write_file(path, SEED_SOUL) {
             Ok(_) => {
                 tracing::info!("SOUL bootstrapped to {}", path.display());
                 Self::load(path).ok()
@@ -359,7 +359,7 @@ I specialize in SkillLite plugin development.
         assert!(soul.is_some(), "bootstrap should return a Soul");
         assert!(soul_path.exists(), "bootstrap should write the file");
 
-        let content = std::fs::read_to_string(&soul_path).unwrap();
+        let content = skilllite_fs::read_file(&soul_path).unwrap();
         assert!(content.contains("## Identity"));
         assert!(content.contains("## Core Beliefs"));
         assert!(content.contains("## Communication Style"));
@@ -370,13 +370,13 @@ I specialize in SkillLite plugin development.
     fn test_bootstrap_never_overwrites_existing() {
         let tmp = tempfile::tempdir().unwrap();
         let soul_path = tmp.path().join("SOUL.md");
-        std::fs::write(&soul_path, "## Identity\nCustom content").unwrap();
+        skilllite_fs::write_file(&soul_path, "## Identity\nCustom content").unwrap();
 
         let soul = Soul::bootstrap_global_soul(&soul_path);
         // Should return None — never overwrites
         assert!(soul.is_none());
         // File content must be unchanged
-        let content = std::fs::read_to_string(&soul_path).unwrap();
+        let content = skilllite_fs::read_file(&soul_path).unwrap();
         assert_eq!(content, "## Identity\nCustom content");
     }
 

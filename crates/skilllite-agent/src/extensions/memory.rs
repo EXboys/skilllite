@@ -255,25 +255,25 @@ async fn execute_memory_write(
 
     // Create parent directories
     if let Some(parent) = file_path.parent() {
-        std::fs::create_dir_all(parent)
+        skilllite_fs::create_dir_all(parent)
             .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
     }
 
     // Write or append
     let final_content = if append && file_path.exists() {
-        let existing = std::fs::read_to_string(&file_path).unwrap_or_default();
+        let existing = skilllite_fs::read_file(&file_path).unwrap_or_default();
         format!("{}\n\n{}", existing, content)
     } else {
         content.to_string()
     };
 
-    std::fs::write(&file_path, &final_content)
+    skilllite_fs::write_file(&file_path, &final_content)
         .with_context(|| format!("Failed to write memory file: {}", file_path.display()))?;
 
     // Index for BM25 (always)
     let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
     if let Some(parent) = idx_path.parent() {
-        std::fs::create_dir_all(parent)?;
+        skilllite_fs::create_dir_all(parent)?;
     }
     let conn = Connection::open(&idx_path).context("Failed to open memory index")?;
     skilllite_executor::memory::ensure_index(&conn)?;
@@ -339,10 +339,8 @@ fn collect_memory_files(
     if !current.is_dir() {
         return Ok(());
     }
-    for entry in std::fs::read_dir(current)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
+    for (path, is_dir) in skilllite_fs::read_dir(current)? {
+        if is_dir {
             collect_memory_files(base, &path, files)?;
         } else if path.extension().map_or(false, |ext| ext == "md") {
             if let Ok(rel) = path.strip_prefix(base) {
@@ -407,21 +405,21 @@ pub fn write_structured_experience(
     content: &str,
 ) -> Result<()> {
     let memory_dir = chat_root.join("memory").join("evolution");
-    std::fs::create_dir_all(&memory_dir)?;
+    skilllite_fs::create_dir_all(&memory_dir)?;
 
     let file_path = memory_dir.join(format!("{}.md", topic));
     let final_content = if file_path.exists() {
-        let existing = std::fs::read_to_string(&file_path).unwrap_or_default();
+        let existing = skilllite_fs::read_file(&file_path).unwrap_or_default();
         format!("{}\n\n{}", existing, content)
     } else {
         content.to_string()
     };
-    std::fs::write(&file_path, &final_content)?;
+    skilllite_fs::write_file(&file_path, &final_content)?;
 
     // Re-index for BM25 search
     let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
     if let Some(parent) = idx_path.parent() {
-        std::fs::create_dir_all(parent)?;
+        skilllite_fs::create_dir_all(parent)?;
     }
     if let Ok(conn) = Connection::open(&idx_path) {
         let _ = skilllite_executor::memory::ensure_index(&conn)

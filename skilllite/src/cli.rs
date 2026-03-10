@@ -638,4 +638,7 @@ pub enum EvolutionAction {
         #[arg(long)]
         json: bool,
     },
+
+    /// Repair all skills in workspace/.skills/ — test each skill, LLM fix on failure
+    RepairSkills,
 }

@@ -76,7 +76,7 @@ pub fn read_latest_plan(
     // Fallback: legacy single .json file
     let legacy_path = plan_path_legacy(plans_dir, session_key, date);
     if legacy_path.exists() {
-        let content = std::fs::read_to_string(&legacy_path)?;
+        let content = skilllite_fs::read_file(&legacy_path)?;
         let plan: Value = serde_json::from_str(&content)?;
         return Ok(Some(plan));
     }
@@ -88,10 +88,11 @@ pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBu
     if !plans_dir.exists() {
         return Ok(Vec::new());
     }
-    let mut files: Vec<PathBuf> = std::fs::read_dir(plans_dir)
+    let mut files: Vec<PathBuf> = skilllite_fs::read_dir(plans_dir)
         .with_context(|| format!("Failed to read plans dir: {}", plans_dir.display()))?
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
+        .into_iter()
+        .map(|(p, _)| p)
+        .filter(|p| p.is_file())
         .filter(|p| {
             p.extension().map_or(false, |e| e == "jsonl" || e == "json")
                 && p

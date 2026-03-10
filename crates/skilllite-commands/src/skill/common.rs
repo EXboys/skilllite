@@ -26,10 +26,9 @@ pub fn find_skill(skills_path: &Path, skill_name: &str) -> Result<PathBuf> {
         return Ok(direct);
     }
 
-    if let Ok(entries) = std::fs::read_dir(skills_path) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if !p.is_dir() || !p.join("SKILL.md").exists() {
+    if let Ok(entries) = skilllite_fs::read_dir(skills_path) {
+        for (p, is_dir) in entries {
+            if !is_dir || !p.join("SKILL.md").exists() {
                 continue;
             }
             if let Ok(meta) = metadata::parse_skill_metadata(&p) {

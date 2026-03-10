@@ -234,6 +234,9 @@ fn register_agent(reg: &mut CommandRegistry) {
                     EvolutionAction::Run { json } => {
                         skilllite_commands::evolution::cmd_run(*json)
                     }
+                    EvolutionAction::RepairSkills => {
+                        skilllite_commands::evolution::cmd_repair_skills()
+                    }
                 };
                 Some(r)
             } else {

@@ -6,7 +6,7 @@
 use anyhow::Result;
 
 use skilllite_evolution::feedback::{DecisionInput, FeedbackSignal as EvolutionFeedbackSignal};
-use skilllite_evolution::{EvolutionLlm, EvolutionMessage};
+use skilllite_evolution::{strip_think_blocks, EvolutionLlm, EvolutionMessage};
 
 use super::llm::LlmClient;
 use super::types::{ChatMessage, ExecutionFeedback, FeedbackSignal};
@@ -40,15 +40,17 @@ impl EvolutionLlm for EvolutionLlmAdapter<'_> {
             .chat_completion(model, &chat_messages, None, Some(temperature))
             .await?;
 
-        let content = response
-            .choices
-            .first()
-            .and_then(|c| c.message.content.as_deref())
-            .unwrap_or("")
-            .trim()
-            .to_string();
+        let msg = response.choices.first().map(|c| &c.message);
+        let content = msg.and_then(|m| m.content.as_deref()).unwrap_or("").trim();
+        let has_reasoning_field = msg.and_then(|m| m.reasoning_content.as_ref()).is_some();
 
-        Ok(content)
+        if has_reasoning_field {
+            // API already separated reasoning from content — use content as-is
+            Ok(content.to_string())
+        } else {
+            // Fallback: strip <think>/<thinking>/<reasoning> tags from text
+            Ok(strip_think_blocks(content).to_string())
+        }
     }
 }
 

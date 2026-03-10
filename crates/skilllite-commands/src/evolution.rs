@@ -650,3 +650,34 @@ fn build_new_skill(skills_root: &Path, skill_name: &str, txn_id: &str) -> Option
         txn_id: txn_id.to_string(),
     })
 }
+
+/// `skilllite evolution repair-skills` — test each skill in workspace/.skills/, LLM fix on failure
+pub fn cmd_repair_skills() -> Result<()> {
+    let skills_root = resolve_skills_root(None)
+        .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请设置 SKILLLITE_WORKSPACE 或在项目目录运行。"))?;
+
+    let config = AgentConfig::from_env();
+    if config.api_key.is_empty() {
+        anyhow::bail!("API key required. Set OPENAI_API_KEY or SKILLLITE_API_KEY env var.");
+    }
+
+    let llm = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key);
+    let adapter = skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
+
+    let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
+    let results = rt.block_on(skilllite_evolution::skill_synth::repair_skills(
+        &skills_root,
+        &adapter,
+        &config.model,
+    ))?;
+
+    let ok_count = results.iter().filter(|(_, ok)| *ok).count();
+    let fail_count = results.len() - ok_count;
+
+    println!("🔧 技能修复完成: 共 {} 个技能, {} 成功, {} 失败", results.len(), ok_count, fail_count);
+    for (name, ok) in &results {
+        println!("  {} {} {}", if *ok { "✅" } else { "❌" }, name, if *ok { "(通过测试)" } else { "(未通过)" });
+    }
+
+    Ok(())
+}

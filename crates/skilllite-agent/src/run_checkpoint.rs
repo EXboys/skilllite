@@ -45,13 +45,10 @@ const CHECKPOINT_FILE: &str = "latest.json";
 /// Save checkpoint to chat_root/run_checkpoints/latest.json.
 pub fn save_checkpoint(chat_root: &Path, checkpoint: &RunCheckpoint) -> Result<()> {
     let dir = chat_root.join(CHECKPOINT_DIR);
-    std::fs::create_dir_all(&dir)?;
+    skilllite_fs::create_dir_all(&dir)?;
     let path = dir.join(CHECKPOINT_FILE);
     let content = serde_json::to_string_pretty(checkpoint)?;
-    // Atomic write: write to .tmp then rename
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, content)?;
-    std::fs::rename(&tmp, &path)?;
+    skilllite_fs::atomic_write(&path, &content)?;
     tracing::debug!("Run checkpoint saved to {}", path.display());
     Ok(())
 }
@@ -63,7 +60,7 @@ pub fn load_checkpoint(chat_root: &Path) -> Result<Option<RunCheckpoint>> {
     if !path.exists() {
         return Ok(None);
     }
-    let content = std::fs::read_to_string(&path)?;
+    let content = skilllite_fs::read_file(&path)?;
     let checkpoint: RunCheckpoint = serde_json::from_str(&content)?;
     Ok(Some(checkpoint))
 }

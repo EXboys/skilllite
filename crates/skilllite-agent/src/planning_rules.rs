@@ -36,7 +36,7 @@ pub fn load_rules(workspace: Option<&Path>, chat_root: Option<&Path>) -> Vec<Pla
     if let Some(ws) = workspace {
         let path = ws.join(".skilllite").join("planning_rules.json");
         if path.exists() {
-            if let Ok(content) = std::fs::read_to_string(&path) {
+            if let Ok(content) = skilllite_fs::read_file(&path) {
                 if let Ok(ws_rules) = serde_json::from_str::<Vec<PlanningRule>>(&content) {
                     let ws_count = ws_rules.len();
                     merge_workspace_rules(&mut rules, ws_rules);

@@ -8,7 +8,8 @@ use rusqlite::{params, Connection};
 use skilllite_core::planning::PlanningRule;
 
 use crate::feedback::compute_effectiveness;
-use crate::{atomic_write, gatekeeper_l1_path, gatekeeper_l2_size, gatekeeper_l3_content, EvolutionLlm, EvolutionMessage};
+use crate::{gatekeeper_l1_path, gatekeeper_l2_size, gatekeeper_l3_content, EvolutionLlm, EvolutionMessage};
+use skilllite_fs::atomic_write;
 
 const RULE_EXTRACTION_PROMPT: &str =
     include_str!("seed/evolution_prompts/rule_extraction.seed.md");
@@ -258,7 +259,7 @@ async fn generate_examples<L: EvolutionLlm>(
 
     let examples_path = chat_root.join("prompts").join("examples.json");
     let existing_examples: Vec<PlanningExample> = if examples_path.exists() {
-        std::fs::read_to_string(&examples_path)
+        skilllite_fs::read_file(&examples_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default()
@@ -390,7 +391,7 @@ pub fn update_reusable_status(conn: &Connection, chat_root: &Path) -> Result<()>
         return Ok(());
     }
 
-    let content = std::fs::read_to_string(&rules_path)?;
+    let content = skilllite_fs::read_file(&rules_path)?;
     let mut rules: Vec<PlanningRule> = serde_json::from_str(&content)?;
 
     let mut changed = false;
@@ -466,7 +467,7 @@ fn query_decisions_summary(conn: &Connection, successful: bool) -> Result<String
 }
 
 pub fn extract_json_block(content: &str) -> String {
-    let content = content.trim();
+    let content = crate::strip_think_blocks(content.trim());
 
     if let Some(start) = content.find("```json") {
         let json_start = start + 7;

@@ -179,6 +179,7 @@ impl LlmClient {
         event_sink: &mut dyn EventSink,
     ) -> Result<ChatCompletionResponse> {
         let mut content = String::new();
+        let mut reasoning_content = String::new();
         let mut tool_calls: Vec<ToolCall> = Vec::new();
         let mut model = String::new();
         let mut finish_reason = None;
@@ -241,6 +242,11 @@ impl LlmClient {
                             Some(d) => d,
                             None => continue,
                         };
+
+                        // Accumulate reasoning_content from reasoning models (e.g. DeepSeek R1)
+                        if let Some(rc) = delta.get("reasoning_content").and_then(|v| v.as_str()) {
+                            reasoning_content.push_str(rc);
+                        }
 
                         // Stream text content to user immediately.
                         // Matches Python SDK: stream_callback(delta.content)
@@ -317,6 +323,11 @@ impl LlmClient {
                 message: ChoiceMessage {
                     role: "assistant".to_string(),
                     content: message_content,
+                    reasoning_content: if reasoning_content.is_empty() {
+                        None
+                    } else {
+                        Some(reasoning_content)
+                    },
                     tool_calls: message_tool_calls,
                 },
                 finish_reason,

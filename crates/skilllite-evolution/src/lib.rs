@@ -59,6 +59,49 @@ pub trait EvolutionLlm: Send + Sync {
     ) -> Result<String>;
 }
 
+// ─── LLM response post-processing ────────────────────────────────────────────
+
+/// Strip reasoning/thinking blocks emitted by various models.
+/// Handles `<think>`, `<thinking>`, `<reasoning>` tags (DeepSeek, QwQ, open-source variants).
+/// Returns the content after the last closing tag, or the original string if none found.
+/// Should be called at the LLM layer so all downstream consumers get clean output.
+pub fn strip_think_blocks(content: &str) -> &str {
+    const CLOSING_TAGS: &[&str] = &["</think>", "</thinking>", "</reasoning>"];
+    const OPENING_TAGS: &[&str] = &["<think>", "<think\n", "<thinking>", "<thinking\n", "<reasoning>", "<reasoning\n"];
+
+    // Case 1: find the last closing tag, take content after it
+    let mut best_end: Option<usize> = None;
+    for tag in CLOSING_TAGS {
+        if let Some(pos) = content.rfind(tag) {
+            let end = pos + tag.len();
+            if best_end.map_or(true, |bp| end > bp) {
+                best_end = Some(end);
+            }
+        }
+    }
+    if let Some(end) = best_end {
+        let after = content[end..].trim();
+        if !after.is_empty() {
+            return after;
+        }
+    }
+
+    // Case 2: unclosed think tag (model hit token limit mid-thought).
+    // Take content before the opening tag if it contains useful text.
+    if best_end.is_none() {
+        for tag in OPENING_TAGS {
+            if let Some(pos) = content.find(tag) {
+                let before = content[..pos].trim();
+                if !before.is_empty() {
+                    return before;
+                }
+            }
+        }
+    }
+
+    content
+}
+
 // ─── EVO-5: Evolution mode ───────────────────────────────────────────────────
 
 /// Which dimensions of evolution are enabled.
@@ -131,14 +174,9 @@ pub fn finish_evolution() {
     EVOLUTION_IN_PROGRESS.store(false, Ordering::SeqCst);
 }
 
-// ─── Atomic file writes ───────────────────────────────────────────────────────
+// ─── Atomic file writes (re-export from skilllite-fs) ─────────────────────────
 
-pub fn atomic_write(path: &Path, content: &str) -> Result<()> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, content)?;
-    std::fs::rename(&tmp, path)?;
-    Ok(())
-}
+pub use skilllite_fs::atomic_write;
 
 // ─── Evolution scope ──────────────────────────────────────────────────────────
 

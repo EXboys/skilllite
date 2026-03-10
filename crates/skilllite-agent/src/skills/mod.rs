@@ -57,10 +57,9 @@ pub fn load_skills(skill_dirs: &[String]) -> Vec<LoadedSkill> {
             }
         } else {
             // Scan subdirectories for skills
-            if let Ok(entries) = std::fs::read_dir(path) {
-                for entry in entries.flatten() {
-                    let entry_path = entry.path();
-                    if entry_path.is_dir() && entry_path.join("SKILL.md").exists() {
+            if let Ok(entries) = skilllite_fs::read_dir(path) {
+                for (entry_path, is_dir) in entries {
+                    if is_dir && entry_path.join("SKILL.md").exists() {
                         if let Some(skill) = load_single_skill(&entry_path) {
                             skills.push(skill);
                         }

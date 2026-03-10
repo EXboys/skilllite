@@ -4266,6 +4266,7 @@ dependencies = [
  "skilllite-core",
  "skilllite-evolution",
  "skilllite-executor",
+ "skilllite-fs",
  "skilllite-sandbox",
  "sqlite-vec",
  "tempfile",
@@ -4305,6 +4306,7 @@ dependencies = [
  "skilllite-agent",
  "skilllite-core",
  "skilllite-evolution",
+ "skilllite-fs",
  "skilllite-sandbox",
  "tempfile",
  "tokio",
@@ -4329,6 +4331,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "skilllite-fs",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -4344,11 +4347,13 @@ dependencies = [
  "async-trait",
  "chrono",
  "dirs 5.0.1",
+ "regex",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",
  "serde_json",
  "skilllite-core",
+ "skilllite-fs",
  "skilllite-sandbox",
  "tempfile",
  "tokio",
@@ -4366,10 +4371,20 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "skilllite-fs",
  "sqlite-vec",
  "tracing",
  "uuid",
  "zerocopy 0.7.35",
+]
+
+[[package]]
+name = "skilllite-fs"
+version = "0.1.11"
+dependencies = [
+ "anyhow",
+ "regex",
+ "tempfile",
 ]
 
 [[package]]

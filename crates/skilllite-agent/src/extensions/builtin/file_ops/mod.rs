@@ -13,7 +13,7 @@ use std::path::Path;
 
 use crate::types::{EventSink, ToolDefinition, FunctionDef};
 
-use super::{get_path_arg, is_key_write_path, is_sensitive_read_path, is_sensitive_write_path, filter_sensitive_content_in_text, list_dir_impl, resolve_within_workspace, resolve_within_workspace_or_output};
+use super::{get_path_arg, is_key_write_path, is_sensitive_read_path, is_sensitive_write_path, filter_sensitive_content_in_text, resolve_within_workspace, resolve_within_workspace_or_output};
 use crate::high_risk;
 
 pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
@@ -217,7 +217,7 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
     let start_line = args.get("start_line").and_then(|v| v.as_u64()).map(|v| v as usize);
     let end_line = args.get("end_line").and_then(|v| v.as_u64()).map(|v| v as usize);
 
-    match std::fs::read_to_string(&resolved) {
+    match skilllite_fs::read_file(&resolved) {
         Ok(content) => {
             let (content, was_redacted) = filter_sensitive_content_in_text(&content);
             let lines: Vec<&str> = content.lines().collect();
@@ -249,14 +249,20 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
             Ok(output)
         }
         Err(e) => {
-            if e.kind() == std::io::ErrorKind::InvalidData {
-                let meta = std::fs::metadata(&resolved)?;
+            if e.downcast_ref::<std::io::Error>()
+                .map(|ie| ie.kind() == std::io::ErrorKind::InvalidData)
+                == Some(true)
+            {
+                let size = match skilllite_fs::file_exists(&resolved)? {
+                    skilllite_fs::PathKind::File(len) => len,
+                    _ => 0,
+                };
                 Ok(format!(
                     "[Binary file, {} bytes. Cannot display as text.]",
-                    meta.len()
+                    size
                 ))
             } else {
-                Err(e.into())
+                Err(e)
             }
         }
     }
@@ -299,23 +305,12 @@ pub(super) fn execute_write_file(
 
     let resolved = resolve_within_workspace(&path_str, workspace)?;
 
-    if let Some(parent) = resolved.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
-    }
-
     if append {
-        use std::io::Write;
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&resolved)
-            .with_context(|| format!("Failed to open file for append: {}", resolved.display()))?;
-        f.write_all(content.as_bytes())
-            .with_context(|| format!("Failed to append to file: {}", resolved.display()))?;
+        skilllite_fs::append_file(&resolved, content)
+            .with_context(|| format!("Failed to append to file: {}", path_str))?;
     } else {
-        std::fs::write(&resolved, content)
-            .with_context(|| format!("Failed to write file: {}", resolved.display()))?;
+        skilllite_fs::write_file(&resolved, content)
+            .with_context(|| format!("Failed to write file: {}", path_str))?;
     }
 
     Ok(format!(
@@ -358,17 +353,7 @@ pub(super) fn execute_list_directory(args: &Value, workspace: &Path) -> Result<S
         .unwrap_or(false);
 
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
-
-    if !resolved.exists() {
-        anyhow::bail!("Directory not found: {}", path_str);
-    }
-    if !resolved.is_dir() {
-        anyhow::bail!("Path is not a directory: {}", path_str);
-    }
-
-    let mut entries = Vec::new();
-    list_dir_impl(&resolved, &resolved, recursive, &mut entries, 0)?;
-
+    let entries = skilllite_fs::list_directory(&resolved, recursive)?;
     Ok(entries.join("\n"))
 }
 
@@ -377,15 +362,9 @@ pub(super) fn execute_file_exists(args: &Value, workspace: &Path) -> Result<Stri
         .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
 
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
-
-    if !resolved.exists() {
-        return Ok(format!("{}: does not exist", path_str));
-    }
-
-    let meta = std::fs::metadata(&resolved)?;
-    if meta.is_dir() {
-        Ok(format!("{}: directory", path_str))
-    } else {
-        Ok(format!("{}: file ({} bytes)", path_str, meta.len()))
+    match skilllite_fs::file_exists(&resolved)? {
+        skilllite_fs::PathKind::NotFound => Ok(format!("{}: does not exist", path_str)),
+        skilllite_fs::PathKind::Dir => Ok(format!("{}: directory", path_str)),
+        skilllite_fs::PathKind::File(size) => Ok(format!("{}: file ({} bytes)", path_str, size)),
     }
 }

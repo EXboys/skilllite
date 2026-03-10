@@ -57,7 +57,7 @@ impl std::fmt::Display for ResolverKind {
 /// Read `.skilllite.lock` and return cached packages if fresh.
 pub fn resolve_from_lock(skill_dir: &Path, compatibility: Option<&str>) -> Option<Vec<String>> {
     let lock_path = skill_dir.join(".skilllite.lock");
-    let content = std::fs::read_to_string(&lock_path).ok()?;
+    let content = skilllite_fs::read_file(&lock_path).ok()?;
     let lock: serde_json::Value = serde_json::from_str(&content).ok()?;
 
     let current_hash = compatibility_hash(compatibility);
@@ -95,7 +95,7 @@ pub fn write_lock(
     });
 
     let lock_path = skill_dir.join(".skilllite.lock");
-    std::fs::write(&lock_path, serde_json::to_string_pretty(&lock)? + "\n")?;
+    skilllite_fs::write_file(&lock_path, &(serde_json::to_string_pretty(&lock)? + "\n"))?;
     Ok(())
 }
 

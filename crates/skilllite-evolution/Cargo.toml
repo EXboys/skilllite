@@ -8,6 +8,7 @@ license = "MIT"
 
 [dependencies]
 skilllite-core = { path = "../skilllite-core" }
+skilllite-fs = { path = "../skilllite-fs" }
 skilllite-sandbox = { path = "../skilllite-sandbox" }
 
 async-trait = "0.1"
@@ -22,6 +23,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-ut
 dirs = "5.0"
 tempfile = "3.10"
 uuid = { version = "1", features = ["v4"] }
+regex = "1.10"
 
 [dev-dependencies]
 tempfile = "3.10"

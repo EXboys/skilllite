@@ -15,7 +15,7 @@ use rusqlite::Connection;
 
 use skilllite_core::planning::{PlanningRule, SourceEntry, SourceRegistry};
 
-use crate::atomic_write;
+use skilllite_fs::atomic_write;
 use crate::feedback;
 use crate::gatekeeper_l3_content;
 use crate::log_evolution_event;

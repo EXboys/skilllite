@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use crate::types::{self, ToolDefinition, FunctionDef};
 
-use super::{normalize_path, list_dir_impl};
+use super::normalize_path;
 
 // ─── Tool definitions ───────────────────────────────────────────────────────
 
@@ -91,22 +91,11 @@ pub(super) fn execute_write_output(args: &Value, workspace: &Path) -> Result<Str
         );
     }
 
-    if let Some(parent) = normalized.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
-    }
-
     if append {
-        use std::io::Write;
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&normalized)
-            .with_context(|| format!("Failed to open output file for append: {}", normalized.display()))?;
-        f.write_all(content.as_bytes())
+        skilllite_fs::append_file(&normalized, content)
             .with_context(|| format!("Failed to append to output file: {}", normalized.display()))?;
     } else {
-        std::fs::write(&normalized, content)
+        skilllite_fs::write_file(&normalized, content)
             .with_context(|| format!("Failed to write output file: {}", normalized.display()))?;
     }
 
@@ -128,15 +117,10 @@ pub(super) fn execute_list_output(args: &Value) -> Result<String> {
         .map(PathBuf::from)
         .ok_or_else(|| anyhow::anyhow!("Output directory not configured (SKILLLITE_OUTPUT_DIR)"))?;
 
-    if !output_root.exists() {
-        return Ok("Output directory does not exist or is empty.".to_string());
-    }
-    if !output_root.is_dir() {
-        anyhow::bail!("Output path is not a directory: {}", output_root.display());
-    }
-
-    let mut entries = Vec::new();
-    list_dir_impl(&output_root, &output_root, recursive, &mut entries, 0)?;
+    let entries = match skilllite_fs::list_directory(&output_root, recursive) {
+        Ok(e) => e,
+        Err(_) => return Ok("Output directory does not exist or is empty.".to_string()),
+    };
 
     if entries.is_empty() {
         return Ok("Output directory is empty.".to_string());
