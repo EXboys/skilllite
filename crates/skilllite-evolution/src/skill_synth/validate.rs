@@ -240,6 +240,33 @@ pub async fn validate_skills<L: EvolutionLlm>(
         if !names.is_empty() {
             let set: std::collections::HashSet<&str> = names.iter().map(String::as_str).collect();
             skill_dirs.retain(|(_, name)| set.contains(name.as_str()));
+            // 同名可能同时存在于 .skills/xxx 与 .skills/_evolved/xxx，只保留一个：优先 _evolved > _pending > 其它
+            let prefer = |p: &PathBuf| {
+                let s = p.to_string_lossy();
+                if s.contains("_evolved") {
+                    2
+                } else if s.contains("_pending") {
+                    1
+                } else {
+                    0
+                }
+            };
+            let mut by_name: std::collections::HashMap<String, (PathBuf, String)> =
+                std::collections::HashMap::new();
+            for (path, name) in skill_dirs {
+                let keep = match by_name.get(&name) {
+                    None => true,
+                    Some((existing, _)) => prefer(&path) > prefer(existing),
+                };
+                if keep {
+                    by_name.insert(name.clone(), (path, name));
+                }
+            }
+            // 按用户传入的筛选顺序输出，保证“只修选的”且顺序一致
+            skill_dirs = names
+                .iter()
+                .filter_map(|n| by_name.get(n.as_str()).cloned())
+                .collect();
         }
     }
     let total = skill_dirs.len();
