@@ -64,7 +64,7 @@ pub fn register(reg: &mut CommandRegistry) {
                     let skill_path = validate_skill_path(sd)?;
                     let meta = parse_skill_metadata(&skill_path)?;
                     // 无入口时用大模型从 SKILL.md 推理入口，再执行（仅 agent feature 且已配 API）
-                    let inferred_entry = if meta.entry_point.is_empty() {
+                    let inferred_entry: Option<String> = if meta.entry_point.is_empty() {
                         #[cfg(feature = "agent")]
                         {
                             let config = skilllite_agent::types::AgentConfig::from_env();
