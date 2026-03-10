@@ -639,6 +639,10 @@ pub enum EvolutionAction {
         json: bool,
     },
 
-    /// Repair all skills in workspace/.skills/ — test each skill, LLM fix on failure
-    RepairSkills,
+    /// Repair skills: validate then LLM-fix failures. Without names, repair all failed; with names, only validate/repair those (faster when many skills).
+    RepairSkills {
+        /// 仅验证并修复这些技能（目录名）；不传则处理全部失败技能
+        #[arg(value_name = "SKILL_NAME")]
+        skills: Vec<String>,
+    },
 }

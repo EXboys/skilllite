@@ -223,7 +223,7 @@ pub async fn repair_skills<L: EvolutionLlm>(
     llm: &L,
     model: &str,
 ) -> Result<Vec<(String, bool)>> {
-    let validated = validate::validate_skills(skills_root, llm, model).await?;
+    let validated = validate::validate_skills(skills_root, llm, model, None).await?;
     let failed: Vec<&SkillValidation> = validated
         .iter()
         .filter(|v| !v.passed)

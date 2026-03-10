@@ -115,6 +115,29 @@ fn skilllite_confirm(app: tauri::AppHandle, approved: bool) -> Result<(), String
     Ok(())
 }
 
+#[tauri::command]
+async fn skilllite_list_skills(workspace: Option<String>) -> Vec<String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_skill_names(&ws))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn skilllite_repair_skills(
+    app: tauri::AppHandle,
+    workspace: Option<String>,
+    skill_names: Vec<String>,
+) -> Result<String, String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    let path = skilllite_bridge::resolve_skilllite_path_app(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::repair_skills(&ws, &skill_names, &path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -129,7 +152,9 @@ pub fn run() {
             skilllite_read_output_file,
             skilllite_read_output_file_base64,
             skilllite_open_directory,
-            skilllite_confirm
+            skilllite_confirm,
+            skilllite_list_skills,
+            skilllite_repair_skills
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())

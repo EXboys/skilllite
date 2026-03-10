@@ -1,3 +1,4 @@
+import { useState, useEffect, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
@@ -212,6 +213,133 @@ const openDir = (module: string) => () => {
   });
 };
 
+const SKILL_LIST_MAX_HEIGHT = 180;
+
+function SkillRepairSection() {
+  const [skillNames, setSkillNames] = useState<string[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loadingList, setLoadingList] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [repairResult, setRepairResult] = useState<string | null>(null);
+
+  const loadSkills = useCallback(async () => {
+    setLoadingList(true);
+    setRepairResult(null);
+    try {
+      const names = await invoke<string[]>("skilllite_list_skills", { workspace: null });
+      setSkillNames(names);
+      setSelected(new Set());
+    } catch (e) {
+      console.error("[skilllite-assistant] skilllite_list_skills failed:", e);
+      setSkillNames([]);
+    } finally {
+      setLoadingList(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSkills();
+  }, [loadSkills]);
+
+  const toggleOne = (name: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelected(new Set(skillNames));
+  const selectNone = () => setSelected(new Set());
+
+  const runRepair = async () => {
+    setRepairing(true);
+    setRepairResult(null);
+    try {
+      const toRepair = selected.size > 0 ? Array.from(selected) : [];
+      const out = await invoke<string>("skilllite_repair_skills", {
+        workspace: null,
+        skillNames: toRepair,
+      });
+      setRepairResult(out || "完成");
+    } catch (e) {
+      setRepairResult(String(e));
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  return (
+    <section className="mb-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="font-medium text-ink dark:text-ink-dark">技能修复</span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={loadSkills}
+            disabled={loadingList}
+            className="text-xs px-2 py-1 rounded text-ink-mute hover:text-ink dark:text-ink-dark-mute dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50"
+          >
+            刷新
+          </button>
+          <button
+            type="button"
+            onClick={selectAll}
+            className="text-xs px-2 py-1 rounded text-ink-mute hover:text-ink dark:text-ink-dark-mute dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5"
+          >
+            全选
+          </button>
+          <button
+            type="button"
+            onClick={selectNone}
+            className="text-xs px-2 py-1 rounded text-ink-mute hover:text-ink dark:text-ink-dark-mute dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5"
+          >
+            取消
+          </button>
+        </div>
+      </div>
+      <div
+        className="space-y-1 mb-2 overflow-y-auto"
+        style={{ maxHeight: SKILL_LIST_MAX_HEIGHT }}
+      >
+        {loadingList ? (
+          <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
+        ) : skillNames.length === 0 ? (
+          <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">未找到技能（需 .skills 或 skills 目录）</p>
+        ) : (
+          skillNames.map((name) => (
+            <label key={name} className="flex items-center gap-2 text-xs cursor-pointer hover:text-accent dark:hover:text-accent">
+              <input
+                type="checkbox"
+                checked={selected.has(name)}
+                onChange={() => toggleOne(name)}
+                className="rounded border-border dark:border-border-dark"
+              />
+              <span className="truncate">{name}</span>
+            </label>
+          ))
+        )}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={runRepair}
+          disabled={repairing || skillNames.length === 0}
+          className="text-xs px-3 py-1.5 rounded bg-accent text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {repairing ? "修复中…" : selected.size > 0 ? `修复选中 (${selected.size})` : "修复全部失败技能"}
+        </button>
+      </div>
+      {repairResult !== null && (
+        <pre className="mt-2 p-2 rounded bg-ink/5 dark:bg-white/5 text-xs text-ink-mute dark:text-ink-dark-mute whitespace-pre-wrap max-h-32 overflow-auto">
+          {repairResult}
+        </pre>
+      )}
+    </section>
+  );
+}
+
 export default function StatusPanel() {
   const { tasks, logEntries, memoryHints, memoryFiles, outputFiles } = useStatusStore();
 
@@ -257,6 +385,8 @@ export default function StatusPanel() {
       >
         <OutputPreview files={outputFiles} limit={PREVIEW_LIMIT} />
       </SummarySection>
+
+      <SkillRepairSection />
     </div>
   );
 }

@@ -696,8 +696,9 @@ fn is_fetchable_source(source: &str) -> bool {
     false
 }
 
-/// `skilllite evolution repair-skills` — 验证所有技能；失败时：进化的用大模型修复，下载的让用户确认是否从源头更新
-pub fn cmd_repair_skills() -> Result<()> {
+/// `skilllite evolution repair-skills [SKILL_NAME...]` — 验证技能并修复失败的。
+/// 不传技能名时验证并修复所有失败技能；传一个或多个技能名时仅验证并修复这些技能，缩短执行时间。
+pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
     let skills_root = resolve_skills_root(None)
         .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请设置 SKILLLITE_WORKSPACE 或在项目目录运行。"))?;
 
@@ -711,10 +712,18 @@ pub fn cmd_repair_skills() -> Result<()> {
 
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
 
+    let filter_ref = skills_filter.as_deref();
+    if let Some(names) = filter_ref {
+        if !names.is_empty() {
+            eprintln!("🔧 仅验证/修复指定技能: {}", names.join(", "));
+        }
+    }
+
     let validated = rt.block_on(skilllite_evolution::skill_synth::validate_skills(
         &skills_root,
         &adapter,
         &config.model,
+        filter_ref,
     ))?;
 
     let failed: Vec<_> = validated.iter().filter(|v| !v.passed).collect();

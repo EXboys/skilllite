@@ -796,3 +796,125 @@ pub(crate) fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> std::path::P
     }
     std::path::PathBuf::from(exe_name)
 }
+
+// ─── List skills & repair-skills (evolution) ───────────────────────────────────
+
+/// Whether the skill dir has any script file (scripts/ or root with common script extensions).
+fn skill_has_scripts(path: &std::path::Path) -> bool {
+    let scripts_dir = path.join("scripts");
+    if scripts_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&scripts_dir) {
+            if entries.filter(|e| e.as_ref().ok().map(|e| e.path().is_file()).unwrap_or(false)).count() > 0 {
+                return true;
+            }
+        }
+    }
+    const EXTS: &[&str] = &["py", "js", "ts", "sh", "bash"];
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_file() {
+                if let Some(ext) = p.extension() {
+                    if EXTS.contains(&ext.to_string_lossy().to_lowercase().as_str()) {
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Collect skill (dir_path, name) from a root dir, same shape as evolution validate (including _evolved/_pending).
+fn collect_skill_dirs(root: &std::path::Path) -> Vec<(PathBuf, String)> {
+    if !root.exists() || !root.is_dir() {
+        return Vec::new();
+    }
+    let mut dirs = Vec::new();
+    for e in std::fs::read_dir(root).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+        let path = e.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.starts_with('_') {
+            if name == "_evolved" || name == "_pending" {
+                for e2 in std::fs::read_dir(&path).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+                    let p2 = e2.path();
+                    let sub = e2.file_name().to_string_lossy().into_owned();
+                    if !p2.is_dir() {
+                        continue;
+                    }
+                    if p2.join("SKILL.md").exists() && skill_has_scripts(&p2) {
+                        dirs.push((p2, sub));
+                    } else if sub == "_pending" {
+                        for e3 in std::fs::read_dir(&p2).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+                            let p3 = e3.path();
+                            if p3.is_dir() && p3.join("SKILL.md").exists() && skill_has_scripts(&p3) {
+                                dirs.push((p3, e3.file_name().to_string_lossy().into_owned()));
+                            }
+                        }
+                    }
+                }
+            } else if path.join("SKILL.md").exists() && skill_has_scripts(&path) {
+                dirs.push((path, name));
+            }
+            continue;
+        }
+        if path.join("SKILL.md").exists() && skill_has_scripts(&path) {
+            dirs.push((path, name));
+        }
+    }
+    dirs
+}
+
+/// List skill names in workspace (for repair UI). Uses same logic as evolution: .skills and skills, incl. _evolved/_pending.
+pub fn list_skill_names(workspace: &str) -> Vec<String> {
+    let root = find_project_root(workspace);
+    let mut names = std::collections::HashSet::new();
+    for skills_sub in [".skills", "skills"] {
+        let dir = root.join(skills_sub);
+        for (_, name) in collect_skill_dirs(&dir) {
+            names.insert(name);
+        }
+    }
+    let mut v: Vec<String> = names.into_iter().collect();
+    v.sort();
+    v
+}
+
+/// Run `skilllite evolution repair-skills [skill_names...]`. If skill_names is empty, repairs all failed; otherwise only those.
+pub fn repair_skills(
+    workspace: &str,
+    skill_names: &[String],
+    skilllite_path: &std::path::Path,
+) -> Result<String, String> {
+    let root = find_project_root(workspace);
+
+    let mut cmd = std::process::Command::new(skilllite_path);
+    cmd.arg("evolution").arg("repair-skills");
+    for name in skill_names {
+        cmd.arg(name);
+    }
+    cmd.current_dir(&root)
+        .env("SKILLLITE_WORKSPACE", root.to_string_lossy().as_ref())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    for (k, v) in load_dotenv_for_child(workspace) {
+        cmd.env(k, v);
+    }
+
+    let output = cmd.output().map_err(|e| format!("执行 repair-skills 失败: {}", e))?;
+    let out = String::from_utf8_lossy(&output.stdout);
+    let err = String::from_utf8_lossy(&output.stderr);
+    let combined = if err.is_empty() {
+        out.trim().to_string()
+    } else {
+        format!("{}\n{}", out.trim(), err.trim())
+    };
+    if !output.status.success() {
+        return Err(combined);
+    }
+    Ok(combined)
+}

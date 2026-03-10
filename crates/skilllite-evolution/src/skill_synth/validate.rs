@@ -227,13 +227,21 @@ fn brief_error(trace: &str) -> String {
 
 // ─── validate_skills ─────────────────────────────────────────────────────────
 
-/// 验证所有技能：对每个 skill infer → test → doc check，返回结果列表
+/// 验证技能：对每个 skill infer → test → doc check，返回结果列表。
+/// 若 `skill_names_filter` 为 `Some` 且非空，仅验证该列表中的技能名（目录名），否则验证全部。
 pub async fn validate_skills<L: EvolutionLlm>(
     skills_root: &Path,
     llm: &L,
     model: &str,
+    skill_names_filter: Option<&[String]>,
 ) -> Result<Vec<SkillValidation>> {
-    let skill_dirs = collect_skill_dirs(skills_root);
+    let mut skill_dirs = collect_skill_dirs(skills_root);
+    if let Some(names) = skill_names_filter {
+        if !names.is_empty() {
+            let set: std::collections::HashSet<&str> = names.iter().map(String::as_str).collect();
+            skill_dirs.retain(|(_, name)| set.contains(name.as_str()));
+        }
+    }
     let total = skill_dirs.len();
     if total == 0 {
         eprintln!("📋 未找到可验证的技能（无 scripts 的已跳过）");

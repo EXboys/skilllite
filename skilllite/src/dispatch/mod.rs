@@ -234,8 +234,10 @@ fn register_agent(reg: &mut CommandRegistry) {
                     EvolutionAction::Run { json } => {
                         skilllite_commands::evolution::cmd_run(*json)
                     }
-                    EvolutionAction::RepairSkills => {
-                        skilllite_commands::evolution::cmd_repair_skills()
+                    EvolutionAction::RepairSkills { skills } => {
+                        skilllite_commands::evolution::cmd_repair_skills(
+                            if skills.is_empty() { None } else { Some(skills.clone()) },
+                        )
                     }
                 };
                 Some(r)
