@@ -81,7 +81,11 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
     let mut current_test_input = test_input.to_string();
 
     for round in 1..=MAX_REFINE_ROUNDS {
-        let (exec_ok, exec_trace) = infer::test_skill_invoke(skill_dir, entry_point, &current_test_input)?;
+        // 每轮先安装/更新依赖：无 package.json/requirements.txt 时从 SKILL.md compatibility 推断（大模型可能上轮已补全）
+        let env_path = super::env_helper::ensure_skill_deps_and_env(skill_dir);
+
+        let (exec_ok, exec_trace) =
+            infer::test_skill_invoke(skill_dir, entry_point, &current_test_input, env_path.as_deref())?;
         let doc_error = validate::check_skill_md_completeness(skill_dir, llm, model).await;
         if exec_ok && doc_error.is_none() {
             return Ok((true, String::new()));
@@ -143,7 +147,9 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
         }
     }
 
-    let (ok, final_trace) = infer::test_skill_invoke(skill_dir, entry_point, &current_test_input)?;
+    let env_path = super::env_helper::ensure_skill_deps_and_env(skill_dir);
+    let (ok, final_trace) =
+        infer::test_skill_invoke(skill_dir, entry_point, &current_test_input, env_path.as_deref())?;
     let doc_error = validate::check_skill_md_completeness(skill_dir, llm, model).await;
     if ok && doc_error.is_none() {
         return Ok((true, String::new()));

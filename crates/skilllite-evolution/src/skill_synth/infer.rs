@@ -6,6 +6,8 @@ use std::process::{Command, Stdio};
 
 use anyhow::Result;
 
+use skilllite_sandbox::env::builder;
+
 use crate::EvolutionLlm;
 use crate::EvolutionMessage;
 use super::SkillMeta;
@@ -295,26 +297,47 @@ pub(super) async fn infer_skill_execution<L: EvolutionLlm>(
 }
 
 /// Run skill with inferred entry_point and test_input. Returns (success, error_trace).
+/// When `env_path` is Some, uses the skill's isolated env (venv/node_modules) so dependencies are available.
 pub(super) fn test_skill_invoke(
     skill_dir: &Path,
     entry_point: &str,
     test_input: &str,
+    env_path: Option<&Path>,
 ) -> Result<(bool, String)> {
     let script_path = skill_dir.join(entry_point);
     if !script_path.exists() {
         return Ok((false, "no entry script".to_string()));
     }
 
-    let (cmd, args) = if entry_point.ends_with(".py") {
-        ("python3", vec![script_path.to_string_lossy().into_owned()])
+    let runtime = env_path
+        .filter(|p| !p.as_os_str().is_empty() && p.exists())
+        .map(builder::build_runtime_paths);
+
+    let mut run_cmd = if entry_point.ends_with(".py") {
+        let interpreter = runtime
+            .as_ref()
+            .map(|r| r.python.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "python3".to_string());
+        Command::new(&interpreter)
     } else if entry_point.ends_with(".js") {
-        ("node", vec![script_path.to_string_lossy().into_owned()])
+        let node = runtime
+            .as_ref()
+            .map(|r| r.node.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "node".to_string());
+        let mut c = Command::new(&node);
+        if let Some(ref r) = runtime {
+            if let Some(ref nm) = r.node_modules {
+                c.env("NODE_PATH", nm);
+            }
+        }
+        c
     } else {
         return Ok((false, "unsupported entry point".to_string()));
     };
 
-    let mut child = Command::new(cmd)
-        .args(args)
+    let script_arg = script_path.to_string_lossy().into_owned();
+    let mut child = run_cmd
+        .arg(&script_arg)
         .current_dir(skill_dir)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -262,7 +262,15 @@ pub async fn validate_skills<L: EvolutionLlm>(
             }
         };
 
-        let (passed, error) = match infer::test_skill_invoke(skill_dir, &entry_point, &test_input) {
+        // 验证前先安装依赖；无 package.json/requirements.txt 时从 SKILL.md compatibility 推断
+        let env_path: Option<PathBuf> = super::env_helper::ensure_skill_deps_and_env(skill_dir);
+
+        let (passed, error) = match infer::test_skill_invoke(
+            skill_dir,
+            &entry_point,
+            &test_input,
+            env_path.as_deref(),
+        ) {
             Ok((ok, trace)) => {
                 if ok {
                     match check_skill_md_completeness(skill_dir, llm, model).await {

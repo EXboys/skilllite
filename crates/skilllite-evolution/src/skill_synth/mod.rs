@@ -15,6 +15,7 @@
 //! All evolved skills live in `chat/skills/_evolved/` with `.meta.json` metadata.
 //! A10: Newly generated skills go to `_evolved/_pending/` until user confirms.
 
+mod env_helper;
 mod generate;
 mod infer;
 mod parse;
