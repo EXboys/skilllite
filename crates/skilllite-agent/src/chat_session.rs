@@ -825,7 +825,7 @@ async fn run_evolution_and_emit_summary(
     )
     .await
     {
-        Ok(Some(txn_id)) => {
+        Ok(skilllite_evolution::EvolutionRunResult::Completed(Some(txn_id))) => {
             tracing::info!("Evolution completed: {}", txn_id);
             if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(data_root) {
                 let changes = skilllite_evolution::query_changes_by_txn(&conn, &txn_id);
@@ -833,9 +833,19 @@ async fn run_evolution_and_emit_summary(
                     eprintln!("{}", msg);
                 }
                 let _ = skilllite_evolution::check_auto_rollback(&conn, data_root);
+                // 若本次进化写入了记忆知识，将其加入 memory 索引，以便 memory_search / build_memory_context 能搜到
+                if changes.iter().any(|(t, _)| t == "memory_knowledge_added") {
+                    let _ = extensions::index_evolution_knowledge(data_root, "default");
+                }
             }
         }
-        Ok(None) => tracing::debug!("Evolution: nothing to evolve"),
+        Ok(skilllite_evolution::EvolutionRunResult::SkippedBusy) => {
+            tracing::warn!("Evolution skipped: another run in progress");
+        }
+        Ok(skilllite_evolution::EvolutionRunResult::NoScope)
+        | Ok(skilllite_evolution::EvolutionRunResult::Completed(None)) => {
+            tracing::debug!("Evolution: nothing to evolve");
+        }
         Err(e) => tracing::warn!("Evolution failed: {}", e),
     }
 }

@@ -107,10 +107,11 @@ impl LlmClient {
         }
         let api_base = custom_url.unwrap_or(&self.api_base);
         let api_key = custom_key.unwrap_or(&self.api_key);
+        let base = api_base.trim_end_matches('/');
         let url = if api_base.to_lowercase().contains("minimax") {
-            format!("{}/text/embeddings", api_base)
+            format!("{}/text/embeddings", base)
         } else {
-            format!("{}/embeddings", api_base)
+            format!("{}/embeddings", base)
         };
         let input: Value = if texts.len() == 1 {
             json!(texts[0])

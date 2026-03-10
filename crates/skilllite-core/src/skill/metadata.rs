@@ -42,6 +42,10 @@ struct FrontMatter {
     #[serde(default)]
     pub compatibility: Option<String>,
 
+    /// Optional: Entry script path (e.g. scripts/main.py). When set, this is the designated entry; must exist under skill dir.
+    #[serde(default)]
+    pub entry_point: Option<String>,
+
     /// Optional: Additional metadata (author, version, etc.)
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
@@ -452,11 +456,20 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
     let front_matter: FrontMatter = serde_yaml::from_str(&yaml_content)
         .with_context(|| "Failed to parse YAML front matter")?;
 
-    // Auto-detect entry_point from scripts/ directory
+    // 兼容：front matter 的 entry_point（若有且文件存在）→ 否则目录探测（main.* / index.* / 单脚本）。
+    // 无入口时可由调用方用大模型根据 SKILL.md 推理后通过 entry_point_override 传入 run_skill。
     let mut entry_point = String::new();
     if let Some(dir) = skill_dir {
-        if let Some(detected) = detect_entry_point(dir) {
-            entry_point = detected;
+        if let Some(ref ep) = front_matter.entry_point {
+            let ep = ep.trim();
+            if !ep.is_empty() && dir.join(ep).is_file() {
+                entry_point = ep.to_string();
+            }
+        }
+        if entry_point.is_empty() {
+            if let Some(detected) = detect_entry_point(dir) {
+                entry_point = detected;
+            }
         }
     }
 
@@ -843,5 +856,38 @@ metadata:
             Some("Requires Python 3.x. Requires bins: uv. Requires env: API_KEY")
         );
         assert_eq!(metadata.language, Some("python".to_string()));
+    }
+
+    #[test]
+    fn test_entry_point_from_front_matter() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path();
+        std::fs::create_dir_all(skill_dir.join("scripts")).unwrap();
+        std::fs::write(skill_dir.join("scripts/entry.py"), "").unwrap();
+        let content = r#"---
+name: my-skill
+entry_point: scripts/entry.py
+---
+
+# Doc
+"#;
+        std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
+        let meta = parse_skill_metadata(skill_dir).unwrap();
+        assert_eq!(meta.entry_point, "scripts/entry.py");
+    }
+
+    #[test]
+    fn test_entry_point_no_explicit_uses_directory_convention() {
+        let dir = tempfile::tempdir().unwrap();
+        let skill_dir = dir.path();
+        std::fs::create_dir_all(skill_dir.join("scripts")).unwrap();
+        std::fs::write(skill_dir.join("scripts/main.py"), "").unwrap();
+        let content = r#"---
+name: my-skill
+---
+"#;
+        std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
+        let meta = parse_skill_metadata(skill_dir).unwrap();
+        assert_eq!(meta.entry_point, "scripts/main.py");
     }
 }

@@ -538,7 +538,7 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
     let adapter = skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
 
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
-    let txn_opt = rt.block_on(skilllite_evolution::run_evolution(
+    let run_result = rt.block_on(skilllite_evolution::run_evolution(
         &root,
         skills_root.as_deref(),
         &adapter,
@@ -549,10 +549,14 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
     ))?;
 
     let task_id = uuid::Uuid::new_v4().to_string();
-    let response = match txn_opt {
-        Some(txn_id) => {
+    let response = match run_result {
+        skilllite_evolution::EvolutionRunResult::Completed(Some(txn_id)) => {
             let conn = skilllite_evolution::feedback::open_evolution_db(&root)?;
             let changes = skilllite_evolution::query_changes_by_txn(&conn, &txn_id);
+
+            if changes.iter().any(|(t, _)| t == "memory_knowledge_added") {
+                let _ = skilllite_agent::extensions::index_evolution_knowledge(&root, "default");
+            }
 
             let new_skill = changes
                 .iter()
@@ -576,7 +580,15 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
                 new_skill,
             }
         }
-        None => {
+        skilllite_evolution::EvolutionRunResult::SkippedBusy => NodeResult {
+            task_id: task_id.clone(),
+            response: "Evolution skipped: another run in progress".to_string(),
+            task_completed: true,
+            tool_calls: 0,
+            new_skill: None,
+        },
+        skilllite_evolution::EvolutionRunResult::NoScope
+        | skilllite_evolution::EvolutionRunResult::Completed(None) => {
             // Diagnostic: help user understand why
             let mut hint = String::from("Evolution: nothing to evolve");
             if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&root) {

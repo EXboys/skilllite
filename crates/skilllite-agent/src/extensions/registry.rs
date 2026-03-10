@@ -84,10 +84,25 @@ impl<'a> ExtensionRegistryBuilder<'a> {
     }
 
     /// Build the registry. Skills' tool definitions are added at build time.
+    /// 按 function.name 去重，避免重复声明导致 Gemini 等 API 报 Duplicate function declaration。
     pub fn build(self) -> ExtensionRegistry<'a> {
         let mut tool_definitions = self.tool_definitions;
+        let mut seen: std::collections::HashSet<String> = tool_definitions
+            .iter()
+            .map(|t| t.function.name.clone())
+            .collect();
         for skill in self.skills {
-            tool_definitions.extend(skill.tool_definitions.clone());
+            for td in &skill.tool_definitions {
+                if seen.insert(td.function.name.clone()) {
+                    tool_definitions.push(td.clone());
+                } else {
+                    tracing::debug!(
+                        "Skip duplicate tool name: {} (skill: {})",
+                        td.function.name,
+                        skill.name
+                    );
+                }
+            }
         }
         ExtensionRegistry {
             tool_definitions,
@@ -160,7 +175,7 @@ impl<'a> ExtensionRegistry<'a> {
             )
             .await
         } else if let Some(skill) = skills::find_skill_by_tool_name(self.skills, tool_name) {
-            skills::execute_skill(skill, tool_name, arguments, workspace, event_sink)
+            skills::execute_skill(skill, tool_name, arguments, workspace, event_sink, None)
         } else if let Some(skill) = skills::find_skill_by_name(self.skills, tool_name) {
             // Reference-only skill (no entry_point / no scripts, just SKILL.md guidance)
             let docs = prompt::get_skill_full_docs(skill).unwrap_or_else(|| {

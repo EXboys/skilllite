@@ -241,7 +241,7 @@ fn handle_run(params: &Value) -> Result<Value> {
     let limits = ResourceLimits::from_env()
         .with_cli_overrides(max_memory, timeout);
 
-    let output = execute::run_skill(skill_dir, input_json, allow_network, cache_dir_ref, limits, sandbox_level)?;
+    let output = execute::run_skill(skill_dir, input_json, allow_network, cache_dir_ref, limits, sandbox_level, None)?;
     Ok(json!({
         "output": output,
         "exit_code": 0

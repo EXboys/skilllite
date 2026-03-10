@@ -2,6 +2,10 @@
 
 use std::io::Read;
 
+use anyhow::Context;
+use skilllite_core::path_validation::validate_skill_path;
+use skilllite_core::skill::metadata::parse_skill_metadata;
+
 use crate::cli::Commands;
 use crate::command_registry::CommandRegistry;
 
@@ -57,6 +61,41 @@ pub fn register(reg: &mut CommandRegistry) {
                     } else {
                         ij.clone()
                     };
+                    let skill_path = validate_skill_path(sd)?;
+                    let meta = parse_skill_metadata(&skill_path)?;
+                    // 无入口时用大模型从 SKILL.md 推理入口，再执行（仅 agent feature 且已配 API）
+                    let inferred_entry = if meta.entry_point.is_empty() {
+                        #[cfg(feature = "agent")]
+                        {
+                            let config = skilllite_agent::types::AgentConfig::from_env();
+                            if config.api_key.is_empty() {
+                                None
+                            } else {
+                                let rt = tokio::runtime::Runtime::new()
+                                    .context("tokio runtime for entry inference")?;
+                                let llm = skilllite_agent::llm::LlmClient::new(
+                                    &config.api_base,
+                                    &config.api_key,
+                                );
+                                let adapter =
+                                    skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
+                                rt.block_on(skilllite_agent::skills::infer_entry::infer_entry_point_from_skill_md(
+                                    &skill_path,
+                                    &adapter,
+                                    &config.model,
+                                ))
+                                .ok()
+                                .flatten()
+                            }
+                        }
+                        #[cfg(not(feature = "agent"))]
+                        {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    let entry_override = inferred_entry.as_deref();
                     let sandbox_level =
                         skilllite_sandbox::runner::SandboxLevel::from_env_or_cli(*sandbox_level);
                     let limits = skilllite_sandbox::runner::ResourceLimits::from_env()
@@ -68,6 +107,7 @@ pub fn register(reg: &mut CommandRegistry) {
                         cache_dir.as_ref(),
                         limits,
                         sandbox_level,
+                        entry_override,
                     )?;
                     println!("{}", result);
                     Ok(())

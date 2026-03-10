@@ -21,7 +21,13 @@ use super::SKILL_GENERATION_PROMPT;
 use super::SKILL_GENERATION_FROM_FAILURES_PROMPT;
 use super::MAX_EVOLVED_SKILLS;
 
-/// 成功驱动：从高成功率模式生成 Skill
+/// Pre-fetched (patterns_display, executions) for success-driven generation. When `Some`, caller holds conn and passed data to avoid reopening DB.
+pub(super) type SuccessQueryData = (String, String);
+/// Pre-fetched (failed_patterns, failed_executions) for failure-driven generation.
+pub(super) type FailureQueryData = (String, String);
+
+/// 成功驱动：从高成功率模式生成 Skill。
+/// `pre_fetched`: 若为 `Some` 则使用已有查询结果，否则本函数内打开 DB 查询。
 pub(super) async fn generate_skill<L: EvolutionLlm>(
     chat_root: &Path,
     skills_root: &Path,
@@ -29,6 +35,7 @@ pub(super) async fn generate_skill<L: EvolutionLlm>(
     model: &str,
     txn_id: &str,
     min_pattern_count: u32,
+    pre_fetched: Option<SuccessQueryData>,
 ) -> Result<Option<String>> {
     let evolved_dir = skills_root.join("_evolved");
     let pending_dir = evolved_dir.join("_pending");
@@ -42,15 +49,18 @@ pub(super) async fn generate_skill<L: EvolutionLlm>(
         return Ok(None);
     }
 
-    let (patterns, executions) = {
-        let conn = feedback::open_evolution_db(chat_root)?;
-        let (patterns_display, pattern_descs) = query::query_repeated_patterns(&conn, min_pattern_count)?;
-        let executions = if !pattern_descs.is_empty() {
-            query::query_pattern_executions(&conn, &pattern_descs)?
-        } else {
-            String::new()
-        };
-        (patterns_display, executions)
+    let (patterns, executions) = match pre_fetched {
+        Some((p, e)) => (p, e),
+        None => {
+            let conn = feedback::open_evolution_db(chat_root)?;
+            let (patterns_display, pattern_descs) = query::query_repeated_patterns(&conn, min_pattern_count)?;
+            let executions = if !pattern_descs.is_empty() {
+                query::query_pattern_executions(&conn, &pattern_descs)?
+            } else {
+                String::new()
+            };
+            (patterns_display, executions)
+        }
     };
 
     if patterns.is_empty() {
@@ -191,13 +201,15 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
     Ok(Some(parsed.name))
 }
 
-/// 失败驱动：从持续失败模式生成 Skill（补全能力缺口）
+/// 失败驱动：从持续失败模式生成 Skill（补全能力缺口）。
+/// `pre_fetched`: 若为 `Some` 则使用已有查询结果，否则本函数内打开 DB 查询。
 pub(super) async fn generate_skill_from_failures<L: EvolutionLlm>(
     chat_root: &Path,
     skills_root: &Path,
     llm: &L,
     model: &str,
     txn_id: &str,
+    pre_fetched: Option<FailureQueryData>,
 ) -> Result<Option<String>> {
     let evolved_dir = skills_root.join("_evolved");
     let pending_dir = evolved_dir.join("_pending");
@@ -206,11 +218,14 @@ pub(super) async fn generate_skill_from_failures<L: EvolutionLlm>(
         return Ok(None);
     }
 
-    let (failed_patterns, failed_executions) = {
-        let conn = feedback::open_evolution_db(chat_root)?;
-        let patterns = query::query_failed_patterns(&conn, 2)?;
-        let executions = query::query_failed_executions(&conn)?;
-        (patterns, executions)
+    let (failed_patterns, failed_executions) = match pre_fetched {
+        Some((p, e)) => (p, e),
+        None => {
+            let conn = feedback::open_evolution_db(chat_root)?;
+            let patterns = query::query_failed_patterns(&conn, 2)?;
+            let executions = query::query_failed_executions(&conn)?;
+            (patterns, executions)
+        }
     };
 
     if failed_patterns.is_empty() {

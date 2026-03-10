@@ -670,42 +670,32 @@ pub async fn run_external_learning<L: EvolutionLlm>(
         }
     }
 
-    // Check promote external rules whose effectiveness has improved
-    let promoted = {
-        let conn = feedback::open_evolution_db(chat_root)?;
-        let promotable = feedback::find_promotable_external_rules(&conn, chat_root)?;
-        promotable
-        // conn dropped here
-    };
+    // Phase 3+4: one conn for promote check + logging
+    let conn = feedback::open_evolution_db(chat_root)?;
+    let promoted = feedback::find_promotable_external_rules(&conn, chat_root)?;
     let promotion_changes = apply_external_rule_promotions(chat_root, &promoted)?;
     all_changes.extend(promotion_changes);
 
     let source_changes = evolve_sources(&mut registry.sources);
     all_changes.extend(source_changes);
 
-    // Save updated registry
     save_sources(chat_root, &registry)?;
 
-    // Phase 4: log to DB (sync)
-    {
-        let conn = feedback::open_evolution_db(chat_root)?;
-        // Log the run itself for daily-cap tracking
-        log_evolution_event(
-            &conn,
-            chat_root,
-            "external_fetch_run",
-            "",
-            &format!(
-                "{} sources fetched, {} changes",
-                to_fetch.len(),
-                all_changes.len()
-            ),
-            txn_id,
-        )?;
-        // Log individual changes
-        for (ctype, cid) in &all_changes {
-            log_evolution_event(&conn, chat_root, ctype, cid, "external learning", txn_id)?;
-        }
+    // Log the run and each change with the same conn
+    log_evolution_event(
+        &conn,
+        chat_root,
+        "external_fetch_run",
+        "",
+        &format!(
+            "{} sources fetched, {} changes",
+            to_fetch.len(),
+            all_changes.len()
+        ),
+        txn_id,
+    )?;
+    for (ctype, cid) in &all_changes {
+        log_evolution_event(&conn, chat_root, ctype, cid, "external learning", txn_id)?;
     }
 
     tracing::info!(

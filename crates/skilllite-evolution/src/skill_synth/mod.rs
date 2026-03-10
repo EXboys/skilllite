@@ -24,6 +24,7 @@ mod repair;
 mod scan;
 mod validate;
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::Result;
@@ -99,14 +100,45 @@ pub async fn evolve_skills<L: EvolutionLlm>(
         .unwrap_or(if force { 2 } else { 3 });
 
     if try_generate {
-        if let Ok(Some(name)) =
-            generate::generate_skill_from_failures(chat_root, skills_root, llm, model, txn_id).await
+        // 主流程持 conn 一次，预取成功/失败两路查询数据，下传子模块，避免 generate 内多次打开 DB
+        let (success_data, failure_data) = {
+            let conn = crate::feedback::open_evolution_db(chat_root)?;
+            let (patterns_display, pattern_descs) =
+                query::query_repeated_patterns(&conn, min_pattern_count)?;
+            let success_executions = if pattern_descs.is_empty() {
+                String::new()
+            } else {
+                query::query_pattern_executions(&conn, &pattern_descs)?
+            };
+            let failed_patterns = query::query_failed_patterns(&conn, 2)?;
+            let failed_executions = query::query_failed_executions(&conn)?;
+            (
+                (patterns_display, success_executions),
+                (failed_patterns, failed_executions),
+            )
+        };
+        if let Ok(Some(name)) = generate::generate_skill_from_failures(
+            chat_root,
+            skills_root,
+            llm,
+            model,
+            txn_id,
+            Some(failure_data),
+        )
+        .await
         {
             changes.push(("skill_pending".to_string(), name));
         }
-        if let Ok(Some(name)) =
-            generate::generate_skill(chat_root, skills_root, llm, model, txn_id, min_pattern_count)
-                .await
+        if let Ok(Some(name)) = generate::generate_skill(
+            chat_root,
+            skills_root,
+            llm,
+            model,
+            txn_id,
+            min_pattern_count,
+            Some(success_data),
+        )
+        .await
         {
             changes.push(("skill_pending".to_string(), name));
         }
@@ -127,6 +159,16 @@ pub async fn evolve_skills<L: EvolutionLlm>(
 
     let retired = refine::retire_skills(chat_root, skills_root, txn_id)?;
     changes.extend(retired);
+
+    // 同轮内名称去重：同一 name 的 skill_pending / skill_refined 只保留首次出现
+    let mut seen: HashSet<String> = HashSet::new();
+    changes.retain(|(t, id)| {
+        if t == "skill_pending" || t == "skill_refined" {
+            seen.insert(id.clone())
+        } else {
+            true
+        }
+    });
 
     Ok(changes)
 }

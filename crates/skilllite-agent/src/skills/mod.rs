@@ -21,6 +21,7 @@ use loader::{load_single_skill, load_evolved_skills, sanitize_tool_name};
 mod loader;
 mod executor;
 pub(crate) mod security;
+pub mod infer_entry;
 
 pub use executor::execute_skill;
 pub use security::{LockFile, read_lock_file, write_lock_file};

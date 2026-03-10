@@ -16,15 +16,16 @@ use super::loader::sanitize_tool_name;
 use super::security::{compute_skill_hash, run_security_scan};
 
 /// Execute a skill tool call. Dispatches to sandbox execution.
-/// Returns the tool result content.
+/// When `entry_point_override` is `Some` and skill has no entry_point, use it (e.g. 大模型根据 SKILL.md 推理出的入口).
 pub fn execute_skill(
     skill: &LoadedSkill,
     tool_name: &str,
     arguments: &str,
     workspace: &Path,
     event_sink: &mut dyn EventSink,
+    entry_point_override: Option<&str>,
 ) -> ToolResult {
-    let result = execute_skill_inner(skill, tool_name, arguments, workspace, event_sink);
+    let result = execute_skill_inner(skill, tool_name, arguments, workspace, event_sink, entry_point_override);
     match result {
         Ok(content) => ToolResult {
             tool_call_id: String::new(),
@@ -55,9 +56,17 @@ fn execute_skill_inner(
     arguments: &str,
     workspace: &Path,
     event_sink: &mut dyn EventSink,
+    entry_point_override: Option<&str>,
 ) -> Result<String> {
     let skill_dir = &skill.skill_dir;
-    let metadata = &skill.metadata;
+    let mut metadata = skill.metadata.clone();
+    if metadata.entry_point.is_empty() {
+        if let Some(ep) = entry_point_override {
+            if !ep.is_empty() && skill_dir.join(ep).is_file() {
+                metadata.entry_point = ep.to_string();
+            }
+        }
+    }
 
     // Phase 2.5: Multi-script tool routing
     // If tool_name is in the multi_script_entries map, use that script as entry_point.
@@ -71,7 +80,7 @@ fn execute_skill_inner(
     // Ported from Python `UnifiedExecutionService.execute_skill` L3 flow
     let sandbox_level = SandboxLevel::from_env_or_cli(None);
     if sandbox_level == SandboxLevel::Level3 {
-        let code_hash = compute_skill_hash(skill_dir, metadata);
+        let code_hash = compute_skill_hash(skill_dir, &metadata);
 
         // Check session-level confirmation cache
         let already_confirmed = CONFIRMED_SKILLS.with(|cache| {
@@ -81,7 +90,7 @@ fn execute_skill_inner(
 
         if !already_confirmed {
             // Run security scan on entry point
-            let scan_report = run_security_scan(skill_dir, metadata);
+            let scan_report = run_security_scan(skill_dir, &metadata);
 
             let prompt = if let Some(report) = scan_report {
                 format!(
@@ -131,7 +140,7 @@ fn execute_skill_inner(
     let cache_dir = skilllite_core::config::CacheConfig::cache_dir();
     let env_path = skilllite_sandbox::env::builder::ensure_environment(
         skill_dir,
-        metadata,
+        &metadata,
         cache_dir.as_deref(),
     )?;
 
@@ -185,7 +194,7 @@ fn execute_skill_inner(
             m.entry_point = entry.to_string();
             m
         } else {
-            metadata.clone()
+            metadata
         };
 
         let runtime = skilllite_sandbox::env::builder::build_runtime_paths(&env_path);

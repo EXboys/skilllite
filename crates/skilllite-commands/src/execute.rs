@@ -18,7 +18,8 @@ static EXEC_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 use skilllite_core::config::ScopedEnvGuard;
 
-/// Run a skill with the given input (requires entry_point in SKILL.md).
+/// Run a skill with the given input.
+/// When `entry_point_override` is `Some`, use it instead of metadata.entry_point (e.g. 大模型根据 SKILL.md 推理出的入口).
 pub fn run_skill(
     skill_dir: &str,
     input_json: &str,
@@ -26,11 +27,17 @@ pub fn run_skill(
     cache_dir: Option<&String>,
     limits: skilllite_sandbox::runner::ResourceLimits,
     sandbox_level: skilllite_sandbox::runner::SandboxLevel,
+    entry_point_override: Option<&str>,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
     enforce_skill_integrity_before_execution(&skill_path)?;
 
-    let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
+    let mut metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
+    if let Some(ep) = entry_point_override {
+        if !ep.is_empty() && skill_path.join(ep).is_file() {
+            metadata.entry_point = ep.to_string();
+        }
+    }
 
     if metadata.entry_point.is_empty() {
         anyhow::bail!("This skill has no entry point and cannot be executed. It is a prompt-only skill.");

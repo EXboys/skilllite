@@ -393,6 +393,30 @@ pub fn build_memory_context(
     Some(context)
 }
 
+// ─── Evolution knowledge index ───────────────────────────────────────────────
+
+/// Index `memory/evolution/knowledge.md` into the memory FTS so it can be found by
+/// memory_search and build_memory_context. Call this after memory evolution writes the file.
+pub fn index_evolution_knowledge(chat_root: &Path, agent_id: &str) -> Result<()> {
+    let path = chat_root.join("memory").join("evolution").join("knowledge.md");
+    if !path.exists() {
+        return Ok(());
+    }
+    let content = skilllite_fs::read_file(&path).unwrap_or_default();
+    if content.is_empty() {
+        return Ok(());
+    }
+    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
+    if let Some(parent) = idx_path.parent() {
+        skilllite_fs::create_dir_all(parent)?;
+    }
+    let conn = Connection::open(&idx_path).context("Failed to open memory index")?;
+    skilllite_executor::memory::ensure_index(&conn)?;
+    skilllite_executor::memory::index_file(&conn, "evolution/knowledge.md", &content)?;
+    tracing::debug!("Indexed evolution/knowledge.md into memory");
+    Ok(())
+}
+
 // ─── EVO-1: Structured experience writing ───────────────────────────────────
 
 /// Write a structured experience entry to memory (e.g. tool effectiveness, task pattern).

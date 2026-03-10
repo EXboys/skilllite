@@ -3,73 +3,9 @@
   "skills": {
     "agent-browser": {
       "name": "agent-browser",
-      "source": "reindex-local",
+      "source": "Exboys/skilllite",
       "version": null,
-      "hash": "a4d92219d816bda21c9182b06bf8e9f0a836fd0e7d058c2b4dc254cd444c5e11",
-      "signature_status": "UNSIGNED",
-      "trust_tier": "COMMUNITY",
-      "trust_score": 56,
-      "tier_reason": [
-        "local/custom source",
-        "unsigned package"
-      ],
-      "tier_updated_at": "2026-02-24T05:08:26.717697Z",
-      "installed_at": "2026-02-24T05:08:26.717698Z",
-      "admission_risk": "safe"
-    },
-    "calculator": {
-      "name": "calculator",
-      "source": "reindex-local",
-      "version": "1.0",
-      "hash": "8eab280cc2bdf419fd341a56f9cb1c4cdcab7c3c7ba61f356a9fd580315b8d64",
-      "signature_status": "UNSIGNED",
-      "trust_tier": "COMMUNITY",
-      "trust_score": 56,
-      "tier_reason": [
-        "local/custom source",
-        "unsigned package"
-      ],
-      "tier_updated_at": "2026-02-24T05:08:26.718961Z",
-      "installed_at": "2026-02-24T05:08:26.718961Z",
-      "admission_risk": "safe"
-    },
-    "csdn-article": {
-      "name": "csdn-article",
-      "source": "reindex-local",
-      "version": "1.0",
-      "hash": "657a9c4a7f807a9fab2b2e696faf4aa20beb69ac9f0e429522b4e2d062d35b4c",
-      "signature_status": "UNSIGNED",
-      "trust_tier": "COMMUNITY",
-      "trust_score": 56,
-      "tier_reason": [
-        "local/custom source",
-        "unsigned package"
-      ],
-      "tier_updated_at": "2026-02-24T05:08:26.720760Z",
-      "installed_at": "2026-02-24T05:08:26.720760Z",
-      "admission_risk": "safe"
-    },
-    "data-analysis": {
-      "name": "data-analysis",
-      "source": "reindex-local",
-      "version": "1.0",
-      "hash": "2aadfa1ebad86370f33184a5c6cd80025120458558b6fe19ebb3e7c0e21e6ce0",
-      "signature_status": "UNSIGNED",
-      "trust_tier": "COMMUNITY",
-      "trust_score": 56,
-      "tier_reason": [
-        "local/custom source",
-        "unsigned package"
-      ],
-      "tier_updated_at": "2026-02-24T05:08:26.722659Z",
-      "installed_at": "2026-02-24T05:08:26.722659Z",
-      "admission_risk": "safe"
-    },
-    "find-skills": {
-      "name": "find-skills",
-      "source": "vercel-labs/skills@find-skills",
-      "version": null,
-      "hash": "c1720ff6ac18832a05d91cd913eee8781310e9f376ce77b8d5fc25a32e530a89",
+      "hash": "ffe3265b23bf076b3a1852214698f0718dcf84fe66793f840836a2c0070cc564",
       "signature_status": "UNSIGNED",
       "trust_tier": "COMMUNITY",
       "trust_score": 63,
@@ -77,24 +13,88 @@
         "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-03-03T16:11:16.561431Z",
-      "installed_at": "2026-03-03T16:11:16.561431Z",
+      "tier_updated_at": "2026-03-10T12:31:28.983464Z",
+      "installed_at": "2026-03-10T12:31:28.983467Z",
+      "admission_risk": "safe"
+    },
+    "calculator": {
+      "name": "calculator",
+      "source": "Exboys/skilllite",
+      "version": "1.0",
+      "hash": "a263b4a49bad19d83bffec2cbf4c4da87938396babde589160ad128499c56778",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-10T12:31:28.987867Z",
+      "installed_at": "2026-03-10T12:31:28.987867Z",
+      "admission_risk": "safe"
+    },
+    "csdn-article": {
+      "name": "csdn-article",
+      "source": "Exboys/skilllite",
+      "version": "1.0",
+      "hash": "657a9c4a7f807a9fab2b2e696faf4aa20beb69ac9f0e429522b4e2d062d35b4c",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-10T12:31:28.989678Z",
+      "installed_at": "2026-03-10T12:31:28.989678Z",
+      "admission_risk": "safe"
+    },
+    "data-analysis": {
+      "name": "data-analysis",
+      "source": "Exboys/skilllite",
+      "version": "1.0",
+      "hash": "02ded779b70332cc97898b7baeb35ad9597244ad5d97a3735229a448d55fdfe9",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-10T12:31:28.992232Z",
+      "installed_at": "2026-03-10T12:31:28.992232Z",
+      "admission_risk": "safe"
+    },
+    "find-skills": {
+      "name": "find-skills",
+      "source": "Exboys/skilllite",
+      "version": null,
+      "hash": "9b459d81a5c6185e1601efafd7a3bcb40a7dfa775ca4ee3218eedbc451931829",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-10T12:31:28.993779Z",
+      "installed_at": "2026-03-10T12:31:28.993779Z",
       "admission_risk": "safe"
     },
     "frontend-design": {
       "name": "frontend-design",
-      "source": "reindex-local",
+      "source": "Exboys/skilllite",
       "version": null,
       "hash": "537c1df9d0c694ecf9139a911f9ad0bd111a7ebc173a55457568459e543fe75b",
       "signature_status": "UNSIGNED",
       "trust_tier": "COMMUNITY",
-      "trust_score": 56,
+      "trust_score": 63,
       "tier_reason": [
-        "local/custom source",
+        "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-02-24T05:08:26.724266Z",
-      "installed_at": "2026-02-24T05:08:26.724266Z",
+      "tier_updated_at": "2026-03-10T12:31:28.995678Z",
+      "installed_at": "2026-03-10T12:31:28.995678Z",
       "admission_risk": "safe"
     },
     "http-request": {
@@ -109,9 +109,25 @@
         "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-02-24T09:46:03.172354Z",
-      "installed_at": "2026-02-24T09:46:03.172354Z",
+      "tier_updated_at": "2026-03-10T12:31:28.998322Z",
+      "installed_at": "2026-03-10T12:31:28.998322Z",
       "admission_risk": "safe"
+    },
+    "node-test": {
+      "name": "node-test",
+      "source": "Exboys/skilllite",
+      "version": null,
+      "hash": "e7b83c0c858ea2af1be3e9cd62ee6ca70113bd66e2f0e7297e3cc2cc911e0804",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-10T12:31:28.999865Z",
+      "installed_at": "2026-03-10T12:31:28.999866Z",
+      "admission_risk": "suspicious"
     },
     "nodejs-test": {
       "name": "node-test",
@@ -131,82 +147,82 @@
     },
     "skill-creator": {
       "name": "skill-creator",
-      "source": "reindex-local",
+      "source": "Exboys/skilllite",
       "version": null,
       "hash": "4c344c56c980325791982e8bb4182d2f044a3118849fc91914c3e8b5fbbe91a2",
       "signature_status": "UNSIGNED",
       "trust_tier": "COMMUNITY",
-      "trust_score": 56,
+      "trust_score": 63,
       "tier_reason": [
-        "local/custom source",
+        "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-02-24T05:08:26.730602Z",
-      "installed_at": "2026-02-24T05:08:26.730602Z",
+      "tier_updated_at": "2026-03-10T12:31:29.004923Z",
+      "installed_at": "2026-03-10T12:31:29.004923Z",
       "admission_risk": "safe"
     },
     "text-processor": {
       "name": "text-processor",
-      "source": "reindex-local",
+      "source": "Exboys/skilllite",
       "version": "1.0",
       "hash": "e891420dac9e5791204164d711ff5141b358b591a9de85ef00d4a6fd7c26c888",
       "signature_status": "UNSIGNED",
       "trust_tier": "COMMUNITY",
-      "trust_score": 56,
+      "trust_score": 63,
       "tier_reason": [
-        "local/custom source",
+        "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-02-24T05:08:26.733147Z",
-      "installed_at": "2026-02-24T05:08:26.733148Z",
+      "tier_updated_at": "2026-03-10T12:31:29.007597Z",
+      "installed_at": "2026-03-10T12:31:29.007597Z",
       "admission_risk": "suspicious"
     },
     "weather": {
       "name": "weather",
-      "source": "reindex-local",
+      "source": "Exboys/skilllite",
       "version": "3.0",
       "hash": "5838a469ff471cb4258adc4002adb53ac39dc36e0f458656555821ab8a53cf76",
       "signature_status": "UNSIGNED",
       "trust_tier": "COMMUNITY",
-      "trust_score": 56,
+      "trust_score": 63,
       "tier_reason": [
-        "local/custom source",
+        "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-02-24T05:08:26.734594Z",
-      "installed_at": "2026-02-24T05:08:26.734594Z",
+      "tier_updated_at": "2026-03-10T12:31:29.009529Z",
+      "installed_at": "2026-03-10T12:31:29.009529Z",
       "admission_risk": "safe"
     },
     "writing-helper": {
       "name": "writing-helper",
-      "source": "reindex-local",
+      "source": "Exboys/skilllite",
       "version": "3.0",
       "hash": "76d66fce01bb561477a563e980775873411f720d350b82237c056053dc760ad9",
       "signature_status": "UNSIGNED",
       "trust_tier": "COMMUNITY",
-      "trust_score": 56,
+      "trust_score": 63,
       "tier_reason": [
-        "local/custom source",
+        "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-02-24T05:08:26.735672Z",
-      "installed_at": "2026-02-24T05:08:26.735672Z",
+      "tier_updated_at": "2026-03-10T12:31:29.010387Z",
+      "installed_at": "2026-03-10T12:31:29.010387Z",
       "admission_risk": "safe"
     },
     "xiaohongshu-writer": {
       "name": "xiaohongshu-writer",
-      "source": "reindex-local",
+      "source": "Exboys/skilllite",
       "version": "1.0",
-      "hash": "182ff2c6ef698f6cddf4bd3f6b5632240c0a29021e0acab82b91bc25ee803a96",
+      "hash": "ee7a466438cfeacc6712638584f0a0b59b4821993c049adc678dfccdb55fef17",
       "signature_status": "UNSIGNED",
       "trust_tier": "COMMUNITY",
-      "trust_score": 56,
+      "trust_score": 63,
       "tier_reason": [
-        "local/custom source",
+        "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-02-24T05:08:26.737306Z",
-      "installed_at": "2026-02-24T05:08:26.737306Z",
+      "tier_updated_at": "2026-03-10T12:31:29.013041Z",
+      "installed_at": "2026-03-10T12:31:29.013041Z",
       "admission_risk": "suspicious"
     }
   }

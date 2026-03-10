@@ -16,5 +16,5 @@ pub use builtin::{
     process_tool_result_content,
     process_tool_result_content_fallback,
 };
-pub use memory::build_memory_context;
+pub use memory::{build_memory_context, index_evolution_knowledge};
 pub use registry::{ExtensionRegistry, ExtensionRegistryBuilder, MemoryVectorContext};

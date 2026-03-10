@@ -9,6 +9,7 @@
 
 pub mod external_learner;
 pub mod feedback;
+pub mod memory_learner;
 pub mod prompt_learner;
 pub mod seed;
 pub mod skill_synth;
@@ -172,6 +173,27 @@ pub fn try_start_evolution() -> bool {
 
 pub fn finish_evolution() {
     EVOLUTION_IN_PROGRESS.store(false, Ordering::SeqCst);
+}
+
+/// Result of attempting to run evolution. Distinguishes "skipped (busy)" from "no scope" from "ran (with or without changes)".
+#[derive(Debug, Clone)]
+pub enum EvolutionRunResult {
+    /// Another evolution run was already in progress; this invocation did not run.
+    SkippedBusy,
+    /// No evolution scope (e.g. thresholds not met, or evolution disabled).
+    NoScope,
+    /// Evolution ran. `Some(txn_id)` if changes were produced, `None` if run completed with no changes.
+    Completed(Option<String>),
+}
+
+impl EvolutionRunResult {
+    /// Returns the txn_id if evolution completed with changes.
+    pub fn txn_id(&self) -> Option<&str> {
+        match self {
+            Self::Completed(Some(id)) => Some(id.as_str()),
+            _ => None,
+        }
+    }
 }
 
 // ─── Atomic file writes (re-export from skilllite-fs) ─────────────────────────
@@ -557,7 +579,7 @@ pub fn mark_decisions_evolved(conn: &Connection, ids: &[i64]) -> Result<()> {
 
 /// Run a full evolution cycle.
 ///
-/// Returns the txn_id if evolution produced changes, None otherwise.
+/// Returns [EvolutionRunResult]: SkippedBusy if another run in progress, NoScope if nothing to evolve, Completed(txn_id) otherwise.
 /// When force=true (manual trigger), bypass decision thresholds.
 /// skills_root: project-level dir (workspace/.skills). When None, skips skill evolution.
 pub async fn run_evolution<L: EvolutionLlm>(
@@ -568,9 +590,9 @@ pub async fn run_evolution<L: EvolutionLlm>(
     api_key: &str,
     model: &str,
     force: bool,
-) -> Result<Option<String>> {
+) -> Result<EvolutionRunResult> {
     if !try_start_evolution() {
-        return Ok(None);
+        return Ok(EvolutionRunResult::SkippedBusy);
     }
 
     let result = run_evolution_inner(chat_root, skills_root, llm, api_base, api_key, model, force).await;
@@ -587,13 +609,13 @@ async fn run_evolution_inner<L: EvolutionLlm>(
     _api_key: &str,
     model: &str,
     force: bool,
-) -> Result<Option<String>> {
+) -> Result<EvolutionRunResult> {
     let (scope, txn_id, snapshot_files) = {
         let conn = feedback::open_evolution_db(chat_root)?;
         let scope = should_evolve_impl(&conn, EvolutionMode::from_env(), force)?;
         if !scope.prompts && !scope.memory && !scope.skills {
             // Do NOT mark decisions as evolved when no evolution ran — keep them for next run
-            return Ok(None);
+            return Ok(EvolutionRunResult::NoScope);
         }
         let txn_id = format!("evo_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
         tracing::info!(
@@ -640,6 +662,30 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         }
     }
 
+    if scope.memory {
+        match memory_learner::evolve_memory(chat_root, llm, model, &txn_id).await {
+            Ok(changes) => {
+                if !changes.is_empty() {
+                    reason_parts.push(format!("{} memory knowledge update(s)", changes.len()));
+                }
+                all_changes.extend(changes);
+            }
+            Err(e) => tracing::warn!("Memory evolution failed: {}", e),
+        }
+    }
+
+    // Run external learning before changelog so its changes and modified files are in the same txn entry.
+    match external_learner::run_external_learning(chat_root, llm, model, &txn_id).await {
+        Ok(ext_changes) => {
+            if !ext_changes.is_empty() {
+                tracing::info!("EVO-6: {} external changes applied", ext_changes.len());
+                reason_parts.push(format!("{} external change(s)", ext_changes.len()));
+                all_changes.extend(ext_changes);
+            }
+        }
+        Err(e) => tracing::warn!("EVO-6 external learning failed (non-fatal): {}", e),
+    }
+
     {
         let conn = feedback::open_evolution_db(chat_root)?;
 
@@ -660,7 +706,7 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             // 即使无变更也记录一次，便于前端时间线展示进化运行记录
             let reason = "进化运行完成，无新规则/技能产出";
             let _ = log_evolution_event(&conn, chat_root, "evolution_run", "run", reason, &txn_id);
-            return Ok(None);
+            return Ok(EvolutionRunResult::Completed(None));
         }
 
         let reason = reason_parts.join("; ");
@@ -670,7 +716,7 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         // （如 rules.json / examples.json），planning.md 等通常未被触碰。
         let snap_dir = versions_dir(chat_root).join(&txn_id);
         let prompts_dir = chat_root.join("prompts");
-        let modified_files: Vec<String> = snapshot_files
+        let mut modified_files: Vec<String> = snapshot_files
             .iter()
             .filter(|fname| {
                 let snap_path = snap_dir.join(fname);
@@ -683,6 +729,17 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             .cloned()
             .collect();
 
+        // External learner writes to prompts/rules.json; include it when external merged/promoted rules but snapshot didn't cover it (e.g. no scope.prompts).
+        if all_changes.iter().any(|(t, _)| t == "external_rule_added" || t == "external_rule_promoted") {
+            const EXTERNAL_RULES_FILE: &str = "rules.json";
+            if !modified_files.iter().any(|f| f == EXTERNAL_RULES_FILE) {
+                let rules_path = prompts_dir.join(EXTERNAL_RULES_FILE);
+                if rules_path.exists() {
+                    modified_files.push(EXTERNAL_RULES_FILE.to_string());
+                }
+            }
+        }
+
         append_changelog(chat_root, &txn_id, &modified_files, &all_changes, &reason)?;
 
         let decisions_path = chat_root.join("DECISIONS.md");
@@ -691,17 +748,7 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         tracing::info!("Evolution txn={} complete: {}", txn_id, reason);
     }
 
-    match external_learner::run_external_learning(chat_root, llm, model, &txn_id).await {
-        Ok(ext_changes) => {
-            if !ext_changes.is_empty() {
-                tracing::info!("EVO-6: {} external changes applied", ext_changes.len());
-                all_changes.extend(ext_changes);
-            }
-        }
-        Err(e) => tracing::warn!("EVO-6 external learning failed (non-fatal): {}", e),
-    }
-
-    Ok(Some(txn_id))
+    Ok(EvolutionRunResult::Completed(Some(txn_id)))
 }
 
 pub fn query_changes_by_txn(conn: &Connection, txn_id: &str) -> Vec<(String, String)> {
@@ -745,6 +792,7 @@ pub fn format_evolution_changes(changes: &[(String, String)]) -> Vec<String> {
                 "source_paused" => format!("\u{23f8}\u{fe0f} 信源可达性过低，已暂停: {}", id),
                 "source_retired" => format!("\u{1f5d1}\u{fe0f} 已退役低质量信源: {}", id),
                 "source_discovered" => format!("\u{1f50d} 发现新信源: {}", id),
+                "memory_knowledge_added" => format!("\u{1f4da} 已沉淀知识库（实体与关系）: {}", id),
                 _ => return None,
             };
             Some(msg)

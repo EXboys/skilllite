@@ -275,6 +275,7 @@ pub(super) fn retire_skills(
     }
 
     let mut retired = Vec::new();
+    let mut to_log: Vec<(String, String)> = Vec::new(); // (name, reason)
     let now = chrono::Utc::now();
 
     for entry in std::fs::read_dir(&evolved_dir)?.flatten() {
@@ -341,13 +342,15 @@ pub(super) fn retire_skills(
 
             let name = entry.file_name().to_string_lossy().to_string();
             tracing::info!("Retired skill '{}': {}", name, reason);
-
-            if let Ok(conn) = feedback::open_evolution_db(chat_root) {
-                let _ =
-                    log_evolution_event(&conn, chat_root, "skill_retired", &name, &reason, txn_id);
-            }
-
+            to_log.push((name.clone(), reason));
             retired.push(("skill_retired".to_string(), name));
+        }
+    }
+
+    if !to_log.is_empty() {
+        let conn = feedback::open_evolution_db(chat_root)?;
+        for (name, reason) in &to_log {
+            let _ = log_evolution_event(&conn, chat_root, "skill_retired", name, reason, txn_id);
         }
     }
 
