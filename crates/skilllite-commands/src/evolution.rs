@@ -4,11 +4,13 @@
 //! for inspecting, controlling, and debugging the self-evolution engine.
 
 use anyhow::{Context, Result};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use skilllite_agent::types::AgentConfig;
 use skilllite_core::config::env_keys::paths;
 use skilllite_core::protocol::{NewSkill, NodeResult};
+use skilllite_core::skill::manifest;
 
 fn chat_root() -> PathBuf {
     let data_root = std::env::var("SKILLLITE_WORKSPACE")
@@ -663,7 +665,38 @@ fn build_new_skill(skills_root: &Path, skill_name: &str, txn_id: &str) -> Option
     })
 }
 
-/// `skilllite evolution repair-skills` — test each skill in workspace/.skills/, LLM fix on failure
+/// 判断 source 是否为远程（非本地路径），用于区分「下载的技能」与本地/进化技能
+fn is_remote_source(source: &str) -> bool {
+    let s = source.trim();
+    if s.is_empty() {
+        return false;
+    }
+    let path = Path::new(s);
+    !path.is_absolute() && !s.starts_with("./") && !s.starts_with("../") && s != "." && s != ".."
+}
+
+/// 判断 source 是否可被实际拉取（URL / clawhub / user/repo），而非仅作标识（如 evotown-arena）
+fn is_fetchable_source(source: &str) -> bool {
+    let s = source.trim();
+    if s.is_empty() {
+        return false;
+    }
+    if s.starts_with("clawhub:") {
+        return s.len() > 8 && !s[8..].trim().is_empty();
+    }
+    if Path::new(s).is_absolute() || s.starts_with("./") || s.starts_with("../") || s == "." || s == ".." {
+        return true;
+    }
+    if s.contains("://") || s.contains('@') {
+        return true;
+    }
+    if s.contains('/') && !s.starts_with('.') {
+        return true;
+    }
+    false
+}
+
+/// `skilllite evolution repair-skills` — 验证所有技能；失败时：进化的用大模型修复，下载的让用户确认是否从源头更新
 pub fn cmd_repair_skills() -> Result<()> {
     let skills_root = resolve_skills_root(None)
         .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请设置 SKILLLITE_WORKSPACE 或在项目目录运行。"))?;
@@ -677,18 +710,161 @@ pub fn cmd_repair_skills() -> Result<()> {
     let adapter = skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
 
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
-    let results = rt.block_on(skilllite_evolution::skill_synth::repair_skills(
+
+    let validated = rt.block_on(skilllite_evolution::skill_synth::validate_skills(
         &skills_root,
         &adapter,
         &config.model,
     ))?;
 
+    let failed: Vec<_> = validated.iter().filter(|v| !v.passed).collect();
+    if failed.is_empty() {
+        println!("🔧 所有技能验证通过，无需修复。");
+        return Ok(());
+    }
+
+    let manifest = manifest::load_manifest(&skills_root).unwrap_or_default();
+    let mut results: Vec<(String, bool)> = validated
+        .iter()
+        .filter(|v| v.passed)
+        .map(|v| (v.skill_name.clone(), true))
+        .collect();
+
+    println!("\n🔧 修复 {} 个失败的技能（进化的→大模型修复，下载的→可选从源头更新）...", failed.len());
+
+    for (idx, v) in validated.iter().filter(|v| !v.passed).enumerate() {
+        let (ep, ti) = match (&v.entry_point, &v.test_input) {
+            (Some(ep), Some(ti)) => (ep.as_str(), ti.as_str()),
+            _ => {
+                eprintln!("  ⏭️ {} (推理失败，跳过)", v.skill_name);
+                results.push((v.skill_name.clone(), false));
+                continue;
+            }
+        };
+
+        let is_evolved = v.skill_dir.as_os_str().to_string_lossy().contains("_evolved");
+        let manifest_key = v
+            .skill_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        let entry = if manifest_key.is_empty() {
+            None
+        } else {
+            manifest.skills.get(manifest_key).cloned()
+        };
+
+        let ok = if is_evolved {
+            eprintln!("🔧 [{}/{}] {}（进化技能，大模型修复）...", idx + 1, failed.len(), v.skill_name);
+            let on_msg = |msg: &str| eprintln!("  💬 {}", msg);
+            let (ok, reason) = rt.block_on(skilllite_evolution::skill_synth::repair_one_skill(
+                &adapter,
+                &config.model,
+                &v.skill_dir,
+                &v.skill_name,
+                ep,
+                ti,
+                Some(&on_msg),
+            ))
+            .unwrap_or_else(|e| (false, format!("{}", e)));
+            if !ok && !reason.is_empty() {
+                eprintln!("  ❌ {}", reason);
+            }
+            ok
+        } else if let Some(ref e) = entry {
+            if is_remote_source(&e.source) && is_fetchable_source(&e.source) {
+                eprintln!("🔧 [{}/{}] {}（来自 {}）", idx + 1, failed.len(), v.skill_name, e.source);
+                print!("  是否从源头更新？(y/n) [n]: ");
+                let _ = io::stdout().flush();
+                let mut line = String::new();
+                if io::stdin().read_line(&mut line).is_err() {
+                    eprintln!("  ⏭️ 跳过");
+                    false
+                } else {
+                    let yes = line.trim().eq_ignore_ascii_case("y") || line.trim().eq_ignore_ascii_case("yes");
+                    if yes {
+                        match crate::skill::update_skill_from_source(
+                            &skills_root,
+                            &v.skill_name,
+                            &e.source,
+                        ) {
+                            Ok(()) => {
+                                eprintln!("  ✅ 已从源头更新");
+                                true
+                            }
+                            Err(err) => {
+                                eprintln!("  ❌ 更新失败: {}", err);
+                                eprintln!("  💡 可改用大模型修复：重新执行 repair-skills 并选 n 后会自动用大模型修");
+                                false
+                            }
+                        }
+                    } else {
+                        eprintln!("  ⏭️ 已跳过");
+                        false
+                    }
+                }
+            } else if is_remote_source(&e.source) && !is_fetchable_source(&e.source) {
+                eprintln!("🔧 [{}/{}] {}（来源为标识「{}」，无法拉取，大模型修复）...", idx + 1, failed.len(), v.skill_name, e.source);
+                let on_msg = |msg: &str| eprintln!("  💬 {}", msg);
+                let (ok, reason) = rt.block_on(skilllite_evolution::skill_synth::repair_one_skill(
+                    &adapter,
+                    &config.model,
+                    &v.skill_dir,
+                    &v.skill_name,
+                    ep,
+                    ti,
+                    Some(&on_msg),
+                ))
+                .unwrap_or_else(|e| (false, format!("{}", e)));
+                if !ok && !reason.is_empty() {
+                    eprintln!("  ❌ {}", reason);
+                }
+                ok
+            } else {
+                eprintln!("🔧 [{}/{}] {}（大模型修复）...", idx + 1, failed.len(), v.skill_name);
+                let on_msg = |msg: &str| eprintln!("  💬 {}", msg);
+                let (ok, reason) = rt.block_on(skilllite_evolution::skill_synth::repair_one_skill(
+                    &adapter,
+                    &config.model,
+                    &v.skill_dir,
+                    &v.skill_name,
+                    ep,
+                    ti,
+                    Some(&on_msg),
+                ))
+                .unwrap_or_else(|e| (false, format!("{}", e)));
+                if !ok && !reason.is_empty() {
+                    eprintln!("  ❌ {}", reason);
+                }
+                ok
+            }
+        } else {
+            eprintln!("🔧 [{}/{}] {}（大模型修复）...", idx + 1, failed.len(), v.skill_name);
+            let on_msg = |msg: &str| eprintln!("  💬 {}", msg);
+            let (ok, reason) = rt.block_on(skilllite_evolution::skill_synth::repair_one_skill(
+                &adapter,
+                &config.model,
+                &v.skill_dir,
+                &v.skill_name,
+                ep,
+                ti,
+                Some(&on_msg),
+            ))
+            .unwrap_or_else(|e| (false, format!("{}", e)));
+            if !ok && !reason.is_empty() {
+                eprintln!("  ❌ {}", reason);
+            }
+            ok
+        };
+
+        results.push((v.skill_name.clone(), ok));
+    }
+
     let ok_count = results.iter().filter(|(_, ok)| *ok).count();
     let fail_count = results.len() - ok_count;
-
-    println!("🔧 技能修复完成: 共 {} 个技能, {} 成功, {} 失败", results.len(), ok_count, fail_count);
+    println!("\n🔧 技能修复完成: 共 {} 个技能, {} 成功, {} 失败", results.len(), ok_count, fail_count);
     for (name, ok) in &results {
-        println!("  {} {} {}", if *ok { "✅" } else { "❌" }, name, if *ok { "(通过测试)" } else { "(未通过)" });
+        println!("  {} {} {}", if *ok { "✅" } else { "❌" }, name, if *ok { "(通过/已更新)" } else { "(未通过)" });
     }
 
     Ok(())

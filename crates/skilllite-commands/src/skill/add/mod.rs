@@ -231,3 +231,53 @@ pub fn cmd_add(
 
     result
 }
+
+/// 从源头更新单个技能（用于 repair：下载的技能失败时按源头覆盖）
+pub fn update_skill_from_source(
+    skills_path: &std::path::Path,
+    skill_name: &str,
+    source: &str,
+) -> Result<()> {
+    let parsed = parse_source(source);
+    let mut temp_dir: Option<PathBuf> = None;
+
+    let repo_dir = if parsed.source_type == "local" {
+        let p = PathBuf::from(&parsed.url);
+        if !p.is_dir() {
+            anyhow::bail!("Local path does not exist: {}", parsed.url);
+        }
+        p
+    } else if parsed.source_type == "clawhub" {
+        let td = fetch_from_clawhub(&parsed.url)?;
+        temp_dir = Some(td.clone());
+        td
+    } else {
+        let td = clone_repo(&parsed.url, parsed.git_ref.as_deref())?;
+        temp_dir = Some(td.clone());
+        td
+    };
+
+    let skills = discover_skills(
+        &repo_dir,
+        parsed.subpath.as_deref(),
+        Some(skill_name),
+    );
+
+    let skill_path = skills
+        .into_iter()
+        .find(|p| {
+            p.file_name()
+                .map(|n| n.to_string_lossy() == skill_name)
+                .unwrap_or(false)
+        })
+        .ok_or_else(|| anyhow::anyhow!("源头中未找到技能: {}", skill_name))?;
+
+    let dest = skills_path.join(skill_name);
+    copy_skill(&skill_path, &dest)?;
+    manifest::upsert_installed_skill(skills_path, &dest, source)?;
+
+    if let Some(ref td) = temp_dir {
+        let _ = fs::remove_dir_all(td);
+    }
+    Ok(())
+}

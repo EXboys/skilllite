@@ -239,5 +239,5 @@ pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> 
 // ─── Re-exports ──────────────────────────────────────────────────────────────
 
 pub use validate::{validate_skills, SkillValidation};
-pub use repair::repair_skills;
+pub use repair::{repair_one_skill, repair_skills};
 pub use scan::track_skill_usage;

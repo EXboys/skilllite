@@ -67,7 +67,7 @@ fn build_skill_dir_package(skill_dir: &Path) -> String {
 // ─── repair_one_skill（核心：打包目录 → 模型修复 → 应用 → 验证）───────────
 
 /// 修复单个技能：打包整个目录给模型，模型返回修复，应用后验证，最多 MAX_REFINE_ROUNDS 轮
-pub(super) async fn repair_one_skill<L: EvolutionLlm>(
+pub async fn repair_one_skill<L: EvolutionLlm>(
     llm: &L,
     model: &str,
     skill_dir: &Path,
