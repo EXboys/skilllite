@@ -211,6 +211,26 @@ pub struct EvolutionScope {
     pub decision_ids: Vec<i64>,
 }
 
+impl EvolutionScope {
+    /// 返回用于 evolution_run 日志展示的「进化方向」中文描述（供 evotown 等前端展示）
+    pub fn direction_label(&self) -> String {
+        let mut parts: Vec<&str> = Vec::new();
+        if self.prompts {
+            parts.push("规则与示例");
+        }
+        if self.skills {
+            parts.push("技能");
+        }
+        if self.memory {
+            parts.push("记忆");
+        }
+        if parts.is_empty() {
+            return String::new();
+        }
+        parts.join("、")
+    }
+}
+
 pub fn should_evolve(conn: &Connection) -> Result<EvolutionScope> {
     should_evolve_impl(conn, EvolutionMode::from_env(), false)
 }
@@ -703,13 +723,25 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         let _ = feedback::update_daily_metrics(&conn);
 
         if all_changes.is_empty() {
-            // 即使无变更也记录一次，便于前端时间线展示进化运行记录
-            let reason = "进化运行完成，无新规则/技能产出";
-            let _ = log_evolution_event(&conn, chat_root, "evolution_run", "run", reason, &txn_id);
+            // 即使无变更也记录一次，便于前端时间线展示进化运行记录（含本轮选择的进化方向）
+            let dir = scope.direction_label();
+            let reason = if dir.is_empty() {
+                "进化运行完成，无新规则/技能产出".to_string()
+            } else {
+                format!("方向: {}；进化运行完成，无新规则/技能产出", dir)
+            };
+            let _ = log_evolution_event(&conn, chat_root, "evolution_run", "run", &reason, &txn_id);
             return Ok(EvolutionRunResult::Completed(None));
         }
 
-        let reason = reason_parts.join("; ");
+        let dir = scope.direction_label();
+        let reason = if dir.is_empty() {
+            reason_parts.join("; ")
+        } else {
+            format!("方向: {}；{}", dir, reason_parts.join("; "))
+        };
+        // 记录本轮进化运行（含方向），便于前端时间线统一展示
+        let _ = log_evolution_event(&conn, chat_root, "evolution_run", "run", &reason, &txn_id);
 
         // 只记录内容真正发生变化的文件：用快照与当前版本逐一对比。
         // snapshot_files 是进化前备份的全量清单，但实际修改的往往只是其中一部分

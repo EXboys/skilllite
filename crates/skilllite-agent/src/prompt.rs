@@ -103,19 +103,18 @@ pub fn build_system_prompt(
         parts.push(format!("\n\nProject structure:\n```\n{}\n```", index));
     }
 
-    // Output directory context — LLM must use $SKILLLITE_OUTPUT_DIR for file outputs
+    // Output directory — all generated content defaults to output; workspace only when explicitly required
     let output_dir = get_output_dir().unwrap_or_else(|| format!("{}/output", workspace));
     parts.push(format!("\nOutput directory: {}", output_dir));
     parts.push(format!(
         concat!(
-            "\n\nIMPORTANT — File output path rule for bash-tool skills:\n",
-            "Some CLI tools (e.g. agent-browser) do NOT save files to the shell's working directory.\n",
-            "You MUST always use the absolute output path via the $SKILLLITE_OUTPUT_DIR environment variable.\n",
-            "Example: `agent-browser screenshot $SKILLLITE_OUTPUT_DIR/screenshot.png`\n",
-            "The shell will expand $SKILLLITE_OUTPUT_DIR to: {}\n",
-            "NEVER use bare filenames like `screenshot.png` — always prefix with $SKILLLITE_OUTPUT_DIR/",
+            "\n\nIMPORTANT — Default location for generated content:\n",
+            "Deliverables (reports, videos, images, exported files, screenshots, rendered output) MUST go to the output directory by default.\n",
+            "Use $SKILLLITE_OUTPUT_DIR for that path (absolute path: {}). If unset, use \"{}/output\" relative to workspace.\n",
+            "When calling tools or writing build/render config, pass this path so outputs land there. Only write deliverables to the workspace when the user explicitly asks.",
         ),
-        output_dir
+        output_dir,
+        workspace
     ));
 
     // Skills context — Progressive mode: summary + "more details available" hint.

@@ -260,6 +260,54 @@ fn compute_egl(conn: &Connection, date: &str) -> Result<f64> {
     Ok(new_items as f64 / total_triggers as f64 * 1000.0)
 }
 
+/// 滚动窗口 EGL：过去 N 天内 (新增进化条数 / 触发数) * 1000，用于看近期整体。
+pub fn compute_egl_rolling(conn: &Connection, days: u32) -> Result<f64> {
+    let modifier = format!("-{} days", days);
+    let new_items: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM evolution_log
+             WHERE date(ts) >= date('now', ?1) AND type IN ('rule_added', 'example_added', 'skill_generated')",
+            params![modifier],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    let total_triggers: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM decisions
+             WHERE date(ts) >= date('now', ?1) AND total_tools >= 1",
+            params![modifier],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if total_triggers == 0 {
+        return Ok(0.0);
+    }
+    Ok(new_items as f64 / total_triggers as f64 * 1000.0)
+}
+
+/// 全量 EGL：至今 (新增进化条数 / 触发数) * 1000，用于看全局进化率。
+pub fn compute_egl_all_time(conn: &Connection) -> Result<f64> {
+    let new_items: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM evolution_log
+             WHERE type IN ('rule_added', 'example_added', 'skill_generated')",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    let total_triggers: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM decisions WHERE total_tools >= 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if total_triggers == 0 {
+        return Ok(0.0);
+    }
+    Ok(new_items as f64 / total_triggers as f64 * 1000.0)
+}
+
 // ─── Time trends ─────────────────────────────────────────────────────────────
 
 const WEEKDAY_NAMES: [&str; 7] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -393,6 +441,13 @@ pub fn export_decisions_md(conn: &Connection, output_path: &Path) -> Result<()> 
             date, fsr * 100.0, avg_r, ucr * 100.0, egl
         ));
     }
+
+    let egl_7d = compute_egl_rolling(conn, 7).unwrap_or(0.0);
+    let egl_all = compute_egl_all_time(conn).unwrap_or(0.0);
+    md.push_str(&format!(
+        "\n**近7天累计 EGL:** {:.1} | **全量 EGL:** {:.1}\n",
+        egl_7d, egl_all
+    ));
 
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;

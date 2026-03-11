@@ -208,6 +208,9 @@ pub fn cmd_status() -> Result<()> {
     if !has_metrics {
         println!("  (暂无数据 — 需要更多使用后才会出现)");
     }
+    let egl_7d = skilllite_evolution::feedback::compute_egl_rolling(&conn, 7).unwrap_or(0.0);
+    let egl_all = skilllite_evolution::feedback::compute_egl_all_time(&conn).unwrap_or(0.0);
+    println!("  — 近7天累计 EGL: {:.1} | 全量 EGL: {:.1}", egl_7d, egl_all);
     println!();
 
     // Recent evolution events

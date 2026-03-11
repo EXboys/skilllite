@@ -145,6 +145,22 @@
       "installed_at": "2026-02-24T05:08:26.727828Z",
       "admission_risk": "suspicious"
     },
+    "remotion-best-practices": {
+      "name": "remotion-best-practices",
+      "source": "remotion-dev/skills",
+      "version": null,
+      "hash": "adfc3c8f1bb4216e423bf80c87a4ab667abb44b2363510a803ef50aea7ed3301",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-11T07:09:05.582802Z",
+      "installed_at": "2026-03-11T07:09:05.582803Z",
+      "admission_risk": "safe"
+    },
     "skill-creator": {
       "name": "skill-creator",
       "source": "Exboys/skilllite",
