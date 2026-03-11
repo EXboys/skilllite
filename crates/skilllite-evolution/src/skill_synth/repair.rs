@@ -125,8 +125,14 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
         }
 
         if let Some(ref md) = parsed.fix_skill_md {
-            if gatekeeper_l3_content(md).is_ok() {
+            if gatekeeper_l3_content(md).is_ok()
+                && validate::check_skill_md_completeness_heuristic(md).is_none()
+            {
                 skilllite_fs::write_file(&skill_md_path, md)?;
+            } else if gatekeeper_l3_content(md).is_ok() {
+                tracing::warn!(
+                    "Repair returned fix_skill_md but still incomplete (missing Usage/Examples), skip applying"
+                );
             }
         }
         if let Some(ref script) = parsed.fixed_script {

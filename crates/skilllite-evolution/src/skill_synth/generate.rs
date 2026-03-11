@@ -16,6 +16,7 @@ use super::refine;
 use super::repair;
 use super::query;
 use super::scan;
+use super::validate;
 use super::SkillMeta;
 use super::SKILL_GENERATION_PROMPT;
 use super::SKILL_GENERATION_FROM_FAILURES_PROMPT;
@@ -108,6 +109,14 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
     }
     if let Err(e) = gatekeeper_l3_content(&parsed.skill_md_content) {
         tracing::warn!("L3 rejected generated SKILL.md: {}", e);
+        return Ok(None);
+    }
+    // 写入前校验文档完整性，避免落盘不完整 SKILL.md（缺少 Usage/Examples 等）导致后续验证失败
+    if let Some(doc_err) = validate::check_skill_md_completeness_heuristic(&parsed.skill_md_content) {
+        tracing::warn!(
+            "Generated SKILL.md for '{}' incomplete ({}), skipping write to avoid later validate failure",
+            parsed.name, doc_err
+        );
         return Ok(None);
     }
 

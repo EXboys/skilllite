@@ -2,7 +2,7 @@
 
 ## 技能要求（修复后必须满足）
 - **Skill 没有所谓「入口」**：SKILL.md 要写清楚**各个 script 文件怎么使用**（每个脚本的用途、参数、示例），而不是只描述某一个入口。
-- **SKILL.md**：必须有 YAML front matter（`name`、`description`）；必须对目录下每个可执行脚本说明用法，并配有 **Examples** 或 **Input Schema**（含完整参数示例），便于后续推理 test_input。若当前 SKILL.md 是空、残缺或垃圾内容，应按目录内脚本与技能名重写整份文档。
+- **SKILL.md**：必须有 YAML front matter（`name`、`description`）；必须对目录下每个可执行脚本说明用法，并配有 **Examples** 或 **Input Schema**（含完整参数示例），便于后续推理 test_input。**必须同时包含 ## Usage（可运行命令行示例）与 ## Examples（至少一个完整 JSON 输入→输出）**，缺一或章节下无具体内容时，本次 fix_skill_md 将不会被应用。若当前 SKILL.md 是空、残缺或垃圾内容，应按目录内脚本与技能名重写整份文档。
 - **脚本**：有 bug 则修脚本（语法/逻辑错误）；能接受 stdin JSON 的脚本应输出合法 JSON。
 
 ## 任务
@@ -32,8 +32,8 @@
   "user_reply": null,
   "fixed_script": "修正后的脚本全文（仅 {{tested_script}}），没问题则为 null",
   "fix_test_input": "修正后的测试输入 JSON，没问题则为 null",
-  "fix_skill_md": "修正后的完整 SKILL.md，没问题则为 null"
+  "fix_skill_md": "修正后的完整 SKILL.md（必须含 ## Usage 与 ## Examples 及具体内容），没问题则为 null"
 }
 ```
 
-**铁律**：有问题就修，能修几个修几个，一次到位。不存在 unfixable。
+**铁律**：fix_skill_md 若提供，必须包含 ## Usage 与 ## Examples 两节且每节下有具体示例，否则不会落盘。：有问题就修，能修几个修几个，一次到位。不存在 unfixable。

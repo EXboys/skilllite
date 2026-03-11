@@ -8,22 +8,10 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use skilllite_agent::types::AgentConfig;
-use skilllite_core::config::env_keys::paths;
+use skilllite_core::config::env_keys::paths as env_paths;
+use skilllite_core::paths;
 use skilllite_core::protocol::{NewSkill, NodeResult};
 use skilllite_core::skill::manifest;
-
-fn chat_root() -> PathBuf {
-    let data_root = std::env::var("SKILLLITE_WORKSPACE")
-        .ok()
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| {
-            dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join(".skilllite")
-        });
-    data_root.join("chat")
-}
 
 /// Resolve workspace for project-level skill evolution.
 /// Uses SKILLLITE_WORKSPACE env or current_dir. Returns workspace/.skills.
@@ -31,7 +19,7 @@ fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     let ws: PathBuf = workspace
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .or_else(|| std::env::var(paths::SKILLLITE_WORKSPACE).ok().map(PathBuf::from))
+        .or_else(|| std::env::var(env_paths::SKILLLITE_WORKSPACE).ok().map(PathBuf::from))
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let ws = if ws.is_absolute() {
         ws
@@ -43,7 +31,7 @@ fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
 
 /// `skilllite evolution status` — show evolution statistics, effectiveness, trends.
 pub fn cmd_status() -> Result<()> {
-    let root = chat_root();
+    let root = paths::chat_root();
     let conn = skilllite_evolution::feedback::open_evolution_db(&root)?;
     let mode = skilllite_evolution::EvolutionMode::from_env();
 
@@ -308,7 +296,7 @@ pub fn cmd_reset(force: bool) -> Result<()> {
         return Ok(());
     }
 
-    let root = chat_root();
+    let root = paths::chat_root();
 
     // Re-seed prompts (overwrite evolved rules/examples with seed data)
     skilllite_evolution::seed::ensure_seed_data_force(&root);
@@ -354,7 +342,7 @@ pub fn cmd_reset(force: bool) -> Result<()> {
 
 /// `skilllite evolution disable <rule_id>` — disable a specific evolved rule.
 pub fn cmd_disable(rule_id: &str) -> Result<()> {
-    let root = chat_root();
+    let root = paths::chat_root();
     let rules_path = root.join("prompts").join("rules.json");
 
     if !rules_path.exists() {
@@ -398,7 +386,7 @@ pub fn cmd_disable(rule_id: &str) -> Result<()> {
 
 /// `skilllite evolution explain <rule_id>` — show rule origin, history, effectiveness.
 pub fn cmd_explain(rule_id: &str) -> Result<()> {
-    let root = chat_root();
+    let root = paths::chat_root();
 
     // Load rule details
     let rules_path = root.join("prompts").join("rules.json");
@@ -500,7 +488,7 @@ pub fn cmd_confirm(skill_name: &str) -> Result<()> {
     let skills_root = resolve_skills_root(None)
         .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。"))?;
     skilllite_evolution::skill_synth::confirm_pending_skill(&skills_root, skill_name)?;
-    let root = chat_root();
+    let root = paths::chat_root();
     if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&root) {
         let _ = skilllite_evolution::log_evolution_event(
             &conn,
@@ -527,7 +515,7 @@ pub fn cmd_reject(skill_name: &str) -> Result<()> {
 /// `skilllite evolution run` — run evolution once synchronously, output NodeResult with new_skill.
 /// Skills are written to workspace/.skills/_evolved/ (project-level).
 pub fn cmd_run(json_output: bool) -> Result<()> {
-    let root = chat_root();
+    let root = paths::chat_root();
     let skills_root = resolve_skills_root(None);
     skilllite_core::config::ensure_default_output_dir();
 

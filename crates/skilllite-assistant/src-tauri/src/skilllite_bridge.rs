@@ -346,14 +346,14 @@ pub struct RecentData {
     pub plan: Option<RecentPlan>,
 }
 
-fn skilllite_chat_root() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".skilllite").join("chat"))
+fn skilllite_chat_root() -> PathBuf {
+    skilllite_core::paths::chat_root()
 }
 
 /// Open a directory in the system file manager.
 /// module: "output" | "memory" | "plan" | "log" (log opens transcripts dir)
 pub fn open_directory(module: &str) -> Result<(), String> {
-    let chat_root = skilllite_chat_root().ok_or("Chat root not found")?;
+    let chat_root = skilllite_chat_root();
     let path = match module {
         "output" => chat_root.join("output"),
         "memory" => chat_root.join("memory"),
@@ -527,16 +527,14 @@ fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
 
 /// Load recent memory files, output files, and plan in parallel using threads.
 pub fn load_recent() -> RecentData {
-    let chat_root = match skilllite_chat_root() {
-        Some(r) if r.exists() => r,
-        _ => {
-            return RecentData {
-                memory_files: vec![],
-                output_files: vec![],
-                plan: None,
-            }
-        }
-    };
+    let chat_root = skilllite_chat_root();
+    if !chat_root.exists() {
+        return RecentData {
+            memory_files: vec![],
+            output_files: vec![],
+            plan: None,
+        };
+    }
 
     let root = chat_root.clone();
     let mem_handle = std::thread::spawn(move || load_memory_files(&root));
@@ -563,7 +561,7 @@ pub fn read_output_file(relative_path: &str) -> Result<String, String> {
     if relative_path.contains("..") || relative_path.starts_with('/') {
         return Err("Invalid path".to_string());
     }
-    let chat_root = skilllite_chat_root().ok_or("Chat root not found")?;
+    let chat_root = skilllite_chat_root();
     let full_path = chat_root.join("output").join(relative_path);
     if !full_path.starts_with(chat_root) {
         return Err("Path escape".to_string());
@@ -576,7 +574,7 @@ pub fn read_output_file_base64(relative_path: &str) -> Result<String, String> {
     if relative_path.contains("..") || relative_path.starts_with('/') {
         return Err("Invalid path".to_string());
     }
-    let chat_root = skilllite_chat_root().ok_or("Chat root not found")?;
+    let chat_root = skilllite_chat_root();
     let full_path = chat_root.join("output").join(relative_path);
     if !full_path.starts_with(chat_root) {
         return Err("Path escape".to_string());
@@ -591,7 +589,7 @@ pub fn read_memory_file(relative_path: &str) -> Result<String, String> {
     if relative_path.contains("..") || relative_path.starts_with('/') {
         return Err("Invalid path".to_string());
     }
-    let chat_root = skilllite_chat_root().ok_or("Chat root not found")?;
+    let chat_root = skilllite_chat_root();
     let full_path = chat_root.join("memory").join(relative_path);
     if !full_path.starts_with(chat_root) {
         return Err("Path escape".to_string());
@@ -656,10 +654,10 @@ struct TranscriptEntryRaw {
 /// Load chat transcript messages for display. Returns user/assistant messages in order.
 /// When compaction exists: shows summary + only messages after compaction (matches agent context).
 pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
-    let chat_root = match skilllite_chat_root() {
-        Some(r) if r.exists() => r,
-        _ => return vec![],
-    };
+    let chat_root = skilllite_chat_root();
+    if !chat_root.exists() {
+        return vec![];
+    }
     let transcripts_dir = chat_root.join("transcripts");
     let paths = list_transcript_paths(&transcripts_dir, session_key);
     let mut entries: Vec<TranscriptEntryRaw> = Vec::new();

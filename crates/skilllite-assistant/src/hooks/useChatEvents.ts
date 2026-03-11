@@ -199,7 +199,7 @@ export function useChatEvents({
         addLog({
           type: "tool_call" as const,
           name,
-          text: args.length > 60 ? args.slice(0, 60) + "…" : args,
+          text: args.length > 300 ? args.slice(0, 300) + "…" : args,
         });
         if (["memory_write", "memory_search", "memory_list"].includes(name)) {
           addMemoryHint(`${name}: ${args.slice(0, 40)}…`);
@@ -220,7 +220,7 @@ export function useChatEvents({
         addLog({
           type: "tool_result" as const,
           name,
-          text: result.length > 80 ? result.slice(0, 80) + "…" : result,
+          text: result.length > 1200 ? result.slice(0, 1200) + "…" : result,
           isError: isErr,
         });
         setMessages((prev) => [

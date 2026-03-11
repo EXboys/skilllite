@@ -92,7 +92,7 @@ function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
           {e.type === "tool_call" && "→"}
           {e.type === "tool_result" && (e.isError ? "✗" : "✓")}
           {e.name && <span className="font-medium">{e.name}: </span>}
-          <span className="truncate block">{e.text}</span>
+          <span className="block break-words line-clamp-4 text-left">{e.text}</span>
         </li>
       ))}
     </ul>

@@ -12,6 +12,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
+skilllite-core = { path = "../../skilllite-core" }
 dirs = "5"
 chrono = "0.4"
 tauri-plugin-shell = "2"

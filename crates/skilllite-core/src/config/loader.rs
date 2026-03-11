@@ -199,16 +199,7 @@ pub fn init_daemon_env() {
 pub fn ensure_default_output_dir() {
     let paths = super::PathsConfig::from_env();
     if paths.output_dir.is_none() {
-        let data_root = std::env::var("SKILLLITE_WORKSPACE")
-            .ok()
-            .map(std::path::PathBuf::from)
-            .filter(|p| p.is_absolute())
-            .unwrap_or_else(|| {
-                dirs::home_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("."))
-                    .join(".skilllite")
-            });
-        let chat_output = data_root.join("chat").join("output");
+        let chat_output = crate::paths::chat_root().join("output");
         let s = chat_output.to_string_lossy().to_string();
         set_env_var("SKILLLITE_OUTPUT_DIR", &s);
         if !chat_output.exists() {

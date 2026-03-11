@@ -46,6 +46,7 @@ skill_md_content 必须包含以下所有章节（顺序固定），若需网络
 - ## Usage（含 stdin 调用的可运行命令行示例）
 - ## Examples（至少一个完整的 JSON 输入 → JSON 输出示例）
 - ## Entry Point
+**落盘前校验**：若缺少 ## Usage 或 ## Examples 任一章节，或某章节下无具体示例内容（不可仅写标题），该 Skill 将不会落盘。输出前请自检：skill_md_content 必须同时包含可运行的 Usage 示例与至少一个完整 JSON 输入→输出 Examples。
 
 script_content 必须遵循以下标准接口模式：
 - 通过 `json.load(sys.stdin)` 读取参数（即使无参数也保留此模式）

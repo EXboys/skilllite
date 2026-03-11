@@ -1,5 +1,6 @@
 pub mod config;
 pub mod observability;
+pub mod paths;
 pub mod path_validation;
 pub mod planning;
 pub mod protocol;

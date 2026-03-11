@@ -38,6 +38,7 @@ skill_md_content 必须包含以下所有章节（顺序固定）：
 - ## Usage（含 stdin 调用的可运行命令行示例）
 - ## Examples（至少一个完整的 JSON 输入 → JSON 输出示例）
 - ## Entry Point
+**落盘前校验**：若缺少 ## Usage 或 ## Examples 任一章节，或某章节下无具体示例内容（不可仅写标题），该 Skill 将不会落盘。输出前请自检：skill_md_content 必须同时包含可运行的 Usage 示例与至少一个完整 JSON 输入→输出 Examples。
 
 {
   "skill": {

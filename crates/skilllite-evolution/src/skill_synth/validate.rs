@@ -71,8 +71,9 @@ pub(super) async fn check_skill_md_completeness<L: EvolutionLlm>(
     }
 }
 
-/// 启发式检测 SKILL.md 完整性（LLM 不可用时的 fallback）
-fn check_skill_md_completeness_heuristic(content: &str) -> Option<String> {
+/// 启发式检测 SKILL.md 完整性（LLM 不可用时的 fallback）。
+/// 也可在生成阶段对尚未落盘的 skill_md_content 做写入前校验。
+pub(super) fn check_skill_md_completeness_heuristic(content: &str) -> Option<String> {
     let has_examples =
         has_section_with_content(content, &["example", "usage", "用法", "示例"]);
     let has_params = has_section_with_content(
