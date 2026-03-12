@@ -10,14 +10,12 @@ use super::super::types::*;
 
 /// What the caller should do after the reflection phase.
 pub(super) enum ReflectionOutcome {
-    /// Keep looping — no nudge needed (made progress or empty first-pass).
+    /// Keep looping — no nudge needed (simple mode: made progress or empty first-pass).
     Continue,
     /// Inject this message as a user turn, then keep looping.
     Nudge(String),
     /// Stop the loop.
     Break,
-    /// All tasks are done — stop (planning mode only).
-    AllDone,
 }
 
 // ── Simple-mode reflection ────────────────────────────────────────────────────
@@ -72,18 +70,19 @@ pub(super) fn reflect_simple(
 
 /// Reflect on a no-tool response in **planning mode**.
 ///
+/// Task completion is now handled exclusively via the `complete_task` tool call
+/// (structured signal) or `try_auto_mark_task_on_success` (skill result parsing).
+/// Text-based completion detection has been removed.
+///
 /// Two paths:
-/// - `suppress_stream = true`: hallucination-guard path (streaming was suppressed).
-/// - `suppress_stream = false`: normal post-work completion-check path.
-#[allow(clippy::too_many_arguments)]
+/// - `suppress_stream = true`:  hallucination-guard path (streaming was suppressed).
+/// - `suppress_stream = false`: no-tool nudge path — pending tasks remain, push LLM to act.
 pub(super) fn reflect_planning(
     assistant_content: &Option<String>,
     suppress_stream: bool,
     planner: &mut TaskPlanner,
     consecutive_no_tool: &mut usize,
     max_no_tool_retries: usize,
-    tool_calls_current_task: usize,
-    total_tool_calls: usize,
     event_sink: &mut dyn EventSink,
     messages: &mut Vec<ChatMessage>,
 ) -> ReflectionOutcome {
@@ -104,7 +103,6 @@ pub(super) fn reflect_planning(
             );
             return ReflectionOutcome::Break;
         }
-        // Strong nudge to force actual execution
         if let Some(nudge) = planner.build_nudge_message() {
             return ReflectionOutcome::Nudge(format!(
                 "CRITICAL: You just described what you would do but did NOT \
@@ -117,94 +115,24 @@ pub(super) fn reflect_planning(
         return ReflectionOutcome::Break;
     }
 
-    // ── Normal completion-check path ──────────────────────────────────────────
-    let mut made_progress = false;
-    if let Some(ref content) = assistant_content {
-        let completed_ids = planner.check_completion_in_content(content);
-        let had_tool_calls = tool_calls_current_task > 0;
-        let session_had_tools = total_tool_calls > 0;
-
-        for completed_id in completed_ids {
-            let task_needs_tool = planner.task_list.iter()
-                .find(|t| t.id == completed_id)
-                .map_or(false, |t| t.tool_hint.as_ref().map_or(false, |h| h != "analysis"));
-            if task_needs_tool && !had_tool_calls && !session_had_tools {
-                tracing::info!(
-                    "Anti-hallucination: rejected text-only completion for task {} \
-                     (requires tool but no tool calls made)",
-                    completed_id
-                );
-                continue;
-            }
-            planner.mark_completed(completed_id);
-            event_sink.on_task_progress(completed_id, true);
-            made_progress = true;
-        }
-    }
-
-    if planner.all_completed() {
-        if let Some(ref content) = assistant_content {
-            event_sink.on_text(content);
-        }
-        return ReflectionOutcome::AllDone;
-    }
-
-    if !made_progress {
-        *consecutive_no_tool += 1;
-    }
-
-    if *consecutive_no_tool >= max_no_tool_retries {
-        tracing::warn!("LLM failed to make progress after {} attempts, stopping", max_no_tool_retries);
-        if let Some(ref content) = assistant_content {
-            event_sink.on_text(content);
-        }
-        return ReflectionOutcome::Break;
-    }
-
-    if made_progress {
-        return ReflectionOutcome::Continue;
-    }
-
-    // Auto-nudge: pending tasks remain, push LLM to continue
-    if let Some(nudge) = planner.build_nudge_message() {
-        tracing::info!("Auto-nudge (attempt {}): pending tasks remain, continuing", *consecutive_no_tool);
-        return ReflectionOutcome::Nudge(nudge);
-    }
-
-    // No nudge available — emit and stop
+    // ── No-tool nudge path ────────────────────────────────────────────────────
+    // LLM returned only text (no tool calls, no complete_task). Pending tasks remain.
+    // Emit the text and nudge LLM to call the appropriate tools / complete_task.
     if let Some(ref content) = assistant_content {
         event_sink.on_text(content);
     }
-    ReflectionOutcome::Break
-}
 
-// ── Post-tool completion check ────────────────────────────────────────────────
-
-/// Check task completion claims in assistant content *after* tool execution.
-/// Updates the planner and notifies the event sink.
-pub(super) fn check_completion_after_tools(
-    assistant_content: &Option<String>,
-    planner: &mut TaskPlanner,
-    event_sink: &mut dyn EventSink,
-) {
-    if let Some(ref content) = assistant_content {
-        let completed_ids = planner.check_completion_in_content(content);
-        let mut current_task_id = planner.current_task().map(|t| t.id);
-        for completed_id in completed_ids {
-            if let Some(cid) = current_task_id {
-                if completed_id > cid {
-                    tracing::info!(
-                        "Anti-hallucination: ignoring premature completion for task {} \
-                         (current task is {})",
-                        completed_id, cid
-                    );
-                    continue;
-                }
-            }
-            planner.mark_completed(completed_id);
-            event_sink.on_task_progress(completed_id, true);
-            current_task_id = planner.current_task().map(|t| t.id);
-        }
+    *consecutive_no_tool += 1;
+    if *consecutive_no_tool >= max_no_tool_retries {
+        tracing::warn!("LLM failed to make progress after {} attempts, stopping", max_no_tool_retries);
+        return ReflectionOutcome::Break;
     }
+
+    if let Some(nudge) = planner.build_nudge_message() {
+        tracing::info!("Auto-nudge (attempt {}): pending tasks remain", *consecutive_no_tool);
+        return ReflectionOutcome::Nudge(nudge);
+    }
+
+    ReflectionOutcome::Break
 }
 

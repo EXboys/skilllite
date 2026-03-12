@@ -9,8 +9,8 @@ use std::path::Path;
 use std::time::Instant;
 
 use super::helpers::{
-    execute_tool_call, handle_update_task_plan, inject_progressive_disclosure,
-    process_result_content,
+    execute_tool_call, handle_complete_task, handle_update_task_plan,
+    inject_progressive_disclosure, process_result_content,
 };
 use super::super::extensions::{self, MemoryVectorContext};
 use super::super::llm::LlmClient;
@@ -155,6 +155,9 @@ fn try_auto_mark_task_on_success(
     planner.mark_completed(task_id);
     event_sink.on_task_progress(task_id, true);
     tracing::info!("Auto-marked task {} completed (skill {} succeeded)", task_id, tool_name);
+    // Reset per-task counter so the next task gets a fresh quota and
+    // reflect_planning cannot inherit this task's tool count (遗漏1 fix).
+    // Caller (execute_tool_batch_planning) resets state.tool_calls_current_task after return.
 }
 
 // ── Planning-mode batch ───────────────────────────────────────────────────────
@@ -191,10 +194,15 @@ pub(super) async fn execute_tool_batch_planning(
         event_sink.on_tool_call(tool_name, arguments);
 
         let is_replan = tool_name.as_str() == "update_task_plan";
+        let is_complete = tool_name.as_str() == "complete_task";
+        // Snapshot current task before execution to detect task transitions.
+        let task_before = planner.current_task().map(|t| t.id);
         let start_time = Instant::now();
         let mut result = if is_replan {
             state.replan_count += 1;
             handle_update_task_plan(arguments, planner, event_sink)
+        } else if is_complete {
+            handle_complete_task(arguments, planner, event_sink)
         } else {
             execute_tool_call(registry, tool_name, arguments, workspace, event_sink, embed_ctx).await
         };
@@ -204,15 +212,23 @@ pub(super) async fn execute_tool_batch_planning(
         if result.is_error {
             state.failed_tool_calls += 1;
             state.consecutive_failures += 1;
-            result.content.push_str("\n\nTip: Consider update_task_plan if the approach needs to change.");
+            if !is_complete {
+                result.content.push_str("\n\nTip: Consider update_task_plan if the approach needs to change.");
+            }
         } else {
             state.consecutive_failures = 0;
-            // Auto-mark task when skill succeeds and matches current task's tool_hint
-            if !is_replan {
+            // Auto-mark task when skill succeeds and matches current task's tool_hint.
+            if !is_replan && !is_complete {
                 try_auto_mark_task_on_success(planner, tool_name, &result.content, event_sink);
             }
         }
-        if !is_replan {
+        // If the current task changed (via complete_task or try_auto_mark), reset the
+        // per-task depth counter so the next task gets its full quota (fixes 遗漏1).
+        let task_after = planner.current_task().map(|t| t.id);
+        if task_after != task_before {
+            state.tool_calls_current_task = 0;
+        }
+        if !is_replan && !is_complete {
             state.tools_detail.push(ToolExecDetail { tool: tool_name.clone(), success: !result.is_error });
         }
 

@@ -32,7 +32,7 @@ use super::types::*;
 use helpers::build_agent_result;
 use execution::{ExecutionState, execute_tool_batch_planning, execute_tool_batch_simple};
 use planning::{PlanningResult, run_planning_phase, maybe_save_checkpoint, build_task_focus_message};
-use reflection::{ReflectionOutcome, reflect_simple, reflect_planning, check_completion_after_tools};
+use reflection::{ReflectionOutcome, reflect_simple, reflect_planning};
 
 /// Maximum number of context overflow recovery retries before giving up.
 const MAX_CONTEXT_OVERFLOW_RETRIES: usize = 3;
@@ -156,7 +156,7 @@ async fn run_simple_loop(
                 &mut no_tool_retries, max_no_tool_retries, event_sink, &mut messages,
             ) {
                 ReflectionOutcome::Nudge(msg) => { messages.push(ChatMessage::user(&msg)); continue; }
-                ReflectionOutcome::Break | ReflectionOutcome::AllDone => break,
+                ReflectionOutcome::Break => break,
                 ReflectionOutcome::Continue => continue,
             }
         }
@@ -306,17 +306,11 @@ async fn run_with_task_planning(
             match reflect_planning(
                 &assistant_content, suppress_stream, &mut planner,
                 &mut consecutive_no_tool, max_no_tool_retries,
-                state.tool_calls_current_task, state.total_tool_calls,
                 event_sink, &mut messages,
             ) {
                 ReflectionOutcome::Nudge(msg) => { messages.push(ChatMessage::user(&msg)); continue; }
-                ReflectionOutcome::Continue => {
-                    // Progress was made (task completed via text) — reset per-task counter
-                    state.tool_calls_current_task = 0;
-                    consecutive_no_tool = 0;
-                    continue;
-                }
-                ReflectionOutcome::Break | ReflectionOutcome::AllDone => break,
+                ReflectionOutcome::Break => break,
+                _ => continue,
             }
         }
 
@@ -343,8 +337,9 @@ async fn run_with_task_planning(
         }
 
         // ── Post-tool completion check ─────────────────────────────────────────
-        check_completion_after_tools(&assistant_content, &mut planner, event_sink);
-
+        // Task completion is now handled structurally: either via complete_task tool call
+        // (intercepted in execute_tool_batch_planning) or try_auto_mark_task_on_success.
+        // No text-based detection needed here.
         if planner.all_completed() {
             tracing::info!("All tasks completed, ending iteration");
             let has_substantial = assistant_content.as_ref().map_or(false, |c| c.trim().len() > 50);

@@ -88,6 +88,74 @@ pub(super) fn handle_update_task_plan(
     }
 }
 
+/// Handle complete_task: validate task_id matches current task, then mark it done.
+///
+/// This is the structured completion signal that replaces text-based "Task X completed"
+/// pattern matching. Only the *current* (first uncompleted) task may be completed.
+pub(super) fn handle_complete_task(
+    arguments: &str,
+    planner: &mut TaskPlanner,
+    event_sink: &mut dyn EventSink,
+) -> super::super::types::ToolResult {
+    let args: Value = match serde_json::from_str(arguments) {
+        Ok(v) => v,
+        Err(e) => {
+            return super::super::types::ToolResult {
+                tool_call_id: String::new(),
+                tool_name: "complete_task".to_string(),
+                content: format!("Invalid JSON: {}", e),
+                is_error: true,
+            };
+        }
+    };
+
+    let task_id = match args.get("task_id").and_then(|v| v.as_u64()) {
+        Some(id) => id as u32,
+        None => {
+            return super::super::types::ToolResult {
+                tool_call_id: String::new(),
+                tool_name: "complete_task".to_string(),
+                content: "Missing required field: task_id".to_string(),
+                is_error: true,
+            };
+        }
+    };
+
+    let current_id = planner.current_task().map(|t| t.id);
+    if Some(task_id) != current_id {
+        let msg = match current_id {
+            Some(cid) => format!(
+                "Cannot complete task {} — current task is {}. Complete tasks in order.",
+                task_id, cid
+            ),
+            None => "All tasks are already completed.".to_string(),
+        };
+        return super::super::types::ToolResult {
+            tool_call_id: String::new(),
+            tool_name: "complete_task".to_string(),
+            content: msg,
+            is_error: true,
+        };
+    }
+
+    let summary = args
+        .get("summary")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    planner.mark_completed(task_id);
+    event_sink.on_task_progress(task_id, true);
+    tracing::info!("complete_task: task {} marked done. summary={:?}", task_id, summary);
+
+    super::super::types::ToolResult {
+        tool_call_id: String::new(),
+        tool_name: "complete_task".to_string(),
+        content: format!(r#"{{"success": true, "task_id": {}, "message": "Task {} marked as completed"}}"#, task_id, task_id),
+        is_error: false,
+    }
+}
+
 /// Execute a single tool call via ExtensionRegistry.
 pub(super) async fn execute_tool_call(
     registry: &extensions::ExtensionRegistry<'_>,

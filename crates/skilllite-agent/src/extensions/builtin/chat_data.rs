@@ -55,6 +55,27 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
         ToolDefinition {
             tool_type: "function".to_string(),
             function: FunctionDef {
+                name: "complete_task".to_string(),
+                description: "Mark the current task as completed. Call this IMMEDIATELY after you finish a task — whether it is an analysis task, a file operation, or a skill call. This is the ONLY valid way to record task completion; writing 'Task X completed' in text is NOT sufficient and will be ignored by the system.".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "integer",
+                            "description": "The id of the task you just completed (must match the current task's id)"
+                        },
+                        "summary": {
+                            "type": "string",
+                            "description": "One-sentence summary of what was accomplished"
+                        }
+                    },
+                    "required": ["task_id"]
+                }),
+            },
+        },
+        ToolDefinition {
+            tool_type: "function".to_string(),
+            function: FunctionDef {
                 name: "update_task_plan".to_string(),
                 description: "Revise the task plan when current tasks are unusable (e.g. chat_history returned irrelevant data for a city comparison). Call with the new task list. Use when: (1) a task's result is clearly not useful for the user's goal; (2) the plan was wrong (e.g. used chat_history for place comparison). Pass `tasks` array with id, description, tool_hint, completed.".to_string(),
                 parameters: json!({

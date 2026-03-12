@@ -540,11 +540,11 @@ impl TaskPlanner {
              1. **MATCH tool_hint**: If tool_hint is \"file_operation\" → use built-in tools (read_file, write_output, preview_server). If tool_hint is \"memory_search\" → call memory_search. If tool_hint is a skill name → call that skill.\n\
              2. **Strict sequential execution**: Execute tasks in order, do not skip tasks\n\
              3. **Focus on current task**: Focus only on the current task\n\
-             4. **Explicit completion declaration**: After completing a task, declare: \"Task X completed\"\n\
+             4. **Structured completion**: After finishing a task, call `complete_task(task_id=N)`. Writing \"Task N completed\" in text is NOT sufficient.\n\
              5. **Avoid unnecessary exploration**: Do NOT call list_directory or read_file unless the task explicitly requires it\n\
-             6. **🚫 EXECUTE BEFORE COMPLETING**: Your first response must be an actual tool call, NOT a completion summary. The system will REJECT instant-completion claims.\n\
+             6. **🚫 EXECUTE BEFORE COMPLETING**: Your first response must be an actual tool call, NOT a completion summary. Call `complete_task` only AFTER the work is done.\n\
              {}{}\n\n\
-             ⚠️ **Important**: You must explicitly declare after completing each task so the system can track progress.",
+             ⚠️ **Important**: After completing each task, you MUST call `complete_task(task_id=N)` so the system can track progress. Text declarations are ignored.",
             execution_prompt,
             boundaries_block,
             task_list_json,
@@ -574,20 +574,16 @@ impl TaskPlanner {
                     || content_lower.contains(&pattern3)
                     || content_lower.contains(&pattern4);
 
-                // Chinese patterns (LLM often responds in Chinese)
+                // Chinese patterns (LLM often responds in Chinese). Require explicit task id
+                // to avoid false completion on phrases like "我将把任务标记为已完成".
                 let zh_task = format!("任务{}已完成", task.id);
                 let zh_task_spaced = format!("任务 {} 已完成", task.id);
                 let zh_marked = format!("任务{}为已完成", task.id);
                 let zh_marked_spaced = format!("任务 {} 为已完成", task.id);
-                let zh_single = self.task_list.len() == 1
-                    && (content_zh.contains("标记为已完成")
-                        || content_zh.contains("标记此任务已完成")
-                        || (content_zh.contains("标记") && content_zh.contains("已完成")));
                 let zh_match = content_zh.contains(&zh_task)
                     || content_zh.contains(&zh_task_spaced)
                     || content_zh.contains(&zh_marked)
-                    || content_zh.contains(&zh_marked_spaced)
-                    || zh_single;
+                    || content_zh.contains(&zh_marked_spaced);
 
                 if en_match || zh_match {
                     completed_ids.push(task.id);
@@ -651,18 +647,20 @@ impl TaskPlanner {
         Some(format!(
             "There are still pending tasks. Please continue.\n\n\
              Updated task list:\n{}\n\n\
-             Current task: Task {} - {}\n{}",
-            task_list_json, current.id, current.description, tool_instruction
+             Current task: Task {} - {}\n{}\n\n\
+             ⚠️ After completing this task, call `complete_task(task_id={})` to record completion.",
+            task_list_json, current.id, current.description, tool_instruction, current.id
         ))
     }
 
     /// Build a per-task depth limit message.
     pub fn build_depth_limit_message(&self, max_calls: usize) -> String {
+        let current_id = self.current_task().map(|t| t.id).unwrap_or(0);
         format!(
             "You have used {} tool calls for the current task. \
-             Based on the information gathered so far, please provide a brief summary, \
-             mark this task as completed (\"Task X completed\"), and proceed to the next task.",
-            max_calls
+             Based on the information gathered so far, call \
+             `complete_task(task_id={})` to record completion, then proceed to the next task.",
+            max_calls, current_id
         )
     }
 }

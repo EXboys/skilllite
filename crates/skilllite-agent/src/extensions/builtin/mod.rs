@@ -60,6 +60,7 @@ pub fn is_builtin_tool(name: &str) -> bool {
             | "chat_plan"
             | "list_output"
             | "update_task_plan"
+            | "complete_task"
             | "delegate_to_swarm"
     )
 }
@@ -122,6 +123,9 @@ pub fn execute_builtin_tool(
         "list_output" => output::execute_list_output(&args),
         "update_task_plan" => Err(anyhow::anyhow!(
             "update_task_plan is only available in task-planning mode; it must be handled by the agent loop"
+        )),
+        "complete_task" => Err(anyhow::anyhow!(
+            "complete_task is only available in task-planning mode; it must be handled by the agent loop"
         )),
         "delegate_to_swarm" => Err(anyhow::anyhow!(
             "delegate_to_swarm is async; it must be handled by the agent loop"
