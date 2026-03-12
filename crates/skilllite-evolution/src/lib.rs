@@ -656,8 +656,34 @@ async fn run_evolution_inner<L: EvolutionLlm>(
     let mut all_changes: Vec<(String, String)> = Vec::new();
     let mut reason_parts: Vec<String> = Vec::new();
 
+    // Run prompts / skills / memory evolution in parallel (no cross-dependencies).
+    let (prompt_res, skills_res, memory_res) = tokio::join!(
+        async {
+            if scope.prompts {
+                prompt_learner::evolve_prompts(chat_root, llm, model, &txn_id).await
+            } else {
+                Ok(Vec::new())
+            }
+        },
+        async {
+            if scope.skills {
+                let generate = true;
+                skill_synth::evolve_skills(chat_root, skills_root, llm, model, &txn_id, generate, force).await
+            } else {
+                Ok(Vec::new())
+            }
+        },
+        async {
+            if scope.memory {
+                memory_learner::evolve_memory(chat_root, llm, model, &txn_id).await
+            } else {
+                Ok(Vec::new())
+            }
+        },
+    );
+
     if scope.prompts {
-        match prompt_learner::evolve_prompts(chat_root, llm, model, &txn_id).await {
+        match prompt_res {
             Ok(changes) => {
                 if !changes.is_empty() {
                     reason_parts.push(format!("{} prompt changes", changes.len()));
@@ -667,11 +693,8 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             Err(e) => tracing::warn!("Prompt evolution failed: {}", e),
         }
     }
-
     if scope.skills {
-        // Always try generate path (success-based → failure-based 补全 → refine)
-        let generate = true;
-        match skill_synth::evolve_skills(chat_root, skills_root, llm, model, &txn_id, generate, force).await {
+        match skills_res {
             Ok(changes) => {
                 if !changes.is_empty() {
                     reason_parts.push(format!("{} skill changes", changes.len()));
@@ -681,9 +704,8 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             Err(e) => tracing::warn!("Skill evolution failed: {}", e),
         }
     }
-
     if scope.memory {
-        match memory_learner::evolve_memory(chat_root, llm, model, &txn_id).await {
+        match memory_res {
             Ok(changes) => {
                 if !changes.is_empty() {
                     reason_parts.push(format!("{} memory knowledge update(s)", changes.len()));
