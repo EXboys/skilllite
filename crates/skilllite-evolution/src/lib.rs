@@ -302,15 +302,20 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
         .filter_map(|r| r.ok())
         .collect();
 
+    // Group by tool_sequence_key (new) when available; fall back to task_description for
+    // older decisions that predate the tool_sequence_key column.
+    // COALESCE(NULLIF(key,''), desc) ensures empty-string keys also fall back.
     let repeated_patterns: i64 = conn
         .query_row(
             &format!(
                 "SELECT COUNT(*) FROM (
-                SELECT task_description, COUNT(*) as cnt,
-                       SUM(CASE WHEN task_completed = 1 THEN 1 ELSE 0 END) as successes
+                SELECT COALESCE(NULLIF(tool_sequence_key, ''), task_description) AS pattern_key,
+                       COUNT(*) AS cnt,
+                       SUM(CASE WHEN task_completed = 1 THEN 1 ELSE 0 END) AS successes
                 FROM decisions
-                WHERE {} AND task_description IS NOT NULL
-                GROUP BY task_description
+                WHERE {} AND (tool_sequence_key IS NOT NULL OR task_description IS NOT NULL)
+                  AND total_tools >= 1
+                GROUP BY pattern_key
                 HAVING cnt >= 3 AND CAST(successes AS REAL) / cnt >= 0.8
             )",
                 recent_condition

@@ -66,7 +66,8 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
             feedback TEXT DEFAULT 'neutral',
             evolved BOOLEAN DEFAULT 0,
             task_description TEXT,
-            tools_detail TEXT
+            tools_detail TEXT,
+            tool_sequence_key TEXT
         );
 
         CREATE TABLE IF NOT EXISTS decision_rules (
@@ -101,7 +102,27 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_evo_log_ts ON evolution_log(ts);
         "#,
     )?;
+    // Backward-compatible migration: add column for existing DBs (ignored if column exists).
+    let _ = conn.execute("ALTER TABLE decisions ADD COLUMN tool_sequence_key TEXT", []);
+    // Index must be created after ALTER TABLE so existing DBs have the column first.
+    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_decisions_seq ON decisions(tool_sequence_key)", []);
     Ok(())
+}
+
+/// Build a compact tool-sequence key from tools_detail (at most 3 tools joined by →).
+/// Used to group decisions by "what tool pattern was used" rather than raw task description.
+/// Example: [weather] → "weather"; [http-request, write_output] → "http-request→write_output".
+pub fn compute_tool_sequence_key(tools_detail: &[ToolExecDetail]) -> Option<String> {
+    if tools_detail.is_empty() {
+        return None;
+    }
+    let key = tools_detail
+        .iter()
+        .take(3)
+        .map(|t| t.tool.as_str())
+        .collect::<Vec<_>>()
+        .join("→");
+    Some(key)
 }
 
 // ─── Decision recording ─────────────────────────────────────────────────────
@@ -113,11 +134,12 @@ pub fn insert_decision(
     user_feedback: FeedbackSignal,
 ) -> Result<i64> {
     let tools_detail_json = serde_json::to_string(&feedback.tools_detail).unwrap_or_default();
+    let tool_sequence_key = compute_tool_sequence_key(&feedback.tools_detail);
 
     conn.execute(
         "INSERT INTO decisions (session_id, total_tools, failed_tools, replans,
-         elapsed_ms, task_completed, feedback, task_description, tools_detail)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+         elapsed_ms, task_completed, feedback, task_description, tools_detail, tool_sequence_key)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             session_id,
             feedback.total_tools as i64,
@@ -128,6 +150,7 @@ pub fn insert_decision(
             user_feedback.as_str(),
             feedback.task_description,
             tools_detail_json,
+            tool_sequence_key,
         ],
     )?;
     let decision_id = conn.last_insert_rowid();

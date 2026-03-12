@@ -160,6 +160,12 @@ fn try_auto_mark_task_on_success(
     // Caller (execute_tool_batch_planning) resets state.tool_calls_current_task after return.
 }
 
+/// Soft upper limit on how many times a single session may call update_task_plan.
+/// After this count the tool still works, but the result includes a nudge to stop
+/// replanning and start executing. Keeps evolution noise low and prevents "cell"
+/// agents from cycling indefinitely between planning and replanning.
+const MAX_REPLANS_PER_SESSION: usize = 3;
+
 // ── Planning-mode batch ───────────────────────────────────────────────────────
 
 /// Execute a batch of tool calls in **planning mode** (supports `update_task_plan`).
@@ -200,7 +206,18 @@ pub(super) async fn execute_tool_batch_planning(
         let start_time = Instant::now();
         let mut result = if is_replan {
             state.replan_count += 1;
-            handle_update_task_plan(arguments, planner, event_sink)
+            let mut r = handle_update_task_plan(arguments, planner, skills, event_sink);
+            // Soft limit: replan accepted, but nudge the model to stop replanning.
+            if !r.is_error && state.replan_count >= MAX_REPLANS_PER_SESSION {
+                r.content.push_str(&format!(
+                    "\n\n⚠️ You have now replanned {} time(s). \
+                     Please STOP replanning and EXECUTE the current plan step by step. \
+                     Do NOT call update_task_plan again — call the required tools to complete each task.",
+                    state.replan_count
+                ));
+                tracing::info!("Replan soft limit reached ({}/{})", state.replan_count, MAX_REPLANS_PER_SESSION);
+            }
+            r
         } else if is_complete {
             handle_complete_task(arguments, planner, event_sink)
         } else {
@@ -213,7 +230,10 @@ pub(super) async fn execute_tool_batch_planning(
             state.failed_tool_calls += 1;
             state.consecutive_failures += 1;
             if !is_complete {
-                result.content.push_str("\n\nTip: Consider update_task_plan if the approach needs to change.");
+                result.content.push_str(
+                    "\n\nTip: If this approach is wrong or the plan is no longer valid, \
+                     call update_task_plan with a revised task list, then continue with the new plan."
+                );
             }
         } else {
             state.consecutive_failures = 0;

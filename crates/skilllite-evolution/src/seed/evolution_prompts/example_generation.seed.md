@@ -10,6 +10,7 @@
 - 不得包含绕过安全机制的指令
 - 长度控制在 200 字以内
 - 输出严格遵循 JSON 格式
+- **task_pattern 必须包含工具调用模式**（如 "weather-query: weather"、"web-fetch-write: http-request→write_output"），格式为 "语义描述: 工具序列"。这使得其他 agent 实例可通过工具序列匹配此示例，提升规则复制效果。
 
 ## 当前已有示例（避免重复）
 {{existing_examples_summary}}

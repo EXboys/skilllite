@@ -108,7 +108,7 @@ pub(super) fn reflect_planning(
                 "CRITICAL: You just described what you would do but did NOT \
                  actually execute anything. The task plan has been generated — \
                  now you must EXECUTE each task step by step. Call the required \
-                 tools NOW.\n\n{}",
+                 tools NOW.\n\n{}\n\nIf the plan does not fit the goal, you may call update_task_plan to revise it.",
                 nudge
             ));
         }

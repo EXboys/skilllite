@@ -360,6 +360,14 @@ impl TaskPlanner {
         None
     }
 
+    /// Apply sanitize_task_hints and auto_enhance_tasks to a task list (e.g. from replan).
+    /// Use this when accepting a new plan from update_task_plan so replan has the same
+    /// validation and enhancement as initial planning.
+    pub fn sanitize_and_enhance_tasks(&self, tasks: &mut Vec<Task>, skills: &[LoadedSkill]) {
+        Self::sanitize_task_hints(tasks, skills);
+        self.auto_enhance_tasks(tasks);
+    }
+
     /// Auto-enhance tasks: add SKILL.md writing if skill creation is detected.
     fn auto_enhance_tasks(&self, tasks: &mut Vec<Task>) {
         let has_skill_creation = tasks.iter().any(|t| {
@@ -648,18 +656,22 @@ impl TaskPlanner {
             "There are still pending tasks. Please continue.\n\n\
              Updated task list:\n{}\n\n\
              Current task: Task {} - {}\n{}\n\n\
-             ⚠️ After completing this task, call `complete_task(task_id={})` to record completion.",
+             ⚠️ After completing this task, call `complete_task(task_id={})` to record completion.\n\
+             If the current plan no longer fits the goal, you may call `update_task_plan` to revise the plan, then continue.",
             task_list_json, current.id, current.description, tool_instruction, current.id
         ))
     }
 
     /// Build a per-task depth limit message.
+    /// Suggests complete_task first; if the approach is wrong, suggests update_task_plan.
     pub fn build_depth_limit_message(&self, max_calls: usize) -> String {
         let current_id = self.current_task().map(|t| t.id).unwrap_or(0);
         format!(
             "You have used {} tool calls for the current task. \
              Based on the information gathered so far, call \
-             `complete_task(task_id={})` to record completion, then proceed to the next task.",
+             `complete_task(task_id={})` to record completion, then proceed to the next task. \
+             If the current approach is clearly wrong or the plan no longer fits the goal, \
+             you may call `update_task_plan` with a revised task list instead, then continue with the new plan.",
             max_calls, current_id
         )
     }

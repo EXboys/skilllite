@@ -17,10 +17,12 @@ use super::super::skills::{self, LoadedSkill};
 use super::super::task_planner::TaskPlanner;
 use super::super::types::*;
 
-/// Handle update_task_plan: parse new tasks, replace planner.task_list, notify event_sink.
+/// Handle update_task_plan: parse new tasks, sanitize & enhance (same as initial planning),
+/// replace planner.task_list, notify event_sink.
 pub(super) fn handle_update_task_plan(
     arguments: &str,
     planner: &mut TaskPlanner,
+    skills: &[LoadedSkill],
     event_sink: &mut dyn EventSink,
 ) -> super::super::types::ToolResult {
     let args: Value = match serde_json::from_str(arguments) {
@@ -70,6 +72,8 @@ pub(super) fn handle_update_task_plan(
             is_error: true,
         };
     }
+    // Apply same sanitize & enhance as initial planning (strip unavailable tool_hints, add SKILL.md if needed).
+    planner.sanitize_and_enhance_tasks(&mut new_tasks, skills);
     planner.task_list = new_tasks.clone();
     event_sink.on_task_plan(&planner.task_list);
     let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
