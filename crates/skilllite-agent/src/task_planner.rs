@@ -508,28 +508,14 @@ impl TaskPlanner {
             );
 
             if let Some(ref hint) = task.tool_hint {
+                direct_call_instruction = format!(
+                    "\n\n⚡ **ACTION**: 当前任务 tool_hint 为 {}，请优先调用 {}。",
+                    hint, hint
+                );
                 if hint == "file_operation" {
-                    direct_call_instruction = format!(
-                        "\n\n⚡ **ACTION REQUIRED**: This is a file_operation task. \
-                         Call `write_output` or `preview_server` NOW.\n\
-                         ⛔ Do NOT call any skill tools (skill-creator, frontend-design, etc.). \
-                         Generate the content yourself and save with `write_output`."
+                    direct_call_instruction.push_str(
+                        "\n⛔ Do NOT call any skill tools (skill-creator, frontend-design, etc.); generate content yourself and save with `write_output`.",
                     );
-                } else if hint == "memory_search" {
-                    direct_call_instruction = "\n\n⚡ **ACTION REQUIRED**: This is an exploration task. Call `memory_search` NOW with appropriate query to find relevant memory.".to_string();
-                } else if hint != "analysis" {
-                    let is_skill = skills.iter().any(|s| {
-                        s.name == *hint
-                            || s.tool_definitions.iter().any(|td| td.function.name == *hint)
-                    });
-                    if is_skill {
-                        direct_call_instruction = format!(
-                            "\n\n⚡ **DIRECT ACTION REQUIRED**: Call `{}` NOW with appropriate parameters.\n\
-                             Do NOT call list_directory, read_file, or any other tool first. \
-                             The skill `{}` is ready to use.",
-                            hint, hint
-                        );
-                    }
                 }
             }
         }
@@ -559,46 +545,6 @@ impl TaskPlanner {
             current_task_info,
             direct_call_instruction
         )
-    }
-
-    /// Check if tasks were completed based on LLM response content.
-    /// Supports both English and Chinese completion phrases.
-    pub fn check_completion_in_content(&self, content: &str) -> Vec<u32> {
-        if content.is_empty() {
-            return Vec::new();
-        }
-        let content_lower = content.to_lowercase();
-        let content_zh = content;
-        let mut completed_ids = Vec::new();
-        for task in &self.task_list {
-            if !task.completed {
-                // English patterns
-                let pattern1 = format!("task {} completed", task.id);
-                let pattern2 = format!("task{} completed", task.id);
-                let pattern3 = format!("task {} complete", task.id);
-                let pattern4 = format!("✅ task {}", task.id);
-                let en_match = content_lower.contains(&pattern1)
-                    || content_lower.contains(&pattern2)
-                    || content_lower.contains(&pattern3)
-                    || content_lower.contains(&pattern4);
-
-                // Chinese patterns (LLM often responds in Chinese). Require explicit task id
-                // to avoid false completion on phrases like "我将把任务标记为已完成".
-                let zh_task = format!("任务{}已完成", task.id);
-                let zh_task_spaced = format!("任务 {} 已完成", task.id);
-                let zh_marked = format!("任务{}为已完成", task.id);
-                let zh_marked_spaced = format!("任务 {} 为已完成", task.id);
-                let zh_match = content_zh.contains(&zh_task)
-                    || content_zh.contains(&zh_task_spaced)
-                    || content_zh.contains(&zh_marked)
-                    || content_zh.contains(&zh_marked_spaced);
-
-                if en_match || zh_match {
-                    completed_ids.push(task.id);
-                }
-            }
-        }
-        completed_ids
     }
 
     /// Mark a task as completed and return whether it was found.
