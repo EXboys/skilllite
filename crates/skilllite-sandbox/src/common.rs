@@ -43,6 +43,9 @@ pub const DEFAULT_MAX_PROCESSES: u64 = 50;
 /// Memory check interval in milliseconds
 pub const MEMORY_CHECK_INTERVAL_MS: u64 = 100;
 
+/// Grace period in seconds after SIGTERM before SIGKILL (progressive timeout, Unix only)
+const TIMEOUT_GRACE_SECS: u64 = 2;
+
 /// Get memory usage of a process in bytes (platform-specific implementation)
 /// Returns None if memory information cannot be retrieved
 #[cfg(target_os = "macos")]
@@ -131,6 +134,11 @@ pub fn get_process_memory(pid: u32) -> Option<u64> {
 /// - Timeout: kills the process if it exceeds the specified duration
 /// - Memory limit: kills the process if RSS exceeds the specified bytes
 ///
+/// Stdin: Closes child stdin at start so the process sees EOF and does not block on read.
+/// Callers should have already written input; this is a safety measure.
+///
+/// Timeout: On Unix, uses progressive timeout (SIGTERM first, then SIGKILL after a short grace).
+///
 /// IMPORTANT: Reads stdout/stderr in background threads while the process runs.
 /// Without this, a child writing large output (>64KB pipe buffer) would block
 /// on write, and we'd deadlock waiting for the child to exit.
@@ -152,6 +160,9 @@ pub fn wait_with_timeout(
     let start = Instant::now();
     let timeout = Duration::from_secs(timeout_secs);
     let check_interval = Duration::from_millis(MEMORY_CHECK_INTERVAL_MS);
+
+    // Close stdin so the child sees EOF and does not block waiting for input.
+    let _ = child.stdin.take();
 
     // Spawn threads to read stdout/stderr *while* the process runs.
     // Otherwise large output (>pipe buffer ~64KB) blocks the child and we deadlock.
@@ -228,10 +239,7 @@ pub fn wait_with_timeout(
         }
 
         if start.elapsed() > timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = stdout_handle.map(|h| h.join());
-            let _ = stderr_handle.map(|h| h.join());
+            kill_with_progressive_timeout(child, stdout_handle, stderr_handle);
             return Ok((
                 String::new(),
                 format!("Process killed: exceeded timeout of {} seconds", timeout_secs),
@@ -264,6 +272,44 @@ pub fn wait_with_timeout(
 
         thread::sleep(check_interval);
     }
+}
+
+/// Kill child and join stdout/stderr reader threads.
+/// On Unix: sends SIGTERM first, waits up to TIMEOUT_GRACE_SECS, then SIGKILL (progressive timeout).
+#[cfg(unix)]
+fn kill_with_progressive_timeout(
+    child: &mut Child,
+    stdout_handle: Option<thread::JoinHandle<String>>,
+    stderr_handle: Option<thread::JoinHandle<String>>,
+) {
+    let pid = nix::unistd::Pid::from_raw(child.id() as i32);
+    let _ = nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM);
+    let grace = Duration::from_secs(TIMEOUT_GRACE_SECS);
+    let deadline = Instant::now() + grace;
+    while Instant::now() < deadline {
+        if child.try_wait().ok().and_then(|s| s).is_some() {
+            let _ = stdout_handle.map(|h| h.join());
+            let _ = stderr_handle.map(|h| h.join());
+            return;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = stdout_handle.map(|h| h.join());
+    let _ = stderr_handle.map(|h| h.join());
+}
+
+#[cfg(not(unix))]
+fn kill_with_progressive_timeout(
+    child: &mut Child,
+    stdout_handle: Option<thread::JoinHandle<String>>,
+    stderr_handle: Option<thread::JoinHandle<String>>,
+) {
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = stdout_handle.map(|h| h.join());
+    let _ = stderr_handle.map(|h| h.join());
 }
 
 /// Get peak RSS of all waited-for children via getrusage(RUSAGE_CHILDREN).
