@@ -105,6 +105,7 @@ pub fn append_entry(transcript_path: &Path, entry: &TranscriptEntry) -> Result<(
         .with_context(|| format!("Failed to open transcript: {}", transcript_path.display()))?;
     let line = serde_json::to_string(entry)?;
     writeln!(file, "{}", line)?;
+    file.sync_all().context("transcript flush")?;
     Ok(())
 }
 

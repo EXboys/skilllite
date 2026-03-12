@@ -112,6 +112,7 @@ pub fn handle_transcript_append(params: &Value) -> Result<Value> {
                 .open(&transcript_path)?;
             use std::io::Write;
             writeln!(file, "{}", entry_json)?;
+            let _ = file.sync_all();
             return Ok(json!({"ok": true}));
         }
     };
