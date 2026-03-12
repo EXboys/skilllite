@@ -245,7 +245,7 @@ impl TaskPlanner {
                         Ok(tasks)
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to parse task list: {}", e);
+                        tracing::warn!("规划解析失败，使用 fallback 单任务。parse_task_list error: {}", e);
                         let fallback = vec![Task {
                             id: 1,
                             description: user_message.to_string(),
@@ -258,7 +258,7 @@ impl TaskPlanner {
                 }
             }
             Err(e) => {
-                tracing::warn!("Task planning LLM call failed: {}", e);
+                tracing::warn!("规划 LLM 调用失败，使用 fallback 单任务。error: {}", e);
                 let fallback = vec![Task {
                     id: 1,
                     description: user_message.to_string(),

@@ -237,10 +237,13 @@ async fn run_with_task_planning(
     let mut consecutive_no_tool = 0usize;
     let max_no_tool_retries = 3;
 
-    // Plan-based budget: min(global, num_tasks × per_task); fall back to max_iterations when empty
+    // Plan-based budget: min(global, num_tasks × per_task); empty plan => cap at 3 to avoid pointless iterations
     let num_tasks = planner.task_list.len();
-    let effective_max = if num_tasks == 0 { config.max_iterations }
-                        else { config.max_iterations.min(num_tasks * config.max_tool_calls_per_task) };
+    let effective_max = if num_tasks == 0 {
+        config.max_iterations.min(3)
+    } else {
+        config.max_iterations.min(num_tasks * config.max_tool_calls_per_task)
+    };
 
     let tools_ref = if all_tools.is_empty() { None } else { Some(all_tools.as_slice()) };
 
