@@ -233,6 +233,14 @@ export function useChatEvents({
             isError: isErr,
           },
         ]);
+      } else if (event === "command_started") {
+        const command = (data?.command as string) ?? "";
+        if (!command) return;
+        addLog({
+          type: "command_started" as const,
+          name: "run_command",
+          text: command.length > 240 ? command.slice(0, 240) + "…" : command,
+        });
       } else if (event === "command_output") {
         const stream = (data?.stream as string) ?? "stdout";
         const chunk = (data?.chunk as string) ?? "";
@@ -242,6 +250,16 @@ export function useChatEvents({
           name: stream,
           text: chunk.length > 1200 ? chunk.slice(0, 1200) + "…" : chunk,
           isError: stream === "stderr",
+        });
+      } else if (event === "command_finished") {
+        const success = (data?.success as boolean) ?? false;
+        const exitCode = (data?.exit_code as number) ?? -1;
+        const durationMs = (data?.duration_ms as number) ?? 0;
+        addLog({
+          type: "command_finished" as const,
+          name: "run_command",
+          text: `exit ${exitCode} in ${durationMs}ms`,
+          isError: !success,
         });
       }
     });

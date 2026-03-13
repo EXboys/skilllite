@@ -1045,15 +1045,23 @@ async fn test_run_command_streams_output_and_returns_summary() {
     use crate::types::EventSink;
 
     struct CaptureSink {
+        started: Vec<String>,
         outputs: Vec<(String, String)>,
+        finished: Vec<(bool, i32, u64)>,
     }
 
     impl EventSink for CaptureSink {
         fn on_text(&mut self, _text: &str) {}
         fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
         fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+        fn on_command_started(&mut self, command: &str) {
+            self.started.push(command.to_string());
+        }
         fn on_command_output(&mut self, stream: &str, chunk: &str) {
             self.outputs.push((stream.to_string(), chunk.to_string()));
+        }
+        fn on_command_finished(&mut self, success: bool, exit_code: i32, duration_ms: u64) {
+            self.finished.push((success, exit_code, duration_ms));
         }
         fn on_confirmation_request(&mut self, _prompt: &str) -> bool {
             true
@@ -1065,15 +1073,43 @@ async fn test_run_command_streams_output_and_returns_summary() {
     let args = serde_json::json!({
         "command": "printf 'hello\\n'; printf 'warn\\n' 1>&2"
     });
-    let mut sink = CaptureSink { outputs: Vec::new() };
+    let mut sink = CaptureSink { started: Vec::new(), outputs: Vec::new(), finished: Vec::new() };
 
     let result = run_command::execute_run_command(&args, workspace, &mut sink)
         .await
         .unwrap();
 
+    assert_eq!(sink.started.len(), 1);
+    assert_eq!(sink.started[0], "printf 'hello\\n'; printf 'warn\\n' 1>&2");
     assert!(sink.outputs.iter().any(|(stream, chunk)| stream == "stdout" && chunk == "hello"));
     assert!(sink.outputs.iter().any(|(stream, chunk)| stream == "stderr" && chunk == "warn"));
+    assert_eq!(sink.finished.len(), 1);
+    assert!(sink.finished[0].0);
+    assert_eq!(sink.finished[0].1, 0);
     assert!(result.contains("Output streamed to execution log."));
-    assert!(result.contains("[stdout]"));
     assert!(result.contains("[stderr]"));
+    assert!(!result.contains("[stdout]\nhello"));
+}
+
+#[tokio::test]
+async fn test_run_command_success_preview_is_compact() {
+    use super::run_command;
+    use crate::types::SilentEventSink;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let args = serde_json::json!({
+        "command": "printf 'line1\\nline2\\nline3\\nline4\\n'"
+    });
+    let mut sink = SilentEventSink;
+
+    let result = run_command::execute_run_command(&args, workspace, &mut sink)
+        .await
+        .unwrap();
+
+    assert!(result.contains("[stdout tail]"));
+    assert!(result.contains("line3"));
+    assert!(result.contains("line4"));
+    assert!(!result.contains("line1"));
+    assert!(!result.contains("line2"));
 }

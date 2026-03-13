@@ -121,6 +121,7 @@ pub(super) async fn execute_run_command(
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
     use tokio::sync::mpsc;
+    let start_time = std::time::Instant::now();
 
     let mut child = Command::new("sh")
         .arg("-c")
@@ -130,6 +131,7 @@ pub(super) async fn execute_run_command(
         .current_dir(workspace)
         .spawn()
         .with_context(|| format!("Failed to spawn command: {}", cmd))?;
+    event_sink.on_command_started(cmd);
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -201,9 +203,12 @@ pub(super) async fn execute_run_command(
         Ok(Err(e)) => return Err(e),
         Err(_) => {
             let _ = child.kill().await;
+            event_sink.on_command_finished(false, -1, start_time.elapsed().as_millis() as u64);
             return Ok("Error: Command execution timeout (300s)".to_string());
         }
     };
+    let exit_code = status.code().unwrap_or(if status.success() { 0 } else { -1 });
+    event_sink.on_command_finished(status.success(), exit_code, start_time.elapsed().as_millis() as u64);
 
     let stdout_text = stdout_lines.join("\n");
     let stderr_text = stderr_lines.join("\n");
@@ -234,11 +239,11 @@ fn build_command_result(
         result.push_str("\nNo stdout/stderr was produced.");
     } else {
         result.push_str("\nOutput streamed to execution log.");
-        result.push_str("\n\nPreview:\n");
-        result.push_str(&truncate_command_output(&build_output_preview(
-            stdout_text,
-            stderr_text,
-        )));
+        let preview = build_output_preview(status.success(), stdout_text, stderr_text);
+        if !preview.is_empty() {
+            result.push_str("\n\nPreview:\n");
+            result.push_str(&truncate_command_output(&preview));
+        }
     }
 
     if redacted {
@@ -248,15 +253,47 @@ fn build_command_result(
     result
 }
 
-fn build_output_preview(stdout_text: &str, stderr_text: &str) -> String {
+fn build_output_preview(success: bool, stdout_text: &str, stderr_text: &str) -> String {
     let mut parts = Vec::new();
-    if !stdout_text.is_empty() {
-        parts.push(format!("[stdout]\n{}", stdout_text));
+    if success {
+        if !stderr_text.is_empty() {
+            parts.push(build_preview_block("stderr", stderr_text, 3, true));
+        } else if !stdout_text.is_empty() {
+            parts.push(build_preview_block("stdout tail", stdout_text, 2, true));
+        }
+    } else {
+        if !stderr_text.is_empty() {
+            parts.push(build_preview_block("stderr", stderr_text, 6, false));
+        }
+        if !stdout_text.is_empty() {
+            parts.push(build_preview_block("stdout tail", stdout_text, 3, true));
+        }
     }
-    if !stderr_text.is_empty() {
-        parts.push(format!("[stderr]\n{}", stderr_text));
+    parts.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n")
+}
+
+fn build_preview_block(label: &str, text: &str, max_lines: usize, prefer_tail: bool) -> String {
+    let lines: Vec<&str> = text.lines().filter(|line| !line.is_empty()).collect();
+    if lines.is_empty() {
+        return String::new();
     }
-    parts.join("\n\n")
+
+    let start = if prefer_tail {
+        lines.len().saturating_sub(max_lines)
+    } else {
+        0
+    };
+    let shown = &lines[start..];
+    let mut block = format!("[{}]\n{}", label, shown.join("\n"));
+    let hidden_count = lines.len().saturating_sub(shown.len());
+    if hidden_count > 0 {
+        if prefer_tail {
+            block.push_str(&format!("\n... {} earlier lines streamed", hidden_count));
+        } else {
+            block.push_str(&format!("\n... {} more lines streamed", hidden_count));
+        }
+    }
+    block
 }
 
 #[cfg(test)]

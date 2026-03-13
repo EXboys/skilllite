@@ -29,7 +29,9 @@
 //! {"event": "text", "data": {"text": "Hello, how can I help?"}}
 //! {"event": "tool_call", "data": {"name": "read_file", "arguments": "{...}"}}
 //! {"event": "tool_result", "data": {"name": "read_file", "result": "...", "is_error": false}}
+//! {"event": "command_started", "data": {"command": "echo hello"}}
 //! {"event": "command_output", "data": {"stream": "stdout", "chunk": "line"}}
+//! {"event": "command_finished", "data": {"success": true, "exit_code": 0, "duration_ms": 123}}
 //! {"event": "task_plan", "data": {"tasks": [...]}}
 //! {"event": "task_progress", "data": {"task_id": 1, "completed": true}}
 //! {"event": "confirmation_request", "data": {"prompt": "Execute rm -rf?"}}
@@ -106,10 +108,21 @@ impl EventSink for RpcEventSink {
         );
     }
 
+    fn on_command_started(&mut self, command: &str) {
+        self.emit("command_started", json!({ "command": command }));
+    }
+
     fn on_command_output(&mut self, stream: &str, chunk: &str) {
         self.emit(
             "command_output",
             json!({ "stream": stream, "chunk": chunk }),
+        );
+    }
+
+    fn on_command_finished(&mut self, success: bool, exit_code: i32, duration_ms: u64) {
+        self.emit(
+            "command_finished",
+            json!({ "success": success, "exit_code": exit_code, "duration_ms": duration_ms }),
         );
     }
 

@@ -11,7 +11,7 @@ export interface TaskItem {
 export interface LogEntry {
   id: string;
   time: string;
-  type: "tool_call" | "tool_result" | "command_output" | "plan" | "progress" | "error";
+  type: "tool_call" | "tool_result" | "command_started" | "command_output" | "command_finished" | "plan" | "progress" | "error";
   name?: string;
   text: string;
   isError?: boolean;

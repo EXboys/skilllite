@@ -478,8 +478,12 @@ pub trait EventSink: Send {
     fn on_tool_call(&mut self, name: &str, arguments: &str);
     /// Called when a tool returns a result.
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool);
+    /// Called when a command tool starts execution.
+    fn on_command_started(&mut self, _command: &str) {}
     /// Called when a command tool emits incremental stdout/stderr output.
     fn on_command_output(&mut self, _stream: &str, _chunk: &str) {}
+    /// Called when a command tool finishes execution.
+    fn on_command_finished(&mut self, _success: bool, _exit_code: i32, _duration_ms: u64) {}
     /// Called when the agent needs user confirmation (L3 security).
     /// Returns true if the user approves.
     fn on_confirmation_request(&mut self, prompt: &str) -> bool;
@@ -628,6 +632,16 @@ impl EventSink for TerminalEventSink {
         }
     }
 
+    fn on_command_started(&mut self, command: &str) {
+        self.show_execution_section();
+        let brief = if command.len() > 120 {
+            format!("{}…", safe_truncate(command, 120))
+        } else {
+            command.to_string()
+        };
+        self.msg(&format!("  ▶ command started: {}", brief));
+    }
+
     fn on_command_output(&mut self, stream: &str, chunk: &str) {
         if chunk.is_empty() {
             return;
@@ -637,6 +651,15 @@ impl EventSink for TerminalEventSink {
         for line in chunk.lines() {
             self.msg(&format!("{}{}", prefix, line));
         }
+    }
+
+    fn on_command_finished(&mut self, success: bool, exit_code: i32, duration_ms: u64) {
+        self.show_execution_section();
+        let icon = if success { "  ■" } else { "  ✗" };
+        self.msg(&format!(
+            "{} command finished: exit {} ({} ms)",
+            icon, exit_code, duration_ms
+        ));
     }
 
     fn on_confirmation_request(&mut self, prompt: &str) -> bool {
@@ -705,8 +728,14 @@ impl EventSink for RunModeEventSink {
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool) {
         self.inner.on_tool_result(name, result, is_error);
     }
+    fn on_command_started(&mut self, command: &str) {
+        self.inner.on_command_started(command);
+    }
     fn on_command_output(&mut self, stream: &str, chunk: &str) {
         self.inner.on_command_output(stream, chunk);
+    }
+    fn on_command_finished(&mut self, success: bool, exit_code: i32, duration_ms: u64) {
+        self.inner.on_command_finished(success, exit_code, duration_ms);
     }
     fn on_confirmation_request(&mut self, prompt: &str) -> bool {
         if !prompt.is_empty() {
