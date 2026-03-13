@@ -80,7 +80,7 @@ pub(super) async fn execute_run_command(
     args: &Value,
     workspace: &Path,
     event_sink: &mut dyn EventSink,
-) -> Result<String> {
+) -> Result<RunCommandOutcome> {
     let cmd = args
         .get("command")
         .and_then(|v| v.as_str())
@@ -114,7 +114,11 @@ pub(super) async fn execute_run_command(
         };
 
         if !event_sink.on_confirmation_request(&confirm_msg) {
-            return Ok("User cancelled command execution".to_string());
+            return Ok(RunCommandOutcome {
+                content: "User cancelled command execution".to_string(),
+                is_error: false,
+                counts_as_failure: false,
+            });
         }
     }
 
@@ -204,7 +208,7 @@ pub(super) async fn execute_run_command(
         Err(_) => {
             let _ = child.kill().await;
             event_sink.on_command_finished(false, -1, start_time.elapsed().as_millis() as u64);
-            return Ok("Error: Command execution timeout (300s)".to_string());
+            return Ok(build_timeout_outcome());
         }
     };
     let exit_code = status.code().unwrap_or(if status.success() { 0 } else { -1 });
@@ -222,12 +226,19 @@ pub(super) async fn execute_run_command(
 
 const MAX_COMMAND_RESULT_CHARS: usize = 2000;
 
+#[derive(Debug, Clone)]
+pub(super) struct RunCommandOutcome {
+    pub content: String,
+    pub is_error: bool,
+    pub counts_as_failure: bool,
+}
+
 fn build_command_result(
     status: ExitStatus,
     stdout_text: &str,
     stderr_text: &str,
     redacted: bool,
-) -> String {
+) -> RunCommandOutcome {
     let code = status.code().unwrap_or(if status.success() { 0 } else { -1 });
     let mut result = if status.success() {
         format!("Command succeeded (exit {}).", code)
@@ -250,7 +261,24 @@ fn build_command_result(
         result.push_str("\n\n[⚠️ Sensitive values (API_KEY, PASSWORD, etc.) have been redacted]");
     }
 
-    result
+    RunCommandOutcome {
+        content: result,
+        is_error: !status.success(),
+        counts_as_failure: false,
+    }
+}
+
+fn build_timeout_outcome() -> RunCommandOutcome {
+    RunCommandOutcome {
+        content: "Error: Command execution timeout (300s)".to_string(),
+        is_error: true,
+        counts_as_failure: true,
+    }
+}
+
+#[cfg(test)]
+pub(super) fn timeout_outcome_for_test() -> RunCommandOutcome {
+    build_timeout_outcome()
 }
 
 fn build_output_preview(success: bool, stdout_text: &str, stderr_text: &str) -> String {

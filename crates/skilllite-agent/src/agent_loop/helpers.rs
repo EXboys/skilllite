@@ -33,6 +33,7 @@ pub(super) fn handle_update_task_plan(
                 tool_name: "update_task_plan".to_string(),
                 content: format!("Invalid JSON: {}", e),
                 is_error: true,
+                counts_as_failure: true,
             };
         }
     };
@@ -44,6 +45,7 @@ pub(super) fn handle_update_task_plan(
                 tool_name: "update_task_plan".to_string(),
                 content: "Missing or invalid 'tasks' array".to_string(),
                 is_error: true,
+                counts_as_failure: true,
             };
         }
     };
@@ -70,6 +72,7 @@ pub(super) fn handle_update_task_plan(
             tool_name: "update_task_plan".to_string(),
             content: "Task list cannot be empty".to_string(),
             is_error: true,
+            counts_as_failure: true,
         };
     }
     // Apply same sanitize & enhance as initial planning (strip unavailable tool_hints, add SKILL.md if needed).
@@ -89,6 +92,7 @@ pub(super) fn handle_update_task_plan(
         tool_name: "update_task_plan".to_string(),
         content,
         is_error: false,
+        counts_as_failure: false,
     }
 }
 
@@ -109,6 +113,7 @@ pub(super) fn handle_complete_task(
                 tool_name: "complete_task".to_string(),
                 content: format!("Invalid JSON: {}", e),
                 is_error: true,
+                counts_as_failure: true,
             };
         }
     };
@@ -121,6 +126,7 @@ pub(super) fn handle_complete_task(
                 tool_name: "complete_task".to_string(),
                 content: "Missing required field: task_id".to_string(),
                 is_error: true,
+                counts_as_failure: true,
             };
         }
     };
@@ -139,6 +145,7 @@ pub(super) fn handle_complete_task(
             tool_name: "complete_task".to_string(),
             content: msg,
             is_error: true,
+            counts_as_failure: true,
         };
     }
 
@@ -157,6 +164,7 @@ pub(super) fn handle_complete_task(
         tool_name: "complete_task".to_string(),
         content: format!(r#"{{"success": true, "task_id": {}, "message": "Task {} marked as completed"}}"#, task_id, task_id),
         is_error: false,
+        counts_as_failure: false,
     }
 }
 

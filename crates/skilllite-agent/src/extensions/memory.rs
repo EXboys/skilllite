@@ -118,6 +118,7 @@ pub async fn execute_memory_tool(
                 tool_name: tool_name.to_string(),
                 content: format!("Invalid arguments JSON: {}", e),
                 is_error: true,
+                counts_as_failure: true,
             };
         }
     };
@@ -140,12 +141,14 @@ pub async fn execute_memory_tool(
             tool_name: tool_name.to_string(),
             content,
             is_error: false,
+            counts_as_failure: false,
         },
         Err(e) => ToolResult {
             tool_call_id: String::new(),
             tool_name: tool_name.to_string(),
             content: format!("Error: {}", e),
             is_error: true,
+            counts_as_failure: true,
         },
     }
 }

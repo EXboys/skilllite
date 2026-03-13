@@ -292,6 +292,8 @@ pub struct ToolResult {
     pub tool_name: String,
     pub content: String,
     pub is_error: bool,
+    /// Whether this result should count toward task failure / replan heuristics.
+    pub counts_as_failure: bool,
 }
 
 impl ToolResult {

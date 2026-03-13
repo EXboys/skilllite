@@ -1075,9 +1075,10 @@ async fn test_run_command_streams_output_and_returns_summary() {
     });
     let mut sink = CaptureSink { started: Vec::new(), outputs: Vec::new(), finished: Vec::new() };
 
-    let result = run_command::execute_run_command(&args, workspace, &mut sink)
+    let outcome = run_command::execute_run_command(&args, workspace, &mut sink)
         .await
         .unwrap();
+    let result = outcome.content;
 
     assert_eq!(sink.started.len(), 1);
     assert_eq!(sink.started[0], "printf 'hello\\n'; printf 'warn\\n' 1>&2");
@@ -1086,6 +1087,8 @@ async fn test_run_command_streams_output_and_returns_summary() {
     assert_eq!(sink.finished.len(), 1);
     assert!(sink.finished[0].0);
     assert_eq!(sink.finished[0].1, 0);
+    assert!(!outcome.is_error);
+    assert!(!outcome.counts_as_failure);
     assert!(result.contains("Output streamed to execution log."));
     assert!(result.contains("[stderr]"));
     assert!(!result.contains("[stdout]\nhello"));
@@ -1103,13 +1106,65 @@ async fn test_run_command_success_preview_is_compact() {
     });
     let mut sink = SilentEventSink;
 
-    let result = run_command::execute_run_command(&args, workspace, &mut sink)
+    let outcome = run_command::execute_run_command(&args, workspace, &mut sink)
         .await
         .unwrap();
+    let result = outcome.content;
 
+    assert!(!outcome.is_error);
+    assert!(!outcome.counts_as_failure);
     assert!(result.contains("[stdout tail]"));
     assert!(result.contains("line3"));
     assert!(result.contains("line4"));
     assert!(!result.contains("line1"));
     assert!(!result.contains("line2"));
+}
+
+#[test]
+fn test_run_command_timeout_outcome_is_structured_failure() {
+    use super::run_command;
+
+    let outcome = run_command::timeout_outcome_for_test();
+
+    assert!(outcome.is_error);
+    assert!(outcome.counts_as_failure);
+    assert!(outcome.content.contains("Command execution timeout"));
+}
+
+#[tokio::test]
+async fn test_execute_async_builtin_run_command_marks_nonzero_exit_as_error() {
+    use crate::types::SilentEventSink;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let arguments = serde_json::json!({
+        "command": "echo ok && ls nonexistent_file"
+    })
+    .to_string();
+    let mut sink = SilentEventSink;
+
+    let result = execute_async_builtin_tool("run_command", &arguments, workspace, &mut sink).await;
+
+    assert!(result.is_error);
+    assert!(!result.counts_as_failure);
+    assert!(result.content.contains("Command failed (exit 1)."));
+}
+
+#[tokio::test]
+async fn test_execute_async_builtin_run_command_marks_zero_exit_as_success() {
+    use crate::types::SilentEventSink;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let arguments = serde_json::json!({
+        "command": "echo ok"
+    })
+    .to_string();
+    let mut sink = SilentEventSink;
+
+    let result = execute_async_builtin_tool("run_command", &arguments, workspace, &mut sink).await;
+
+    assert!(!result.is_error);
+    assert!(!result.counts_as_failure);
+    assert!(result.content.contains("Command succeeded (exit 0)."));
 }

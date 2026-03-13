@@ -226,7 +226,7 @@ pub(super) async fn execute_tool_batch_planning(
         result.tool_call_id = tc.id.clone();
         result.content = process_result_content(client, model, tool_name, &result.content).await;
 
-        if result.is_error {
+        if result.counts_as_failure {
             state.failed_tool_calls += 1;
             state.consecutive_failures += 1;
             if !is_complete {
@@ -235,7 +235,7 @@ pub(super) async fn execute_tool_batch_planning(
                      call update_task_plan with a revised task list, then continue with the new plan."
                 );
             }
-        } else {
+        } else if !result.is_error {
             state.consecutive_failures = 0;
             // Auto-mark task when skill succeeds and matches current task's tool_hint.
             if !is_replan && !is_complete {
@@ -310,10 +310,10 @@ pub(super) async fn execute_tool_batch_simple(
         result.tool_call_id = tc.id.clone();
         result.content = process_result_content(client, model, tool_name, &result.content).await;
 
-        if result.is_error {
+        if result.counts_as_failure {
             state.failed_tool_calls += 1;
             state.consecutive_failures += 1;
-        } else {
+        } else if !result.is_error {
             state.consecutive_failures = 0;
         }
         state.tools_detail.push(ToolExecDetail { tool: tool_name.clone(), success: !result.is_error });

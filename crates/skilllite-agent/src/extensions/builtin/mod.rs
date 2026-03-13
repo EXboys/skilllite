@@ -94,6 +94,7 @@ pub fn execute_builtin_tool(
                             tool_name: tool_name.to_string(),
                             content: format!("Invalid arguments JSON: {}", _e),
                             is_error: true,
+                            counts_as_failure: true,
                         };
                     }
                 }
@@ -103,6 +104,7 @@ pub fn execute_builtin_tool(
                     tool_name: tool_name.to_string(),
                     content: format!("Invalid arguments JSON: {}", _e),
                     is_error: true,
+                    counts_as_failure: true,
                 };
             }
         }
@@ -152,6 +154,7 @@ pub fn execute_builtin_tool(
                 tool_name: tool_name.to_string(),
                 content: final_content,
                 is_error: false,
+                counts_as_failure: false,
             }
         }
         Err(e) => ToolResult {
@@ -159,6 +162,7 @@ pub fn execute_builtin_tool(
             tool_name: tool_name.to_string(),
             content: format!("Error: {}", e),
             is_error: true,
+            counts_as_failure: true,
         },
     }
 }
@@ -177,29 +181,52 @@ pub async fn execute_async_builtin_tool(
                 tool_name: tool_name.to_string(),
                 content: format!("Invalid arguments JSON: {}", e),
                 is_error: true,
+                counts_as_failure: true,
             };
         }
     };
 
+    if tool_name == "run_command" {
+        return match run_command::execute_run_command(&args, workspace, event_sink).await {
+            Ok(outcome) => ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content: outcome.content,
+                is_error: outcome.is_error,
+                counts_as_failure: outcome.counts_as_failure,
+            },
+            Err(e) => ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content: format!("Error: {}", e),
+                is_error: true,
+                counts_as_failure: true,
+            },
+        };
+    }
+
     let result = match tool_name {
-        "run_command" => run_command::execute_run_command(&args, workspace, event_sink).await,
         "preview_server" => preview::execute_preview_server(&args, workspace),
         "delegate_to_swarm" => delegate_swarm::execute_delegate_to_swarm(&args, workspace).await,
         _ => Err(anyhow::anyhow!("Unknown async built-in tool: {}", tool_name)),
     };
 
     match result {
-        Ok(content) => ToolResult {
-            tool_call_id: String::new(),
-            tool_name: tool_name.to_string(),
-            content,
-            is_error: false,
-        },
+        Ok(content) => {
+            ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content,
+                is_error: false,
+                counts_as_failure: false,
+            }
+        }
         Err(e) => ToolResult {
             tool_call_id: String::new(),
             tool_name: tool_name.to_string(),
             content: format!("Error: {}", e),
             is_error: true,
+            counts_as_failure: true,
         },
     }
 }

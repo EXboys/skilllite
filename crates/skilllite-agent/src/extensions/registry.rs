@@ -192,6 +192,7 @@ impl<'a> ExtensionRegistry<'a> {
                     skill.name, docs
                 ),
                 is_error: false,
+                counts_as_failure: false,
             }
         } else {
             ToolResult {
@@ -199,6 +200,7 @@ impl<'a> ExtensionRegistry<'a> {
                 tool_name: tool_name.to_string(),
                 content: format!("Unknown tool: {}", tool_name),
                 is_error: true,
+                counts_as_failure: true,
             }
         }
     }
