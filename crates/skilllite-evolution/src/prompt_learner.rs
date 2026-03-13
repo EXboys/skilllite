@@ -16,6 +16,11 @@ const RULE_EXTRACTION_PROMPT: &str =
 const EXAMPLE_GENERATION_PROMPT: &str =
     include_str!("seed/evolution_prompts/example_generation.seed.md");
 
+/// Effectiveness below which a rule is retired (aligned with skill retire threshold).
+const RETIRE_EFFECTIVENESS_THRESHOLD: f32 = 0.3;
+/// Minimum trigger count before a rule is eligible for retirement (need enough data).
+const RETIRE_MIN_TRIGGER_COUNT: i64 = 5;
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PlanningExample {
     pub id: String,
@@ -34,9 +39,13 @@ pub async fn evolve_prompts<L: EvolutionLlm>(
     chat_root: &Path,
     llm: &L,
     model: &str,
-    _txn_id: &str,
+    txn_id: &str,
 ) -> Result<Vec<(String, String)>> {
     let mut changes = Vec::new();
+
+    // Retire low-effectiveness rules first (selection pressure; frees slots for new rules)
+    let retired = retire_low_effectiveness_rules(chat_root, txn_id)?;
+    changes.extend(retired);
 
     let rule_changes = extract_rules(chat_root, llm, model).await?;
     changes.extend(rule_changes);
@@ -383,6 +392,78 @@ fn parse_example_response(content: &str) -> Result<Option<PlanningExample>> {
         key_insight,
         origin: "evolved".to_string(),
     }))
+}
+
+/// Retire rules with effectiveness below threshold and sufficient trigger history.
+/// Only mutable (evolved/external) rules are retired; seed rules are preserved.
+/// Returns `(change_type, rule_id)` pairs for changelog.
+pub fn retire_low_effectiveness_rules(
+    chat_root: &Path,
+    txn_id: &str,
+) -> Result<Vec<(String, String)>> {
+    let rules_path = chat_root.join("prompts").join("rules.json");
+    if !rules_path.exists() {
+        return Ok(Vec::new());
+    }
+    if !gatekeeper_l1_path(chat_root, &rules_path, None) {
+        anyhow::bail!("Gatekeeper L1: rules.json path outside allowed directories");
+    }
+
+    let conn = crate::feedback::open_evolution_db(chat_root)?;
+    let content = skilllite_fs::read_file(&rules_path)?;
+    let rules: Vec<PlanningRule> = serde_json::from_str(&content)?;
+
+    let mut to_retire: Vec<(String, String)> = Vec::new();
+    let mut kept: Vec<PlanningRule> = Vec::new();
+
+    for rule in rules {
+        if !rule.mutable {
+            kept.push(rule);
+            continue;
+        }
+        let eff = compute_effectiveness(&conn, &rule.id).unwrap_or(-1.0);
+        if eff < 0.0 {
+            kept.push(rule);
+            continue;
+        }
+        let trigger_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM decision_rules WHERE rule_id = ?1",
+                params![rule.id],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+
+        if eff < RETIRE_EFFECTIVENESS_THRESHOLD && trigger_count >= RETIRE_MIN_TRIGGER_COUNT {
+            let reason = format!(
+                "effectiveness {:.0}% < {:.0}% threshold, trigger_count {}",
+                eff * 100.0,
+                RETIRE_EFFECTIVENESS_THRESHOLD * 100.0,
+                trigger_count
+            );
+            let _ = crate::log_evolution_event(
+                &conn,
+                chat_root,
+                "rule_retired",
+                &rule.id,
+                &reason,
+                txn_id,
+            );
+            tracing::info!("Retired rule '{}': {}", rule.id, reason);
+            to_retire.push(("rule_retired".to_string(), rule.id));
+        } else {
+            kept.push(rule);
+        }
+    }
+
+    if to_retire.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let json = serde_json::to_string_pretty(&kept)?;
+    atomic_write(&rules_path, &json)?;
+
+    Ok(to_retire)
 }
 
 pub fn update_reusable_status(conn: &Connection, chat_root: &Path) -> Result<()> {
