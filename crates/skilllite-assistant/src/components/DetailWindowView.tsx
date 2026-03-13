@@ -59,6 +59,7 @@ function LogList({ entries }: { entries: LogEntry[] }) {
           <span className="text-ink-mute/80 dark:text-ink-dark-mute/80">[{e.time}]</span>{" "}
           {e.type === "tool_call" && "→"}
           {e.type === "tool_result" && (e.isError ? "✗" : "✓")}
+          {e.type === "command_output" && (e.isError ? "!" : "│")}
           {e.name && <span className="font-medium">{e.name}: </span>}
           <span className="break-words">{e.text}</span>
         </li>

@@ -233,6 +233,16 @@ export function useChatEvents({
             isError: isErr,
           },
         ]);
+      } else if (event === "command_output") {
+        const stream = (data?.stream as string) ?? "stdout";
+        const chunk = (data?.chunk as string) ?? "";
+        if (!chunk) return;
+        addLog({
+          type: "command_output" as const,
+          name: stream,
+          text: chunk.length > 1200 ? chunk.slice(0, 1200) + "…" : chunk,
+          isError: stream === "stderr",
+        });
       }
     });
 

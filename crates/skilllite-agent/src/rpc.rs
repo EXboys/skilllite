@@ -29,6 +29,7 @@
 //! {"event": "text", "data": {"text": "Hello, how can I help?"}}
 //! {"event": "tool_call", "data": {"name": "read_file", "arguments": "{...}"}}
 //! {"event": "tool_result", "data": {"name": "read_file", "result": "...", "is_error": false}}
+//! {"event": "command_output", "data": {"stream": "stdout", "chunk": "line"}}
 //! {"event": "task_plan", "data": {"tasks": [...]}}
 //! {"event": "task_progress", "data": {"task_id": 1, "completed": true}}
 //! {"event": "confirmation_request", "data": {"prompt": "Execute rm -rf?"}}
@@ -102,6 +103,13 @@ impl EventSink for RpcEventSink {
         self.emit(
             "tool_result",
             json!({ "name": name, "result": result, "is_error": is_error }),
+        );
+    }
+
+    fn on_command_output(&mut self, stream: &str, chunk: &str) {
+        self.emit(
+            "command_output",
+            json!({ "stream": stream, "chunk": chunk }),
         );
     }
 

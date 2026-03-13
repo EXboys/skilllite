@@ -1007,7 +1007,7 @@ fn test_run_command_truncation() {
     let long_output = "x".repeat(10000);
     let truncated = run_command::truncate_command_output_for_test(&long_output);
     assert!(truncated.len() < long_output.len());
-    assert!(truncated.contains("output truncated"));
+    assert!(truncated.contains("preview truncated"));
     assert!(truncated.contains("10000 total chars"));
 }
 
@@ -1037,4 +1037,43 @@ async fn test_run_command_blocks_cat_env() {
     let err = result.unwrap_err();
     assert!(err.to_string().contains("Blocked"));
     assert!(err.to_string().contains("sensitive file"));
+}
+
+#[tokio::test]
+async fn test_run_command_streams_output_and_returns_summary() {
+    use super::run_command;
+    use crate::types::EventSink;
+
+    struct CaptureSink {
+        outputs: Vec<(String, String)>,
+    }
+
+    impl EventSink for CaptureSink {
+        fn on_text(&mut self, _text: &str) {}
+        fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+        fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+        fn on_command_output(&mut self, stream: &str, chunk: &str) {
+            self.outputs.push((stream.to_string(), chunk.to_string()));
+        }
+        fn on_confirmation_request(&mut self, _prompt: &str) -> bool {
+            true
+        }
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let args = serde_json::json!({
+        "command": "printf 'hello\\n'; printf 'warn\\n' 1>&2"
+    });
+    let mut sink = CaptureSink { outputs: Vec::new() };
+
+    let result = run_command::execute_run_command(&args, workspace, &mut sink)
+        .await
+        .unwrap();
+
+    assert!(sink.outputs.iter().any(|(stream, chunk)| stream == "stdout" && chunk == "hello"));
+    assert!(sink.outputs.iter().any(|(stream, chunk)| stream == "stderr" && chunk == "warn"));
+    assert!(result.contains("Output streamed to execution log."));
+    assert!(result.contains("[stdout]"));
+    assert!(result.contains("[stderr]"));
 }

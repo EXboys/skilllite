@@ -3,6 +3,7 @@
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
+use std::process::ExitStatus;
 
 use crate::high_risk;
 use crate::types::{EventSink, ToolDefinition, FunctionDef, safe_truncate, safe_slice_from};
@@ -119,6 +120,7 @@ pub(super) async fn execute_run_command(
 
     use tokio::io::{AsyncBufReadExt, BufReader};
     use tokio::process::Command;
+    use tokio::sync::mpsc;
 
     let mut child = Command::new("sh")
         .arg("-c")
@@ -131,80 +133,131 @@ pub(super) async fn execute_run_command(
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
-    let mut output_lines = Vec::new();
+    let (tx, mut rx) = mpsc::unbounded_channel::<(&'static str, String)>();
 
     if let Some(stdout) = stdout {
-        let mut reader = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            output_lines.push(line);
-        }
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stdout).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                if tx.send(("stdout", line)).is_err() {
+                    break;
+                }
+            }
+        });
     }
 
-    let mut stderr_lines = Vec::new();
     if let Some(stderr) = stderr {
-        let mut reader = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            stderr_lines.push(line);
-        }
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let mut reader = BufReader::new(stderr).lines();
+            while let Ok(Some(line)) = reader.next_line().await {
+                if tx.send(("stderr", line)).is_err() {
+                    break;
+                }
+            }
+        });
     }
+    drop(tx);
 
     let timeout_duration = tokio::time::Duration::from_secs(300);
-    let status = match tokio::time::timeout(timeout_duration, child.wait()).await {
-        Ok(Ok(status)) => status,
-        Ok(Err(e)) => {
-            return Ok(format!("Error waiting for command: {}", e));
+    let mut stdout_lines = Vec::new();
+    let mut stderr_lines = Vec::new();
+    let mut redacted_any = false;
+
+    let status = match tokio::time::timeout(timeout_duration, async {
+        let mut wait_fut = Box::pin(child.wait());
+        let mut status: Option<ExitStatus> = None;
+        let mut streams_open = true;
+
+        while status.is_none() || streams_open {
+            tokio::select! {
+                maybe = rx.recv(), if streams_open => {
+                    match maybe {
+                        Some((stream, line)) => {
+                            let (filtered_line, redacted) = filter_sensitive_content_in_text(&line);
+                            if redacted {
+                                redacted_any = true;
+                            }
+                            event_sink.on_command_output(stream, &filtered_line);
+                            if stream == "stderr" {
+                                stderr_lines.push(filtered_line);
+                            } else {
+                                stdout_lines.push(filtered_line);
+                            }
+                        }
+                        None => streams_open = false,
+                    }
+                }
+                wait_res = &mut wait_fut, if status.is_none() => {
+                    status = Some(wait_res.with_context(|| format!("Error waiting for command: {}", cmd))?);
+                }
+            }
         }
+
+        status.context("command finished without exit status")
+    }).await {
+        Ok(Ok(status)) => status,
+        Ok(Err(e)) => return Err(e),
         Err(_) => {
             let _ = child.kill().await;
             return Ok("Error: Command execution timeout (300s)".to_string());
         }
     };
 
-    let stdout_text = output_lines.join("\n");
+    let stdout_text = stdout_lines.join("\n");
     let stderr_text = stderr_lines.join("\n");
-    let mut result = String::new();
-
-    if status.success() {
-        if stdout_text.is_empty() && stderr_text.is_empty() {
-            result.push_str("Command succeeded (exit 0)");
-        } else {
-            let (filtered_stdout, redacted) = filter_sensitive_content_in_text(&stdout_text);
-            let filtered_stderr = if !stderr_text.is_empty() {
-                filter_sensitive_content_in_text(&stderr_text).0
-            } else {
-                String::new()
-            };
-            result.push_str(&format!("Command succeeded (exit 0):\n{}", filtered_stdout));
-            if !filtered_stderr.is_empty() {
-                result.push_str(&format!("\n[stderr]: {}", filtered_stderr));
-            }
-            if redacted {
-                result.push_str("\n\n[⚠️ Sensitive values (API_KEY, PASSWORD, etc.) have been redacted]");
-            }
-        }
-    } else {
-        let code = status.code().unwrap_or(-1);
-        let (combined, redacted) = if !stdout_text.is_empty() && !stderr_text.is_empty() {
-            let (f_stdout, r1) = filter_sensitive_content_in_text(&stdout_text);
-            let (f_stderr, r2) = filter_sensitive_content_in_text(&stderr_text);
-            (format!("{}\n[stderr]: {}", f_stdout, f_stderr), r1 || r2)
-        } else if !stderr_text.is_empty() {
-            let (f, r) = filter_sensitive_content_in_text(&stderr_text);
-            (f, r)
-        } else {
-            let (f, r) = filter_sensitive_content_in_text(&stdout_text);
-            (f, r)
-        };
-        result.push_str(&format!("Command failed (exit {}):\n{}", code, combined));
-        if redacted {
-            result.push_str("\n\n[⚠️ Sensitive values (API_KEY, PASSWORD, etc.) have been redacted]");
-        }
-    }
-
-    Ok(truncate_command_output(&result))
+    Ok(build_command_result(
+        status,
+        &stdout_text,
+        &stderr_text,
+        redacted_any,
+    ))
 }
 
-const MAX_COMMAND_OUTPUT_CHARS: usize = 8000;
+const MAX_COMMAND_RESULT_CHARS: usize = 2000;
+
+fn build_command_result(
+    status: ExitStatus,
+    stdout_text: &str,
+    stderr_text: &str,
+    redacted: bool,
+) -> String {
+    let code = status.code().unwrap_or(if status.success() { 0 } else { -1 });
+    let mut result = if status.success() {
+        format!("Command succeeded (exit {}).", code)
+    } else {
+        format!("Command failed (exit {}).", code)
+    };
+
+    if stdout_text.is_empty() && stderr_text.is_empty() {
+        result.push_str("\nNo stdout/stderr was produced.");
+    } else {
+        result.push_str("\nOutput streamed to execution log.");
+        result.push_str("\n\nPreview:\n");
+        result.push_str(&truncate_command_output(&build_output_preview(
+            stdout_text,
+            stderr_text,
+        )));
+    }
+
+    if redacted {
+        result.push_str("\n\n[⚠️ Sensitive values (API_KEY, PASSWORD, etc.) have been redacted]");
+    }
+
+    result
+}
+
+fn build_output_preview(stdout_text: &str, stderr_text: &str) -> String {
+    let mut parts = Vec::new();
+    if !stdout_text.is_empty() {
+        parts.push(format!("[stdout]\n{}", stdout_text));
+    }
+    if !stderr_text.is_empty() {
+        parts.push(format!("[stderr]\n{}", stderr_text));
+    }
+    parts.join("\n\n")
+}
 
 #[cfg(test)]
 pub(super) fn truncate_command_output_for_test(output: &str) -> String {
@@ -212,17 +265,17 @@ pub(super) fn truncate_command_output_for_test(output: &str) -> String {
 }
 
 fn truncate_command_output(output: &str) -> String {
-    if output.len() <= MAX_COMMAND_OUTPUT_CHARS {
+    if output.len() <= MAX_COMMAND_RESULT_CHARS {
         return output.to_string();
     }
 
-    let head_size = MAX_COMMAND_OUTPUT_CHARS * 2 / 3;
-    let tail_size = MAX_COMMAND_OUTPUT_CHARS / 3;
+    let head_size = MAX_COMMAND_RESULT_CHARS * 2 / 3;
+    let tail_size = MAX_COMMAND_RESULT_CHARS / 3;
     let head = safe_truncate(output, head_size);
     let tail = safe_slice_from(output, output.len().saturating_sub(tail_size));
 
     format!(
-        "{}\n\n[... output truncated: {} total chars, showing head + tail ...]\n\n{}",
+        "{}\n\n[... preview truncated: {} total chars, showing head + tail ...]\n\n{}",
         head,
         output.len(),
         tail

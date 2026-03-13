@@ -478,6 +478,8 @@ pub trait EventSink: Send {
     fn on_tool_call(&mut self, name: &str, arguments: &str);
     /// Called when a tool returns a result.
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool);
+    /// Called when a command tool emits incremental stdout/stderr output.
+    fn on_command_output(&mut self, _stream: &str, _chunk: &str) {}
     /// Called when the agent needs user confirmation (L3 security).
     /// Returns true if the user approves.
     fn on_confirmation_request(&mut self, prompt: &str) -> bool;
@@ -626,6 +628,17 @@ impl EventSink for TerminalEventSink {
         }
     }
 
+    fn on_command_output(&mut self, stream: &str, chunk: &str) {
+        if chunk.is_empty() {
+            return;
+        }
+        self.show_execution_section();
+        let prefix = if stream == "stderr" { "  ! " } else { "  │ " };
+        for line in chunk.lines() {
+            self.msg(&format!("{}{}", prefix, line));
+        }
+    }
+
     fn on_confirmation_request(&mut self, prompt: &str) -> bool {
         use std::io::Write;
         self.msg_opt(prompt);
@@ -691,6 +704,9 @@ impl EventSink for RunModeEventSink {
     }
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool) {
         self.inner.on_tool_result(name, result, is_error);
+    }
+    fn on_command_output(&mut self, stream: &str, chunk: &str) {
+        self.inner.on_command_output(stream, chunk);
     }
     fn on_confirmation_request(&mut self, prompt: &str) -> bool {
         if !prompt.is_empty() {
