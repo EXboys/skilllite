@@ -94,14 +94,11 @@ pub(super) fn execute_preview_server(
             if state.serve_dir == serve_dir_str {
                 let url = build_preview_url(state.port, target_file.as_deref());
                 event_sink.on_preview_ready(&url, state.port);
-                if should_open_browser {
-                    open_browser(&url);
-                }
                 return Ok(format!(
                     "Preview server already running at {}\n\n\
                      Open in browser: {}\n\
                      Serving directory: {}\n\
-                     (Browser opened with fresh page.)",
+                     (Server was already started. Browser tab is already open — no action needed.)",
                     url, url, serve_dir_str
                 ));
             }

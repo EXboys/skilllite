@@ -190,10 +190,10 @@ impl EventSink for RpcEventSink {
         self.emit("task_plan", json!({ "tasks": tasks }));
     }
 
-    fn on_task_progress(&mut self, task_id: u32, completed: bool) {
+    fn on_task_progress(&mut self, task_id: u32, completed: bool, tasks: &[Task]) {
         self.emit(
             "task_progress",
-            json!({ "task_id": task_id, "completed": completed }),
+            json!({ "task_id": task_id, "completed": completed, "tasks": tasks }),
         );
     }
 }

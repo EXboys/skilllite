@@ -171,7 +171,7 @@ pub(super) fn handle_complete_task(
         .to_string();
 
     planner.mark_completed(task_id);
-    event_sink.on_task_progress(task_id, true);
+    event_sink.on_task_progress(task_id, true, &planner.task_list);
     tracing::info!("complete_task: task {} marked done. summary={:?}", task_id, summary);
 
     super::super::types::ToolResult {

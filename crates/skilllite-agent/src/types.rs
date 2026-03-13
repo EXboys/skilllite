@@ -510,7 +510,8 @@ pub trait EventSink: Send {
     /// Called when a task plan is generated. (Phase 2)
     fn on_task_plan(&mut self, _tasks: &[Task]) {}
     /// Called when a task's status changes. (Phase 2)
-    fn on_task_progress(&mut self, _task_id: u32, _completed: bool) {}
+    /// `tasks` contains the full updated task list for progress rendering.
+    fn on_task_progress(&mut self, _task_id: u32, _completed: bool, _tasks: &[Task]) {}
 }
 
 /// Silent event sink for background operations (e.g. pre-compaction memory flush).
@@ -763,9 +764,28 @@ impl EventSink for TerminalEventSink {
         }
     }
 
-    fn on_task_progress(&mut self, task_id: u32, completed: bool) {
+    fn on_task_progress(&mut self, task_id: u32, completed: bool, tasks: &[Task]) {
         if completed {
             self.msg(&format!("  ✅ Task {} completed", task_id));
+        }
+        if !tasks.is_empty() {
+            let completed_count = tasks.iter().filter(|t| t.completed).count();
+            self.msg(&format!("  📋 进度 ({}/{}):", completed_count, tasks.len()));
+            for task in tasks {
+                let status = if task.completed {
+                    "✅"
+                } else if task.id == tasks.iter().find(|t| !t.completed).map(|t| t.id).unwrap_or(0) {
+                    "▶"
+                } else {
+                    "○"
+                };
+                let hint = task
+                    .tool_hint
+                    .as_deref()
+                    .map(|h| format!(" [{}]", h))
+                    .unwrap_or_default();
+                self.msg(&format!("     {}. {} {}{}", task.id, status, task.description, hint));
+            }
         }
     }
 }
@@ -846,8 +866,8 @@ impl EventSink for RunModeEventSink {
     fn on_task_plan(&mut self, tasks: &[Task]) {
         self.inner.on_task_plan(tasks);
     }
-    fn on_task_progress(&mut self, task_id: u32, completed: bool) {
-        self.inner.on_task_progress(task_id, completed);
+    fn on_task_progress(&mut self, task_id: u32, completed: bool, tasks: &[Task]) {
+        self.inner.on_task_progress(task_id, completed, tasks);
     }
 }
 

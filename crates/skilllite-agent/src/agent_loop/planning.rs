@@ -144,17 +144,30 @@ pub(super) async fn run_planning_phase(
 
 /// Build the per-iteration task-focus message injected after tool execution.
 /// Returns `None` when there is no pending task.
-pub(super) fn build_task_focus_message(planner: &TaskPlanner) -> Option<String> {
+///
+/// `tools_already_called`: deduplicated list of tool names successfully called
+/// so far in this session. Injected so the LLM can avoid redundant calls
+/// (e.g. not re-calling preview_server when the server is already running).
+pub(super) fn build_task_focus_message(
+    planner: &TaskPlanner,
+    tools_already_called: &[String],
+) -> Option<String> {
     let current = planner.current_task()?;
     let tool_hint = current.tool_hint.as_deref().unwrap_or("");
     let pending_tasks = planner.task_list.iter().filter(|t| !t.completed).count();
     let preferred_tools = TaskPlanner::preferred_tool_names_for_hint(tool_hint).join(",");
+    let already_called = if tools_already_called.is_empty() {
+        "none".to_string()
+    } else {
+        tools_already_called.join(",")
+    };
 
     Some(format!(
         "[internal_task_focus]\n\
 current_task_id={}\n\
 pending_tasks={}\n\
 tool_hint={}\n\
+already_called_this_session={}\n\
 final_summary_allowed=false\n\
 replan_allowed=true\n\
 preferred_tools={}\n\
@@ -163,6 +176,7 @@ do_not_quote_or_repeat_this_block=true\n\
         current.id,
         pending_tasks,
         if tool_hint.is_empty() { "none" } else { tool_hint },
+        already_called,
         if preferred_tools.is_empty() { "none".to_string() } else { preferred_tools }
     ))
 }
@@ -210,16 +224,22 @@ mod tests {
             },
         ];
 
-        let msg = build_task_focus_message(&planner).unwrap();
+        let msg = build_task_focus_message(&planner, &[]).unwrap();
         assert!(msg.contains("[internal_task_focus]"));
         assert!(msg.contains("current_task_id=1"));
         assert!(msg.contains("pending_tasks=2"));
         assert!(msg.contains("tool_hint=file_write"));
+        assert!(msg.contains("already_called_this_session=none"));
         assert!(msg.contains("final_summary_allowed=false"));
         assert!(msg.contains("preferred_tools=write_file,write_output"));
         assert!(!msg.contains("Task progress update"));
         assert!(!msg.contains("\"id\": 1"));
         assert!(!msg.contains("Preferred tools:"));
+
+        // With tools already called
+        let tools = vec!["write_file".to_string(), "preview_server".to_string()];
+        let msg2 = build_task_focus_message(&planner, &tools).unwrap();
+        assert!(msg2.contains("already_called_this_session=write_file,preview_server"));
     }
 }
 

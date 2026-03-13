@@ -383,8 +383,15 @@ async fn run_with_task_planning(
         // A13: Per-iteration checkpoint (run mode) for --resume
         maybe_save_checkpoint(session_key, user_message, config, &planner, &messages, &chat_root);
 
-        // Task focus: inject progress update as system message
-        if let Some(focus_msg) = build_task_focus_message(&planner) {
+        // Task focus: inject progress update with already-called tools
+        let tools_called: Vec<String> = {
+            let mut seen = HashSet::new();
+            state.tools_detail.iter()
+                .filter(|d| d.success)
+                .filter_map(|d| if seen.insert(d.tool.clone()) { Some(d.tool.clone()) } else { None })
+                .collect()
+        };
+        if let Some(focus_msg) = build_task_focus_message(&planner, &tools_called) {
             messages.push(ChatMessage::system(&focus_msg));
         }
 

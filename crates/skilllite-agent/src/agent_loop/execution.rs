@@ -167,6 +167,12 @@ pub(super) async fn execute_tool_batch_planning(
         };
     }
 
+    // After a complete_task triggers a task transition, all remaining tool
+    // calls in this batch are skipped. This prevents the LLM from executing
+    // work for future tasks without seeing the updated progress context that
+    // the next iteration would inject (task focus message, nudge, etc.).
+    let mut task_transitioned = false;
+
     for tc in tool_calls {
         let tool_name = &tc.function.name;
         let arguments = &tc.function.arguments;
@@ -174,13 +180,32 @@ pub(super) async fn execute_tool_batch_planning(
 
         let is_replan = tool_name.as_str() == "update_task_plan";
         let is_complete = tool_name.as_str() == "complete_task";
+
+        if task_transitioned {
+            tracing::info!(
+                "Skipped post-transition tool call: {} (task already advanced, deferring to next iteration)",
+                tool_name
+            );
+            let result = ToolResult {
+                tool_call_id: tc.id.clone(),
+                tool_name: tool_name.clone(),
+                content: "Skipped: a task was just completed and the plan advanced. \
+                          Continue with the next task in your next response."
+                    .to_string(),
+                is_error: false,
+                counts_as_failure: false,
+            };
+            event_sink.on_tool_result(tool_name, &result.content, false);
+            messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
+            continue;
+        }
+
         // Snapshot current task before execution to detect task transitions.
         let task_before = planner.current_task().map(|t| t.id);
         let start_time = Instant::now();
         let mut result = if is_replan {
             state.replan_count += 1;
             let mut r = handle_update_task_plan(arguments, planner, skills, event_sink);
-            // Soft limit: replan accepted, but nudge the model to stop replanning.
             if !r.is_error && state.replan_count >= MAX_REPLANS_PER_SESSION {
                 r.content.push_str(&format!(
                     "\n\n⚠️ You have now replanned {} time(s). \
@@ -211,18 +236,17 @@ pub(super) async fn execute_tool_batch_planning(
         } else if !result.is_error {
             state.consecutive_failures = 0;
         }
-        // If the current task changed (via complete_task), reset the
-        // per-task depth counter so the next task gets its full quota (fixes 遗漏1).
+        // Detect task transition (via complete_task) and set cutoff flag.
         let task_after = planner.current_task().map(|t| t.id);
         if task_after != task_before {
             state.tool_calls_current_task = 0;
+            task_transitioned = true;
         }
         if !is_replan && !is_complete {
             state.tools_detail.push(ToolExecDetail { tool: tool_name.clone(), success: !result.is_error });
         }
 
         let elapsed_ms = start_time.elapsed().as_millis() as u64;
-        // Write to transcript for complete traceability
         write_tool_to_transcript(
             session_key,
             &tc.id,
