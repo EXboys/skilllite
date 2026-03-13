@@ -121,8 +121,8 @@
     "priority": 92,
     "keywords": ["官网", "网站", "网站设计", "设计网页", "设计页面", "前端设计", "页面设计", "landing page", "website", "web page", "homepage", "首页", "网站首页", "官方网站", "做个网站", "做一个网站", "生成网站", "生成页面", "生成网页"],
     "context_keywords": [],
-    "tool_hint": "file_operation",
-    "instruction": "**官网/网站/网页设计**: When the user asks to design or generate a website, landing page, or web page, you MUST plan exactly TWO tasks: (1) Generate the complete HTML/CSS/JS and use **write_output** to save to index.html (tool_hint: file_operation); (2) Use **preview_server** to start local server and open in browser (tool_hint: file_operation). If a frontend-design skill exists, it is reference-only — use its design guidelines but output via write_output. Do NOT call the frontend-design skill directly. Do NOT return empty list — website generation requires file output + preview.",
+    "tool_hint": "file_write",
+    "instruction": "**官网/网站/网页设计**: When the user asks to design or generate a website, landing page, or web page, you MUST plan exactly TWO tasks: (1) Generate the complete HTML/CSS/JS and use **write_output** to save to index.html (tool_hint: file_write); (2) Use **preview_server** to start local server and open in browser (tool_hint: preview). If a frontend-design skill exists, it is reference-only — use its design guidelines but output via write_output. Do NOT call the frontend-design skill directly. Do NOT return empty list — website generation requires file output + preview.",
     "mutable": false,
     "origin": "seed"
   },
@@ -131,8 +131,8 @@
     "priority": 90,
     "keywords": ["html渲染", "渲染出来", "预览", "在浏览器中打开", "html呈现", "网页渲染", "PPT"],
     "context_keywords": [],
-    "tool_hint": "file_operation",
-    "instruction": "**HTML/PPT/渲染/预览**: When the user asks for HTML rendering or browser preview, use **write_output** + **preview_server**.",
+    "tool_hint": "file_write",
+    "instruction": "**HTML/PPT/渲染/预览**: When the user asks for HTML rendering or browser preview, use **write_output** (tool_hint: file_write) + **preview_server** (tool_hint: preview).",
     "mutable": false,
     "origin": "seed"
   },
@@ -142,7 +142,7 @@
     "keywords": ["历史记录", "聊天记录", "聊天历史", "查看记录", "chat history", "conversation history", "past chat"],
     "context_keywords": [],
     "tool_hint": "chat_history",
-    "instruction": "**历史记录/聊天记录**: When the user asks to view, summarize, or analyze past chat/conversation history, you MUST use **chat_history** (built-in). Do NOT use list_directory or file_operation — chat_history reads directly from transcripts. Plan: (1) Use chat_history with date if specified; (2) Analyze/summarize the content.",
+    "instruction": "**历史记录/聊天记录**: When the user asks to view, summarize, or analyze past chat/conversation history, you MUST use **chat_history** (built-in). Do NOT use `file_list`, `file_read`, or legacy `file_operation` — chat_history reads directly from transcripts. Plan: (1) Use chat_history with date if specified; (2) Analyze/summarize the content.",
     "mutable": false,
     "origin": "seed"
   },
@@ -170,8 +170,8 @@
     "priority": 85,
     "keywords": ["refactor", "重构", "修改代码", "改成", "改成Result", "panic", "unwrap"],
     "context_keywords": [],
-    "tool_hint": "file_operation",
-    "instruction": "**代码重构/修改**: When the user asks to refactor code (e.g. panic改成Result, 修改API), plan: (1) grep_files to locate targets; (2) search_replace/insert_lines to modify; (3) run_command to verify (tests/build). tool_hint: file_operation.",
+    "tool_hint": "file_edit",
+    "instruction": "**代码重构/修改**: When the user asks to refactor code (e.g. panic改成Result, 修改API), plan: (1) inspect relevant files with file_read; (2) modify with file_edit; (3) verify with command. Use tool hints `file_read`, `file_edit`, and `command` respectively.",
     "mutable": false,
     "origin": "seed"
   },
@@ -180,8 +180,8 @@
     "priority": 84,
     "keywords": ["修复", "fix", "bug", "添加测试", "加单元测试", "写测试", "add test", "unit test"],
     "context_keywords": [],
-    "tool_hint": "file_operation",
-    "instruction": "**修复bug/添加测试**: When the user asks to fix a bug or add tests, plan: (1) read_file/list_directory to understand codebase; (2) search_replace/insert_lines to fix or add tests; (3) run_command to run tests. tool_hint: file_operation.",
+    "tool_hint": "file_edit",
+    "instruction": "**修复bug/添加测试**: When the user asks to fix a bug or add tests, plan: (1) use `file_list`/`file_read` to understand codebase; (2) use `file_edit` to fix code or add tests; (3) use `command` to run tests.",
     "mutable": false,
     "origin": "seed"
   },
@@ -190,8 +190,8 @@
     "priority": 92,
     "keywords": ["输出到", "输出到output", "保存到", "写到文件", "写入文件", "保存为", "输出到文件", "save to", "output to", "write to file"],
     "context_keywords": [],
-    "tool_hint": "file_operation",
-    "instruction": "**输出到 output/文件**: When the user explicitly asks to output, save, or write content to a file (e.g. 输出到output, 保存到文件, 写到 output), you MUST plan a file_operation task using **write_output**. Even if the content is an article, report, or markdown, saving to file requires the tool. Return a task with tool_hint: \"file_operation\" and description like \"Use write_output to save the generated content to output/<filename>\".",
+    "tool_hint": "file_write",
+    "instruction": "**输出到 output/文件**: When the user explicitly asks to output, save, or write content to a file (e.g. 输出到output, 保存到文件, 写到 output), you MUST plan a `file_write` task using **write_output**. Even if the content is an article, report, or markdown, saving to file requires the tool. Return a task with tool_hint: \"file_write\" and description like \"Use write_output to save the generated content to output/<filename>\".",
     "mutable": false,
     "origin": "seed"
   }

@@ -30,7 +30,10 @@ use super::soul::Soul;
 use super::types::*;
 
 use helpers::build_agent_result;
-use execution::{ExecutionState, execute_tool_batch_planning, execute_tool_batch_simple};
+use execution::{
+    ExecutionState, should_suppress_planning_assistant_text,
+    execute_tool_batch_planning, execute_tool_batch_simple,
+};
 use planning::{PlanningResult, run_planning_phase, maybe_save_checkpoint, build_task_focus_message};
 use reflection::{ReflectionOutcome, reflect_simple, reflect_planning};
 
@@ -290,14 +293,21 @@ async fn run_with_task_planning(
             .ok_or_else(|| anyhow::anyhow!("No choices in LLM response"))?;
         let assistant_content = choice.message.content.clone();
         let tool_calls = choice.message.tool_calls.clone();
+        let has_tool_calls = tool_calls.as_ref().map_or(false, |tc| !tc.is_empty());
+        let suppressed_planning_text = should_suppress_planning_assistant_text(&planner, has_tool_calls)
+            && assistant_content.as_ref().map_or(false, |content| !content.trim().is_empty());
+        let assistant_content = if suppressed_planning_text {
+            tracing::info!("Suppressed free-form assistant text during pending task execution");
+            None
+        } else {
+            assistant_content
+        };
 
         if let Some(ref tcs) = tool_calls {
             messages.push(ChatMessage::assistant_with_tool_calls(assistant_content.as_deref(), tcs.clone()));
         } else if let Some(ref content) = assistant_content {
             messages.push(ChatMessage::assistant(content));
         }
-
-        let has_tool_calls = tool_calls.as_ref().map_or(false, |tc| !tc.is_empty());
 
         // Emit suppressed text when LLM did return real tool calls (not a hallucination)
         if suppress_stream && has_tool_calls {
@@ -332,6 +342,23 @@ async fn run_with_task_planning(
         if outcome.failure_limit_reached {
             tracing::warn!("Stopping: {} consecutive tool failures", state.consecutive_failures);
             break;
+        }
+        if let Some(note) = outcome.plan_deviation_note {
+            if !planner.all_completed() {
+                messages.push(ChatMessage::user(&format!(
+                    "{}\n\nIf the current task boundary is no longer useful, revise the plan with `update_task_plan`. Otherwise continue with the work.",
+                    note
+                )));
+            }
+        }
+        if suppressed_planning_text && !planner.all_completed() {
+            if let Some(nudge) = planner.build_nudge_message() {
+                messages.push(ChatMessage::user(&format!(
+                    "Pending tasks still exist. During execution, do not use free-form completion or wrap-up text. \
+                     Complete the current task structurally with `complete_task`, then continue.\n\n{}",
+                    nudge
+                )));
+            }
         }
         if outcome.depth_limit_reached {
             let depth_msg = planner.build_depth_limit_message(config.max_tool_calls_per_task);

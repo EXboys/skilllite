@@ -43,19 +43,19 @@ Return: [{"id": 1, "description": "Use http-request to fetch QS rankings...", "t
 
 Example 7 - HTML/PPT rendering (MUST use write_output + preview_server):
 User request: "帮我设计一个关于skilllite的介绍和分析的ppt，你可以通过html渲染出来给我"
-Return: [{"id": 1, "description": "Use write_output to save HTML presentation to output/index.html", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Use preview_server to start local server and open in browser", "tool_hint": "file_operation", "completed": false}]
+Return: [{"id": 1, "description": "Use write_output to save HTML presentation to output/index.html", "tool_hint": "file_write", "completed": false}, {"id": 2, "description": "Use preview_server to start local server and open in browser", "tool_hint": "preview", "completed": false}]
 
 Example 8 - Website / landing page design (MUST use write_output + preview_server, exactly 2 tasks):
 User request: "生成一个关于skilllite 的官网"
-Return: [{"id": 1, "description": "Design and generate complete website, save to output/index.html using write_output", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Use preview_server to open in browser", "tool_hint": "file_operation", "completed": false}]
+Return: [{"id": 1, "description": "Design and generate complete website, save to output/index.html using write_output", "tool_hint": "file_write", "completed": false}, {"id": 2, "description": "Use preview_server to open in browser", "tool_hint": "preview", "completed": false}]
 
-Example 9 - Chat history (MUST use chat_history, NOT list_directory or file_operation):
+Example 9 - Chat history (MUST use chat_history, NOT file_list/file_read/file_operation):
 User request: "查看20260216的历史记录" or "查看昨天的聊天记录"
 Return: [{"id": 1, "description": "Use chat_history to read transcript for the specified date", "tool_hint": "chat_history", "completed": false}, {"id": 2, "description": "Analyze and summarize the chat content", "tool_hint": "analysis", "completed": false}]
 
 Example 10 - User asks to output/save to file (MUST use write_output, even for articles):
 User request: "写一篇CSDN文章，输出到output" or "帮我写技术博客，保存到 output 目录"
-Return: [{"id": 1, "description": "Generate the article content and use write_output to save to output directory", "tool_hint": "file_operation", "completed": false}]
+Return: [{"id": 1, "description": "Generate the article content and use write_output to save to output directory", "tool_hint": "file_write", "completed": false}]
 
 Example 11 - User asks to analyze AI stability / project issues (MUST use chat_history, NOT write_output):
 User request: "分析一下最近几次的ai的稳定性以及项目的问题" or "分析历史消息的健壮性"
@@ -64,16 +64,16 @@ Note: The user wants ANALYSIS of existing data, NOT a new article. Do NOT plan w
 
 Example 12 - Multi-source aggregation (fetch A, fetch B, compare, output):
 User request: "对比 Rust 和 Go 的优缺点，输出到 output/report.md"
-Return: [{"id": 1, "description": "Use http-request to fetch current info about Rust", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Use http-request to fetch current info about Go", "tool_hint": "http-request", "completed": false}, {"id": 3, "description": "Analyze and compare, use write_output to save report", "tool_hint": "file_operation", "completed": false}]
+Return: [{"id": 1, "description": "Use http-request to fetch current info about Rust", "tool_hint": "http-request", "completed": false}, {"id": 2, "description": "Use http-request to fetch current info about Go", "tool_hint": "http-request", "completed": false}, {"id": 3, "description": "Analyze and compare, use write_output to save report", "tool_hint": "file_write", "completed": false}]
 
 Example 13 - Long-chain coding task (refactor panic to Result):
 User request: "把 API 里所有 panic 改成 Result 返回"
-Return: [{"id": 1, "description": "Use grep_files to find panic locations in codebase", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Use search_replace to replace each panic with Result return", "tool_hint": "file_operation", "completed": false}, {"id": 3, "description": "Use run_command to run tests and verify", "tool_hint": "file_operation", "completed": false}]
+Return: [{"id": 1, "description": "Use read_file to inspect relevant source files and locate panic usage", "tool_hint": "file_read", "completed": false}, {"id": 2, "description": "Use search_replace or write_file to replace each panic with Result return", "tool_hint": "file_edit", "completed": false}, {"id": 3, "description": "Use run_command to run tests and verify", "tool_hint": "command", "completed": false}]
 
 Example 14 - Vague request (explore then act):
 User request: "整理一下项目"
-Return: [{"id": 1, "description": "Use list_directory to explore project structure", "tool_hint": "file_operation", "completed": false}, {"id": 2, "description": "Analyze structure and organize files (move, rename, or document)", "tool_hint": "file_operation", "completed": false}]
+Return: [{"id": 1, "description": "Use list_directory to explore project structure", "tool_hint": "file_list", "completed": false}, {"id": 2, "description": "Analyze structure and propose how to organize files", "tool_hint": "analysis", "completed": false}]
 
 Example 15 - Mixed skill (weather + analysis + output):
 User request: "查深圳天气，适合的话写一段出游推荐，否则写宅家建议，保存到 output/advice.md"
-Return: [{"id": 1, "description": "Use weather skill to query Shenzhen weather", "tool_hint": "weather", "completed": false}, {"id": 2, "description": "Based on weather write recommendation, use write_output to save", "tool_hint": "file_operation", "completed": false}]
+Return: [{"id": 1, "description": "Use weather skill to query Shenzhen weather", "tool_hint": "weather", "completed": false}, {"id": 2, "description": "Based on weather write recommendation, use write_output to save", "tool_hint": "file_write", "completed": false}]

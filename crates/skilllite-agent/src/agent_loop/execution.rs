@@ -120,44 +120,81 @@ pub(super) struct ToolBatchOutcome {
     pub failure_limit_reached: bool,
     /// Per-task call depth reached — caller should inject depth-limit message.
     pub depth_limit_reached: bool,
+    /// Soft signal that execution drifted away from the current task hint.
+    pub plan_deviation_note: Option<String>,
 }
 
-// ── Auto-mark on skill success ─────────────────────────────────────────────────
+fn normalize_tool_name(name: &str) -> String {
+    name.replace('-', "_").to_lowercase()
+}
 
-/// If the tool result contains `"success": true` and the tool matches the current
-/// task's tool_hint, mark that task completed. Reduces redundant retries when the
-/// LLM doesn't call update_task_plan.
-fn try_auto_mark_task_on_success(
-    planner: &mut TaskPlanner,
-    tool_name: &str,
-    result_content: &str,
-    event_sink: &mut dyn EventSink,
-) {
-    let task_id = match planner.current_task() {
-        Some(t) => {
-            let h = t.tool_hint.as_deref().map(|x| x.replace('-', "_").to_lowercase());
-            let tn = tool_name.replace('-', "_").to_lowercase();
-            if h.as_deref() == Some(tn.as_str()) { t.id } else { return }
-        }
-        None => return,
-    };
-    // Check for success in JSON (skills typically return {"success": true, ...})
-    if !result_content.contains("\"success\"") || !result_content.contains("true") {
-        return;
+fn current_task_preferred_tools(planner: &TaskPlanner) -> Option<Vec<String>> {
+    let hint = planner.current_task()?.tool_hint.as_deref()?;
+
+    let tools = match hint {
+        "analysis" => Some(Vec::new()),
+        "chat_history" => Some(vec!["chat_history".to_string()]),
+        "memory_write" => Some(vec!["memory_write".to_string()]),
+        "memory_search" => Some(vec!["memory_search".to_string(), "memory_list".to_string()]),
+        "file_list" => Some(vec!["list_directory".to_string(), "file_exists".to_string()]),
+        "file_read" => Some(vec!["read_file".to_string(), "file_exists".to_string()]),
+        "file_write" => Some(vec!["write_output".to_string(), "write_file".to_string()]),
+        "file_edit" => Some(vec![
+            "read_file".to_string(),
+            "file_exists".to_string(),
+            "search_replace".to_string(),
+            "preview_edit".to_string(),
+            "write_file".to_string(),
+        ]),
+        "preview" => Some(vec!["preview_server".to_string()]),
+        "command" => Some(vec!["run_command".to_string()]),
+        "file_operation" => Some(vec![
+            "read_file".to_string(),
+            "list_directory".to_string(),
+            "file_exists".to_string(),
+            "write_output".to_string(),
+            "write_file".to_string(),
+            "search_replace".to_string(),
+            "preview_edit".to_string(),
+            "preview_server".to_string(),
+            "run_command".to_string(),
+        ]),
+        other => Some(vec![normalize_tool_name(other)]),
+    }?;
+
+    let mut tools = tools;
+    tools.sort();
+    tools.dedup();
+    Some(tools)
+}
+
+pub(super) fn should_suppress_planning_assistant_text(
+    planner: &TaskPlanner,
+    has_tool_calls: bool,
+) -> bool {
+    has_tool_calls && !planner.all_completed() && planner.current_task().is_some()
+}
+
+fn maybe_note_plan_deviation(planner: &TaskPlanner, tool_name: &str) -> Option<String> {
+    let current_task = planner.current_task()?;
+    let preferred_tools = current_task_preferred_tools(planner)?;
+    if preferred_tools.is_empty() {
+        return None;
     }
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(result_content) {
-        if v.get("success").and_then(|s| s.as_bool()) != Some(true) {
-            return;
-        }
-    } else {
-        return;
+
+    let normalized_tool = normalize_tool_name(tool_name);
+    if preferred_tools.iter().any(|preferred| preferred == &normalized_tool) {
+        return None;
     }
-    planner.mark_completed(task_id);
-    event_sink.on_task_progress(task_id, true);
-    tracing::info!("Auto-marked task {} completed (skill {} succeeded)", task_id, tool_name);
-    // Reset per-task counter so the next task gets a fresh quota and
-    // reflect_planning cannot inherit this task's tool count (遗漏1 fix).
-    // Caller (execute_tool_batch_planning) resets state.tool_calls_current_task after return.
+
+    Some(format!(
+        "Current task {} ({}) preferred tools: {}. You used `{}` instead. \
+         This is allowed, but if the plan no longer fits the work, call `update_task_plan`.",
+        current_task.id,
+        current_task.description,
+        preferred_tools.join(", "),
+        tool_name
+    ))
 }
 
 /// Soft upper limit on how many times a single session may call update_task_plan.
@@ -191,8 +228,15 @@ pub(super) async fn execute_tool_batch_planning(
     session_key: Option<&str>,
 ) -> ToolBatchOutcome {
     if inject_progressive_disclosure(tool_calls, skills, documented_skills, messages) {
-        return ToolBatchOutcome { disclosure_injected: true, failure_limit_reached: false, depth_limit_reached: false };
+        return ToolBatchOutcome {
+            disclosure_injected: true,
+            failure_limit_reached: false,
+            depth_limit_reached: false,
+            plan_deviation_note: None,
+        };
     }
+
+    let mut plan_deviation_note: Option<String> = None;
 
     for tc in tool_calls {
         let tool_name = &tc.function.name;
@@ -201,6 +245,9 @@ pub(super) async fn execute_tool_batch_planning(
 
         let is_replan = tool_name.as_str() == "update_task_plan";
         let is_complete = tool_name.as_str() == "complete_task";
+        if !is_replan && !is_complete && plan_deviation_note.is_none() {
+            plan_deviation_note = maybe_note_plan_deviation(planner, tool_name);
+        }
         // Snapshot current task before execution to detect task transitions.
         let task_before = planner.current_task().map(|t| t.id);
         let start_time = Instant::now();
@@ -237,12 +284,8 @@ pub(super) async fn execute_tool_batch_planning(
             }
         } else if !result.is_error {
             state.consecutive_failures = 0;
-            // Auto-mark task when skill succeeds and matches current task's tool_hint.
-            if !is_replan && !is_complete {
-                try_auto_mark_task_on_success(planner, tool_name, &result.content, event_sink);
-            }
         }
-        // If the current task changed (via complete_task or try_auto_mark), reset the
+        // If the current task changed (via complete_task), reset the
         // per-task depth counter so the next task gets its full quota (fixes 遗漏1).
         let task_after = planner.current_task().map(|t| t.id);
         if task_after != task_before {
@@ -274,7 +317,7 @@ pub(super) async fn execute_tool_batch_planning(
         .map_or(false, |limit| state.consecutive_failures >= limit);
     let depth_limit_reached = state.tool_calls_current_task >= max_tool_calls_per_task;
 
-    ToolBatchOutcome { disclosure_injected: false, failure_limit_reached, depth_limit_reached }
+    ToolBatchOutcome { disclosure_injected: false, failure_limit_reached, depth_limit_reached, plan_deviation_note }
 }
 
 // ── Simple-mode batch ─────────────────────────────────────────────────────────
@@ -297,7 +340,12 @@ pub(super) async fn execute_tool_batch_simple(
     session_key: Option<&str>,
 ) -> ToolBatchOutcome {
     if inject_progressive_disclosure(tool_calls, skills, documented_skills, messages) {
-        return ToolBatchOutcome { disclosure_injected: true, failure_limit_reached: false, depth_limit_reached: false };
+        return ToolBatchOutcome {
+            disclosure_injected: true,
+            failure_limit_reached: false,
+            depth_limit_reached: false,
+            plan_deviation_note: None,
+        };
     }
 
     for tc in tool_calls {
@@ -337,6 +385,196 @@ pub(super) async fn execute_tool_batch_simple(
 
     let failure_limit_reached = max_consecutive_failures
         .map_or(false, |limit| state.consecutive_failures >= limit);
-    ToolBatchOutcome { disclosure_injected: false, failure_limit_reached, depth_limit_reached: false }
+    ToolBatchOutcome {
+        disclosure_injected: false,
+        failure_limit_reached,
+        depth_limit_reached: false,
+        plan_deviation_note: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::extensions::ExtensionRegistry;
+    use crate::llm::LlmClient;
+    use crate::types::{FunctionCall, SilentEventSink, Task, ToolCall};
+
+    fn planner_with_tasks(tasks: Vec<Task>) -> TaskPlanner {
+        let mut planner = TaskPlanner::new(None, None);
+        planner.task_list = tasks;
+        planner
+    }
+
+    #[test]
+    fn test_planning_assistant_text_suppressed_only_during_pending_tool_execution() {
+        let pending = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Generate a page".to_string(),
+            tool_hint: Some("file_operation".to_string()),
+            completed: false,
+        }]);
+        assert!(should_suppress_planning_assistant_text(&pending, true));
+        assert!(!should_suppress_planning_assistant_text(&pending, false));
+
+        let done = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Generate a page".to_string(),
+            tool_hint: Some("file_operation".to_string()),
+            completed: true,
+        }]);
+        assert!(!should_suppress_planning_assistant_text(&done, true));
+    }
+
+    #[test]
+    fn test_structured_builtin_hints_map_to_expected_tools() {
+        let preview_planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Start preview server and open in browser".to_string(),
+            tool_hint: Some("preview".to_string()),
+            completed: false,
+        }]);
+        let preview_allowed = current_task_preferred_tools(&preview_planner).unwrap();
+        assert!(preview_allowed.contains(&"preview_server".to_string()));
+        assert!(!preview_allowed.contains(&"run_command".to_string()));
+        assert!(!preview_allowed.contains(&"write_output".to_string()));
+
+        let write_planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Design and save website to output/index.html".to_string(),
+            tool_hint: Some("file_write".to_string()),
+            completed: false,
+        }]);
+        let write_allowed = current_task_preferred_tools(&write_planner).unwrap();
+        assert!(write_allowed.contains(&"write_output".to_string()));
+        assert!(!write_allowed.contains(&"preview_server".to_string()));
+
+        let edit_planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Replace panic with Result".to_string(),
+            tool_hint: Some("file_edit".to_string()),
+            completed: false,
+        }]);
+        let edit_allowed = current_task_preferred_tools(&edit_planner).unwrap();
+        assert!(edit_allowed.contains(&"search_replace".to_string()));
+        assert!(edit_allowed.contains(&"read_file".to_string()));
+        assert!(!edit_allowed.contains(&"preview_server".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_execute_tool_batch_planning_allows_off_plan_tool_but_reports_deviation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let registry = ExtensionRegistry::new(false, false, &[]);
+        let client = LlmClient::new("", "");
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Start preview server and open in browser".to_string(),
+            tool_hint: Some("preview".to_string()),
+            completed: false,
+        }]);
+        let tool_calls = vec![
+            ToolCall {
+                id: "call_1".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "file_exists".to_string(),
+                    arguments: format!(r#"{{"path":"{}"}}"#, workspace.join("missing.txt").display()),
+                },
+            },
+            ToolCall {
+                id: "call_2".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "complete_task".to_string(),
+                    arguments: r#"{"task_id":1,"summary":"done"}"#.to_string(),
+                },
+            },
+        ];
+        let mut sink = SilentEventSink;
+        let mut messages = Vec::new();
+        let mut documented_skills = HashSet::new();
+        let mut state = ExecutionState::new();
+
+        let outcome = execute_tool_batch_planning(
+            &tool_calls,
+            &registry,
+            workspace,
+            &mut sink,
+            None,
+            &client,
+            "gemini-2.5-flash",
+            &mut planner,
+            &[],
+            &mut messages,
+            &mut documented_skills,
+            &mut state,
+            8,
+            Some(3),
+            None,
+        )
+        .await;
+
+        assert!(!outcome.disclosure_injected);
+        assert!(planner.task_list[0].completed);
+        assert_eq!(planner.current_task().map(|t| t.id), None);
+        assert_eq!(state.failed_tool_calls, 0);
+        let note = outcome.plan_deviation_note.unwrap_or_default();
+        assert!(note.contains("preferred tools"));
+        assert!(note.contains("file_exists"));
+    }
+
+    #[tokio::test]
+    async fn test_successful_tool_does_not_auto_complete_task_without_complete_task() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let registry = ExtensionRegistry::new(false, false, &[]);
+        let client = LlmClient::new("", "");
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Write generated output".to_string(),
+            tool_hint: Some("file_write".to_string()),
+            completed: false,
+        }]);
+        let tool_calls = vec![ToolCall {
+            id: "call_1".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "write_file".to_string(),
+                arguments: format!(
+                    r#"{{"path":"{}","content":"hello"}}"#,
+                    workspace.join("note.txt").display()
+                ),
+            },
+        }];
+        let mut sink = SilentEventSink;
+        let mut messages = Vec::new();
+        let mut documented_skills = HashSet::new();
+        let mut state = ExecutionState::new();
+
+        let outcome = execute_tool_batch_planning(
+            &tool_calls,
+            &registry,
+            workspace,
+            &mut sink,
+            None,
+            &client,
+            "gemini-2.5-flash",
+            &mut planner,
+            &[],
+            &mut messages,
+            &mut documented_skills,
+            &mut state,
+            8,
+            Some(3),
+            None,
+        )
+        .await;
+
+        assert!(!outcome.disclosure_injected);
+        assert!(!planner.task_list[0].completed);
+        assert_eq!(planner.current_task().map(|t| t.id), Some(1));
+        assert_eq!(state.failed_tool_calls, 0);
+    }
 }
 

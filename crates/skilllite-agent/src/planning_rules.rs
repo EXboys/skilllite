@@ -97,12 +97,12 @@ pub fn compact_examples_section(user_message: &str) -> String {
         ("对比", "优劣势", "对比/优劣势: http-request for fresh data. NOT chat_history."),
         ("分析", "稳定性", "分析稳定性/项目: chat_history (ONLY when analyzing chat/project, NOT places)"),
         ("历史", "记录", "历史记录: chat_history + analysis."),
-        ("输出到", "保存到", "输出到output: write_output, file_operation."),
+        ("输出到", "保存到", "输出到output: write_output, file_write."),
         ("继续", "", "继续: use context to infer task, often http-request."),
         ("天气", "气象", "天气: weather skill."),
-        ("官网", "网站", "官网/网站: write_output + preview_server, 2 tasks."),
-        ("refactor", "panic", "编码refactor: grep定位→search_replace→run_command测试."),
-        ("整理", "项目", "模糊请求: list_directory探索→分析执行."),
+        ("官网", "网站", "官网/网站: file_write + preview, 2 tasks."),
+        ("refactor", "panic", "编码refactor: file_read定位→file_edit修改→command测试."),
+        ("整理", "项目", "模糊请求: file_list探索→analysis总结/确认."),
     ];
     let mut added = 0;
     for (k1, k2, text) in candidates {

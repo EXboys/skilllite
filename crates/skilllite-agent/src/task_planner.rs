@@ -106,8 +106,34 @@ impl TaskPlanner {
 
     /// Builtin tool_hint values that don't require a loaded skill.
     const BUILTIN_HINTS: &'static [&'static str] = &[
-        "file_operation", "chat_history", "memory_write", "memory_search", "analysis",
+        "file_operation",
+        "file_list",
+        "file_read",
+        "file_write",
+        "file_edit",
+        "preview",
+        "command",
+        "chat_history",
+        "memory_write",
+        "memory_search",
+        "analysis",
     ];
+
+    pub(crate) fn builtin_hint_guidance(hint: &str) -> Option<&'static str> {
+        match hint {
+            "file_list" => Some("Preferred tools: `list_directory` (and `file_exists` if needed)."),
+            "file_read" => Some("Preferred tools: `read_file` (and `file_exists` if needed)."),
+            "file_write" => Some("Preferred tools: `write_output` or `write_file`. Generate the content yourself unless the task explicitly needs another tool."),
+            "file_edit" => Some("Preferred tools: `read_file`, `search_replace`, `preview_edit`, or `write_file` for targeted edits."),
+            "preview" => Some("Preferred tool: `preview_server`."),
+            "command" => Some("Preferred tool: `run_command`."),
+            "chat_history" => Some("Preferred tool: `chat_history`."),
+            "memory_write" => Some("Preferred tool: `memory_write`."),
+            "memory_search" => Some("Preferred tools: `memory_search` (or `memory_list` if needed)."),
+            "file_operation" => Some("Legacy broad file task: prefer built-in file tools. If the plan no longer fits, revise it with `update_task_plan`."),
+            _ => None,
+        }
+    }
 
     /// Filter out rules whose tool_hint references a skill that isn't loaded.
     fn filter_rules_by_available_skills(rules: &[PlanningRule], skills: &[LoadedSkill]) -> Vec<PlanningRule> {
@@ -390,7 +416,7 @@ impl TaskPlanner {
             tasks.push(Task {
                 id: max_id + 1,
                 description: "Use write_file to write actual SKILL.md content (skill description, usage, parameter documentation, etc.)".to_string(),
-                tool_hint: Some("file_operation".to_string()),
+                tool_hint: Some("file_write".to_string()),
                 completed: false,
             });
         }
@@ -508,13 +534,15 @@ impl TaskPlanner {
             );
 
             if let Some(ref hint) = task.tool_hint {
-                direct_call_instruction = format!(
-                    "\n\n⚡ **ACTION**: 当前任务 tool_hint 为 {}，请优先调用 {}。",
-                    hint, hint
-                );
-                if hint == "file_operation" {
-                    direct_call_instruction.push_str(
-                        "\n⛔ Do NOT call any skill tools (skill-creator, frontend-design, etc.); generate content yourself and save with `write_output`.",
+                if let Some(guidance) = Self::builtin_hint_guidance(hint) {
+                    direct_call_instruction = format!(
+                        "\n\n⚡ **ACTION**: 当前任务 tool_hint 为 {}。{}",
+                        hint, guidance
+                    );
+                } else {
+                    direct_call_instruction = format!(
+                        "\n\n⚡ **ACTION**: 当前任务 tool_hint 为 {}，请优先调用 {}。",
+                        hint, hint
                     );
                 }
             }
@@ -531,7 +559,7 @@ impl TaskPlanner {
              ## Current Task List\n\n\
              {}\n\n\
              ## Execution Rules\n\n\
-             1. **MATCH tool_hint**: If tool_hint is \"file_operation\" → use built-in tools (read_file, write_output, preview_server). If tool_hint is \"memory_search\" → call memory_search. If tool_hint is a skill name → call that skill.\n\
+             1. **MATCH tool_hint**: `file_list` → `list_directory`; `file_read` → `read_file`; `file_write` → `write_output`/`write_file`; `file_edit` → `search_replace`/`preview_edit`; `preview` → `preview_server`; `command` → `run_command`; `memory_search` → `memory_search`; skill name → call that skill.\n\
              2. **Strict sequential execution**: Execute tasks in order, do not skip tasks\n\
              3. **Focus on current task**: Focus only on the current task\n\
              4. **Structured completion**: After finishing a task, call `complete_task(task_id=N)`. Writing \"Task N completed\" in text is NOT sufficient.\n\
@@ -588,13 +616,15 @@ impl TaskPlanner {
             serde_json::to_string_pretty(&self.task_list).unwrap_or_else(|_| "[]".to_string());
 
         let tool_instruction = if let Some(ref hint) = current.tool_hint {
-            if hint != "file_operation" && hint != "analysis" {
+            if hint == "analysis" {
+                "\nNo tool is required for this task; provide the analysis directly.".to_string()
+            } else if let Some(guidance) = Self::builtin_hint_guidance(hint) {
+                format!("\n⚡ {}", guidance)
+            } else {
                 format!(
                     "\n⚡ Call `{}` DIRECTLY now. Do NOT call list_directory or read_file first.",
                     hint
                 )
-            } else {
-                "\nPlease use the available tools to complete this task.".to_string()
             }
         } else {
             "\nPlease use the available tools to complete this task.".to_string()
@@ -662,11 +692,11 @@ mod tests {
     fn test_parse_task_list() {
         let planner = TaskPlanner::new(None, None);
 
-        let json = r#"[{"id": 1, "description": "Use grep_files", "tool_hint": "file_operation", "completed": false}]"#;
+        let json = r#"[{"id": 1, "description": "Use search_replace", "tool_hint": "file_edit", "completed": false}]"#;
         let tasks = planner.parse_task_list(json).unwrap();
         assert_eq!(tasks.len(), 1);
-        assert_eq!(tasks[0].description, "Use grep_files");
-        assert_eq!(tasks[0].tool_hint.as_deref(), Some("file_operation"));
+        assert_eq!(tasks[0].description, "Use search_replace");
+        assert_eq!(tasks[0].tool_hint.as_deref(), Some("file_edit"));
 
         let empty = planner.parse_task_list("[]").unwrap();
         assert!(empty.is_empty());

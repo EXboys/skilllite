@@ -149,12 +149,12 @@ pub(super) fn build_task_focus_message(planner: &TaskPlanner) -> Option<String> 
     let task_list_json = serde_json::to_string_pretty(&planner.task_list)
         .unwrap_or_else(|_| "[]".to_string());
     let tool_hint = current.tool_hint.as_deref().unwrap_or("");
-    let msg = if tool_hint == "file_operation" {
+    let msg = if let Some(guidance) = TaskPlanner::builtin_hint_guidance(tool_hint) {
         format!(
             "Task progress update:\n{}\n\n\
              Current task to execute: Task {} - {}\n\n\
-             ⚡ Use `write_output` or `preview_server` NOW. ⛔ Do NOT call any skill tools.",
-            task_list_json, current.id, current.description
+             ⚡ {}",
+            task_list_json, current.id, current.description, guidance
         )
     } else if !tool_hint.is_empty() && tool_hint != "analysis" {
         format!(
