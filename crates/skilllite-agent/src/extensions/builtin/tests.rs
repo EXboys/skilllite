@@ -1168,3 +1168,108 @@ async fn test_execute_async_builtin_run_command_marks_zero_exit_as_success() {
     assert!(!result.counts_as_failure);
     assert!(result.content.contains("Command succeeded (exit 0)."));
 }
+
+#[test]
+fn test_preview_server_emits_started_and_ready_events() {
+    use super::preview;
+    use crate::types::EventSink;
+
+    struct CaptureSink {
+        preview_started: Vec<(String, u16)>,
+        preview_ready: Vec<(String, u16)>,
+        preview_failed: Vec<String>,
+    }
+
+    impl EventSink for CaptureSink {
+        fn on_text(&mut self, _text: &str) {}
+        fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+        fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+        fn on_confirmation_request(&mut self, _prompt: &str) -> bool { true }
+        fn on_preview_started(&mut self, path: &str, port: u16) {
+            self.preview_started.push((path.to_string(), port));
+        }
+        fn on_preview_ready(&mut self, url: &str, port: u16) {
+            self.preview_ready.push((url.to_string(), port));
+        }
+        fn on_preview_failed(&mut self, message: &str) {
+            self.preview_failed.push(message.to_string());
+        }
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let serve_dir = workspace.join("site");
+    std::fs::create_dir_all(&serve_dir).unwrap();
+    std::fs::write(serve_dir.join("index.html"), "<h1>ok</h1>").unwrap();
+
+    let free_port = {
+        let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        listener.local_addr().unwrap().port()
+    };
+    let args = serde_json::json!({
+        "path": "site",
+        "port": free_port,
+        "open_browser": false
+    });
+    let mut sink = CaptureSink {
+        preview_started: Vec::new(),
+        preview_ready: Vec::new(),
+        preview_failed: Vec::new(),
+    };
+
+    let result = preview::execute_preview_server(&args, workspace, &mut sink).unwrap();
+
+    assert!(result.contains("Preview server started at"));
+    assert_eq!(sink.preview_started.len(), 1);
+    assert_eq!(sink.preview_ready.len(), 1);
+    assert!(sink.preview_failed.is_empty());
+}
+
+#[tokio::test]
+async fn test_delegate_to_swarm_emits_started_and_failed_when_unconfigured() {
+    use super::delegate_swarm;
+    use crate::types::EventSink;
+
+    struct CaptureSink {
+        swarm_started: Vec<String>,
+        swarm_progress: Vec<String>,
+        swarm_failed: Vec<String>,
+    }
+
+    impl EventSink for CaptureSink {
+        fn on_text(&mut self, _text: &str) {}
+        fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+        fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+        fn on_confirmation_request(&mut self, _prompt: &str) -> bool { true }
+        fn on_swarm_started(&mut self, description: &str) {
+            self.swarm_started.push(description.to_string());
+        }
+        fn on_swarm_progress(&mut self, status: &str) {
+            self.swarm_progress.push(status.to_string());
+        }
+        fn on_swarm_failed(&mut self, message: &str) {
+            self.swarm_failed.push(message.to_string());
+        }
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    std::env::remove_var(delegate_swarm::SWARM_URL_ENV);
+    let args = serde_json::json!({
+        "description": "delegate quick summary"
+    });
+    let mut sink = CaptureSink {
+        swarm_started: Vec::new(),
+        swarm_progress: Vec::new(),
+        swarm_failed: Vec::new(),
+    };
+
+    let result = delegate_swarm::execute_delegate_to_swarm(&args, workspace, &mut sink)
+        .await
+        .unwrap();
+
+    assert!(result.contains("Swarm not configured"));
+    assert_eq!(sink.swarm_started, vec!["delegate quick summary".to_string()]);
+    assert!(sink.swarm_progress.is_empty());
+    assert_eq!(sink.swarm_failed.len(), 1);
+}

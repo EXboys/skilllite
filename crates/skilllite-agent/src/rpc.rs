@@ -32,6 +32,14 @@
 //! {"event": "command_started", "data": {"command": "echo hello"}}
 //! {"event": "command_output", "data": {"stream": "stdout", "chunk": "line"}}
 //! {"event": "command_finished", "data": {"success": true, "exit_code": 0, "duration_ms": 123}}
+//! {"event": "preview_started", "data": {"path": "dist", "port": 8765}}
+//! {"event": "preview_ready", "data": {"url": "http://127.0.0.1:8765", "port": 8765}}
+//! {"event": "preview_failed", "data": {"message": "port already in use"}}
+//! {"event": "preview_stopped", "data": {"reason": "manual stop"}}
+//! {"event": "swarm_started", "data": {"description": "delegate task"}}
+//! {"event": "swarm_progress", "data": {"status": "submitting task"}}
+//! {"event": "swarm_finished", "data": {"summary": "remote node completed task"}}
+//! {"event": "swarm_failed", "data": {"message": "timeout, fallback to local execution"}}
 //! {"event": "task_plan", "data": {"tasks": [...]}}
 //! {"event": "task_progress", "data": {"task_id": 1, "completed": true}}
 //! {"event": "confirmation_request", "data": {"prompt": "Execute rm -rf?"}}
@@ -124,6 +132,38 @@ impl EventSink for RpcEventSink {
             "command_finished",
             json!({ "success": success, "exit_code": exit_code, "duration_ms": duration_ms }),
         );
+    }
+
+    fn on_preview_started(&mut self, path: &str, port: u16) {
+        self.emit("preview_started", json!({ "path": path, "port": port }));
+    }
+
+    fn on_preview_ready(&mut self, url: &str, port: u16) {
+        self.emit("preview_ready", json!({ "url": url, "port": port }));
+    }
+
+    fn on_preview_failed(&mut self, message: &str) {
+        self.emit("preview_failed", json!({ "message": message }));
+    }
+
+    fn on_preview_stopped(&mut self, reason: &str) {
+        self.emit("preview_stopped", json!({ "reason": reason }));
+    }
+
+    fn on_swarm_started(&mut self, description: &str) {
+        self.emit("swarm_started", json!({ "description": description }));
+    }
+
+    fn on_swarm_progress(&mut self, status: &str) {
+        self.emit("swarm_progress", json!({ "status": status }));
+    }
+
+    fn on_swarm_finished(&mut self, summary: &str) {
+        self.emit("swarm_finished", json!({ "summary": summary }));
+    }
+
+    fn on_swarm_failed(&mut self, message: &str) {
+        self.emit("swarm_failed", json!({ "message": message }));
     }
 
     fn on_confirmation_request(&mut self, prompt: &str) -> bool {

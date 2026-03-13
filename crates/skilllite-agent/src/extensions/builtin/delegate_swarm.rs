@@ -6,7 +6,7 @@ use anyhow::Result;
 use serde_json::{json, Value};
 use std::path::Path;
 
-use crate::types::{ToolDefinition, FunctionDef};
+use crate::types::{EventSink, ToolDefinition, FunctionDef};
 use skilllite_core::protocol::{NodeContext, NodeResult, NodeTask};
 
 pub const SWARM_URL_ENV: &str = "SKILLLITE_SWARM_URL";
@@ -48,19 +48,23 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
 pub(super) async fn execute_delegate_to_swarm(
     args: &Value,
     workspace: &Path,
+    event_sink: &mut dyn EventSink,
 ) -> Result<String> {
-    let url = match std::env::var(SWARM_URL_ENV) {
-        Ok(u) if !u.is_empty() => u,
-        _ => {
-            return Ok("Swarm not configured: SKILLLITE_SWARM_URL not set. Skipping delegation.".to_string());
-        }
-    };
-
     let description = args
         .get("description")
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("description required"))?
         .to_string();
+    event_sink.on_swarm_started(&description);
+
+    let url = match std::env::var(SWARM_URL_ENV) {
+        Ok(u) if !u.is_empty() => u,
+        _ => {
+            let msg = "Swarm not configured: SKILLLITE_SWARM_URL not set. Skipping delegation.";
+            event_sink.on_swarm_failed(msg);
+            return Ok(msg.to_string());
+        }
+    };
 
     let workspace_str = args
         .get("workspace")
@@ -97,6 +101,7 @@ pub(super) async fn execute_delegate_to_swarm(
 
     let task_url = format!("{}/task", url.trim_end_matches('/'));
     let client = reqwest::Client::new();
+    event_sink.on_swarm_progress("submitting task to swarm");
 
     match client
         .post(&task_url)
@@ -107,27 +112,45 @@ pub(super) async fn execute_delegate_to_swarm(
     {
         Ok(resp) if resp.status().is_success() => {
             match resp.json::<NodeResult>().await {
-                Ok(result) => Ok(format!(
-                    "Delegation succeeded.\nResponse: {}\nTask completed: {}",
-                    result.response, result.task_completed
-                )),
-                Err(e) => Ok(format!(
-                    "Delegation returned invalid response: {}. Fallback to local execution.",
-                    e
-                )),
+                Ok(result) => {
+                    let summary = if result.response.is_empty() {
+                        format!("remote task completed={}", result.task_completed)
+                    } else {
+                        format!("remote task completed={} response={}", result.task_completed, result.response)
+                    };
+                    event_sink.on_swarm_finished(&summary);
+                    Ok(format!(
+                        "Delegation succeeded.\nResponse: {}\nTask completed: {}",
+                        result.response, result.task_completed
+                    ))
+                }
+                Err(e) => {
+                    let msg = format!(
+                        "Delegation returned invalid response: {}. Fallback to local execution.",
+                        e
+                    );
+                    event_sink.on_swarm_failed(&msg);
+                    Ok(msg)
+                }
             }
         }
         Ok(resp) => {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            Ok(format!(
+            let msg = format!(
                 "Swarm returned error ({}): {}. Fallback to local execution.",
                 status, body
-            ))
+            );
+            event_sink.on_swarm_failed(&msg);
+            Ok(msg)
         }
-        Err(e) => Ok(format!(
-            "Swarm delegation failed (timeout or connection error): {}. Fallback to local execution.",
-            e
-        )),
+        Err(e) => {
+            let msg = format!(
+                "Swarm delegation failed (timeout or connection error): {}. Fallback to local execution.",
+                e
+            );
+            event_sink.on_swarm_failed(&msg);
+            Ok(msg)
+        }
     }
 }

@@ -11,7 +11,23 @@ export interface TaskItem {
 export interface LogEntry {
   id: string;
   time: string;
-  type: "tool_call" | "tool_result" | "command_started" | "command_output" | "command_finished" | "plan" | "progress" | "error";
+  type:
+    | "tool_call"
+    | "tool_result"
+    | "command_started"
+    | "command_output"
+    | "command_finished"
+    | "preview_started"
+    | "preview_ready"
+    | "preview_failed"
+    | "preview_stopped"
+    | "swarm_started"
+    | "swarm_progress"
+    | "swarm_finished"
+    | "swarm_failed"
+    | "plan"
+    | "progress"
+    | "error";
   name?: string;
   text: string;
   isError?: boolean;

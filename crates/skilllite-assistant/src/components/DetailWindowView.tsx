@@ -62,6 +62,14 @@ function LogList({ entries }: { entries: LogEntry[] }) {
           {e.type === "tool_result" && (e.isError ? "✗" : "✓")}
           {e.type === "command_output" && (e.isError ? "!" : "│")}
           {e.type === "command_finished" && (e.isError ? "✗" : "■")}
+          {e.type === "preview_started" && "▶"}
+          {e.type === "preview_ready" && "■"}
+          {e.type === "preview_failed" && "✗"}
+          {e.type === "preview_stopped" && "■"}
+          {e.type === "swarm_started" && "▶"}
+          {e.type === "swarm_progress" && "…"}
+          {e.type === "swarm_finished" && "■"}
+          {e.type === "swarm_failed" && "✗"}
           {e.name && <span className="font-medium">{e.name}: </span>}
           <span className="break-words">{e.text}</span>
         </li>

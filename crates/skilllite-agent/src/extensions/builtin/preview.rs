@@ -1,11 +1,11 @@
 //! preview_server: local HTTP file server for previewing output.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::types::{ToolDefinition, FunctionDef};
+use crate::types::{EventSink, ToolDefinition, FunctionDef};
 
 use super::{get_path_arg, normalize_path, resolve_within_workspace_or_output};
 
@@ -55,7 +55,11 @@ struct PreviewServerState {
 
 // ─── Execution ──────────────────────────────────────────────────────────────
 
-pub(super) fn execute_preview_server(args: &Value, workspace: &Path) -> Result<String> {
+pub(super) fn execute_preview_server(
+    args: &Value,
+    workspace: &Path,
+    event_sink: &mut dyn EventSink,
+) -> Result<String> {
     let dir_path = get_path_arg(args, true)
         .ok_or_else(|| anyhow::anyhow!("'directory_path' or 'path' is required"))?;
     let requested_port = args
@@ -77,16 +81,19 @@ pub(super) fn execute_preview_server(args: &Value, workspace: &Path) -> Result<S
     };
 
     if !serve_dir.exists() {
+        event_sink.on_preview_failed(&format!("path not found: {}", dir_path));
         anyhow::bail!("Path not found: {}", dir_path);
     }
 
     let serve_dir_str = serve_dir.to_string_lossy().to_string();
+    event_sink.on_preview_started(&serve_dir_str, requested_port);
 
     {
         let guard = ACTIVE_PREVIEW.lock().map_err(|e| anyhow::anyhow!("Preview lock poisoned: {}", e))?;
         if let Some(ref state) = *guard {
             if state.serve_dir == serve_dir_str {
                 let url = build_preview_url(state.port, target_file.as_deref());
+                event_sink.on_preview_ready(&url, state.port);
                 if should_open_browser {
                     open_browser(&url);
                 }
@@ -117,12 +124,16 @@ pub(super) fn execute_preview_server(args: &Value, workspace: &Path) -> Result<S
 
     let (listener, used_port) = match listener {
         Some((l, p)) => (l, p),
-        None => anyhow::bail!(
-            "Could not bind to port {} (tried {}-{})",
-            requested_port,
-            requested_port,
-            requested_port + 19
-        ),
+        None => {
+            let message = format!(
+                "could not bind to port {} (tried {}-{})",
+                requested_port,
+                requested_port,
+                requested_port + 19
+            );
+            event_sink.on_preview_failed(&message);
+            anyhow::bail!("{}", message)
+        }
     };
 
     {
@@ -139,9 +150,14 @@ pub(super) fn execute_preview_server(args: &Value, workspace: &Path) -> Result<S
         .spawn(move || {
             run_file_server(listener, &serve_dir_clone);
         })
-        .context("Failed to spawn preview server thread")?;
+        .map_err(|e| {
+            let message = format!("failed to spawn preview server thread: {}", e);
+            event_sink.on_preview_failed(&message);
+            anyhow::anyhow!(message)
+        })?;
 
     let url = build_preview_url(used_port, target_file.as_deref());
+    event_sink.on_preview_ready(&url, used_port);
     if should_open_browser {
         open_browser(&url);
     }

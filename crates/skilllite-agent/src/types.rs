@@ -486,6 +486,22 @@ pub trait EventSink: Send {
     fn on_command_output(&mut self, _stream: &str, _chunk: &str) {}
     /// Called when a command tool finishes execution.
     fn on_command_finished(&mut self, _success: bool, _exit_code: i32, _duration_ms: u64) {}
+    /// Called when preview server startup begins.
+    fn on_preview_started(&mut self, _path: &str, _port: u16) {}
+    /// Called when preview server is ready.
+    fn on_preview_ready(&mut self, _url: &str, _port: u16) {}
+    /// Called when preview server startup fails.
+    fn on_preview_failed(&mut self, _message: &str) {}
+    /// Called when preview server stops.
+    fn on_preview_stopped(&mut self, _reason: &str) {}
+    /// Called when swarm delegation starts.
+    fn on_swarm_started(&mut self, _description: &str) {}
+    /// Called with lightweight swarm progress updates.
+    fn on_swarm_progress(&mut self, _status: &str) {}
+    /// Called when swarm delegation finishes with a summary.
+    fn on_swarm_finished(&mut self, _summary: &str) {}
+    /// Called when swarm delegation fails or falls back.
+    fn on_swarm_failed(&mut self, _message: &str) {}
     /// Called when the agent needs user confirmation (L3 security).
     /// Returns true if the user approves.
     fn on_confirmation_request(&mut self, prompt: &str) -> bool;
@@ -664,6 +680,61 @@ impl EventSink for TerminalEventSink {
         ));
     }
 
+    fn on_preview_started(&mut self, path: &str, port: u16) {
+        self.show_execution_section();
+        self.msg(&format!("  ▶ preview started: {} (port {})", path, port));
+    }
+
+    fn on_preview_ready(&mut self, url: &str, _port: u16) {
+        self.show_execution_section();
+        self.msg(&format!("  ■ preview ready: {}", url));
+    }
+
+    fn on_preview_failed(&mut self, message: &str) {
+        self.show_execution_section();
+        self.msg(&format!("  ✗ preview failed: {}", message));
+    }
+
+    fn on_preview_stopped(&mut self, reason: &str) {
+        self.show_execution_section();
+        self.msg(&format!("  ■ preview stopped: {}", reason));
+    }
+
+    fn on_swarm_started(&mut self, description: &str) {
+        self.show_execution_section();
+        let brief = if description.len() > 120 {
+            format!("{}…", safe_truncate(description, 120))
+        } else {
+            description.to_string()
+        };
+        self.msg(&format!("  ▶ swarm started: {}", brief));
+    }
+
+    fn on_swarm_progress(&mut self, status: &str) {
+        self.show_execution_section();
+        self.msg(&format!("  … swarm: {}", status));
+    }
+
+    fn on_swarm_finished(&mut self, summary: &str) {
+        self.show_execution_section();
+        let brief = if summary.len() > 160 {
+            format!("{}…", safe_truncate(summary, 160))
+        } else {
+            summary.to_string()
+        };
+        self.msg(&format!("  ■ swarm finished: {}", brief));
+    }
+
+    fn on_swarm_failed(&mut self, message: &str) {
+        self.show_execution_section();
+        let brief = if message.len() > 160 {
+            format!("{}…", safe_truncate(message, 160))
+        } else {
+            message.to_string()
+        };
+        self.msg(&format!("  ✗ swarm failed: {}", brief));
+    }
+
     fn on_confirmation_request(&mut self, prompt: &str) -> bool {
         use std::io::Write;
         self.msg_opt(prompt);
@@ -738,6 +809,30 @@ impl EventSink for RunModeEventSink {
     }
     fn on_command_finished(&mut self, success: bool, exit_code: i32, duration_ms: u64) {
         self.inner.on_command_finished(success, exit_code, duration_ms);
+    }
+    fn on_preview_started(&mut self, path: &str, port: u16) {
+        self.inner.on_preview_started(path, port);
+    }
+    fn on_preview_ready(&mut self, url: &str, port: u16) {
+        self.inner.on_preview_ready(url, port);
+    }
+    fn on_preview_failed(&mut self, message: &str) {
+        self.inner.on_preview_failed(message);
+    }
+    fn on_preview_stopped(&mut self, reason: &str) {
+        self.inner.on_preview_stopped(reason);
+    }
+    fn on_swarm_started(&mut self, description: &str) {
+        self.inner.on_swarm_started(description);
+    }
+    fn on_swarm_progress(&mut self, status: &str) {
+        self.inner.on_swarm_progress(status);
+    }
+    fn on_swarm_finished(&mut self, summary: &str) {
+        self.inner.on_swarm_finished(summary);
+    }
+    fn on_swarm_failed(&mut self, message: &str) {
+        self.inner.on_swarm_failed(message);
     }
     fn on_confirmation_request(&mut self, prompt: &str) -> bool {
         if !prompt.is_empty() {

@@ -261,6 +261,65 @@ export function useChatEvents({
           text: `exit ${exitCode} in ${durationMs}ms`,
           isError: !success,
         });
+      } else if (event === "preview_started") {
+        const path = (data?.path as string) ?? "";
+        const port = (data?.port as number) ?? 0;
+        addLog({
+          type: "preview_started" as const,
+          name: "preview_server",
+          text: `${path || "preview"} on port ${port}`,
+        });
+      } else if (event === "preview_ready") {
+        const url = (data?.url as string) ?? "";
+        addLog({
+          type: "preview_ready" as const,
+          name: "preview_server",
+          text: url,
+        });
+      } else if (event === "preview_failed") {
+        const message = (data?.message as string) ?? "";
+        addLog({
+          type: "preview_failed" as const,
+          name: "preview_server",
+          text: message,
+          isError: true,
+        });
+      } else if (event === "preview_stopped") {
+        const reason = (data?.reason as string) ?? "";
+        addLog({
+          type: "preview_stopped" as const,
+          name: "preview_server",
+          text: reason || "stopped",
+        });
+      } else if (event === "swarm_started") {
+        const description = (data?.description as string) ?? "";
+        addLog({
+          type: "swarm_started" as const,
+          name: "delegate_to_swarm",
+          text: description.length > 240 ? description.slice(0, 240) + "…" : description,
+        });
+      } else if (event === "swarm_progress") {
+        const status = (data?.status as string) ?? "";
+        addLog({
+          type: "swarm_progress" as const,
+          name: "delegate_to_swarm",
+          text: status,
+        });
+      } else if (event === "swarm_finished") {
+        const summary = (data?.summary as string) ?? "";
+        addLog({
+          type: "swarm_finished" as const,
+          name: "delegate_to_swarm",
+          text: summary.length > 240 ? summary.slice(0, 240) + "…" : summary,
+        });
+      } else if (event === "swarm_failed") {
+        const message = (data?.message as string) ?? "";
+        addLog({
+          type: "swarm_failed" as const,
+          name: "delegate_to_swarm",
+          text: message.length > 240 ? message.slice(0, 240) + "…" : message,
+          isError: true,
+        });
       }
     });
 

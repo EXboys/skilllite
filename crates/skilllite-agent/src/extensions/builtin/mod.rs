@@ -206,8 +206,10 @@ pub async fn execute_async_builtin_tool(
     }
 
     let result = match tool_name {
-        "preview_server" => preview::execute_preview_server(&args, workspace),
-        "delegate_to_swarm" => delegate_swarm::execute_delegate_to_swarm(&args, workspace).await,
+        "preview_server" => preview::execute_preview_server(&args, workspace, event_sink),
+        "delegate_to_swarm" => {
+            delegate_swarm::execute_delegate_to_swarm(&args, workspace, event_sink).await
+        }
         _ => Err(anyhow::anyhow!("Unknown async built-in tool: {}", tool_name)),
     };
 
