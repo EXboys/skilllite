@@ -537,6 +537,8 @@ impl TaskPlanner {
              4. **Structured completion**: After finishing a task, call `complete_task(task_id=N)`. Writing \"Task N completed\" in text is NOT sufficient.\n\
              5. **Avoid unnecessary exploration**: Do NOT call list_directory or read_file unless the task explicitly requires it\n\
              6. **🚫 EXECUTE BEFORE COMPLETING**: Your first response must be an actual tool call, NOT a completion summary. Call `complete_task` only AFTER the work is done.\n\
+             7. **🚫 NO PREMATURE FINISH CLAIMS**: Until `complete_task` is called for the current task, do NOT say the task is completed. If any tasks remain, do NOT say the whole job is finished.\n\
+             8. **Multi-task wording**: In multi-task flows, only report the completed task and explicitly continue to the next one, e.g. \"Task 1 is complete; now proceeding to Task 2.\"\n\
              {}{}\n\n\
              ⚠️ **Important**: After completing each task, you MUST call `complete_task(task_id=N)` so the system can track progress. Text declarations are ignored.",
             execution_prompt,
@@ -603,6 +605,8 @@ impl TaskPlanner {
              Updated task list:\n{}\n\n\
              Current task: Task {} - {}\n{}\n\n\
              ⚠️ After completing this task, call `complete_task(task_id={})` to record completion.\n\
+             ⚠️ Do NOT say this task is complete until you have actually called `complete_task`.\n\
+             ⚠️ Because tasks remain, do NOT say the whole job is finished.\n\
              If the current plan no longer fits the goal, you may call `update_task_plan` to revise the plan, then continue.",
             task_list_json, current.id, current.description, tool_instruction, current.id
         ))

@@ -54,6 +54,14 @@ complete_task(task_id=N, summary="one sentence about what was done")
 
 Writing "Task N completed" in plain text is **NOT** sufficient and will be **ignored** by the system. The only valid completion signal is the `complete_task` tool call.
 
+### Completion Output Rules — ABSOLUTE
+
+- **Do NOT claim a task is completed until you have actually called `complete_task(task_id=N, ...)`.**
+- If there are still pending tasks, **do NOT** say "all tasks are completed", "everything is done", or any equivalent final wrap-up.
+- In multi-task flows, only report the completed task and explicitly continue to the next one, e.g. "Task 1 is complete; I will now do Task 2."
+- If you have not yet called `complete_task`, you may describe progress or your next step, but you must **not** use final-completion language.
+- After you state that a task or the overall job is complete, you must **not** continue calling core tools for that same unfinished scope.
+
 ## ANTI-HALLUCINATION — ABSOLUTE RULE
 
 **You MUST actually EXECUTE each task before calling complete_task.**
