@@ -117,11 +117,19 @@ pub(super) fn reflect_planning(
     }
 
     // ── No-tool nudge path ────────────────────────────────────────────────────
-    // LLM returned only text (no tool calls, no complete_task). Pending tasks remain.
-    // Emit the text and nudge LLM to call the appropriate tools / complete_task.
-    if let Some(ref content) = assistant_content {
-        event_sink.on_text(content);
+
+    if planner.all_completed() {
+        if let Some(ref content) = assistant_content {
+            event_sink.on_text(content);
+        }
+        return ReflectionOutcome::Break;
     }
+
+    // Tasks still pending — swallow the premature summary so user never sees it
+    if messages.last().map_or(false, |m| m.role == "assistant") {
+        messages.pop();
+    }
+    tracing::info!("Swallowed no-tool assistant text while tasks are pending");
 
     *consecutive_no_tool += 1;
     if *consecutive_no_tool >= max_no_tool_retries {

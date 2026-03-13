@@ -77,7 +77,22 @@ pub(super) fn handle_update_task_plan(
     }
     // Apply same sanitize & enhance as initial planning (strip unavailable tool_hints, add SKILL.md if needed).
     planner.sanitize_and_enhance_tasks(&mut new_tasks, skills);
-    planner.task_list = new_tasks.clone();
+
+    // Preserve completed tasks — only replace pending portion of the plan.
+    let completed_tasks: Vec<Task> = planner
+        .task_list
+        .iter()
+        .filter(|t| t.completed)
+        .cloned()
+        .collect();
+    let next_id = completed_tasks.iter().map(|t| t.id).max().unwrap_or(0) + 1;
+    for (i, t) in new_tasks.iter_mut().enumerate() {
+        t.id = next_id + i as u32;
+        t.completed = false;
+    }
+    let mut merged = completed_tasks;
+    merged.extend(new_tasks.clone());
+    planner.task_list = merged;
     event_sink.on_task_plan(&planner.task_list);
     let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
     let mut content = format!(

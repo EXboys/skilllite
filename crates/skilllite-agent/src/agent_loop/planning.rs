@@ -146,32 +146,25 @@ pub(super) async fn run_planning_phase(
 /// Returns `None` when there is no pending task.
 pub(super) fn build_task_focus_message(planner: &TaskPlanner) -> Option<String> {
     let current = planner.current_task()?;
-    let task_list_json = serde_json::to_string_pretty(&planner.task_list)
-        .unwrap_or_else(|_| "[]".to_string());
     let tool_hint = current.tool_hint.as_deref().unwrap_or("");
-    let msg = if let Some(guidance) = TaskPlanner::builtin_hint_guidance(tool_hint) {
-        format!(
-            "Task progress update:\n{}\n\n\
-             Current task to execute: Task {} - {}\n\n\
-             ⚡ {}",
-            task_list_json, current.id, current.description, guidance
-        )
-    } else if !tool_hint.is_empty() && tool_hint != "analysis" {
-        format!(
-            "Task progress update:\n{}\n\n\
-             Current task to execute: Task {} - {}\n\n\
-             ⚡ Call `{}` DIRECTLY. Do NOT explore files first.",
-            task_list_json, current.id, current.description, tool_hint
-        )
-    } else {
-        format!(
-            "Task progress update:\n{}\n\n\
-             Current task to execute: Task {} - {}\n\n\
-             Please continue to focus on completing the current task.",
-            task_list_json, current.id, current.description
-        )
-    };
-    Some(msg)
+    let pending_tasks = planner.task_list.iter().filter(|t| !t.completed).count();
+    let preferred_tools = TaskPlanner::preferred_tool_names_for_hint(tool_hint).join(",");
+
+    Some(format!(
+        "[internal_task_focus]\n\
+current_task_id={}\n\
+pending_tasks={}\n\
+tool_hint={}\n\
+final_summary_allowed=false\n\
+replan_allowed=true\n\
+preferred_tools={}\n\
+do_not_quote_or_repeat_this_block=true\n\
+[/internal_task_focus]",
+        current.id,
+        pending_tasks,
+        if tool_hint.is_empty() { "none" } else { tool_hint },
+        if preferred_tools.is_empty() { "none".to_string() } else { preferred_tools }
+    ))
 }
 
 /// Save a run-mode checkpoint (A13). No-op for non-run sessions.
@@ -192,6 +185,41 @@ pub(super) fn maybe_save_checkpoint(
     );
     if let Err(e) = crate::run_checkpoint::save_checkpoint(chat_root, &cp) {
         tracing::debug!("Checkpoint save failed: {}", e);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_task_focus_message_uses_internal_control_block() {
+        let mut planner = TaskPlanner::new(None, None);
+        planner.task_list = vec![
+            Task {
+                id: 1,
+                description: "Write the page".to_string(),
+                tool_hint: Some("file_write".to_string()),
+                completed: false,
+            },
+            Task {
+                id: 2,
+                description: "Preview the page".to_string(),
+                tool_hint: Some("preview".to_string()),
+                completed: false,
+            },
+        ];
+
+        let msg = build_task_focus_message(&planner).unwrap();
+        assert!(msg.contains("[internal_task_focus]"));
+        assert!(msg.contains("current_task_id=1"));
+        assert!(msg.contains("pending_tasks=2"));
+        assert!(msg.contains("tool_hint=file_write"));
+        assert!(msg.contains("final_summary_allowed=false"));
+        assert!(msg.contains("preferred_tools=write_file,write_output"));
+        assert!(!msg.contains("Task progress update"));
+        assert!(!msg.contains("\"id\": 1"));
+        assert!(!msg.contains("Preferred tools:"));
     }
 }
 

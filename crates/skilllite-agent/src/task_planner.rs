@@ -119,6 +119,52 @@ impl TaskPlanner {
         "analysis",
     ];
 
+    fn normalize_hint_name(name: &str) -> String {
+        name.replace('-', "_").to_lowercase()
+    }
+
+    pub(crate) fn preferred_tool_names_for_hint(hint: &str) -> Vec<String> {
+        let mut tools = match hint {
+            "analysis" => vec![],
+            "chat_history" => vec!["chat_history".to_string()],
+            "memory_write" => vec!["memory_write".to_string()],
+            "memory_search" => vec!["memory_search".to_string(), "memory_list".to_string()],
+            "file_list" => vec!["list_directory".to_string(), "file_exists".to_string()],
+            "file_read" => vec!["read_file".to_string(), "file_exists".to_string()],
+            "file_write" => vec!["write_output".to_string(), "write_file".to_string()],
+            "file_edit" => vec![
+                "read_file".to_string(),
+                "file_exists".to_string(),
+                "search_replace".to_string(),
+                "preview_edit".to_string(),
+                "write_file".to_string(),
+            ],
+            "preview" => vec!["preview_server".to_string()],
+            "command" => vec!["run_command".to_string()],
+            "file_operation" => vec![
+                "read_file".to_string(),
+                "list_directory".to_string(),
+                "file_exists".to_string(),
+                "write_output".to_string(),
+                "write_file".to_string(),
+                "search_replace".to_string(),
+                "preview_edit".to_string(),
+                "preview_server".to_string(),
+                "run_command".to_string(),
+            ],
+            _ => {
+                if hint.is_empty() {
+                    vec![]
+                } else {
+                    vec![Self::normalize_hint_name(hint)]
+                }
+            }
+        };
+        tools.sort();
+        tools.dedup();
+        tools
+    }
+
     pub(crate) fn builtin_hint_guidance(hint: &str) -> Option<&'static str> {
         match hint {
             "file_list" => Some("Preferred tools: `list_directory` (and `file_exists` if needed)."),

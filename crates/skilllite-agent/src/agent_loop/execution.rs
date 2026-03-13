@@ -120,52 +120,6 @@ pub(super) struct ToolBatchOutcome {
     pub failure_limit_reached: bool,
     /// Per-task call depth reached — caller should inject depth-limit message.
     pub depth_limit_reached: bool,
-    /// Soft signal that execution drifted away from the current task hint.
-    pub plan_deviation_note: Option<String>,
-}
-
-fn normalize_tool_name(name: &str) -> String {
-    name.replace('-', "_").to_lowercase()
-}
-
-fn current_task_preferred_tools(planner: &TaskPlanner) -> Option<Vec<String>> {
-    let hint = planner.current_task()?.tool_hint.as_deref()?;
-
-    let tools = match hint {
-        "analysis" => Some(Vec::new()),
-        "chat_history" => Some(vec!["chat_history".to_string()]),
-        "memory_write" => Some(vec!["memory_write".to_string()]),
-        "memory_search" => Some(vec!["memory_search".to_string(), "memory_list".to_string()]),
-        "file_list" => Some(vec!["list_directory".to_string(), "file_exists".to_string()]),
-        "file_read" => Some(vec!["read_file".to_string(), "file_exists".to_string()]),
-        "file_write" => Some(vec!["write_output".to_string(), "write_file".to_string()]),
-        "file_edit" => Some(vec![
-            "read_file".to_string(),
-            "file_exists".to_string(),
-            "search_replace".to_string(),
-            "preview_edit".to_string(),
-            "write_file".to_string(),
-        ]),
-        "preview" => Some(vec!["preview_server".to_string()]),
-        "command" => Some(vec!["run_command".to_string()]),
-        "file_operation" => Some(vec![
-            "read_file".to_string(),
-            "list_directory".to_string(),
-            "file_exists".to_string(),
-            "write_output".to_string(),
-            "write_file".to_string(),
-            "search_replace".to_string(),
-            "preview_edit".to_string(),
-            "preview_server".to_string(),
-            "run_command".to_string(),
-        ]),
-        other => Some(vec![normalize_tool_name(other)]),
-    }?;
-
-    let mut tools = tools;
-    tools.sort();
-    tools.dedup();
-    Some(tools)
 }
 
 pub(super) fn should_suppress_planning_assistant_text(
@@ -173,28 +127,6 @@ pub(super) fn should_suppress_planning_assistant_text(
     has_tool_calls: bool,
 ) -> bool {
     has_tool_calls && !planner.all_completed() && planner.current_task().is_some()
-}
-
-fn maybe_note_plan_deviation(planner: &TaskPlanner, tool_name: &str) -> Option<String> {
-    let current_task = planner.current_task()?;
-    let preferred_tools = current_task_preferred_tools(planner)?;
-    if preferred_tools.is_empty() {
-        return None;
-    }
-
-    let normalized_tool = normalize_tool_name(tool_name);
-    if preferred_tools.iter().any(|preferred| preferred == &normalized_tool) {
-        return None;
-    }
-
-    Some(format!(
-        "Current task {} ({}) preferred tools: {}. You used `{}` instead. \
-         This is allowed, but if the plan no longer fits the work, call `update_task_plan`.",
-        current_task.id,
-        current_task.description,
-        preferred_tools.join(", "),
-        tool_name
-    ))
 }
 
 /// Soft upper limit on how many times a single session may call update_task_plan.
@@ -232,11 +164,8 @@ pub(super) async fn execute_tool_batch_planning(
             disclosure_injected: true,
             failure_limit_reached: false,
             depth_limit_reached: false,
-            plan_deviation_note: None,
         };
     }
-
-    let mut plan_deviation_note: Option<String> = None;
 
     for tc in tool_calls {
         let tool_name = &tc.function.name;
@@ -245,9 +174,6 @@ pub(super) async fn execute_tool_batch_planning(
 
         let is_replan = tool_name.as_str() == "update_task_plan";
         let is_complete = tool_name.as_str() == "complete_task";
-        if !is_replan && !is_complete && plan_deviation_note.is_none() {
-            plan_deviation_note = maybe_note_plan_deviation(planner, tool_name);
-        }
         // Snapshot current task before execution to detect task transitions.
         let task_before = planner.current_task().map(|t| t.id);
         let start_time = Instant::now();
@@ -317,7 +243,7 @@ pub(super) async fn execute_tool_batch_planning(
         .map_or(false, |limit| state.consecutive_failures >= limit);
     let depth_limit_reached = state.tool_calls_current_task >= max_tool_calls_per_task;
 
-    ToolBatchOutcome { disclosure_injected: false, failure_limit_reached, depth_limit_reached, plan_deviation_note }
+    ToolBatchOutcome { disclosure_injected: false, failure_limit_reached, depth_limit_reached }
 }
 
 // ── Simple-mode batch ─────────────────────────────────────────────────────────
@@ -344,7 +270,6 @@ pub(super) async fn execute_tool_batch_simple(
             disclosure_injected: true,
             failure_limit_reached: false,
             depth_limit_reached: false,
-            plan_deviation_note: None,
         };
     }
 
@@ -389,7 +314,6 @@ pub(super) async fn execute_tool_batch_simple(
         disclosure_injected: false,
         failure_limit_reached,
         depth_limit_reached: false,
-        plan_deviation_note: None,
     }
 }
 
@@ -426,43 +350,8 @@ mod tests {
         assert!(!should_suppress_planning_assistant_text(&done, true));
     }
 
-    #[test]
-    fn test_structured_builtin_hints_map_to_expected_tools() {
-        let preview_planner = planner_with_tasks(vec![Task {
-            id: 1,
-            description: "Start preview server and open in browser".to_string(),
-            tool_hint: Some("preview".to_string()),
-            completed: false,
-        }]);
-        let preview_allowed = current_task_preferred_tools(&preview_planner).unwrap();
-        assert!(preview_allowed.contains(&"preview_server".to_string()));
-        assert!(!preview_allowed.contains(&"run_command".to_string()));
-        assert!(!preview_allowed.contains(&"write_output".to_string()));
-
-        let write_planner = planner_with_tasks(vec![Task {
-            id: 1,
-            description: "Design and save website to output/index.html".to_string(),
-            tool_hint: Some("file_write".to_string()),
-            completed: false,
-        }]);
-        let write_allowed = current_task_preferred_tools(&write_planner).unwrap();
-        assert!(write_allowed.contains(&"write_output".to_string()));
-        assert!(!write_allowed.contains(&"preview_server".to_string()));
-
-        let edit_planner = planner_with_tasks(vec![Task {
-            id: 1,
-            description: "Replace panic with Result".to_string(),
-            tool_hint: Some("file_edit".to_string()),
-            completed: false,
-        }]);
-        let edit_allowed = current_task_preferred_tools(&edit_planner).unwrap();
-        assert!(edit_allowed.contains(&"search_replace".to_string()));
-        assert!(edit_allowed.contains(&"read_file".to_string()));
-        assert!(!edit_allowed.contains(&"preview_server".to_string()));
-    }
-
     #[tokio::test]
-    async fn test_execute_tool_batch_planning_allows_off_plan_tool_but_reports_deviation() {
+    async fn test_execute_tool_batch_planning_allows_any_tool_for_current_task() {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path();
         let registry = ExtensionRegistry::new(false, false, &[]);
@@ -519,9 +408,6 @@ mod tests {
         assert!(planner.task_list[0].completed);
         assert_eq!(planner.current_task().map(|t| t.id), None);
         assert_eq!(state.failed_tool_calls, 0);
-        let note = outcome.plan_deviation_note.unwrap_or_default();
-        assert!(note.contains("preferred tools"));
-        assert!(note.contains("file_exists"));
     }
 
     #[tokio::test]

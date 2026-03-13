@@ -257,11 +257,11 @@ async fn run_with_task_planning(
         }
         state.iterations += 1;
 
-        // ── Suppress streaming for hallucination-prone iterations ─────────────
-        let suppress_stream = state.total_tool_calls == 0
-            && planner.task_list.iter().any(|t| {
-                !t.completed && t.tool_hint.as_ref().map_or(false, |h| h != "analysis")
-            });
+        // ── Suppress streaming while tasks are pending ──────────────────────────
+        // Prevents premature summary text from leaking to the user via streaming
+        // before we can inspect and filter it. Tool results and the final summary
+        // (after all_completed) still reach the user through dedicated event_sink calls.
+        let suppress_stream = !planner.all_completed() && planner.current_task().is_some();
 
         // ── LLM call (with context-overflow recovery) ─────────────────────────
         let llm_result = if suppress_stream {
@@ -342,14 +342,6 @@ async fn run_with_task_planning(
         if outcome.failure_limit_reached {
             tracing::warn!("Stopping: {} consecutive tool failures", state.consecutive_failures);
             break;
-        }
-        if let Some(note) = outcome.plan_deviation_note {
-            if !planner.all_completed() {
-                messages.push(ChatMessage::user(&format!(
-                    "{}\n\nIf the current task boundary is no longer useful, revise the plan with `update_task_plan`. Otherwise continue with the work.",
-                    note
-                )));
-            }
         }
         if suppressed_planning_text && !planner.all_completed() {
             if let Some(nudge) = planner.build_nudge_message() {
