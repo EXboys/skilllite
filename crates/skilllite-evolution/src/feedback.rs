@@ -73,6 +73,14 @@ pub struct JudgementSummary {
     pub reason: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuleHistoryEntry {
+    pub ts: String,
+    pub event_type: String,
+    pub txn_id: String,
+    pub reason: String,
+}
+
 impl Default for FeedbackSignal {
     fn default() -> Self {
         Self::Neutral
@@ -267,6 +275,27 @@ pub fn compute_effectiveness(conn: &Connection, rule_id: &str) -> Result<f32> {
         }
         Err(_) => Ok(-1.0),
     }
+}
+
+pub fn query_rule_history(conn: &Connection, rule_id: &str) -> Result<Vec<RuleHistoryEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT ts, type, COALESCE(version, ''), COALESCE(reason, '')
+         FROM evolution_log
+         WHERE target_id = ?1
+         ORDER BY ts DESC",
+    )?;
+
+    let rows = stmt.query_map(params![rule_id], |row| {
+        Ok(RuleHistoryEntry {
+            ts: row.get(0)?,
+            event_type: row.get(1)?,
+            txn_id: row.get(2)?,
+            reason: row.get(3)?,
+        })
+    })?;
+
+    let entries = rows.collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(entries)
 }
 
 // ─── System-level metrics ───────────────────────────────────────────────────
@@ -649,6 +678,26 @@ mod tests {
 
         let effectiveness = compute_effectiveness(&conn, "test-rule-2").unwrap();
         assert!((effectiveness - -1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_query_rule_history_returns_events_for_rule() {
+        let conn = setup_conn();
+        conn.execute_batch(
+            "INSERT INTO evolution_log (ts, type, target_id, reason, version) VALUES
+             ('2026-03-14T09:00:00Z', 'rule_added', 'rule-a', 'seeded', 'txn-1'),
+             ('2026-03-14T10:00:00Z', 'rule_promoted', 'rule-a', 'effective', 'txn-2'),
+             ('2026-03-14T11:00:00Z', 'rule_added', 'rule-b', 'other', 'txn-3')",
+        )
+        .unwrap();
+
+        let history = query_rule_history(&conn, "rule-a").unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].event_type, "rule_promoted");
+        assert_eq!(history[0].txn_id, "txn-2");
+        assert_eq!(history[0].reason, "effective");
+        assert_eq!(history[1].event_type, "rule_added");
+        assert_eq!(history[1].txn_id, "txn-1");
     }
 
     #[test]

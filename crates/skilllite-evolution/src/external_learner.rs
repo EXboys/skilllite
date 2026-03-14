@@ -709,6 +709,7 @@ pub async fn run_external_learning<L: EvolutionLlm>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::feedback;
     use skilllite_core::planning::{SourceEntry, SourceRegistry};
 
     fn make_source(
