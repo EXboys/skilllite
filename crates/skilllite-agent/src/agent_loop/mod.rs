@@ -208,7 +208,7 @@ async fn run_simple_loop(
         context_overflow_retries: state.context_overflow_retries,
         task_completed,
         task_description: Some(user_message.to_string()),
-        rules_used: Vec::new(),
+        rules_used: state.rules_used,
         tools_detail: state.tools_detail,
     };
     Ok(build_agent_result(messages, state.total_tool_calls, state.iterations, Vec::new(), feedback))

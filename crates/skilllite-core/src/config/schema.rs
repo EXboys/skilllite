@@ -70,10 +70,7 @@ pub struct PathsConfig {
 
 impl PathsConfig {
     pub fn from_env() -> Self {
-
-        let default_data_dir = dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("skilllite");
+        let default_data_dir = crate::paths::data_root();
         super::loader::load_dotenv();
         let workspace = super::loader::env_optional(
             super::env_keys::paths::SKILLLITE_WORKSPACE,

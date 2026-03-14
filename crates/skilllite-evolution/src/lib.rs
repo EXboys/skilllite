@@ -765,6 +765,12 @@ async fn run_evolution_inner<L: EvolutionLlm>(
                 &summary.reason,
                 &txn_id,
             );
+            // Insert new judgement output to file here
+            let judgement_output = format!("## Evolution Judgement\n\n**Judgement:** {}\n\n**Reason:** {}\n", summary.judgement.as_str(), summary.reason);
+            let judgement_path = chat_root.join("JUDGEMENT.md");
+            if let Err(e) = skilllite_fs::atomic_write(&judgement_path, &judgement_output) {
+                tracing::warn!("Failed to write JUDGEMENT.md: {}", e);
+            }
         }
 
         if all_changes.is_empty() {

@@ -19,6 +19,7 @@ use super::llm::LlmClient;
 use super::planning_rules;
 use super::skills::LoadedSkill;
 use super::soul::Soul;
+use super::tool_hint_resolver;
 use super::types::*;
 
 /// Resolve the output directory path for prompt injection.
@@ -107,109 +108,29 @@ impl TaskPlanner {
         }
     }
 
-    /// Builtin tool_hint values that don't require a loaded skill.
-    const BUILTIN_HINTS: &'static [&'static str] = &[
-        "file_operation",
-        "file_list",
-        "file_read",
-        "file_write",
-        "file_edit",
-        "preview",
-        "command",
-        "chat_history",
-        "memory_write",
-        "memory_search",
-        "analysis",
-    ];
-
-    fn normalize_hint_name(name: &str) -> String {
-        name.replace('-', "_").to_lowercase()
-    }
-
+    /// Delegate: resolve a hint to preferred tool names.
     pub(crate) fn preferred_tool_names_for_hint(hint: &str) -> Vec<String> {
-        let mut tools = match hint {
-            "analysis" => vec![],
-            "chat_history" => vec!["chat_history".to_string()],
-            "memory_write" => vec!["memory_write".to_string()],
-            "memory_search" => vec!["memory_search".to_string(), "memory_list".to_string()],
-            "file_list" => vec!["list_directory".to_string(), "file_exists".to_string()],
-            "file_read" => vec!["read_file".to_string(), "file_exists".to_string()],
-            "file_write" => vec!["write_output".to_string(), "write_file".to_string()],
-            "file_edit" => vec![
-                "read_file".to_string(),
-                "file_exists".to_string(),
-                "search_replace".to_string(),
-                "preview_edit".to_string(),
-                "write_file".to_string(),
-            ],
-            "preview" => vec!["preview_server".to_string()],
-            "command" => vec!["run_command".to_string()],
-            "file_operation" => vec![
-                "read_file".to_string(),
-                "list_directory".to_string(),
-                "file_exists".to_string(),
-                "write_output".to_string(),
-                "write_file".to_string(),
-                "search_replace".to_string(),
-                "preview_edit".to_string(),
-                "preview_server".to_string(),
-                "run_command".to_string(),
-            ],
-            _ => {
-                if hint.is_empty() {
-                    vec![]
-                } else {
-                    vec![Self::normalize_hint_name(hint)]
-                }
-            }
-        };
-        tools.sort();
-        tools.dedup();
-        tools
+        tool_hint_resolver::preferred_tool_names(hint)
     }
 
+    /// Delegate: get human-readable guidance for a hint.
     pub(crate) fn builtin_hint_guidance(hint: &str) -> Option<&'static str> {
-        match hint {
-            "file_list" => Some("Preferred tools: `list_directory` (and `file_exists` if needed)."),
-            "file_read" => Some("Preferred tools: `read_file` (and `file_exists` if needed)."),
-            "file_write" => Some("Preferred tools: `write_output` or `write_file`. Generate the content yourself unless the task explicitly needs another tool."),
-            "file_edit" => Some("Preferred tools: `read_file`, `search_replace`, `preview_edit`, or `write_file` for targeted edits."),
-            "preview" => Some("Preferred tool: `preview_server`."),
-            "command" => Some("Preferred tool: `run_command`."),
-            "chat_history" => Some("Preferred tool: `chat_history`."),
-            "memory_write" => Some("Preferred tool: `memory_write`."),
-            "memory_search" => Some("Preferred tools: `memory_search` (or `memory_list` if needed)."),
-            "file_operation" => Some("Legacy broad file task: prefer built-in file tools. If the plan no longer fits, revise it with `update_task_plan`."),
-            _ => None,
-        }
+        tool_hint_resolver::hint_guidance(hint)
     }
 
-    /// Filter out rules whose tool_hint references a skill that isn't loaded.
     fn filter_rules_by_available_skills(rules: &[PlanningRule], skills: &[LoadedSkill]) -> Vec<PlanningRule> {
         rules.iter().filter(|r| {
             match r.tool_hint.as_deref() {
                 None => true,
-                Some(hint) => Self::is_hint_available(hint, skills),
+                Some(hint) => tool_hint_resolver::is_hint_available(hint, skills),
             }
         }).cloned().collect()
     }
 
-    /// Check if a tool_hint is available (builtin or loaded skill).
-    fn is_hint_available(hint: &str, skills: &[LoadedSkill]) -> bool {
-        Self::BUILTIN_HINTS.contains(&hint)
-            || skills.iter().any(|s| {
-                s.name == hint
-                || s.name.replace('-', "_") == hint.replace('-', "_")
-                || s.tool_definitions.iter().any(|td| td.function.name == hint.replace('-', "_"))
-            })
-    }
-
-    /// Strip tool_hints that reference unavailable skills from LLM-generated tasks.
-    /// The LLM may hallucinate tool names even when they're not in the prompt.
     fn sanitize_task_hints(tasks: &mut [Task], skills: &[LoadedSkill]) {
         for task in tasks.iter_mut() {
             if let Some(ref hint) = task.tool_hint {
-                if !Self::is_hint_available(hint, skills) {
+                if !tool_hint_resolver::is_hint_available(hint, skills) {
                     tracing::info!(
                         "Stripped unavailable tool_hint '{}' from task {}: {}",
                         hint, task.id, task.description
@@ -611,13 +532,14 @@ impl TaskPlanner {
             _ => String::new(),
         };
 
+        let match_rule = tool_hint_resolver::generate_match_rule();
         format!(
             "{}{}\n\
              ---\n\n\
              ## Current Task List\n\n\
              {}\n\n\
              ## Execution Rules\n\n\
-             1. **MATCH tool_hint**: `file_list` → `list_directory`; `file_read` → `read_file`; `file_write` → `write_output`/`write_file`; `file_edit` → `search_replace`/`preview_edit`; `preview` → `preview_server`; `command` → `run_command`; `memory_search` → `memory_search`; skill name → call that skill.\n\
+             {}\n\
              2. **Strict sequential execution**: Execute tasks in order, do not skip tasks\n\
              3. **Focus on current task**: Focus only on the current task\n\
              4. **Structured completion**: After finishing a task, call `complete_task(task_id=N)`. Writing \"Task N completed\" in text is NOT sufficient.\n\
@@ -630,6 +552,7 @@ impl TaskPlanner {
             execution_prompt,
             boundaries_block,
             task_list_json,
+            match_rule,
             current_task_info,
             direct_call_instruction
         )

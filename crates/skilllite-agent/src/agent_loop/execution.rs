@@ -94,7 +94,8 @@ pub(super) struct ExecutionState {
     pub replan_count: usize,
     pub tools_detail: Vec<ToolExecDetail>,
     pub context_overflow_retries: usize,
-    pub iterations: usize,
+        pub iterations: usize,
+    pub rules_used: Vec<String>,
 }
 
 impl ExecutionState {
@@ -108,6 +109,7 @@ impl ExecutionState {
             tools_detail: Vec::new(),
             context_overflow_retries: 0,
             iterations: 0,
+            rules_used: Vec::new(),
         }
     }
 }

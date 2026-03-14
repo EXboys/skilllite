@@ -33,6 +33,7 @@ impl SkillUsageStats {
     }
 
     pub fn save(&self, data_dir: &Path) -> Result<()> {
+        fs::create_dir_all(data_dir)?;
         let file_path = data_dir.join(USAGE_STATS_FILE);
         let content = serde_json::to_string_pretty(&self.stats)?;
         fs::write(file_path, content)?;

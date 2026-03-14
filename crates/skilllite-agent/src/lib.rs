@@ -13,6 +13,7 @@ pub mod types;
 pub mod planning_rules;
 pub mod planning_guard;
 pub mod task_planner;
+pub mod tool_hint_resolver;
 pub mod long_text;
 pub mod rpc;
 pub mod dependency_resolver;
