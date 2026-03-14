@@ -265,30 +265,7 @@ pub fn cmd_status() -> Result<()> {
     }
     println!();
 
-    // Time trends
-    println!("🕐 活跃时段分布 (最近 30 天)");
-    match skilllite_evolution::feedback::query_peak_hours(&conn) {
-        Ok(peaks) if !peaks.is_empty() => {
-            let peak_strs: Vec<String> = peaks
-                .iter()
-                .map(|(h, c)| format!("{:02}:00 ({}次)", h, c))
-                .collect();
-            println!("  高峰时段: {}", peak_strs.join(", "));
-        }
-        _ => println!("  (暂无数据)"),
-    }
 
-    match skilllite_evolution::feedback::query_weekday_activity(&conn) {
-        Ok(days) if !days.is_empty() => {
-            print!("  星期分布: ");
-            let day_strs: Vec<String> = days
-                .iter()
-                .map(|d| format!("{}: {}次", d.weekday_name, d.count))
-                .collect();
-            println!("{}", day_strs.join(" | "));
-        }
-        _ => {}
-    }
 
     Ok(())
 }

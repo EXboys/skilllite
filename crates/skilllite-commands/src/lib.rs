@@ -33,3 +33,5 @@ pub mod planning_rules_gen;
 pub mod quickstart;
 #[cfg(feature = "agent")]
 pub mod replay;
+#[cfg(feature = "agent")]
+pub mod replay_quality;

@@ -748,7 +748,14 @@ async fn run_evolution_inner<L: EvolutionLlm>(
 
         mark_decisions_evolved(&conn, &scope.decision_ids)?;
         let _ = feedback::update_daily_metrics(&conn);
-        let _ = feedback::export_judgement(&conn, &chat_root.join("JUDGEMENT.md"));
+        let auto_rolled_back = check_auto_rollback(&conn, chat_root)?;
+        if auto_rolled_back {
+            tracing::info!("EVO: auto-rollback triggered for txn={}", txn_id);
+            let _ = log_evolution_event(&conn, chat_root, "evolution_judgement", "rollback", "Auto-rollback triggered due to performance degradation", &txn_id);
+        } else {
+            let _ = log_evolution_event(&conn, chat_root, "evolution_judgement", "no_rollback", "No auto-rollback triggered", &txn_id);
+        }
+        // let _ = feedback::export_judgement(&conn, &chat_root.join("JUDGEMENT.md")); // Removed for refactor
         if let Ok(Some(summary)) = feedback::build_latest_judgement(&conn) {
             let _ = log_evolution_event(
                 &conn,
@@ -812,8 +819,8 @@ async fn run_evolution_inner<L: EvolutionLlm>(
 
         append_changelog(chat_root, &txn_id, &modified_files, &all_changes, &reason)?;
 
-        let decisions_path = chat_root.join("DECISIONS.md");
-        let _ = feedback::export_decisions_md(&conn, &decisions_path);
+        let _decisions_path = chat_root.join("DECISIONS.md");
+        // let _ = feedback::export_decisions_md(&conn, &decisions_path); // Removed for refactor
 
         tracing::info!("Evolution txn={} complete: {}", txn_id, reason);
     }
@@ -887,7 +894,7 @@ pub fn on_shutdown(chat_root: &Path) {
     }
     if let Ok(conn) = feedback::open_evolution_db(chat_root) {
         let _ = feedback::update_daily_metrics(&conn);
-        let _ = feedback::export_decisions_md(&conn, &chat_root.join("DECISIONS.md"));
+        // let _ = feedback::export_decisions_md(&conn, &chat_root.join("DECISIONS.md")); // Removed for refactor
     }
     finish_evolution();
 }

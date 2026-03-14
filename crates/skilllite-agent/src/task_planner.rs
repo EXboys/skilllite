@@ -841,7 +841,6 @@ mod tests {
             &["always".to_string(), "weather".to_string()]
         );
     }
-}
 
     #[test]
     fn test_matched_rule_ids_preserved_in_fallback() {
@@ -917,10 +916,11 @@ mod tests {
             "seed_weather_skill".to_string(),
         ];
         // Sort both vectors for comparison as order might not be guaranteed
-        let mut actual_ids = planner.matched_rule_ids().clone();
+        let mut actual_ids = planner.matched_rule_ids().to_vec();
         actual_ids.sort();
         let mut sorted_expected_ids = expected_ids.clone();
         sorted_expected_ids.sort();
 
         assert_eq!(actual_ids, sorted_expected_ids);
     }
+}

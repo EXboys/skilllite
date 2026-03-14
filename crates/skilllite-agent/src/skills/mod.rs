@@ -20,6 +20,7 @@ use loader::{load_single_skill, load_evolved_skills, sanitize_tool_name};
 
 mod loader;
 mod executor;
+pub(crate) mod usage_stats;
 pub(crate) mod security;
 pub mod infer_entry;
 

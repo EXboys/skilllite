@@ -118,7 +118,6 @@ mod tests {
         let input = execution_feedback_to_decision_input(&feedback);
         assert_eq!(input.rules_used, vec!["rule.alpha".to_string(), "rule.beta".to_string()]);
     }
-}
 
     #[test]
     fn test_execution_feedback_to_decision_input_preserves_tools_detail() {
@@ -151,3 +150,4 @@ mod tests {
         assert_eq!(input.tools_detail[1].tool, "write_file".to_string());
         assert!(!input.tools_detail[1].success);
     }
+}

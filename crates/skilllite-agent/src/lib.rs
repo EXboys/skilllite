@@ -11,6 +11,7 @@ pub mod chat;
 pub mod chat_session;
 pub mod types;
 pub mod planning_rules;
+pub mod planning_guard;
 pub mod task_planner;
 pub mod long_text;
 pub mod rpc;

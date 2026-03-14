@@ -10,6 +10,7 @@ use std::path::Path;
 use anyhow::Result;
 use rusqlite::Connection;
 
+use crate::feedback::open_evolution_db;
 use crate::feedback;
 use crate::gatekeeper_l1_path;
 use crate::gatekeeper_l3_content;
@@ -39,7 +40,7 @@ pub async fn evolve_memory<L: EvolutionLlm>(
     model: &str,
     _txn_id: &str,
 ) -> Result<Vec<(String, String)>> {
-    let conn = feedback::open_evolution_db(chat_root)?;
+    let conn = open_evolution_db(chat_root)?;
     let summary = query_decisions_for_memory(&conn)?;
     drop(conn);
 

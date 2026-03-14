@@ -11,6 +11,7 @@ use anyhow::Result;
 use super::helpers::extract_goal_boundaries_hybrid;
 use super::super::goal_boundaries;
 use super::super::llm::LlmClient;
+use super::super::planning_guard;
 use super::super::prompt;
 use super::super::skills::LoadedSkill;
 use super::super::soul::Soul;
@@ -92,6 +93,13 @@ pub(super) async fn run_planning_phase(
             soul.as_ref(),
         )
         .await?;
+
+    if planner.is_empty() {
+        if let Some(guard) = planning_guard::guard_empty_plan(user_message) {
+            tracing::info!("Planning guard replaced empty plan: {}", guard.reason);
+            planner.task_list = guard.fallback_tasks;
+        }
+    }
 
     event_sink.on_task_plan(&planner.task_list);
 
@@ -205,6 +213,7 @@ pub(super) fn maybe_save_checkpoint(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::planning_guard;
 
     #[test]
     fn test_build_task_focus_message_uses_internal_control_block() {
@@ -240,6 +249,21 @@ mod tests {
         let tools = vec!["write_file".to_string(), "preview_server".to_string()];
         let msg2 = build_task_focus_message(&planner, &tools).unwrap();
         assert!(msg2.contains("already_called_this_session=write_file,preview_server"));
+    }
+
+    #[test]
+    fn test_planning_guard_replaces_empty_plan_for_code_requests() {
+        let mut planner = TaskPlanner::new(None, None);
+        assert!(planner.is_empty());
+
+        if let Some(guard) = planning_guard::guard_empty_plan(
+            "在 crates/skilllite-agent/src/task_planner.rs 中补一个单测并验证 rules_used",
+        ) {
+            planner.task_list = guard.fallback_tasks;
+        }
+
+        assert!(!planner.is_empty());
+        assert_eq!(planner.task_list[0].tool_hint.as_deref(), Some("file_read"));
     }
 }
 

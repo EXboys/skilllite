@@ -65,10 +65,15 @@ pub struct PathsConfig {
     pub skills_repo: String,
     /// 沙箱内 skill 路径的根目录，用于 path validation
     pub skills_root: Option<String>,
+    pub data_dir: PathBuf,
 }
 
 impl PathsConfig {
     pub fn from_env() -> Self {
+
+        let default_data_dir = dirs::data_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("skilllite");
         super::loader::load_dotenv();
         let workspace = super::loader::env_optional(
             super::env_keys::paths::SKILLLITE_WORKSPACE,
@@ -100,7 +105,7 @@ impl PathsConfig {
             output_dir,
             skills_repo,
             skills_root,
-        }
+            data_dir: default_data_dir,        }
     }
 }
 

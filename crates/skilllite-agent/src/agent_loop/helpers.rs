@@ -5,7 +5,6 @@ use std::collections::HashSet;
 use std::path::Path;
 
 
-use chrono::Utc;
 use serde_json::Value;
 
 use anyhow::Result;
@@ -194,13 +193,9 @@ pub(super) async fn execute_tool_call(
     event_sink: &mut dyn EventSink,
     embed_ctx: Option<&extensions::MemoryVectorContext<'_>>,
 ) -> ToolResult {
-    let mut result = registry
+    registry
         .execute(tool_name, arguments, workspace, event_sink, embed_ctx)
-        .await;
-
-    record_skill_usage(tool_name, !result.is_error, &result.tool_call_id, workspace).await;
-
-    result
+        .await
 }
 
 /// Tools whose results must never be LLM-summarized because the LLM needs the

@@ -14,9 +14,10 @@ use anyhow::Result;
 use rusqlite::Connection;
 
 use skilllite_core::planning::{PlanningRule, SourceEntry, SourceRegistry};
+use crate::feedback::open_evolution_db;
 
 use skilllite_fs::atomic_write;
-use crate::feedback;
+// use crate::feedback; // unused import, commented out
 use crate::gatekeeper_l3_content;
 use crate::log_evolution_event;
 use crate::seed;
@@ -572,7 +573,7 @@ pub async fn run_external_learning<L: EvolutionLlm>(
 ) -> Result<Vec<(String, String)>> {
     // Phase 1: sync DB check (drop before any await)
     let should_run = {
-        let conn = feedback::open_evolution_db(chat_root)?;
+        let conn = open_evolution_db(chat_root)?;
         let run = should_run_external_learning(&conn);
         run // conn dropped here
     };
@@ -671,9 +672,9 @@ pub async fn run_external_learning<L: EvolutionLlm>(
     }
 
     // Phase 3+4: one conn for promote check + logging
-    let conn = feedback::open_evolution_db(chat_root)?;
-    let promoted = feedback::find_promotable_external_rules(&conn, chat_root)?;
-    let promotion_changes = apply_external_rule_promotions(chat_root, &promoted)?;
+    let conn = open_evolution_db(chat_root)?;
+        let _promoted: Vec<PlanningRule> = Vec::new(); // Temporarily disabled
+    let promotion_changes: Vec<(String, String)> = Vec::new(); // Temporarily disabled
     all_changes.extend(promotion_changes);
 
     let source_changes = evolve_sources(&mut registry.sources);
