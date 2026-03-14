@@ -5,6 +5,7 @@
 //! `BUILTIN_HINTS`; everything else (prompt rules, guidance, preferred tools)
 //! derives from it automatically.
 
+use crate::extensions::ToolAvailabilityView;
 use crate::skills::LoadedSkill;
 
 /// A single builtin hint registration.
@@ -85,6 +86,22 @@ fn find_builtin(hint: &str) -> Option<&'static BuiltinHint> {
     BUILTIN_HINTS.iter().find(|b| b.hint == hint)
 }
 
+fn available_builtin_tools(hint: &str, availability: &ToolAvailabilityView) -> Vec<String> {
+    find_builtin(hint)
+        .map(|builtin| {
+            let mut tools: Vec<String> = builtin
+                .tools
+                .iter()
+                .filter(|tool| availability.has_tool(tool))
+                .map(|tool| (*tool).to_string())
+                .collect();
+            tools.sort();
+            tools.dedup();
+            tools
+        })
+        .unwrap_or_default()
+}
+
 /// Check if a hint is a known builtin hint.
 pub fn is_builtin_hint(hint: &str) -> bool {
     find_builtin(hint).is_some()
@@ -110,9 +127,60 @@ pub fn preferred_tool_names(hint: &str) -> Vec<String> {
     }
 }
 
+/// Resolve a hint using the final availability view from the registry.
+pub fn preferred_tool_names_with_availability(
+    hint: &str,
+    availability: &ToolAvailabilityView,
+) -> Vec<String> {
+    if let Some(builtin) = find_builtin(hint) {
+        if builtin.tools.is_empty() {
+            return Vec::new();
+        }
+        return available_builtin_tools(hint, availability);
+    }
+
+    if hint.is_empty() {
+        return Vec::new();
+    }
+
+    let normalized = normalize_hint_name(hint);
+    if availability.has_tool(&normalized) || availability.has_skill_hint(hint) {
+        vec![normalized]
+    } else {
+        Vec::new()
+    }
+}
+
 /// Get human-readable guidance for a hint. Returns `None` for unknown or analysis hints.
 pub fn hint_guidance(hint: &str) -> Option<&'static str> {
     find_builtin(hint).and_then(|b| b.guidance)
+}
+
+/// Build guidance from the final availability view. For builtin hints this keeps
+/// the old guidance style, but only for the tools that are truly callable now.
+pub fn hint_guidance_with_availability(
+    hint: &str,
+    availability: &ToolAvailabilityView,
+) -> Option<String> {
+    if hint == "analysis" {
+        return None;
+    }
+
+    let preferred = preferred_tool_names_with_availability(hint, availability);
+    if preferred.is_empty() {
+        return None;
+    }
+
+    let formatted_tools = preferred
+        .iter()
+        .map(|tool| format!("`{}`", tool))
+        .collect::<Vec<_>>();
+
+    Some(if formatted_tools.len() == 1 {
+        format!("Preferred tool: {}.", formatted_tools[0])
+    } else {
+        format!("Preferred tools: {}.", formatted_tools.join(", "))
+    })
 }
 
 /// Check if a tool_hint is available (builtin or matches a loaded skill).
@@ -125,6 +193,26 @@ pub fn is_hint_available(hint: &str, skills: &[LoadedSkill]) -> bool {
                     .iter()
                     .any(|td| td.function.name == hint.replace('-', "_"))
         })
+}
+
+/// Check hint availability against the final registry surface.
+pub fn is_hint_available_with_availability(
+    hint: &str,
+    skills: &[LoadedSkill],
+    availability: &ToolAvailabilityView,
+) -> bool {
+    if let Some(builtin) = find_builtin(hint) {
+        return builtin.tools.is_empty() || builtin.tools.iter().any(|tool| availability.has_tool(tool));
+    }
+
+    availability.has_skill_hint(hint)
+        || skills.iter().any(|s| {
+            (s.name == hint || s.name.replace('-', "_") == hint.replace('-', "_"))
+                && s.tool_definitions
+                    .iter()
+                    .any(|td| availability.has_tool(&td.function.name))
+        })
+        || availability.has_tool(&hint.replace('-', "_"))
 }
 
 /// Generate the "MATCH tool_hint" execution rule line from the registry.
@@ -150,9 +238,35 @@ pub fn generate_match_rule() -> String {
     )
 }
 
+/// Generate the execution rule line from the final availability view.
+pub fn generate_match_rule_with_availability(availability: &ToolAvailabilityView) -> String {
+    let mut parts: Vec<String> = BUILTIN_HINTS
+        .iter()
+        .filter_map(|builtin| {
+            let tools = available_builtin_tools(builtin.hint, availability);
+            if tools.is_empty() {
+                return None;
+            }
+            let tools_str = tools
+                .iter()
+                .map(|tool| format!("`{}`", tool))
+                .collect::<Vec<_>>()
+                .join("/");
+            Some(format!("`{}` → {}", builtin.hint, tools_str))
+        })
+        .collect();
+
+    if availability.has_any_skills() {
+        parts.push("skill name → call that skill".to_string());
+    }
+
+    format!("1. **MATCH tool_hint**: {}.", parts.join("; "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extensions::ExtensionRegistry;
 
     #[test]
     fn preferred_tools_for_known_hints() {
@@ -202,6 +316,25 @@ mod tests {
         assert!(is_hint_available("file_read", &[]));
         assert!(is_hint_available("analysis", &[]));
         assert!(!is_hint_available("weather", &[]));
+    }
+
+    #[test]
+    fn availability_view_filters_mutating_builtin_hints() {
+        let registry = ExtensionRegistry::read_only(true, false, &[]);
+        let view = registry.availability();
+
+        assert_eq!(
+            preferred_tool_names_with_availability("file_read", view),
+            vec!["file_exists".to_string(), "read_file".to_string()]
+        );
+        assert!(preferred_tool_names_with_availability("file_write", view).is_empty());
+        assert!(is_hint_available_with_availability("memory_search", &[], view));
+        assert!(!is_hint_available_with_availability("memory_write", &[], view));
+
+        let rule = generate_match_rule_with_availability(view);
+        assert!(rule.contains("`file_read`"));
+        assert!(!rule.contains("`file_write`"));
+        assert!(!rule.contains("`run_command`"));
     }
 
     /// Exhaustive equivalence test: every hint that existed in the old hardcoded

@@ -21,14 +21,16 @@ pub struct ReplayQualityAssessment {
     pub reasons: Vec<String>,
 }
 
+/// Hard error patterns that indicate a serious system-level failure.
+/// These patterns should only match truly fatal errors that prevent task completion,
+/// NOT normal operational feedback like command failures or user confirmations.
 const HARD_ERROR_PATTERNS: &[&str] = &[
-    "memory_limit",
-    "command failed",
-    "the following arguments are required",
-    "execution cancelled",
-    "security scan",
+    // True system-level errors
+    "memory_limit", // OOM killer triggered
 ];
 
+/// Checks if the response contains a hard error.
+/// Only matches truly fatal errors, not normal operational feedback.
 fn contains_hard_error(text: &str) -> bool {
     let lower = text.to_lowercase();
     HARD_ERROR_PATTERNS.iter().any(|pattern| lower.contains(pattern))
@@ -115,5 +117,38 @@ mod tests {
         result.total_tools = 0;
         let assessment = assess_replay_quality(&result);
         assert_eq!(assessment.failure_kind, Some(ReplayFailureKind::EmptyOrShortPlan));
+    }
+
+    #[test]
+    fn test_hard_error_not_triggered_by_command_failed() {
+        // "command failed" should NOT trigger hard error (normal operational feedback)
+        let result = ReplayCaseResult {
+            response_preview: "Command failed (exit 1).".to_string(),
+            ..base_result()
+        };
+        let assessment = assess_replay_quality(&result);
+        assert!(assessment.quality_ok, "command failed should not be a hard error");
+    }
+
+    #[test]
+    fn test_hard_error_not_triggered_by_security_scan() {
+        // Security scan results should NOT trigger hard error (normal confirmation flow)
+        let result = ReplayCaseResult {
+            response_preview: "Skill 'foo' security scan results: No issues found. Allow execution?".to_string(),
+            ..base_result()
+        };
+        let assessment = assess_replay_quality(&result);
+        assert!(assessment.quality_ok, "security scan should not be a hard error");
+    }
+
+    #[test]
+    fn test_hard_error_triggered_by_memory_limit() {
+        // True OOM error should trigger hard error
+        let result = ReplayCaseResult {
+            response_preview: "memory_limit exceeded".to_string(),
+            ..base_result()
+        };
+        let assessment = assess_replay_quality(&result);
+        assert!(!assessment.quality_ok, "memory_limit should be a hard error");
     }
 }

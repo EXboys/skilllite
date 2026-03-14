@@ -351,7 +351,7 @@ mod tests {
     use crate::types::{FunctionCall, SilentEventSink, Task, ToolCall};
 
     fn planner_with_tasks(tasks: Vec<Task>) -> TaskPlanner {
-        let mut planner = TaskPlanner::new(None, None);
+        let mut planner = TaskPlanner::new(None, None, None);
         planner.task_list = tasks;
         planner
     }

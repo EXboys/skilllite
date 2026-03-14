@@ -13,6 +13,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use super::extensions::ToolAvailabilityView;
 use skilllite_evolution::seed;
 use super::goal_boundaries::GoalBoundaries;
 use super::llm::LlmClient;
@@ -89,6 +90,8 @@ pub struct TaskPlanner {
     chat_root: Option<std::path::PathBuf>,
     /// EVO-5: Workspace path for project-level prompt overrides.
     workspace: Option<std::path::PathBuf>,
+    /// Final tool availability for the current execution mode, if known.
+    availability: Option<ToolAvailabilityView>,
 }
 
 impl TaskPlanner {
@@ -96,7 +99,11 @@ impl TaskPlanner {
     ///
     /// `workspace`: per-project override directory.
     /// `chat_root`: `~/.skilllite/chat/` for loading prompts from the seed system.
-    pub fn new(workspace: Option<&Path>, chat_root: Option<&Path>) -> Self {
+    pub fn new(
+        workspace: Option<&Path>,
+        chat_root: Option<&Path>,
+        availability: Option<ToolAvailabilityView>,
+    ) -> Self {
         let rules = planning_rules::load_rules(workspace, chat_root);
         Self {
             task_list: Vec::new(),
@@ -105,32 +112,46 @@ impl TaskPlanner {
             matched_rule_ids: Vec::new(),
             chat_root: chat_root.map(|p| p.to_path_buf()),
             workspace: workspace.map(|p| p.to_path_buf()),
+            availability,
         }
     }
 
     /// Delegate: resolve a hint to preferred tool names.
-    pub(crate) fn preferred_tool_names_for_hint(hint: &str) -> Vec<String> {
-        tool_hint_resolver::preferred_tool_names(hint)
+    pub(crate) fn preferred_tool_names_for_hint(&self, hint: &str) -> Vec<String> {
+        match self.availability.as_ref() {
+            Some(view) => tool_hint_resolver::preferred_tool_names_with_availability(hint, view),
+            None => tool_hint_resolver::preferred_tool_names(hint),
+        }
     }
 
     /// Delegate: get human-readable guidance for a hint.
-    pub(crate) fn builtin_hint_guidance(hint: &str) -> Option<&'static str> {
-        tool_hint_resolver::hint_guidance(hint)
+    pub(crate) fn builtin_hint_guidance(&self, hint: &str) -> Option<String> {
+        match self.availability.as_ref() {
+            Some(view) => tool_hint_resolver::hint_guidance_with_availability(hint, view),
+            None => tool_hint_resolver::hint_guidance(hint).map(ToString::to_string),
+        }
     }
 
-    fn filter_rules_by_available_skills(rules: &[PlanningRule], skills: &[LoadedSkill]) -> Vec<PlanningRule> {
+    fn filter_rules_by_available_skills(&self, rules: &[PlanningRule], skills: &[LoadedSkill]) -> Vec<PlanningRule> {
         rules.iter().filter(|r| {
             match r.tool_hint.as_deref() {
                 None => true,
-                Some(hint) => tool_hint_resolver::is_hint_available(hint, skills),
+                Some(hint) => match self.availability.as_ref() {
+                    Some(view) => tool_hint_resolver::is_hint_available_with_availability(hint, skills, view),
+                    None => tool_hint_resolver::is_hint_available(hint, skills),
+                },
             }
         }).cloned().collect()
     }
 
-    fn sanitize_task_hints(tasks: &mut [Task], skills: &[LoadedSkill]) {
+    fn sanitize_task_hints(&self, tasks: &mut [Task], skills: &[LoadedSkill]) {
         for task in tasks.iter_mut() {
             if let Some(ref hint) = task.tool_hint {
-                if !tool_hint_resolver::is_hint_available(hint, skills) {
+                let available = match self.availability.as_ref() {
+                    Some(view) => tool_hint_resolver::is_hint_available_with_availability(hint, skills, view),
+                    None => tool_hint_resolver::is_hint_available(hint, skills),
+                };
+                if !available {
                     tracing::info!(
                         "Stripped unavailable tool_hint '{}' from task {}: {}",
                         hint, task.id, task.description
@@ -156,16 +177,21 @@ impl TaskPlanner {
         goal_boundaries: Option<&GoalBoundaries>,
         soul: Option<&Soul>,
     ) -> Result<Vec<Task>> {
-        self.available_rules = Self::filter_rules_by_available_skills(&self.rules, skills);
+        self.available_rules = self.filter_rules_by_available_skills(&self.rules, skills);
         self.matched_rule_ids = filter_rules_for_user_message(&self.available_rules, user_message)
             .into_iter()
             .map(|r| r.id.clone())
             .collect();
 
-        let skills_info = if skills.is_empty() {
+        let visible_skills: Vec<&LoadedSkill> = match self.availability.as_ref() {
+            Some(view) => view.filter_callable_skills(skills),
+            None => skills.iter().collect(),
+        };
+
+        let skills_info = if visible_skills.is_empty() {
             "None".to_string()
         } else {
-            skills
+            visible_skills
                 .iter()
                 .map(|s| {
                     let desc = s
@@ -239,7 +265,7 @@ impl TaskPlanner {
 
                 match self.parse_task_list(&raw) {
                     Ok(mut tasks) => {
-                        Self::sanitize_task_hints(&mut tasks, skills);
+                        self.sanitize_task_hints(&mut tasks, skills);
                         self.auto_enhance_tasks(&mut tasks);
                         self.task_list = tasks.clone();
                         Ok(tasks)
@@ -369,7 +395,7 @@ impl TaskPlanner {
     /// Use this when accepting a new plan from update_task_plan so replan has the same
     /// validation and enhancement as initial planning.
     pub fn sanitize_and_enhance_tasks(&self, tasks: &mut Vec<Task>, skills: &[LoadedSkill]) {
-        Self::sanitize_task_hints(tasks, skills);
+        self.sanitize_task_hints(tasks, skills);
         self.auto_enhance_tasks(tasks);
     }
 
@@ -451,9 +477,13 @@ impl TaskPlanner {
     /// Build the main execution system prompt from the external template.
     /// Placeholders: {{TODAY}}, {{YESTERDAY}}, {{SKILLS_LIST}}, {{OUTPUT_DIR}}.
     pub fn build_execution_prompt(&self, skills: &[LoadedSkill]) -> String {
+        let visible_skills: Vec<&LoadedSkill> = match self.availability.as_ref() {
+            Some(view) => view.filter_callable_skills(skills),
+            None => skills.iter().collect(),
+        };
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let yesterday = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
-        let skills_list: Vec<String> = skills
+        let skills_list: Vec<String> = visible_skills
             .iter()
             .map(|s| {
                 let desc = s
@@ -513,7 +543,7 @@ impl TaskPlanner {
             );
 
             if let Some(ref hint) = task.tool_hint {
-                if let Some(guidance) = Self::builtin_hint_guidance(hint) {
+                if let Some(guidance) = self.builtin_hint_guidance(hint) {
                     direct_call_instruction = format!(
                         "\n\n⚡ **ACTION**: 当前任务 tool_hint 为 {}。{}",
                         hint, guidance
@@ -532,7 +562,10 @@ impl TaskPlanner {
             _ => String::new(),
         };
 
-        let match_rule = tool_hint_resolver::generate_match_rule();
+        let match_rule = match self.availability.as_ref() {
+            Some(view) => tool_hint_resolver::generate_match_rule_with_availability(view),
+            None => tool_hint_resolver::generate_match_rule(),
+        };
         format!(
             "{}{}\n\
              ---\n\n\
@@ -599,7 +632,7 @@ impl TaskPlanner {
         let tool_instruction = if let Some(ref hint) = current.tool_hint {
             if hint == "analysis" {
                 "\nNo tool is required for this task; provide the analysis directly.".to_string()
-            } else if let Some(guidance) = Self::builtin_hint_guidance(hint) {
+            } else if let Some(guidance) = self.builtin_hint_guidance(hint) {
                 format!("\n⚡ {}", guidance)
             } else {
                 format!(
@@ -641,10 +674,11 @@ impl TaskPlanner {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extensions::ExtensionRegistry;
 
     #[test]
     fn test_planning_prompt_phase1_balance() {
-        let planner = TaskPlanner::new(None, None);
+        let planner = TaskPlanner::new(None, None, None);
         let prompt = planner.build_planning_prompt("None", "hello", None, None);
 
         assert!(
@@ -671,7 +705,7 @@ mod tests {
 
     #[test]
     fn test_parse_task_list() {
-        let planner = TaskPlanner::new(None, None);
+        let planner = TaskPlanner::new(None, None, None);
 
         let json = r#"[{"id": 1, "description": "Use search_replace", "tool_hint": "file_edit", "completed": false}]"#;
         let tasks = planner.parse_task_list(json).unwrap();
@@ -685,7 +719,7 @@ mod tests {
 
     #[test]
     fn test_planning_prompt_contains_placeholders_resolved() {
-        let planner = TaskPlanner::new(None, None);
+        let planner = TaskPlanner::new(None, None, None);
         let prompt = planner.build_planning_prompt("None", "hello", None, None);
 
         // All placeholders should be resolved (no {{...}} remaining)
@@ -700,7 +734,7 @@ mod tests {
 
     #[test]
     fn test_execution_prompt_contains_placeholders_resolved() {
-        let planner = TaskPlanner::new(None, None);
+        let planner = TaskPlanner::new(None, None, None);
         let prompt = planner.build_execution_prompt(&[]);
 
         assert!(!prompt.contains("{{TODAY}}"));
@@ -710,8 +744,21 @@ mod tests {
     }
 
     #[test]
+    fn test_task_system_prompt_uses_filtered_match_rule() {
+        let registry = ExtensionRegistry::read_only(true, false, &[]);
+        let planner = TaskPlanner::new(None, None, Some(registry.availability().clone()));
+        let prompt = planner.build_task_system_prompt(&[], None);
+
+        assert!(prompt.contains("**MATCH tool_hint**:"));
+        assert!(prompt.contains("`file_read` →"));
+        assert!(prompt.contains("`memory_search` →"));
+        assert!(!prompt.contains("`file_write` →"));
+        assert!(!prompt.contains("`command` →"));
+    }
+
+    #[test]
     fn test_generate_task_list_records_matched_rule_ids() {
-        let mut planner = TaskPlanner::new(None, None);
+        let mut planner = TaskPlanner::new(None, None, None);
         planner.available_rules = vec![
             PlanningRule {
                 id: "always".to_string(),
@@ -769,7 +816,7 @@ mod tests {
     fn test_matched_rule_ids_preserved_in_fallback() {
         // Create a TaskPlanner, forcing it to load rules from seed (fallback)
         // by providing None for both workspace and chat_root.
-        let mut planner = TaskPlanner::new(None, None);
+        let mut planner = TaskPlanner::new(None, None, None);
 
         // Simulate some seed rules being loaded.
         // In a real scenario, these would come from skilllite_evolution::seed::load_rules.

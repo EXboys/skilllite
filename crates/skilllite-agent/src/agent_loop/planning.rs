@@ -10,6 +10,7 @@ use anyhow::Result;
 
 use super::helpers::extract_goal_boundaries_hybrid;
 use super::super::goal_boundaries;
+use super::super::extensions::ToolAvailabilityView;
 use super::super::llm::LlmClient;
 use super::super::planning_guard;
 use super::super::prompt;
@@ -35,6 +36,7 @@ pub(super) async fn run_planning_phase(
     initial_messages: Vec<ChatMessage>,
     user_message: &str,
     skills: &[LoadedSkill],
+    availability: &ToolAvailabilityView,
     event_sink: &mut dyn EventSink,
     session_key: Option<&str>,
     client: &LlmClient,
@@ -48,7 +50,7 @@ pub(super) async fn run_planning_phase(
         })
         .join("chat");
 
-    let mut planner = TaskPlanner::new(Some(workspace), Some(&chat_root));
+    let mut planner = TaskPlanner::new(Some(workspace), Some(&chat_root), Some(availability.clone()));
 
     // Build conversation context for "继续" detection.
     // Callers can set config.skip_history_for_planning=true to exclude transcript history
@@ -111,6 +113,7 @@ pub(super) async fn run_planning_phase(
             &config.workspace,
             session_key,
             config.enable_memory,
+            Some(availability),
             Some(&chat_root),
             soul.as_ref(),
             config.context_append.as_deref(),
@@ -163,7 +166,7 @@ pub(super) fn build_task_focus_message(
     let current = planner.current_task()?;
     let tool_hint = current.tool_hint.as_deref().unwrap_or("");
     let pending_tasks = planner.task_list.iter().filter(|t| !t.completed).count();
-    let preferred_tools = TaskPlanner::preferred_tool_names_for_hint(tool_hint).join(",");
+    let preferred_tools = planner.preferred_tool_names_for_hint(tool_hint).join(",");
     let already_called = if tools_already_called.is_empty() {
         "none".to_string()
     } else {
@@ -217,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_build_task_focus_message_uses_internal_control_block() {
-        let mut planner = TaskPlanner::new(None, None);
+        let mut planner = TaskPlanner::new(None, None, None);
         planner.task_list = vec![
             Task {
                 id: 1,
@@ -253,7 +256,7 @@ mod tests {
 
     #[test]
     fn test_planning_guard_replaces_empty_plan_for_code_requests() {
-        let mut planner = TaskPlanner::new(None, None);
+        let mut planner = TaskPlanner::new(None, None, None);
         assert!(planner.is_empty());
 
         if let Some(guard) = planning_guard::guard_empty_plan(

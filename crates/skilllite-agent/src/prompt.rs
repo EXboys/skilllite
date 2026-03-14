@@ -16,6 +16,7 @@
 
 use std::path::Path;
 
+use super::extensions::ToolAvailabilityView;
 use skilllite_evolution::seed;
 use super::skills::LoadedSkill;
 use super::soul::Soul;
@@ -45,6 +46,7 @@ pub fn build_system_prompt(
     workspace: &str,
     session_key: Option<&str>,
     enable_memory: bool,
+    availability: Option<&ToolAvailabilityView>,
     chat_root: Option<&Path>,
     soul: Option<&Soul>,
     context_append: Option<&str>,
@@ -70,15 +72,33 @@ pub fn build_system_prompt(
     };
     parts.push(base_prompt);
 
-    // Memory tools (built-in, NOT skills) — only when enable_memory
-    if enable_memory {
+    // Memory tools (built-in, NOT skills) — only when actually available.
+    let memory_write_available = availability.map_or(enable_memory, |view| view.has_tool("memory_write"));
+    let memory_search_available = availability.map_or(enable_memory, |view| {
+        view.has_tool("memory_search") || view.has_tool("memory_list")
+    });
+    if memory_write_available || memory_search_available {
+        let mut memory_lines = vec![
+            "\n\nMemory tools (built-in, NOT skills — use when user asks to store/retrieve persistent memory):".to_string(),
+        ];
+        if memory_write_available {
+            memory_lines.push(
+                "- Use memory_write to store information for future retrieval (rel_path, content). Stores to ~/.skilllite/chat/memory/. Use for: user preferences, conversation summaries, facts to remember across sessions.".to_string(),
+            );
+            memory_lines.push(
+                "- When user asks for 生成向量记忆/写入记忆/保存到记忆, you MUST use memory_write (NOT write_file or write_output).".to_string(),
+            );
+        }
+        if memory_search_available {
+            if availability.map_or(true, |view| view.has_tool("memory_search")) {
+                memory_lines.push("- Use memory_search to find relevant memory by keywords or natural language.".to_string());
+            }
+            if availability.map_or(true, |view| view.has_tool("memory_list")) {
+                memory_lines.push("- Use memory_list to list stored memory files.".to_string());
+            }
+        }
         parts.push(
-            "\n\nMemory tools (built-in, NOT skills — use when user asks to store/retrieve persistent memory):\n\
-             - Use memory_write to store information for future retrieval (rel_path, content). Stores to ~/.skilllite/chat/memory/. Use for: user preferences, conversation summaries, facts to remember across sessions.\n\
-             - Use memory_search to find relevant memory by keywords or natural language.\n\
-             - Use memory_list to list all stored memory files.\n\
-             - When user asks for 生成向量记忆/写入记忆/保存到记忆, you MUST use memory_write (NOT write_file or write_output)."
-                .to_string(),
+            memory_lines.join("\n"),
         );
     }
 
@@ -117,15 +137,23 @@ pub fn build_system_prompt(
         workspace
     ));
 
+    let visible_skills: Vec<&LoadedSkill> = availability
+        .map(|view| view.filter_callable_skills(skills))
+        .unwrap_or_else(|| skills.iter().collect());
+
     // Skills context — Progressive mode: summary + "more details available" hint.
     // Full docs are injected on first tool call via inject_progressive_disclosure.
-    if !skills.is_empty() {
-        parts.push(build_skills_context(skills, PromptMode::Progressive));
+    if !visible_skills.is_empty() {
+        parts.push(build_skills_context_from_refs(&visible_skills, PromptMode::Progressive));
     }
 
     // Bash-tool skills: inject full SKILL.md content upfront
     // (same as Python _get_bash_tool_skills_context)
-    let bash_skills: Vec<_> = skills.iter().filter(|s| s.metadata.is_bash_tool_skill()).collect();
+    let bash_skills: Vec<_> = visible_skills
+        .iter()
+        .copied()
+        .filter(|s| s.metadata.is_bash_tool_skill())
+        .collect();
     if !bash_skills.is_empty() {
         parts.push("\n\n## Bash-Tool Skills Documentation\n".to_string());
         for skill in bash_skills {
@@ -325,6 +353,11 @@ fn extract_signatures(workspace: &std::path::Path) -> String {
 ///   - Progressive: Standard + "more details available" hint
 ///   - Full: complete SKILL.md content (rarely used in system prompt)
 pub fn build_skills_context(skills: &[LoadedSkill], mode: PromptMode) -> String {
+    let skill_refs: Vec<&LoadedSkill> = skills.iter().collect();
+    build_skills_context_from_refs(&skill_refs, mode)
+}
+
+fn build_skills_context_from_refs(skills: &[&LoadedSkill], mode: PromptMode) -> String {
     let mut parts = vec!["\n\n## Available Skills\n".to_string()];
 
     for skill in skills {
@@ -461,6 +494,7 @@ pub fn get_skill_full_docs(skill: &LoadedSkill) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extensions::ExtensionRegistry;
     use skilllite_core::skill::metadata::SkillMetadata;
     use std::collections::HashMap;
 
@@ -536,14 +570,14 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_contains_workspace() {
-        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false, None, None, None);
+        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false, None, None, None, None);
         assert!(prompt.contains("Workspace: /home/user/project"));
     }
 
     #[test]
     fn test_build_system_prompt_uses_progressive_mode() {
         let skills = vec![make_test_skill("test-skill", "Test description")];
-        let prompt = build_system_prompt(None, &skills, "/tmp", None, false, None, None, None);
+        let prompt = build_system_prompt(None, &skills, "/tmp", None, false, None, None, None, None);
 
         assert!(prompt.contains("test-skill"));
         assert!(prompt.contains("Test description"));
@@ -552,11 +586,30 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_includes_memory_tools_when_enabled() {
-        let prompt = build_system_prompt(None, &[], "/tmp", None, true, None, None, None);
+        let prompt = build_system_prompt(None, &[], "/tmp", None, true, None, None, None, None);
         assert!(prompt.contains("memory_write"));
         assert!(prompt.contains("memory_search"));
         assert!(prompt.contains("memory_list"));
         assert!(prompt.contains("生成向量记忆"));
+    }
+
+    #[test]
+    fn test_build_system_prompt_respects_memory_availability_view() {
+        let registry = ExtensionRegistry::read_only(true, false, &[]);
+        let prompt = build_system_prompt(
+            None,
+            &[],
+            "/tmp",
+            None,
+            true,
+            Some(registry.availability()),
+            None,
+            None,
+            None,
+        );
+        assert!(!prompt.contains("memory_write"));
+        assert!(prompt.contains("memory_search"));
+        assert!(prompt.contains("memory_list"));
     }
 
     #[test]

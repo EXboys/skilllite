@@ -102,7 +102,7 @@ async fn run_simple_loop(
     let soul = Soul::auto_load(config.soul_path.as_deref(), &config.workspace);
     let system_prompt = prompt::build_system_prompt(
         config.system_prompt.as_deref(), skills, &config.workspace,
-        session_key, config.enable_memory, Some(&chat_root), soul.as_ref(),
+        session_key, config.enable_memory, Some(registry.availability()), Some(&chat_root), soul.as_ref(),
         config.context_append.as_deref(),
     );
     let mut messages = Vec::new();
@@ -252,7 +252,7 @@ async fn run_with_task_planning(
 
     // ── Planning phase ─────────────────────────────────────────────────────
     let PlanningResult { mut planner, mut messages, chat_root, .. } =
-        run_planning_phase(config, initial_messages, user_message, skills, event_sink,
+        run_planning_phase(config, initial_messages, user_message, skills, registry.availability(), event_sink,
                            session_key, &client, workspace).await?;
 
     let mut state = ExecutionState::new();

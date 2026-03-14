@@ -3,7 +3,7 @@
 //! Uses compile-time registration: add new tools by calling `register(tools())`.
 //! Pattern: `registry.register(builtin::file_ops::tools());` — no changes to agent_loop.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use super::builtin;
@@ -199,6 +199,59 @@ impl RegisteredTool {
     }
 }
 
+/// Read-only view of the final tool surface after policy filtering.
+///
+/// This is the single source of truth for "what is actually callable right now"
+/// and should be consumed by planner / prompt / hint resolution code instead of
+/// re-deriving availability from static tables.
+#[derive(Debug, Clone, Default)]
+pub struct ToolAvailabilityView {
+    tool_names: HashSet<String>,
+    skill_names: HashSet<String>,
+}
+
+impl ToolAvailabilityView {
+    fn register(&mut self, tool: &RegisteredTool) {
+        self.tool_names.insert(tool.name().to_string());
+        if let ToolHandler::Skill { skill_name } = &tool.handler {
+            self.skill_names.insert(skill_name.clone());
+            self.skill_names.insert(skill_name.replace('-', "_"));
+        }
+    }
+
+    pub fn has_tool(&self, name: &str) -> bool {
+        self.tool_names.contains(name)
+    }
+
+    pub fn has_any_tool(&self, names: &[&str]) -> bool {
+        names.iter().any(|name| self.has_tool(name))
+    }
+
+    pub fn has_skill_hint(&self, hint: &str) -> bool {
+        self.skill_names.contains(hint) || self.skill_names.contains(&hint.replace('-', "_"))
+    }
+
+    pub fn has_any_skills(&self) -> bool {
+        !self.skill_names.is_empty()
+    }
+
+    pub fn filter_callable_skills<'a>(
+        &self,
+        skills: &'a [LoadedSkill],
+    ) -> Vec<&'a LoadedSkill> {
+        skills
+            .iter()
+            .filter(|skill| {
+                self.has_skill_hint(&skill.name)
+                    || skill
+                        .tool_definitions
+                        .iter()
+                        .any(|td| self.has_tool(&td.function.name))
+            })
+            .collect()
+    }
+}
+
 /// Unified registry for agent tool extensions.
 ///
 /// Tool sources are registered at construction. Pattern:
@@ -215,6 +268,8 @@ pub struct ExtensionRegistry<'a> {
     tool_definitions: Vec<ToolDefinition>,
     /// Executable tools keyed by function name.
     tools_by_name: HashMap<String, RegisteredTool>,
+    /// Final availability view after policy filtering and deduplication.
+    availability: ToolAvailabilityView,
     /// Execution capability policy for this registry instance.
     policy: CapabilityPolicy,
     /// Whether memory tools are enabled.
@@ -292,6 +347,7 @@ impl<'a> ExtensionRegistryBuilder<'a> {
 
         let mut tool_definitions = Vec::new();
         let mut tools_by_name = HashMap::new();
+        let mut availability = ToolAvailabilityView::default();
         for registered in registered_tools {
             if !self.policy.allows(&registered.capabilities) {
                 tracing::debug!("Skip tool due to capability policy: {}", registered.name());
@@ -303,12 +359,14 @@ impl<'a> ExtensionRegistryBuilder<'a> {
                 continue;
             }
             tool_definitions.push(registered.definition.clone());
+            availability.register(&registered);
             tools_by_name.insert(tool_name, registered);
         }
 
         ExtensionRegistry {
             tool_definitions,
             tools_by_name,
+            availability,
             policy: self.policy,
             enable_memory: self.enable_memory,
             enable_memory_vector: self.enable_memory_vector,
@@ -356,6 +414,11 @@ impl<'a> ExtensionRegistry<'a> {
     /// Collect all tool definitions (from registered extensions + skills).
     pub fn all_tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tool_definitions.clone()
+    }
+
+    /// Final tool / skill availability after policy filtering.
+    pub fn availability(&self) -> &ToolAvailabilityView {
+        &self.availability
     }
 
     /// Check if any extension owns this tool name.
