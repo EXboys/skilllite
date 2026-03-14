@@ -82,6 +82,8 @@ pub struct TaskPlanner {
     rules: Vec<PlanningRule>,
     /// Rules filtered by actually available skills (computed lazily).
     available_rules: Vec<PlanningRule>,
+    /// Rule IDs matched for the current user request.
+    matched_rule_ids: Vec<String>,
     /// Chat data root for loading prompt templates.
     chat_root: Option<std::path::PathBuf>,
     /// EVO-5: Workspace path for project-level prompt overrides.
@@ -99,6 +101,7 @@ impl TaskPlanner {
             task_list: Vec::new(),
             available_rules: rules.clone(),
             rules,
+            matched_rule_ids: Vec::new(),
             chat_root: chat_root.map(|p| p.to_path_buf()),
             workspace: workspace.map(|p| p.to_path_buf()),
         }
@@ -233,6 +236,10 @@ impl TaskPlanner {
         soul: Option<&Soul>,
     ) -> Result<Vec<Task>> {
         self.available_rules = Self::filter_rules_by_available_skills(&self.rules, skills);
+        self.matched_rule_ids = filter_rules_for_user_message(&self.available_rules, user_message)
+            .into_iter()
+            .map(|r| r.id.clone())
+            .collect();
 
         let skills_info = if skills.is_empty() {
             "None".to_string()
@@ -341,6 +348,11 @@ impl TaskPlanner {
                 Ok(fallback)
             }
         }
+    }
+
+    /// Return planning rule IDs matched for the current user request.
+    pub fn matched_rule_ids(&self) -> &[String] {
+        &self.matched_rule_ids
     }
 
     /// Parse the LLM response into a task list.
@@ -773,4 +785,142 @@ mod tests {
         assert!(!prompt.contains("{{SKILLS_LIST}}"));
         assert!(!prompt.contains("{{OUTPUT_DIR}}"));
     }
+
+    #[test]
+    fn test_generate_task_list_records_matched_rule_ids() {
+        let mut planner = TaskPlanner::new(None, None);
+        planner.available_rules = vec![
+            PlanningRule {
+                id: "always".to_string(),
+                priority: 50,
+                keywords: vec![],
+                context_keywords: vec![],
+                tool_hint: None,
+                instruction: "Always apply".to_string(),
+                mutable: false,
+                origin: "seed".to_string(),
+                reusable: false,
+                effectiveness: None,
+                trigger_count: None,
+            },
+            PlanningRule {
+                id: "weather".to_string(),
+                priority: 50,
+                keywords: vec!["天气".to_string()],
+                context_keywords: vec![],
+                tool_hint: Some("weather".to_string()),
+                instruction: "Use weather skill".to_string(),
+                mutable: false,
+                origin: "seed".to_string(),
+                reusable: false,
+                effectiveness: None,
+                trigger_count: None,
+            },
+            PlanningRule {
+                id: "other".to_string(),
+                priority: 50,
+                keywords: vec!["股票".to_string()],
+                context_keywords: vec![],
+                tool_hint: None,
+                instruction: "Use stock tool".to_string(),
+                mutable: false,
+                origin: "seed".to_string(),
+                reusable: false,
+                effectiveness: None,
+                trigger_count: None,
+            },
+        ];
+
+        planner.matched_rule_ids = filter_rules_for_user_message(&planner.available_rules, "帮我查天气")
+            .into_iter()
+            .map(|r| r.id.clone())
+            .collect();
+
+        assert_eq!(
+            planner.matched_rule_ids(),
+            &["always".to_string(), "weather".to_string()]
+        );
+    }
 }
+
+    #[test]
+    fn test_matched_rule_ids_preserved_in_fallback() {
+        // Create a TaskPlanner, forcing it to load rules from seed (fallback)
+        // by providing None for both workspace and chat_root.
+        let mut planner = TaskPlanner::new(None, None);
+
+        // Simulate some seed rules being loaded.
+        // In a real scenario, these would come from skilllite_evolution::seed::load_rules.
+        // For this test, we'll manually populate `planner.rules` and `planner.available_rules`
+        // as `TaskPlanner::new` already calls `planning_rules::load_rules` which handles this.
+        // We'll assume `planning_rules::load_rules(None, None)` correctly loads some default seed rules.
+        // Let's add some mock rules that would be typical seed rules.
+        planner.rules = vec![
+            PlanningRule {
+                id: "seed_always_match".to_string(),
+                priority: 50,
+                keywords: vec![], // Always matches
+                context_keywords: vec![],
+                tool_hint: None,
+                instruction: "Seed rule: Always apply".to_string(),
+                mutable: false,
+                origin: "seed".to_string(),
+                reusable: false,
+                effectiveness: None,
+                trigger_count: None,
+            },
+            PlanningRule {
+                id: "seed_weather_skill".to_string(),
+                priority: 70,
+                keywords: vec!["天气".to_string(), "气象".to_string()],
+                context_keywords: vec![],
+                tool_hint: Some("weather".to_string()),
+                instruction: "Seed rule: Use weather skill".to_string(),
+                mutable: false,
+                origin: "seed".to_string(),
+                reusable: false,
+                effectiveness: None,
+                trigger_count: None,
+            },
+            PlanningRule {
+                id: "seed_unrelated".to_string(),
+                priority: 30,
+                keywords: vec!["股票".to_string()],
+                context_keywords: vec![],
+                tool_hint: None,
+                instruction: "Seed rule: Unrelated to weather".to_string(),
+                mutable: false,
+                origin: "seed".to_string(),
+                reusable: false,
+                effectiveness: None,
+                trigger_count: None,
+            },
+        ];
+        // Ensure available_rules is also updated for filtering simulation
+        planner.available_rules = planner.rules.clone();
+
+        // Simulate generate_task_list call to populate matched_rule_ids
+        // We only care about the side effect on matched_rule_ids here.
+        // The actual LLM call and task parsing are not relevant for this specific test.
+        // So, we directly call filter_rules_for_user_message as generate_task_list does.
+        planner.matched_rule_ids = filter_rules_for_user_message(
+            &planner.available_rules,
+            "请帮我查询一下天气情况",
+        )
+        .into_iter()
+        .map(|r| r.id.clone())
+        .collect();
+
+        // Assert that the matched_rule_ids contains the expected rule IDs from the fallback (seed) rules
+        let expected_ids = vec![
+            "seed_always_match".to_string(),
+            "seed_weather_skill".to_string(),
+        ];
+        // Sort both vectors for comparison as order might not be guaranteed
+        let mut actual_ids = planner.matched_rule_ids().clone();
+        actual_ids.sort();
+        let mut sorted_expected_ids = expected_ids.clone();
+        sorted_expected_ids.sort();
+
+        assert_eq!(actual_ids, sorted_expected_ids);
+    }

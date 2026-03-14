@@ -4,6 +4,8 @@
 use std::collections::HashSet;
 use std::path::Path;
 
+
+use chrono::Utc;
 use serde_json::Value;
 
 use anyhow::Result;
@@ -192,9 +194,13 @@ pub(super) async fn execute_tool_call(
     event_sink: &mut dyn EventSink,
     embed_ctx: Option<&extensions::MemoryVectorContext<'_>>,
 ) -> ToolResult {
-    registry
+    let mut result = registry
         .execute(tool_name, arguments, workspace, event_sink, embed_ctx)
-        .await
+        .await;
+
+    record_skill_usage(tool_name, !result.is_error, &result.tool_call_id, workspace).await;
+
+    result
 }
 
 /// Tools whose results must never be LLM-summarized because the LLM needs the
@@ -245,8 +251,7 @@ pub(super) async fn process_result_content(
                 }
             }
         }
-    }
-}
+    }}
 
 /// Inject progressive disclosure docs for skill tools being called for the first time.
 /// Returns `true` if docs were injected (caller should re-prompt LLM).

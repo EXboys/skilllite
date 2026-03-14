@@ -33,6 +33,46 @@ pub enum FeedbackSignal {
     Neutral,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CoreMetrics {
+    pub first_success_rate: f64,
+    pub avg_replans: f64,
+    pub user_correction_rate: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvolutionJudgement {
+    Promote,
+    KeepObserving,
+    Rollback,
+}
+
+impl EvolutionJudgement {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Promote => "promote",
+            Self::KeepObserving => "keep_observing",
+            Self::Rollback => "rollback",
+        }
+    }
+
+    pub fn label_zh(&self) -> &'static str {
+        match self {
+            Self::Promote => "保留",
+            Self::KeepObserving => "继续观察",
+            Self::Rollback => "回滚",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct JudgementSummary {
+    pub judgement: EvolutionJudgement,
+    pub current: CoreMetrics,
+    pub baseline: Option<CoreMetrics>,
+    pub reason: String,
+}
+
 impl Default for FeedbackSignal {
     fn default() -> Self {
         Self::Neutral
@@ -226,23 +266,17 @@ pub fn compute_effectiveness(conn: &Connection, rule_id: &str) -> Result<f32> {
 
 pub fn update_daily_metrics(conn: &Connection) -> Result<()> {
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let core = compute_core_metrics_for_date(conn, &today)?;
 
-    let stats: Result<(f64, f64, f64, f64), _> = conn.query_row(
-        "SELECT
-            AVG(CASE WHEN replans = 0 AND task_completed = 1 THEN 1.0 ELSE 0.0 END),
-            AVG(CAST(replans AS REAL)),
-            AVG(CAST(total_tools AS REAL)),
-            CASE WHEN COUNT(CASE WHEN feedback IN ('pos','neg') THEN 1 END) > 0
-                 THEN CAST(COUNT(CASE WHEN feedback = 'neg' THEN 1 END) AS REAL)
-                      / COUNT(CASE WHEN feedback IN ('pos','neg') THEN 1 END)
-                 ELSE 0.0 END
-         FROM decisions
-         WHERE date(ts) = ?1 AND total_tools >= 2",
-        params![today],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-    );
-
-    let (fsr, avg_r, avg_tc, ucr) = stats.unwrap_or((0.0, 0.0, 0.0, 0.0));
+    let avg_tool_calls: f64 = conn
+        .query_row(
+            "SELECT COALESCE(AVG(CAST(total_tools AS REAL)), 0.0)
+             FROM decisions
+             WHERE date(ts) = ?1 AND total_tools >= 1",
+            params![today],
+            |row| row.get(0),
+        )
+        .unwrap_or(0.0);
     let egl = compute_egl(conn, &today).unwrap_or(0.0);
 
     conn.execute(
@@ -252,10 +286,162 @@ pub fn update_daily_metrics(conn: &Connection) -> Result<()> {
          ON CONFLICT(date) DO UPDATE SET
             first_success_rate = ?2, avg_replans = ?3,
             avg_tool_calls = ?4, user_correction_rate = ?5, egl = ?6",
-        params![today, fsr, avg_r, avg_tc, ucr, egl],
+        params![
+            today,
+            core.first_success_rate,
+            core.avg_replans,
+            avg_tool_calls,
+            core.user_correction_rate,
+            egl
+        ],
     )?;
 
     Ok(())
+}
+
+pub fn compute_core_metrics_for_date(conn: &Connection, date: &str) -> Result<CoreMetrics> {
+    let stats: Result<(f64, f64, f64), _> = conn.query_row(
+        "SELECT
+            AVG(CASE WHEN replans = 0 AND task_completed = 1 THEN 1.0 ELSE 0.0 END),
+            AVG(CAST(replans AS REAL)),
+            CASE WHEN COUNT(CASE WHEN feedback IN ('pos','neg') THEN 1 END) > 0
+                 THEN CAST(COUNT(CASE WHEN feedback = 'neg' THEN 1 END) AS REAL)
+                      / COUNT(CASE WHEN feedback IN ('pos','neg') THEN 1 END)
+                 ELSE 0.0 END
+         FROM decisions
+         WHERE date(ts) = ?1 AND total_tools >= 1",
+        params![date],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    );
+
+    let (first_success_rate, avg_replans, user_correction_rate) =
+        stats.unwrap_or((0.0, 0.0, 0.0));
+    Ok(CoreMetrics {
+        first_success_rate,
+        avg_replans,
+        user_correction_rate,
+    })
+}
+
+fn query_recent_core_metrics(
+    conn: &Connection,
+    before_date: Option<&str>,
+    limit: usize,
+) -> Result<Vec<(String, CoreMetrics)>> {
+    let rows = if let Some(date) = before_date {
+        let mut stmt = conn.prepare(
+            "SELECT date, first_success_rate, avg_replans, user_correction_rate
+             FROM evolution_metrics
+             WHERE date < ?1
+             ORDER BY date DESC
+             LIMIT ?2",
+        )?;
+        let mapped = stmt.query_map(params![date, limit as i64], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                CoreMetrics {
+                    first_success_rate: row.get(1)?,
+                    avg_replans: row.get(2)?,
+                    user_correction_rate: row.get(3)?,
+                },
+            ))
+        })?;
+        mapped.collect::<std::result::Result<Vec<_>, _>>()?
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT date, first_success_rate, avg_replans, user_correction_rate
+             FROM evolution_metrics
+             ORDER BY date DESC
+             LIMIT ?1",
+        )?;
+        let mapped = stmt.query_map(params![limit as i64], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                CoreMetrics {
+                    first_success_rate: row.get(1)?,
+                    avg_replans: row.get(2)?,
+                    user_correction_rate: row.get(3)?,
+                },
+            ))
+        })?;
+        mapped.collect::<std::result::Result<Vec<_>, _>>()?
+    };
+
+    Ok(rows)
+}
+
+fn average_metrics(items: &[CoreMetrics]) -> Option<CoreMetrics> {
+    if items.is_empty() {
+        return None;
+    }
+    let len = items.len() as f64;
+    Some(CoreMetrics {
+        first_success_rate: items.iter().map(|m| m.first_success_rate).sum::<f64>() / len,
+        avg_replans: items.iter().map(|m| m.avg_replans).sum::<f64>() / len,
+        user_correction_rate: items.iter().map(|m| m.user_correction_rate).sum::<f64>() / len,
+    })
+}
+
+pub fn build_latest_judgement(conn: &Connection) -> Result<Option<JudgementSummary>> {
+    let latest = query_recent_core_metrics(conn, None, 1)?;
+    let Some((latest_date, current)) = latest.into_iter().next() else {
+        return Ok(None);
+    };
+
+    let baseline_samples = query_recent_core_metrics(conn, Some(&latest_date), 7)?;
+    let baseline_metrics: Vec<CoreMetrics> = baseline_samples.into_iter().map(|(_, m)| m).collect();
+    let baseline = average_metrics(&baseline_metrics);
+
+    let summary = if let Some(baseline) = baseline {
+        let fsr_delta = current.first_success_rate - baseline.first_success_rate;
+        let replan_delta = current.avg_replans - baseline.avg_replans;
+        let ucr_delta = current.user_correction_rate - baseline.user_correction_rate;
+
+        if fsr_delta <= -0.05 || ucr_delta >= 0.10 || replan_delta >= 0.50 {
+            JudgementSummary {
+                judgement: EvolutionJudgement::Rollback,
+                current,
+                baseline: Some(baseline),
+                reason: format!(
+                    "首次成功率较近7日基线下降 {:.1}pct，平均 replan {:+.2}，用户纠正率 {:+.1}pct",
+                    fsr_delta * 100.0,
+                    replan_delta,
+                    ucr_delta * 100.0
+                ),
+            }
+        } else if fsr_delta >= 0.05 && replan_delta <= 0.0 && ucr_delta <= 0.0 {
+            JudgementSummary {
+                judgement: EvolutionJudgement::Promote,
+                current,
+                baseline: Some(baseline),
+                reason: format!(
+                    "首次成功率较近7日基线提升 {:.1}pct，且 replan/用户纠正未恶化",
+                    fsr_delta * 100.0
+                ),
+            }
+        } else {
+            JudgementSummary {
+                judgement: EvolutionJudgement::KeepObserving,
+                current,
+                baseline: Some(baseline),
+                reason: format!(
+                    "核心指标波动有限：首次成功率 {:+.1}pct，平均 replan {:+.2}，用户纠正率 {:+.1}pct",
+                    fsr_delta * 100.0,
+                    replan_delta,
+                    ucr_delta * 100.0
+                ),
+            }
+        }
+    } else {
+        JudgementSummary {
+            judgement: EvolutionJudgement::KeepObserving,
+            current,
+            baseline: None,
+            reason: "历史基线不足，先继续观察三项核心指标".to_string(),
+        }
+    };
+
+    Ok(Some(summary))
 }
 
 fn compute_egl(conn: &Connection, date: &str) -> Result<f64> {
@@ -438,12 +624,12 @@ pub fn export_decisions_md(conn: &Connection, output_path: &Path) -> Result<()> 
         md.push_str(&format!("| {} | {} | {} |\n", date, desc, icon));
     }
 
-    md.push_str("\n## 系统指标趋势 (最近7天)\n\n");
-    md.push_str("| 日期 | 首次成功率 | 平均replan | 用户纠正率 | EGL |\n");
-    md.push_str("|------|-----------|-----------|-----------|-----|\n");
+    md.push_str("\n## 核心指标趋势 (最近7天)\n\n");
+    md.push_str("| 日期 | 首次成功率 | 平均replan | 用户纠正率 |\n");
+    md.push_str("|------|-----------|-----------|-----------|\n");
 
     let mut stmt = conn.prepare(
-        "SELECT date, first_success_rate, avg_replans, user_correction_rate, egl
+        "SELECT date, first_success_rate, avg_replans, user_correction_rate
          FROM evolution_metrics
          WHERE date > date('now', '-7 days') ORDER BY date DESC",
     )?;
@@ -453,24 +639,25 @@ pub fn export_decisions_md(conn: &Connection, output_path: &Path) -> Result<()> 
             row.get::<_, f64>(1)?,
             row.get::<_, f64>(2)?,
             row.get::<_, f64>(3)?,
-            row.get::<_, f64>(4)?,
         ))
     })?;
 
     for m in metrics {
-        let (date, fsr, avg_r, ucr, egl) = m?;
+        let (date, fsr, avg_r, ucr) = m?;
         md.push_str(&format!(
-            "| {} | {:.0}% | {:.1} | {:.0}% | {:.1} |\n",
-            date, fsr * 100.0, avg_r, ucr * 100.0, egl
+            "| {} | {:.0}% | {:.1} | {:.0}% |\n",
+            date, fsr * 100.0, avg_r, ucr * 100.0
         ));
     }
 
-    let egl_7d = compute_egl_rolling(conn, 7).unwrap_or(0.0);
-    let egl_all = compute_egl_all_time(conn).unwrap_or(0.0);
-    md.push_str(&format!(
-        "\n**近7天累计 EGL:** {:.1} | **全量 EGL:** {:.1}\n",
-        egl_7d, egl_all
-    ));
+    if let Some(summary) = build_latest_judgement(conn)? {
+        md.push_str(&format!(
+            "\n**本轮简单判断:** {} (`{}`)\n\n",
+            summary.judgement.label_zh(),
+            summary.judgement.as_str()
+        ));
+        md.push_str(&format!("原因: {}\n", summary.reason));
+    }
 
     if let Some(parent) = output_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -530,4 +717,104 @@ pub fn open_evolution_db(chat_root: &Path) -> Result<Connection> {
     conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
     ensure_evolution_tables(&conn)?;
     Ok(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_evolution_tables(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_insert_decision_persists_rules() {
+        let conn = setup_conn();
+        let input = DecisionInput {
+            total_tools: 2,
+            failed_tools: 0,
+            replans: 0,
+            elapsed_ms: 100,
+            task_completed: true,
+            task_description: Some("test".to_string()),
+            rules_used: vec!["rule-a".to_string(), "rule-b".to_string()],
+            tools_detail: vec![ToolExecDetail {
+                tool: "read_file".to_string(),
+                success: true,
+            }],
+        };
+
+        let id = insert_decision(&conn, Some("s1"), &input, FeedbackSignal::Neutral).unwrap();
+        let mut stmt = conn
+            .prepare("SELECT rule_id FROM decision_rules WHERE decision_id = ?1 ORDER BY rule_id")
+            .unwrap();
+        let rows: Vec<String> = stmt
+            .query_map(params![id], |row| row.get(0))
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert_eq!(rows, vec!["rule-a".to_string(), "rule-b".to_string()]);
+    }
+
+    #[test]
+    fn test_compute_core_metrics_for_date_uses_minimal_metrics() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO decisions (ts, total_tools, replans, task_completed, feedback)
+             VALUES
+             ('2026-03-14 09:00:00', 1, 0, 1, 'neutral'),
+             ('2026-03-14 10:00:00', 2, 1, 1, 'neg'),
+             ('2026-03-14 11:00:00', 1, 2, 0, 'pos')",
+            [],
+        )
+        .unwrap();
+
+        let metrics = compute_core_metrics_for_date(&conn, "2026-03-14").unwrap();
+        assert!((metrics.first_success_rate - (1.0 / 3.0)).abs() < 1e-6);
+        assert!((metrics.avg_replans - 1.0).abs() < 1e-6);
+        assert!((metrics.user_correction_rate - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_compute_core_metrics_for_date_avg_replans_and_user_correction_rate() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO decisions (ts, total_tools, replans, task_completed, feedback)
+             VALUES
+             ('2026-03-15 09:00:00', 1, 0, 1, 'neutral'),
+             ('2026-03-15 10:00:00', 2, 1, 1, 'neg'),
+             ('2026-03-15 11:00:00', 1, 2, 0, 'pos'),
+             ('2026-03-15 12:00:00', 3, 3, 1, 'neutral'),
+             ('2026-03-15 13:00:00', 1, 0, 1, 'pos')",
+            [],
+        )
+        .unwrap();
+
+        let metrics = compute_core_metrics_for_date(&conn, "2026-03-15").unwrap();
+        // avg_replans: (0 + 1 + 2 + 3 + 0) / 5 = 6 / 5 = 1.2
+        assert!((metrics.avg_replans - 1.2).abs() < 1e-6);
+        // user_correction_rate: neg (1) / (pos (2) + neg (1)) = 1 / 3 = 0.333...
+        assert!((metrics.user_correction_rate - (1.0 / 3.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_build_latest_judgement_promotes_improving_metrics() {
+        let conn = setup_conn();
+        conn.execute(
+            "INSERT INTO evolution_metrics (date, first_success_rate, avg_replans, avg_tool_calls, user_correction_rate, egl)
+             VALUES
+             ('2026-03-10', 0.40, 1.5, 3.0, 0.30, 0.0),
+             ('2026-03-11', 0.50, 1.4, 3.0, 0.20, 0.0),
+             ('2026-03-12', 0.55, 1.2, 3.0, 0.15, 0.0),
+             ('2026-03-14', 0.72, 0.8, 2.5, 0.10, 0.0)",
+            [],
+        )
+        .unwrap();
+
+        let summary = build_latest_judgement(&conn).unwrap().unwrap();
+        assert_eq!(summary.judgement, EvolutionJudgement::Promote);
+    }
 }

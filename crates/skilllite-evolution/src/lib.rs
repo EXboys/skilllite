@@ -748,6 +748,17 @@ async fn run_evolution_inner<L: EvolutionLlm>(
 
         mark_decisions_evolved(&conn, &scope.decision_ids)?;
         let _ = feedback::update_daily_metrics(&conn);
+        let _ = feedback::export_judgement(&conn, &chat_root.join("JUDGEMENT.md"));
+        if let Ok(Some(summary)) = feedback::build_latest_judgement(&conn) {
+            let _ = log_evolution_event(
+                &conn,
+                chat_root,
+                "evolution_judgement",
+                summary.judgement.as_str(),
+                &summary.reason,
+                &txn_id,
+            );
+        }
 
         if all_changes.is_empty() {
             // 即使无变更也记录一次，便于前端时间线展示进化运行记录（含本轮选择的进化方向）
@@ -843,6 +854,15 @@ pub fn format_evolution_changes(changes: &[(String, String)]) -> Vec<String> {
                 "skill_pending" => format!("\u{1f4a1} 新 Skill {} 待确认（运行 `skilllite evolution confirm {}` 加入）", id, id),
                 "skill_refined" => format!("\u{1f527} 已优化 Skill: {}", id),
                 "skill_retired" => format!("\u{1f4e6} 已归档 Skill: {}", id),
+                "evolution_judgement" => {
+                    let label = match id.as_str() {
+                        "promote" => "保留",
+                        "keep_observing" => "继续观察",
+                        "rollback" => "回滚",
+                        _ => id,
+                    };
+                    format!("\u{1f9ed} 本轮判断: {}", label)
+                }
                 "auto_rollback" => format!("\u{26a0}\u{fe0f} 检测到质量下降，已自动回滚: {}", id),
                 "reusable_promoted" => format!("\u{2b06}\u{fe0f} 规则晋升为通用: {}", id),
                 "reusable_demoted" => format!("\u{2b07}\u{fe0f} 规则降级为低效: {}", id),
@@ -874,6 +894,32 @@ pub fn on_shutdown(chat_root: &Path) {
 
 // ─── Auto-rollback ───────────────────────────────────────────────────────────
 
+
+/// Executes the rollback actions (restoring snapshot, logging).
+fn execute_evolution_rollback(
+    conn: &Connection,
+    chat_root: &Path,
+    txn_id: &str,
+    reason: &str,
+) -> Result<()> {
+    tracing::warn!("Evolution rollback executed: {} (txn={})", reason, txn_id);
+    restore_snapshot(chat_root, txn_id)?;
+
+    conn.execute(
+        "UPDATE evolution_log SET type = type || '_rolled_back' WHERE version = ?1",
+        params![txn_id],
+    )?;
+
+    log_evolution_event(
+        conn,
+        chat_root,
+        "auto_rollback",
+        txn_id,
+        reason,
+        &format!("rollback_{}", txn_id),
+    )?;
+    Ok(())
+}
 pub fn check_auto_rollback(conn: &Connection, chat_root: &Path) -> Result<bool> {
     let mut stmt = conn.prepare(
         "SELECT date, first_success_rate, user_correction_rate
@@ -911,23 +957,7 @@ pub fn check_auto_rollback(conn: &Connection, chat_root: &Path) -> Result<bool> 
             .ok();
 
         if let Some(txn_id) = last_txn {
-            tracing::warn!("Auto-rollback triggered: {} (txn={})", reason, txn_id);
-            restore_snapshot(chat_root, &txn_id)?;
-
-            conn.execute(
-                "UPDATE evolution_log SET type = type || '_rolled_back' WHERE version = ?1",
-                params![txn_id],
-            )?;
-
-            log_evolution_event(
-                conn,
-                chat_root,
-                "auto_rollback",
-                &txn_id,
-                reason,
-                &format!("rollback_{}", txn_id),
-            )?;
-
+            execute_evolution_rollback(conn, chat_root, &txn_id, reason)?;
             return Ok(true);
         }
     }

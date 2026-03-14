@@ -212,6 +212,38 @@ fn register_agent(reg: &mut CommandRegistry) {
             }
         });
     reg.register(|cmd| {
+            if let Commands::Replay {
+                dataset,
+                api_base,
+                api_key,
+                model,
+                workspace,
+                skill_dir,
+                max_iterations,
+                max_failures,
+                limit,
+                json,
+                verbose,
+            } = cmd
+            {
+                Some(skilllite_commands::replay::cmd_replay(
+                    api_base.clone(),
+                    api_key.clone(),
+                    model.clone(),
+                    workspace.clone(),
+                    skill_dir.clone(),
+                    dataset.clone(),
+                    *max_iterations,
+                    *max_failures,
+                    *limit,
+                    *json,
+                    *verbose,
+                ))
+            } else {
+                None
+            }
+        });
+    reg.register(|cmd| {
             if let Commands::Evolution { action } = cmd {
                 use crate::cli::EvolutionAction;
                 let r = match action {

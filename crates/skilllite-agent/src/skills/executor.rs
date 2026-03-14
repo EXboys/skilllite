@@ -7,6 +7,7 @@ use std::path::Path;
 
 use skilllite_sandbox::runner::{ResourceLimits, SandboxConfig, SandboxLevel};
 use skilllite_core::skill::metadata::{self, SkillMetadata};
+use skilllite_evolution::skill_synth::track_skill_usage;
 
 use crate::high_risk;
 use crate::types::{EventSink, ToolResult};
@@ -27,20 +28,26 @@ pub fn execute_skill(
 ) -> ToolResult {
     let result = execute_skill_inner(skill, tool_name, arguments, workspace, event_sink, entry_point_override);
     match result {
-        Ok(content) => ToolResult {
-            tool_call_id: String::new(),
-            tool_name: tool_name.to_string(),
-            content,
-            is_error: false,
-            counts_as_failure: false,
-        },
-        Err(e) => ToolResult {
-            tool_call_id: String::new(),
-            tool_name: tool_name.to_string(),
-            content: format!("Error: {}", e),
-            is_error: true,
-            counts_as_failure: true,
-        },
+        Ok(content) => {
+            maybe_track_evolved_skill_usage(skill, true);
+            ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content,
+                is_error: false,
+                counts_as_failure: false,
+            }
+        }
+        Err(e) => {
+            maybe_track_evolved_skill_usage(skill, false);
+            ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content: format!("Error: {}", e),
+                is_error: true,
+                counts_as_failure: true,
+            }
+        }
     }
 }
 
@@ -50,6 +57,32 @@ pub fn execute_skill(
 thread_local! {
     static CONFIRMED_SKILLS: std::cell::RefCell<HashMap<String, String>> =
         std::cell::RefCell::new(HashMap::new());
+}
+
+fn maybe_track_evolved_skill_usage(skill: &LoadedSkill, success: bool) {
+    let Some(parent_dir) = skill.skill_dir.parent() else {
+        return;
+    };
+    let Some(skill_name) = skill
+        .skill_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+    else {
+        return;
+    };
+
+    let is_evolved_parent = parent_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name == "_evolved" || name == "_pending")
+        .unwrap_or(false);
+    let is_under_evolved_tree = parent_dir
+        .ancestors()
+        .any(|ancestor| ancestor.file_name().and_then(|name| name.to_str()) == Some("_evolved"));
+
+    if is_evolved_parent {
+        track_skill_usage(parent_dir, skill_name, success);
+    }
 }
 
 fn execute_skill_inner(

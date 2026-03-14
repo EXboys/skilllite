@@ -34,6 +34,7 @@ tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "io-util", "process"] }
+
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 futures-util = { version = "0.3" }
 rustyline = { version = "14" }

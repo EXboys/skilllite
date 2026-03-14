@@ -31,3 +31,5 @@ pub mod evolution;
 pub mod planning_rules_gen;
 #[cfg(feature = "agent")]
 pub mod quickstart;
+#[cfg(feature = "agent")]
+pub mod replay;

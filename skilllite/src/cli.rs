@@ -535,6 +535,58 @@ pub enum Commands {
     #[command(name = "agent-rpc")]
     AgentRpc,
 
+    /// Replay a JSONL evaluation set against the agent
+    ///
+    /// Runs each prompt in an isolated agent loop and prints aggregate metrics
+    /// such as completion rate, first_success_rate, and avg_replans.
+    #[cfg(feature = "agent")]
+    #[command(name = "replay")]
+    Replay {
+        /// Replay dataset path (JSONL)
+        #[arg(long, default_value = "docs/evals/lightweight-replay-set.jsonl")]
+        dataset: String,
+
+        /// OpenAI-compatible API base URL
+        #[arg(long, env = "OPENAI_API_BASE")]
+        api_base: Option<String>,
+
+        /// API key
+        #[arg(long, env = "OPENAI_API_KEY")]
+        api_key: Option<String>,
+
+        /// Model name
+        #[arg(long, short, env = "SKILLLITE_MODEL")]
+        model: Option<String>,
+
+        /// Workspace directory (default: current directory)
+        #[arg(long, short)]
+        workspace: Option<String>,
+
+        /// Skills directories to load (default: auto-discover .skills, skills)
+        #[arg(long, short = 's')]
+        skill_dir: Vec<String>,
+
+        /// Maximum agent loop iterations per replay case
+        #[arg(long, default_value = "50")]
+        max_iterations: usize,
+
+        /// Max consecutive tool failures before stopping a case (default: 5, 0 = no limit)
+        #[arg(long)]
+        max_failures: Option<usize>,
+
+        /// Only run the first N cases
+        #[arg(long)]
+        limit: Option<usize>,
+
+        /// Output full replay report as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Print detailed per-case execution output
+        #[arg(long, short, default_value = "false")]
+        verbose: bool,
+    },
+
     /// Run swarm node — P2P mesh daemon for multi-agent collaboration
     ///
     /// Starts a long-running daemon that advertises capabilities via mDNS,

@@ -91,3 +91,63 @@ pub use skilllite_evolution::{
 };
 pub use skilllite_evolution::feedback;
 pub use skilllite_evolution::seed;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{ExecutionFeedback, ToolExecDetail};
+
+    #[test]
+    fn test_execution_feedback_to_decision_input_preserves_rules_used() {
+        let feedback = ExecutionFeedback {
+            total_tools: 2,
+            failed_tools: 0,
+            replans: 1,
+            iterations: 3,
+            elapsed_ms: 1200,
+            context_overflow_retries: 0,
+            task_completed: true,
+            task_description: Some("test task".to_string()),
+            rules_used: vec!["rule.alpha".to_string(), "rule.beta".to_string()],
+            tools_detail: vec![ToolExecDetail {
+                tool: "read_file".to_string(),
+                success: true,
+            }],
+        };
+
+        let input = execution_feedback_to_decision_input(&feedback);
+        assert_eq!(input.rules_used, vec!["rule.alpha".to_string(), "rule.beta".to_string()]);
+    }
+}
+
+    #[test]
+    fn test_execution_feedback_to_decision_input_preserves_tools_detail() {
+        let feedback = ExecutionFeedback {
+            total_tools: 2,
+            failed_tools: 1,
+            replans: 1,
+            iterations: 3,
+            elapsed_ms: 1200,
+            context_overflow_retries: 0,
+            task_completed: false,
+            task_description: Some("another test task".to_string()),
+            rules_used: vec!["rule.gamma".to_string()],
+            tools_detail: vec![
+                ToolExecDetail {
+                    tool: "list_directory".to_string(),
+                    success: true,
+                },
+                ToolExecDetail {
+                    tool: "write_file".to_string(),
+                    success: false,
+                },
+            ],
+        };
+
+        let input = execution_feedback_to_decision_input(&feedback);
+        assert_eq!(input.tools_detail.len(), 2);
+        assert_eq!(input.tools_detail[0].tool, "list_directory".to_string());
+        assert!(input.tools_detail[0].success);
+        assert_eq!(input.tools_detail[1].tool, "write_file".to_string());
+        assert!(!input.tools_detail[1].success);
+    }

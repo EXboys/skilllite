@@ -74,12 +74,12 @@ pub fn cmd_status() -> Result<()> {
         )
         .unwrap_or(0);
 
-    println!("📊 概览");
-    println!("  总进化次数: {}", total_evolutions);
-    println!("  今日进化次数: {}", today_evolutions);
-    println!("  总决策记录: {}", total_decisions);
-    println!("  自动回滚次数: {}", rollback_count);
-    println!();
+    // println!("📊 概览");
+    // println!("  总进化次数: {}", total_evolutions);
+    // println!("  今日进化次数: {}", today_evolutions);
+    // println!("  总决策记录: {}", total_decisions);
+    // println!("  自动回滚次数: {}", rollback_count);
+    // println!();
 
     // A14: 进化队列与待确认列表（项目级 skill 待确认）
     let unprocessed: i64 = conn
@@ -173,12 +173,12 @@ pub fn cmd_status() -> Result<()> {
     println!();
 
     // Recent metrics trend
-    println!("📈 系统指标趋势 (最近 7 天)");
-    println!("  {:10} {:>8} {:>8} {:>8} {:>6}", "日期", "成功率", "Replan", "纠正率", "EGL");
-    println!("  {:10} {:>8} {:>8} {:>8} {:>6}", "──────────", "────────", "────────", "────────", "──────");
+    println!("📈 核心指标趋势 (最近 7 天)");
+    println!("  {:10} {:>8} {:>8} {:>8}", "日期", "成功率", "Replan", "纠正率");
+    println!("  {:10} {:>8} {:>8} {:>8}", "──────────", "────────", "────────", "────────");
 
     let mut stmt = conn.prepare(
-        "SELECT date, first_success_rate, avg_replans, user_correction_rate, egl
+        "SELECT date, first_success_rate, avg_replans, user_correction_rate
          FROM evolution_metrics
          WHERE date > date('now', '-7 days') ORDER BY date DESC",
     )?;
@@ -188,29 +188,32 @@ pub fn cmd_status() -> Result<()> {
             row.get::<_, f64>(1)?,
             row.get::<_, f64>(2)?,
             row.get::<_, f64>(3)?,
-            row.get::<_, f64>(4)?,
         ))
     })?;
 
     let mut has_metrics = false;
     for m in metrics {
-        let (date, fsr, avg_r, ucr, egl) = m?;
+        let (date, fsr, avg_r, ucr) = m?;
         println!(
-            "  {:10} {:>7.0}% {:>8.1} {:>7.0}% {:>6.1}",
+            "  {:10} {:>7.0}% {:>8.1} {:>7.0}%",
             date,
             fsr * 100.0,
             avg_r,
             ucr * 100.0,
-            egl,
         );
         has_metrics = true;
     }
     if !has_metrics {
         println!("  (暂无数据 — 需要更多使用后才会出现)");
     }
-    let egl_7d = skilllite_evolution::feedback::compute_egl_rolling(&conn, 7).unwrap_or(0.0);
-    let egl_all = skilllite_evolution::feedback::compute_egl_all_time(&conn).unwrap_or(0.0);
-    println!("  — 近7天累计 EGL: {:.1} | 全量 EGL: {:.1}", egl_7d, egl_all);
+    if let Ok(Some(summary)) = skilllite_evolution::feedback::build_latest_judgement(&conn) {
+        println!(
+            "  — 当前简单判断: {} ({})",
+            summary.judgement.label_zh(),
+            summary.judgement.as_str()
+        );
+        println!("    原因: {}", summary.reason);
+    }
     println!();
 
     // Recent evolution events
@@ -240,6 +243,7 @@ pub fn cmd_status() -> Result<()> {
             "skill_generated" => "✨",
             "skill_pending" => "🆕",
             "skill_refined" => "🔧",
+            "evolution_judgement" => "🧭",
             "auto_rollback" => "⚠️ ",
             t if t.contains("retired") => "🗑️ ",
             t if t.contains("rolled_back") => "🔙",

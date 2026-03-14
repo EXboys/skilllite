@@ -198,7 +198,7 @@ async fn run_simple_loop(
         context_overflow_retries: state.context_overflow_retries,
         task_completed,
         task_description: Some(user_message.to_string()),
-        rules_used: Vec::new(),
+        rules_used: soul.rules.clone(),
         tools_detail: state.tools_detail,
     };
     Ok(build_agent_result(messages, state.total_tool_calls, state.iterations, Vec::new(), feedback))
@@ -411,7 +411,7 @@ async fn run_with_task_planning(
         context_overflow_retries: state.context_overflow_retries,
         task_completed: planner.all_completed(),
         task_description: Some(user_message.to_string()),
-        rules_used: Vec::new(),
+        rules_used: planner.matched_rule_ids().to_vec(),
         tools_detail: state.tools_detail,
     };
 

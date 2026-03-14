@@ -1,0 +1,24 @@
+{"id":"replay-001","prompt":"检查 `crates/skilllite-agent/src/task_planner.rs` 的规划规则匹配逻辑，确认命中的 rule id 会被记录下来。","tags":["planner","rules","attribution"],"validation_focus":"规则命中归因","source":"project-history-curated"}
+{"id":"replay-002","prompt":"在 `crates/skilllite-agent/src/agent_loop/mod.rs` 中排查 `ExecutionFeedback.rules_used` 的赋值链路，并补上缺失接线。","tags":["agent-loop","feedback","rules_used"],"validation_focus":"首次成功完成代码接线","source":"project-history-curated"}
+{"id":"replay-003","prompt":"检查 evolution 决策写库逻辑，确认 `decision_rules` 表能落下本轮触发的规则 id。","tags":["evolution","sqlite","decision_rules"],"validation_focus":"规则归因入库","source":"project-history-curated"}
+{"id":"replay-004","prompt":"在 skill 执行路径接入最小使用统计，记录 skill 名、成功/失败和最后使用时间。","tags":["skills","telemetry","usage"],"validation_focus":"skill 使用追踪","source":"project-history-curated"}
+{"id":"replay-005","prompt":"排查 `crates/skilllite-agent/src/skills/executor.rs`，确保进化产生的 skill 执行后会更新 `.meta.json` 统计。","tags":["skills","executor","meta"],"validation_focus":"skill 成败统计","source":"project-history-curated"}
+{"id":"replay-006","prompt":"收敛 evolution 的核心指标，只保留 first_success_rate、avg_replans、user_correction_rate 作为主视图。","tags":["metrics","evolution","reporting"],"validation_focus":"核心指标口径","source":"project-history-curated"}
+{"id":"replay-007","prompt":"更新 `skilllite evolution status` 的输出，让它优先展示三项核心指标，而不是扩散成过多统计。","tags":["cli","status","metrics"],"validation_focus":"指标可读性","source":"project-history-curated"}
+{"id":"replay-008","prompt":"为每次 evolution run 给出简单判断：保留、继续观察或回滚，并写入 evolution 日志。","tags":["judgement","evolution-run","logging"],"validation_focus":"简单决策闭环","source":"project-history-curated"}
+{"id":"replay-009","prompt":"检查 `crates/skilllite-evolution/src/lib.rs` 的 run_evolution 流程，在 metrics 更新后补上 judgement 输出。","tags":["evolution","lib","judgement"],"validation_focus":"运行后判断输出","source":"project-history-curated"}
+{"id":"replay-010","prompt":"为 evolution 的 markdown 导出增加最近 7 天核心指标和本轮简单判断说明。","tags":["export","markdown","metrics"],"validation_focus":"结果可对外展示","source":"project-history-curated"}
+{"id":"replay-011","prompt":"整理一个 20-50 条任务的轻量回放验证集，覆盖规则、skill、memory、sandbox、文档等高频任务。","tags":["replay","dataset","evaluation"],"validation_focus":"回放集准备","source":"project-history-curated"}
+{"id":"replay-012","prompt":"分析最近对 `task_planner.rs` 的改动，补测试验证匹配到的 rule ids 不会在 fallback 路径丢失。","tags":["tests","planner","fallback"],"validation_focus":"规则归因测试","source":"project-history-curated"}
+{"id":"replay-013","prompt":"为 `execution_feedback_to_decision_input()` 增加测试，确保 rules_used 和 tools_detail 都能原样传给 evolution。","tags":["tests","feedback","adapter"],"validation_focus":"归因链完整性","source":"project-history-curated"}
+{"id":"replay-014","prompt":"检查 `FeedbackSignal` 的用户纠正率计算口径，确保只基于明确正负反馈，不混入 neutral。","tags":["feedback","metrics","quality"],"validation_focus":"user_correction_rate 正确性","source":"project-history-curated"}
+{"id":"replay-015","prompt":"核对 `first_success_rate` 的定义，确保表示无需 replan 即完成任务的比例。","tags":["metrics","first_success","definition"],"validation_focus":"首次成功率定义一致","source":"project-history-curated"}
+{"id":"replay-016","prompt":"检查 evolution 自动回滚逻辑与新的简单 judgement 是否冲突，必要时保持兼容。","tags":["rollback","judgement","safety"],"validation_focus":"回滚策略兼容性","source":"project-history-curated"}
+{"id":"replay-017","prompt":"分析一个失败的 skill 执行案例，确认失败会被计入 `.meta.json` 的 failure_count。","tags":["skills","failure","tracking"],"validation_focus":"失败样本统计","source":"project-history-curated"}
+{"id":"replay-018","prompt":"更新 evolution 状态页最近事件列表，让 `evolution_judgement` 事件能被读出来。","tags":["cli","events","judgement"],"validation_focus":"事件时间线可见","source":"project-history-curated"}
+{"id":"replay-019","prompt":"检查项目中的安全扫描与 sandbox 相关文档，整理一条回放任务验证网络 skill 的确认流程没有被破坏。","tags":["sandbox","security","network-skill"],"validation_focus":"安全回归","source":"project-history-curated"}
+{"id":"replay-020","prompt":"阅读 `docs/articles/skilllite-planning-replan-csdn.md`，抽取一个需要多次 replan 的真实型任务，纳入回放集。","tags":["docs","replan","replay"],"validation_focus":"高 replan 任务覆盖","source":"project-history-curated"}
+{"id":"replay-021","prompt":"阅读 `docs/articles/skilllite-memory-structured-extraction-csdn.md`，抽取一个偏记忆提取的历史型任务，纳入回放集。","tags":["memory","docs","replay"],"validation_focus":"memory 场景覆盖","source":"project-history-curated"}
+{"id":"replay-022","prompt":"阅读 `docs/articles/skilllite-sandbox-security-csdn.md`，抽取一个偏安全审查的任务，纳入回放集。","tags":["security","docs","replay"],"validation_focus":"sandbox 场景覆盖","source":"project-history-curated"}
+{"id":"replay-023","prompt":"针对 `crates/skilllite-evolution/src/feedback.rs` 的指标聚合逻辑，补一个单测验证 avg_replans 与 user_correction_rate 的结果。","tags":["tests","aggregation","metrics"],"validation_focus":"聚合单测","source":"project-history-curated"}
+{"id":"replay-024","prompt":"检查 `skilllite evolution run` 的同步输出，确认用户能直接看到本轮判断和关键进化结果。","tags":["cli","run","output"],"validation_focus":"run 输出体验","source":"project-history-curated"}
