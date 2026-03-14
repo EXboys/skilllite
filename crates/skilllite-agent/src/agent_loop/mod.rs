@@ -78,9 +78,19 @@ async fn run_simple_loop(
     let embed_ctx = (config.enable_memory_vector && !config.api_key.is_empty())
         .then(|| MemoryVectorContext { client: &client, embed_config: &embed_config });
 
-    let registry = extensions::ExtensionRegistry::new(
-        config.enable_memory, config.enable_memory_vector, skills,
-    );
+    let registry = if config.read_only_tools {
+        extensions::ExtensionRegistry::read_only(
+            config.enable_memory,
+            config.enable_memory_vector,
+            skills,
+        )
+    } else {
+        extensions::ExtensionRegistry::new(
+            config.enable_memory,
+            config.enable_memory_vector,
+            skills,
+        )
+    };
     let all_tools = registry.all_tool_definitions();
 
     // Build system prompt and initial message list
@@ -225,9 +235,19 @@ async fn run_with_task_planning(
     let embed_ctx = (config.enable_memory_vector && !config.api_key.is_empty())
         .then(|| MemoryVectorContext { client: &client, embed_config: &embed_config });
 
-    let registry = extensions::ExtensionRegistry::new(
-        config.enable_memory, config.enable_memory_vector, skills,
-    );
+    let registry = if config.read_only_tools {
+        extensions::ExtensionRegistry::read_only(
+            config.enable_memory,
+            config.enable_memory_vector,
+            skills,
+        )
+    } else {
+        extensions::ExtensionRegistry::new(
+            config.enable_memory,
+            config.enable_memory_vector,
+            skills,
+        )
+    };
     let all_tools = registry.all_tool_definitions();
 
     // ── Planning phase ─────────────────────────────────────────────────────

@@ -114,6 +114,7 @@ pub fn cmd_replay(
     limit: Option<usize>,
     json_output: bool,
     verbose: bool,
+    read_only: bool,
 ) -> Result<()> {
     let mut config = skilllite_agent::types::AgentConfig::from_env();
     if let Some(base) = api_base {
@@ -132,6 +133,16 @@ pub fn cmd_replay(
     config.verbose = verbose;
     config.enable_task_planning = true;
     config.enable_memory = true;
+    config.read_only_tools = read_only;
+    if read_only {
+        config.context_append = Some(
+            "Replay is running in read-only evaluation mode. \
+             You must not modify files, write outputs, write memory, execute shell commands, \
+             start preview servers, delegate tasks, or execute skills. \
+             Only inspect the workspace and report findings."
+                .to_string(),
+        );
+    }
     config.max_consecutive_failures = match max_failures {
         Some(0) => None,
         Some(n) => Some(n),
@@ -156,7 +167,11 @@ pub fn cmd_replay(
     } else {
         skill_dirs
     };
-    let loaded_skills = skilllite_agent::skills::load_skills(&effective_skill_dirs);
+    let loaded_skills = if read_only {
+        Vec::new()
+    } else {
+        skilllite_agent::skills::load_skills(&effective_skill_dirs)
+    };
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
 
     let total_cases = cases.len();
@@ -166,6 +181,7 @@ pub fn cmd_replay(
         eprintln!("│  样本数: {}", total_cases);
         eprintln!("│  模型: {}", config.model);
         eprintln!("│  工作区: {}", config.workspace);
+        eprintln!("│  模式: {}", if read_only { "只读评测" } else { "可修改回放" });
         if !loaded_skills.is_empty() {
             eprintln!("│  已加载技能: {}", loaded_skills.len());
         }

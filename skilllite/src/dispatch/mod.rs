@@ -224,6 +224,7 @@ fn register_agent(reg: &mut CommandRegistry) {
                 limit,
                 json,
                 verbose,
+                read_only,
             } = cmd
             {
                 Some(skilllite_commands::replay::cmd_replay(
@@ -238,6 +239,7 @@ fn register_agent(reg: &mut CommandRegistry) {
                     *limit,
                     *json,
                     *verbose,
+                    *read_only,
                 ))
             } else {
                 None

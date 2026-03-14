@@ -40,6 +40,28 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
     tools
 }
 
+/// Built-in tools that are safe for read-only evaluation.
+pub fn get_read_only_builtin_tool_definitions() -> Vec<ToolDefinition> {
+    get_builtin_tool_definitions()
+        .into_iter()
+        .filter(|tool| {
+            matches!(
+                tool.function.name.as_str(),
+                "read_file"
+                    | "grep_files"
+                    | "list_directory"
+                    | "file_exists"
+                    | "preview_edit"
+                    | "chat_history"
+                    | "chat_plan"
+                    | "list_output"
+                    | "update_task_plan"
+                    | "complete_task"
+            )
+        })
+        .collect()
+}
+
 // ─── Dispatch ────────────────────────────────────────────────────────────────
 
 pub fn is_builtin_tool(name: &str) -> bool {

@@ -585,6 +585,10 @@ pub enum Commands {
         /// Print detailed per-case execution output
         #[arg(long, short, default_value = "false")]
         verbose: bool,
+
+        /// Restrict replay to read-only tools and disable skills
+        #[arg(long, default_value = "false")]
+        read_only: bool,
     },
 
     /// Run swarm node — P2P mesh daemon for multi-agent collaboration

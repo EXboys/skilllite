@@ -103,6 +103,10 @@ pub struct AgentConfig {
     /// corrupt planning (e.g. multi-turn agent orchestration, batch task dispatch).
     /// Default: false.
     pub skip_history_for_planning: bool,
+
+    /// Restrict the tool registry to read-only operations.
+    /// Used by replay/eval flows that must not mutate the workspace.
+    pub read_only_tools: bool,
 }
 
 impl Default for AgentConfig {
@@ -129,6 +133,7 @@ impl Default for AgentConfig {
             max_consecutive_failures: None,
             goal_boundaries: None,
             skip_history_for_planning: false,
+            read_only_tools: false,
         }
     }
 }

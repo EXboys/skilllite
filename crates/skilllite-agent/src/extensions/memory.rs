@@ -85,6 +85,14 @@ pub fn get_memory_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+/// Get only read-only memory tools for restricted evaluation flows.
+pub fn get_memory_read_only_tool_definitions() -> Vec<ToolDefinition> {
+    get_memory_tool_definitions()
+        .into_iter()
+        .filter(|tool| matches!(tool.function.name.as_str(), "memory_search" | "memory_list"))
+        .collect()
+}
+
 /// Check if a tool name is a memory tool.
 pub fn is_memory_tool(name: &str) -> bool {
     matches!(name, "memory_search" | "memory_write" | "memory_list")

@@ -34,6 +34,8 @@ pub struct MemoryVectorContext<'a> {
 pub struct ExtensionRegistry<'a> {
     /// Cached tool definitions (from registered extensions + skills).
     tool_definitions: Vec<ToolDefinition>,
+    /// Tool names that are actually registered and executable.
+    allowed_tool_names: std::collections::HashSet<String>,
     /// Whether memory tools are enabled.
     pub enable_memory: bool,
     /// Whether memory vector search is enabled.
@@ -83,6 +85,16 @@ impl<'a> ExtensionRegistryBuilder<'a> {
         self
     }
 
+    /// Register only read-only memory tools if memory is enabled.
+    #[must_use]
+    pub fn register_read_only_memory_if(mut self, enable: bool) -> Self {
+        if enable {
+            self.tool_definitions
+                .extend(memory::get_memory_read_only_tool_definitions());
+        }
+        self
+    }
+
     /// Build the registry. Skills' tool definitions are added at build time.
     /// 按 function.name 去重，避免重复声明导致 Gemini 等 API 报 Duplicate function declaration。
     pub fn build(self) -> ExtensionRegistry<'a> {
@@ -104,8 +116,13 @@ impl<'a> ExtensionRegistryBuilder<'a> {
                 }
             }
         }
+        let allowed_tool_names = tool_definitions
+            .iter()
+            .map(|t| t.function.name.clone())
+            .collect();
         ExtensionRegistry {
             tool_definitions,
+            allowed_tool_names,
             enable_memory: self.enable_memory,
             enable_memory_vector: self.enable_memory_vector,
             skills: self.skills,
@@ -126,6 +143,18 @@ impl<'a> ExtensionRegistry<'a> {
             .build()
     }
 
+    /// Create a registry restricted to read-only tools.
+    pub fn read_only(
+        enable_memory: bool,
+        enable_memory_vector: bool,
+        skills: &'a [LoadedSkill],
+    ) -> Self {
+        Self::builder(enable_memory, enable_memory_vector, skills)
+            .register(builtin::get_read_only_builtin_tool_definitions())
+            .register_read_only_memory_if(enable_memory)
+            .build()
+    }
+
     /// Start building a registry with explicit registration.
     pub fn builder(
         enable_memory: bool,
@@ -142,10 +171,7 @@ impl<'a> ExtensionRegistry<'a> {
 
     /// Check if any extension owns this tool name.
     pub fn owns_tool(&self, name: &str) -> bool {
-        builtin::is_builtin_tool(name)
-            || (self.enable_memory && memory::is_memory_tool(name))
-            || skills::find_skill_by_tool_name(self.skills, name).is_some()
-            || skills::find_skill_by_name(self.skills, name).is_some()
+        self.allowed_tool_names.contains(name)
     }
 
     /// Execute a tool by name. Dispatches to the appropriate extension.
@@ -158,6 +184,15 @@ impl<'a> ExtensionRegistry<'a> {
         event_sink: &mut dyn EventSink,
         embed_ctx: Option<&MemoryVectorContext<'_>>,
     ) -> ToolResult {
+        if !self.allowed_tool_names.contains(tool_name) {
+            return ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content: format!("Tool '{}' is unavailable in the current execution mode", tool_name),
+                is_error: true,
+                counts_as_failure: true,
+            };
+        }
         if builtin::is_builtin_tool(tool_name) {
             if builtin::is_async_builtin_tool(tool_name) {
                 builtin::execute_async_builtin_tool(tool_name, arguments, workspace, event_sink).await
