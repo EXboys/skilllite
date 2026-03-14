@@ -73,7 +73,7 @@ pub fn ensure_environment(
 pub fn build_runtime_paths(env_dir: &Path) -> RuntimePaths {
     if env_dir.as_os_str().is_empty() || !env_dir.exists() {
         return RuntimePaths {
-            python: PathBuf::from("python3"),
+            python: default_system_python_command(),
             node: PathBuf::from("node"),
             node_modules: None,
             env_dir: PathBuf::new(),
@@ -94,13 +94,13 @@ pub fn build_runtime_paths(env_dir: &Path) -> RuntimePaths {
         )
     } else if env_dir.join("node_modules").exists() {
         (
-            PathBuf::from("python3"),
+            default_system_python_command(),
             PathBuf::from("node"),
             Some(env_dir.join("node_modules")),
         )
     } else {
         (
-            PathBuf::from("python3"),
+            default_system_python_command(),
             PathBuf::from("node"),
             None,
         )
@@ -146,9 +146,9 @@ fn ensure_python_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path:
 
     std::fs::create_dir_all(env_path).context("Create venv dir")?;
 
-    let python3 = which_python()?;
-    let mut cmd = Command::new(&python3);
-    cmd.arg("-m").arg("venv").arg(env_path);
+    let python = which_python()?;
+    let mut cmd = Command::new(&python.program);
+    cmd.args(&python.args).arg("-m").arg("venv").arg(env_path);
     cmd.current_dir(skill_dir);
     let out = cmd.output().context("Create venv")?;
     if !out.status.success() {
@@ -258,14 +258,158 @@ fn ensure_node_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path: &
     Ok(())
 }
 
-fn which_python() -> Result<PathBuf> {
-    for name in ["python3", "python"] {
-        let out = Command::new(name).arg("--version").output();
+fn default_system_python_command() -> PathBuf {
+    default_system_python_command_for_platform(cfg!(windows))
+}
+
+fn default_system_python_command_for_platform(is_windows: bool) -> PathBuf {
+    if is_windows {
+        PathBuf::from("python")
+    } else {
+        PathBuf::from("python3")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PythonCommand {
+    program: PathBuf,
+    args: Vec<&'static str>,
+}
+
+fn which_python() -> Result<PythonCommand> {
+    for candidate in python_command_candidates() {
+        let mut cmd = Command::new(&candidate.program);
+        cmd.args(&candidate.args).arg("--version");
+        let out = cmd.output();
         if let Ok(ref o) = out {
             if o.status.success() {
-                return Ok(PathBuf::from(name));
+                return Ok(candidate);
             }
         }
     }
-    anyhow::bail!("python3 or python not found in PATH")
+    anyhow::bail!("no usable Python launcher found in PATH")
+}
+
+fn python_command_candidates() -> Vec<PythonCommand> {
+    python_command_candidates_for_platform(cfg!(windows))
+}
+
+fn python_command_candidates_for_platform(is_windows: bool) -> Vec<PythonCommand> {
+    if is_windows {
+        vec![
+            PythonCommand {
+                program: PathBuf::from("python"),
+                args: Vec::new(),
+            },
+            PythonCommand {
+                program: PathBuf::from("py"),
+                args: vec!["-3"],
+            },
+            PythonCommand {
+                program: PathBuf::from("python3"),
+                args: Vec::new(),
+            },
+            PythonCommand {
+                program: PathBuf::from("py"),
+                args: Vec::new(),
+            },
+        ]
+    } else {
+        vec![
+            PythonCommand {
+                program: PathBuf::from("python3"),
+                args: Vec::new(),
+            },
+            PythonCommand {
+                program: PathBuf::from("python"),
+                args: Vec::new(),
+            },
+        ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_default_system_python_command_matches_platform() {
+        if cfg!(windows) {
+            assert_eq!(default_system_python_command(), PathBuf::from("python"));
+        } else {
+            assert_eq!(default_system_python_command(), PathBuf::from("python3"));
+        }
+    }
+
+    #[test]
+    fn test_python_command_candidates_include_platform_fallbacks() {
+        let candidates = python_command_candidates();
+        assert!(!candidates.is_empty());
+
+        if cfg!(windows) {
+            assert_eq!(candidates[0].program, PathBuf::from("python"));
+            assert!(candidates.iter().any(|c| c.program == PathBuf::from("py") && c.args == vec!["-3"]));
+        } else {
+            assert_eq!(candidates[0].program, PathBuf::from("python3"));
+            assert!(candidates.iter().any(|c| c.program == PathBuf::from("python")));
+        }
+    }
+
+    #[test]
+    fn test_windows_python_launcher_candidates_are_ranked_for_launcher_compat() {
+        let candidates = python_command_candidates_for_platform(true);
+        let actual: Vec<(PathBuf, Vec<&'static str>)> = candidates
+            .into_iter()
+            .map(|c| (c.program, c.args))
+            .collect();
+
+        assert_eq!(
+            actual,
+            vec![
+                (PathBuf::from("python"), vec![]),
+                (PathBuf::from("py"), vec!["-3"]),
+                (PathBuf::from("python3"), vec![]),
+                (PathBuf::from("py"), vec![]),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_default_system_python_command_uses_platform_specific_fallback() {
+        assert_eq!(
+            default_system_python_command_for_platform(true),
+            PathBuf::from("python")
+        );
+        assert_eq!(
+            default_system_python_command_for_platform(false),
+            PathBuf::from("python3")
+        );
+    }
+
+    #[test]
+    fn test_build_runtime_paths_prefers_windows_venv_python_exe() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let scripts_dir = temp_dir.path().join("Scripts");
+        std::fs::create_dir_all(&scripts_dir).expect("create Scripts");
+        std::fs::write(scripts_dir.join("python.exe"), b"").expect("create python.exe");
+
+        let runtime = build_runtime_paths(temp_dir.path());
+
+        assert_eq!(runtime.python, scripts_dir.join("python.exe"));
+        assert_eq!(runtime.env_dir, temp_dir.path());
+    }
+
+    #[test]
+    fn test_build_runtime_paths_prefers_unix_venv_python() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let bin_dir = temp_dir.path().join("bin");
+        std::fs::create_dir_all(&bin_dir).expect("create bin");
+        std::fs::write(bin_dir.join("python"), b"").expect("create python");
+
+        let runtime = build_runtime_paths(temp_dir.path());
+
+        assert_eq!(runtime.python, bin_dir.join("python"));
+        assert_eq!(runtime.env_dir, temp_dir.path());
+    }
 }

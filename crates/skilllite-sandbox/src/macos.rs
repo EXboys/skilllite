@@ -552,15 +552,11 @@ fn generate_sandbox_profile_with_proxy(
         // macOS framework Python (Homebrew / python.org) uses posix_spawn to re-exec
         // through Python.app bundle. Allow the entire framework version directory so
         // both .../bin/python3 and .../Resources/Python.app/Contents/MacOS/Python work.
-        if let Some(fw_pos) = canonical_str.find("Python.framework/Versions/") {
-            let after_versions = &canonical_str[fw_pos + "Python.framework/Versions/".len()..];
-            if let Some(slash) = after_versions.find('/') {
-                let fw_version_root = &canonical_str[..fw_pos + "Python.framework/Versions/".len() + slash];
-                profile.push_str(&format!(
-                    "(allow process-exec (subpath \"{}\"))\n",
-                    fw_version_root
-                ));
-            }
+        if let Some(fw_version_root) = extract_python_framework_version_root(&canonical_str) {
+            profile.push_str(&format!(
+                "(allow process-exec (subpath \"{}\"))\n",
+                fw_version_root
+            ));
         }
     }
 
@@ -793,15 +789,11 @@ fn generate_sandbox_profile(
             ));
         }
         // macOS framework Python: allow posix_spawn re-exec through Python.app bundle
-        if let Some(fw_pos) = canonical_str.find("Python.framework/Versions/") {
-            let after_versions = &canonical_str[fw_pos + "Python.framework/Versions/".len()..];
-            if let Some(slash) = after_versions.find('/') {
-                let fw_version_root = &canonical_str[..fw_pos + "Python.framework/Versions/".len() + slash];
-                profile.push_str(&format!(
-                    "(allow process-exec (subpath \"{}\"))\n",
-                    fw_version_root
-                ));
-            }
+        if let Some(fw_version_root) = extract_python_framework_version_root(&canonical_str) {
+            profile.push_str(&format!(
+                "(allow process-exec (subpath \"{}\"))\n",
+                fw_version_root
+            ));
         }
     }
     profile.push_str("(deny process-exec)\n");
@@ -958,6 +950,25 @@ fn resolve_which(cmd: &Path) -> Option<std::path::PathBuf> {
         })
 }
 
+fn extract_python_framework_version_root(canonical_path: &str) -> Option<&str> {
+    for marker in ["Python.framework/Versions/", "Python3.framework/Versions/"] {
+        if let Some(fw_pos) = canonical_path.find(marker) {
+            let version_start = fw_pos + marker.len();
+            let after_versions = &canonical_path[version_start..];
+            if after_versions.is_empty() {
+                return None;
+            }
+
+            return Some(match after_versions.find('/') {
+                Some(slash) => &canonical_path[..version_start + slash],
+                None => canonical_path,
+            });
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -993,5 +1004,22 @@ mod tests {
         assert!(profile.contains("(deny process-exec)"));
         // Step 2: process-fork denied by default
         assert!(profile.contains("(deny process-fork)"));
+    }
+
+    #[test]
+    fn test_extract_python_framework_version_root_supports_python3_framework() {
+        assert_eq!(
+            extract_python_framework_version_root(
+                "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/bin/python3.13"
+            ),
+            Some("/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13")
+        );
+        assert_eq!(
+            extract_python_framework_version_root(
+                "/Library/Frameworks/Python3.framework/Versions/3.12/bin/python3"
+            ),
+            Some("/Library/Frameworks/Python3.framework/Versions/3.12")
+        );
+        assert_eq!(extract_python_framework_version_root("/usr/bin/python3"), None);
     }
 }

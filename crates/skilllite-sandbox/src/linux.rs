@@ -9,10 +9,11 @@ use crate::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORI
 use anyhow::{Context, Result};
 use nix::mount::{mount, MsFlags};
 use nix::sched::{unshare, CloneFlags};
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::Write;
 use std::os::unix::process::CommandExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tempfile::TempDir;
 
@@ -291,6 +292,7 @@ fn execute_with_bwrap(
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     let env_path = &runtime.env_dir;
+    let interpreter_path = resolve_command_path(&resolved.interpreter);
     let network_policy = security_policy::resolve_network_policy(
         config.network_enabled,
         &config.network_outbound,
@@ -341,6 +343,10 @@ fn execute_with_bwrap(
     cmd.args(["--ro-bind", "/bin", "/bin"]);
     if Path::new("/sbin").exists() {
         cmd.args(["--ro-bind", "/sbin", "/sbin"]);
+    }
+    for runtime_root in collect_additional_runtime_roots(&interpreter_path, env_path) {
+        let runtime_root_str = runtime_root.to_string_lossy();
+        cmd.args(["--ro-bind", &runtime_root_str, &runtime_root_str]);
     }
 
     // Mount the minimum /etc files required for a working runtime inside the sandbox.
@@ -487,7 +493,7 @@ fn execute_with_bwrap(
     
     // Add the program and arguments
     cmd.arg("--");
-    cmd.arg(&resolved.interpreter);
+    cmd.arg(&interpreter_path);
     cmd.arg(entry_point);
     
     // Set working directory
@@ -719,6 +725,7 @@ fn execute_with_firejail(
     _limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
     let env_path = &runtime.env_dir;
+    let interpreter_path = resolve_command_path(&resolved.interpreter);
     let network_policy = security_policy::resolve_network_policy(
         config.network_enabled,
         &config.network_outbound,
@@ -771,6 +778,11 @@ fn execute_with_firejail(
     if Path::new("/lib64").exists() {
         cmd.args(["--read-only=/lib64"]);
     }
+    for runtime_root in collect_additional_runtime_roots(&interpreter_path, env_path) {
+        let runtime_root_str = runtime_root.to_string_lossy();
+        cmd.args([&format!("--whitelist={}", runtime_root_str)]);
+        cmd.args([&format!("--read-only={}", runtime_root_str)]);
+    }
     
     // Whitelist skill directory (read-only)
     let skill_dir_str = skill_dir.to_string_lossy();
@@ -804,7 +816,7 @@ fn execute_with_firejail(
     
     // Add the program and arguments
     cmd.arg("--");
-    cmd.arg(&resolved.interpreter);
+    cmd.arg(&interpreter_path);
     cmd.arg(entry_point);
     
     // Set working directory
@@ -1010,4 +1022,153 @@ fn setup_mount_namespace(
     )?;
 
     Ok(())
+}
+
+fn resolve_command_path(cmd: &Path) -> PathBuf {
+    if cmd.is_absolute() {
+        cmd.to_path_buf()
+    } else {
+        resolve_which(cmd).unwrap_or_else(|| cmd.to_path_buf())
+    }
+}
+
+fn resolve_which(cmd: &Path) -> Option<PathBuf> {
+    Command::new("which")
+        .arg(cmd)
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(PathBuf::from(path));
+                }
+            }
+            None
+        })
+}
+
+fn collect_additional_runtime_roots(interpreter: &Path, env_path: &Path) -> Vec<PathBuf> {
+    let mut roots = BTreeSet::new();
+    let candidates = [
+        Some(interpreter.to_path_buf()),
+        (!env_path.as_os_str().is_empty()).then(|| env_path.to_path_buf()),
+    ];
+
+    for candidate in candidates.into_iter().flatten() {
+        collect_runtime_root_from_path(&candidate, &mut roots);
+        if let Ok(canonical) = candidate.canonicalize() {
+            collect_runtime_root_from_path(&canonical, &mut roots);
+        }
+    }
+
+    roots.into_iter().collect()
+}
+
+fn collect_runtime_root_from_path(path: &Path, roots: &mut BTreeSet<PathBuf>) {
+    let home = std::env::var("HOME").ok().map(PathBuf::from);
+    collect_runtime_root_from_path_with_home(path, roots, home.as_deref());
+}
+
+fn collect_runtime_root_from_path_with_home(
+    path: &Path,
+    roots: &mut BTreeSet<PathBuf>,
+    home: Option<&Path>,
+) {
+    for prefix in known_system_runtime_prefixes() {
+        if path.starts_with(prefix) && prefix.exists() {
+            roots.insert(prefix.to_path_buf());
+        }
+    }
+
+    if let Some(home) = home {
+        for root in known_user_runtime_roots(home) {
+            if path.starts_with(&root) && root.exists() {
+                roots.insert(root);
+            }
+        }
+    }
+}
+
+fn known_system_runtime_prefixes() -> Vec<&'static Path> {
+    ["/usr/local", "/opt", "/nix", "/snap", "/var/lib/snapd"]
+        .into_iter()
+        .map(Path::new)
+        .collect()
+}
+
+fn known_user_runtime_roots(home: &Path) -> Vec<PathBuf> {
+    [
+        ".pyenv",
+        ".asdf",
+        ".local",
+        "miniconda3",
+        "anaconda3",
+        "micromamba",
+    ]
+    .into_iter()
+    .map(|suffix| home.join(suffix))
+    .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_collect_additional_runtime_roots_detects_common_prefixes() {
+        let roots = collect_additional_runtime_roots(
+            Path::new("/usr/local/bin/python3"),
+            Path::new("/opt/conda/envs/demo"),
+        );
+
+        assert!(roots.iter().any(|p| p == Path::new("/usr/local")));
+        assert!(roots.iter().any(|p| p == Path::new("/opt")));
+    }
+
+    #[test]
+    fn test_resolve_command_path_preserves_absolute_paths() {
+        let path = Path::new("/usr/bin/python3");
+        assert_eq!(resolve_command_path(path), path);
+    }
+
+    #[test]
+    fn test_collect_runtime_root_from_path_detects_pyenv_layout() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let home = temp_dir.path().join("home");
+        let pyenv_root = home.join(".pyenv");
+        let interpreter = pyenv_root.join("versions/3.12.2/bin/python3");
+        std::fs::create_dir_all(interpreter.parent().expect("parent")).expect("create pyenv bin");
+        std::fs::create_dir_all(&pyenv_root).expect("create pyenv root");
+
+        let mut roots = BTreeSet::new();
+        collect_runtime_root_from_path_with_home(&interpreter, &mut roots, Some(&home));
+
+        assert!(roots.contains(&pyenv_root));
+    }
+
+    #[test]
+    fn test_collect_runtime_root_from_path_detects_conda_layout() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let home = temp_dir.path().join("home");
+        let conda_root = home.join("miniconda3");
+        let interpreter = conda_root.join("envs/demo/bin/python");
+        std::fs::create_dir_all(interpreter.parent().expect("parent")).expect("create conda bin");
+        std::fs::create_dir_all(&conda_root).expect("create conda root");
+
+        let mut roots = BTreeSet::new();
+        collect_runtime_root_from_path_with_home(&interpreter, &mut roots, Some(&home));
+
+        assert!(roots.contains(&conda_root));
+    }
+
+    #[test]
+    fn test_known_user_runtime_roots_include_pyenv_and_conda() {
+        let home = Path::new("/tmp/fake-home");
+        let roots = known_user_runtime_roots(home);
+
+        assert!(roots.iter().any(|root| root == &home.join(".pyenv")));
+        assert!(roots.iter().any(|root| root == &home.join("miniconda3")));
+    }
 }
