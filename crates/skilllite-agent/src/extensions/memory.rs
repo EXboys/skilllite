@@ -12,7 +12,9 @@ use std::path::Path;
 
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
-use super::registry::MemoryVectorContext;
+use super::registry::{
+    MemoryVectorContext, RegisteredTool, ToolCapability, ToolHandler,
+};
 
 // ─── Tool definitions ───────────────────────────────────────────────────────
 
@@ -85,17 +87,18 @@ pub fn get_memory_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
-/// Get only read-only memory tools for restricted evaluation flows.
-pub fn get_memory_read_only_tool_definitions() -> Vec<ToolDefinition> {
+/// Memory tools paired with capability requirements and handlers.
+pub fn get_memory_tools() -> Vec<RegisteredTool> {
     get_memory_tool_definitions()
         .into_iter()
-        .filter(|tool| matches!(tool.function.name.as_str(), "memory_search" | "memory_list"))
+        .map(|definition| {
+            let capabilities = match definition.function.name.as_str() {
+                "memory_write" => vec![ToolCapability::MemoryWrite],
+                _ => Vec::new(),
+            };
+            RegisteredTool::new(definition, capabilities, ToolHandler::Memory)
+        })
         .collect()
-}
-
-/// Check if a tool name is a memory tool.
-pub fn is_memory_tool(name: &str) -> bool {
-    matches!(name, "memory_search" | "memory_write" | "memory_list")
 }
 
 // ─── Tool execution ─────────────────────────────────────────────────────────

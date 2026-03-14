@@ -270,11 +270,13 @@ pub(super) fn inject_progressive_disclosure(
         let tool_name = &tc.function.name;
         // Normalize tool name for dedup (frontend-design == frontend_design)
         let normalized = tool_name.replace('-', "_").to_lowercase();
-        if !extensions::is_builtin_tool(tool_name) && !documented_skills.contains(&normalized) {
-            // Try by tool definition first, then by skill name (for reference-only skills)
-            let skill = skills::find_skill_by_tool_name(skills, tool_name)
-                .or_else(|| skills::find_skill_by_name(skills, tool_name));
-            if let Some(skill) = skill {
+        if !documented_skills.contains(&normalized) {
+            // Try by tool definition first, then by skill name (for reference-only skills).
+            // This keeps progressive disclosure aligned with the actual skill registry
+            // instead of maintaining a parallel built-in allowlist.
+            if let Some(skill) = skills::find_skill_by_tool_name(skills, tool_name)
+                .or_else(|| skills::find_skill_by_name(skills, tool_name))
+            {
                 if let Some(docs) = prompt::get_skill_full_docs(skill) {
                     new_docs.push((tool_name.clone(), docs));
                     documented_skills.insert(normalized);

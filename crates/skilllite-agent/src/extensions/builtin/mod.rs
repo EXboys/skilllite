@@ -27,6 +27,8 @@ use std::path::Path;
 use crate::types::{self, EventSink, ToolDefinition, ToolResult, safe_truncate, safe_slice_from};
 use helpers::*;
 
+use super::registry::{RegisteredTool, ToolCapability, ToolHandler};
+
 // ─── Tool definitions (aggregated from submodules) ───────────────────────────
 
 pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
@@ -40,52 +42,35 @@ pub fn get_builtin_tool_definitions() -> Vec<ToolDefinition> {
     tools
 }
 
-/// Built-in tools that are safe for read-only evaluation.
-pub fn get_read_only_builtin_tool_definitions() -> Vec<ToolDefinition> {
+/// Built-in tools paired with capability requirements and handlers.
+pub fn get_builtin_tools() -> Vec<RegisteredTool> {
     get_builtin_tool_definitions()
         .into_iter()
-        .filter(|tool| {
-            matches!(
-                tool.function.name.as_str(),
-                "read_file"
-                    | "grep_files"
-                    | "list_directory"
-                    | "file_exists"
-                    | "preview_edit"
-                    | "chat_history"
-                    | "chat_plan"
-                    | "list_output"
-                    | "update_task_plan"
-                    | "complete_task"
-            )
+        .map(|definition| {
+            let capabilities = builtin_capabilities(definition.function.name.as_str());
+            let handler = if is_async_builtin_tool(definition.function.name.as_str()) {
+                ToolHandler::BuiltinAsync
+            } else {
+                ToolHandler::BuiltinSync
+            };
+            RegisteredTool::new(definition, capabilities, handler)
         })
         .collect()
 }
 
-// ─── Dispatch ────────────────────────────────────────────────────────────────
-
-pub fn is_builtin_tool(name: &str) -> bool {
-    matches!(
-        name,
-        "read_file"
-            | "write_file"
-            | "search_replace"
-            | "preview_edit"
-            | "insert_lines"
-            | "grep_files"
-            | "list_directory"
-            | "file_exists"
-            | "run_command"
-            | "write_output"
-            | "preview_server"
-            | "chat_history"
-            | "chat_plan"
-            | "list_output"
-            | "update_task_plan"
-            | "complete_task"
-            | "delegate_to_swarm"
-    )
+fn builtin_capabilities(name: &str) -> Vec<ToolCapability> {
+    match name {
+        "write_file" | "search_replace" | "insert_lines" | "write_output" => {
+            vec![ToolCapability::FilesystemWrite]
+        }
+        "run_command" => vec![ToolCapability::ProcessExec],
+        "preview_server" => vec![ToolCapability::Preview],
+        "delegate_to_swarm" => vec![ToolCapability::Delegation],
+        _ => Vec::new(),
+    }
 }
+
+// ─── Dispatch ────────────────────────────────────────────────────────────────
 
 pub fn is_async_builtin_tool(name: &str) -> bool {
     matches!(name, "run_command" | "preview_server" | "delegate_to_swarm")
