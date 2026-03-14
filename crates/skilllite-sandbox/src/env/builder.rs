@@ -140,69 +140,201 @@ fn cache_key(skill_dir: &Path, meta: &metadata::SkillMetadata, lang: &str) -> Re
 }
 
 fn ensure_python_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path: &Path) -> Result<()> {
-    if env_path.join("bin").join("python").exists() || env_path.join("Scripts").join("python.exe").exists() {
-        return Ok(());
+    let packages = collect_python_packages(skill_dir, meta)?;
+    let python_path = python_path_in_env(env_path);
+    let env_exists = python_path.exists();
+
+    if !env_exists {
+        std::fs::create_dir_all(env_path).context("Create venv dir")?;
+
+        let python = which_python()?;
+        let mut cmd = Command::new(&python.program);
+        cmd.args(&python.args).arg("-m").arg("venv").arg(env_path);
+        cmd.current_dir(skill_dir);
+        let out = cmd.output().context("Create venv")?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "venv failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+
+        if !packages.is_empty() {
+            let pip = pip_path_in_env(env_path);
+            let mut cmd = if pip.file_name().map(|n| n == "python").unwrap_or(false) {
+                let mut c = Command::new(&pip);
+                c.arg("-m").arg("pip").arg("install");
+                c
+            } else {
+                let mut c = Command::new(&pip);
+                c.arg("install");
+                c
+            };
+            cmd.args(&packages).current_dir(skill_dir);
+            let out = cmd.output().context("pip install")?;
+            if !out.status.success() {
+                anyhow::bail!(
+                    "pip install failed: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        }
     }
 
-    std::fs::create_dir_all(env_path).context("Create venv dir")?;
-
-    let python = which_python()?;
-    let mut cmd = Command::new(&python.program);
-    cmd.args(&python.args).arg("-m").arg("venv").arg(env_path);
-    cmd.current_dir(skill_dir);
-    let out = cmd.output().context("Create venv")?;
-    if !out.status.success() {
-        anyhow::bail!(
-            "venv failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+    if requests_playwright_browsers(&packages) {
+        install_playwright_browsers_for_python(skill_dir, env_path)?;
     }
 
+    Ok(())
+}
+
+fn ensure_node_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path: &Path) -> Result<()> {
+    let packages = collect_node_packages(skill_dir, meta)?;
+    let env_exists = env_path.join("node_modules").exists();
+
+    if !env_exists {
+        std::fs::create_dir_all(env_path).context("Create node env dir")?;
+
+        let package_json = skill_dir.join("package.json");
+        if package_json.exists() {
+            std::fs::copy(&package_json, env_path.join("package.json")).context("Copy package.json")?;
+        } else if let Some(ref pkgs) = meta.resolved_packages {
+            // Bash-tool skills without package.json may list deps in .skilllite.lock (from skilllite init)
+            let deps: std::collections::HashMap<String, String> =
+                pkgs.iter().map(|p| (p.clone(), "*".to_string())).collect();
+            let pkg = serde_json::json!({
+                "name": "skill-env",
+                "version": "1.0.0",
+                "private": true,
+                "dependencies": deps
+            });
+            std::fs::write(
+                env_path.join("package.json"),
+                serde_json::to_string_pretty(&pkg).context("Serialize package.json")?,
+            )
+            .context("Write package.json")?;
+        } else {
+            return Ok(());
+        }
+        let lock = skill_dir.join("package-lock.json");
+        if lock.exists() {
+            let _ = std::fs::copy(&lock, env_path.join("package-lock.json"));
+        }
+
+        let out = Command::new("npm")
+            .args(["install", "--omit=dev"])
+            .current_dir(env_path)
+            .output()
+            .context("npm install")?;
+        if !out.status.success() {
+            anyhow::bail!(
+                "npm install failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+    }
+
+    if requests_playwright_browsers(&packages) {
+        install_playwright_browsers_for_node(env_path)?;
+    }
+
+    Ok(())
+}
+
+fn collect_python_packages(skill_dir: &Path, meta: &metadata::SkillMetadata) -> Result<Vec<String>> {
+    if let Some(ref pkgs) = meta.resolved_packages {
+        return Ok(pkgs.clone());
+    }
+
+    let req = skill_dir.join("requirements.txt");
+    if !req.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = std::fs::read_to_string(&req).context("Read requirements.txt")?;
+    Ok(content
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(String::from)
+        .collect())
+}
+
+fn collect_node_packages(skill_dir: &Path, meta: &metadata::SkillMetadata) -> Result<Vec<String>> {
+    if let Some(ref pkgs) = meta.resolved_packages {
+        return Ok(pkgs.clone());
+    }
+
+    let package_json = skill_dir.join("package.json");
+    if !package_json.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = std::fs::read_to_string(&package_json).context("Read package.json")?;
+    let package_json: serde_json::Value = serde_json::from_str(&content).context("Parse package.json")?;
+    let mut packages = Vec::new();
+
+    for section in ["dependencies", "devDependencies"] {
+        if let Some(map) = package_json.get(section).and_then(|v| v.as_object()) {
+            packages.extend(map.keys().cloned());
+        }
+    }
+
+    Ok(packages)
+}
+
+fn python_path_in_env(env_path: &Path) -> PathBuf {
+    let unix = env_path.join("bin").join("python");
+    if unix.exists() {
+        unix
+    } else {
+        env_path.join("Scripts").join("python.exe")
+    }
+}
+
+fn pip_path_in_env(env_path: &Path) -> PathBuf {
     let pip_bin = env_path.join("bin").join("pip");
     let pip_scripts = env_path.join("Scripts").join("pip.exe");
-    let pip = if pip_bin.exists() {
+    if pip_bin.exists() {
         pip_bin
     } else if pip_scripts.exists() {
         pip_scripts
     } else {
-        env_path.join("bin").join("python") // fallback: python -m pip
-    };
+        python_path_in_env(env_path)
+    }
+}
 
-    let packages: Vec<String> = if let Some(ref pkgs) = meta.resolved_packages {
-        pkgs.clone()
-    } else {
-        let req = skill_dir.join("requirements.txt");
-        if req.exists() {
-            let content = std::fs::read_to_string(&req).context("Read requirements.txt")?;
-            content
-                .lines()
-                .map(str::trim)
-                .filter(|l| !l.is_empty() && !l.starts_with('#'))
-                .map(String::from)
-                .collect()
-        } else {
-            return Ok(());
-        }
-    };
+fn requests_playwright_browsers(packages: &[String]) -> bool {
+    packages.iter().any(|pkg| {
+        let base = pkg
+            .split(['=', '<', '>', '!', '~'])
+            .next()
+            .unwrap_or(pkg);
+        let normalized = base
+            .split_once('[')
+            .map(|(name, _)| name)
+            .unwrap_or(base)
+            .trim()
+            .to_lowercase()
+            .replace('_', "-");
+        normalized == "playwright" || normalized == "@playwright/test"
+    })
+}
 
-    if packages.is_empty() {
-        return Ok(());
+fn install_playwright_browsers_for_python(skill_dir: &Path, env_path: &Path) -> Result<()> {
+    let python = python_path_in_env(env_path);
+    if !python.exists() {
+        anyhow::bail!("playwright browser install skipped: python env missing");
     }
 
-    let mut cmd = if pip.file_name().map(|n| n == "python").unwrap_or(false) {
-        let mut c = Command::new(&pip);
-        c.arg("-m").arg("pip").arg("install");
-        c
-    } else {
-        let mut c = Command::new(&pip);
-        c.arg("install");
-        c
-    };
-    cmd.args(&packages).current_dir(skill_dir);
-    let out = cmd.output().context("pip install")?;
+    let out = Command::new(&python)
+        .args(["-m", "playwright", "install", "chromium"])
+        .current_dir(skill_dir)
+        .output()
+        .context("playwright install chromium")?;
     if !out.status.success() {
         anyhow::bail!(
-            "pip install failed: {}",
+            "playwright install chromium failed: {}",
             String::from_utf8_lossy(&out.stderr)
         );
     }
@@ -210,47 +342,31 @@ fn ensure_python_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path:
     Ok(())
 }
 
-fn ensure_node_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path: &Path) -> Result<()> {
-    if env_path.join("node_modules").exists() {
-        return Ok(());
-    }
+fn install_playwright_browsers_for_node(env_path: &Path) -> Result<()> {
+    let unix_cli = env_path.join("node_modules").join(".bin").join("playwright");
+    let windows_cli = env_path.join("node_modules").join(".bin").join("playwright.cmd");
 
-    std::fs::create_dir_all(env_path).context("Create node env dir")?;
-
-    let package_json = skill_dir.join("package.json");
-    if package_json.exists() {
-        std::fs::copy(&package_json, env_path.join("package.json")).context("Copy package.json")?;
-    } else if let Some(ref pkgs) = meta.resolved_packages {
-        // Bash-tool skills without package.json may list deps in .skilllite.lock (from skilllite init)
-        let deps: std::collections::HashMap<String, String> =
-            pkgs.iter().map(|p| (p.clone(), "*".to_string())).collect();
-        let pkg = serde_json::json!({
-            "name": "skill-env",
-            "version": "1.0.0",
-            "private": true,
-            "dependencies": deps
-        });
-        std::fs::write(
-            env_path.join("package.json"),
-            serde_json::to_string_pretty(&pkg).context("Serialize package.json")?,
-        )
-        .context("Write package.json")?;
+    let mut cmd = if unix_cli.exists() {
+        let mut cmd = Command::new(unix_cli);
+        cmd.args(["install", "chromium"]);
+        cmd
+    } else if windows_cli.exists() {
+        let mut cmd = Command::new(windows_cli);
+        cmd.args(["install", "chromium"]);
+        cmd
     } else {
-        return Ok(());
-    }
-    let lock = skill_dir.join("package-lock.json");
-    if lock.exists() {
-        let _ = std::fs::copy(&lock, env_path.join("package-lock.json"));
-    }
+        let mut cmd = Command::new("npm");
+        cmd.args(["exec", "--", "playwright", "install", "chromium"]);
+        cmd
+    };
 
-    let out = Command::new("npm")
-        .args(["install", "--omit=dev"])
+    let out = cmd
         .current_dir(env_path)
         .output()
-        .context("npm install")?;
+        .context("playwright install chromium")?;
     if !out.status.success() {
         anyhow::bail!(
-            "npm install failed: {}",
+            "playwright install chromium failed: {}",
             String::from_utf8_lossy(&out.stderr)
         );
     }
@@ -411,5 +527,71 @@ mod tests {
 
         assert_eq!(runtime.python, bin_dir.join("python"));
         assert_eq!(runtime.env_dir, temp_dir.path());
+    }
+
+    #[test]
+    fn test_collect_python_packages_from_requirements() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        std::fs::write(
+            temp_dir.path().join("requirements.txt"),
+            "pyodps==0.12.5\n# comment\nplaywright\n",
+        )
+        .expect("write requirements");
+        let meta = metadata::SkillMetadata {
+            name: "test".to_string(),
+            entry_point: "scripts/main.py".to_string(),
+            language: Some("python".to_string()),
+            description: None,
+            version: None,
+            compatibility: Some("Requires Python".to_string()),
+            network: metadata::NetworkPolicy::default(),
+            resolved_packages: None,
+            allowed_tools: None,
+            requires_elevated_permissions: false,
+            capabilities: Vec::new(),
+        };
+
+        let packages = collect_python_packages(temp_dir.path(), &meta).expect("collect python packages");
+        assert_eq!(packages, vec!["pyodps==0.12.5".to_string(), "playwright".to_string()]);
+    }
+
+    #[test]
+    fn test_collect_node_packages_from_package_json() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        std::fs::write(
+            temp_dir.path().join("package.json"),
+            r#"{
+  "dependencies": { "playwright": "^1.50.0" },
+  "devDependencies": { "@anthropic-ai/sdk": "^0.39.0" }
+}"#,
+        )
+        .expect("write package.json");
+        let meta = metadata::SkillMetadata {
+            name: "test".to_string(),
+            entry_point: "scripts/main.js".to_string(),
+            language: Some("node".to_string()),
+            description: None,
+            version: None,
+            compatibility: Some("Requires Node.js".to_string()),
+            network: metadata::NetworkPolicy::default(),
+            resolved_packages: None,
+            allowed_tools: None,
+            requires_elevated_permissions: false,
+            capabilities: Vec::new(),
+        };
+
+        let packages = collect_node_packages(temp_dir.path(), &meta).expect("collect node packages");
+        assert!(packages.contains(&"playwright".to_string()));
+        assert!(packages.contains(&"@anthropic-ai/sdk".to_string()));
+    }
+
+    #[test]
+    fn test_requests_playwright_browsers_handles_versions_and_extras() {
+        assert!(requests_playwright_browsers(&[
+            "playwright==1.51.0".to_string(),
+            "requests".to_string(),
+        ]));
+        assert!(requests_playwright_browsers(&["@playwright/test".to_string()]));
+        assert!(!requests_playwright_browsers(&["playwright-core".to_string()]));
     }
 }

@@ -285,9 +285,11 @@ const PYTHON_PACKAGES: &[&str] = &[
     "requests", "httpx", "aiohttp", "urllib3", "httplib2",
     // Data Science
     "numpy", "pandas", "scipy", "scikit-learn", "statsmodels",
+    "polars", "pyarrow", "duckdb", "openpyxl",
     // ML / AI
     "tensorflow", "keras", "torch", "pytorch", "transformers",
     "xgboost", "lightgbm", "catboost", "onnx", "onnxruntime",
+    "openai", "anthropic", "langchain", "langgraph", "llama-index",
     // Visualization
     "matplotlib", "seaborn", "plotly", "bokeh", "altair",
     // Web Frameworks
@@ -302,10 +304,10 @@ const PYTHON_PACKAGES: &[&str] = &[
     "pyyaml", "toml", "tomli", "python-dotenv", "configparser",
     // Database
     "sqlalchemy", "psycopg2", "psycopg2-binary", "pymysql", "redis",
-    "pymongo", "motor", "asyncpg", "aiosqlite", "peewee",
+    "pymongo", "motor", "asyncpg", "aiosqlite", "peewee", "pyodps",
     // Cloud
     "boto3", "botocore", "google-cloud-storage", "google-auth",
-    "azure-storage-blob", "azure-identity",
+    "azure-storage-blob", "azure-identity", "oss2",
     // Testing
     "pytest", "mock", "responses", "fakeredis", "factory-boy",
     // CLI
@@ -321,10 +323,11 @@ const PYTHON_PACKAGES: &[&str] = &[
     // Logging
     "loguru", "structlog",
     // Async
-    "anyio", "trio",
+    "anyio", "trio", "aiofiles",
     // Misc
     "arrow", "pendulum", "python-dateutil", "pytz",
     "chardet", "charset-normalizer",
+    "orjson", "ujson", "tenacity",
     "tox", "nox", "pre-commit",
     "mypy", "black", "ruff", "isort",
     "setuptools", "wheel", "pip", "poetry",
@@ -339,6 +342,8 @@ const PYTHON_ALIASES: &[(&str, &str)] = &[
     ("yaml", "pyyaml"),
     ("dotenv", "python-dotenv"),
     ("jwt", "pyjwt"),
+    ("odps", "pyodps"),
+    ("llamaindex", "llama-index"),
     ("skimage", "scikit-image"),
     ("pytorch", "torch"),
     ("tf", "tensorflow"),
@@ -361,9 +366,9 @@ const NODE_PACKAGES: &[&str] = &[
     // Cache
     "ioredis", "redis",
     // Cloud
-    "aws-sdk", "@aws-sdk/client-s3", "googleapis",
+    "aws-sdk", "@aws-sdk/client-s3", "googleapis", "openai", "@anthropic-ai/sdk",
     // Testing
-    "jest", "mocha", "chai", "vitest", "sinon",
+    "jest", "mocha", "chai", "vitest", "sinon", "@playwright/test",
     // CLI
     "commander", "yargs", "inquirer", "meow", "cac",
     // Output
@@ -435,6 +440,40 @@ mod tests {
             "python",
         );
         assert_eq!(unknown, vec!["my-custom-pkg".to_string()]);
+    }
+
+    #[test]
+    fn test_whitelist_matching_common_python_data_and_ai_packages() {
+        let pkgs = resolve_from_whitelist(
+            "Requires Python 3.x with pyodps, polars, pyarrow, openai and langchain",
+            "python",
+        );
+        assert!(pkgs.contains(&"pyodps".to_string()));
+        assert!(pkgs.contains(&"polars".to_string()));
+        assert!(pkgs.contains(&"pyarrow".to_string()));
+        assert!(pkgs.contains(&"openai".to_string()));
+        assert!(pkgs.contains(&"langchain".to_string()));
+    }
+
+    #[test]
+    fn test_whitelist_matching_python_aliases_for_odps_and_llamaindex() {
+        let pkgs = resolve_from_whitelist(
+            "Requires Python 3.x with odps and llamaindex",
+            "python",
+        );
+        assert!(pkgs.contains(&"pyodps".to_string()));
+        assert!(pkgs.contains(&"llama-index".to_string()));
+    }
+
+    #[test]
+    fn test_whitelist_matching_common_node_ai_packages() {
+        let pkgs = resolve_from_whitelist(
+            "Requires Node.js with openai, @anthropic-ai/sdk, and @playwright/test",
+            "node",
+        );
+        assert!(pkgs.contains(&"openai".to_string()));
+        assert!(pkgs.contains(&"@anthropic-ai/sdk".to_string()));
+        assert!(pkgs.contains(&"@playwright/test".to_string()));
     }
 
     #[test]

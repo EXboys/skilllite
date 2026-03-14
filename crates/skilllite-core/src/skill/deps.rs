@@ -106,15 +106,17 @@ pub fn parse_compatibility_for_packages(compatibility: Option<&str>) -> Vec<Stri
         "flask", "django", "fastapi", "aiohttp", "httpx",
         "beautifulsoup", "bs4", "lxml", "selenium", "html2text",
         "pillow", "opencv", "cv2", "pyyaml", "yaml",
-        "sqlalchemy", "psycopg2", "pymysql", "redis", "pymongo",
-        "boto3", "google-cloud", "azure",
+        "sqlalchemy", "psycopg2", "pymysql", "redis", "pymongo", "pyodps",
+        "boto3", "google-cloud", "azure", "oss2",
         "pytest", "unittest", "mock",
         "click", "argparse", "typer",
         "pydantic", "dataclasses", "attrs",
         "jinja2", "mako",
         "celery", "rq",
         "cryptography", "jwt", "passlib",
-        "playwright",
+        "playwright", "openpyxl", "pyarrow", "polars", "duckdb",
+        "openai", "anthropic", "langchain", "langgraph", "llama-index",
+        "aiofiles", "tenacity", "orjson", "ujson",
     ];
 
     // Common Node.js packages (sync with packages_whitelist.json)
@@ -123,10 +125,10 @@ pub fn parse_compatibility_for_packages(compatibility: Option<&str>) -> Vec<Stri
         "express", "koa", "fastify", "hapi",
         "lodash", "underscore", "ramda",
         "moment", "dayjs", "date-fns",
-        "cheerio", "puppeteer", "playwright",
+        "cheerio", "puppeteer", "playwright", "@playwright/test",
         "mongoose", "sequelize", "knex", "prisma",
         "ioredis",
-        "aws-sdk", "googleapis",
+        "aws-sdk", "googleapis", "openai", "@anthropic-ai/sdk",
         "jest", "mocha", "chai",
         "commander", "yargs", "inquirer",
         "chalk", "ora", "boxen",
@@ -235,5 +237,32 @@ pub fn get_cache_key(dep_info: &DependencyInfo) -> String {
             }
         }
         DependencyType::None => "none".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_compatibility_for_common_python_packages() {
+        let packages = parse_compatibility_for_packages(Some(
+            "Requires Python 3.x with pyodps, pyarrow, polars, openai and langchain",
+        ));
+        assert!(packages.contains(&"pyodps".to_string()));
+        assert!(packages.contains(&"pyarrow".to_string()));
+        assert!(packages.contains(&"polars".to_string()));
+        assert!(packages.contains(&"openai".to_string()));
+        assert!(packages.contains(&"langchain".to_string()));
+    }
+
+    #[test]
+    fn test_parse_compatibility_for_common_node_packages() {
+        let packages = parse_compatibility_for_packages(Some(
+            "Requires Node.js with openai, @anthropic-ai/sdk, and @playwright/test",
+        ));
+        assert!(packages.contains(&"openai".to_string()));
+        assert!(packages.contains(&"@anthropic-ai/sdk".to_string()));
+        assert!(packages.contains(&"@playwright/test".to_string()));
     }
 }
