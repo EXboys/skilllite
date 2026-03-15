@@ -83,7 +83,12 @@ jobs:
       - name: Verify Cargo.lock (required for rustls, no OpenSSL)
         run: |
           test -f Cargo.lock || (echo "ERROR: Cargo.lock missing - ensure Cargo.lock is committed" && exit 1)
-          grep -q openssl Cargo.lock && (echo "ERROR: Cargo.lock contains openssl - run 'cargo update' locally and commit" && exit 1) || true
+          if grep -q openssl Cargo.lock; then
+            echo "ERROR: Cargo.lock contains openssl (breaks aarch64 cross-compile). All reqwest deps must use default-features = false and rustls-tls."
+            echo "Fix: ensure crates/skilllite-core/Cargo.toml reqwest has default-features = false, features = [\"json\", \"rustls-tls\"], then run 'cargo build -p skilllite' and commit Cargo.lock."
+            exit 1
+          fi
+          echo "Cargo.lock OK (no OpenSSL)"
 
       - name: Build skilllite (full)
         working-directory: ./skilllite
