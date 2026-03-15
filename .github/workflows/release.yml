@@ -81,11 +81,12 @@ jobs:
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
       - name: Verify Cargo.lock (required for rustls, no OpenSSL)
+        shell: bash
         run: |
-          test -f Cargo.lock || (echo "ERROR: Cargo.lock missing - ensure Cargo.lock is committed" && exit 1)
+          test -f Cargo.lock || { echo "ERROR: Cargo.lock missing - ensure Cargo.lock is committed"; exit 1; }
           if grep -q openssl Cargo.lock; then
             echo "ERROR: Cargo.lock contains openssl (breaks aarch64 cross-compile). All reqwest deps must use default-features = false and rustls-tls."
-            echo "Fix: ensure crates/skilllite-core/Cargo.toml reqwest has default-features = false, features = [\"json\", \"rustls-tls\"], then run 'cargo build -p skilllite' and commit Cargo.lock."
+            echo "Fix: ensure all reqwest deps use default-features = false and rustls-tls; from repo root run 'cargo build -p skilllite' and commit the root Cargo.lock."
             exit 1
           fi
           echo "Cargo.lock OK (no OpenSSL)"
