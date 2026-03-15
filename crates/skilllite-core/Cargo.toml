@@ -22,7 +22,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # Optional: async support for LLM-based dependency resolution
-reqwest = { version = "0.12", features = ["json"], optional = true }
+reqwest = { version = "0.12", optional = true, default-features = false, features = ["json", "rustls-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
 async-trait = { version = "0.1", optional = true }
 
