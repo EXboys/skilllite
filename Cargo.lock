@@ -4376,6 +4376,7 @@ dependencies = [
  "skilllite-core",
  "skilllite-fs",
  "sqlite-vec",
+ "thiserror 1.0.69",
  "tracing",
  "uuid",
  "zerocopy 0.7.35",
