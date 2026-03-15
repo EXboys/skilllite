@@ -1,5 +1,10 @@
 # SkillLite
 
+[![CI](https://github.com/EXboys/skilllite/actions/workflows/ci.yml/badge.svg)](https://github.com/EXboys/skilllite/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub Stars](https://img.shields.io/github/stars/EXboys/skilllite)](https://github.com/EXboys/skilllite/stargazers)
+[![PyPI](https://img.shields.io/pypi/v/skilllite)](https://pypi.org/project/skilllite/)
+
 [中文文档](./docs/zh/README.md)
 
 **A lightweight secure Self-evolution engine built in Rust, featuring a built-in native system-level sandbox, zero dependencies, and fully local execution..**

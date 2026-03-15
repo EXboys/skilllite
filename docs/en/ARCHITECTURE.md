@@ -1,6 +1,6 @@
 # SkillLite Project Architecture
 
-> **Note**: This document is synced to the v0.1.10 architecture. The Python SDK is a thin bridge layer (~600 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`; all logic lives in the Rust binary.
+> **Note**: This document is synced to the v0.1.11 multi-crate architecture. Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~600 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`.
 
 ## Overview
 
@@ -55,94 +55,105 @@ Agent is the first customer of Core, and also the best reference implementation.
 
 ## Project Structure
 
+Rust uses a **Cargo workspace** multi-crate layout; responsibilities are split by crate with dependencies flowing Core → upper layers.
+
+### Workspace and Crate Overview
+
 ```
 skillLite/
-├── skilllite/                     # Rust sandbox executor (core)
-│   ├── Cargo.toml                 # Rust dependency config
+├── Cargo.toml                     # Workspace config (members: skilllite, crates/*)
+│
+├── skilllite/                     # Main binary (thin entry, CLI dispatch only)
+│   ├── Cargo.toml
 │   └── src/
-│       ├── main.rs                # CLI entry (~210 lines, argument parsing & dispatch only)
-│       ├── cli.rs                 # CLI argument definitions
-│       ├── mcp.rs                 # MCP protocol server
-│       ├── stdio_rpc.rs           # Stdio JSON-RPC service
-│       ├── observability.rs       # Observability (tracing)
-│       ├── path_validation.rs     # Path validation
-│       │
-│       ├── commands/              # Command implementations
-│       │   ├── execute.rs         # run_skill, exec_script, bash_command
-│       │   ├── scan.rs            # scan_skill
-│       │   ├── security.rs        # security_scan, dependency_audit
-│       │   ├── skill.rs           # add, remove, list, show
-│       │   ├── ide.rs             # Cursor / OpenCode integration
-│       │   ├── init.rs            # Project initialization
-│       │   ├── quickstart.rs      # Quick start (agent feature)
-│       │   ├── env.rs             # Environment management (clean)
-│       │   ├── reindex.rs         # Re-index skills
-│       │   └── planning_rules_gen.rs  # Planning rules generation
-│       │
-│       ├── config/                # Configuration module
-│       │   ├── loader.rs          # Env loading + safe set_var wrappers
-│       │   ├── schema.rs          # Config schema (LlmConfig, etc.)
-│       │   └── env_keys.rs        # Environment variable key constants
-│       │
-│       ├── env/                   # Runtime environment
-│       │   └── builder.rs         # build_runtime_paths, ensure_environment
-│       │
-│       ├── skill/                 # Skill metadata parsing
-│       │   ├── metadata.rs        # SKILL.md parsing
-│       │   ├── schema.rs          # Skill schema definitions
-│       │   ├── deps.rs            # Dependency management
-│       │   └── dependency_resolver.rs  # Dependency resolver
-│       │
-│       ├── sandbox/               # Sandbox implementation (core security)
-│       │   ├── runner.rs          # SandboxLevel, SandboxConfig, ResourceLimits
-│       │   ├── common.rs          # Cross-platform utilities (memory monitoring)
-│       │   ├── macos.rs           # macOS Seatbelt sandbox
-│       │   ├── linux.rs           # Linux Namespace sandbox
-│       │   ├── windows.rs         # Windows WSL2 bridge
-│       │   ├── seatbelt.rs        # Seatbelt profiles & mandatory deny rules
-│       │   ├── seccomp.rs         # Linux Seccomp BPF filters
-│       │   ├── network_proxy.rs   # HTTP/SOCKS5 network proxy (domain filtering)
-│       │   ├── bash_validator.rs  # Bash command safety validation
-│       │   ├── move_protection.rs # File move protection
-│       │   ├── log.rs             # Sandbox logging
-│       │   └── security/          # Security scanning submodule
-│       │       ├── scanner.rs     # Static code scanner
-│       │       ├── rules.rs       # Security rule definitions & matching
-│       │       ├── types.rs       # Security type definitions
-│       │       ├── policy.rs      # Runtime security policy
-│       │       ├── default_rules.rs   # Default rule implementations
-│       │       ├── default_rules.yaml # Configurable rules file
-│       │       └── dependency_audit.rs # Supply chain vulnerability scanning (OSV API)
-│       │
-│       ├── executor/              # Executor module (executor feature)
-│       │   ├── session.rs         # Session management
-│       │   ├── transcript.rs      # Conversation transcripts
-│       │   ├── memory.rs          # Memory storage (BM25 retrieval)
-│       │   └── rpc.rs             # Executor RPC
-│       │
-│       └── agent/                 # Agent loop (agent feature)
-│           ├── chat.rs            # CLI chat entry (single/REPL)
-│           ├── agent_loop.rs      # Agent main loop
-│           ├── llm.rs             # LLM client (OpenAI/Claude)
-│           ├── chat_session.rs    # Chat session management
-│           ├── prompt.rs          # Prompt construction
-│           ├── skills.rs          # Skill loading and management
-│           ├── rpc.rs             # Agent RPC (JSON-Lines event stream)
-│           ├── task_planner.rs    # Task planner
-│           ├── planning_rules.rs  # Planning rules
-│           ├── types.rs           # Agent type definitions
-│           ├── long_text/         # Long text handling
-│           │   ├── mod.rs
-│           │   └── filter.rs
-│           └── extensions/        # Tool extensions
-│               ├── registry.rs    # Unified extension registry
-│               ├── memory.rs      # Memory tools (search/write/list)
-│               └── builtin/       # Built-in tools
-│                   ├── file_ops.rs     # read_file, write_file, search_replace, etc.
-│                   ├── run_command.rs  # run_command + dangerous command detection
-│                   ├── output.rs      # write_output, list_output
-│                   ├── preview.rs     # preview_server (built-in HTTP server)
-│                   └── chat_data.rs   # chat_history, chat_plan
+│       ├── main.rs                # Entry point
+│       ├── lib.rs
+│       ├── cli.rs                 # CLI args
+│       ├── protocol.rs            # Protocol definitions
+│       ├── command_registry.rs    # Command registration & dispatch
+│       ├── stdio_rpc.rs           # Stdio JSON-RPC (skill execution)
+│       ├── mcp/                   # MCP protocol server
+│       │   ├── mod.rs
+│       │   ├── tools.rs
+│       │   ├── handlers.rs
+│       │   └── scan.rs
+│       ├── dispatch/              # Dispatch to skilllite-commands
+│       │   ├── mod.rs
+│       │   ├── execute.rs
+│       │   └── skill.rs
+│       └── bin/
+│           └── skilllite-sandbox.rs  # Lightweight binary (sandbox + core only)
+│
+├── crates/
+│   ├── skilllite-core/            # Core lib: config, paths, Skill metadata, protocol
+│   │   └── src/
+│   │       ├── config/            # Env loading, schema (LlmConfig, etc.)
+│   │       ├── paths.rs
+│   │       ├── path_validation.rs # Path validation
+│   │       ├── error.rs           # Structured errors (PathValidationError)
+│   │       ├── skill/             # SKILL.md parsing, manifest, dependency_resolver
+│   │       ├── scan_cache.rs
+│   │       ├── planning.rs
+│   │       └── protocol.rs
+│   │
+│   ├── skilllite-fs/              # File system: read/write/grep/search_replace/atomic_write
+│   │
+│   ├── skilllite-sandbox/         # Sandbox execution (core security)
+│   │   └── src/
+│   │       ├── runner.rs          # SandboxLevel, SandboxConfig, ResourceLimits
+│   │       ├── common.rs
+│   │       ├── macos.rs           # macOS Seatbelt
+│   │       ├── linux.rs           # Linux Namespace + Seccomp
+│   │       ├── windows.rs         # WSL2 bridge
+│   │       ├── seatbelt.rs
+│   │       ├── seccomp.rs
+│   │       ├── network_proxy.rs
+│   │       ├── bash_validator.rs  # Bash command validation (BashValidationError)
+│   │       ├── move_protection.rs
+│   │       ├── env/               # RuntimePaths construction
+│   │       └── security/          # Static scan, rules, dependency_audit
+│   │
+│   ├── skilllite-executor/        # Session, transcripts, memory (executor feature)
+│   │   └── src/
+│   │       ├── error.rs           # ExecutorError
+│   │       ├── session.rs
+│   │       ├── transcript.rs
+│   │       ├── memory.rs          # BM25, optional sqlite-vec vector
+│   │       ├── plan.rs
+│   │       └── rpc.rs
+│   │
+│   ├── skilllite-evolution/       # Self-evolution: prompts, memory, skills feedback
+│   │
+│   ├── skilllite-agent/           # Agent loop (agent feature)
+│   │   └── src/
+│   │       ├── agent_loop/        # planning, execution, reflection, helpers
+│   │       ├── chat.rs
+│   │       ├── chat_session.rs
+│   │       ├── llm/
+│   │       ├── prompt.rs
+│   │       ├── task_planner.rs
+│   │       ├── skills/
+│   │       ├── extensions/        # registry, builtin (file_ops, run_command, etc.)
+│   │       └── rpc.rs             # Agent RPC (JSON-Lines event stream)
+│   │
+│   ├── skilllite-commands/        # CLI command implementations
+│   │   └── src/
+│   │       ├── execute.rs         # run_skill, exec_script, bash_command
+│   │       ├── scan.rs
+│   │       ├── security.rs
+│   │       ├── skill/             # add, remove, list, show, verify
+│   │       ├── ide.rs
+│   │       ├── init.rs
+│   │       ├── env.rs
+│   │       ├── reindex.rs
+│   │       ├── evolution.rs
+│   │       ├── quickstart.rs
+│   │       └── planning_rules_gen.rs
+│   │
+│   ├── skilllite-swarm/           # P2P (mDNS, task routing; swarm feature)
+│   │
+│   └── skilllite-assistant/       # Tauri 2 + React desktop
+│       └── src-tauri/
 │
 ├── python-sdk/                    # Python SDK (thin bridge layer)
 │   ├── pyproject.toml             # Package config (v0.1.10, zero runtime deps)
@@ -196,31 +207,42 @@ skillLite/
 
 ## Core Modules
 
-### 1. Rust Three-Layer Architecture
+### 1. Crate Dependencies and Architecture
 
 ```
-Entry Layer (CLI/MCP/stdio_rpc) → Agent → Executor → Sandbox → Core
-Core doesn't depend on upper layers; Agent is Core's customer, not part of Core
+skilllite (main binary)
+  ├── skilllite-commands
+  │     ├── skilllite-core, skilllite-fs, skilllite-sandbox
+  │     └── skilllite-agent (agent feature)
+  │           ├── skilllite-core, skilllite-evolution, skilllite-fs
+  │           ├── skilllite-sandbox, skilllite-executor
+  │           └── skilllite-executor → skilllite-core, skilllite-fs
+  ├── skilllite-swarm (swarm feature) → skilllite-core
+  └── skilllite-core (root)
+
+Execution chain: CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
+Core doesn't depend on upper layers; Agent is Core's customer.
 ```
 
-**Feature Flags Control Compilation**:
+**Feature Flags**:
 
-| Feature | Included Modules | Build Target |
-|---------|-----------------|--------------|
-| `sandbox` (default) | sandbox, skill, config, env | Sandbox core |
+| Feature | Included Crate | Build Target |
+|---------|----------------|--------------|
+| `sandbox` (default) | skilllite-sandbox | Sandbox core |
 | `audit` (default) | dependency_audit (OSV API) | Supply chain audit |
-| `executor` | session, transcript, memory | Session management |
-| `agent` (default) | agent_loop, llm, chat, extensions | Agent features |
-| `sandbox_binary` | sandbox + core only | skilllite-sandbox lightweight binary |
-| `memory_vector` | sqlite-vec vector retrieval | Optional semantic search |
+| `executor` | skilllite-executor | Session, transcript, memory |
+| `agent` (default) | skilllite-agent | chat, planning, extensions |
+| `sandbox_binary` | skilllite-sandbox + skilllite-core | skilllite-sandbox lightweight binary |
+| `memory_vector` | sqlite-vec | Optional semantic search |
+| `swarm` | skilllite-swarm | P2P networking |
 
 **Build Targets**:
-- `cargo build -p skilllite`: Full product (chat/add/list/mcp/init, etc.)
-- `cargo build --features sandbox_binary`: Core engine (run/exec/bash, no agent)
+- `cargo build -p skilllite`: Full product
+- `cargo build -p skilllite --no-default-features --features sandbox_binary`: skilllite-sandbox lightweight binary
 
-### 2. Sandbox Module (sandbox/)
+### 2. Sandbox Module (skilllite-sandbox)
 
-#### 2.1 Sandbox Security Levels (`sandbox/runner.rs`)
+#### 2.1 Sandbox Security Levels (`crates/skilllite-sandbox/src/runner.rs`)
 
 ```rust
 pub enum SandboxLevel {
@@ -243,7 +265,7 @@ pub struct SandboxConfig {
 }
 ```
 
-The sandbox no longer directly `use crate::skill::*`; it receives a `SandboxConfig` constructed by the caller from `SkillMetadata`.
+The sandbox does not depend on skilllite-core's skill module; it receives `SandboxConfig` constructed by skilllite-commands from `SkillMetadata`.
 
 #### 2.3 RuntimePaths (Decoupled sandbox from env)
 
@@ -256,9 +278,9 @@ pub struct RuntimePaths {
 }
 ```
 
-The sandbox no longer `use crate::env::builder::*`; it receives `RuntimePaths` constructed via `env/builder.rs::build_runtime_paths()`.
+The sandbox receives `RuntimePaths` constructed by `skilllite-sandbox::env::builder` or skilllite-commands callers.
 
-#### 2.4 Resource Limits (`sandbox/runner.rs`)
+#### 2.4 Resource Limits (`runner.rs`)
 
 ```rust
 pub struct ResourceLimits {
@@ -273,7 +295,7 @@ pub struct ResourceLimits {
 - `SKILLBOX_SANDBOX_LEVEL`: Sandbox level (1/2/3)
 - `SKILLBOX_AUTO_APPROVE`: Auto-approve dangerous operations
 
-#### 2.5 macOS Sandbox (`sandbox/macos.rs`)
+#### 2.5 macOS Sandbox (`skilllite-sandbox/macos.rs`)
 
 **Core Technology**: Uses macOS `sandbox-exec` with Seatbelt profiles
 
@@ -285,7 +307,7 @@ pub struct ResourceLimits {
 5. Monitor memory usage and execution time
 6. Terminate process on limit exceeded
 
-#### 2.6 Linux Sandbox (`sandbox/linux.rs`)
+#### 2.6 Linux Sandbox (`skilllite-sandbox/linux.rs`)
 
 **Sandbox Tool Priority**: bubblewrap (bwrap) → firejail → error
 
@@ -296,15 +318,15 @@ pub struct ResourceLimits {
 - Network isolation (default `--unshare-net`; `--share-net` with proxy filtering when enabled)
 - Seccomp BPF filter blocks AF_UNIX socket creation
 
-#### 2.7 Windows Sandbox (`sandbox/windows.rs`)
+#### 2.7 Windows Sandbox (`skilllite-sandbox/windows.rs`)
 
 Sandbox functionality implemented via WSL2 bridge.
 
-#### 2.8 Network Proxy (`sandbox/network_proxy.rs`)
+#### 2.8 Network Proxy (`skilllite-sandbox/network_proxy.rs`)
 
 Provides HTTP and SOCKS5 proxy for domain whitelist filtering. When a skill declares network access with restricted outbound domains, the proxy intercepts non-whitelisted requests.
 
-#### 2.9 Static Code Scanning (`sandbox/security/`)
+#### 2.9 Static Code Scanning (`skilllite-sandbox/security/`)
 
 The security scanning module contains:
 
@@ -342,15 +364,15 @@ pub enum SecuritySeverity {
 
 | Module | Responsibility |
 |--------|---------------|
-| `bash_validator.rs` | Bash command safety validation, detects dangerous commands |
-| `move_protection.rs` | File move protection, prevents malicious file overwrites |
-| `seatbelt.rs` | macOS mandatory deny paths and Seatbelt profile generation |
+| `bash_validator.rs` | Bash command validation (BashValidationError) |
+| `move_protection.rs` | File move protection |
+| `seatbelt.rs` | macOS mandatory deny paths and Seatbelt profiles |
 
 ---
 
-### 3. Executor Module (executor/)
+### 3. Executor Module (skilllite-executor)
 
-> Requires `executor` feature. Provides session management and persistence.
+> Requires `executor` feature. Provides session, transcript, and memory storage.
 
 | Module | Responsibility |
 |--------|---------------|
@@ -363,9 +385,9 @@ pub enum SecuritySeverity {
 
 ---
 
-### 4. Agent Module (agent/)
+### 4. Agent Module (skilllite-agent)
 
-> Requires `agent` feature (enabled by default). Provides full AI Agent capabilities.
+> Requires `agent` feature (enabled by default). Provides chat, planning, tools, and extensions.
 
 #### 4.1 Core Modules
 
@@ -417,7 +439,7 @@ registry.register(memory::tools());
 
 ---
 
-### 5. MCP Module (mcp.rs)
+### 5. MCP Module (skilllite/mcp/)
 
 **MCP (Model Context Protocol) Server**: JSON-RPC 2.0 over stdio
 
@@ -435,13 +457,13 @@ registry.register(memory::tools());
 
 ---
 
-### 6. Stdio RPC Module (stdio_rpc.rs)
+### 6. Stdio RPC Module (skilllite/stdio_rpc.rs)
 
 **Skill Execution Stdio RPC**: JSON-RPC 2.0 over stdio (one request per line)
 
 Uses rayon thread pool for concurrent request processing. Supported methods: `run`, `exec`, `bash`, `scan`, `validate`, `info`, etc.
 
-Separate from `agent::rpc` — the latter is dedicated to Agent Chat streaming events.
+Separate from `skilllite-agent::rpc` — the latter is dedicated to Agent Chat streaming events.
 
 ---
 
@@ -478,7 +500,7 @@ Separate from `agent::rpc` — the latter is dedicated to Agent Chat streaming e
 
 ---
 
-### 9. Skill Metadata Parsing (`skill/`)
+### 9. Skill Metadata Parsing (`skilllite-core/skill/`)
 
 #### 9.1 SKILL.md Format
 
@@ -669,7 +691,7 @@ SKILLBOX_AUTO_APPROVE=false   # Auto-approve dangerous operations
 SKILLBOX_NO_SANDBOX=false     # Disable sandbox
 ```
 
-Environment variable keys are defined in `config/env_keys.rs` with legacy compatibility. Config loading priority: constructor args > env vars > .env file > defaults.
+Environment variable keys are defined in `skilllite-core/config/env_keys.rs` with legacy compatibility. Config loading priority: constructor args > env vars > .env file > defaults.
 
 ---
 
@@ -707,7 +729,7 @@ Environment variable keys are defined in `config/env_keys.rs` with legacy compat
 - Time: Automatic termination on timeout
 - Process count: Fork bomb prevention
 
-### 4. Mandatory Deny Paths (`sandbox/seatbelt.rs`)
+### 4. Mandatory Deny Paths (`skilllite-sandbox/seatbelt.rs`)
 
 **Always-blocked sensitive files:**
 
@@ -720,7 +742,7 @@ Environment variable keys are defined in `config/env_keys.rs` with legacy compat
 | Security files | `.ssh/*`, `.gnupg/*`, `.aws/credentials` |
 | AI/Agent configs | `.mcp.json`, `.claude/*`, `.cursor/*` |
 
-### 5. Supply Chain Security (`security/dependency_audit.rs`)
+### 5. Supply Chain Security (`skilllite-sandbox/security/dependency_audit.rs`)
 
 Scans Skill dependencies for known vulnerabilities using OSV (Open Source Vulnerabilities) API. Requires `audit` feature.
 
@@ -811,14 +833,14 @@ Core doesn't depend on upper layers; Agent is Core's customer, not part of Core
 
 ### Adding New Tools
 
-1. Create a module under `agent/extensions/`, implement `tool_definitions()` and execution logic
+1. Create a module under `skilllite-agent/extensions/`, implement `tool_definitions()` and execution logic
 2. Register the tool in `extensions/registry.rs`
 3. Do not modify `agent_loop.rs`
 
 ### Supporting New Platform Sandboxes
 
-1. Implement platform module under `sandbox/` (e.g., `landlock.rs`)
-2. Select backend by platform in `sandbox/runner.rs`
+1. Implement platform module under `crates/skilllite-sandbox/src/` (e.g., `landlock.rs`)
+2. Select backend by platform in `runner.rs`
 3. Control compilation via feature flags
 
 ---
@@ -833,5 +855,5 @@ Core doesn't depend on upper layers; Agent is Core's customer, not part of Core
 
 ---
 
-*Document version: 1.3.0*
-*Last updated: 2026-02-21*
+*Document version: 1.4.0*
+*Last updated: 2026-03-15*

@@ -1,6 +1,6 @@
 # SkillLite 项目架构文档
 
-> **说明**：本文档已同步至 v0.1.10 架构。Python SDK 为薄桥接层（~600 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`，逻辑集中在 Rust 二进制。
+> **说明**：本文档已同步至 v0.1.11 多 crate 架构。Rust 采用 Cargo workspace，各模块拆分为独立 crate；Python SDK 为薄桥接层（~600 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`。
 
 ## 📋 项目概述
 
@@ -53,94 +53,105 @@ Agent 是 Core 的第一个客户，也是最好的参考实现。
 
 ## 🏗️ 项目结构
 
+Rust 采用 **Cargo workspace** 多 crate 架构，职责按 crate 拆分，依赖方向为 Core → 上层。
+
+### Workspace 与 Crate 一览
+
 ```
 skillLite/
-├── skilllite/                     # Rust 沙箱执行器 (核心)
-│   ├── Cargo.toml                 # Rust 依赖配置
+├── Cargo.toml                     # Workspace 配置 (members: skilllite, crates/*)
+│
+├── skilllite/                     # 主二进制 ( thin 入口，仅 CLI 分发)
+│   ├── Cargo.toml
 │   └── src/
-│       ├── main.rs                # CLI 入口 (~210 行，仅参数解析和命令分发)
-│       ├── cli.rs                 # 命令行参数定义
-│       ├── mcp.rs                 # MCP 协议服务器
-│       ├── stdio_rpc.rs           # Stdio JSON-RPC 服务
-│       ├── observability.rs       # 可观测性 (tracing)
-│       ├── path_validation.rs     # 路径验证
-│       │
-│       ├── commands/              # 命令实现
-│       │   ├── execute.rs         # run_skill, exec_script, bash_command
-│       │   ├── scan.rs            # scan_skill
-│       │   ├── security.rs        # security_scan, dependency_audit
-│       │   ├── skill.rs           # add, remove, list, show
-│       │   ├── ide.rs             # Cursor / OpenCode 集成
-│       │   ├── init.rs            # 项目初始化
-│       │   ├── quickstart.rs      # 快速开始 (agent feature)
-│       │   ├── env.rs             # 环境管理 (clean)
-│       │   ├── reindex.rs         # 重新索引 skills
-│       │   └── planning_rules_gen.rs  # 规划规则生成
-│       │
-│       ├── config/                # 配置模块
-│       │   ├── loader.rs          # 环境变量加载 + set_var 安全包装
-│       │   ├── schema.rs          # 配置模式 (LlmConfig 等)
-│       │   └── env_keys.rs        # 环境变量 key 常量
-│       │
-│       ├── env/                   # 运行时环境
-│       │   └── builder.rs         # build_runtime_paths, ensure_environment
-│       │
-│       ├── skill/                 # Skill 元数据解析
-│       │   ├── metadata.rs        # SKILL.md 解析
-│       │   ├── schema.rs          # Skill 模式定义
-│       │   ├── deps.rs            # 依赖管理
-│       │   └── dependency_resolver.rs  # 依赖解析器
-│       │
-│       ├── sandbox/               # 沙箱实现 (核心安全模块)
-│       │   ├── runner.rs          # SandboxLevel, SandboxConfig, ResourceLimits
-│       │   ├── common.rs          # 跨平台通用功能 (内存监控等)
-│       │   ├── macos.rs           # macOS Seatbelt 沙箱
-│       │   ├── linux.rs           # Linux Namespace 沙箱
-│       │   ├── windows.rs         # Windows WSL2 桥接
-│       │   ├── seatbelt.rs        # Seatbelt profile 和强制拒绝规则
-│       │   ├── seccomp.rs         # Linux Seccomp BPF 过滤器
-│       │   ├── network_proxy.rs   # HTTP/SOCKS5 网络代理 (域名过滤)
-│       │   ├── bash_validator.rs  # Bash 命令安全验证
-│       │   ├── move_protection.rs # 文件移动保护
-│       │   ├── log.rs             # 沙箱日志
-│       │   └── security/          # 安全扫描子模块
-│       │       ├── scanner.rs     # 静态代码扫描器
-│       │       ├── rules.rs       # 安全规则定义和匹配
-│       │       ├── types.rs       # 安全类型定义
-│       │       ├── policy.rs      # 运行时安全策略
-│       │       ├── default_rules.rs   # 默认规则实现
-│       │       ├── default_rules.yaml # 可配置的规则文件
-│       │       └── dependency_audit.rs # 供应链漏洞扫描 (OSV API)
-│       │
-│       ├── executor/              # 执行器模块 (executor feature)
-│       │   ├── session.rs         # 会话管理
-│       │   ├── transcript.rs      # 对话记录
-│       │   ├── memory.rs          # 内存存储 (BM25 检索)
-│       │   └── rpc.rs             # Executor RPC
-│       │
-│       └── agent/                 # Agent 循环 (agent feature)
-│           ├── chat.rs            # CLI 聊天入口 (单次/REPL)
-│           ├── agent_loop.rs      # Agent 主循环
-│           ├── llm.rs             # LLM 客户端 (OpenAI/Claude)
-│           ├── chat_session.rs    # 会话管理
-│           ├── prompt.rs          # Prompt 构建
-│           ├── skills.rs          # Skill 加载和管理
-│           ├── rpc.rs             # Agent RPC (JSON-Lines 事件流)
-│           ├── task_planner.rs    # 任务规划器
-│           ├── planning_rules.rs  # 规划规则
-│           ├── types.rs           # Agent 类型定义
-│           ├── long_text/         # 长文本处理
-│           │   ├── mod.rs
-│           │   └── filter.rs
-│           └── extensions/        # 工具扩展
-│               ├── registry.rs    # 统一扩展注册表
-│               ├── memory.rs      # 内存工具 (search/write/list)
-│               └── builtin/       # 内置工具
-│                   ├── file_ops.rs     # read_file, write_file, search_replace 等
-│                   ├── run_command.rs  # run_command + 危险命令检测
-│                   ├── output.rs      # write_output, list_output
-│                   ├── preview.rs     # preview_server (内置 HTTP 服务)
-│                   └── chat_data.rs   # chat_history, chat_plan
+│       ├── main.rs                # 入口
+│       ├── lib.rs
+│       ├── cli.rs                 # 命令行参数
+│       ├── protocol.rs            # 协议定义
+│       ├── command_registry.rs    # 命令注册与分发
+│       ├── stdio_rpc.rs           # Stdio JSON-RPC (skill 执行)
+│       ├── mcp/                   # MCP 协议服务器
+│       │   ├── mod.rs
+│       │   ├── tools.rs
+│       │   ├── handlers.rs
+│       │   └── scan.rs
+│       ├── dispatch/              # 命令分发到 skilllite-commands
+│       │   ├── mod.rs
+│       │   ├── execute.rs
+│       │   └── skill.rs
+│       └── bin/
+│           └── skilllite-sandbox.rs  # 轻量 binary (仅 sandbox+core)
+│
+├── crates/
+│   ├── skilllite-core/            # 核心库：配置、路径、Skill 元数据、协议
+│   │   └── src/
+│   │       ├── config/            # 环境变量加载、schema (LlmConfig 等)
+│   │       ├── paths.rs           # 数据根、chat 根
+│   │       ├── path_validation.rs # 路径校验 (防越权)
+│   │       ├── error.rs           # 结构化错误 (PathValidationError)
+│   │       ├── skill/             # SKILL.md 解析、manifest、dependency_resolver
+│   │       ├── scan_cache.rs
+│   │       ├── planning.rs
+│   │       └── protocol.rs
+│   │
+│   ├── skilllite-fs/              # 文件系统：读/写/grep/search_replace/atomic_write
+│   │
+│   ├── skilllite-sandbox/         # 沙箱执行 (核心安全)
+│   │   └── src/
+│   │       ├── runner.rs          # SandboxLevel, SandboxConfig, ResourceLimits
+│   │       ├── common.rs          # 内存监控等
+│   │       ├── macos.rs           # macOS Seatbelt
+│   │       ├── linux.rs           # Linux Namespace + Seccomp
+│   │       ├── windows.rs         # WSL2 桥接
+│   │       ├── seatbelt.rs
+│   │       ├── seccomp.rs
+│   │       ├── network_proxy.rs
+│   │       ├── bash_validator.rs  # Bash 命令校验 (BashValidationError)
+│   │       ├── move_protection.rs
+│   │       ├── env/               # RuntimePaths 构建
+│   │       └── security/          # 静态扫描、规则、dependency_audit
+│   │
+│   ├── skilllite-executor/        # 会话、对话记录、记忆 (executor feature)
+│   │   └── src/
+│   │       ├── error.rs           # ExecutorError
+│   │       ├── session.rs
+│   │       ├── transcript.rs
+│   │       ├── memory.rs          # BM25，可选 sqlite-vec 向量
+│   │       ├── plan.rs
+│   │       └── rpc.rs
+│   │
+│   ├── skilllite-evolution/       # 自进化：prompts、memory、skills 反馈与演化
+│   │
+│   ├── skilllite-agent/           # Agent 循环 (agent feature)
+│   │   └── src/
+│   │       ├── agent_loop/        # planning, execution, reflection, helpers
+│   │       ├── chat.rs
+│   │       ├── chat_session.rs
+│   │       ├── llm/
+│   │       ├── prompt.rs
+│   │       ├── task_planner.rs
+│   │       ├── skills/
+│   │       ├── extensions/        # registry, builtin (file_ops, run_command 等)
+│   │       └── rpc.rs             # Agent RPC (JSON-Lines 事件流)
+│   │
+│   ├── skilllite-commands/        # CLI 命令实现
+│   │   └── src/
+│   │       ├── execute.rs         # run_skill, exec_script, bash_command
+│   │       ├── scan.rs
+│   │       ├── security.rs
+│   │       ├── skill/             # add, remove, list, show, verify
+│   │       ├── ide.rs
+│   │       ├── init.rs
+│   │       ├── env.rs
+│   │       ├── reindex.rs
+│   │       ├── evolution.rs
+│   │       ├── quickstart.rs
+│   │       └── planning_rules_gen.rs
+│   │
+│   ├── skilllite-swarm/           # P2P 组网 (mDNS、任务路由，swarm feature)
+│   │
+│   └── skilllite-assistant/       # Tauri 2 + React 桌面端
+│       └── src-tauri/
 │
 ├── python-sdk/                    # Python SDK (薄桥接层)
 │   ├── pyproject.toml             # 包配置 (v0.1.10, 零运行时依赖)
@@ -194,31 +205,42 @@ skillLite/
 
 ## 🔐 核心模块详解
 
-### 1. Rust 三层架构
+### 1. Crate 依赖关系与架构
 
 ```
-入口层 (CLI/MCP/stdio_rpc) → Agent → Executor → Sandbox → Core
-Core 不依赖上层；Agent 是 Core 的客户，不是 Core 的一部分
+skilllite (主二进制)
+  ├── skilllite-commands
+  │     ├── skilllite-core, skilllite-fs, skilllite-sandbox
+  │     └── skilllite-agent (agent feature)
+  │           ├── skilllite-core, skilllite-evolution, skilllite-fs
+  │           ├── skilllite-sandbox, skilllite-executor
+  │           └── skilllite-executor → skilllite-core, skilllite-fs
+  ├── skilllite-swarm (swarm feature) → skilllite-core
+  └── skilllite-core (根)
+
+执行链：CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
+Core 不依赖上层；Agent 是 Core 的客户。
 ```
 
-**Feature Flags 控制编译**：
+**Feature Flags**：
 
-| Feature | 包含模块 | 编译目标 |
-|---------|---------|---------|
-| `sandbox` (默认) | sandbox, skill, config, env | 沙箱核心 |
+| Feature | 包含 crate | 编译目标 |
+|---------|-----------|---------|
+| `sandbox` (默认) | skilllite-sandbox | 沙箱核心 |
 | `audit` (默认) | dependency_audit (OSV API) | 供应链审计 |
-| `executor` | session, transcript, memory | 会话管理 |
-| `agent` (默认) | agent_loop, llm, chat, extensions | Agent 功能 |
-| `sandbox_binary` | 仅 sandbox + core | skilllite-sandbox 轻量二进制 |
-| `memory_vector` | sqlite-vec 向量检索 | 可选语义搜索 |
+| `executor` | skilllite-executor | 会话、对话、记忆 |
+| `agent` (默认) | skilllite-agent | chat、planning、extensions |
+| `sandbox_binary` | skilllite-sandbox + skilllite-core | skilllite-sandbox 轻量 binary |
+| `memory_vector` | sqlite-vec | 可选语义搜索 |
+| `swarm` | skilllite-swarm | P2P 组网 |
 
 **编译目标**：
-- `cargo build -p skilllite`：全量产品（chat/add/list/mcp/init 等）
-- `cargo build --features sandbox_binary`：Core 引擎（run/exec/bash，无 agent）
+- `cargo build -p skilllite`：全量产品
+- `cargo build -p skilllite --no-default-features --features sandbox_binary`：skilllite-sandbox 轻量 binary
 
-### 2. 沙箱模块 (sandbox/)
+### 2. 沙箱模块 (skilllite-sandbox)
 
-#### 2.1 沙箱安全级别 (`sandbox/runner.rs`)
+#### 2.1 沙箱安全级别 (`crates/skilllite-sandbox/src/runner.rs`)
 
 ```rust
 pub enum SandboxLevel {
@@ -241,7 +263,7 @@ pub struct SandboxConfig {
 }
 ```
 
-sandbox 不再直接 `use crate::skill::*`，改为接收 `SandboxConfig`，由调用方从 `SkillMetadata` 构造。
+sandbox 不依赖 skilllite-core 的 skill 模块，改为接收 `SandboxConfig`，由 skilllite-commands 从 `SkillMetadata` 构造。
 
 #### 2.3 RuntimePaths（解耦 sandbox ↔ env）
 
@@ -254,9 +276,9 @@ pub struct RuntimePaths {
 }
 ```
 
-sandbox 不再 `use crate::env::builder::*`，改为接收 `RuntimePaths`，由 `env/builder.rs::build_runtime_paths()` 桥接构造。
+sandbox 接收 `RuntimePaths`，由 `skilllite-sandbox::env::builder` 或 skilllite-commands 调用方构造。
 
-#### 2.4 资源限制 (`sandbox/runner.rs`)
+#### 2.4 资源限制 (`runner.rs`)
 
 ```rust
 pub struct ResourceLimits {
@@ -271,7 +293,7 @@ pub struct ResourceLimits {
 - `SKILLBOX_SANDBOX_LEVEL`: 沙箱级别 (1/2/3)
 - `SKILLBOX_AUTO_APPROVE`: 自动批准危险操作
 
-#### 2.5 macOS 沙箱实现 (`sandbox/macos.rs`)
+#### 2.5 macOS 沙箱实现 (`skilllite-sandbox/macos.rs`)
 
 **核心技术**: 使用 macOS 的 `sandbox-exec` 和 Seatbelt 配置文件
 
@@ -283,7 +305,7 @@ pub struct ResourceLimits {
 5. 监控内存使用和执行时间
 6. 超限时终止进程
 
-#### 2.6 Linux 沙箱实现 (`sandbox/linux.rs`)
+#### 2.6 Linux 沙箱实现 (`skilllite-sandbox/linux.rs`)
 
 **沙箱工具优先级**：bubblewrap (bwrap) → firejail → 报错
 
@@ -294,15 +316,15 @@ pub struct ResourceLimits {
 - 网络隔离（默认 `--unshare-net`，启用时 `--share-net` 通过代理过滤）
 - Seccomp BPF 过滤器阻止 AF_UNIX socket 创建
 
-#### 2.7 Windows 沙箱实现 (`sandbox/windows.rs`)
+#### 2.7 Windows 沙箱实现 (`skilllite-sandbox/windows.rs`)
 
 通过 WSL2 桥接实现沙箱功能。
 
-#### 2.8 网络代理 (`sandbox/network_proxy.rs`)
+#### 2.8 网络代理 (`skilllite-sandbox/network_proxy.rs`)
 
 提供 HTTP 和 SOCKS5 代理，用于域名白名单过滤。当 skill 声明了网络访问但限制了出站域名时，代理会拦截非白名单请求。
 
-#### 2.9 静态代码扫描 (`sandbox/security/`)
+#### 2.9 静态代码扫描 (`skilllite-sandbox/security/`)
 
 安全扫描模块包含以下文件：
 
@@ -340,15 +362,15 @@ pub enum SecuritySeverity {
 
 | 模块 | 职责 |
 |------|------|
-| `bash_validator.rs` | Bash 命令安全验证，检测危险命令 |
-| `move_protection.rs` | 文件移动保护，防止恶意文件覆盖 |
-| `seatbelt.rs` | macOS 强制拒绝路径和 Seatbelt profile 生成 |
+| `bash_validator.rs` | Bash 命令安全验证 (BashValidationError) |
+| `move_protection.rs` | 文件移动保护 |
+| `seatbelt.rs` | macOS 强制拒绝路径和 Seatbelt profile |
 
 ---
 
-### 3. 执行器模块 (executor/)
+### 3. 执行器模块 (skilllite-executor)
 
-> 需要 `executor` feature，提供会话管理和持久化能力。
+> 需要 `executor` feature，提供会话、对话记录、记忆存储。
 
 | 模块 | 职责 |
 |------|------|
@@ -361,9 +383,9 @@ pub enum SecuritySeverity {
 
 ---
 
-### 4. Agent 模块 (agent/)
+### 4. Agent 模块 (skilllite-agent)
 
-> 需要 `agent` feature（默认启用），提供完整的 AI Agent 功能。
+> 需要 `agent` feature（默认启用），提供 chat、planning、tools 等 Agent 能力。
 
 #### 4.1 核心模块
 
@@ -415,7 +437,7 @@ registry.register(memory::tools());
 
 ---
 
-### 5. MCP 模块 (mcp.rs)
+### 5. MCP 模块 (skilllite/mcp/)
 
 **MCP (Model Context Protocol) 服务器**：JSON-RPC 2.0 over stdio
 
@@ -433,7 +455,7 @@ registry.register(memory::tools());
 
 ---
 
-### 6. Stdio RPC 模块 (stdio_rpc.rs)
+### 6. Stdio RPC 模块 (skilllite/stdio_rpc.rs)
 
 **技能执行 stdio RPC**：JSON-RPC 2.0 over stdio（一行一个请求）
 
@@ -476,7 +498,7 @@ registry.register(memory::tools());
 
 ---
 
-### 9. Skill 元数据解析 (`skill/`)
+### 9. Skill 元数据解析 (`skilllite-core/skill/`)
 
 #### 9.1 SKILL.md 格式
 
@@ -667,7 +689,7 @@ SKILLBOX_AUTO_APPROVE=false   # 自动批准危险操作
 SKILLBOX_NO_SANDBOX=false     # 禁用沙箱
 ```
 
-环境变量 key 定义在 `config/env_keys.rs`，支持 legacy 兼容。配置加载优先级：构造函数参数 > 环境变量 > .env 文件 > 默认值。
+环境变量 key 定义在 `skilllite-core/config/env_keys.rs`，支持 legacy 兼容。配置加载优先级：构造函数参数 > 环境变量 > .env 文件 > 默认值。
 
 ---
 
@@ -809,14 +831,14 @@ Core 不依赖上层；Agent 是 Core 的客户，不是 Core 的一部分
 
 ### 如果需要添加新工具
 
-1. 在 `agent/extensions/` 下创建模块，实现 `tool_definitions()` 和执行逻辑
+1. 在 `skilllite-agent/extensions/` 下创建模块，实现 `tool_definitions()` 和执行逻辑
 2. 在 `extensions/registry.rs` 中注册工具
 3. 不修改 `agent_loop.rs`
 
 ### 如果需要支持新平台沙箱
 
-1. 在 `sandbox/` 下实现平台模块（如 `landlock.rs`）
-2. 在 `sandbox/runner.rs` 中按平台选择后端
+1. 在 `crates/skilllite-sandbox/src/` 下实现平台模块（如 `landlock.rs`）
+2. 在 `runner.rs` 中按平台选择后端
 3. 通过 feature flag 控制编译
 
 ---
@@ -831,5 +853,5 @@ Core 不依赖上层；Agent 是 Core 的客户，不是 Core 的一部分
 
 ---
 
-*文档版本: 1.3.0*
-*最后更新: 2026-02-21*
+*文档版本: 1.4.0*
+*最后更新: 2026-03-15*

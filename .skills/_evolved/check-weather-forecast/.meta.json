@@ -6,7 +6,7 @@
   "failure_count": 3,
   "call_count": 3,
   "last_used": "2026-03-14T10:45:29.896738+00:00",
-  "archived": false,
+  "archived": true,
   "generation_txn": "evo_20260302_045325",
   "needs_review": true
 }
