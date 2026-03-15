@@ -26,8 +26,7 @@ use super::types::*;
 /// Resolve the output directory path for prompt injection.
 fn resolve_output_dir() -> String {
     get_output_dir().unwrap_or_else(|| {
-        skilllite_executor::skilllite_data_root()
-            .join("chat")
+        skilllite_executor::chat_root()
             .join("output")
             .to_string_lossy()
             .to_string()

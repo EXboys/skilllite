@@ -42,13 +42,7 @@ pub(super) async fn run_planning_phase(
     client: &LlmClient,
     workspace: &Path,
 ) -> Result<PlanningResult> {
-    let chat_root = skilllite_executor::workspace_root(None)
-        .unwrap_or_else(|_| {
-            dirs::home_dir()
-                .unwrap_or_else(|| std::path::PathBuf::from("."))
-                .join(".skilllite")
-        })
-        .join("chat");
+    let chat_root = skilllite_executor::chat_root();
 
     let mut planner = TaskPlanner::new(Some(workspace), Some(&chat_root), Some(availability.clone()));
 

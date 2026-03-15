@@ -49,13 +49,7 @@ impl ChatSession {
         // ~/.skilllite/ is the root for all skilllite data:
         //   bin/          — binary
         //   chat/         — sessions, transcripts, plans, memory, output
-        let data_root = skilllite_executor::workspace_root(None)
-            .unwrap_or_else(|_| {
-                dirs::home_dir()
-                    .unwrap_or_else(|| PathBuf::from("."))
-                    .join(".skilllite")
-            })
-            .join("chat");
+        let data_root = skilllite_executor::chat_root();
         // EVO-2: Ensure seed prompt/rules data exists on disk.
         skilllite_evolution::seed::ensure_seed_data(&data_root);
         let mut session = Self {

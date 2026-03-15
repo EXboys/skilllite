@@ -230,13 +230,7 @@ pub fn run_agent_run(
 
     // A13: Resume from checkpoint
     let (effective_goal, effective_workspace, history_override) = if resume {
-        let chat_root = skilllite_executor::workspace_root(None)
-            .unwrap_or_else(|_| {
-                dirs::home_dir()
-                    .unwrap_or_else(|| std::path::PathBuf::from("."))
-                    .join(".skilllite")
-            })
-            .join("chat");
+        let chat_root = skilllite_executor::chat_root();
         match super::run_checkpoint::load_checkpoint(&chat_root)? {
             Some(cp) => {
                 let resume_msg = super::run_checkpoint::build_resume_message(&cp);

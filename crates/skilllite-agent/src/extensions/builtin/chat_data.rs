@@ -109,10 +109,8 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-fn chat_data_root() -> Result<PathBuf> {
-    let root = skilllite_executor::workspace_root(None)
-        .unwrap_or_else(|_| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".skilllite"));
-    Ok(root.join("chat"))
+fn chat_data_root() -> PathBuf {
+    skilllite_executor::chat_root()
 }
 
 fn normalize_date(date: &str) -> String {
@@ -136,7 +134,7 @@ pub(super) fn execute_chat_history(args: &Value) -> Result<String> {
         .and_then(|v| v.as_str())
         .map(|s| normalize_date(s));
 
-    let chat_root = chat_data_root()?;
+    let chat_root = chat_data_root();
     let transcripts_dir = chat_root.join("transcripts");
 
     if !transcripts_dir.exists() {
@@ -199,7 +197,7 @@ pub(super) fn execute_chat_plan(args: &Value) -> Result<String> {
         .and_then(|v| v.as_str())
         .map(|s| normalize_date(s));
 
-    let chat_root = chat_data_root()?;
+    let chat_root = chat_data_root();
     let plans_dir = chat_root.join("plans");
 
     let plan = skilllite_executor::plan::read_latest_plan(&plans_dir, session_key, date.as_deref())?;

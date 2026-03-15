@@ -96,11 +96,7 @@ async fn run_simple_loop(
     let all_tools = registry.all_tool_definitions();
 
     // Build system prompt and initial message list
-    let chat_root = skilllite_executor::workspace_root(None)
-        .unwrap_or_else(|_| {
-            dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from(".")).join(".skilllite")
-        })
-        .join("chat");
+    let chat_root = skilllite_executor::chat_root();
     let soul = Soul::auto_load(config.soul_path.as_deref(), &config.workspace);
     let system_prompt = prompt::build_system_prompt(
         config.system_prompt.as_deref(), skills, &config.workspace,

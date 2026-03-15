@@ -41,12 +41,9 @@ fn write_tool_to_transcript(
         None => return,
     };
 
-    // Get transcript path
-    let data_root = match skilllite_executor::workspace_root(None) {
-        Ok(p) => p,
-        Err(_) => return,
-    };
-    let transcripts_dir = data_root.join("transcripts");
+    // Get transcript path (transcripts live under chat root)
+    let chat_root = skilllite_executor::chat_root();
+    let transcripts_dir = chat_root.join("transcripts");
     let t_path = match skilllite_executor::transcript::transcript_path_today(&transcripts_dir, session_key) {
         p if p.parent().map(|p| skilllite_fs::create_dir_all(p).is_ok()).unwrap_or(false) => p,
         _ => return,
