@@ -1,11 +1,27 @@
 # SkillLite
 
+<div align="center">
+
 [![CI](https://github.com/EXboys/skilllite/actions/workflows/ci.yml/badge.svg)](https://github.com/EXboys/skilllite/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub Stars](https://img.shields.io/github/stars/EXboys/skilllite)](https://github.com/EXboys/skilllite/stargazers)
 [![PyPI](https://img.shields.io/pypi/v/skilllite)](https://pypi.org/project/skilllite/)
 
-[中文文档](./docs/zh/README.md)
+</div>
+
+---
+
+<div align="center">
+
+### 📖 Documentation | 文档
+
+| English | 中文 |
+|---------|------|
+| **[📗 English Docs](./README.md)** · [Getting Started](./docs/en/GETTING_STARTED.md) · [Architecture](./docs/en/ARCHITECTURE.md) · [Env Reference](./docs/en/ENV_REFERENCE.md) · [Contributing](./docs/en/CONTRIBUTING.md) | **[📘 中文文档](./docs/zh/README.md)** · [入门指南](./docs/zh/GETTING_STARTED.md) · [架构说明](./docs/zh/ARCHITECTURE.md) · [环境变量](./docs/zh/ENV_REFERENCE.md) · [贡献指南](./docs/zh/CONTRIBUTING.md) |
+
+</div>
+
+---
 
 **A lightweight secure Self-evolution engine built in Rust, featuring a built-in native system-level sandbox, zero dependencies, and fully local execution..**
 
