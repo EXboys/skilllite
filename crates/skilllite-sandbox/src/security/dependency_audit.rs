@@ -85,7 +85,7 @@ pub struct DependencyAuditResult {
 }
 
 /// Metadata hint for dependency inference when no explicit dependency files exist.
-/// Provided by the commands layer (which parses SKILL.md); sandbox never parses skill metadata.
+/// Built by the commands layer from `SkillMetadata`; sandbox does not depend on skill parsing.
 #[derive(Debug, Clone)]
 pub struct MetadataHint {
     pub compatibility: Option<String>,
@@ -93,18 +93,6 @@ pub struct MetadataHint {
     pub description: Option<String>,
     pub language: Option<String>,
     pub entry_point: String,
-}
-
-impl From<skilllite_core::skill::metadata::SkillMetadata> for MetadataHint {
-    fn from(m: skilllite_core::skill::metadata::SkillMetadata) -> Self {
-        Self {
-            compatibility: m.compatibility,
-            resolved_packages: m.resolved_packages,
-            description: m.description,
-            language: m.language,
-            entry_point: m.entry_point,
-        }
-    }
 }
 
 // ─── Dependency file parsers ────────────────────────────────────────────────
@@ -355,24 +343,8 @@ fn resolve_from_metadata_fields(
         }
     }
 
-    let whitelist_packages =
-        skilllite_core::skill::deps::parse_compatibility_for_packages(Some(compat));
-    if !whitelist_packages.is_empty() {
-        tracing::info!(
-            "Whitelist matched {} package(s): {}",
-            whitelist_packages.len(),
-            whitelist_packages.join(", ")
-        );
-        return whitelist_packages
-            .into_iter()
-            .map(|name| Dependency {
-                name,
-                version: String::new(),
-                ecosystem: ecosystem.to_string(),
-            })
-            .collect();
-    }
-
+    // Callers (commands) should fill resolved_packages from core's parse_compatibility_for_packages
+    // when building MetadataHint, so we do not depend on skill::deps here.
     Vec::new()
 }
 

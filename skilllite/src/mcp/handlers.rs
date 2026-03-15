@@ -391,9 +391,10 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
 
     // Setup environment
     let cache_dir = skilllite_core::config::CacheConfig::cache_dir();
+    let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_dir, &meta);
     let env_path = skilllite_sandbox::env::builder::ensure_environment(
         &skill_dir,
-        &meta,
+        &env_spec,
         cache_dir.as_deref(),
     )?;
 

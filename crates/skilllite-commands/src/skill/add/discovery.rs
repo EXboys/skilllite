@@ -170,9 +170,10 @@ pub(super) fn install_skill_deps(skills_dir: &Path, installed: &[String]) -> Vec
         match metadata::parse_skill_metadata(&skill_path) {
             Ok(meta) => {
                 let cache_dir: Option<&str> = None;
-                match skilllite_sandbox::env::builder::ensure_environment(&skill_path, &meta, cache_dir) {
+                let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &meta);
+                match skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir) {
                     Ok(_) => {
-                        let lang = metadata::detect_language(&skill_path, &meta);
+                        let lang = &env_spec.language;
                         messages.push(format!(
                             "   ✓ {} [{}]: dependencies installed",
                             name, lang

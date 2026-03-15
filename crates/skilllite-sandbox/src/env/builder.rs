@@ -1,8 +1,11 @@
 //! Build isolated runtime environments (Python venv / Node) and resolve RuntimePaths.
+//!
+//! Accepts [`skilllite_core::EnvSpec`] only; callers build it from `SkillMetadata` via
+//! `EnvSpec::from_metadata(skill_dir, &metadata)` so that this crate does not depend on skill parsing.
 
 use anyhow::{Context, Result};
 use skilllite_core::config;
-use skilllite_core::skill::metadata;
+use skilllite_core::EnvSpec;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -27,41 +30,22 @@ pub fn get_cache_dir(override_dir: Option<&str>) -> Option<PathBuf> {
 /// Returns the environment directory path (empty PathBuf if no env needed, e.g. bash-only).
 pub fn ensure_environment(
     skill_dir: &Path,
-    meta: &metadata::SkillMetadata,
+    spec: &EnvSpec,
     cache_dir: Option<&str>,
 ) -> Result<PathBuf> {
-    let lang = metadata::detect_language(skill_dir, meta);
-    // Bash-tool skills (e.g. agent-browser) may have Node deps (package.json) — install them
-    let lang = if lang == "bash" {
-        let has_pkg = skill_dir.join("package.json").exists();
-        let compat_has_agent_browser = meta
-            .compatibility
-            .as_ref()
-            .map_or(false, |c| c.to_lowercase().contains("agent-browser"));
-        let resolved_has_agent_browser = meta
-            .resolved_packages
-            .as_ref()
-            .map_or(false, |p| p.iter().any(|s| s.contains("agent-browser")));
-        if has_pkg || compat_has_agent_browser || resolved_has_agent_browser {
-            "node".to_string()
-        } else {
-            return Ok(PathBuf::new());
-        }
-    } else {
-        lang
-    };
+    let lang = &spec.language;
 
     let base = get_cache_dir(cache_dir)
         .unwrap_or_else(|| PathBuf::from(".").join(".cache").join("skilllite").join("envs"));
     std::fs::create_dir_all(&base).context("Create cache dir")?;
 
-    let key = cache_key(skill_dir, meta, &lang)?;
+    let key = cache_key(skill_dir, spec, lang)?;
     let env_path = base.join(key);
 
     if lang == "python" {
-        ensure_python_env(skill_dir, meta, &env_path)?;
+        ensure_python_env(skill_dir, spec, &env_path)?;
     } else if lang == "node" {
-        ensure_node_env(skill_dir, meta, &env_path)?;
+        ensure_node_env(skill_dir, spec, &env_path)?;
     } else {
         return Ok(PathBuf::new());
     }
@@ -114,12 +98,12 @@ pub fn build_runtime_paths(env_dir: &Path) -> RuntimePaths {
     }
 }
 
-fn cache_key(skill_dir: &Path, meta: &metadata::SkillMetadata, lang: &str) -> Result<String> {
+fn cache_key(skill_dir: &Path, spec: &EnvSpec, lang: &str) -> Result<String> {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(skill_dir.canonicalize().unwrap_or_else(|_| skill_dir.to_path_buf()).to_string_lossy().as_bytes());
     hasher.update(lang.as_bytes());
-    if let Some(ref pkgs) = meta.resolved_packages {
+    if let Some(ref pkgs) = spec.resolved_packages {
         for p in pkgs {
             hasher.update(p.as_bytes());
         }
@@ -139,8 +123,8 @@ fn cache_key(skill_dir: &Path, meta: &metadata::SkillMetadata, lang: &str) -> Re
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn ensure_python_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path: &Path) -> Result<()> {
-    let packages = collect_python_packages(skill_dir, meta)?;
+fn ensure_python_env(skill_dir: &Path, spec: &EnvSpec, env_path: &Path) -> Result<()> {
+    let packages = collect_python_packages(skill_dir, spec)?;
     let python_path = python_path_in_env(env_path);
     let env_exists = python_path.exists();
 
@@ -188,8 +172,8 @@ fn ensure_python_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path:
     Ok(())
 }
 
-fn ensure_node_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path: &Path) -> Result<()> {
-    let packages = collect_node_packages(skill_dir, meta)?;
+fn ensure_node_env(skill_dir: &Path, spec: &EnvSpec, env_path: &Path) -> Result<()> {
+    let packages = collect_node_packages(skill_dir, spec)?;
     let env_exists = env_path.join("node_modules").exists();
 
     if !env_exists {
@@ -198,7 +182,7 @@ fn ensure_node_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path: &
         let package_json = skill_dir.join("package.json");
         if package_json.exists() {
             std::fs::copy(&package_json, env_path.join("package.json")).context("Copy package.json")?;
-        } else if let Some(ref pkgs) = meta.resolved_packages {
+        } else if let Some(ref pkgs) = spec.resolved_packages {
             // Bash-tool skills without package.json may list deps in .skilllite.lock (from skilllite init)
             let deps: std::collections::HashMap<String, String> =
                 pkgs.iter().map(|p| (p.clone(), "*".to_string())).collect();
@@ -241,8 +225,8 @@ fn ensure_node_env(skill_dir: &Path, meta: &metadata::SkillMetadata, env_path: &
     Ok(())
 }
 
-fn collect_python_packages(skill_dir: &Path, meta: &metadata::SkillMetadata) -> Result<Vec<String>> {
-    if let Some(ref pkgs) = meta.resolved_packages {
+fn collect_python_packages(skill_dir: &Path, spec: &EnvSpec) -> Result<Vec<String>> {
+    if let Some(ref pkgs) = spec.resolved_packages {
         return Ok(pkgs.clone());
     }
 
@@ -260,8 +244,8 @@ fn collect_python_packages(skill_dir: &Path, meta: &metadata::SkillMetadata) -> 
         .collect())
 }
 
-fn collect_node_packages(skill_dir: &Path, meta: &metadata::SkillMetadata) -> Result<Vec<String>> {
-    if let Some(ref pkgs) = meta.resolved_packages {
+fn collect_node_packages(skill_dir: &Path, spec: &EnvSpec) -> Result<Vec<String>> {
+    if let Some(ref pkgs) = spec.resolved_packages {
         return Ok(pkgs.clone());
     }
 
@@ -537,21 +521,14 @@ mod tests {
             "pyodps==0.12.5\n# comment\nplaywright\n",
         )
         .expect("write requirements");
-        let meta = metadata::SkillMetadata {
-            name: "test".to_string(),
-            entry_point: "scripts/main.py".to_string(),
-            language: Some("python".to_string()),
-            description: None,
-            version: None,
+        let spec = EnvSpec {
+            language: "python".to_string(),
+            name: Some("test".to_string()),
             compatibility: Some("Requires Python".to_string()),
-            network: metadata::NetworkPolicy::default(),
             resolved_packages: None,
-            allowed_tools: None,
-            requires_elevated_permissions: false,
-            capabilities: Vec::new(),
         };
 
-        let packages = collect_python_packages(temp_dir.path(), &meta).expect("collect python packages");
+        let packages = collect_python_packages(temp_dir.path(), &spec).expect("collect python packages");
         assert_eq!(packages, vec!["pyodps==0.12.5".to_string(), "playwright".to_string()]);
     }
 
@@ -566,21 +543,14 @@ mod tests {
 }"#,
         )
         .expect("write package.json");
-        let meta = metadata::SkillMetadata {
-            name: "test".to_string(),
-            entry_point: "scripts/main.js".to_string(),
-            language: Some("node".to_string()),
-            description: None,
-            version: None,
+        let spec = EnvSpec {
+            language: "node".to_string(),
+            name: Some("test".to_string()),
             compatibility: Some("Requires Node.js".to_string()),
-            network: metadata::NetworkPolicy::default(),
             resolved_packages: None,
-            allowed_tools: None,
-            requires_elevated_permissions: false,
-            capabilities: Vec::new(),
         };
 
-        let packages = collect_node_packages(temp_dir.path(), &meta).expect("collect node packages");
+        let packages = collect_node_packages(temp_dir.path(), &spec).expect("collect node packages");
         assert!(packages.contains(&"playwright".to_string()));
         assert!(packages.contains(&"@anthropic-ai/sdk".to_string()));
     }

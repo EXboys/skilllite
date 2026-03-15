@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use skilllite_core::skill::dependency_resolver;
 use skilllite_core::skill::metadata;
+use skilllite_core::EnvSpec;
 use skilllite_sandbox::env::builder as env_builder;
 
 /// 解析 metadata，若无 resolved_packages 但有 compatibility 则用 whitelist 解析依赖并安装环境。
@@ -26,5 +27,6 @@ pub(super) fn ensure_skill_deps_and_env(skill_dir: &Path) -> Option<PathBuf> {
             }
         }
     }
-    env_builder::ensure_environment(skill_dir, &meta, None).ok()
+    let env_spec = EnvSpec::from_metadata(skill_dir, &meta);
+    env_builder::ensure_environment(skill_dir, &env_spec, None).ok()
 }

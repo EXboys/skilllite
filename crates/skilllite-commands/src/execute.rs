@@ -47,7 +47,8 @@ pub fn run_skill(
         .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
 
     skilllite_sandbox::info_log!("[INFO] ensure_environment start...");
-    let env_path = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &metadata, cache_dir.map(|s| s.as_str()))?;
+    let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &metadata);
+    let env_path = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir.map(|s| s.as_str()))?;
     skilllite_sandbox::info_log!("[INFO] ensure_environment done");
 
     let mut effective_metadata = metadata;
@@ -104,7 +105,8 @@ pub fn exec_script(
         let mut meta = skill::metadata::parse_skill_metadata(&skill_path)?;
         meta.entry_point = script_path.to_string();
         meta.language = Some(language.clone());
-        let env = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &meta, cache_dir.map(|s| s.as_str()))?;
+        let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &meta);
+        let env = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir.map(|s| s.as_str()))?;
         (meta, env)
     } else {
         let meta = skill::metadata::SkillMetadata {
@@ -124,7 +126,14 @@ pub fn exec_script(
             requires_elevated_permissions: false,
             capabilities: Vec::new(),
         };
-        (meta, std::path::PathBuf::new())
+        let env_spec = skilllite_core::EnvSpec {
+            language: language.clone(),
+            name: Some(meta.name.clone()),
+            compatibility: None,
+            resolved_packages: None,
+        };
+        let env = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir.map(|s| s.as_str()))?;
+        (meta, env)
     };
 
     let mut effective_metadata = metadata;
@@ -191,9 +200,10 @@ pub fn bash_command(
         .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
 
     skilllite_sandbox::info_log!("[INFO] bash: ensure_environment start...");
+    let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &metadata);
     let env_path = skilllite_sandbox::env::builder::ensure_environment(
         &skill_path,
-        &metadata,
+        &env_spec,
         cache_dir.map(|s| s.as_str()),
     )?;
     skilllite_sandbox::info_log!("[INFO] bash: ensure_environment done");

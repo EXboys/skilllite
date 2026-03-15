@@ -291,9 +291,10 @@ fn install_all_deps(
                 }
 
                 let cache_dir: Option<&str> = None;
-                match skilllite_sandbox::env::builder::ensure_environment(&skill_path, &meta, cache_dir) {
+                let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &meta);
+                match skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir) {
                     Ok(_) => {
-                        messages.push(format!("   ✓ {} [{}]: dependencies installed", name, lang));
+                        messages.push(format!("   ✓ {} [{}]: dependencies installed", name, env_spec.language));
                     }
                     Err(e) => {
                         messages.push(format!("   ✗ {}: dependency error: {}", name, e));
@@ -373,10 +374,10 @@ fn audit_all_skills(skills_path: &Path, skills: &[String]) -> (Vec<String>, bool
                 || skill_path.join("package.json").exists();
 
             if has_deps {
-                use skilllite_sandbox::security::dependency_audit::{self, MetadataHint};
+                use skilllite_sandbox::security::dependency_audit;
                 let metadata_hint = metadata::parse_skill_metadata(&skill_path)
                     .ok()
-                    .map(MetadataHint::from);
+                    .map(|m| crate::security::metadata_hint_from_skill_metadata(&m));
                 match dependency_audit::audit_skill_dependencies(&skill_path, metadata_hint.as_ref()) {
                     Ok(result) => {
                         if result.vulnerable_count > 0 {
