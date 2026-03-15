@@ -27,7 +27,7 @@ use std::path::Path;
 use crate::types::{self, EventSink, ToolDefinition, ToolResult, safe_truncate, safe_slice_from};
 use helpers::*;
 
-use super::registry::{RegisteredTool, ToolCapability, ToolHandler};
+use super::registry::{RegisteredTool, ToolCapability, ToolHandler, ToolScope};
 
 // ─── Tool definitions (aggregated from submodules) ───────────────────────────
 
@@ -47,13 +47,16 @@ pub fn get_builtin_tools() -> Vec<RegisteredTool> {
     get_builtin_tool_definitions()
         .into_iter()
         .map(|definition| {
-            let capabilities = builtin_capabilities(definition.function.name.as_str());
-            let handler = if is_async_builtin_tool(definition.function.name.as_str()) {
-                ToolHandler::BuiltinAsync
+            let name = definition.function.name.as_str();
+            let capabilities = builtin_capabilities(name);
+            let (handler, scope) = if matches!(name, "complete_task" | "update_task_plan") {
+                (ToolHandler::PlanningControl, ToolScope::PlanningOnly)
+            } else if is_async_builtin_tool(name) {
+                (ToolHandler::BuiltinAsync, ToolScope::AllModes)
             } else {
-                ToolHandler::BuiltinSync
+                (ToolHandler::BuiltinSync, ToolScope::AllModes)
             };
-            RegisteredTool::new(definition, capabilities, handler)
+            RegisteredTool::new(definition, capabilities, handler).with_scope(scope)
         })
         .collect()
 }
@@ -130,11 +133,9 @@ pub fn execute_builtin_tool(
         "chat_history" => chat_data::execute_chat_history(&args),
         "chat_plan" => chat_data::execute_chat_plan(&args),
         "list_output" => output::execute_list_output(&args),
-        "update_task_plan" => Err(anyhow::anyhow!(
-            "update_task_plan is only available in task-planning mode; it must be handled by the agent loop"
-        )),
-        "complete_task" => Err(anyhow::anyhow!(
-            "complete_task is only available in task-planning mode; it must be handled by the agent loop"
+        "update_task_plan" | "complete_task" => Err(anyhow::anyhow!(
+            "{} is a planning control tool; it must be dispatched via registry.execute with planning_ctx",
+            tool_name
         )),
         "delegate_to_swarm" => Err(anyhow::anyhow!(
             "delegate_to_swarm is async; it must be handled by the agent loop"

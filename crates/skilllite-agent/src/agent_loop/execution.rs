@@ -8,11 +8,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::time::Instant;
 
-use super::helpers::{
-    execute_tool_call, handle_complete_task, handle_update_task_plan,
-    inject_progressive_disclosure, process_result_content,
-};
-use super::super::extensions::{self, MemoryVectorContext};
+use super::helpers::{execute_tool_call, handle_complete_task, handle_update_task_plan, inject_progressive_disclosure, process_result_content};
+use super::super::extensions::{self, MemoryVectorContext, PlanningControlExecutor};
 use super::super::llm::LlmClient;
 use super::super::skills::LoadedSkill;
 use super::super::task_planner::TaskPlanner;
@@ -132,10 +129,48 @@ pub(super) fn should_suppress_planning_assistant_text(
 }
 
 /// Soft upper limit on how many times a single session may call update_task_plan.
-/// After this count the tool still works, but the result includes a nudge to stop
-/// replanning and start executing. Keeps evolution noise low and prevents "cell"
-/// agents from cycling indefinitely between planning and replanning.
 const MAX_REPLANS_PER_SESSION: usize = 3;
+
+/// Executor for planning control tools, passed to registry.execute() in planning mode.
+struct PlanningControlExecutorImpl<'a> {
+    planner: &'a mut TaskPlanner,
+    skills: &'a [LoadedSkill],
+    state: &'a mut ExecutionState,
+}
+
+impl PlanningControlExecutor for PlanningControlExecutorImpl<'_> {
+    fn execute(
+        &mut self,
+        tool_name: &str,
+        arguments: &str,
+        event_sink: &mut dyn super::super::types::EventSink,
+    ) -> super::super::types::ToolResult {
+        if tool_name == "update_task_plan" {
+            self.state.replan_count += 1;
+            let mut r = handle_update_task_plan(arguments, self.planner, self.skills, event_sink);
+            if !r.is_error && self.state.replan_count >= MAX_REPLANS_PER_SESSION {
+                r.content.push_str(&format!(
+                    "\n\n⚠️ You have now replanned {} time(s). \
+                     Please STOP replanning and EXECUTE the current plan step by step. \
+                     Do NOT call update_task_plan again.",
+                    self.state.replan_count
+                ));
+                tracing::info!("Replan soft limit reached ({}/{})", self.state.replan_count, MAX_REPLANS_PER_SESSION);
+            }
+            r
+        } else if tool_name == "complete_task" {
+            handle_complete_task(arguments, self.planner, event_sink)
+        } else {
+            super::super::types::ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content: format!("Unknown planning control tool: {}", tool_name),
+                is_error: true,
+                counts_as_failure: true,
+            }
+        }
+    }
+}
 
 // ── Planning-mode batch ───────────────────────────────────────────────────────
 
@@ -180,8 +215,8 @@ pub(super) async fn execute_tool_batch_planning(
         let arguments = &tc.function.arguments;
         event_sink.on_tool_call(tool_name, arguments);
 
-        let is_replan = tool_name.as_str() == "update_task_plan";
-        let is_complete = tool_name.as_str() == "complete_task";
+        let is_planning_control =
+            tool_name.as_str() == "update_task_plan" || tool_name.as_str() == "complete_task";
 
         if task_transitioned {
             tracing::info!(
@@ -205,47 +240,47 @@ pub(super) async fn execute_tool_batch_planning(
         // Snapshot current task before execution to detect task transitions.
         let task_before = planner.current_task().map(|t| t.id);
         let start_time = Instant::now();
-        let mut result = if is_replan {
-            state.replan_count += 1;
-            let mut r = handle_update_task_plan(arguments, planner, skills, event_sink);
-            if !r.is_error && state.replan_count >= MAX_REPLANS_PER_SESSION {
-                r.content.push_str(&format!(
-                    "\n\n⚠️ You have now replanned {} time(s). \
-                     Please STOP replanning and EXECUTE the current plan step by step. \
-                     Do NOT call update_task_plan again — call the required tools to complete each task.",
-                    state.replan_count
-                ));
-                tracing::info!("Replan soft limit reached ({}/{})", state.replan_count, MAX_REPLANS_PER_SESSION);
-            }
-            r
-        } else if is_complete {
-            handle_complete_task(arguments, planner, event_sink)
-        } else {
-            execute_tool_call(registry, tool_name, arguments, workspace, event_sink, embed_ctx).await
+        let mut planning_executor = PlanningControlExecutorImpl {
+            planner,
+            skills,
+            state,
         };
+        let mut result = execute_tool_call(
+            registry,
+            tool_name,
+            arguments,
+            workspace,
+            event_sink,
+            embed_ctx,
+            Some(&mut planning_executor),
+        )
+        .await;
         result.tool_call_id = tc.id.clone();
         result.content = process_result_content(client, model, tool_name, &result.content).await;
 
         if result.counts_as_failure {
-            state.failed_tool_calls += 1;
-            state.consecutive_failures += 1;
-            if !is_complete {
+            planning_executor.state.failed_tool_calls += 1;
+            planning_executor.state.consecutive_failures += 1;
+            if tool_name.as_str() != "complete_task" {
                 result.content.push_str(
                     "\n\nTip: If this approach is wrong or the plan is no longer valid, \
                      call update_task_plan with a revised task list, then continue with the new plan."
                 );
             }
         } else if !result.is_error {
-            state.consecutive_failures = 0;
+            planning_executor.state.consecutive_failures = 0;
         }
         // Detect task transition (via complete_task) and set cutoff flag.
-        let task_after = planner.current_task().map(|t| t.id);
+        let task_after = planning_executor.planner.current_task().map(|t| t.id);
         if task_after != task_before {
-            state.tool_calls_current_task = 0;
+            planning_executor.state.tool_calls_current_task = 0;
             task_transitioned = true;
         }
-        if !is_replan && !is_complete {
-            state.tools_detail.push(ToolExecDetail { tool: tool_name.clone(), success: !result.is_error });
+        if !is_planning_control {
+            planning_executor
+                .state
+                .tools_detail
+                .push(ToolExecDetail { tool: tool_name.clone(), success: !result.is_error });
         }
 
         let elapsed_ms = start_time.elapsed().as_millis() as u64;
@@ -261,8 +296,8 @@ pub(super) async fn execute_tool_batch_planning(
 
         event_sink.on_tool_result(tool_name, &result.content, result.is_error);
         messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
-        state.total_tool_calls += 1;
-        state.tool_calls_current_task += 1;
+        planning_executor.state.total_tool_calls += 1;
+        planning_executor.state.tool_calls_current_task += 1;
     }
 
     let failure_limit_reached = max_consecutive_failures
@@ -305,7 +340,16 @@ pub(super) async fn execute_tool_batch_simple(
         event_sink.on_tool_call(tool_name, arguments);
 
         let start_time = Instant::now();
-        let mut result = execute_tool_call(registry, tool_name, arguments, workspace, event_sink, embed_ctx).await;
+        let mut result = execute_tool_call(
+            registry,
+            tool_name,
+            arguments,
+            workspace,
+            event_sink,
+            embed_ctx,
+            None,
+        )
+        .await;
         result.tool_call_id = tc.id.clone();
         result.content = process_result_content(client, model, tool_name, &result.content).await;
 

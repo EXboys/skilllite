@@ -79,15 +79,17 @@ async fn run_simple_loop(
         .then(|| MemoryVectorContext { client: &client, embed_config: &embed_config });
 
     let registry = if config.read_only_tools {
-        extensions::ExtensionRegistry::read_only(
+        extensions::ExtensionRegistry::read_only_with_task_planning(
             config.enable_memory,
             config.enable_memory_vector,
+            config.enable_task_planning,
             skills,
         )
     } else {
-        extensions::ExtensionRegistry::new(
+        extensions::ExtensionRegistry::with_task_planning(
             config.enable_memory,
             config.enable_memory_vector,
+            config.enable_task_planning,
             skills,
         )
     };
@@ -236,15 +238,17 @@ async fn run_with_task_planning(
         .then(|| MemoryVectorContext { client: &client, embed_config: &embed_config });
 
     let registry = if config.read_only_tools {
-        extensions::ExtensionRegistry::read_only(
+        extensions::ExtensionRegistry::read_only_with_task_planning(
             config.enable_memory,
             config.enable_memory_vector,
+            config.enable_task_planning,
             skills,
         )
     } else {
-        extensions::ExtensionRegistry::new(
+        extensions::ExtensionRegistry::with_task_planning(
             config.enable_memory,
             config.enable_memory_vector,
+            config.enable_task_planning,
             skills,
         )
     };

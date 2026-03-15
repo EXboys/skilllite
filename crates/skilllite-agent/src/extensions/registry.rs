@@ -12,6 +12,17 @@ use crate::llm::LlmClient;
 use crate::prompt;
 use crate::skills::{self, LoadedSkill};
 use crate::types::{EventSink, ToolDefinition, ToolResult};
+
+/// Executor for planning control tools (complete_task, update_task_plan).
+/// Implemented by the agent loop; passed to `registry.execute()` when available.
+pub trait PlanningControlExecutor {
+    fn execute(
+        &mut self,
+        tool_name: &str,
+        arguments: &str,
+        event_sink: &mut dyn EventSink,
+    ) -> ToolResult;
+}
 use skilllite_core::config::EmbeddingConfig;
 
 /// Context for memory vector search (embedding API).
@@ -162,6 +173,28 @@ mod tests {
         assert!(!registry.owns_tool("memory_write"));
         assert!(!registry.owns_tool("run_command"));
     }
+
+    #[test]
+    fn planning_only_tools_excluded_when_task_planning_disabled() {
+        let registry = ExtensionRegistry::builder(true, false, &[])
+            .with_task_planning(false)
+            .register(super::builtin::get_builtin_tools())
+            .register_memory_if(true)
+            .build();
+
+        assert!(!registry.owns_tool("complete_task"));
+        assert!(!registry.owns_tool("update_task_plan"));
+        assert!(registry.owns_tool("read_file"));
+    }
+}
+
+/// Scope that controls when a tool is available.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolScope {
+    /// Available in all modes (simple and planning).
+    AllModes,
+    /// Only available when task planning is enabled.
+    PlanningOnly,
 }
 
 /// Concrete execution target for a registered tool.
@@ -171,14 +204,17 @@ pub enum ToolHandler {
     BuiltinAsync,
     Memory,
     Skill { skill_name: String },
+    /// Control tools (complete_task, update_task_plan) executed via PlanningControlExecutor.
+    PlanningControl,
 }
 
-/// A tool registration that keeps definition, capability requirements, and handler together.
+/// A tool registration that keeps definition, capability requirements, scope, and handler together.
 #[derive(Debug, Clone)]
 pub struct RegisteredTool {
     pub definition: ToolDefinition,
     pub capabilities: Vec<ToolCapability>,
     pub handler: ToolHandler,
+    pub scope: ToolScope,
 }
 
 impl RegisteredTool {
@@ -191,7 +227,14 @@ impl RegisteredTool {
             definition,
             capabilities,
             handler,
+            scope: ToolScope::AllModes,
         }
+    }
+
+    #[must_use]
+    pub fn with_scope(mut self, scope: ToolScope) -> Self {
+        self.scope = scope;
+        self
     }
 
     pub fn name(&self) -> &str {
@@ -287,6 +330,7 @@ pub struct ExtensionRegistryBuilder<'a> {
     policy: CapabilityPolicy,
     enable_memory: bool,
     enable_memory_vector: bool,
+    enable_task_planning: bool,
     skills: &'a [LoadedSkill],
 }
 
@@ -302,8 +346,16 @@ impl<'a> ExtensionRegistryBuilder<'a> {
             policy: CapabilityPolicy::default(),
             enable_memory,
             enable_memory_vector,
+            enable_task_planning: true, // default: include planning tools for backward compat
             skills,
         }
+    }
+
+    /// Exclude PlanningOnly tools when false (simple mode).
+    #[must_use]
+    pub fn with_task_planning(mut self, enable: bool) -> Self {
+        self.enable_task_planning = enable;
+        self
     }
 
     /// Apply a capability policy before building the registry.
@@ -349,6 +401,10 @@ impl<'a> ExtensionRegistryBuilder<'a> {
         let mut tools_by_name = HashMap::new();
         let mut availability = ToolAvailabilityView::default();
         for registered in registered_tools {
+            if registered.scope == ToolScope::PlanningOnly && !self.enable_task_planning {
+                tracing::debug!("Skip PlanningOnly tool (task planning disabled): {}", registered.name());
+                continue;
+            }
             if !self.policy.allows(&registered.capabilities) {
                 tracing::debug!("Skip tool due to capability policy: {}", registered.name());
                 continue;
@@ -389,6 +445,22 @@ impl<'a> ExtensionRegistry<'a> {
             .build()
     }
 
+    /// Create a registry with explicit task-planning mode.
+    /// When `enable_task_planning` is false, PlanningOnly tools (complete_task, update_task_plan) are excluded.
+    pub fn with_task_planning(
+        enable_memory: bool,
+        enable_memory_vector: bool,
+        enable_task_planning: bool,
+        skills: &'a [LoadedSkill],
+    ) -> Self {
+        Self::builder(enable_memory, enable_memory_vector, skills)
+            .with_task_planning(enable_task_planning)
+            .with_policy(CapabilityPolicy::full_access())
+            .register(builtin::get_builtin_tools())
+            .register_memory_if(enable_memory)
+            .build()
+    }
+
     /// Create a registry restricted to read-only tools.
     pub fn read_only(
         enable_memory: bool,
@@ -396,6 +468,21 @@ impl<'a> ExtensionRegistry<'a> {
         skills: &'a [LoadedSkill],
     ) -> Self {
         Self::builder(enable_memory, enable_memory_vector, skills)
+            .with_policy(CapabilityPolicy::read_only())
+            .register(builtin::get_builtin_tools())
+            .register_memory_if(enable_memory)
+            .build()
+    }
+
+    /// Create a read-only registry with explicit task-planning mode.
+    pub fn read_only_with_task_planning(
+        enable_memory: bool,
+        enable_memory_vector: bool,
+        enable_task_planning: bool,
+        skills: &'a [LoadedSkill],
+    ) -> Self {
+        Self::builder(enable_memory, enable_memory_vector, skills)
+            .with_task_planning(enable_task_planning)
             .with_policy(CapabilityPolicy::read_only())
             .register(builtin::get_builtin_tools())
             .register_memory_if(enable_memory)
@@ -428,6 +515,7 @@ impl<'a> ExtensionRegistry<'a> {
 
     /// Execute a tool by name. Dispatches to the appropriate extension.
     /// `embed_ctx` is required for memory vector search when enable_memory_vector is true.
+    /// `planning_ctx` is required for PlanningControl tools (complete_task, update_task_plan).
     pub async fn execute(
         &self,
         tool_name: &str,
@@ -435,6 +523,7 @@ impl<'a> ExtensionRegistry<'a> {
         workspace: &Path,
         event_sink: &mut dyn EventSink,
         embed_ctx: Option<&MemoryVectorContext<'_>>,
+        planning_ctx: Option<&mut dyn PlanningControlExecutor>,
     ) -> ToolResult {
         let Some(registered) = self.tools_by_name.get(tool_name) else {
             return ToolResult {
@@ -457,6 +546,22 @@ impl<'a> ExtensionRegistry<'a> {
         }
 
         match &registered.handler {
+            ToolHandler::PlanningControl => {
+                if let Some(ctx) = planning_ctx {
+                    ctx.execute(tool_name, arguments, event_sink)
+                } else {
+                    ToolResult {
+                        tool_call_id: String::new(),
+                        tool_name: tool_name.to_string(),
+                        content: format!(
+                            "Tool '{}' requires task-planning mode and must be executed by the agent loop",
+                            tool_name
+                        ),
+                        is_error: true,
+                        counts_as_failure: true,
+                    }
+                }
+            }
             ToolHandler::BuiltinSync => {
                 builtin::execute_builtin_tool(tool_name, arguments, workspace, Some(event_sink))
             }

@@ -185,6 +185,7 @@ pub(super) fn handle_complete_task(
 }
 
 /// Execute a single tool call via ExtensionRegistry.
+/// `planning_ctx` is required for PlanningControl tools (complete_task, update_task_plan).
 pub(super) async fn execute_tool_call(
     registry: &extensions::ExtensionRegistry<'_>,
     tool_name: &str,
@@ -192,9 +193,10 @@ pub(super) async fn execute_tool_call(
     workspace: &Path,
     event_sink: &mut dyn EventSink,
     embed_ctx: Option<&extensions::MemoryVectorContext<'_>>,
+    planning_ctx: Option<&mut dyn extensions::PlanningControlExecutor>,
 ) -> ToolResult {
     registry
-        .execute(tool_name, arguments, workspace, event_sink, embed_ctx)
+        .execute(tool_name, arguments, workspace, event_sink, embed_ctx, planning_ctx)
         .await
 }
 
