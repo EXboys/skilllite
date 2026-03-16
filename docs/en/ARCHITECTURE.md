@@ -691,7 +691,7 @@ SKILLBOX_AUTO_APPROVE=false   # Auto-approve dangerous operations
 SKILLBOX_NO_SANDBOX=false     # Disable sandbox
 ```
 
-Environment variable keys are defined in `skilllite-core/config/env_keys.rs` with legacy compatibility. Config loading priority: constructor args > env vars > .env file > defaults.
+Environment variable keys are defined in `skilllite-core/config/env_keys.rs` with legacy compatibility. Config source priority: CLI/explicit args > env vars > .env file > defaults. See [ENV_REFERENCE](./ENV_REFERENCE.md#config-source-priority).
 
 ---
 

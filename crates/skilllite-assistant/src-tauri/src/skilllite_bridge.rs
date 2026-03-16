@@ -50,41 +50,13 @@ fn find_project_root(start: &str) -> std::path::PathBuf {
         .unwrap_or_else(|_| Path::new(start).to_path_buf())
 }
 
-/// Load .env from workspace and parents into env map for subprocess.
+/// Load .env from workspace and parents for subprocess env.
+/// Reuses skilllite_core::config::parse_dotenv_walking_up (single source of truth).
 fn load_dotenv_for_child(workspace: &str) -> Vec<(String, String)> {
-    use std::path::Path;
-    let mut vars = Vec::new();
-    let mut dir = Path::new(workspace)
-        .canonicalize()
-        .unwrap_or_else(|_| Path::new(workspace).to_path_buf());
-    for _ in 0..5 {
-        let env_path = dir.join(".env");
-        if let Ok(content) = std::fs::read_to_string(&env_path) {
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if let Some(eq_pos) = line.find('=') {
-                    let key = line[..eq_pos].trim().to_string();
-                    let mut value = line[eq_pos + 1..].trim();
-                    if value.starts_with('"') && value.ends_with('"') {
-                        value = &value[1..value.len() - 1];
-                    } else if value.starts_with('\'') && value.ends_with('\'') {
-                        value = &value[1..value.len() - 1];
-                    }
-                    if !key.is_empty() {
-                        vars.push((key, value.to_string()));
-                    }
-                }
-            }
-            break;
-        }
-        if !dir.pop() {
-            break;
-        }
-    }
-    vars
+    skilllite_core::config::parse_dotenv_walking_up(
+        std::path::Path::new(workspace),
+        5,
+    )
 }
 
 /// Config overrides from frontend (optional).

@@ -24,6 +24,21 @@ Prefer `SKILLLITE_*` as primary variables; compatible with `OPENAI_*`, `BASE_URL
 
 ---
 
+## Config Source Priority
+
+When the same variable is set in multiple places, resolution order is (highest → lowest):
+
+| Priority | Source | Description |
+|----------|--------|--------------|
+| 1 | **CLI / explicit args** | Command-line args (e.g. `--message`), quickstart prompts, desktop settings overrides |
+| 2 | **Environment variables** | `export VAR=value` set before process start |
+| 3 | **.env file** | `.env` in workspace or current dir; `load_dotenv` loads and **does not overwrite** existing env |
+| 4 | **Defaults** | Code fallbacks (e.g. `LlmConfig::from_env()` defaults) |
+
+**Example**: If `.env` has `MODEL=deepseek-chat` but the user selects `gpt-4` in the desktop UI, `gpt-4` wins (CLI/explicit > .env).
+
+---
+
 ## Layered by Scenario
 
 | Tier | Count | Description |

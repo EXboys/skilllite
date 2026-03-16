@@ -34,36 +34,74 @@ fn warn_deprecated_env_vars() {
     });
 }
 
+/// 解析 .env 文件内容为 key-value 对（不修改进程环境）。
+/// 与 load_dotenv / load_dotenv_from_dir 使用相同的解析规则。
+fn parse_dotenv_content(content: &str) -> Vec<(String, String)> {
+    let mut vars = Vec::new();
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(eq_pos) = line.find('=') {
+            let key = line[..eq_pos].trim().to_string();
+            let mut value = line[eq_pos + 1..].trim();
+            if let Some(hash_pos) = value.find('#') {
+                let before_hash = value[..hash_pos].trim_end();
+                if !before_hash.contains('"') && !before_hash.contains('\'') {
+                    value = before_hash;
+                }
+            }
+            if (value.starts_with('"') && value.ends_with('"'))
+                || (value.starts_with('\'') && value.ends_with('\''))
+            {
+                value = &value[1..value.len() - 1];
+            }
+            if !key.is_empty() {
+                vars.push((key, value.to_string()));
+            }
+        }
+    }
+    vars
+}
+
+/// 从指定目录解析 .env，返回 key-value 对（不修改进程环境）。
+/// 用于子进程等需要将 .env 作为 env 传入的场景。
+pub fn parse_dotenv_from_dir(dir: &std::path::Path) -> Vec<(String, String)> {
+    let path = dir.join(".env");
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        parse_dotenv_content(&content)
+    } else {
+        vec![]
+    }
+}
+
+/// 从 start 目录向上查找 .env，最多查找 max_levels 层，返回首次找到的解析结果。
+/// 用于 assistant 等需要从工作区向上查找 .env 的场景。
+pub fn parse_dotenv_walking_up(start: &std::path::Path, max_levels: usize) -> Vec<(String, String)> {
+    let mut dir = start
+        .canonicalize()
+        .unwrap_or_else(|_| start.to_path_buf());
+    for _ in 0..max_levels {
+        let vars = parse_dotenv_from_dir(&dir);
+        if !vars.is_empty() {
+            return vars;
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    vec![]
+}
+
 /// Load .env from a specific directory (does not overwrite existing vars).
 /// Used by swarm to load from project root when started from a different cwd.
 pub fn load_dotenv_from_dir(dir: &std::path::Path) {
-    let path = dir.join(".env");
-    if let Ok(content) = std::fs::read_to_string(&path) {
-        for line in content.lines() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
-            }
-            if let Some(eq_pos) = line.find('=') {
-                let key = line[..eq_pos].trim();
-                let mut value = line[eq_pos + 1..].trim();
-                if let Some(hash_pos) = value.find('#') {
-                    let before_hash = value[..hash_pos].trim_end();
-                    if !before_hash.contains('"') && !before_hash.contains('\'') {
-                        value = before_hash;
-                    }
-                }
-                if (value.starts_with('"') && value.ends_with('"'))
-                    || (value.starts_with('\'') && value.ends_with('\''))
-                {
-                    value = &value[1..value.len() - 1];
-                }
-                if !key.is_empty() && env::var(key).is_err() {
-                    #[allow(unsafe_code)]
-                    unsafe {
-                        env::set_var(key, value);
-                    }
-                }
+    for (key, value) in parse_dotenv_from_dir(dir) {
+        if env::var(&key).is_err() {
+            #[allow(unsafe_code)]
+            unsafe {
+                env::set_var(&key, &value);
             }
         }
     }
@@ -78,31 +116,11 @@ pub fn load_dotenv() {
             .map(|d| d.join(".env"))
             .unwrap_or_else(|_| std::path::PathBuf::from(".env"));
         if let Ok(content) = std::fs::read_to_string(&path) {
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                if let Some(eq_pos) = line.find('=') {
-                    let key = line[..eq_pos].trim();
-                    let mut value = line[eq_pos + 1..].trim();
-                    // Strip inline comment (# not inside quotes)
-                    if let Some(hash_pos) = value.find('#') {
-                        let before_hash = value[..hash_pos].trim_end();
-                        if !before_hash.contains('"') && !before_hash.contains('\'') {
-                            value = before_hash;
-                        }
-                    }
-                    if (value.starts_with('"') && value.ends_with('"'))
-                        || (value.starts_with('\'') && value.ends_with('\''))
-                    {
-                        value = &value[1..value.len() - 1];
-                    }
-                    if !key.is_empty() && env::var(key).is_err() {
-                        #[allow(unsafe_code)]
-                        unsafe {
-                            env::set_var(key, value);
-                        }
+            for (key, value) in parse_dotenv_content(&content) {
+                if env::var(&key).is_err() {
+                    #[allow(unsafe_code)]
+                    unsafe {
+                        env::set_var(&key, &value);
                     }
                 }
             }

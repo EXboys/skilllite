@@ -689,7 +689,7 @@ SKILLBOX_AUTO_APPROVE=false   # 自动批准危险操作
 SKILLBOX_NO_SANDBOX=false     # 禁用沙箱
 ```
 
-环境变量 key 定义在 `skilllite-core/config/env_keys.rs`，支持 legacy 兼容。配置加载优先级：构造函数参数 > 环境变量 > .env 文件 > 默认值。
+环境变量 key 定义在 `skilllite-core/config/env_keys.rs`，支持 legacy 兼容。配置来源优先级：CLI/显式参数 > 环境变量 > .env 文件 > 默认值，详见 [ENV_REFERENCE](./ENV_REFERENCE.md#配置来源优先级)。
 
 ---
 
