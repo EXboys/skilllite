@@ -15,7 +15,7 @@ Thank you for your interest in contributing to SkillLite!
 ### Prerequisites
 
 - **Rust** (latest stable) - for sandbox executor
-- **Python 3.8+** - for SDK
+- **Python 3.10+** - for SDK
 - **macOS or Linux** - Windows not supported
 
 ### Setup

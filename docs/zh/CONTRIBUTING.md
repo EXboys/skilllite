@@ -15,7 +15,7 @@
 ### 前置要求
 
 - **Rust**（最新稳定版）- 用于沙箱执行器
-- **Python 3.8+** - 用于 SDK
+- **Python 3.10+** - 用于 SDK
 - **macOS 或 Linux** - 暂不支持 Windows
 
 ### 设置步骤

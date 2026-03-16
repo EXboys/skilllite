@@ -44,7 +44,7 @@ High-concurrency performance comparison test suite for comparing SkillLite with 
 ## Installing Dependencies
 
 ### Required Dependencies
-- Python 3.8+
+- Python 3.10+
 - SkillLite (Built-in to project, `cargo build --release` in `skilllite/` directory)
 
 ### Optional Dependencies (for complete comparison testing)
