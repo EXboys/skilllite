@@ -97,7 +97,10 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
         let error_trace = if !exec_ok {
             exec_trace
         } else {
-            format!("脚本执行通过，但 {}", doc_error.unwrap())
+            format!(
+                "脚本执行通过，但 {}",
+                doc_error.expect("doc_error is Some when exec_ok and we did not early return")
+            )
         };
 
         let package = build_skill_dir_package(skill_dir);
