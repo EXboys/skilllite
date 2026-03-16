@@ -19,7 +19,7 @@ use std::path::Path;
 use super::extensions::ToolAvailabilityView;
 use skilllite_evolution::seed;
 use super::skills::LoadedSkill;
-use super::soul::Soul;
+use super::soul::{build_beliefs_block, Law, Soul};
 use super::types::{get_output_dir, safe_truncate};
 
 /// Progressive disclosure mode.
@@ -53,7 +53,18 @@ pub fn build_system_prompt(
 ) -> String {
     let mut parts = Vec::new();
 
-    // SOUL block: injected first so it acts as the agent's "constitution"
+    // Law block: built-in immutable constraints, always applied first
+    parts.push(Law::default().to_system_prompt_block());
+
+    // Beliefs block: derived from rules.json + examples.json (no separate file)
+    if let Some(root) = chat_root {
+        let block = build_beliefs_block(root);
+        if !block.is_empty() {
+            parts.push(block);
+        }
+    }
+
+    // SOUL block: user-provided identity document (optional)
     if let Some(s) = soul {
         parts.push(s.to_system_prompt_block());
     }

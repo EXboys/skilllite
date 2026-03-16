@@ -1,72 +1,121 @@
-//! SOUL.md — Agent identity document.
+//! Agent constitution: Law + Beliefs + Soul.
 //!
-//! Runtime completely read-only: loaded once at startup, never written by the agent.
-//! The agent's "constitutional document": identity, beliefs, communication style, boundaries.
+//! Single module for agent identity and constraints. Per ROADMAP: Soul = Law + Beliefs + MinimalCapabilities.
 //!
+//! ## Law (不可变)
+//! Built-in immutable constraints, always applied. Cannot be overridden.
+//!
+//! ## Beliefs (可进化)
+//! Derived from existing evolution outputs — no separate file.
+//! decision_tendency ← rules.json, success_patterns ← examples.json.
+//!
+//! ## Soul (SOUL.md)
+//! User-provided identity document. Read-only at runtime.
 //! Storage resolution (first found wins):
 //!   1. Explicit `--soul <path>` CLI flag
-//!   2. `.skilllite/SOUL.md` (workspace-level, per-project)
+//!   2. `.skilllite/SOUL.md` (workspace-level)
 //!   3. `~/.skilllite/SOUL.md` (global fallback)
-//!   4. Bootstrap: if none found, write seed template to `~/.skilllite/SOUL.md` once
+//!   If none found, returns `None` — no automatic creation.
 //!
 //! Format (Markdown with `##` section headings):
-//!   ## Identity
-//!   ## Core Beliefs
-//!   ## Communication Style
-//!   ## Scope & Boundaries
+//!   ## Identity | ## Core Beliefs | ## Communication Style | ## Scope & Boundaries
 
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-/// Compiled-in seed template for SOUL.md.
-///
-/// Written to `~/.skilllite/SOUL.md` on first run when no SOUL.md is found anywhere.
-/// Never overwritten after that — the user owns this file.
-pub const SEED_SOUL: &str = r#"# SOUL.md — Agent Identity Document
-#
-# This file defines who this agent is and what it will/won't do.
-# It is loaded at startup and is READ-ONLY at runtime — the agent cannot modify it.
-# Edit this file freely. Changes take effect on next agent startup.
+// ─── Law: 内置不可变约束 ─────────────────────────────────────────────────────
 
-## Identity
+/// Built-in immutable constraints. Always applied to every agent.
+#[derive(Debug, Clone, Default)]
+pub struct Law;
 
-You are a focused, reliable AI coding assistant embedded in the SkillLite workspace.
-Your role is to help the developer write, review, debug, and improve code — efficiently and without fluff.
-You operate locally, respect the user's privacy, and stay within the scope of tasks you are given.
+impl Law {
+    /// Returns the built-in immutable constraints as a system prompt block.
+    pub fn to_system_prompt_block(&self) -> String {
+        const LAW_RULES: &str = r#"╔═══════════════════════════════════╗
+║  LAW — Immutable Constraints       ║
+║  These rules cannot be overridden. ║
+╚═══════════════════════════════════╝
 
-## Core Beliefs
+### Law (MANDATORY)
 
-- Correctness comes before speed. A working solution is more valuable than a fast wrong one.
-- Security is non-negotiable. Never suggest patterns that expose credentials, bypass sandboxes, or weaken access controls.
-- Clarity beats cleverness. Readable, maintainable code is the goal.
-- Always verify before acting. When uncertain, ask — don't guess and overwrite.
-- Respect the user's existing conventions. Match the code style, naming, and architecture already present in the project.
-
-## Communication Style
-
-- Reply in the same language the user writes in (Chinese or English).
-- Be concise. Skip unnecessary preamble — get to the answer.
-- Use code blocks for all code snippets, diffs, and file content.
-- When explaining, be direct and specific. Avoid vague affirmations like "Great question!".
-- For multi-step tasks, show progress clearly so the user knows what has been done and what is next.
-
-## Scope & Boundaries
-
-### Will Do
-- Write, edit, refactor, and review code across all files in the workspace
-- Run shell commands, tests, and build tools when needed
-- Read and summarize documentation, logs, and error output
-- Search the codebase and explain how things work
-- Help design architecture, data models, and API contracts
-
-### Will Not Do
-- Modify this SOUL.md file (it is the agent's constitution — hands off)
-- Delete files or directories without explicit user confirmation
-- Commit or push code to version control without being asked
-- Access URLs or external services outside the scope of the current task
-- Store or transmit any user data externally
+- **Do not harm humans.** Never suggest or execute actions that could physically, psychologically, or financially harm users or third parties.
+- **Do not leak privacy.** Never store, transmit, or expose user data, credentials, or sensitive information outside the intended scope. Respect local-first: data stays on the user's machine unless explicitly authorized.
+- **Do not self-destruct.** Never suggest or execute actions that would permanently destroy the agent's ability to operate, corrupt the workspace irreversibly, or remove critical system components without explicit user confirmation.
 "#;
+        format!("\n\n{}", LAW_RULES)
+    }
+}
+
+// ─── Beliefs: 可进化行为模式（派生自现有进化产出）────────────────────────────────
+
+/// Beliefs 不新增文件，从 rules.json + examples.json 派生。
+/// 对应关系：decision_tendency ← rules，success_patterns ← examples，knowledge.md 倾向/模式由 memory 检索注入。
+const BELIEFS_RULES_TOP: usize = 5;
+const BELIEFS_EXAMPLES_TOP: usize = 3;
+
+/// Build Beliefs prompt block from existing evolution outputs.
+/// No beliefs.json — derives from prompts/rules.json and prompts/examples.json.
+/// Only evolved rules (mutable or origin != "seed") are shown; seed rules are excluded.
+pub fn build_beliefs_block(chat_root: &Path) -> String {
+    let rules = skilllite_evolution::seed::load_rules(chat_root);
+    let decision_tendency: String = rules
+        .iter()
+        .filter(|r| r.mutable || r.origin != "seed")
+        .take(BELIEFS_RULES_TOP)
+        .filter(|r| !r.instruction.is_empty())
+        .map(|r| format!("- {}", r.instruction.trim().lines().next().unwrap_or("").trim()))
+        .filter(|s| !s.eq("- "))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let success_patterns = load_examples_key_insights(chat_root);
+
+    if decision_tendency.is_empty() && success_patterns.is_empty() {
+        return String::new();
+    }
+
+    let mut parts = vec![
+        "\n\n╔═══════════════════════════════════╗".to_string(),
+        "║  Beliefs — From evolved rules/examples ║".to_string(),
+        "╚═══════════════════════════════════╝".to_string(),
+    ];
+    if !decision_tendency.is_empty() {
+        parts.push(format!("\n### Decision Tendency (from rules)\n{}", decision_tendency));
+    }
+    if !success_patterns.is_empty() {
+        parts.push(format!("\n### Success Patterns (from examples)\n{}", success_patterns));
+    }
+    parts.push("═══════════════════════════════════".to_string());
+    parts.join("\n")
+}
+
+fn load_examples_key_insights(chat_root: &Path) -> String {
+    let path = chat_root.join("prompts").join("examples.json");
+    if !path.exists() {
+        return String::new();
+    }
+    let content = match skilllite_fs::read_file(&path) {
+        Ok(c) => c,
+        Err(_) => return String::new(),
+    };
+    #[derive(serde::Deserialize)]
+    struct Ex { key_insight: Option<String> }
+    let arr: Vec<Ex> = match serde_json::from_str(&content) {
+        Ok(a) => a,
+        Err(_) => return String::new(),
+    };
+    arr.iter()
+        .take(BELIEFS_EXAMPLES_TOP)
+        .filter_map(|e| e.key_insight.as_deref())
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("- {}", s.trim()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// ─── Soul: SOUL.md 解析与加载 ────────────────────────────────────────────────
 
 /// Parsed representation of a SOUL.md document.
 ///
@@ -199,40 +248,9 @@ impl Soul {
                     }
                 }
             }
-
-            // 4. Bootstrap: no SOUL.md found anywhere — write seed template once
-            if let Some(soul) = Self::bootstrap_global_soul(&global_soul) {
-                return Some(soul);
-            }
         }
 
         None
-    }
-
-    /// Write the seed SOUL.md template to `~/.skilllite/SOUL.md` on first run.
-    ///
-    /// Only called when no SOUL.md exists anywhere in the resolution chain.
-    /// Never overwrites an existing file — user edits are always preserved.
-    fn bootstrap_global_soul(path: &Path) -> Option<Self> {
-        if path.exists() {
-            return None; // Safety guard: never overwrite
-        }
-        if let Some(parent) = path.parent() {
-            if skilllite_fs::create_dir_all(parent).is_err() {
-                tracing::warn!("SOUL bootstrap: failed to create dir {}", parent.display());
-                return None;
-            }
-        }
-        match skilllite_fs::write_file(path, SEED_SOUL) {
-            Ok(_) => {
-                tracing::info!("SOUL bootstrapped to {}", path.display());
-                Self::load(path).ok()
-            }
-            Err(e) => {
-                tracing::warn!("SOUL bootstrap failed: {}", e);
-                None
-            }
-        }
     }
 
     /// Render the SOUL Scope & Boundaries as a planning constraint block (A8).
@@ -348,45 +366,58 @@ I specialize in SkillLite plugin development.
     }
 
     #[test]
-    fn test_bootstrap_writes_seed_template() {
-        let tmp = tempfile::tempdir().unwrap();
-        let soul_path = tmp.path().join("SOUL.md");
-
-        // File must not exist before bootstrap
-        assert!(!soul_path.exists());
-
-        let soul = Soul::bootstrap_global_soul(&soul_path);
-        assert!(soul.is_some(), "bootstrap should return a Soul");
-        assert!(soul_path.exists(), "bootstrap should write the file");
-
-        let content = skilllite_fs::read_file(&soul_path).unwrap();
-        assert!(content.contains("## Identity"));
-        assert!(content.contains("## Core Beliefs"));
-        assert!(content.contains("## Communication Style"));
-        assert!(content.contains("## Scope & Boundaries"));
+    fn test_sample_soul_parses_all_sections() {
+        let soul = Soul::parse(SAMPLE_SOUL, "test/SOUL.md");
+        assert!(!soul.identity.is_empty(), "sample identity should not be empty");
+        assert!(!soul.core_beliefs.is_empty(), "sample core_beliefs should not be empty");
+        assert!(!soul.communication_style.is_empty(), "sample communication_style should not be empty");
+        assert!(!soul.scope_and_boundaries.is_empty(), "sample scope_and_boundaries should not be empty");
     }
 
     #[test]
-    fn test_bootstrap_never_overwrites_existing() {
-        let tmp = tempfile::tempdir().unwrap();
-        let soul_path = tmp.path().join("SOUL.md");
-        skilllite_fs::write_file(&soul_path, "## Identity\nCustom content").unwrap();
-
-        let soul = Soul::bootstrap_global_soul(&soul_path);
-        // Should return None — never overwrites
-        assert!(soul.is_none());
-        // File content must be unchanged
-        let content = skilllite_fs::read_file(&soul_path).unwrap();
-        assert_eq!(content, "## Identity\nCustom content");
+    fn test_law_prompt_contains_mandatory_rules() {
+        let law = Law::default();
+        let block = law.to_system_prompt_block();
+        assert!(block.contains("LAW"));
+        assert!(block.contains("Do not harm humans"));
+        assert!(block.contains("Do not leak privacy"));
+        assert!(block.contains("Do not self-destruct"));
     }
 
     #[test]
-    fn test_seed_soul_parses_all_sections() {
-        let soul = Soul::parse(SEED_SOUL, "seed");
-        assert!(!soul.identity.is_empty(), "seed identity should not be empty");
-        assert!(!soul.core_beliefs.is_empty(), "seed core_beliefs should not be empty");
-        assert!(!soul.communication_style.is_empty(), "seed communication_style should not be empty");
-        assert!(!soul.scope_and_boundaries.is_empty(), "seed scope_and_boundaries should not be empty");
+    fn test_build_beliefs_block_empty_when_rules_and_examples_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prompts_dir = tmp.path().join("prompts");
+        std::fs::create_dir_all(&prompts_dir).unwrap();
+        std::fs::write(prompts_dir.join("rules.json"), "[]").unwrap();
+        let block = build_beliefs_block(tmp.path());
+        assert!(block.is_empty());
+    }
+
+    #[test]
+    fn test_build_beliefs_block_from_rules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prompts_dir = tmp.path().join("prompts");
+        std::fs::create_dir_all(&prompts_dir).unwrap();
+        let rules = r#"[{"id":"r1","instruction":"Use read_file before edit.","mutable":true}]"#;
+        std::fs::write(prompts_dir.join("rules.json"), rules).unwrap();
+        let block = build_beliefs_block(tmp.path());
+        assert!(block.contains("Beliefs"));
+        assert!(block.contains("Decision Tendency"));
+        assert!(block.contains("Use read_file before edit"));
+    }
+
+    #[test]
+    fn test_build_beliefs_block_from_examples() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prompts_dir = tmp.path().join("prompts");
+        std::fs::create_dir_all(&prompts_dir).unwrap();
+        let examples = r#"[{"id":"e1","task_pattern":"x","plan_template":"y","key_insight":"Read then edit."}]"#;
+        std::fs::write(prompts_dir.join("examples.json"), examples).unwrap();
+        let block = build_beliefs_block(tmp.path());
+        assert!(block.contains("Beliefs"));
+        assert!(block.contains("Success Patterns"));
+        assert!(block.contains("Read then edit"));
     }
 }
 
