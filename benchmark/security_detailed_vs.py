@@ -733,19 +733,19 @@ def check_claude_srt_available() -> bool:
         return False
 
 
-def check_skillbox_available(binary_path: str = None) -> tuple:
-    """Check if skillbox is available"""
+def check_skilllite_available(binary_path: str = None) -> tuple:
+    """Check if skilllite is available"""
     if binary_path and os.path.exists(binary_path):
         return True, binary_path
     
-    system_path = shutil.which("skillbox")
+    system_path = shutil.which("skilllite")
     if system_path:
         return True, system_path
     
     project_paths = [
-        "./skillbox/target/release/skillbox",
-        "../skillbox/target/release/skillbox",
-        os.path.expanduser("~/.cargo/bin/skillbox"),
+        "./skilllite/target/release/skilllite",
+        "../skilllite/target/release/skilllite",
+        os.path.expanduser("~/.cargo/bin/skilllite"),
     ]
     for path in project_paths:
         if os.path.exists(path):
@@ -754,12 +754,12 @@ def check_skillbox_available(binary_path: str = None) -> tuple:
     return False, ""
 
 
-class DetailedSkillboxTest:
-    """Skillbox detailed security test"""
+class DetailedSkillLiteTest:
+    """SkillLite detailed security test"""
     
     def __init__(self, binary_path: str):
         self.binary_path = os.path.abspath(binary_path)
-        self.work_dir = tempfile.mkdtemp(prefix="skillbox_detailed_")
+        self.work_dir = tempfile.mkdtemp(prefix="skilllite_detailed_")
         self._setup_test_skill()
     
     def _setup_test_skill(self):
@@ -970,14 +970,14 @@ def main():
     else:
         print("⚠️ Claude SRT not available, skipping")
 
-    # Skillbox
-    skillbox_available, skillbox_path = check_skillbox_available()
-    if skillbox_available:
-        platforms.append("Skillbox")
-        testers["Skillbox"] = DetailedSkillboxTest(skillbox_path)
-        print(f"✅ Skillbox available: {skillbox_path}")
+    # SkillLite
+    skilllite_available, skilllite_path = check_skilllite_available()
+    if skilllite_available:
+        platforms.append("SkillLite")
+        testers["SkillLite"] = DetailedSkillLiteTest(skilllite_path)
+        print(f"✅ SkillLite available: {skilllite_path}")
     else:
-        print("⚠️ Skillbox not available, skipping")
+        print("⚠️ SkillLite not available, skipping")
 
     print(f"\nTest platforms: {', '.join(platforms)}")
     print(f"Test cases: {len(DETAILED_SECURITY_TESTS)}")
