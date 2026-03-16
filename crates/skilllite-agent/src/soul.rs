@@ -16,13 +16,32 @@
 //!   2. `.skilllite/SOUL.md` (workspace-level)
 //!   3. `~/.skilllite/SOUL.md` (global fallback)
 //!   If none found, returns `None` — no automatic creation.
+//!   Optional first-run guidance: `offer_bootstrap_soul_if_missing()` can prompt to create a minimal template.
 //!
 //! Format (Markdown with `##` section headings):
 //!   ## Identity | ## Core Beliefs | ## Communication Style | ## Scope & Boundaries
 
+use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+
+/// Minimal SOUL template for optional first-run bootstrap (no preset role).
+/// Used by `offer_bootstrap_soul_if_missing` and by tests.
+pub const MINIMAL_SOUL_TEMPLATE: &str = r#"# SOUL — Optional identity & constraints
+
+## Identity
+(可选 — 由用户或进化定义)
+
+## Core Beliefs
+(可选)
+
+## Communication Style
+(可选)
+
+## Scope & Boundaries
+- WILL NOT: modify SOUL.md; bypass sandbox rules.
+"#;
 
 // ─── Law: 内置不可变约束 ─────────────────────────────────────────────────────
 
@@ -253,6 +272,40 @@ impl Soul {
         None
     }
 
+    /// If no SOUL exists in the resolution chain and stdin is a TTY, prompt the user to create a minimal
+    /// template at `workspace/.skilllite/SOUL.md`. When the user confirms (y/Y), write `MINIMAL_SOUL_TEMPLATE`
+    /// and return `true`; otherwise return `false`. Does nothing when `explicit_path` is `Some` (user already
+    /// chose a path) or when not interactive (no TTY).
+    pub fn offer_bootstrap_soul_if_missing(workspace: &str, explicit_path: Option<&str>) -> bool {
+        if explicit_path.is_some() {
+            return false;
+        }
+        if Self::auto_load(None, workspace).is_some() {
+            return false;
+        }
+        if !io::stdin().is_terminal() {
+            return false;
+        }
+        let path = Path::new(workspace).join(".skilllite").join("SOUL.md");
+        eprint!(
+            "No SOUL.md found. Create minimal template at {}? [y/N] ",
+            path.display()
+        );
+        let _ = io::stderr().flush();
+        let mut line = String::new();
+        if io::stdin().lock().read_line(&mut line).is_err() {
+            return false;
+        }
+        let trimmed = line.trim().to_lowercase();
+        if trimmed != "y" && trimmed != "yes" {
+            return false;
+        }
+        if let Some(parent) = path.parent() {
+            let _ = skilllite_fs::create_dir_all(parent);
+        }
+        skilllite_fs::write_file(&path, MINIMAL_SOUL_TEMPLATE).is_ok()
+    }
+
     /// Render the SOUL Scope & Boundaries as a planning constraint block (A8).
     ///
     /// Injected into the planning prompt so the LLM respects "in scope" / "out of scope"
@@ -304,33 +357,12 @@ impl Soul {
 mod tests {
     use super::*;
 
-    const SAMPLE_SOUL: &str = r#"# My Agent SOUL
-
-## Identity
-I am SkillBot, a focused Rust coding assistant.
-I specialize in SkillLite plugin development.
-
-## Core Beliefs
-- Code correctness is non-negotiable.
-- Security > performance > convenience.
-- Never guess; always verify with tests.
-
-## Communication Style
-- Reply in the same language as the user.
-- Be concise; avoid unnecessary filler words.
-- Use code blocks for all code snippets.
-
-## Scope & Boundaries
-- WILL: help with Rust, SKILL.md authoring, tool design.
-- WILL NOT: write exploits, bypass sandbox rules, or modify SOUL.md.
-"#;
-
     #[test]
     fn test_parse_all_sections() {
-        let soul = Soul::parse(SAMPLE_SOUL, "test/SOUL.md");
-        assert!(soul.identity.contains("SkillBot"));
-        assert!(soul.core_beliefs.contains("correctness"));
-        assert!(soul.communication_style.contains("concise"));
+        let soul = Soul::parse(MINIMAL_SOUL_TEMPLATE, "test/SOUL.md");
+        assert!(soul.identity.contains("可选"));
+        assert!(soul.core_beliefs.contains("可选"));
+        assert!(soul.communication_style.contains("可选"));
         assert!(soul.scope_and_boundaries.contains("WILL NOT"));
         assert_eq!(soul.source_path, "test/SOUL.md");
     }
@@ -344,17 +376,17 @@ I specialize in SkillLite plugin development.
 
     #[test]
     fn test_to_system_prompt_block_contains_sections() {
-        let soul = Soul::parse(SAMPLE_SOUL, "SOUL.md");
+        let soul = Soul::parse(MINIMAL_SOUL_TEMPLATE, "SOUL.md");
         let block = soul.to_system_prompt_block();
         assert!(block.contains("SOUL"));
         assert!(block.contains("Identity"));
-        assert!(block.contains("Core Beliefs"));
+        assert!(block.contains("Scope & Boundaries"));
         assert!(block.contains("read-only"));
     }
 
     #[test]
     fn test_to_planning_scope_block() {
-        let soul = Soul::parse(SAMPLE_SOUL, "SOUL.md");
+        let soul = Soul::parse(MINIMAL_SOUL_TEMPLATE, "SOUL.md");
         let block = soul.to_planning_scope_block().unwrap();
         assert!(block.contains("SOUL Scope & Boundaries"));
         assert!(block.contains("MANDATORY"));
@@ -367,11 +399,11 @@ I specialize in SkillLite plugin development.
 
     #[test]
     fn test_sample_soul_parses_all_sections() {
-        let soul = Soul::parse(SAMPLE_SOUL, "test/SOUL.md");
-        assert!(!soul.identity.is_empty(), "sample identity should not be empty");
-        assert!(!soul.core_beliefs.is_empty(), "sample core_beliefs should not be empty");
-        assert!(!soul.communication_style.is_empty(), "sample communication_style should not be empty");
-        assert!(!soul.scope_and_boundaries.is_empty(), "sample scope_and_boundaries should not be empty");
+        let soul = Soul::parse(MINIMAL_SOUL_TEMPLATE, "test/SOUL.md");
+        assert!(!soul.identity.is_empty(), "sample has identity section");
+        assert!(!soul.core_beliefs.is_empty(), "sample has core_beliefs section");
+        assert!(!soul.communication_style.is_empty(), "sample has communication_style section");
+        assert!(!soul.scope_and_boundaries.is_empty(), "sample has scope_and_boundaries");
     }
 
     #[test]

@@ -253,6 +253,9 @@ pub fn run_agent_run(
 
     config.workspace = effective_workspace;
 
+    // Optional first-run guidance: if no SOUL in chain and stdin is TTY, offer to create minimal template
+    let _ = super::soul::Soul::offer_bootstrap_soul_if_missing(&config.workspace, config.soul_path.as_deref());
+
     let (effective_skill_dirs, was_auto_discovered) = if skill_dirs.is_empty() {
         let auto_dirs = skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
             Path::new(&config.workspace),
