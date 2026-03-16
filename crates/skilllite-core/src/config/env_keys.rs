@@ -81,6 +81,32 @@ pub mod evolution {
     pub const SKILLLITE_EVOLUTION_INTERVAL_SECS: &str = "SKILLLITE_EVOLUTION_INTERVAL_SECS";
     /// A9: Decision count threshold. When unprocessed decisions >= this, trigger evolution. Default 10.
     pub const SKILLLITE_EVOLUTION_DECISION_THRESHOLD: &str = "SKILLLITE_EVOLUTION_DECISION_THRESHOLD";
+    /// 进化触发场景：demo（更频繁）/ default（与不设一致）/ conservative（更少、省成本）。不设或 default 时行为与原有默认完全一致。
+    pub const SKILLLITE_EVO_PROFILE: &str = "SKILLLITE_EVO_PROFILE";
+
+    // ── 5.2 进化触发条件（高级，可单独覆盖；未设时由 EVO_PROFILE 或默认值决定）────────────
+    /// 上次进化后冷却时间（小时），此时间内不再次触发。默认 1。
+    pub const SKILLLITE_EVO_COOLDOWN_HOURS: &str = "SKILLLITE_EVO_COOLDOWN_HOURS";
+    /// 统计决策的时间窗口（天）。默认 7。
+    pub const SKILLLITE_EVO_RECENT_DAYS: &str = "SKILLLITE_EVO_RECENT_DAYS";
+    /// 时间窗口内最多取多少条决策参与统计。默认 100。
+    pub const SKILLLITE_EVO_RECENT_LIMIT: &str = "SKILLLITE_EVO_RECENT_LIMIT";
+    /// 单条决策至少多少 tool 调用才计入「有意义」条数。默认 2。
+    pub const SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS: &str = "SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS";
+    /// 技能进化：有意义决策数 ≥ 此值且（有失败或存在重复模式）才触发。默认 3。
+    pub const SKILLLITE_EVO_MEANINGFUL_THRESHOLD_SKILLS: &str = "SKILLLITE_EVO_MEANINGFUL_THRESHOLD_SKILLS";
+    /// 记忆进化：有意义决策数 ≥ 此值才触发。默认 3。
+    pub const SKILLLITE_EVO_MEANINGFUL_THRESHOLD_MEMORY: &str = "SKILLLITE_EVO_MEANINGFUL_THRESHOLD_MEMORY";
+    /// 规则进化：有意义决策数 ≥ 此值且（失败次数或重规划次数达标）才触发。默认 5。
+    pub const SKILLLITE_EVO_MEANINGFUL_THRESHOLD_PROMPTS: &str = "SKILLLITE_EVO_MEANINGFUL_THRESHOLD_PROMPTS";
+    /// 规则进化：失败次数 ≥ 此值才考虑规则进化。默认 2。
+    pub const SKILLLITE_EVO_FAILURES_MIN_PROMPTS: &str = "SKILLLITE_EVO_FAILURES_MIN_PROMPTS";
+    /// 规则进化：重规划次数 ≥ 此值才考虑规则进化。默认 2。
+    pub const SKILLLITE_EVO_REPLANS_MIN_PROMPTS: &str = "SKILLLITE_EVO_REPLANS_MIN_PROMPTS";
+    /// 重复模式判定：同一模式出现次数 ≥ 此值且成功率达标才计为 repeated_pattern。默认 3。
+    pub const SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT: &str = "SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT";
+    /// 重复模式判定：成功率 ≥ 此值（0~1）。默认 0.8。
+    pub const SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE: &str = "SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE";
 }
 
 /// A11: 高危工具确认 — 可配置哪些操作需发消息确认

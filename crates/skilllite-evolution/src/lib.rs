@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
+use skilllite_core::config::env_keys::evolution as evo_keys;
 
 // ─── EvolutionLlm trait: agent integration ────────────────────────────────────
 
@@ -200,6 +201,126 @@ impl EvolutionRunResult {
 
 pub use skilllite_fs::atomic_write;
 
+// ─── 5.2 进化触发条件（从环境变量读取，默认与原硬编码一致）────────────────────────
+
+/// 进化触发阈值，均由环境变量配置，未设置时使用下列默认值。
+#[derive(Debug, Clone)]
+pub struct EvolutionThresholds {
+    pub cooldown_hours: f64,
+    pub recent_days: i64,
+    pub recent_limit: i64,
+    pub meaningful_min_tools: i64,
+    pub meaningful_threshold_skills: i64,
+    pub meaningful_threshold_memory: i64,
+    pub meaningful_threshold_prompts: i64,
+    pub failures_min_prompts: i64,
+    pub replans_min_prompts: i64,
+    pub repeated_pattern_min_count: i64,
+    pub repeated_pattern_min_success_rate: f64,
+}
+
+impl Default for EvolutionThresholds {
+    fn default() -> Self {
+        Self {
+            cooldown_hours: 1.0,
+            recent_days: 7,
+            recent_limit: 100,
+            meaningful_min_tools: 2,
+            meaningful_threshold_skills: 3,
+            meaningful_threshold_memory: 3,
+            meaningful_threshold_prompts: 5,
+            failures_min_prompts: 2,
+            replans_min_prompts: 2,
+            repeated_pattern_min_count: 3,
+            repeated_pattern_min_success_rate: 0.8,
+        }
+    }
+}
+
+/// 进化触发场景：不设或 default 时与原有默认行为完全一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EvolutionProfile {
+    /// 与不设 EVO_PROFILE 时一致（当前默认阈值）
+    Default,
+    /// 演示/内测：冷却短、阈值低，进化更频繁
+    Demo,
+    /// 生产/省成本：冷却长、阈值高，进化更少
+    Conservative,
+}
+
+impl EvolutionThresholds {
+    /// 预设：演示场景，进化更频繁
+    fn demo_preset() -> Self {
+        Self {
+            cooldown_hours: 0.25,
+            recent_days: 3,
+            recent_limit: 50,
+            meaningful_min_tools: 1,
+            meaningful_threshold_skills: 1,
+            meaningful_threshold_memory: 1,
+            meaningful_threshold_prompts: 2,
+            failures_min_prompts: 1,
+            replans_min_prompts: 1,
+            repeated_pattern_min_count: 2,
+            repeated_pattern_min_success_rate: 0.7,
+        }
+    }
+
+    /// 预设：保守场景，进化更少、省成本
+    fn conservative_preset() -> Self {
+        Self {
+            cooldown_hours: 4.0,
+            recent_days: 14,
+            recent_limit: 200,
+            meaningful_min_tools: 2,
+            meaningful_threshold_skills: 5,
+            meaningful_threshold_memory: 5,
+            meaningful_threshold_prompts: 8,
+            failures_min_prompts: 3,
+            replans_min_prompts: 3,
+            repeated_pattern_min_count: 4,
+            repeated_pattern_min_success_rate: 0.85,
+        }
+    }
+
+    pub fn from_env() -> Self {
+        let parse_i64 = |key: &str, default: i64| {
+            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+        };
+        let parse_f64 = |key: &str, default: f64| {
+            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+        };
+        let profile = match std::env::var(evo_keys::SKILLLITE_EVO_PROFILE)
+            .ok()
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some("demo") => EvolutionProfile::Demo,
+            Some("conservative") => EvolutionProfile::Conservative,
+            _ => EvolutionProfile::Default,
+        };
+        let base = match profile {
+            EvolutionProfile::Default => Self::default(),
+            EvolutionProfile::Demo => Self::demo_preset(),
+            EvolutionProfile::Conservative => Self::conservative_preset(),
+        };
+        Self {
+            cooldown_hours: parse_f64(evo_keys::SKILLLITE_EVO_COOLDOWN_HOURS, base.cooldown_hours),
+            recent_days: parse_i64(evo_keys::SKILLLITE_EVO_RECENT_DAYS, base.recent_days),
+            recent_limit: parse_i64(evo_keys::SKILLLITE_EVO_RECENT_LIMIT, base.recent_limit),
+            meaningful_min_tools: parse_i64(evo_keys::SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS, base.meaningful_min_tools),
+            meaningful_threshold_skills: parse_i64(evo_keys::SKILLLITE_EVO_MEANINGFUL_THRESHOLD_SKILLS, base.meaningful_threshold_skills),
+            meaningful_threshold_memory: parse_i64(evo_keys::SKILLLITE_EVO_MEANINGFUL_THRESHOLD_MEMORY, base.meaningful_threshold_memory),
+            meaningful_threshold_prompts: parse_i64(evo_keys::SKILLLITE_EVO_MEANINGFUL_THRESHOLD_PROMPTS, base.meaningful_threshold_prompts),
+            failures_min_prompts: parse_i64(evo_keys::SKILLLITE_EVO_FAILURES_MIN_PROMPTS, base.failures_min_prompts),
+            replans_min_prompts: parse_i64(evo_keys::SKILLLITE_EVO_REPLANS_MIN_PROMPTS, base.replans_min_prompts),
+            repeated_pattern_min_count: parse_i64(evo_keys::SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT, base.repeated_pattern_min_count),
+            repeated_pattern_min_success_rate: parse_f64(evo_keys::SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE, base.repeated_pattern_min_success_rate),
+        }
+    }
+}
+
 // ─── Evolution scope ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Default)]
@@ -245,6 +366,8 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
         return Ok(EvolutionScope::default());
     }
 
+    let thresholds = EvolutionThresholds::from_env();
+
     let today_evolutions: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM evolution_log WHERE date(ts) = date('now')",
@@ -252,7 +375,7 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
             |row| row.get(0),
         )
         .unwrap_or(0);
-    let max_per_day: i64 = std::env::var("SKILLLITE_MAX_EVOLUTIONS_PER_DAY")
+    let max_per_day: i64 = std::env::var(evo_keys::SKILLLITE_MAX_EVOLUTIONS_PER_DAY)
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(20);
@@ -271,22 +394,22 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
                 |row| row.get(0),
             )
             .unwrap_or(999.0);
-        if last_evo_hours < 1.0 {
+        if last_evo_hours < thresholds.cooldown_hours {
             return Ok(EvolutionScope::default());
         }
     }
 
-    // 最近 100 条 + 7 天时间窗口
-    let recent_condition = "ts >= datetime('now', '-7 days')";
-    let recent_limit = 100;
+    let recent_condition = format!("ts >= datetime('now', '-{} days')", thresholds.recent_days);
+    let recent_limit = thresholds.recent_limit;
 
     let (meaningful, failures, replans): (i64, i64, i64) = conn.query_row(
         &format!(
             "SELECT
-                COUNT(CASE WHEN total_tools >= 2 THEN 1 END),
+                COUNT(CASE WHEN total_tools >= {} THEN 1 END),
                 COUNT(CASE WHEN failed_tools > 0 THEN 1 END),
                 COUNT(CASE WHEN replans > 0 THEN 1 END)
              FROM decisions WHERE {}",
+            thresholds.meaningful_min_tools,
             recent_condition
         ),
         [],
@@ -316,9 +439,11 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
                 WHERE {} AND (tool_sequence_key IS NOT NULL OR task_description IS NOT NULL)
                   AND total_tools >= 1
                 GROUP BY pattern_key
-                HAVING cnt >= 3 AND CAST(successes AS REAL) / cnt >= 0.8
+                HAVING cnt >= {} AND CAST(successes AS REAL) / cnt >= {}
             )",
-                recent_condition
+                recent_condition,
+                thresholds.repeated_pattern_min_count,
+                thresholds.repeated_pattern_min_success_rate
             ),
             [],
             |row| row.get(0),
@@ -347,7 +472,10 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
             scope.prompts = true;
         }
     } else {
-        if mode.skills_enabled() && meaningful >= 3 && (failures > 0 || repeated_patterns > 0) {
+        if mode.skills_enabled()
+            && meaningful >= thresholds.meaningful_threshold_skills
+            && (failures > 0 || repeated_patterns > 0)
+        {
             scope.skills = true;
             scope.skill_action = if repeated_patterns > 0 {
                 SkillAction::Generate
@@ -355,10 +483,13 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
                 SkillAction::Refine
             };
         }
-        if mode.memory_enabled() && meaningful >= 3 {
+        if mode.memory_enabled() && meaningful >= thresholds.meaningful_threshold_memory {
             scope.memory = true;
         }
-        if mode.prompts_enabled() && meaningful >= 5 && (failures >= 2 || replans >= 2) {
+        if mode.prompts_enabled()
+            && meaningful >= thresholds.meaningful_threshold_prompts
+            && (failures >= thresholds.failures_min_prompts || replans >= thresholds.replans_min_prompts)
+        {
             scope.prompts = true;
         }
     }

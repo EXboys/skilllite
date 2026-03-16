@@ -170,13 +170,32 @@
 
 ## 进化引擎 <small>[高级]</small>
 
+**常用变量**（大多数场景只需这些）：
+
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `SKILLLITE_EVOLUTION` | string | `1` | 进化模式：`1`/`true` 全部启用，`0`/`false` 禁用，`prompts`/`memory`/`skills` 仅启用对应维度 |
 | `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | 每日进化次数上限 |
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** 周期性触发间隔（秒）。每 30 分钟触发一次进化，即使用户活跃也会在后台进化 |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** 决策数触发阈值。当未处理决策数 ≥ 此值时触发进化 |
+| `SKILLLITE_EVO_PROFILE` | string | （不设） | 进化触发场景：`demo` 更频繁（演示/内测）、`default` 或不设与原有默认一致、`conservative` 更少（生产/省成本）。**不设或 `default` 时行为与之前完全一致。** |
 | `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill 同轮去重：`0` 关闭描述相似度检查；非 `0` 时，若新 skill 的 description 与已有 pending 高度相似则跳过 |
+
+**高级变量**（按需细调阈值；未设时由 `SKILLLITE_EVO_PROFILE` 或默认值决定）：
+
+| 变量 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `1` | 上次进化后冷却时间（小时），此时间内不再次触发 |
+| `SKILLLITE_EVO_RECENT_DAYS` | int | `7` | 统计决策的时间窗口（天） |
+| `SKILLLITE_EVO_RECENT_LIMIT` | int | `100` | 时间窗口内最多取多少条决策参与统计 |
+| `SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS` | int | `2` | 单条决策至少多少 tool 调用才计入「有意义」条数 |
+| `SKILLLITE_EVO_MEANINGFUL_THRESHOLD_SKILLS` | int | `3` | 技能进化：有意义决策数 ≥ 此值且（有失败或存在重复模式）才触发 |
+| `SKILLLITE_EVO_MEANINGFUL_THRESHOLD_MEMORY` | int | `3` | 记忆进化：有意义决策数 ≥ 此值才触发 |
+| `SKILLLITE_EVO_MEANINGFUL_THRESHOLD_PROMPTS` | int | `5` | 规则进化：有意义决策数 ≥ 此值且（失败/重规划达标）才触发 |
+| `SKILLLITE_EVO_FAILURES_MIN_PROMPTS` | int | `2` | 规则进化：失败次数 ≥ 此值才考虑规则进化 |
+| `SKILLLITE_EVO_REPLANS_MIN_PROMPTS` | int | `2` | 规则进化：重规划次数 ≥ 此值才考虑规则进化 |
+| `SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT` | int | `3` | 重复模式判定：同一模式出现次数 ≥ 此值且成功率达标才计为重复模式 |
+| `SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE` | float | `0.8` | 重复模式判定：成功率 ≥ 此值（0~1） |
 
 **进化触发策略（A9）**：周期性触发（每 30 分钟）+ 决策数触发（每 N 条 decisions），即使用户持续交互也能在后台进化。
 

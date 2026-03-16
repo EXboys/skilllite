@@ -170,13 +170,32 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 
 ## Evolution Engine <small>[Advanced]</small>
 
+**Common variables** (most use cases only need these):
+
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `SKILLLITE_EVOLUTION` | string | `1` | Evolution mode: `1`/`true` all enabled, `0`/`false` disabled, `prompts`/`memory`/`skills` for specific dimensions only |
 | `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | Daily evolution cap |
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** Periodic trigger interval (seconds). Evolution runs every 30 min in background, even when user is active |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** Decision-count trigger. When unprocessed decisions ≥ this value, evolution is triggered |
+| `SKILLLITE_EVO_PROFILE` | string | (unset) | Evolution trigger profile: `demo` = more frequent (demos/testing), `default` or unset = same as original defaults, `conservative` = less frequent (production/cost-saving). **Unset or `default` keeps behavior unchanged.** |
 | `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill same-round dedup: `0` disables description similarity check; otherwise skips if new skill's description is highly similar to existing pending |
+
+**Advanced variables** (fine-tune thresholds when needed; when unset, values come from `SKILLLITE_EVO_PROFILE` or defaults):
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `1` | Cooldown (hours) after last evolution; no trigger within this window |
+| `SKILLLITE_EVO_RECENT_DAYS` | int | `7` | Time window (days) for decision statistics |
+| `SKILLLITE_EVO_RECENT_LIMIT` | int | `100` | Max number of decisions to consider in the window |
+| `SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS` | int | `2` | Min tool calls per decision to count as "meaningful" |
+| `SKILLLITE_EVO_MEANINGFUL_THRESHOLD_SKILLS` | int | `3` | Skills evolution: trigger when meaningful ≥ this and (failures > 0 or repeated patterns) |
+| `SKILLLITE_EVO_MEANINGFUL_THRESHOLD_MEMORY` | int | `3` | Memory evolution: trigger when meaningful ≥ this |
+| `SKILLLITE_EVO_MEANINGFUL_THRESHOLD_PROMPTS` | int | `5` | Prompts evolution: trigger when meaningful ≥ this and (failures or replans meet min) |
+| `SKILLLITE_EVO_FAILURES_MIN_PROMPTS` | int | `2` | Prompts evolution: min failures to consider |
+| `SKILLLITE_EVO_REPLANS_MIN_PROMPTS` | int | `2` | Prompts evolution: min replans to consider |
+| `SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT` | int | `3` | Repeated pattern: same pattern count ≥ this and success rate met |
+| `SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE` | float | `0.8` | Repeated pattern: min success rate (0–1) |
 
 **Evolution triggers (A9)**: Periodic (every 30 min) + decision-count triggers allow evolution in background even during active user interaction.
 
