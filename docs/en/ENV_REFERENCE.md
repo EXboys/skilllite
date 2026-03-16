@@ -180,6 +180,8 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 
 **Evolution triggers (A9)**: Periodic (every 30 min) + decision-count triggers allow evolution in background even during active user interaction.
 
+**Same-round skill dedup**: A single evolution run runs failure-driven generation first, then success-driven generation; both may write new skills to `_pending`. To avoid duplicates, before writing: ① skip if same name already exists in pending; ② skip if description is highly similar (normalized descriptions are substrings of each other). Set `SKILLLITE_SKILL_DEDUP_DESCRIPTION=0` to disable the description check.
+
 **Skill generation failure**: If you see `Failed to parse skill generation JSON: EOF`, the LLM output was likely truncated. Try increasing `SKILLLITE_MAX_TOKENS` (e.g. 16384) and retry.
 
 **Skills needing review (L4 failed)**: Network-request skills may be saved as draft when L4 security scan fails. Run `skilllite evolution status` to see `(needs review)`. Add `compatibility: Requires Python 3.x, network access` to SKILL.md front matter, then run `skilllite evolution confirm <name>`.

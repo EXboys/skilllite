@@ -180,6 +180,8 @@
 
 **进化触发策略（A9）**：周期性触发（每 30 分钟）+ 决策数触发（每 N 条 decisions），即使用户持续交互也能在后台进化。
 
+**同轮 Skill 去重**：单次进化会先执行失败驱动生成、再执行成功驱动生成，两者都可能向 `_pending` 写入新 skill。为避免重复，写入前会做：① 同名跳过（已有同名 pending 则不再写入）；② 描述相似跳过（description 归一化后互为子串则跳过，可通过 `SKILLLITE_SKILL_DEDUP_DESCRIPTION=0` 关闭）。
+
 **Skill 生成失败**：若出现 `Failed to parse skill generation JSON: EOF`，多为 LLM 输出被截断。可增大 `SKILLLITE_MAX_TOKENS`（如 16384）后重试。
 
 **需审核 Skill（L4 未通过）**：网络请求类 Skill 可能因 L4 安全扫描未通过而保存为 draft。`skilllite evolution status` 会显示 `(需审核)`。人工在 SKILL.md 的 front matter 中补充 `compatibility: Requires Python 3.x, network access` 后，执行 `skilllite evolution confirm <name>` 即可加入。
