@@ -121,6 +121,29 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
     }
 
     let skill_dir = pending_dir.join(&parsed.name);
+    // 同名去重：同轮内若已有同名 pending skill，跳过避免覆盖
+    if skill_dir.exists() && skill_dir.join("SKILL.md").exists() {
+        tracing::debug!(
+            "Skill '{}' already in pending (same name), skipping to avoid duplicate",
+            parsed.name
+        );
+        return Ok(None);
+    }
+    // 描述相似去重（可选）：SKILLLITE_SKILL_DEDUP_DESCRIPTION=0 可关闭
+    let dedup_desc = std::env::var("SKILLLITE_SKILL_DEDUP_DESCRIPTION")
+        .map(|v| v != "0")
+        .unwrap_or(true);
+    if dedup_desc {
+        for (existing_name, existing_desc) in infer::list_pending_skill_descriptions(pending_dir) {
+            if infer::is_description_similar(&parsed.description, &existing_desc) {
+                tracing::debug!(
+                    "Skill '{}' description similar to pending '{}', skipping duplicate",
+                    parsed.name, existing_name
+                );
+                return Ok(None);
+            }
+        }
+    }
     if !gatekeeper_l1_path(chat_root, &skill_dir, Some(skills_root)) {
         tracing::warn!("L1 rejected skill directory: {}", skill_dir.display());
         return Ok(None);

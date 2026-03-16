@@ -176,6 +176,7 @@
 | `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | 每日进化次数上限 |
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** 周期性触发间隔（秒）。每 30 分钟触发一次进化，即使用户活跃也会在后台进化 |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** 决策数触发阈值。当未处理决策数 ≥ 此值时触发进化 |
+| `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill 同轮去重：`0` 关闭描述相似度检查；非 `0` 时，若新 skill 的 description 与已有 pending 高度相似则跳过 |
 
 **进化触发策略（A9）**：周期性触发（每 30 分钟）+ 决策数触发（每 N 条 decisions），即使用户持续交互也能在后台进化。
 

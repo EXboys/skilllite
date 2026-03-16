@@ -181,6 +181,47 @@ pub(super) fn extract_description_from_skill_md(content: &str) -> String {
     String::new()
 }
 
+/// 列出 _pending 下已有 skill 的 (name, description)，用于同轮去重。
+pub(super) fn list_pending_skill_descriptions(pending_dir: &Path) -> Vec<(String, String)> {
+    if !pending_dir.exists() || !pending_dir.is_dir() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for e in std::fs::read_dir(pending_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+    {
+        let path = e.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy().to_string();
+        let skill_md = path.join("SKILL.md");
+        let desc = skilllite_fs::read_file(&skill_md)
+            .ok()
+            .map(|c| extract_description_from_skill_md(&c))
+            .unwrap_or_default();
+        out.push((name, desc));
+    }
+    out
+}
+
+/// 轻量描述相似度：用于同轮内避免明显重复。当任一描述包含另一（归一化后）或完全相同时返回 true。
+fn normalize_desc(s: &str) -> String {
+    s.trim().to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+pub(super) fn is_description_similar(a: &str, b: &str) -> bool {
+    let na = normalize_desc(a);
+    let nb = normalize_desc(b);
+    if na.is_empty() || nb.is_empty() {
+        return false;
+    }
+    na == nb || na.contains(&nb) || nb.contains(&na)
+}
+
 /// 通过大模型从 SKILL.md 推理入口脚本和测试输入。
 pub(super) async fn infer_skill_execution<L: EvolutionLlm>(
     llm: &L,

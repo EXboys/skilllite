@@ -176,6 +176,7 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | Daily evolution cap |
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** Periodic trigger interval (seconds). Evolution runs every 30 min in background, even when user is active |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** Decision-count trigger. When unprocessed decisions ≥ this value, evolution is triggered |
+| `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill same-round dedup: `0` disables description similarity check; otherwise skips if new skill's description is highly similar to existing pending |
 
 **Evolution triggers (A9)**: Periodic (every 30 min) + decision-count triggers allow evolution in background even during active user interaction.
 
