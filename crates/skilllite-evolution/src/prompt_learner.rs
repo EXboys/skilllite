@@ -4,6 +4,7 @@ use std::path::Path;
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
+use tokio::task::block_in_place;
 
 use skilllite_core::planning::PlanningRule;
 
@@ -43,14 +44,37 @@ pub async fn evolve_prompts<L: EvolutionLlm>(
 ) -> Result<Vec<(String, String)>> {
     let mut changes = Vec::new();
 
-    // Retire low-effectiveness rules first (selection pressure; frees slots for new rules)
-    let retired = retire_low_effectiveness_rules(chat_root, txn_id)?;
+    // Batch all DB operations in one block_in_place to reduce connection opens.
+    let (retired, extract_data, example_data) = block_in_place(|| {
+        let conn = crate::feedback::open_evolution_db(chat_root)?;
+        let retired = retire_low_effectiveness_rules_with_conn(chat_root, txn_id, &conn)?;
+        let successful = query_decisions_summary(&conn, true)?;
+        let failed = query_decisions_summary(&conn, false)?;
+        let example_candidate = conn.query_row(
+            "SELECT task_description, tools_detail, elapsed_ms
+             FROM decisions
+             WHERE evolved = 0 AND task_completed = 1 AND replans = 0
+                   AND failed_tools = 0 AND total_tools >= 3
+             ORDER BY total_tools DESC LIMIT 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        );
+        let example_data = example_candidate.ok();
+        Ok::<_, anyhow::Error>((retired, (successful, failed), example_data))
+    })?;
+
     changes.extend(retired);
 
-    let rule_changes = extract_rules(chat_root, llm, model).await?;
+    let rule_changes = extract_rules_from_data(chat_root, extract_data, llm, model).await?;
     changes.extend(rule_changes);
 
-    let example_changes = generate_examples(chat_root, llm, model).await?;
+    let example_changes = generate_examples_from_data(chat_root, example_data, llm, model).await?;
     changes.extend(example_changes);
 
     let new_rules = changes.iter().filter(|(t, _)| t == "rule_added").count();
@@ -66,16 +90,12 @@ pub async fn evolve_prompts<L: EvolutionLlm>(
     Ok(changes)
 }
 
-async fn extract_rules<L: EvolutionLlm>(
+async fn extract_rules_from_data<L: EvolutionLlm>(
     chat_root: &Path,
+    (successful, failed): (String, String),
     llm: &L,
     model: &str,
 ) -> Result<Vec<(String, String)>> {
-    let conn = crate::feedback::open_evolution_db(chat_root)?;
-    let successful = query_decisions_summary(&conn, true)?;
-    let failed = query_decisions_summary(&conn, false)?;
-    drop(conn);
-
     if successful.is_empty() && failed.is_empty() {
         return Ok(Vec::new());
     }
@@ -100,13 +120,11 @@ async fn extract_rules<L: EvolutionLlm>(
         Err(e) => {
             let detail = format!("{} — raw: {:.200}", e, content);
             tracing::warn!("Failed to parse LLM rule extraction output: {}", detail);
-            if let Ok(conn) = crate::feedback::open_evolution_db(chat_root) {
-                let _ = crate::log_evolution_event(
-                    &conn, chat_root,
-                    "rule_extraction_parse_failed", "",
-                    &detail, "",
-                );
-            }
+            let _ = block_in_place(|| {
+                let conn = crate::feedback::open_evolution_db(chat_root)?;
+                let _ = crate::log_evolution_event(&conn, chat_root, "rule_extraction_parse_failed", "", &detail, "");
+                Ok::<_, anyhow::Error>(())
+            });
             return Ok(Vec::new());
         }
     };
@@ -232,34 +250,16 @@ fn parse_rule_extraction_response(content: &str) -> Result<Vec<PlanningRule>> {
     Ok(rules)
 }
 
-async fn generate_examples<L: EvolutionLlm>(
+async fn generate_examples_from_data<L: EvolutionLlm>(
     chat_root: &Path,
+    example_data: Option<(Option<String>, Option<String>, i64)>,
     llm: &L,
     model: &str,
 ) -> Result<Vec<(String, String)>> {
-    let conn = crate::feedback::open_evolution_db(chat_root)?;
-    let candidate = conn.query_row(
-        "SELECT task_description, tools_detail, elapsed_ms
-         FROM decisions
-         WHERE evolved = 0 AND task_completed = 1 AND replans = 0
-               AND failed_tools = 0 AND total_tools >= 3
-         ORDER BY total_tools DESC LIMIT 1",
-        [],
-        |row| {
-            Ok((
-                row.get::<_, Option<String>>(0)?,
-                row.get::<_, Option<String>>(1)?,
-                row.get::<_, i64>(2)?,
-            ))
-        },
-    );
-
-    let (task_desc, tools_json, elapsed_ms) = match candidate {
-        Ok(c) => c,
-        Err(_) => return Ok(Vec::new()),
+    let (task_desc, tools_json, elapsed_ms) = match example_data {
+        Some(c) => c,
+        None => return Ok(Vec::new()),
     };
-
-    drop(conn);
 
     let task_desc = task_desc.unwrap_or_default();
     if task_desc.is_empty() {
@@ -304,13 +304,11 @@ async fn generate_examples<L: EvolutionLlm>(
         Err(e) => {
             let detail = format!("{} — raw: {:.200}", e, content);
             tracing::warn!("Failed to parse LLM example output: {}", detail);
-            if let Ok(conn) = crate::feedback::open_evolution_db(chat_root) {
-                let _ = crate::log_evolution_event(
-                    &conn, chat_root,
-                    "example_generation_parse_failed", "",
-                    &detail, "",
-                );
-            }
+            let _ = block_in_place(|| {
+                let conn = crate::feedback::open_evolution_db(chat_root)?;
+                let _ = crate::log_evolution_event(&conn, chat_root, "example_generation_parse_failed", "", &detail, "");
+                Ok::<_, anyhow::Error>(())
+            });
             return Ok(Vec::new());
         }
     };
@@ -397,9 +395,10 @@ fn parse_example_response(content: &str) -> Result<Option<PlanningExample>> {
 /// Retire rules with effectiveness below threshold and sufficient trigger history.
 /// Only mutable (evolved/external) rules are retired; seed rules are preserved.
 /// Returns `(change_type, rule_id)` pairs for changelog.
-pub fn retire_low_effectiveness_rules(
+fn retire_low_effectiveness_rules_with_conn(
     chat_root: &Path,
     txn_id: &str,
+    conn: &Connection,
 ) -> Result<Vec<(String, String)>> {
     let rules_path = chat_root.join("prompts").join("rules.json");
     if !rules_path.exists() {
@@ -408,8 +407,6 @@ pub fn retire_low_effectiveness_rules(
     if !gatekeeper_l1_path(chat_root, &rules_path, None) {
         anyhow::bail!("Gatekeeper L1: rules.json path outside allowed directories");
     }
-
-    let conn = crate::feedback::open_evolution_db(chat_root)?;
     let content = skilllite_fs::read_file(&rules_path)?;
     let rules: Vec<PlanningRule> = serde_json::from_str(&content)?;
 

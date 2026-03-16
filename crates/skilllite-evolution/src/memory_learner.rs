@@ -9,9 +9,9 @@ use std::path::Path;
 
 use anyhow::Result;
 use rusqlite::Connection;
+use tokio::task::block_in_place;
 
 use crate::feedback::open_evolution_db;
-use crate::feedback;
 use crate::gatekeeper_l1_path;
 use crate::gatekeeper_l3_content;
 use crate::EvolutionLlm;
@@ -40,9 +40,10 @@ pub async fn evolve_memory<L: EvolutionLlm>(
     model: &str,
     _txn_id: &str,
 ) -> Result<Vec<(String, String)>> {
-    let conn = open_evolution_db(chat_root)?;
-    let summary = query_decisions_for_memory(&conn)?;
-    drop(conn);
+    let summary = block_in_place(|| {
+        let conn = open_evolution_db(chat_root)?;
+        query_decisions_for_memory(&conn)
+    })?;
 
     if summary.is_empty() {
         tracing::debug!("Memory evolution: no recent decisions with task_description, skipping");
@@ -72,16 +73,11 @@ pub async fn evolve_memory<L: EvolutionLlm>(
         Ok(p) => p,
         Err(e) => {
             tracing::warn!("Memory knowledge extraction parse failed: {} — raw: {:.300}", e, content);
-            if let Ok(conn) = feedback::open_evolution_db(chat_root) {
-                let _ = crate::log_evolution_event(
-                    &conn,
-                    chat_root,
-                    "memory_extraction_parse_failed",
-                    "",
-                    &format!("{}", e),
-                    "",
-                );
-            }
+            let _ = block_in_place(|| {
+                let conn = open_evolution_db(chat_root)?;
+                let _ = crate::log_evolution_event(&conn, chat_root, "memory_extraction_parse_failed", "", &format!("{}", e), "");
+                Ok::<_, anyhow::Error>(())
+            });
             return Ok(Vec::new());
         }
     };

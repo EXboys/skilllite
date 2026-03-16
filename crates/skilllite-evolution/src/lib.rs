@@ -635,33 +635,33 @@ async fn run_evolution_inner<L: EvolutionLlm>(
     model: &str,
     force: bool,
 ) -> Result<EvolutionRunResult> {
-    let (scope, txn_id, snapshot_files) = {
-        let conn = feedback::open_evolution_db(chat_root)?;
-        let scope = should_evolve_impl(&conn, EvolutionMode::from_env(), force)?;
-        if !scope.prompts && !scope.memory && !scope.skills {
-            // Do NOT mark decisions as evolved when no evolution ran — keep them for next run
-            return Ok(EvolutionRunResult::NoScope);
-        }
-        let txn_id = format!("evo_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
-        tracing::info!(
-            "Starting evolution txn={} (prompts={}, memory={}, skills={})",
-            txn_id, scope.prompts, scope.memory, scope.skills
-        );
-        let snapshot_files = if scope.prompts {
-            create_snapshot(chat_root, &txn_id, &[
-                "rules.json", "examples.json",
-                "planning.md", "execution.md", "system.md",
-            ])?
-        } else {
-            Vec::new()
-        };
-        (scope, txn_id, snapshot_files)
+    let conn = feedback::open_evolution_db(chat_root)?;
+    let scope = should_evolve_impl(&conn, EvolutionMode::from_env(), force)?;
+    if !scope.prompts && !scope.memory && !scope.skills {
+        return Ok(EvolutionRunResult::NoScope);
+    }
+    let txn_id = format!("evo_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    tracing::info!(
+        "Starting evolution txn={} (prompts={}, memory={}, skills={})",
+        txn_id, scope.prompts, scope.memory, scope.skills
+    );
+    let snapshot_files = if scope.prompts {
+        create_snapshot(chat_root, &txn_id, &[
+            "rules.json", "examples.json",
+            "planning.md", "execution.md", "system.md",
+        ])?
+    } else {
+        Vec::new()
     };
+
+    // Drop conn before async work (Connection is !Send, cannot hold across .await).
+    drop(conn);
 
     let mut all_changes: Vec<(String, String)> = Vec::new();
     let mut reason_parts: Vec<String> = Vec::new();
 
-    // Run prompts / skills / memory evolution in parallel (no cross-dependencies).
+    // Run prompts / skills / memory evolution in parallel. Each module uses block_in_place
+    // to batch its DB operations (one open per module), so we get both parallelism and fewer opens.
     let (prompt_res, skills_res, memory_res) = tokio::join!(
         async {
             if scope.prompts {

@@ -264,10 +264,12 @@ pub(super) async fn refine_weakest_skill<L: EvolutionLlm>(
     Ok(None)
 }
 
-pub(super) fn retire_skills(
+/// Retire skills, using the provided connection. Reduces DB opens when called from evolve_skills.
+pub(super) fn retire_skills_with_conn(
     chat_root: &Path,
     skills_root: &Path,
     txn_id: &str,
+    conn: &rusqlite::Connection,
 ) -> Result<Vec<(String, String)>> {
     let evolved_dir = skills_root.join("_evolved");
     if !evolved_dir.exists() {
@@ -348,9 +350,8 @@ pub(super) fn retire_skills(
     }
 
     if !to_log.is_empty() {
-        let conn = feedback::open_evolution_db(chat_root)?;
         for (name, reason) in &to_log {
-            let _ = log_evolution_event(&conn, chat_root, "skill_retired", name, reason, txn_id);
+            let _ = log_evolution_event(conn, chat_root, "skill_retired", name, reason, txn_id);
         }
     }
 
