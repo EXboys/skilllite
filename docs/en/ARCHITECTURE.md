@@ -107,7 +107,7 @@ skillLite/
 │   │       ├── windows.rs         # WSL2 bridge
 │   │       ├── seatbelt.rs
 │   │       ├── seccomp.rs
-│   │       ├── network_proxy.rs
+│   │       ├── network_proxy/      # HTTP/SOCKS5 proxy, config, tunnel, manager
 │   │       ├── bash_validator.rs  # Bash command validation (BashValidationError)
 │   │       ├── move_protection.rs
 │   │       ├── env/               # RuntimePaths construction
@@ -322,7 +322,7 @@ pub struct ResourceLimits {
 
 Sandbox functionality implemented via WSL2 bridge.
 
-#### 2.8 Network Proxy (`skilllite-sandbox/network_proxy.rs`)
+#### 2.8 Network Proxy (`skilllite-sandbox/network_proxy/`)
 
 Provides HTTP and SOCKS5 proxy for domain whitelist filtering. When a skill declares network access with restricted outbound domains, the proxy intercepts non-whitelisted requests.
 
@@ -338,7 +338,7 @@ The security scanning module contains:
 | `policy.rs` | Runtime security policy (path/process/network) |
 | `default_rules.rs` | Default rule implementations |
 | `default_rules.yaml` | Configurable rules file |
-| `dependency_audit.rs` | Supply chain vulnerability scanning (OSV API, requires audit feature) |
+| `dependency_audit/` | Supply chain vulnerability scanning (OSV API, requires audit feature) |
 
 **Security Issue Types** (`security/types.rs`):
 ```rust
@@ -742,7 +742,7 @@ Environment variable keys are defined in `skilllite-core/config/env_keys.rs` wit
 | Security files | `.ssh/*`, `.gnupg/*`, `.aws/credentials` |
 | AI/Agent configs | `.mcp.json`, `.claude/*`, `.cursor/*` |
 
-### 5. Supply Chain Security (`skilllite-sandbox/security/dependency_audit.rs`)
+### 5. Supply Chain Security (`skilllite-sandbox/security/dependency_audit/`)
 
 Scans Skill dependencies for known vulnerabilities using OSV (Open Source Vulnerabilities) API. Requires `audit` feature.
 

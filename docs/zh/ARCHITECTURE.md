@@ -105,7 +105,7 @@ skillLite/
 │   │       ├── windows.rs         # WSL2 桥接
 │   │       ├── seatbelt.rs
 │   │       ├── seccomp.rs
-│   │       ├── network_proxy.rs
+│   │       ├── network_proxy/      # HTTP/SOCKS5 代理、配置、隧道、管理
 │   │       ├── bash_validator.rs  # Bash 命令校验 (BashValidationError)
 │   │       ├── move_protection.rs
 │   │       ├── env/               # RuntimePaths 构建
@@ -320,7 +320,7 @@ pub struct ResourceLimits {
 
 通过 WSL2 桥接实现沙箱功能。
 
-#### 2.8 网络代理 (`skilllite-sandbox/network_proxy.rs`)
+#### 2.8 网络代理 (`skilllite-sandbox/network_proxy/`)
 
 提供 HTTP 和 SOCKS5 代理，用于域名白名单过滤。当 skill 声明了网络访问但限制了出站域名时，代理会拦截非白名单请求。
 
@@ -336,7 +336,7 @@ pub struct ResourceLimits {
 | `policy.rs` | 运行时安全策略 (路径/进程/网络) |
 | `default_rules.rs` | 默认规则实现 |
 | `default_rules.yaml` | 可配置的规则文件 |
-| `dependency_audit.rs` | 供应链漏洞扫描 (OSV API, 需要 audit feature) |
+| `dependency_audit/` | 供应链漏洞扫描 (OSV API, 需要 audit feature) |
 
 **安全问题类型** (`security/types.rs`)：
 ```rust
@@ -740,7 +740,7 @@ SKILLBOX_NO_SANDBOX=false     # 禁用沙箱
 | 安全文件 | `.ssh/*`, `.gnupg/*`, `.aws/credentials` |
 | AI/Agent 配置 | `.mcp.json`, `.claude/*`, `.cursor/*` |
 
-### 5. 供应链安全 (`security/dependency_audit.rs`)
+### 5. 供应链安全 (`security/dependency_audit/`)
 
 使用 OSV (Open Source Vulnerabilities) API 扫描 Skill 依赖中的已知漏洞，需要 `audit` feature。
 
