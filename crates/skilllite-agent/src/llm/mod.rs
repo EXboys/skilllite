@@ -43,16 +43,16 @@ pub struct LlmClient {
 }
 
 impl LlmClient {
-    pub fn new(api_base: &str, api_key: &str) -> Self {
+    pub fn new(api_base: &str, api_key: &str) -> Result<Self> {
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(300))
             .build()
-            .expect("failed to build HTTP client");
-        Self {
+            .context("build HTTP client for LLM")?;
+        Ok(Self {
             http,
             api_base: api_base.trim_end_matches('/').to_string(),
             api_key: api_key.to_string(),
-        }
+        })
     }
 
     /// Non-streaming chat completion call (auto-routes based on model/api_base).

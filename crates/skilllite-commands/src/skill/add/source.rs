@@ -5,6 +5,27 @@ use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::LazyLock;
+
+// ─── Static regexes (compiled once at first use) ──────────────────────────────
+
+static RE_TREE_PATH: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)").expect("static regex re_tree_path")
+});
+static RE_TREE_BRANCH: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$").expect("static regex re_tree_branch")
+});
+static RE_GITHUB: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"github\.com/([^/]+)/([^/]+?)(?:\.git)?/*$").expect("static regex re_github")
+});
+static RE_GITLAB: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").expect("static regex re_gitlab")
+});
+static RE_AT_FILTER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").expect("static regex re_at_filter"));
+static RE_SHORTHAND: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").expect("static regex re_shorthand")
+});
 
 // ─── Source Parsing ─────────────────────────────────────────────────────────
 
@@ -52,9 +73,7 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_tree_path = Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)")
-        .expect("static regex re_tree_path");
-    if let Some(cap) = re_tree_path.captures(source) {
+    if let Some(cap) = RE_TREE_PATH.captures(source) {
         return ParsedSource {
             source_type: "github".into(),
             url: format!("https://github.com/{}/{}.git", &cap[1], &cap[2]),
@@ -64,9 +83,7 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_tree_branch = Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$")
-        .expect("static regex re_tree_branch");
-    if let Some(cap) = re_tree_branch.captures(source) {
+    if let Some(cap) = RE_TREE_BRANCH.captures(source) {
         return ParsedSource {
             source_type: "github".into(),
             url: format!("https://github.com/{}/{}.git", &cap[1], &cap[2]),
@@ -76,9 +93,7 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_github =
-        Regex::new(r"github\.com/([^/]+)/([^/]+?)(?:\.git)?/*$").expect("static regex re_github");
-    if let Some(cap) = re_github.captures(source) {
+    if let Some(cap) = RE_GITHUB.captures(source) {
         return ParsedSource {
             source_type: "github".into(),
             url: format!("https://github.com/{}/{}.git", &cap[1], &cap[2]),
@@ -88,8 +103,7 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_gitlab = Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").expect("static regex re_gitlab");
-    if let Some(cap) = re_gitlab.captures(source) {
+    if let Some(cap) = RE_GITLAB.captures(source) {
         let repo_path = &cap[1];
         if repo_path.contains('/') {
             return ParsedSource {
@@ -102,8 +116,7 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    let re_at_filter = Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").expect("static regex re_at_filter");
-    if let Some(cap) = re_at_filter.captures(source) {
+    if let Some(cap) = RE_AT_FILTER.captures(source) {
         if !source.contains(':') {
             return ParsedSource {
                 source_type: "github".into(),
@@ -115,9 +128,7 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    let re_shorthand =
-        Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").expect("static regex re_shorthand");
-    if let Some(cap) = re_shorthand.captures(source) {
+    if let Some(cap) = RE_SHORTHAND.captures(source) {
         if !source.contains(':') && !source.starts_with('.') {
             return ParsedSource {
                 source_type: "github".into(),

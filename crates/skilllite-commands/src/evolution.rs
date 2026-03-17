@@ -426,7 +426,7 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
         anyhow::bail!("API key required. Set OPENAI_API_KEY env var.");
     }
 
-    let llm = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key);
+    let llm = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key)?;
     let adapter = skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
 
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
@@ -607,7 +607,7 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
         anyhow::bail!("API key required. Set OPENAI_API_KEY or SKILLLITE_API_KEY env var.");
     }
 
-    let llm = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key);
+    let llm = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key)?;
     let adapter = skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
 
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;

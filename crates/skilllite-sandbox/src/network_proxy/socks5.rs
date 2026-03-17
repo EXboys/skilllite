@@ -181,7 +181,12 @@ impl Socks5Proxy {
         };
 
         {
-            let cfg = config.read().expect("proxy config lock");
+            let cfg = config.read().map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("proxy config lock: {}", e),
+                )
+            })?;
             let allowed = if atyp == 0x01 || atyp == 0x04 {
                 cfg.is_ip_connection_allowed(&host)
             } else {

@@ -152,7 +152,7 @@ Rules:
         ChatMessage::system(system_prompt),
         ChatMessage::user(&user_prompt),
     ];
-    let client = LlmClient::new(&config.api_base, &config.api_key);
+    let client = LlmClient::new(&config.api_base, &config.api_key)?;
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
     let resp = rt.block_on(async {
         tokio::time::timeout(

@@ -130,7 +130,12 @@ impl HttpProxy {
         let (host, port) = Self::parse_host_port(target, 443)?;
 
         {
-            let cfg = config.read().expect("proxy config lock");
+            let cfg = config.read().map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("proxy config lock: {}", e),
+                )
+            })?;
             if !cfg.is_domain_allowed(&host) {
                 let blocked_target = format!("{}:{}", host, port);
                 observability::security_blocked_network(
@@ -203,7 +208,12 @@ impl HttpProxy {
         };
 
         {
-            let cfg = config.read().expect("proxy config lock");
+            let cfg = config.read().map_err(|e| {
+                std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!("proxy config lock: {}", e),
+                )
+            })?;
             if !cfg.is_domain_allowed(&host) {
                 observability::security_blocked_network(
                     "unknown",

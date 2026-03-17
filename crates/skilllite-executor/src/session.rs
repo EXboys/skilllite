@@ -69,8 +69,10 @@ impl SessionStore {
 
     pub fn create_or_get(&mut self, session_key: &str) -> &mut SessionEntry {
         let now = chrono_now();
-        if !self.sessions.contains_key(session_key) {
-            let entry = SessionEntry {
+        let entry = self
+            .sessions
+            .entry(session_key.to_string())
+            .or_insert_with(|| SessionEntry {
                 session_id: format!("tx-{}", uuid_short()),
                 session_key: session_key.to_string(),
                 updated_at: now.clone(),
@@ -82,13 +84,7 @@ impl SessionStore {
                 memory_flush_at: None,
                 memory_flush_compaction_count: None,
                 extra: HashMap::new(),
-            };
-            self.sessions.insert(session_key.to_string(), entry);
-        }
-        let entry = self
-            .sessions
-            .get_mut(session_key)
-            .expect("session entry must exist after insert");
+            });
         entry.updated_at = now;
         entry
     }

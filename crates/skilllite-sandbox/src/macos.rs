@@ -268,12 +268,7 @@ fn execute_with_sandbox(
 
     // Build sandbox-exec command - directly execute interpreter (no script injection)
     let mut cmd = Command::new("sandbox-exec");
-    cmd.args([
-        "-f",
-        profile_path
-            .to_str()
-            .expect("profile path must be valid UTF-8"),
-    ]);
+    cmd.arg("-f").arg(&profile_path);
     cmd.arg(&resolved.interpreter);
     cmd.args(&args);
 

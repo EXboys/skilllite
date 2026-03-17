@@ -219,8 +219,13 @@ fn install_all_deps(
             tracing::debug!("--use-llm requested but no API key; falling back to whitelist");
             (None, None)
         } else {
-            let client = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key);
-            (Some(client), Some(config.model))
+            match skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key) {
+                Ok(client) => (Some(client), Some(config.model)),
+                Err(e) => {
+                    tracing::warn!("LLM client build failed, falling back to whitelist: {}", e);
+                    (None, None)
+                }
+            }
         }
     } else {
         (None, None)

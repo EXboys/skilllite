@@ -111,7 +111,7 @@ Example output: [{"id":"csdn_article","priority":88,"keywords":["csdn","CSDN","c
         docs.join("\n\n")
     );
 
-    let client = LlmClient::new(&config.api_base, &config.api_key);
+    let client = LlmClient::new(&config.api_base, &config.api_key)?;
     let messages = vec![
         ChatMessage::system(system_prompt),
         ChatMessage::user(&user_content),

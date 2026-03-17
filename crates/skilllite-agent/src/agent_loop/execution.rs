@@ -448,7 +448,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path();
         let registry = ExtensionRegistry::new(false, false, &[]);
-        let client = LlmClient::new("", "");
+        let client = LlmClient::new("", "").expect("test client");
         let mut planner = planner_with_tasks(vec![Task {
             id: 1,
             description: "Start preview server and open in browser".to_string(),
@@ -511,7 +511,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let workspace = tmp.path();
         let registry = ExtensionRegistry::new(false, false, &[]);
-        let client = LlmClient::new("", "");
+        let client = LlmClient::new("", "").expect("test client");
         let mut planner = planner_with_tasks(vec![Task {
             id: 1,
             description: "Write generated output".to_string(),

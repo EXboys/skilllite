@@ -76,7 +76,7 @@ pub fn register(reg: &mut CommandRegistry) {
                                 let llm = skilllite_agent::llm::LlmClient::new(
                                     &config.api_base,
                                     &config.api_key,
-                                );
+                                )?;
                                 let adapter =
                                     skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
                                 rt.block_on(skilllite_agent::skills::infer_entry::infer_entry_point_from_skill_md(

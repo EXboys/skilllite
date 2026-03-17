@@ -90,7 +90,7 @@ async fn run_simple_loop(
     session_key: Option<&str>,
 ) -> Result<AgentResult> {
     let start_time = std::time::Instant::now();
-    let client = LlmClient::new(&config.api_base, &config.api_key);
+    let client = LlmClient::new(&config.api_base, &config.api_key)?;
     let workspace = Path::new(&config.workspace);
     let embed_config = EmbeddingConfig::from_env();
     let embed_ctx =
@@ -317,7 +317,7 @@ async fn run_with_task_planning(
     session_key: Option<&str>,
 ) -> Result<AgentResult> {
     let start_time = std::time::Instant::now();
-    let client = LlmClient::new(&config.api_base, &config.api_key);
+    let client = LlmClient::new(&config.api_base, &config.api_key)?;
     let workspace = Path::new(&config.workspace);
     let embed_config = EmbeddingConfig::from_env();
     let embed_ctx =

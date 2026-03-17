@@ -261,7 +261,7 @@ impl ChatSession {
         // ── Guard #2: compress current user message if oversized ─────────────
         // Processed BEFORE transcript write so the stored version is already
         // compressed — read_history on next turn gets the compressed version directly.
-        let client = LlmClient::new(&self.config.api_base, &self.config.api_key);
+        let client = LlmClient::new(&self.config.api_base, &self.config.api_key)?;
         let effective_user_message =
             long_text::maybe_process_user_input(&client, &self.config.model, user_message).await;
 
@@ -554,7 +554,7 @@ impl ChatSession {
         let recent_messages = &history[split_point..];
 
         // Build summary of old messages via LLM
-        let client = LlmClient::new(&self.config.api_base, &self.config.api_key);
+        let client = LlmClient::new(&self.config.api_base, &self.config.api_key)?;
         let summary_prompt = format!(
             "Please summarize the following conversation concisely, preserving key context, decisions, and results:\n\n{}",
             old_messages
@@ -695,7 +695,7 @@ impl ChatSession {
             return Ok(());
         }
 
-        let client = LlmClient::new(&self.config.api_base, &self.config.api_key);
+        let client = LlmClient::new(&self.config.api_base, &self.config.api_key)?;
 
         let conversation: Vec<String> = history
             .iter()
@@ -819,7 +819,13 @@ async fn run_evolution_and_emit_summary(
         };
         Some(sr)
     };
-    let llm = LlmClient::new(api_base, api_key);
+    let llm = match LlmClient::new(api_base, api_key) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("LLM client build failed for evolution: {}", e);
+            return;
+        }
+    };
     let adapter = evolution::EvolutionLlmAdapter { llm: &llm };
     let skills_root_ref = skills_root.as_deref();
     match skilllite_evolution::run_evolution(
