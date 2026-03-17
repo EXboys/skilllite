@@ -7,8 +7,10 @@ description = "SkillLite Sandbox: secure execution engine + environment builder"
 license = "MIT"
 
 [features]
-default = []
+default = ["runtime-deps"]
 audit = ["dep:ureq"]
+# P0: 运行时依赖 — 优先用系统 Python/Node，系统没有则首次供给到 ~/.skilllite/runtime/
+runtime-deps = ["dep:ureq"]
 
 [dependencies]
 skilllite-core = { path = "../skilllite-core" }
@@ -25,8 +27,11 @@ serde_yaml = "0.9"
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
 unicode-normalization = "0.1"
+flate2 = "1.0"
+tar = "0.4"
+which = "6.0"
 
-# Audit feature: lightweight sync HTTP client for OSV API queries
+# Audit + runtime-deps: sync HTTP for OSV and runtime dependency provisioning
 ureq = { version = "2", optional = true, features = ["json"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

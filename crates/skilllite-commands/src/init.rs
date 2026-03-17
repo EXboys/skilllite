@@ -325,6 +325,7 @@ fn install_all_deps(
                     &skill_path,
                     &env_spec,
                     cache_dir,
+                    None,
                 ) {
                     Ok(_) => {
                         messages.push(format!(

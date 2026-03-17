@@ -117,11 +117,13 @@ fn execute_simple_with_limits(
     cmd.stderr(Stdio::piped());
 
     // Set environment variables
-    cmd.env("SKILLLITE_SANDBOX", "0").env("SKILLBOX_SANDBOX", "0"); // legacy compat
+    cmd.env("SKILLLITE_SANDBOX", "0")
+        .env("SKILLBOX_SANDBOX", "0"); // legacy compat
     cmd.env("TMPDIR", work_dir);
 
     if !config.network_enabled {
-        cmd.env("SKILLLITE_NETWORK_DISABLED", "1").env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
+        cmd.env("SKILLLITE_NETWORK_DISABLED", "1")
+            .env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
     }
 
     // Apply resource limits via pre_exec (kernel-enforced, not polling-only)
@@ -440,7 +442,8 @@ fn execute_with_bwrap(
     }
 
     // Set environment
-    cmd.args(["--setenv", "SKILLLITE_SANDBOX", "1"]).args(["--setenv", "SKILLBOX_SANDBOX", "1"]); // legacy compat
+    cmd.args(["--setenv", "SKILLLITE_SANDBOX", "1"])
+        .args(["--setenv", "SKILLBOX_SANDBOX", "1"]); // legacy compat
     cmd.args(["--setenv", "TMPDIR", "/tmp"]);
     cmd.args(["--setenv", "HOME", "/tmp"]);
 
@@ -845,7 +848,8 @@ fn execute_with_firejail(
     cmd.stderr(Stdio::piped());
 
     // Set environment
-    cmd.env("SKILLLITE_SANDBOX", "1").env("SKILLBOX_SANDBOX", "1"); // legacy compat
+    cmd.env("SKILLLITE_SANDBOX", "1")
+        .env("SKILLBOX_SANDBOX", "1"); // legacy compat
     cmd.env("TMPDIR", work_dir);
     if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
         cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
@@ -922,14 +926,16 @@ fn execute_with_namespaces(
     cmd.current_dir(skill_dir);
 
     // Set environment variables
-    cmd.env("SKILLLITE_SANDBOX", "1").env("SKILLBOX_SANDBOX", "1"); // legacy compat
+    cmd.env("SKILLLITE_SANDBOX", "1")
+        .env("SKILLBOX_SANDBOX", "1"); // legacy compat
     cmd.env("TMPDIR", work_dir);
     if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
         cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
     }
 
     if !config.network_enabled {
-        cmd.env("SKILLLITE_NETWORK_DISABLED", "1").env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
+        cmd.env("SKILLLITE_NETWORK_DISABLED", "1")
+            .env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
     }
 
     // Create unshared namespaces

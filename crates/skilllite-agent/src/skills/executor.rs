@@ -162,6 +162,7 @@ fn execute_skill_inner(
         skill_dir,
         &env_spec,
         cache_dir.as_deref(),
+        None,
     )?;
 
     let limits = ResourceLimits::from_env();

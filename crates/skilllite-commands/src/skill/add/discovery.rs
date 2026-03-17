@@ -186,6 +186,7 @@ pub(super) fn install_skill_deps(skills_dir: &Path, installed: &[String]) -> Vec
                     &skill_path,
                     &env_spec,
                     cache_dir,
+                    None,
                 ) {
                     Ok(_) => {
                         let lang = &env_spec.language;

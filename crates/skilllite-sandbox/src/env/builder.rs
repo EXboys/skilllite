@@ -2,6 +2,8 @@
 //!
 //! Accepts [`skilllite_core::EnvSpec`] only; callers build it from `SkillMetadata` via
 //! `EnvSpec::from_metadata(skill_dir, &metadata)` so that this crate does not depend on skill parsing.
+//! P0: Prefer system Python/Node; if missing or version too low, provision via runtime_deps with
+//! transparent progress reporting.
 
 use anyhow::{Context, Result};
 use skilllite_core::config;
@@ -9,6 +11,7 @@ use skilllite_core::EnvSpec;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::env::runtime_deps::{self, RuntimeProgressFn};
 use crate::runner::RuntimePaths;
 
 /// Return the cache directory for skill environments.
@@ -26,10 +29,14 @@ pub fn get_cache_dir(override_dir: Option<&str>) -> Option<PathBuf> {
 
 /// Ensure an isolated environment exists for the skill (venv or node_modules).
 /// Returns the environment directory path (empty PathBuf if no env needed, e.g. bash-only).
+/// P0: If system Python/Node is missing or too old, progress callback reports reason and
+/// provisioning progress (pass None to skip). Desktop can pass e.g.
+/// `Some(Box::new(|msg| { /* show in UI */ }))` for transparent UX.
 pub fn ensure_environment(
     skill_dir: &Path,
     spec: &EnvSpec,
     cache_dir: Option<&str>,
+    progress: RuntimeProgressFn,
 ) -> Result<PathBuf> {
     let lang = &spec.language;
 
@@ -45,9 +52,9 @@ pub fn ensure_environment(
     let env_path = base.join(key);
 
     if lang == "python" {
-        ensure_python_env(skill_dir, spec, &env_path)?;
+        ensure_python_env(skill_dir, spec, &env_path, cache_dir, progress)?;
     } else if lang == "node" {
-        ensure_node_env(skill_dir, spec, &env_path)?;
+        ensure_node_env(skill_dir, spec, &env_path, cache_dir, progress)?;
     } else {
         return Ok(PathBuf::new());
     }
@@ -127,7 +134,13 @@ fn cache_key(skill_dir: &Path, spec: &EnvSpec, lang: &str) -> Result<String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-fn ensure_python_env(skill_dir: &Path, spec: &EnvSpec, env_path: &Path) -> Result<()> {
+fn ensure_python_env(
+    skill_dir: &Path,
+    spec: &EnvSpec,
+    env_path: &Path,
+    cache_dir: Option<&str>,
+    progress: RuntimeProgressFn,
+) -> Result<()> {
     let packages = collect_python_packages(skill_dir, spec)?;
     let python_path = python_path_in_env(env_path);
     let env_exists = python_path.exists();
@@ -135,7 +148,7 @@ fn ensure_python_env(skill_dir: &Path, spec: &EnvSpec, env_path: &Path) -> Resul
     if !env_exists {
         std::fs::create_dir_all(env_path).context("Create venv dir")?;
 
-        let python = which_python()?;
+        let python = resolve_python(cache_dir, progress)?;
         let mut cmd = Command::new(&python.program);
         cmd.args(&python.args).arg("-m").arg("venv").arg(env_path);
         cmd.current_dir(skill_dir);
@@ -173,7 +186,13 @@ fn ensure_python_env(skill_dir: &Path, spec: &EnvSpec, env_path: &Path) -> Resul
     Ok(())
 }
 
-fn ensure_node_env(skill_dir: &Path, spec: &EnvSpec, env_path: &Path) -> Result<()> {
+fn ensure_node_env(
+    skill_dir: &Path,
+    spec: &EnvSpec,
+    env_path: &Path,
+    cache_dir: Option<&str>,
+    progress: RuntimeProgressFn,
+) -> Result<()> {
     let packages = collect_node_packages(skill_dir, spec)?;
     let env_exists = env_path.join("node_modules").exists();
 
@@ -207,7 +226,8 @@ fn ensure_node_env(skill_dir: &Path, spec: &EnvSpec, env_path: &Path) -> Result<
             let _ = std::fs::copy(&lock, env_path.join("package-lock.json"));
         }
 
-        let out = Command::new("npm")
+        let (_, npm_path) = resolve_node(cache_dir, progress)?;
+        let out = Command::new(&npm_path)
             .args(["install", "--omit=dev"])
             .current_dir(env_path)
             .output()
@@ -394,6 +414,47 @@ fn which_python() -> Result<PythonCommand> {
         }
     }
     anyhow::bail!("no usable Python launcher found in PATH")
+}
+
+/// Prefer system Python (if version >= MIN_PYTHON_VERSION); otherwise provision to ~/.skilllite/runtime/.
+fn resolve_python(cache_dir: Option<&str>, progress: RuntimeProgressFn) -> Result<PythonCommand> {
+    if let Ok(cmd) = which_python() {
+        let out = Command::new(&cmd.program)
+            .args(&cmd.args)
+            .arg("--version")
+            .output();
+        if let Ok(ref o) = out {
+            if let Some(ver) = std::str::from_utf8(&o.stdout)
+                .or_else(|_| std::str::from_utf8(&o.stderr))
+                .ok()
+                .and_then(runtime_deps::parse_python_version)
+            {
+                if runtime_deps::python_version_meets_minimum(ver.0, ver.1) {
+                    return Ok(cmd);
+                }
+            }
+        }
+    }
+    let runtime_dir = runtime_deps::get_runtime_dir(cache_dir)
+        .context("Cannot determine runtime dir for Python")?;
+    let python_bin = runtime_deps::ensure_python_runtime(&runtime_dir, progress)?;
+    Ok(PythonCommand {
+        program: python_bin,
+        args: Vec::new(),
+    })
+}
+
+/// Prefer system Node/npm (if version >= MIN_NODE_MAJOR); otherwise provision to ~/.skilllite/runtime/.
+fn resolve_node(
+    cache_dir: Option<&str>,
+    progress: RuntimeProgressFn,
+) -> Result<(PathBuf, PathBuf)> {
+    if let (Some(node), Some(npm)) = (runtime_deps::which_node(), runtime_deps::which_npm()) {
+        return Ok((node, npm));
+    }
+    let runtime_dir = runtime_deps::get_runtime_dir(cache_dir)
+        .context("Cannot determine runtime dir for Node")?;
+    runtime_deps::ensure_node_runtime(&runtime_dir, progress)
 }
 
 fn python_command_candidates() -> Vec<PythonCommand> {

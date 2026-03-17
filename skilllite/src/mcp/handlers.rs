@@ -432,6 +432,7 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         &skill_dir,
         &env_spec,
         cache_dir.as_deref(),
+        None,
     )?;
 
     let limits = skilllite_sandbox::runner::ResourceLimits::from_env();
