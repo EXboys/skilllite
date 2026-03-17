@@ -17,6 +17,15 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Run clippy
+        run: cargo clippy --all-targets
+
       - name: Build skilllite (full)
         working-directory: ./skilllite
         run: cargo build --release --bin skilllite

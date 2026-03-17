@@ -30,9 +30,11 @@ fn opt_u64(p: &serde_json::Map<String, Value>, key: &str) -> Option<u64> {
 }
 
 fn opt_array_strings(p: &serde_json::Map<String, Value>, key: &str) -> Option<Vec<String>> {
-    p.get(key)
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+    p.get(key).and_then(|v| v.as_array()).map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect()
+    })
 }
 
 /// Parameters for the `run` method.

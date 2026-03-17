@@ -827,16 +827,16 @@ mod tests {
         let input = "```json\n[{\"id\": \"ext_test\"}]\n```";
         let result = extract_json_array(input);
         assert!(result.contains("ext_test"));
-        let arr: Vec<serde_json::Value> = serde_json::from_str(&result)
-            .expect("extract_json_array output should be valid JSON");
+        let arr: Vec<serde_json::Value> =
+            serde_json::from_str(&result).expect("extract_json_array output should be valid JSON");
         assert_eq!(arr.len(), 1);
     }
 
     #[test]
     fn test_parse_external_rule_response_valid() {
         let input = r#"[{"id":"ext_prefer_logging","priority":50,"keywords":["log","debug"],"context_keywords":[],"tool_hint":null,"instruction":"Always add structured logging before running commands."}]"#;
-        let rules = parse_external_rule_response(input)
-            .expect("valid external rule JSON should parse");
+        let rules =
+            parse_external_rule_response(input).expect("valid external rule JSON should parse");
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].id, "ext_prefer_logging");
         assert_eq!(rules[0].origin, "external");
