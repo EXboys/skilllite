@@ -6,6 +6,7 @@ mod dispatch;
 mod mcp;
 mod protocol;
 mod stdio_rpc;
+mod stdio_rpc_params;
 #[cfg(all(feature = "agent", feature = "swarm"))]
 mod swarm_executor;
 

@@ -13,11 +13,15 @@
 //! Request: `{"jsonrpc":"2.0","id":1,"method":"run"|"exec"|...","params":{...}}`
 //! Response: `{"jsonrpc":"2.0","id":1,"result":{...}}` or `{"jsonrpc":"2.0","id":1,"error":{...}}`
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde_json::{json, Value};
 use skilllite_commands::execute;
 use skilllite_core::path_validation;
 use skilllite_sandbox::runner::{ResourceLimits, SandboxLevel};
+
+use crate::stdio_rpc_params::{IpcBashParams, IpcExecParams, IpcRunParams};
+#[cfg(feature = "agent")]
+use crate::stdio_rpc_params::{IpcBuildSkillsContextParams, IpcListToolsParams};
 use std::io::{self, BufRead, BufReader, Write};
 use std::sync::mpsc;
 use std::thread;
@@ -233,39 +237,15 @@ fn dispatch_request(method: &str, params: &Value) -> Result<Value> {
 }
 
 fn handle_run(params: &Value) -> Result<Value> {
-    let p = params.as_object().context("params must be object")?;
-    let skill_dir = p
-        .get("skill_dir")
-        .and_then(|v| v.as_str())
-        .context("skill_dir required")?;
-    let input_json = p
-        .get("input_json")
-        .and_then(|v| v.as_str())
-        .context("input_json required")?;
-    let allow_network = p
-        .get("allow_network")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let cache_dir = p
-        .get("cache_dir")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let cache_dir_ref = cache_dir.as_ref();
-    let max_memory = p.get("max_memory").and_then(|v| v.as_u64());
-    let timeout = p.get("timeout").and_then(|v| v.as_u64());
-    let sandbox_level = p
-        .get("sandbox_level")
-        .and_then(|v| v.as_u64())
-        .map(|u| u as u8);
-
-    let sandbox_level = SandboxLevel::from_env_or_cli(sandbox_level);
-    let limits = ResourceLimits::from_env().with_cli_overrides(max_memory, timeout);
+    let p = IpcRunParams::try_from(params)?;
+    let sandbox_level = SandboxLevel::from_env_or_cli(p.sandbox_level);
+    let limits = ResourceLimits::from_env().with_cli_overrides(p.max_memory, p.timeout);
 
     let output = execute::run_skill(
-        skill_dir,
-        input_json,
-        allow_network,
-        cache_dir_ref,
+        &p.skill_dir,
+        &p.input_json,
+        p.allow_network,
+        p.cache_dir.as_ref(),
         limits,
         sandbox_level,
         None,
@@ -277,49 +257,17 @@ fn handle_run(params: &Value) -> Result<Value> {
 }
 
 fn handle_exec(params: &Value) -> Result<Value> {
-    let p = params.as_object().context("params must be object")?;
-    let skill_dir = p
-        .get("skill_dir")
-        .and_then(|v| v.as_str())
-        .context("skill_dir required")?;
-    let script_path = p
-        .get("script_path")
-        .and_then(|v| v.as_str())
-        .context("script_path required")?;
-    let input_json = p
-        .get("input_json")
-        .and_then(|v| v.as_str())
-        .context("input_json required")?;
-    let args = p
-        .get("args")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let allow_network = p
-        .get("allow_network")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let cache_dir = p
-        .get("cache_dir")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let cache_dir_ref = cache_dir.as_ref();
-    let max_memory = p.get("max_memory").and_then(|v| v.as_u64());
-    let timeout = p.get("timeout").and_then(|v| v.as_u64());
-    let sandbox_level = p
-        .get("sandbox_level")
-        .and_then(|v| v.as_u64())
-        .map(|u| u as u8);
-
-    let sandbox_level = SandboxLevel::from_env_or_cli(sandbox_level);
-    let limits = ResourceLimits::from_env().with_cli_overrides(max_memory, timeout);
+    let p = IpcExecParams::try_from(params)?;
+    let sandbox_level = SandboxLevel::from_env_or_cli(p.sandbox_level);
+    let limits = ResourceLimits::from_env().with_cli_overrides(p.max_memory, p.timeout);
 
     let output = execute::exec_script(
-        skill_dir,
-        script_path,
-        input_json,
-        args.as_ref(),
-        allow_network,
-        cache_dir_ref,
+        &p.skill_dir,
+        &p.script_path,
+        &p.input_json,
+        p.args.as_ref(),
+        p.allow_network,
+        p.cache_dir.as_ref(),
         limits,
         sandbox_level,
     )?;
@@ -330,28 +278,13 @@ fn handle_exec(params: &Value) -> Result<Value> {
 }
 
 fn handle_bash(params: &Value) -> Result<Value> {
-    let p = params.as_object().context("params must be object")?;
-    let skill_dir = p
-        .get("skill_dir")
-        .and_then(|v| v.as_str())
-        .context("skill_dir required")?;
-    let command = p
-        .get("command")
-        .and_then(|v| v.as_str())
-        .context("command required")?;
-    let cache_dir = p
-        .get("cache_dir")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string());
-    let timeout = p.get("timeout").and_then(|v| v.as_u64()).unwrap_or(120);
-    let cwd = p.get("cwd").and_then(|v| v.as_str()).map(|s| s.to_string());
-
+    let p = IpcBashParams::try_from(params)?;
     let output = execute::bash_command(
-        skill_dir,
-        command,
-        cache_dir.as_ref(),
-        timeout,
-        cwd.as_ref(),
+        &p.skill_dir,
+        &p.command,
+        p.cache_dir.as_ref(),
+        p.timeout,
+        p.cwd.as_ref(),
     )?;
     Ok(serde_json::from_str(&output).unwrap_or_else(|_| {
         json!({
@@ -366,27 +299,12 @@ fn handle_build_skills_context(params: &Value) -> Result<Value> {
     use skilllite_agent::prompt::{build_skills_context, PromptMode};
     use skilllite_agent::skills;
 
-    let p = params.as_object().context("params must be object")?;
-    let skills_dir = p
-        .get("skills_dir")
-        .and_then(|v| v.as_str())
-        .context("skills_dir required")?;
-    let mode_str = p
-        .get("mode")
-        .and_then(|v| v.as_str())
-        .unwrap_or("progressive");
-    let skills_filter: Option<Vec<String>> =
-        p.get("skills").and_then(|v| v.as_array()).map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        });
-
-    let skills_path = path_validation::validate_path_under_root(skills_dir, "skills_dir")?;
+    let p = IpcBuildSkillsContextParams::try_from(params)?;
+    let skills_path = path_validation::validate_path_under_root(&p.skills_dir, "skills_dir")?;
     let skills_path_str = skills_path.to_string_lossy().to_string();
 
     let loaded = skills::load_skills(&[skills_path_str]);
-    let loaded: Vec<_> = if let Some(ref filter) = skills_filter {
+    let loaded: Vec<_> = if let Some(ref filter) = p.skills {
         loaded
             .into_iter()
             .filter(|s| filter.contains(&s.name))
@@ -395,7 +313,7 @@ fn handle_build_skills_context(params: &Value) -> Result<Value> {
         loaded
     };
 
-    let mode = match mode_str {
+    let mode = match p.mode.as_str() {
         "summary" => PromptMode::Summary,
         "standard" => PromptMode::Standard,
         "full" => PromptMode::Full,
@@ -410,24 +328,12 @@ fn handle_build_skills_context(params: &Value) -> Result<Value> {
 pub fn handle_list_tools(params: &Value) -> Result<Value> {
     use skilllite_agent::skills;
 
-    let p = params.as_object().context("params must be object")?;
-    let skills_dir = p
-        .get("skills_dir")
-        .and_then(|v| v.as_str())
-        .context("skills_dir required")?;
-    let skills_filter: Option<Vec<String>> =
-        p.get("skills").and_then(|v| v.as_array()).map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        });
-    let format_str = p.get("format").and_then(|v| v.as_str()).unwrap_or("openai");
-
-    let skills_path = path_validation::validate_path_under_root(skills_dir, "skills_dir")?;
+    let p = IpcListToolsParams::try_from(params)?;
+    let skills_path = path_validation::validate_path_under_root(&p.skills_dir, "skills_dir")?;
     let skills_path_str = skills_path.to_string_lossy().to_string();
 
     let loaded = skills::load_skills(&[skills_path_str]);
-    let loaded: Vec<_> = if let Some(ref filter) = skills_filter {
+    let loaded: Vec<_> = if let Some(ref filter) = p.skills {
         loaded
             .into_iter()
             .filter(|s| filter.contains(&s.name))
@@ -442,7 +348,7 @@ pub fn handle_list_tools(params: &Value) -> Result<Value> {
         let skill_dir_str = skill.skill_dir.to_string_lossy().to_string();
         for td in &skill.tool_definitions {
             let tool_name = &td.function.name;
-            let formatted = match format_str {
+            let formatted = match p.format.as_str() {
                 "claude" => td.to_claude_format(),
                 _ => serde_json::to_value(td).unwrap_or_default(),
             };
