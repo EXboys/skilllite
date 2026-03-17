@@ -354,18 +354,14 @@ pub fn is_network_blocked(policy: &ResolvedNetworkPolicy) -> bool {
 // Relaxed Mode (L2)
 // ============================================================================
 
-/// Check if relaxed mode is enabled (SKILLLITE_SANDBOX_LEVEL=2 or legacy SKILLBOX_SANDBOX_LEVEL=2)
+/// Check if relaxed mode is enabled (L2; 统一走 config: SKILLLITE_* / SKILLBOX_*)
 pub fn is_relaxed_mode() -> bool {
-    crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL")
-        .map(|s| s.trim() == "2")
-        .unwrap_or(false)
+    skilllite_core::config::SandboxEnvConfig::from_env().sandbox_level == 2
 }
 
-/// Check if Playwright is explicitly allowed (SKILLLITE_ALLOW_PLAYWRIGHT=1 or legacy SKILLBOX_ALLOW_PLAYWRIGHT=1)
+/// Check if Playwright is explicitly allowed (统一走 config: SKILLLITE_* / SKILLBOX_*)
 pub fn is_playwright_allowed() -> bool {
-    crate::common::env_compat("SKILLLITE_ALLOW_PLAYWRIGHT", "SKILLBOX_ALLOW_PLAYWRIGHT")
-        .map(|s| s.trim() == "1" || s.trim().eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
+    skilllite_core::config::SandboxEnvConfig::from_env().allow_playwright
 }
 
 /// Whether to allow Playwright (relaxed mode OR explicit flag)

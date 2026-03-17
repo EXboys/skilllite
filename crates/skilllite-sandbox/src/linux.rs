@@ -42,7 +42,7 @@ pub fn execute_with_limits(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    if crate::common::env_compat_is_set("SKILLLITE_NO_SANDBOX", "SKILLBOX_NO_SANDBOX") {
+    if skilllite_core::config::SandboxEnvConfig::from_env().no_sandbox {
         tracing::warn!("Sandbox disabled via SKILLLITE_NO_SANDBOX - running without protection");
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }

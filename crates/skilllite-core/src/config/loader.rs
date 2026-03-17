@@ -12,6 +12,13 @@ const DEPRECATED_PAIRS: &[(&str, &str)] = &[
     ("AGENTSKILL_CACHE_DIR", "SKILLLITE_CACHE_DIR"),
     ("SKILLBOX_LOG_LEVEL", "SKILLLITE_LOG_LEVEL"),
     ("SKILLBOX_LOG_JSON", "SKILLLITE_LOG_JSON"),
+    ("SKILLBOX_SANDBOX_LEVEL", "SKILLLITE_SANDBOX_LEVEL"),
+    ("SKILLBOX_MAX_MEMORY_MB", "SKILLLITE_MAX_MEMORY_MB"),
+    ("SKILLBOX_TIMEOUT_SECS", "SKILLLITE_TIMEOUT_SECS"),
+    ("SKILLBOX_AUTO_APPROVE", "SKILLLITE_AUTO_APPROVE"),
+    ("SKILLBOX_NO_SANDBOX", "SKILLLITE_NO_SANDBOX"),
+    ("SKILLBOX_ALLOW_PLAYWRIGHT", "SKILLLITE_ALLOW_PLAYWRIGHT"),
+    ("SKILLBOX_SCRIPT_ARGS", "SKILLLITE_SCRIPT_ARGS"),
 ];
 
 /// 检测废弃变量：若使用了废弃变量且未设置推荐变量，打印一次迁移提示
@@ -207,7 +214,7 @@ pub fn init_llm_env(api_base: &str, api_key: &str, model: &str) {
 
 /// 初始化 daemon/stdio 模式的静默环境变量
 pub fn init_daemon_env() {
-    set_env_var("SKILLBOX_AUTO_APPROVE", "1");
+    set_env_var("SKILLLITE_AUTO_APPROVE", "1");
     set_env_var("SKILLLITE_QUIET", "1");
 }
 

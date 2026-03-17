@@ -24,4 +24,5 @@ pub use loader::{
 };
 pub use schema::{
     AgentFeatureFlags, CacheConfig, EmbeddingConfig, LlmConfig, ObservabilityConfig, PathsConfig,
+    SandboxEnvConfig,
 };

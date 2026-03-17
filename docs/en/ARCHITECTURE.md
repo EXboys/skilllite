@@ -290,17 +290,18 @@ pub struct ResourceLimits {
 ```
 
 **Environment Variables:**
-- `SKILLBOX_MAX_MEMORY_MB`: Maximum memory limit
-- `SKILLBOX_TIMEOUT_SECS`: Execution timeout
-- `SKILLBOX_SANDBOX_LEVEL`: Sandbox level (1/2/3)
-- `SKILLBOX_AUTO_APPROVE`: Auto-approve dangerous operations
+- Sandbox-related vars are read via **config** (`SandboxEnvConfig::from_env()`); prefer `SKILLLITE_*`, compat `SKILLBOX_*`:
+- `SKILLLITE_SANDBOX_LEVEL` / `SKILLBOX_SANDBOX_LEVEL`: Sandbox level (1/2/3)
+- `SKILLLITE_MAX_MEMORY_MB` / `SKILLBOX_MAX_MEMORY_MB`: Maximum memory limit
+- `SKILLLITE_TIMEOUT_SECS` / `SKILLBOX_TIMEOUT_SECS`: Execution timeout
+- `SKILLLITE_AUTO_APPROVE` / `SKILLBOX_AUTO_APPROVE`: Auto-approve dangerous operations
 
 #### 2.5 macOS Sandbox (`skilllite-sandbox/macos.rs`)
 
 **Core Technology**: Uses macOS `sandbox-exec` with Seatbelt profiles
 
 **Execution Flow:**
-1. Check if sandbox is disabled (`SKILLBOX_NO_SANDBOX`)
+1. Check if sandbox is disabled (`SKILLLITE_NO_SANDBOX` / `SKILLBOX_NO_SANDBOX`)
 2. Start network proxy (if networking enabled with domain whitelist)
 3. Generate Seatbelt profile (restrict filesystem, network access)
 4. Launch child process via `sandbox-exec`
@@ -684,11 +685,11 @@ API_KEY=your_api_key
 MODEL=deepseek-chat
 
 # Sandbox Configuration
-SKILLBOX_SANDBOX_LEVEL=3      # 1/2/3
-SKILLBOX_MAX_MEMORY_MB=256    # Memory limit
-SKILLBOX_TIMEOUT_SECS=30      # Timeout
-SKILLBOX_AUTO_APPROVE=false   # Auto-approve dangerous operations
-SKILLBOX_NO_SANDBOX=false     # Disable sandbox
+SKILLLITE_SANDBOX_LEVEL=3     # 1/2/3 (alias SKILLBOX_SANDBOX_LEVEL)
+SKILLLITE_MAX_MEMORY_MB=256   # Memory limit (alias SKILLBOX_*)
+SKILLLITE_TIMEOUT_SECS=30     # Timeout
+SKILLLITE_AUTO_APPROVE=false  # Auto-approve dangerous operations
+SKILLLITE_NO_SANDBOX=false    # Disable sandbox
 ```
 
 Environment variable keys are defined in `skilllite-core/config/env_keys.rs` with legacy compatibility. Config source priority: CLI/explicit args > env vars > .env file > defaults. See [ENV_REFERENCE](./ENV_REFERENCE.md#config-source-priority).

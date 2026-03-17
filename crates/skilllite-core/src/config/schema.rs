@@ -2,7 +2,7 @@
 //!
 //! 从环境变量加载，统一 fallback 逻辑。
 
-use super::env_keys::{llm, observability as obv_keys};
+use super::env_keys::{llm, observability as obv_keys, sandbox as sb_keys};
 use super::loader::{env_bool, env_optional, env_or};
 use std::path::PathBuf;
 
@@ -226,6 +226,83 @@ impl ObservabilityConfig {
                 security_events_log,
             }
         })
+    }
+}
+
+/// 沙箱环境配置：级别、资源限制、开关等
+///
+/// 所有沙箱相关环境变量统一由此读取，兼容 `SKILLLITE_*` 与 `SKILLBOX_*`。
+/// runner、linux、macos、windows、policy 等应通过本配置访问，不再直接使用 env_compat。
+#[derive(Debug, Clone)]
+pub struct SandboxEnvConfig {
+    /// 沙箱级别 1/2/3，默认 3
+    pub sandbox_level: u8,
+    /// 最大内存 MB，默认 256
+    pub max_memory_mb: u64,
+    /// 执行超时秒数，默认 30
+    pub timeout_secs: u64,
+    /// 是否自动批准 L3 安全提示
+    pub auto_approve: bool,
+    /// 是否禁用沙箱（等同于 level 1）
+    pub no_sandbox: bool,
+    /// 是否允许 Playwright（放宽沙箱）
+    pub allow_playwright: bool,
+    /// 透传给脚本的额外参数（SKILLLITE_SCRIPT_ARGS / SKILLBOX_SCRIPT_ARGS）
+    pub script_args: Option<String>,
+}
+
+impl SandboxEnvConfig {
+    pub fn from_env() -> Self {
+        super::loader::load_dotenv();
+        let sandbox_level = env_or(
+            sb_keys::SKILLLITE_SANDBOX_LEVEL,
+            sb_keys::SANDBOX_LEVEL_ALIASES,
+            || "3".to_string(),
+        )
+        .parse::<u8>()
+        .ok()
+        .and_then(|n| if (1..=3).contains(&n) { Some(n) } else { None })
+        .unwrap_or(3);
+
+        let max_memory_mb = env_or(
+            sb_keys::SKILLLITE_MAX_MEMORY_MB,
+            sb_keys::MAX_MEMORY_MB_ALIASES,
+            || "256".to_string(),
+        )
+        .parse::<u64>()
+        .ok()
+        .unwrap_or(256);
+
+        let timeout_secs = env_or(
+            sb_keys::SKILLLITE_TIMEOUT_SECS,
+            sb_keys::TIMEOUT_SECS_ALIASES,
+            || "30".to_string(),
+        )
+        .parse::<u64>()
+        .ok()
+        .unwrap_or(30);
+
+        let auto_approve =
+            env_bool(sb_keys::SKILLLITE_AUTO_APPROVE, sb_keys::AUTO_APPROVE_ALIASES, false);
+        let no_sandbox =
+            env_bool(sb_keys::SKILLLITE_NO_SANDBOX, sb_keys::NO_SANDBOX_ALIASES, false);
+        let allow_playwright = env_bool(
+            sb_keys::SKILLLITE_ALLOW_PLAYWRIGHT,
+            sb_keys::ALLOW_PLAYWRIGHT_ALIASES,
+            false,
+        );
+        let script_args =
+            env_optional(sb_keys::SKILLLITE_SCRIPT_ARGS, sb_keys::SCRIPT_ARGS_ALIASES);
+
+        Self {
+            sandbox_level,
+            max_memory_mb,
+            timeout_secs,
+            auto_approve,
+            no_sandbox,
+            allow_playwright,
+            script_args,
+        }
     }
 }
 

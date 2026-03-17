@@ -130,3 +130,27 @@ pub mod misc {
     pub const PYPI_MIRROR_URL: &str = "PYPI_MIRROR_URL";
     pub const OSV_API_URL: &str = "OSV_API_URL";
 }
+
+/// 沙箱执行：级别、资源限制、开关等（SKILLLITE_* 优先，兼容 SKILLBOX_*）
+pub mod sandbox {
+    pub const SKILLLITE_SANDBOX_LEVEL: &str = "SKILLLITE_SANDBOX_LEVEL";
+    pub const SANDBOX_LEVEL_ALIASES: &[&str] = &["SKILLBOX_SANDBOX_LEVEL"];
+
+    pub const SKILLLITE_MAX_MEMORY_MB: &str = "SKILLLITE_MAX_MEMORY_MB";
+    pub const MAX_MEMORY_MB_ALIASES: &[&str] = &["SKILLBOX_MAX_MEMORY_MB"];
+
+    pub const SKILLLITE_TIMEOUT_SECS: &str = "SKILLLITE_TIMEOUT_SECS";
+    pub const TIMEOUT_SECS_ALIASES: &[&str] = &["SKILLBOX_TIMEOUT_SECS"];
+
+    pub const SKILLLITE_AUTO_APPROVE: &str = "SKILLLITE_AUTO_APPROVE";
+    pub const AUTO_APPROVE_ALIASES: &[&str] = &["SKILLBOX_AUTO_APPROVE"];
+
+    pub const SKILLLITE_NO_SANDBOX: &str = "SKILLLITE_NO_SANDBOX";
+    pub const NO_SANDBOX_ALIASES: &[&str] = &["SKILLBOX_NO_SANDBOX"];
+
+    pub const SKILLLITE_ALLOW_PLAYWRIGHT: &str = "SKILLLITE_ALLOW_PLAYWRIGHT";
+    pub const ALLOW_PLAYWRIGHT_ALIASES: &[&str] = &["SKILLBOX_ALLOW_PLAYWRIGHT"];
+
+    pub const SKILLLITE_SCRIPT_ARGS: &str = "SKILLLITE_SCRIPT_ARGS";
+    pub const SCRIPT_ARGS_ALIASES: &[&str] = &["SKILLBOX_SCRIPT_ARGS"];
+}

@@ -23,7 +23,7 @@ pub fn execute_with_limits(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    if crate::common::env_compat_is_set("SKILLLITE_NO_SANDBOX", "SKILLBOX_NO_SANDBOX") {
+    if skilllite_core::config::SandboxEnvConfig::from_env().no_sandbox {
         tracing::warn!("Sandbox disabled via SKILLLITE_NO_SANDBOX - running without protection");
         crate::info_log!("[INFO] using simple execution (no sandbox-exec)");
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
@@ -81,10 +81,9 @@ pub fn execute_simple_with_limits(
         cmd.env(k, v);
     }
 
-    // Add script arguments from SKILLLITE_SCRIPT_ARGS environment variable
-    // This allows passing CLI arguments to scripts that use argparse
-    if let Ok(script_args) =
-        crate::common::env_compat("SKILLLITE_SCRIPT_ARGS", "SKILLBOX_SCRIPT_ARGS")
+    // Script arguments from config (SKILLLITE_SCRIPT_ARGS / SKILLBOX_SCRIPT_ARGS)
+    if let Some(ref script_args) =
+        skilllite_core::config::SandboxEnvConfig::from_env().script_args
     {
         if !script_args.is_empty() {
             for arg in script_args.split_whitespace() {
@@ -258,13 +257,11 @@ fn execute_with_sandbox(
     fs::write(&profile_path, &profile_content)?;
     let mut args = vec![entry_point.to_string()];
 
-    // Add script arguments from SKILLLITE_SCRIPT_ARGS environment variable
-    // This allows passing CLI arguments to scripts that use argparse
-    if let Ok(script_args) =
-        crate::common::env_compat("SKILLLITE_SCRIPT_ARGS", "SKILLBOX_SCRIPT_ARGS")
+    // Script arguments from config (SKILLLITE_SCRIPT_ARGS / SKILLBOX_SCRIPT_ARGS)
+    if let Some(ref script_args) =
+        skilllite_core::config::SandboxEnvConfig::from_env().script_args
     {
         if !script_args.is_empty() {
-            // Split by whitespace - arguments should not contain spaces
             for arg in script_args.split_whitespace() {
                 args.push(arg.to_string());
             }
@@ -771,11 +768,8 @@ fn generate_sandbox_profile(
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.bash_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.zsh_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/Library/Keychains\"))\n");
-    let legacy_relaxed =
-        crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL")
-            .map(|s| s.trim() == "2")
-            .unwrap_or(false);
-    if !legacy_relaxed {
+    let relaxed = skilllite_core::config::SandboxEnvConfig::from_env().sandbox_level == 2;
+    if !relaxed {
         profile.push_str("(deny file-read* (regex #\"/\\.git/\"))\n");
         profile.push_str("(deny file-read* (regex #\"/\\.env$\"))\n");
         profile.push_str("(deny file-read* (regex #\"/\\.env\\.[^/]+$\"))\n");
@@ -861,7 +855,7 @@ fn generate_sandbox_profile(
     profile.push_str("(allow file-write* (subpath \"/var/folders\"))\n");
     profile.push_str("(allow file-write* (subpath \"/private/var/folders\"))\n");
     // L2 relaxed: allow ~/Library/Caches for Playwright, pip cache
-    if legacy_relaxed {
+    if relaxed {
         profile.push_str("(allow file-write* (regex #\"^/Users/[^/]+/Library/Caches\"))\n");
     }
     profile.push_str("\n");
@@ -899,7 +893,7 @@ fn generate_sandbox_profile(
             env_path_str
         ));
     }
-    if legacy_relaxed {
+    if relaxed {
         profile.push_str("(allow file-read* (regex #\"^/Users/[^/]+/Library/Caches\"))\n");
         profile.push_str("(allow file-read* (subpath \"/usr\"))\n");
         profile.push_str("(allow file-read* (subpath \"/opt/homebrew\"))\n");

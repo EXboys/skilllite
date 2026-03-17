@@ -44,7 +44,7 @@
 | 层级 | 变量数量 | 说明 |
 |------|----------|------|
 | **必需** | 3 | `BASE_URL`、`API_KEY`、`MODEL`（或 `SKILLLITE_*` 等价） |
-| **常用** | 5–8 | `SKILLS_DIR`、`ALLOW_NETWORK`、`EXECUTION_TIMEOUT`、`SKILLBOX_SANDBOX_LEVEL`、`ENABLE_SANDBOX` |
+| **常用** | 5–8 | `SKILLS_DIR`、`ALLOW_NETWORK`、`EXECUTION_TIMEOUT`、`SKILLLITE_SANDBOX_LEVEL`、`ENABLE_SANDBOX` |
 | **高级** | 15–20 | 长文本、规划、审计、资源限制等，按需配置 |
 | **内部** | 其余 | 子进程/沙箱内部使用，一般不需用户配置 |
 
@@ -92,13 +92,19 @@
 
 ## 沙箱与安全 <small>[常用]</small>
 
+沙箱相关变量已**统一走 config 层**（`SandboxEnvConfig::from_env()`）：runner、linux、macos、windows、policy 等均通过 config 读取，兼容 `SKILLLITE_*`（推荐）与 `SKILLBOX_*`（废弃别名）。
+
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
+| `SKILLLITE_SANDBOX_LEVEL` | int | `3` | **推荐**。沙箱级别（1/2/3）；兼容 `SKILLBOX_SANDBOX_LEVEL` |
+| `SKILLLITE_NO_SANDBOX` | bool | `false` | 禁用沙箱（不推荐）；兼容 `SKILLBOX_NO_SANDBOX` |
+| `SKILLLITE_ALLOW_PLAYWRIGHT` | bool | `false` | 为使用 Playwright 的 Skill 放宽沙箱；兼容 `SKILLBOX_ALLOW_PLAYWRIGHT` |
 | `ENABLE_SANDBOX` | bool | `true` | 是否启用沙箱 |
-| `SKILLBOX_SANDBOX_LEVEL` | int | `3` | 沙箱级别（见下表） |
-| `SKILLBOX_ALLOW_PLAYWRIGHT` | bool | `false` | 为使用 Playwright 的 Skill 跳过沙箱 |
+| ~~`SKILLBOX_SANDBOX_LEVEL`~~ | int | `3` | **废弃**，请用 `SKILLLITE_SANDBOX_LEVEL` |
+| ~~`SKILLBOX_ALLOW_PLAYWRIGHT`~~ | bool | `false` | **废弃**，请用 `SKILLLITE_ALLOW_PLAYWRIGHT` |
+| `SKILLLITE_AUTO_APPROVE` | bool | `false` | **推荐**。自动批准 L3 安全提示（不推荐）；兼容 `SKILLBOX_AUTO_APPROVE` |
+| `SKILLLITE_SCRIPT_ARGS` | string | - | 透传给脚本的额外参数；兼容 `SKILLBOX_SCRIPT_ARGS` |
 | `SANDBOX_BUILTIN_TOOLS` | bool | `false` | 在子进程中运行 read_file/write_file 以隔离 |
-| `SKILLBOX_AUTO_APPROVE` | bool | `false` | 自动批准 L3 安全提示（不推荐） |
 | `SKILLLITE_TRUST_BYPASS_CONFIRM` | bool | `false` | 允许 Community/Unknown 信任等级 Skill 无需确认即可执行（仅 CLI/Python；MCP 使用 `confirmed` 参数） |
 
 **沙箱级别说明**：
@@ -110,19 +116,21 @@
 | 3 | 扫描 + 确认，确认后等同 L2（默认） |
 
 **使用场景**：
-- 沙箱不可用时：`SKILLBOX_SANDBOX_LEVEL=1`
+- 沙箱不可用时：`SKILLLITE_SANDBOX_LEVEL=1`（或 `SKILLBOX_SANDBOX_LEVEL=1` 兼容）
 - Skill 卡住时：`SKILLBOX_DEBUG=1` 查看进度
 
 ---
 
 ## 资源限制 <small>[高级]</small>
 
+沙箱资源限制**统一走 config**（`SandboxEnvConfig`），兼容 `SKILLLITE_*` 与 `SKILLBOX_*`。
+
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
+| `SKILLLITE_TIMEOUT_SECS` | int | `30` | **推荐**。沙箱执行超时（秒）；兼容 `SKILLBOX_TIMEOUT_SECS` |
+| `SKILLLITE_MAX_MEMORY_MB` | int | `256` | **推荐**。沙箱最大内存（MB）；兼容 `SKILLBOX_MAX_MEMORY_MB` |
 | `EXECUTION_TIMEOUT` | int | `120` | 单次执行超时（秒） |
-| `SKILLBOX_TIMEOUT_SECS` | int | - | 同上（别名） |
 | `MAX_MEMORY_MB` | int | `256` | 最大内存（MB） |
-| `SKILLBOX_MAX_MEMORY_MB` | int | - | 同上（别名） |
 
 **使用场景**：依赖较多的 Skill（如 xiaohongshu-writer）建议 `EXECUTION_TIMEOUT=300`。
 
@@ -269,7 +277,7 @@ EXECUTION_TIMEOUT=300
 ### 沙箱不可用 / 调试
 
 ```bash
-SKILLBOX_SANDBOX_LEVEL=1
+SKILLLITE_SANDBOX_LEVEL=1
 # 或
 SKILLBOX_DEBUG=1
 ```

@@ -1,5 +1,7 @@
 [workspace]
-members = ["skilllite", "crates/*", "crates/skilllite-assistant/src-tauri"]
+# Tauri app (src-tauri) not in members: requires glib/GTK on Linux; build with:
+#   cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
+members = ["skilllite", "crates/*"]
 exclude = ["crates/skilllite-assistant", "crates/crates"]
 resolver = "2"
 

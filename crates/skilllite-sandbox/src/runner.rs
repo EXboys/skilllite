@@ -1,4 +1,3 @@
-use crate::common::{DEFAULT_MAX_MEMORY_MB, DEFAULT_TIMEOUT_SECS};
 use crate::security::{format_scan_result_compact, ScriptScanner, SecuritySeverity};
 use anyhow::Result;
 use skilllite_core::observability;
@@ -69,9 +68,9 @@ impl Default for SandboxLevel {
 }
 
 impl SandboxLevel {
-    /// Parse sandbox level from string or environment variable
+    /// Parse sandbox level from string or config (CLI overrides env/config)
     pub fn from_env_or_cli(cli_level: Option<u8>) -> Self {
-        // Priority: CLI > Environment Variable > Default (Level 3)
+        // Priority: CLI > Config (SKILLLITE_* / SKILLBOX_*) > Default (Level 3)
         if let Some(level) = cli_level {
             return match level {
                 1 => Self::Level1,
@@ -83,29 +82,13 @@ impl SandboxLevel {
                 }
             };
         }
-
-        // Read from environment variable
-        if let Ok(level_str) =
-            crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL")
-        {
-            if let Ok(level) = level_str.parse::<u8>() {
-                return match level {
-                    1 => Self::Level1,
-                    2 => Self::Level2,
-                    3 => Self::Level3,
-                    _ => {
-                        tracing::warn!(
-                            "Invalid SKILLLITE_SANDBOX_LEVEL: {}, using default (3)",
-                            level
-                        );
-                        Self::Level3
-                    }
-                };
-            }
+        let cfg = skilllite_core::config::SandboxEnvConfig::from_env();
+        match cfg.sandbox_level {
+            1 => Self::Level1,
+            2 => Self::Level2,
+            3 => Self::Level3,
+            _ => Self::Level3,
         }
-
-        // Default to Level 3
-        Self::Level3
     }
 
     /// Check if sandbox should be used
@@ -144,23 +127,12 @@ impl ResourceLimits {
         self.max_memory_mb * 1024 * 1024
     }
 
-    /// Load resource limits from environment variables
+    /// Load resource limits from config (SKILLLITE_* / SKILLBOX_* 统一走 config)
     pub fn from_env() -> Self {
-        let max_memory_mb =
-            crate::common::env_compat("SKILLLITE_MAX_MEMORY_MB", "SKILLBOX_MAX_MEMORY_MB")
-                .ok()
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(DEFAULT_MAX_MEMORY_MB);
-
-        let timeout_secs =
-            crate::common::env_compat("SKILLLITE_TIMEOUT_SECS", "SKILLBOX_TIMEOUT_SECS")
-                .ok()
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(DEFAULT_TIMEOUT_SECS);
-
+        let cfg = skilllite_core::config::SandboxEnvConfig::from_env();
         Self {
-            max_memory_mb,
-            timeout_secs,
+            max_memory_mb: cfg.max_memory_mb,
+            timeout_secs: cfg.timeout_secs,
         }
     }
 
@@ -205,14 +177,11 @@ fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &st
     eprintln!("└─────────────────────────────────────────────────────────────┘");
     eprintln!();
 
-    // Check if auto-approve is enabled via environment variable
-    if let Ok(val) = crate::common::env_compat("SKILLLITE_AUTO_APPROVE", "SKILLBOX_AUTO_APPROVE") {
-        let val_lower = val.to_lowercase();
-        if val_lower == "1" || val_lower == "true" || val_lower == "yes" {
-            tracing::info!("Auto-approved via SKILLLITE_AUTO_APPROVE={}", val);
-            observability::audit_confirmation_response(skill_id, true, "auto");
-            return true;
-        }
+    // Check if auto-approve is enabled via config (SKILLLITE_* / SKILLBOX_*)
+    if skilllite_core::config::SandboxEnvConfig::from_env().auto_approve {
+        tracing::info!("Auto-approved via SKILLLITE_AUTO_APPROVE (or legacy SKILLBOX_AUTO_APPROVE)");
+        observability::audit_confirmation_response(skill_id, true, "auto");
+        return true;
     }
 
     loop {
@@ -290,16 +259,10 @@ pub fn run_in_sandbox_with_limits_and_level(
                 .collect();
 
             if !critical_issues.is_empty() || !high_issues.is_empty() {
-                // Compute once; used both for suppressing the scan report and
-                // for the approval decision below.
-                let auto_approve_env =
-                    crate::common::env_compat("SKILLLITE_AUTO_APPROVE", "SKILLBOX_AUTO_APPROVE")
-                        .is_ok_and(|v| {
-                            let v = v.trim().to_lowercase();
-                            v == "1" || v == "true" || v == "yes"
-                        });
+                let auto_approve =
+                    skilllite_core::config::SandboxEnvConfig::from_env().auto_approve;
 
-                if !auto_approve_env {
+                if !auto_approve {
                     eprintln!("{}", format_scan_result_compact(&scan_result));
                 }
 
@@ -336,7 +299,7 @@ pub fn run_in_sandbox_with_limits_and_level(
                     &serde_json::Value::Array(issues_json),
                 );
 
-                let approved = if auto_approve_env {
+                let approved = if auto_approve {
                     tracing::info!(
                         "Auto-approved via SKILLLITE_AUTO_APPROVE (agent/daemon already confirmed)"
                     );
