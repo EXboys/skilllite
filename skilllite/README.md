@@ -218,11 +218,11 @@ Description of the skill...
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SKILLLITE_SANDBOX_LEVEL` | Sandbox security level (1-3); alias `SKILLBOX_SANDBOX_LEVEL` | 3 |
-| `SKILLLITE_MAX_MEMORY_MB` | Max memory in MB; alias `SKILLBOX_MAX_MEMORY_MB` | 256 |
-| `SKILLLITE_TIMEOUT_SECS` | Execution timeout (seconds); alias `SKILLBOX_TIMEOUT_SECS` | 30 |
-| `SKILLLITE_AUTO_APPROVE` | Auto-approve security prompts; alias `SKILLBOX_AUTO_APPROVE` | - |
-| `SKILLLITE_CACHE_DIR` | Custom cache directory; alias `SKILLBOX_CACHE_DIR` | System cache |
+| `SKILLLITE_SANDBOX_LEVEL` | Sandbox security level (1-3) | 3 |
+| `SKILLLITE_MAX_MEMORY_MB` | Max memory in MB | 256 |
+| `SKILLLITE_TIMEOUT_SECS` | Execution timeout (seconds) | 30 |
+| `SKILLLITE_AUTO_APPROVE` | Auto-approve security prompts | - |
+| `SKILLLITE_CACHE_DIR` | Custom cache directory | System cache |
 
 > Full env var list: [ENV_REFERENCE](../docs/en/ENV_REFERENCE.md) / [ENV_REFERENCE 中文](../docs/zh/ENV_REFERENCE.md).
 

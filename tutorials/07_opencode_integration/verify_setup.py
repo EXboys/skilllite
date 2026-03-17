@@ -106,7 +106,7 @@ def generate_config() -> str:
                     "command": "skilllite",
                     "args": ["mcp"],
                     "env": {
-                        "SKILLBOX_SANDBOX_LEVEL": "3"
+                        "SKILLLITE_SANDBOX_LEVEL": "3"
                     }
                 }
             }

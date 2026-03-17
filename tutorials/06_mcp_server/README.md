@@ -16,7 +16,7 @@ Edit `~/.config/Claude/claude_desktop_config.json`:
       "command": "skilllite",
       "args": ["mcp"],
       "env": {
-        "SKILLBOX_SANDBOX_LEVEL": "3",
+        "SKILLLITE_SANDBOX_LEVEL": "3",
         "SKILLLITE_SKILLS_DIR": "/path/to/skills"
       }
     }

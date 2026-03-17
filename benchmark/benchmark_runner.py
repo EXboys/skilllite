@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-SkillBox Benchmark Runner - High Concurrency Performance Comparison Test
+SkillLite Benchmark Runner - High Concurrency Performance Comparison Test
 
-Comparing SkillBox with other sandbox solutions under high concurrency scenarios:
-1. SkillBox Native Sandbox (Seatbelt/Namespace)
+Comparing SkillLite with other sandbox solutions under high concurrency scenarios:
+1. SkillLite Native Sandbox (Seatbelt/Namespace)
 2. Docker Container Sandbox
 3. Direct Execution (No Sandbox - Baseline)
 4. Subprocess with Resource Limits
@@ -42,13 +42,13 @@ PROJECT_ROOT = Path(__file__).parent.parent
 SKILLS_DIR = PROJECT_ROOT / ".skills"
 CALCULATOR_SKILL = SKILLS_DIR / "calculator"
 
-# SkillBox binary path
-SKILLBOX_BIN = shutil.which("skilllite") or str(PROJECT_ROOT / "skilllite" / "target" / "release" / "skilllite")
+# SkillLite binary path
+SKILLLITE_BIN = shutil.which("skilllite") or str(PROJECT_ROOT / "skilllite" / "target" / "release" / "skilllite")
 
 # Add python-sdk for IPC executor (uses skilllite serve --stdio daemon)
 sys.path.insert(0, str(PROJECT_ROOT / "python-sdk"))
 
-# Load .env if available (SKILLBOX_QUIET, etc.)
+# Load .env if available (SKILLLITE_QUIET, etc.)
 try:
     from dotenv import load_dotenv
     load_dotenv(PROJECT_ROOT / ".env")
@@ -240,36 +240,36 @@ class BaseExecutor:
         raise NotImplementedError
 
 
-class SkillBoxExecutor(BaseExecutor):
-    """SkillBox native sandbox executor"""
+class SkillLiteExecutor(BaseExecutor):
+    """SkillLite native sandbox executor"""
 
-    name = "SkillBox (Native Sandbox)"
+    name = "SkillLite (Native Sandbox)"
 
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, sandbox_level: Optional[int] = None, measure_memory: bool = True):
         self.skill_dir = skill_dir
-        self.skilllite_bin = SKILLBOX_BIN
+        self.skilllite_bin = SKILLLITE_BIN
         self.measure_memory = measure_memory
         self.resource_monitor = ResourceMonitor() if measure_memory else None
         # Get sandbox level from environment variable or parameter, default is 3
         if sandbox_level is not None:
             self.sandbox_level = sandbox_level
         else:
-            self.sandbox_level = int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
+            self.sandbox_level = int(os.environ.get("SKILLLITE_SANDBOX_LEVEL", "3"))
         # Update executor name to reflect security level
-        self.name = f"SkillBox (Level {self.sandbox_level})"
+        self.name = f"SkillLite (Level {self.sandbox_level})"
         
     def setup(self) -> None:
         if not os.path.exists(self.skilllite_bin):
-            raise RuntimeError(f"SkillBox binary not found at {self.skilllite_bin}")
+            raise RuntimeError(f"SkillLite binary not found at {self.skilllite_bin}")
     
     def execute(self, input_json: str) -> BenchmarkResult:
         if self.measure_memory and self.resource_monitor:
             # Measure memory usage
             try:
                 skilllite_env = {
-                    "SKILLBOX_QUIET": "1",
-                    "SKILLBOX_SKILLS_ROOT": str(PROJECT_ROOT),
+                    "SKILLLITE_QUIET": "1",
                     "SKILLLITE_TRUST_BYPASS_CONFIRM": "1",
+                    "SKILLBOX_SKILLS_ROOT": str(PROJECT_ROOT),  # legacy; daemon validates path
                 }
                 elapsed_ms, success, stdout, stderr, memory_kb = self.resource_monitor.get_peak_memory_kb(
                     [self.skilllite_bin, "run", "--sandbox-level", str(self.sandbox_level), str(self.skill_dir), input_json],
@@ -299,10 +299,10 @@ class SkillBoxExecutor(BaseExecutor):
             try:
                 # Set environment variable to pass sandbox level and skills root
                 env = os.environ.copy()
-                env["SKILLBOX_SANDBOX_LEVEL"] = str(self.sandbox_level)
-                env["SKILLBOX_QUIET"] = "1"  # Suppress [INFO] to avoid perf impact
-                env["SKILLBOX_SKILLS_ROOT"] = str(PROJECT_ROOT)  # Allow .skills under project root
+                env["SKILLLITE_SANDBOX_LEVEL"] = str(self.sandbox_level)
+                env["SKILLLITE_QUIET"] = "1"  # Suppress [INFO] to avoid perf impact
                 env["SKILLLITE_TRUST_BYPASS_CONFIRM"] = "1"
+                env["SKILLBOX_SKILLS_ROOT"] = str(PROJECT_ROOT)  # legacy; run resolves .skills from this
                 
                 # Use --sandbox-level CLI argument (takes precedence over env var)
                 result = subprocess.run(
@@ -340,23 +340,23 @@ class SkillBoxExecutor(BaseExecutor):
                 )
 
 
-class SkillBoxIPCExecutor(BaseExecutor):
+class SkillLiteIPCExecutor(BaseExecutor):
     """
-    SkillBox via IPC (skilllite serve --stdio daemon).
+    SkillLite via IPC (skilllite serve --stdio daemon).
     Uses ipc.IPCClient to avoid cold-start overhead per request.
     """
 
     def __init__(self, skill_dir: Path = CALCULATOR_SKILL, sandbox_level: Optional[int] = None, measure_memory: bool = False):
         self.skill_dir = skill_dir
-        self.sandbox_level = sandbox_level or int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
-        self.name = f"SkillBox IPC (Level {self.sandbox_level})"
+        self.sandbox_level = sandbox_level or int(os.environ.get("SKILLLITE_SANDBOX_LEVEL", "3"))
+        self.name = f"SkillLite IPC (Level {self.sandbox_level})"
         self._client = None
         self.measure_memory = measure_memory
 
     def setup(self) -> None:
-        os.environ["SKILLBOX_USE_IPC"] = "1"
-        os.environ["SKILLBOX_QUIET"] = "1"
-        # IPC daemon validates skill path against SKILLBOX_SKILLS_ROOT; must be set before client starts
+        os.environ["SKILLLITE_USE_IPC"] = "1"
+        os.environ["SKILLLITE_QUIET"] = "1"
+        # IPC daemon validates skill path against SKILLBOX_SKILLS_ROOT (legacy); set before client starts
         os.environ["SKILLBOX_SKILLS_ROOT"] = str(PROJECT_ROOT)
         from skilllite.ipc import _get_client
         self._client = _get_client()
@@ -980,7 +980,7 @@ class SubprocessResourceLimitExecutor(BaseExecutor):
 class SRTExecutor(BaseExecutor):
     """SRT (Sandbox Runtime) Executor - Open source sandbox tool by Anthropic
 
-    SRT uses the same underlying technology stack as SkillBox:
+    SRT uses the same underlying technology stack as SkillLite:
     - macOS: Seatbelt (sandbox-exec)
     - Linux: bubblewrap + namespace
 
@@ -1583,7 +1583,7 @@ def main():
     """Main function"""
     import argparse
     
-    parser = argparse.ArgumentParser(description="SkillBox Benchmark Runner")
+    parser = argparse.ArgumentParser(description="SkillLite Benchmark Runner")
     parser.add_argument("--requests", "-n", type=int, default=100, help="Number of requests")
     parser.add_argument("--concurrency", "-c", type=int, default=10, help="Concurrency level")
     parser.add_argument("--cold-start", action="store_true", help="Run cold start test")
@@ -1595,28 +1595,28 @@ def main():
     parser.add_argument("--skip-pyodide", action="store_true", help="Skip Pyodide tests")
     parser.add_argument("--output", "-o", type=str, help="Output JSON file")
     parser.add_argument("--sandbox-level", "-l", type=int, choices=[1, 2, 3], 
-                        help="SkillBox sandbox level (1=no sandbox, 2=sandbox only, 3=sandbox+scan). "
-                             "Can also be set via SKILLBOX_SANDBOX_LEVEL env var")
+                        help="SkillLite sandbox level (1=no sandbox, 2=sandbox only, 3=sandbox+scan). "
+                             "Can also be set via SKILLLITE_SANDBOX_LEVEL env var")
     parser.add_argument("--compare-levels", action="store_true",
                         help="Compare performance across all sandbox levels (1, 2, 3)")
     parser.add_argument("--compare-ipc", action="store_true",
-                        help="Include SkillBox IPC (daemon mode) to compare with subprocess. "
-                             "Requires SKILLBOX_USE_IPC=1 (set automatically).")
+                        help="Include SkillLite IPC (daemon mode) to compare with subprocess. "
+                             "Requires SKILLLITE_USE_IPC=1 (set automatically).")
     
     args = parser.parse_args()
     
     # Determine sandbox level
     sandbox_level = args.sandbox_level
     if sandbox_level is None:
-        sandbox_level = int(os.environ.get("SKILLBOX_SANDBOX_LEVEL", "3"))
+        sandbox_level = int(os.environ.get("SKILLLITE_SANDBOX_LEVEL", "3"))
     
     print("=" * 60)
-    print("SkillBox High-Concurrency Benchmark")
+    print("SkillLite High-Concurrency Benchmark")
     print("=" * 60)
     print(f"Configuration:")
     print(f"  Requests: {args.requests}")
     print(f"  Concurrency: {args.concurrency}")
-    print(f"  SkillBox Binary: {SKILLBOX_BIN}")
+    print(f"  SkillLite Binary: {SKILLLITE_BIN}")
     print(f"  Test Skill: {CALCULATOR_SKILL}")
     
     measure_mem = args.compare_levels
@@ -1625,25 +1625,25 @@ def main():
         print(f"  Memory measurement: Enabled")
         # Test all security levels with memory measurement (subprocess)
         executors = [
-            SkillBoxExecutor(sandbox_level=1, measure_memory=True),
-            SkillBoxExecutor(sandbox_level=2, measure_memory=True),
-            SkillBoxExecutor(sandbox_level=3, measure_memory=True),
+            SkillLiteExecutor(sandbox_level=1, measure_memory=True),
+            SkillLiteExecutor(sandbox_level=2, measure_memory=True),
+            SkillLiteExecutor(sandbox_level=3, measure_memory=True),
         ]
         if args.compare_ipc:
             executors.extend([
-                SkillBoxIPCExecutor(sandbox_level=1, measure_memory=True),
-                SkillBoxIPCExecutor(sandbox_level=2, measure_memory=True),
-                SkillBoxIPCExecutor(sandbox_level=3, measure_memory=True),
+                SkillLiteIPCExecutor(sandbox_level=1, measure_memory=True),
+                SkillLiteIPCExecutor(sandbox_level=2, measure_memory=True),
+                SkillLiteIPCExecutor(sandbox_level=3, measure_memory=True),
             ])
-            print(f"  IPC comparison: Enabled (SkillBox IPC L1/L2/L3)")
+            print(f"  IPC comparison: Enabled (SkillLite IPC L1/L2/L3)")
     else:
         print(f"  Sandbox Level: {sandbox_level}")
         executors = [
-            SkillBoxExecutor(sandbox_level=sandbox_level, measure_memory=False),
+            SkillLiteExecutor(sandbox_level=sandbox_level, measure_memory=False),
         ]
         if args.compare_ipc:
-            executors.append(SkillBoxIPCExecutor(sandbox_level=sandbox_level, measure_memory=measure_mem))
-            print(f"  IPC comparison: Enabled (SkillBox IPC)")
+            executors.append(SkillLiteIPCExecutor(sandbox_level=sandbox_level, measure_memory=measure_mem))
+            print(f"  IPC comparison: Enabled (SkillLite IPC)")
     
     if not args.skip_srt:
         executors.append(SRTExecutor(measure_memory=measure_mem))

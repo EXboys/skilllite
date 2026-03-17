@@ -45,7 +45,7 @@ If you prefer manual setup, create `opencode.json` in your project root:
       "type": "local",
       "command": ["skilllite", "mcp"],
       "environment": {
-        "SKILLBOX_SANDBOX_LEVEL": "3",
+        "SKILLLITE_SANDBOX_LEVEL": "3",
         "SKILLLITE_SKILLS_DIR": "./.skills"
       },
       "enabled": true

@@ -136,7 +136,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 # SkillLite Configuration
 SKILLLITE_SKILLS_DIR=./skills                   # Skills directory
-SKILLBOX_SANDBOX_LEVEL=3                        # Sandbox level (1/2/3)
+SKILLLITE_SANDBOX_LEVEL=3                       # Sandbox level (1/2/3)
 ```
 
 ## ❓ FAQ

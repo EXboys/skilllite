@@ -5,8 +5,8 @@ SkillLite demo — 通过 chat() API 调用，无需关心 binary 命令行
 非交互模式 (--message) 下，高风险操作会自动通过，无确认提示。
 交互确认请使用: skilllite chat
 
-xiaohongshu-writer 需 Playwright，脚本会自动设置 SKILLBOX_ALLOW_PLAYWRIGHT=1。
-若仍报 BlockingIOError，可在 .env 中显式添加 SKILLBOX_ALLOW_PLAYWRIGHT=1。
+xiaohongshu-writer 需 Playwright，脚本会自动设置 SKILLLITE_ALLOW_PLAYWRIGHT=1。
+若仍报 BlockingIOError，可在 .env 中显式添加 SKILLLITE_ALLOW_PLAYWRIGHT=1。
 
 Usage:
     1. cp .env.example .env
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # xiaohongshu-writer 需要 Playwright 启动浏览器，沙箱下需显式允许
-    os.environ.setdefault("SKILLBOX_ALLOW_PLAYWRIGHT", "1")
+    os.environ.setdefault("SKILLLITE_ALLOW_PLAYWRIGHT", "1")
 
     from skilllite import chat
 

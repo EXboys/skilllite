@@ -290,18 +290,18 @@ pub struct ResourceLimits {
 ```
 
 **环境变量**：
-- 沙箱相关变量**统一走 config**（`SandboxEnvConfig::from_env()`），推荐 `SKILLLITE_*`，兼容 `SKILLBOX_*`：
-- `SKILLLITE_SANDBOX_LEVEL` / `SKILLBOX_SANDBOX_LEVEL`: 沙箱级别 (1/2/3)
-- `SKILLLITE_MAX_MEMORY_MB` / `SKILLBOX_MAX_MEMORY_MB`: 最大内存限制
-- `SKILLLITE_TIMEOUT_SECS` / `SKILLBOX_TIMEOUT_SECS`: 执行超时
-- `SKILLLITE_AUTO_APPROVE` / `SKILLBOX_AUTO_APPROVE`: 自动批准危险操作
+- 沙箱相关变量**统一走 config**（`SandboxEnvConfig::from_env()`）；使用 `SKILLLITE_*`（旧名 `SKILLBOX_*` 仍接受）：
+- `SKILLLITE_SANDBOX_LEVEL`: 沙箱级别 (1/2/3)
+- `SKILLLITE_MAX_MEMORY_MB`: 最大内存限制
+- `SKILLLITE_TIMEOUT_SECS`: 执行超时
+- `SKILLLITE_AUTO_APPROVE`: 自动批准危险操作
 
 #### 2.5 macOS 沙箱实现 (`skilllite-sandbox/macos.rs`)
 
 **核心技术**: 使用 macOS 的 `sandbox-exec` 和 Seatbelt 配置文件
 
 **执行流程**：
-1. 检查是否禁用沙箱 (`SKILLLITE_NO_SANDBOX` / `SKILLBOX_NO_SANDBOX`)
+1. 检查是否禁用沙箱 (`SKILLLITE_NO_SANDBOX`)
 2. 启动网络代理（如果启用网络且有域名白名单）
 3. 生成 Seatbelt 配置文件（限制文件系统、网络访问）
 4. 使用 `sandbox-exec` 启动子进程
@@ -685,8 +685,8 @@ API_KEY=your_api_key
 MODEL=deepseek-chat
 
 # 沙箱配置
-SKILLLITE_SANDBOX_LEVEL=3     # 1/2/3（兼容 SKILLBOX_SANDBOX_LEVEL）
-SKILLLITE_MAX_MEMORY_MB=256   # 内存限制（兼容 SKILLBOX_*）
+SKILLLITE_SANDBOX_LEVEL=3     # 1/2/3
+SKILLLITE_MAX_MEMORY_MB=256   # 内存限制
 SKILLLITE_TIMEOUT_SECS=30     # 超时时间
 SKILLLITE_AUTO_APPROVE=false  # 自动批准危险操作
 SKILLLITE_NO_SANDBOX=false   # 禁用沙箱

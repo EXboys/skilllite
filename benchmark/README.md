@@ -2,7 +2,7 @@
 
 High-concurrency performance comparison test suite for comparing SkillLite with other sandbox solutions.
 
-> **Note**: SkillLite 二进制位于 `skilllite/` 目录，名称为 `skilllite`。历史曾用名 SkillBox，环境变量仍为 `SKILLBOX_*`。
+> **Note**: SkillLite 二进制位于 `skilllite/` 目录，名称为 `skilllite`。环境变量请使用 `SKILLLITE_*`（旧名 `SKILLBOX_*` 仍被兼容读取）。
 
 ## Test Targets
 
@@ -50,7 +50,7 @@ High-concurrency performance comparison test suite for comparing SkillLite with 
 ### Optional Dependencies (for complete comparison testing)
 
 ```bash
-# Install psutil for SkillBox IPC memory stats (Avg(MB)/Peak(MB) when using --compare-ipc)
+# Install psutil for SkillLite IPC memory stats (Avg(MB)/Peak(MB) when using --compare-ipc)
 pip install -r requirements.txt
 # Or: pip install psutil
 
@@ -117,8 +117,8 @@ Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50
 
 ### [INFO] Logging
 
-- **CMD (SkillLite subprocess)**: Uses `capture_output=True`, skilllite stderr is captured so [INFO] does not appear in terminal; benchmark also passes `SKILLBOX_QUIET=1` to reduce logging and syscall overhead.
-- **IPC (skilllite serve)**: Daemon sets `SKILLBOX_QUIET=1` at startup; `serve_stdio` enforces it, so no [INFO] during runs to avoid affecting performance tests.
+- **CMD (SkillLite subprocess)**: Uses `capture_output=True`, skilllite stderr is captured so [INFO] does not appear in terminal; benchmark also passes `SKILLLITE_QUIET=1` to reduce logging and syscall overhead.
+- **IPC (skilllite serve)**: Daemon sets `SKILLLITE_QUIET=1` at startup; `serve_stdio` enforces it, so no [INFO] during runs to avoid affecting performance tests.
 
 ---
 
@@ -470,5 +470,5 @@ macOS uses built-in sandbox-exec; no additional installation required.
 
 If you need to disable sandbox (not recommended), set the environment variable:
 ```bash
-export SKILLBOX_NO_SANDBOX=1
+export SKILLLITE_NO_SANDBOX=1
 ```

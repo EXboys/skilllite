@@ -224,7 +224,7 @@ def _render_with_pillow(
 ) -> bytes:
     """用 Pillow 绘制图文封面：标题 + 正文摘要 + 标签。高质量图文风格。"""
     # Level 2 沙箱下缩小尺寸以加快生成、避免 120s 超时
-    if os.environ.get("SKILLBOX_SANDBOX") == "1":
+    if os.environ.get("SKILLLITE_SANDBOX", os.environ.get("SKILLBOX_SANDBOX")) == "1":
         w, h = 512, 768
     try:
         from PIL import Image, ImageDraw, ImageFont
@@ -356,7 +356,7 @@ def main():
         cover_title = "小红书笔记"
 
     # 缩略图：优先 Playwright HTML 截图（效果好），失败时回退到 Pillow
-    # 沙箱下需 SKILLBOX_ALLOW_PLAYWRIGHT=1 或 SKILLBOX_SANDBOX_LEVEL=2 才能用 Playwright
+    # 沙箱下需 SKILLLITE_ALLOW_PLAYWRIGHT=1 或 SKILLLITE_SANDBOX_LEVEL=2 才能用 Playwright
     if generate_thumbnail:
         img_bytes = None
         source = None

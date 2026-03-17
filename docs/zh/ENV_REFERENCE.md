@@ -16,9 +16,9 @@
 | `SKILLLITE_API_BASE` | `OPENAI_API_BASE`, `OPENAI_BASE_URL`, `BASE_URL` | LLM API 地址 |
 | `SKILLLITE_API_KEY` | `OPENAI_API_KEY`, `API_KEY` | API 密钥 |
 | `SKILLLITE_MODEL` | `OPENAI_MODEL`, `MODEL` | 模型名称 |
-| `SKILLLITE_AUDIT_LOG` | `SKILLBOX_AUDIT_LOG` | 审计日志路径 |
-| `SKILLLITE_QUIET` | `SKILLBOX_QUIET` | 静默模式 |
-| `SKILLLITE_CACHE_DIR` | `SKILLBOX_CACHE_DIR`, `AGENTSKILL_CACHE_DIR` | 技能环境缓存目录 |
+| `SKILLLITE_AUDIT_LOG` | （旧：`SKILLBOX_AUDIT_LOG`） | 审计日志路径 |
+| `SKILLLITE_QUIET` | （旧：`SKILLBOX_QUIET`） | 静默模式 |
+| `SKILLLITE_CACHE_DIR` | （旧：`SKILLBOX_CACHE_DIR`、`AGENTSKILL_CACHE_DIR`） | 技能环境缓存目录 |
 
 **废弃说明**：`SKILLBOX_*`、`AGENTSKILL_*` 将在后续大版本中移除，请迁移至 `SKILLLITE_*` 对应变量。
 
@@ -74,7 +74,7 @@
 | `SKILLLITE_SKILLS_DIR` | string | - | 同上（别名） |
 | `SKILLLITE_SKILLS_REPO` | string | `EXboys/skilllite` | `skilllite init` 在 `.skills/` 为空时下载 skills 的 GitHub 仓库（如 `owner/repo`），可自定义 |
 | `SKILLLITE_OUTPUT_DIR` | string | `{workspace_root}/output` | 输出目录，用于报告、图片等 |
-| `SKILLBOX_SKILLS_ROOT` | string | 当前工作目录 | 沙箱内 skill 路径的根目录（**废弃**，暂无 SKILLLITE 替代） |
+| （内部） | string | 当前工作目录 | 沙箱内 skill 路径根目录；旧变量 `SKILLBOX_SKILLS_ROOT`（暂无 SKILLLITE 命名） |
 
 ---
 
@@ -83,7 +83,7 @@
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `ALLOW_NETWORK` | bool | `False` | 是否允许 Skill 访问网络 |
-| `SKILLBOX_ALLOW_NETWORK` | bool | - | 同上（沙箱内部使用，**废弃**） |
+| （内部） | bool | - | 同上（沙箱内部；旧 `SKILLBOX_ALLOW_NETWORK`） |
 | `NETWORK_TIMEOUT` | int | `30` | 网络请求超时（秒） |
 
 **使用场景**：使用需要联网的 Skill（如天气、HTTP 请求）时，设置 `ALLOW_NETWORK=True`。
@@ -92,18 +92,16 @@
 
 ## 沙箱与安全 <small>[常用]</small>
 
-沙箱相关变量已**统一走 config 层**（`SandboxEnvConfig::from_env()`）：runner、linux、macos、windows、policy 等均通过 config 读取，兼容 `SKILLLITE_*`（推荐）与 `SKILLBOX_*`（废弃别名）。
+沙箱相关变量**统一走 config 层**（`SandboxEnvConfig::from_env()`）；config 接受 `SKILLLITE_*`（推荐）与旧名 `SKILLBOX_*`。
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLLITE_SANDBOX_LEVEL` | int | `3` | **推荐**。沙箱级别（1/2/3）；兼容 `SKILLBOX_SANDBOX_LEVEL` |
-| `SKILLLITE_NO_SANDBOX` | bool | `false` | 禁用沙箱（不推荐）；兼容 `SKILLBOX_NO_SANDBOX` |
-| `SKILLLITE_ALLOW_PLAYWRIGHT` | bool | `false` | 为使用 Playwright 的 Skill 放宽沙箱；兼容 `SKILLBOX_ALLOW_PLAYWRIGHT` |
+| `SKILLLITE_SANDBOX_LEVEL` | int | `3` | **推荐**。沙箱级别（1/2/3） |
+| `SKILLLITE_NO_SANDBOX` | bool | `false` | 禁用沙箱（不推荐） |
+| `SKILLLITE_ALLOW_PLAYWRIGHT` | bool | `false` | 为使用 Playwright 的 Skill 放宽沙箱 |
 | `ENABLE_SANDBOX` | bool | `true` | 是否启用沙箱 |
-| ~~`SKILLBOX_SANDBOX_LEVEL`~~ | int | `3` | **废弃**，请用 `SKILLLITE_SANDBOX_LEVEL` |
-| ~~`SKILLBOX_ALLOW_PLAYWRIGHT`~~ | bool | `false` | **废弃**，请用 `SKILLLITE_ALLOW_PLAYWRIGHT` |
-| `SKILLLITE_AUTO_APPROVE` | bool | `false` | **推荐**。自动批准 L3 安全提示（不推荐）；兼容 `SKILLBOX_AUTO_APPROVE` |
-| `SKILLLITE_SCRIPT_ARGS` | string | - | 透传给脚本的额外参数；兼容 `SKILLBOX_SCRIPT_ARGS` |
+| `SKILLLITE_AUTO_APPROVE` | bool | `false` | **推荐**。自动批准 L3 安全提示（不推荐） |
+| `SKILLLITE_SCRIPT_ARGS` | string | - | 透传给脚本的额外参数 |
 | `SANDBOX_BUILTIN_TOOLS` | bool | `false` | 在子进程中运行 read_file/write_file 以隔离 |
 | `SKILLLITE_TRUST_BYPASS_CONFIRM` | bool | `false` | 允许 Community/Unknown 信任等级 Skill 无需确认即可执行（仅 CLI/Python；MCP 使用 `confirmed` 参数） |
 
@@ -116,19 +114,19 @@
 | 3 | 扫描 + 确认，确认后等同 L2（默认） |
 
 **使用场景**：
-- 沙箱不可用时：`SKILLLITE_SANDBOX_LEVEL=1`（或 `SKILLBOX_SANDBOX_LEVEL=1` 兼容）
-- Skill 卡住时：`SKILLBOX_DEBUG=1` 查看进度
+- 沙箱不可用时：`SKILLLITE_SANDBOX_LEVEL=1`
+- Skill 卡住时：`SKILLLITE_LOG_LEVEL=debug` 查看进度
 
 ---
 
 ## 资源限制 <small>[高级]</small>
 
-沙箱资源限制**统一走 config**（`SandboxEnvConfig`），兼容 `SKILLLITE_*` 与 `SKILLBOX_*`。
+沙箱资源限制**统一走 config**（`SandboxEnvConfig`）；仍接受旧名 `SKILLBOX_*`。
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLLITE_TIMEOUT_SECS` | int | `30` | **推荐**。沙箱执行超时（秒）；兼容 `SKILLBOX_TIMEOUT_SECS` |
-| `SKILLLITE_MAX_MEMORY_MB` | int | `256` | **推荐**。沙箱最大内存（MB）；兼容 `SKILLBOX_MAX_MEMORY_MB` |
+| `SKILLLITE_TIMEOUT_SECS` | int | `30` | **推荐**。沙箱执行超时（秒） |
+| `SKILLLITE_MAX_MEMORY_MB` | int | `256` | **推荐**。沙箱最大内存（MB） |
 | `EXECUTION_TIMEOUT` | int | `120` | 单次执行超时（秒） |
 | `MAX_MEMORY_MB` | int | `256` | 最大内存（MB） |
 
@@ -220,10 +218,9 @@
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `SKILLLITE_AUDIT_LOG` | string | - | 审计日志路径（确认→执行→命令） |
-| `SKILLBOX_AUDIT_LOG` | string | - | 同上（**废弃**，请改用 `SKILLLITE_AUDIT_LOG`） |
 | `SKILLLITE_SECURITY_EVENTS_LOG` | string | - | 安全事件日志（拦截、scan_high 等） |
-| `SKILLLITE_LOG_LEVEL` | string | `info` | Rust 日志级别（**推荐**）；兼容 `SKILLBOX_LOG_LEVEL`（**废弃**） |
-| `SKILLLITE_LOG_JSON` | bool | `false` | 是否输出 JSON 格式日志；兼容 `SKILLBOX_LOG_JSON`（**废弃**） |
+| `SKILLLITE_LOG_LEVEL` | string | `info` | Rust 日志级别（**推荐**） |
+| `SKILLLITE_LOG_JSON` | bool | `false` | 是否输出 JSON 格式日志 |
 
 ---
 
@@ -239,13 +236,11 @@
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLBOX_DEBUG` | bool | `false` | 设为 `1` 打印沙箱调试信息 |
-| `SKILLBOX_USE_IPC` | bool | 自动 | 是否使用 IPC 模式（通常更快） |
+| `SKILLLITE_DEBUG` | bool | `false` | 设为 `1` 打印沙箱调试信息（旧：`SKILLBOX_DEBUG`） |
+| `SKILLLITE_USE_IPC` | bool | 自动 | 是否使用 IPC 模式（通常更快）；旧：`SKILLBOX_USE_IPC` |
 | `SKILLLITE_PATH` | string | - | skilllite 二进制路径 |
-| `SKILLBOX_BINARY_PATH` | string | - | 同上（**废弃**，请改用 `SKILLLITE_PATH`） |
-| `SKILLBOX_CACHE_DIR` | string | - | 沙箱缓存目录（**废弃**，请改用 `SKILLLITE_CACHE_DIR`） |
-| `SKILLLITE_CACHE_DIR` | string | `{cache}/skilllite/envs` | 技能环境缓存目录（Python venv / Node），`skilllite env clean` 清理此目录；兼容 `SKILLBOX_CACHE_DIR`、`AGENTSKILL_CACHE_DIR`（**废弃**） |
-| `SKILLBOX_IPC_POOL_SIZE` | int | `10` | IPC 连接池大小 |
+| `SKILLLITE_CACHE_DIR` | string | `{cache}/skilllite/envs` | 技能环境缓存目录（Python venv / Node），`skilllite env clean` 清理此目录 |
+| `SKILLLITE_IPC_POOL_SIZE` | int | `10` | IPC 连接池大小（旧：`SKILLBOX_IPC_POOL_SIZE`） |
 | `MCP_SANDBOX_TIMEOUT` | int | `30` | MCP 沙箱超时（秒） |
 
 ---
@@ -279,7 +274,7 @@ EXECUTION_TIMEOUT=300
 ```bash
 SKILLLITE_SANDBOX_LEVEL=1
 # 或
-SKILLBOX_DEBUG=1
+SKILLLITE_LOG_LEVEL=debug
 ```
 
 ### 生产环境审计

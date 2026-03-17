@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# SkillBox Benchmark Runner Script
+# SkillLite Benchmark Runner Script
 # High Concurrency Performance Comparison Test Script
 #
 
@@ -17,7 +17,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  SkillBox High-Concurrency Benchmark${NC}"
+echo -e "${BLUE}  SkillLite High-Concurrency Benchmark${NC}"
 echo -e "${BLUE}========================================${NC}"
 
 # Default parameters
@@ -73,13 +73,13 @@ while [[ $# -gt 0 ]]; do
             echo "  -c, --concurrency NUM  Concurrency level (default: 10)"
             echo "  --cold-start           Run cold start benchmark"
             echo "  --skip-docker          Skip Docker tests"
-            echo "  -l, --sandbox-level N  SkillBox sandbox level (1, 2, or 3)"
+            echo "  -l, --sandbox-level N  SkillLite sandbox level (1, 2, or 3)"
             echo "                         1 = No sandbox (direct execution)"
             echo "                         2 = Sandbox isolation only"
             echo "                         3 = Sandbox + static code scan (default)"
-            echo "                         Can also be set via SKILLBOX_SANDBOX_LEVEL env var"
+            echo "                         Can also be set via SKILLLITE_SANDBOX_LEVEL env var"
             echo "  --compare-levels       Compare performance across all sandbox levels"
-            echo "  --compare-ipc          Include SkillBox IPC vs subprocess comparison"
+            echo "  --compare-ipc          Include SkillLite IPC vs subprocess comparison"
             echo "  -o, --output FILE      Output JSON file"
             echo "  -h, --help             Show this help"
             echo ""
@@ -88,7 +88,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 --cold-start -n 100             # With cold start test"
             echo "  $0 -l 2                            # Test with sandbox level 2"
             echo "  $0 --compare-levels                # Compare all sandbox levels"
-            echo "  SKILLBOX_SANDBOX_LEVEL=1 $0        # Use env var to set level"
+            echo "  SKILLLITE_SANDBOX_LEVEL=1 $0       # Use env var to set level"
             echo "  $0 -o results.json                 # Save results to file"
             exit 0
             ;;
@@ -99,20 +99,20 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check if SkillBox is compiled
-SKILLBOX_BIN=""
+# Check if SkillLite is compiled
+SKILLLITE_BIN=""
 if command -v skilllite &> /dev/null; then
-    SKILLBOX_BIN=$(which skilllite)
+    SKILLLITE_BIN=$(which skilllite)
 elif [ -f "$PROJECT_ROOT/target/release/skilllite" ]; then
-    SKILLBOX_BIN="$PROJECT_ROOT/target/release/skilllite"
+    SKILLLITE_BIN="$PROJECT_ROOT/target/release/skilllite"
 else
-    echo -e "${YELLOW}SkillBox binary not found. Building...${NC}"
+    echo -e "${YELLOW}SkillLite binary not found. Building...${NC}"
     cd "$PROJECT_ROOT/skilllite"
     cargo build --release
-    SKILLBOX_BIN="$PROJECT_ROOT/target/release/skilllite"
+    SKILLLITE_BIN="$PROJECT_ROOT/target/release/skilllite"
 fi
 
-echo -e "${GREEN}SkillBox binary: $SKILLBOX_BIN${NC}"
+echo -e "${GREEN}SkillLite binary: $SKILLLITE_BIN${NC}"
 
 # Check Python
 if ! command -v python3 &> /dev/null; then
@@ -148,7 +148,7 @@ if [ "$COMPARE_IPC" = true ]; then
 fi
 
 # Suppress skilllite [INFO] logs when running benchmark (IPC daemon mode)
-export SKILLBOX_QUIET=1
+export SKILLLITE_QUIET=1
 
 # Run benchmark
 echo -e "${BLUE}Running benchmark with: $CMD_ARGS${NC}"
