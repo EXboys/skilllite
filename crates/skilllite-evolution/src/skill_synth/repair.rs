@@ -99,7 +99,7 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
         } else {
             format!(
                 "脚本执行通过，但 {}",
-                doc_error.expect("doc_error is Some when exec_ok and we did not early return")
+                doc_error.unwrap_or_else(|| "文档校验未通过".to_string())
             )
         };
 

@@ -71,7 +71,7 @@ lazy_static::lazy_static! {
 pub fn track_skill_execution(skill_name: &str, success: bool) {
     let mut stats = GLOBAL_USAGE_STATS
         .lock()
-        .expect("global usage stats mutex poisoned");
+        .unwrap_or_else(|e| e.into_inner());
     stats.update_usage(skill_name, success);
     let data_dir = skilllite_core::config::PathsConfig::from_env().data_dir;
     if let Err(e) = stats.save(&data_dir) {

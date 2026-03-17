@@ -106,7 +106,13 @@ pub(super) async fn refine_loop<L: EvolutionLlm>(
             }
         };
 
-        let fixed_script = parsed.fixed_script.as_ref().unwrap();
+        let fixed_script = match parsed.fixed_script.as_ref() {
+            Some(s) => s,
+            None => {
+                tracing::warn!("Refinement parse returned Script fix_type but no fixed_script");
+                return Ok(None);
+            }
+        };
         if fixed_script.lines().count() > 150 {
             tracing::warn!(
                 "Refined script exceeds 150 lines (round {}), asking for shorter fix",
