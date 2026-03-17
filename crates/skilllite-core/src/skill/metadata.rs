@@ -669,12 +669,12 @@ allowed-tools: Bash(agent-browser:*)
         assert!(metadata
             .description
             .as_ref()
-            .unwrap()
+            .expect("test skill has description")
             .contains("Browser automation CLI"));
         assert!(metadata
             .description
             .as_ref()
-            .unwrap()
+            .expect("test skill has description")
             .contains("Requires Node.js"));
     }
 
@@ -889,10 +889,10 @@ metadata:
 
     #[test]
     fn test_entry_point_from_front_matter() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp dir");
         let skill_dir = dir.path();
-        std::fs::create_dir_all(skill_dir.join("scripts")).unwrap();
-        std::fs::write(skill_dir.join("scripts/entry.py"), "").unwrap();
+        std::fs::create_dir_all(skill_dir.join("scripts")).expect("create scripts");
+        std::fs::write(skill_dir.join("scripts/entry.py"), "").expect("write entry.py");
         let content = r#"---
 name: my-skill
 entry_point: scripts/entry.py
@@ -900,23 +900,23 @@ entry_point: scripts/entry.py
 
 # Doc
 "#;
-        std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
-        let meta = parse_skill_metadata(skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), content).expect("write SKILL.md");
+        let meta = parse_skill_metadata(skill_dir).expect("parse skill metadata");
         assert_eq!(meta.entry_point, "scripts/entry.py");
     }
 
     #[test]
     fn test_entry_point_no_explicit_uses_directory_convention() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("temp dir");
         let skill_dir = dir.path();
-        std::fs::create_dir_all(skill_dir.join("scripts")).unwrap();
-        std::fs::write(skill_dir.join("scripts/main.py"), "").unwrap();
+        std::fs::create_dir_all(skill_dir.join("scripts")).expect("create scripts");
+        std::fs::write(skill_dir.join("scripts/main.py"), "").expect("write main.py");
         let content = r#"---
 name: my-skill
 ---
 "#;
-        std::fs::write(skill_dir.join("SKILL.md"), content).unwrap();
-        let meta = parse_skill_metadata(skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), content).expect("write SKILL.md");
+        let meta = parse_skill_metadata(skill_dir).expect("parse skill metadata");
         assert_eq!(meta.entry_point, "scripts/main.py");
     }
 }

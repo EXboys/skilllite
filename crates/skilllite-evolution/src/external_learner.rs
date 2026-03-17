@@ -827,14 +827,16 @@ mod tests {
         let input = "```json\n[{\"id\": \"ext_test\"}]\n```";
         let result = extract_json_array(input);
         assert!(result.contains("ext_test"));
-        let arr: Vec<serde_json::Value> = serde_json::from_str(&result).unwrap();
+        let arr: Vec<serde_json::Value> = serde_json::from_str(&result)
+            .expect("extract_json_array output should be valid JSON");
         assert_eq!(arr.len(), 1);
     }
 
     #[test]
     fn test_parse_external_rule_response_valid() {
         let input = r#"[{"id":"ext_prefer_logging","priority":50,"keywords":["log","debug"],"context_keywords":[],"tool_hint":null,"instruction":"Always add structured logging before running commands."}]"#;
-        let rules = parse_external_rule_response(input).unwrap();
+        let rules = parse_external_rule_response(input)
+            .expect("valid external rule JSON should parse");
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].id, "ext_prefer_logging");
         assert_eq!(rules[0].origin, "external");
@@ -846,7 +848,8 @@ mod tests {
     fn test_parse_external_rule_response_bad_id_rejected() {
         // Rule ID doesn't start with ext_ — should be rejected
         let input = r#"[{"id":"bad_rule","priority":50,"keywords":["log"],"context_keywords":[],"tool_hint":null,"instruction":"Some instruction."}]"#;
-        let rules = parse_external_rule_response(input).unwrap();
+        let rules = parse_external_rule_response(input)
+            .expect("parse should succeed (empty rules for bad id)");
         assert!(rules.is_empty(), "non-ext_ id should be rejected");
     }
 
@@ -872,15 +875,16 @@ mod tests {
     fn test_should_run_env_disabled_by_default() {
         // Without SKILLLITE_EXTERNAL_LEARNING=1, should return false
         std::env::remove_var("SKILLLITE_EXTERNAL_LEARNING");
-        let conn = Connection::open_in_memory().unwrap();
-        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
-        feedback::ensure_evolution_tables(&conn).unwrap();
+        let conn = Connection::open_in_memory().expect("in-memory DB should open");
+        conn.execute_batch("PRAGMA foreign_keys=ON;")
+            .expect("PRAGMA should succeed");
+        feedback::ensure_evolution_tables(&conn).expect("tables should be created");
         assert!(!should_run_external_learning(&conn));
     }
 
     #[test]
     fn test_merge_external_rules_no_duplicates() {
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("temp dir should be created");
         let chat_root = tmp.path();
         seed::ensure_seed_data(chat_root);
 
@@ -899,12 +903,14 @@ mod tests {
         };
 
         // First merge: should add the rule
-        let changes1 = merge_external_rules(chat_root, vec![new_rule.clone()]).unwrap();
+        let changes1 = merge_external_rules(chat_root, vec![new_rule.clone()])
+            .expect("first merge should succeed");
         assert_eq!(changes1.len(), 1);
         assert_eq!(changes1[0].0, "external_rule_added");
 
         // Second merge: duplicate — should not add again
-        let changes2 = merge_external_rules(chat_root, vec![new_rule]).unwrap();
+        let changes2 = merge_external_rules(chat_root, vec![new_rule])
+            .expect("second merge should succeed (no new rules)");
         assert!(
             changes2.is_empty(),
             "duplicate rule should not be added again"

@@ -382,11 +382,16 @@ mod tests {
         })
         .to_string();
 
-        let result = parse_refinement_response(&json).unwrap();
+        let result = parse_refinement_response(&json)
+            .expect("valid refinement JSON should parse");
         assert!(result.is_some());
-        let refined = result.unwrap();
+        let refined = result.expect("test has fix_type script");
         assert_eq!(refined.fix_type, FixType::Script);
-        assert!(refined.fixed_script.as_ref().unwrap().contains("fixed"));
+        assert!(refined
+            .fixed_script
+            .as_ref()
+            .expect("test sets fixed_script")
+            .contains("fixed"));
         assert_eq!(refined.fix_summary, "Removed unsafe eval call");
     }
 
@@ -402,9 +407,10 @@ mod tests {
         })
         .to_string();
 
-        let result = parse_refinement_response(&json).unwrap();
+        let result = parse_refinement_response(&json)
+            .expect("valid test_input refinement should parse");
         assert!(result.is_some());
-        let refined = result.unwrap();
+        let refined = result.expect("test has fix_type test_input");
         assert_eq!(refined.fix_type, FixType::TestInput);
         assert_eq!(
             refined.fix_test_input.as_deref(),
@@ -416,9 +422,10 @@ mod tests {
     fn test_parse_refinement_unquoted_keys() {
         let json =
             r##"{fix_type: "script", fixed_script: "a", fix_summary: "b", skip_reason: null}"##;
-        let result = parse_refinement_response(json).unwrap();
+        let result = parse_refinement_response(json)
+            .expect("unquoted keys should be repaired");
         assert!(result.is_some(), "repair should fix unquoted keys");
-        let refined = result.unwrap();
+        let refined = result.expect("repair yields refined");
         assert_eq!(refined.fixed_script.as_deref(), Some("a"));
         assert_eq!(refined.fix_summary, "b");
     }
@@ -431,7 +438,8 @@ mod tests {
             "skip_reason": "CLI 型技能，需 argparse 参数"
         })
         .to_string();
-        let result = parse_refinement_response(&json).unwrap();
+        let result = parse_refinement_response(&json)
+            .expect("unfixable JSON should parse (returns None)");
         assert!(result.is_none());
     }
 
@@ -450,9 +458,10 @@ mod tests {
         })
         .to_string();
 
-        let result = parse_skill_generation_response(&json).unwrap();
+        let result = parse_skill_generation_response(&json)
+            .expect("valid skill generation JSON should parse");
         assert!(result.is_some());
-        let skill = result.unwrap();
+        let skill = result.expect("test has skill");
         assert_eq!(skill.name, "daily-report");
         assert!(!skill.script_content.is_empty());
     }
@@ -461,7 +470,8 @@ mod tests {
     fn test_parse_skill_generation_skipped() {
         let json =
             serde_json::json!({"skill": null, "skip_reason": "no repeated pattern"}).to_string();
-        let result = parse_skill_generation_response(&json).unwrap();
+        let result = parse_skill_generation_response(&json)
+            .expect("skipped skill JSON should parse (returns None)");
         assert!(result.is_none());
     }
 
@@ -473,9 +483,10 @@ The test input was `{}` (empty JSON object).
 The script expects `base` and `exponent` parameters like {"base": 2}.
 </think>
 {"fix_summary": "补充测试输入", "fix_test_input": "{\"base\": 2, \"exponent\": 10}", "fixed_script": null, "fix_skill_md": null}"#;
-        let result = parse_refinement_response(content).unwrap();
+        let result = parse_refinement_response(content)
+            .expect("content with think block should parse");
         assert!(result.is_some(), "should parse JSON after <think> block");
-        let refined = result.unwrap();
+        let refined = result.expect("test has refinement");
         assert_eq!(
             refined.fix_test_input.as_deref(),
             Some("{\"base\": 2, \"exponent\": 10}")
@@ -485,12 +496,13 @@ The script expects `base` and `exponent` parameters like {"base": 2}.
     #[test]
     fn test_parse_refinement_think_block_with_code_fence() {
         let content = "<think>\nAnalyzing the issue...\n</think>\n```json\n{\"fix_summary\": \"fix\", \"fix_test_input\": \"{\\\"start\\\": 1, \\\"end\\\": 10}\"}\n```";
-        let result = parse_refinement_response(content).unwrap();
+        let result = parse_refinement_response(content)
+            .expect("content with think block and code fence should parse");
         assert!(
             result.is_some(),
             "should parse JSON in code fence after <think>"
         );
-        let refined = result.unwrap();
+        let refined = result.expect("test has refinement");
         assert!(refined.fix_test_input.is_some());
     }
 
@@ -553,7 +565,8 @@ The script expects `base` and `exponent` parameters like {"base": 2}.
             "skip_reason": null
         })
         .to_string();
-        let result = parse_skill_generation_response(&json).unwrap();
+        let result = parse_skill_generation_response(&json)
+            .expect("long script JSON should parse (returns None)");
         assert!(result.is_none(), "should reject scripts > 150 lines");
     }
 }
