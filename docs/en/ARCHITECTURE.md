@@ -1,6 +1,8 @@
 # SkillLite Project Architecture
 
 > **Note**: This document is synced to the v0.1.11 multi-crate architecture. Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~600 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`.
+>
+> **Entry points and domains**: For a one-page map of CLI / Python / MCP / Desktop / Swarm (what they are, which crates they use, one-line use case), see [Entry Points and Capability Domains](./ENTRYPOINTS-AND-DOMAINS.md). (中文版：[入口与能力域一览](../zh/ENTRYPOINTS-AND-DOMAINS.md))
 
 ## Overview
 

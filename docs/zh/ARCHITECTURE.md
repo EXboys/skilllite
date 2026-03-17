@@ -1,6 +1,8 @@
 # SkillLite 项目架构文档
 
 > **说明**：本文档已同步至 v0.1.11 多 crate 架构。Rust 采用 Cargo workspace，各模块拆分为独立 crate；Python SDK 为薄桥接层（~600 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`。
+>
+> **入口与能力域**：新人可先看 **[入口与能力域一览](./ENTRYPOINTS-AND-DOMAINS.md)**，一页理清 CLI / Python / MCP / Desktop / Swarm 各对应谁、依赖哪些 crate、适用场景。
 
 ## 📋 项目概述
 
