@@ -791,12 +791,27 @@ pub(crate) fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> std::path::P
     } else {
         "skilllite"
     };
+
+    // 1. Tauri resource_dir (works in production bundles)
     if let Ok(res_dir) = app.path().resource_dir() {
         let bundled = res_dir.join(exe_name);
         if bundled.exists() {
+            eprintln!("[skilllite-bridge] using bundled binary: {}", bundled.display());
             return bundled;
         }
     }
+
+    // 2. ~/.skilllite/bin (where prebuild installs for dev mode)
+    if let Some(home) = dirs::home_dir() {
+        let dev_bin = home.join(".skilllite").join("bin").join(exe_name);
+        if dev_bin.exists() {
+            eprintln!("[skilllite-bridge] using ~/.skilllite/bin binary: {}", dev_bin.display());
+            return dev_bin;
+        }
+    }
+
+    // 3. Fallback: rely on PATH
+    eprintln!("[skilllite-bridge] falling back to PATH lookup for '{}'", exe_name);
     std::path::PathBuf::from(exe_name)
 }
 
@@ -942,4 +957,78 @@ pub fn repair_skills(
         return Err(combined);
     }
     Ok(combined)
+}
+
+// ─── Onboarding: init workspace, probe Ollama ─────────────────────────────────
+
+/// Run `skilllite init` in the given directory. Creates .skills and example content.
+pub fn init_workspace(dir: &str, skilllite_path: &std::path::Path) -> Result<(), String> {
+    let path = std::path::Path::new(dir);
+    if !path.is_dir() {
+        return Err("目录不存在".to_string());
+    }
+    let mut cmd = std::process::Command::new(skilllite_path);
+    cmd.arg("init").current_dir(path);
+    let output = cmd
+        .output()
+        .map_err(|e| format!("执行 skilllite init 失败: {}", e))?;
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        return Err(err.trim().to_string());
+    }
+    Ok(())
+}
+
+/// Result of probing local Ollama (localhost:11434).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OllamaProbeResult {
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+/// Probe Ollama at localhost:11434; returns availability and first model name if any.
+pub fn probe_ollama() -> OllamaProbeResult {
+    let body = match ollama_get_tags() {
+        Ok(b) => b,
+        Err(_) => return OllamaProbeResult { available: false, model: None },
+    };
+    let json: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(j) => j,
+        Err(_) => return OllamaProbeResult { available: false, model: None },
+    };
+    let models = match json.get("models").and_then(|m| m.as_array()) {
+        Some(a) if !a.is_empty() => a,
+        _ => return OllamaProbeResult { available: true, model: None },
+    };
+    let first = models
+        .iter()
+        .find_map(|m| m.get("name").and_then(|n| n.as_str()))
+        .map(|s| s.to_string());
+    OllamaProbeResult { available: true, model: first }
+}
+
+fn ollama_get_tags() -> Result<String, ()> {
+    use std::io::{Read, Write};
+    use std::net::{SocketAddr, TcpStream};
+    use std::time::Duration;
+
+    let addr: SocketAddr = ([127, 0, 0, 1], 11434).into();
+    let mut stream =
+        TcpStream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|_| ())?;
+    stream.set_read_timeout(Some(Duration::from_secs(3))).map_err(|_| ())?;
+    stream.set_write_timeout(Some(Duration::from_secs(2))).map_err(|_| ())?;
+
+    let req = b"GET /api/tags HTTP/1.1\r\nHost: localhost:11434\r\nConnection: close\r\n\r\n";
+    stream.write_all(req).map_err(|_| ())?;
+
+    let mut buf = Vec::new();
+    stream.read_to_end(&mut buf).map_err(|_| ())?;
+    let s = String::from_utf8_lossy(&buf);
+    let body = s
+        .split("\r\n\r\n")
+        .nth(1)
+        .unwrap_or("")
+        .trim();
+    Ok(body.to_string())
 }

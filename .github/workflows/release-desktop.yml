@@ -1,0 +1,122 @@
+# 本地安装包（P0-1）：dmg / msi / AppImage 构建并上传至 Release
+# 与 release.yml 同 tag 触发；Release 由 release.yml 创建后，本 workflow 将桌面端安装包追加到同一 Release
+name: Build and Release Desktop (dmg/msi/AppImage)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-desktop:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin-arm64
+          - os: windows-latest
+            platform: windows-x64
+          - os: ubuntu-22.04
+            platform: linux-x64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: crates/skilllite-assistant/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-desktop-cargo-${{ hashFiles('Cargo.lock', 'crates/skilllite-assistant/src-tauri/Cargo.toml') }}
+
+      - name: Install Linux dependencies (Tauri 2)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install npm dependencies
+        working-directory: crates/skilllite-assistant
+        run: npm ci
+
+      - name: Build Tauri app (skilllite binary bundled via beforeBuildCommand)
+        working-directory: crates/skilllite-assistant
+        run: npm run tauri:build
+        env:
+          CI: true
+
+      - name: Upload macOS artifact (dmg)
+        if: matrix.os == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: skilllite-assistant-darwin-arm64
+          path: crates/skilllite-assistant/src-tauri/target/release/bundle/dmg/*.dmg
+
+      - name: Upload Windows artifact (msi)
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: skilllite-assistant-windows-x64
+          path: crates/skilllite-assistant/src-tauri/target/release/bundle/msi/*.msi
+
+      - name: Upload Linux artifact (AppImage)
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: skilllite-assistant-linux-x64
+          path: crates/skilllite-assistant/src-tauri/target/release/bundle/appimage/*.AppImage
+
+  upload-to-release:
+    name: Upload desktop assets to Release
+    needs: build-desktop
+    runs-on: ubuntu-latest
+    # 仅 tag 触发时上传；允许部分平台成功（fail_on_unmatched_files: false）
+    if: always() && startsWith(github.ref, 'refs/tags/') && !cancelled()
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./desktop-artifacts
+
+      - name: List artifacts
+        run: find ./desktop-artifacts -type f
+
+      - name: Upload to existing Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            desktop-artifacts/skilllite-assistant-darwin-arm64/*.dmg
+            desktop-artifacts/skilllite-assistant-windows-x64/*.msi
+            desktop-artifacts/skilllite-assistant-linux-x64/*.AppImage
+          fail_on_unmatched_files: false

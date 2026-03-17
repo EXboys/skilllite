@@ -68,10 +68,13 @@ pub fn run_clear_session(session_key: &str, workspace: &str) -> Result<()> {
     skilllite_core::config::ensure_default_output_dir();
 
     let loaded_skills = skills::load_skills(&[]);
-    let mut session = ChatSession::new(config, session_key, loaded_skills);
+    let session_key_owned = session_key.to_string();
 
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
-    rt.block_on(async { session.clear_full().await })?;
+    rt.block_on(async {
+        let mut session = ChatSession::new_for_clear(config, &session_key_owned, loaded_skills);
+        session.clear_full().await
+    })?;
 
     Ok(())
 }

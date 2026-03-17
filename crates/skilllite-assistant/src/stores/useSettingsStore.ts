@@ -6,6 +6,8 @@ export interface Settings {
   model: string;
   workspace: string;
   apiBase: string;
+  /** 是否已完成首次启动引导；仅当明确为 false 时显示 Onboarding（新安装为 false，旧数据无此字段视为已完成） */
+  onboardingCompleted?: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -13,6 +15,7 @@ const defaultSettings: Settings = {
   model: "gpt-4o",
   workspace: ".",
   apiBase: "",
+  onboardingCompleted: false,
 };
 
 export const useSettingsStore = create<{

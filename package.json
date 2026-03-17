@@ -1,0 +1,9 @@
+{
+  "name": "skilllite-monorepo",
+  "private": true,
+  "description": "Root package for npm scripts; desktop app lives in crates/skilllite-assistant",
+  "scripts": {
+    "assistant:dev": "npm run tauri dev --prefix crates/skilllite-assistant",
+    "assistant:build": "npm run tauri:build --prefix crates/skilllite-assistant"
+  }
+}

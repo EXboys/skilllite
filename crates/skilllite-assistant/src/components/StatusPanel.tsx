@@ -224,7 +224,23 @@ const openDir = (module: string) => () => {
   });
 };
 
-const SKILL_LIST_MAX_HEIGHT = 180;
+const SKILL_LIST_MAX_HEIGHT = 200;
+
+/** 将 skill 名称转为短标签（如 xiaohongshu-writer → 小红书） */
+function skillDisplayName(name: string): string {
+  const map: Record<string, string> = {
+    "xiaohongshu-writer": "小红书",
+    "check-weather-forecast": "天气预报",
+    "data-analysis": "数据分析",
+    "http-request": "HTTP 请求",
+    "nodejs-test": "Node 测试",
+    "skill-creator": "技能创建",
+    "text-processor": "文本处理",
+    weather: "天气",
+    calculator: "计算器",
+  };
+  return map[name] || name;
+}
 
 function SkillRepairSection() {
   const [skillNames, setSkillNames] = useState<string[]>([]);
@@ -232,6 +248,7 @@ function SkillRepairSection() {
   const [loadingList, setLoadingList] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [repairResult, setRepairResult] = useState<string | null>(null);
+  const [resultIsError, setResultIsError] = useState(false);
 
   const loadSkills = useCallback(async () => {
     setLoadingList(true);
@@ -267,15 +284,17 @@ function SkillRepairSection() {
   const runRepair = async () => {
     setRepairing(true);
     setRepairResult(null);
+    setResultIsError(false);
     try {
       const toRepair = selected.size > 0 ? Array.from(selected) : [];
       const out = await invoke<string>("skilllite_repair_skills", {
         workspace: null,
         skillNames: toRepair,
       });
-      setRepairResult(out || "完成");
+      setRepairResult(out || "修复完成");
     } catch (e) {
       setRepairResult(String(e));
+      setResultIsError(true);
     } finally {
       setRepairing(false);
     }
@@ -283,69 +302,115 @@ function SkillRepairSection() {
 
   return (
     <section className="mb-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="font-medium text-ink dark:text-ink-dark">技能修复</span>
-        <div className="flex items-center gap-1">
+      {/* 标题行：技能 + 数量 + 操作 */}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="font-medium text-ink dark:text-ink-dark shrink-0">技能</span>
+        {skillNames.length > 0 && (
+          <span className="text-xs text-ink-mute dark:text-ink-dark-mute shrink-0">
+            {skillNames.length} 个
+          </span>
+        )}
+        <div className="flex items-center gap-0.5 min-w-0">
           <button
             type="button"
             onClick={loadSkills}
             disabled={loadingList}
-            className="text-xs px-2 py-1 rounded text-ink-mute hover:text-ink dark:text-ink-dark-mute dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50"
+            className="p-1.5 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
+            title="刷新列表"
+            aria-label="刷新"
           >
-            刷新
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loadingList ? "animate-spin" : ""}>
+              <path d="M21 2v6h-6" />
+              <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+              <path d="M3 22v-6h6" />
+              <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+            </svg>
           </button>
           <button
             type="button"
             onClick={selectAll}
-            className="text-xs px-2 py-1 rounded text-ink-mute hover:text-ink dark:text-ink-dark-mute dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5"
+            disabled={skillNames.length === 0}
+            className="text-xs px-1.5 py-1 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
+            title="全选"
           >
             全选
           </button>
           <button
             type="button"
             onClick={selectNone}
-            className="text-xs px-2 py-1 rounded text-ink-mute hover:text-ink dark:text-ink-dark-mute dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5"
+            className="text-xs px-1.5 py-1 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
+            title="取消选择"
           >
             取消
           </button>
         </div>
       </div>
+
+      {/* 技能列表：卡片式 */}
       <div
-        className="space-y-1 mb-2 overflow-y-auto"
+        className="rounded-lg border border-border dark:border-border-dark bg-gray-50/50 dark:bg-surface-dark/50 overflow-y-auto mb-3"
         style={{ maxHeight: SKILL_LIST_MAX_HEIGHT }}
       >
         {loadingList ? (
-          <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
+          <div className="p-4 flex items-center justify-center gap-2 text-xs text-ink-mute dark:text-ink-dark-mute">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin shrink-0">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+            </svg>
+            加载中…
+          </div>
         ) : skillNames.length === 0 ? (
-          <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">未找到技能（需 .skills 或 skills 目录）</p>
+          <div className="p-4 text-xs text-ink-mute dark:text-ink-dark-mute text-center leading-relaxed">
+            未找到技能
+            <br />
+            <span className="text-[11px]">需在工作区有 .skills 或 skills 目录</span>
+          </div>
         ) : (
-          skillNames.map((name) => (
-            <label key={name} className="flex items-center gap-2 text-xs cursor-pointer hover:text-accent dark:hover:text-accent">
-              <input
-                type="checkbox"
-                checked={selected.has(name)}
-                onChange={() => toggleOne(name)}
-                className="rounded border-border dark:border-border-dark"
-              />
-              <span className="truncate">{name}</span>
-            </label>
-          ))
+          <ul className="p-1.5 space-y-0.5">
+            {skillNames.map((name) => (
+              <li key={name}>
+                <label
+                  title={name}
+                  className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors ${
+                    selected.has(name)
+                      ? "bg-accent/10 dark:bg-accent/20 text-accent dark:text-accent"
+                      : "hover:bg-ink/5 dark:hover:bg-white/5 text-ink dark:text-ink-dark"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(name)}
+                    onChange={() => toggleOne(name)}
+                    className="rounded border-border dark:border-border-dark text-accent focus:ring-accent/40 shrink-0"
+                  />
+                  <span className="truncate text-xs font-medium">{skillDisplayName(name)}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={runRepair}
-          disabled={repairing || skillNames.length === 0}
-          className="text-xs px-3 py-1.5 rounded bg-accent text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {repairing ? "修复中…" : selected.size > 0 ? `修复选中 (${selected.size})` : "修复全部失败技能"}
-        </button>
-      </div>
+
+      {/* 修复按钮 */}
+      <button
+        type="button"
+        onClick={runRepair}
+        disabled={repairing || skillNames.length === 0}
+        className="w-full text-sm px-3 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {repairing ? "修复中…" : selected.size > 0 ? `修复选中 (${selected.size})` : "修复全部失败技能"}
+      </button>
+
+      {/* 修复结果 */}
       {repairResult !== null && (
-        <pre className="mt-2 p-2 rounded bg-ink/5 dark:bg-white/5 text-xs text-ink-mute dark:text-ink-dark-mute whitespace-pre-wrap max-h-32 overflow-auto">
+        <div
+          className={`mt-2 p-2.5 rounded-lg text-xs whitespace-pre-wrap max-h-28 overflow-auto ${
+            resultIsError
+              ? "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/50"
+              : "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-800/50"
+          }`}
+        >
           {repairResult}
-        </pre>
+        </div>
       )}
     </section>
   );

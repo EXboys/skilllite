@@ -40,25 +40,29 @@ pub struct ChatSession {
 }
 
 impl ChatSession {
+    /// Full constructor: starts periodic evolution timer. Use for long-lived chat.
     pub fn new(config: AgentConfig, session_key: &str, skills: Vec<LoadedSkill>) -> Self {
-        // Data storage goes to ~/.skilllite/chat/ (matching Python SDK layout).
-        // ~/.skilllite/ is the root for all skilllite data:
-        //   bin/          — binary
-        //   chat/         — sessions, transcripts, plans, memory, output
+        let mut session = Self::new_inner(config, session_key, skills);
+        session.start_periodic_evolution_timer();
+        session
+    }
+
+    /// For one-off clear-session: no Tokio spawn. Avoids "no reactor running" when run from sync CLI.
+    pub fn new_for_clear(config: AgentConfig, session_key: &str, skills: Vec<LoadedSkill>) -> Self {
+        Self::new_inner(config, session_key, skills)
+    }
+
+    fn new_inner(config: AgentConfig, session_key: &str, skills: Vec<LoadedSkill>) -> Self {
         let data_root = skilllite_executor::chat_root();
-        // EVO-2: Ensure seed prompt/rules data exists on disk.
         skilllite_evolution::seed::ensure_seed_data(&data_root);
-        let mut session = Self {
+        Self {
             config,
             session_key: session_key.to_string(),
             session_id: None,
             data_root,
             skills,
             periodic_evolution_handle: None,
-        };
-        // A9: Start periodic evolution timer (runs every 30 min even when user is active)
-        session.start_periodic_evolution_timer();
-        session
+        }
     }
 
     /// Ensure session and transcript exist, return session_id.
@@ -328,19 +332,25 @@ impl ChatSession {
         let api_base = self.config.api_base.clone();
         let api_key = self.config.api_key.clone();
         let model = self.config.model.clone();
-        self.periodic_evolution_handle = Some(spawn_periodic_evolution(
+        if let Some(handle) = spawn_periodic_evolution(
             data_root,
             workspace,
             api_base,
             api_key,
             model,
             interval_secs,
-        ));
+        ) {
+            self.periodic_evolution_handle = Some(handle);
+        }
     }
 
     /// A9: If unprocessed decisions >= threshold, spawn evolution (runs even when user is active).
+    /// No-op when not inside a Tokio runtime.
     fn maybe_trigger_evolution_by_decision_count(&self) {
         if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
+            return;
+        }
+        if tokio::runtime::Handle::try_current().is_err() {
             return;
         }
         let threshold: i64 = std::env::var(evo_env_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
@@ -364,7 +374,7 @@ impl ChatSession {
             let api_base = self.config.api_base.clone();
             let api_key = self.config.api_key.clone();
             let model = self.config.model.clone();
-            spawn_evolution_once(data_root, workspace, api_base, api_key, model);
+            let _ = spawn_evolution_once(data_root, workspace, api_base, api_key, model);
         }
     }
 
@@ -865,6 +875,7 @@ async fn run_evolution_and_emit_summary(
 }
 
 /// A9: Periodic evolution trigger — runs every N seconds, even when user is active.
+/// Returns None when not inside a Tokio runtime (e.g. clear-session CLI), so no panic.
 pub fn spawn_periodic_evolution(
     data_root: PathBuf,
     workspace: String,
@@ -872,8 +883,9 @@ pub fn spawn_periodic_evolution(
     api_key: String,
     model: String,
     interval_secs: u64,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
+) -> Option<tokio::task::JoinHandle<()>> {
+    let _handle = tokio::runtime::Handle::try_current().ok()?;
+    Some(_handle.spawn(async move {
         if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
             tracing::debug!("Evolution disabled, skipping periodic trigger");
             return;
@@ -894,25 +906,27 @@ pub fn spawn_periodic_evolution(
             )
             .await;
         }
-    })
+    }))
 }
 
 /// A9: Decision-count trigger — spawn evolution once when threshold is met.
+/// No-op when not inside a Tokio runtime (returns None).
 pub fn spawn_evolution_once(
     data_root: PathBuf,
     workspace: String,
     api_base: String,
     api_key: String,
     model: String,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
+) -> Option<tokio::task::JoinHandle<()>> {
+    let handle = tokio::runtime::Handle::try_current().ok()?;
+    Some(handle.spawn(async move {
         if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
             return;
         }
         tracing::debug!("Decision-count evolution trigger fired");
         run_evolution_and_emit_summary(&data_root, workspace.as_str(), &api_base, &api_key, &model)
             .await;
-    })
+    }))
 }
 
 /// Shutdown hook: flush metrics, no LLM calls. Called before process exit.

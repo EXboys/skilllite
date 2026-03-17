@@ -2,10 +2,12 @@
 
 Tauri 2 + React 18 + TypeScript + Vite 桌面应用脚手架。
 
+**所有 npm 命令必须在当前目录（`crates/skilllite-assistant`）下执行**，仓库根目录没有 `package.json`。
+
 ## 开发
 
 ```bash
-# 在 crates/skilllite-assistant 目录下
+cd crates/skilllite-assistant   # 若在仓库根目录，先执行这句
 npm install
 npm run tauri dev
 ```
@@ -13,9 +15,9 @@ npm run tauri dev
 ## 构建
 
 ```bash
-npm run tauri build
-# 若 DMG 打包失败，可改用（跳过 AppleScript UI，避免超时）：
+cd crates/skilllite-assistant   # 若在仓库根目录，先执行这句
 npm run tauri:build
+# 或：npm run tauri build（DMG 可能需更长时间）
 ```
 
 构建时会自动执行 `scripts/prebuild-skilllite.sh`，安装完整版 skilllite（含 `memory_vector`）到 `~/.skilllite/bin/`：

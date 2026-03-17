@@ -4,13 +4,17 @@ import { useGlobalShortcut } from "../hooks/useGlobalShortcut";
 import ChatView from "./ChatView";
 import StatusPanel from "./StatusPanel";
 import SettingsModal from "./SettingsModal";
+import OnboardingModal from "./OnboardingModal";
 import { useRecentData } from "../hooks/useRecentData";
+import { useSettingsStore } from "../stores/useSettingsStore";
 
 export default function MainLayout() {
   useGlobalShortcut();
+  const { settings } = useSettingsStore();
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const { refreshRecentData } = useRecentData();
+  const showOnboarding = settings.onboardingCompleted === false;
 
   useEffect(() => {
     refreshRecentData();
@@ -95,6 +99,7 @@ export default function MainLayout() {
       </div>
 
       <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {showOnboarding && <OnboardingModal />}
     </div>
   );
 }

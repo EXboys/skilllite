@@ -10,7 +10,7 @@
     "tauri": "tauri",
     "icon": "tauri icon app-icon.png --output src-tauri/icons",
     "prebuild:tauri": "bash scripts/prebuild-skilllite.sh",
-    "tauri:build": "CI=1 tauri build"
+    "tauri:build": "CI=true tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",

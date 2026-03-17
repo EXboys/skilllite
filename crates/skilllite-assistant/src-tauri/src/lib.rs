@@ -152,6 +152,24 @@ async fn skilllite_repair_skills(
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn skilllite_init_workspace(app: tauri::AppHandle, dir: String) -> Result<(), String> {
+    let path = skilllite_bridge::resolve_skilllite_path_app(&app);
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::init_workspace(&dir, &path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_probe_ollama() -> skilllite_bridge::OllamaProbeResult {
+    tauri::async_runtime::spawn_blocking(skilllite_bridge::probe_ollama)
+        .await
+        .unwrap_or_else(|_| skilllite_bridge::OllamaProbeResult {
+            available: false,
+            model: None,
+        })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let run_result = tauri::Builder::default()
@@ -168,7 +186,9 @@ pub fn run() {
             skilllite_open_directory,
             skilllite_confirm,
             skilllite_list_skills,
-            skilllite_repair_skills
+            skilllite_repair_skills,
+            skilllite_init_workspace,
+            skilllite_probe_ollama
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
