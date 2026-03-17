@@ -78,10 +78,11 @@ pub fn parse_dotenv_from_dir(dir: &std::path::Path) -> Vec<(String, String)> {
 
 /// 从 start 目录向上查找 .env，最多查找 max_levels 层，返回首次找到的解析结果。
 /// 用于 assistant 等需要从工作区向上查找 .env 的场景。
-pub fn parse_dotenv_walking_up(start: &std::path::Path, max_levels: usize) -> Vec<(String, String)> {
-    let mut dir = start
-        .canonicalize()
-        .unwrap_or_else(|_| start.to_path_buf());
+pub fn parse_dotenv_walking_up(
+    start: &std::path::Path,
+    max_levels: usize,
+) -> Vec<(String, String)> {
+    let mut dir = start.canonicalize().unwrap_or_else(|_| start.to_path_buf());
     for _ in 0..max_levels {
         let vars = parse_dotenv_from_dir(&dir);
         if !vars.is_empty() {
@@ -173,8 +174,7 @@ pub fn env_bool(primary: &str, aliases: &[&str], default: bool) -> bool {
 /// 检查环境变量是否存在（任意主变量或别名）
 #[allow(dead_code)] // 供后续迁移使用
 pub fn env_is_set(primary: &str, aliases: &[&str]) -> bool {
-    env::var(primary).is_ok()
-        || aliases.iter().any(|a| env::var(a).is_ok())
+    env::var(primary).is_ok() || aliases.iter().any(|a| env::var(a).is_ok())
 }
 
 // ─── 集中式 env::set_var / remove_var 包装 ─────────────────────────────────

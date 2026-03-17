@@ -4,16 +4,19 @@
 //! - `search_replace`: search_replace, preview_edit, insert_lines + fuzzy matching + backup + validation
 //! - `grep`: grep_files
 
-mod search_replace;
 mod grep;
+mod search_replace;
 
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 
-use crate::types::{EventSink, ToolDefinition, FunctionDef};
+use crate::types::{EventSink, FunctionDef, ToolDefinition};
 
-use super::{get_path_arg, is_key_write_path, is_sensitive_read_path, is_sensitive_write_path, filter_sensitive_content_in_text, resolve_within_workspace, resolve_within_workspace_or_output};
+use super::{
+    filter_sensitive_content_in_text, get_path_arg, is_key_write_path, is_sensitive_read_path,
+    is_sensitive_write_path, resolve_within_workspace, resolve_within_workspace_or_output,
+};
 use crate::high_risk;
 
 pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
@@ -192,7 +195,6 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
-
 pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String> {
     let path_str = get_path_arg(args, false)
         .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
@@ -214,8 +216,14 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
         );
     }
 
-    let start_line = args.get("start_line").and_then(|v| v.as_u64()).map(|v| v as usize);
-    let end_line = args.get("end_line").and_then(|v| v.as_u64()).map(|v| v as usize);
+    let start_line = args
+        .get("start_line")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize);
+    let end_line = args
+        .get("end_line")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize);
 
     match skilllite_fs::read_file(&resolved) {
         Ok(content) => {
@@ -227,10 +235,16 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
             let end = end_line.unwrap_or(total).min(total);
 
             if start > total {
-                return Ok(format!("[File has {} lines, requested start_line={}]", total, start));
+                return Ok(format!(
+                    "[File has {} lines, requested start_line={}]",
+                    total, start
+                ));
             }
             if start > end {
-                return Ok(format!("[Invalid range: start_line={} > end_line={}]", start, end));
+                return Ok(format!(
+                    "[Invalid range: start_line={} > end_line={}]",
+                    start, end
+                ));
             }
 
             let mut output = String::new();
@@ -239,11 +253,16 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
             }
 
             if start_line.is_some() || end_line.is_some() {
-                output.push_str(&format!("\n[Showing lines {}-{} of {} total]", start, end, total));
+                output.push_str(&format!(
+                    "\n[Showing lines {}-{} of {} total]",
+                    start, end, total
+                ));
             }
 
             if was_redacted {
-                output.push_str("\n\n[⚠️ Sensitive values (API_KEY, PASSWORD, etc.) have been redacted]");
+                output.push_str(
+                    "\n\n[⚠️ Sensitive values (API_KEY, PASSWORD, etc.) have been redacted]",
+                );
             }
 
             Ok(output)
@@ -279,7 +298,10 @@ pub(super) fn execute_write_file(
         .get("content")
         .and_then(|v| v.as_str())
         .context("'content' is required")?;
-    let append = args.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
+    let append = args
+        .get("append")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     if is_sensitive_write_path(&path_str) {
         anyhow::bail!(

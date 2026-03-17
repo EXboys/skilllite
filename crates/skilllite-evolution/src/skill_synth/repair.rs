@@ -11,8 +11,8 @@ use crate::EvolutionMessage;
 use super::infer;
 use super::parse;
 use super::validate::{self, SkillValidation};
-use super::SKILL_REFINEMENT_PROMPT;
 use super::MAX_REFINE_ROUNDS;
+use super::SKILL_REFINEMENT_PROMPT;
 
 // ─── 工具函数 ────────────────────────────────────────────────────────────────
 
@@ -55,9 +55,7 @@ fn build_skill_dir_package(skill_dir: &Path) -> String {
         let full = skill_dir.join(&rel);
         if full.is_file() {
             lines.push(format!("### {}", rel));
-            lines.push(
-                skilllite_fs::read_file(&full).unwrap_or_else(|_| "(无法读取)".to_string()),
-            );
+            lines.push(skilllite_fs::read_file(&full).unwrap_or_else(|_| "(无法读取)".to_string()));
             lines.push(String::new());
         }
     }
@@ -84,8 +82,12 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
         // 每轮先安装/更新依赖：无 package.json/requirements.txt 时从 SKILL.md compatibility 推断（大模型可能上轮已补全）
         let env_path = super::env_helper::ensure_skill_deps_and_env(skill_dir);
 
-        let (exec_ok, exec_trace) =
-            infer::test_skill_invoke(skill_dir, entry_point, &current_test_input, env_path.as_deref())?;
+        let (exec_ok, exec_trace) = infer::test_skill_invoke(
+            skill_dir,
+            entry_point,
+            &current_test_input,
+            env_path.as_deref(),
+        )?;
         let doc_error = validate::check_skill_md_completeness(skill_dir, llm, model).await;
         if exec_ok && doc_error.is_none() {
             return Ok((true, String::new()));
@@ -113,7 +115,11 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
         let messages = vec![EvolutionMessage::user(&prompt)];
         let (parsed, raw_dbg) = llm_repair_call(llm, model, &messages, &error_trace).await?;
         let Some(parsed) = parsed else {
-            tracing::warn!("Skill repair round {}: model returned no fix. Raw: {}", round, raw_dbg);
+            tracing::warn!(
+                "Skill repair round {}: model returned no fix. Raw: {}",
+                round,
+                raw_dbg
+            );
             if let Some(f) = on_msg {
                 f(&format!("第 {} 轮模型未给出有效修复，继续重试…", round));
             }
@@ -157,8 +163,12 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
     }
 
     let env_path = super::env_helper::ensure_skill_deps_and_env(skill_dir);
-    let (ok, final_trace) =
-        infer::test_skill_invoke(skill_dir, entry_point, &current_test_input, env_path.as_deref())?;
+    let (ok, final_trace) = infer::test_skill_invoke(
+        skill_dir,
+        entry_point,
+        &current_test_input,
+        env_path.as_deref(),
+    )?;
     let doc_error = validate::check_skill_md_completeness(skill_dir, llm, model).await;
     if ok && doc_error.is_none() {
         return Ok((true, String::new()));
@@ -168,11 +178,10 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
     } else {
         doc_error.unwrap_or_default()
     };
-    Ok((false, format!(
-        "{} 轮修复后仍失败\n{}",
-        MAX_REFINE_ROUNDS,
-        fail_reason
-    )))
+    Ok((
+        false,
+        format!("{} 轮修复后仍失败\n{}", MAX_REFINE_ROUNDS, fail_reason),
+    ))
 }
 
 /// 调用模型获取修复方案（含 unfixable 重试 + JSON 解析重试）
@@ -233,10 +242,7 @@ pub async fn repair_skills<L: EvolutionLlm>(
     model: &str,
 ) -> Result<Vec<(String, bool)>> {
     let validated = validate::validate_skills(skills_root, llm, model, None).await?;
-    let failed: Vec<&SkillValidation> = validated
-        .iter()
-        .filter(|v| !v.passed)
-        .collect();
+    let failed: Vec<&SkillValidation> = validated.iter().filter(|v| !v.passed).collect();
 
     if failed.is_empty() {
         return Ok(validated
@@ -264,7 +270,13 @@ pub async fn repair_skills<L: EvolutionLlm>(
         eprintln!("🔧 [{}/{}] {} ...", idx, failed.len(), v.skill_name);
         let on_msg = |msg: &str| eprintln!("  💬 {}", msg);
         let (ok, reason) = repair_one_skill(
-            llm, model, &v.skill_dir, &v.skill_name, ep, ti, Some(&on_msg),
+            llm,
+            model,
+            &v.skill_dir,
+            &v.skill_name,
+            ep,
+            ti,
+            Some(&on_msg),
         )
         .await
         .unwrap_or_else(|e| (false, format!("{}", e)));

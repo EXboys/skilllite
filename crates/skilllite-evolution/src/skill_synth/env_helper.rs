@@ -13,7 +13,10 @@ pub(super) fn ensure_skill_deps_and_env(skill_dir: &Path) -> Option<PathBuf> {
     let mut meta = metadata::parse_skill_metadata(skill_dir).ok()?;
     // 无 lock/无 package 时，从 compatibility 推断依赖（与大模型在 SKILL.md 里写的兼容性描述一致）
     if meta.resolved_packages.is_none()
-        && meta.compatibility.as_ref().map_or(false, |c| !c.trim().is_empty())
+        && meta
+            .compatibility
+            .as_ref()
+            .map_or(false, |c| !c.trim().is_empty())
     {
         let lang = metadata::detect_language(skill_dir, &meta);
         if let Ok(resolved) = dependency_resolver::resolve_packages_sync(

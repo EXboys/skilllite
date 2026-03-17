@@ -202,7 +202,8 @@ pub fn is_hint_available_with_availability(
     availability: &ToolAvailabilityView,
 ) -> bool {
     if let Some(builtin) = find_builtin(hint) {
-        return builtin.tools.is_empty() || builtin.tools.iter().any(|tool| availability.has_tool(tool));
+        return builtin.tools.is_empty()
+            || builtin.tools.iter().any(|tool| availability.has_tool(tool));
     }
 
     availability.has_skill_hint(hint)
@@ -232,10 +233,7 @@ pub fn generate_match_rule() -> String {
         })
         .collect();
     parts.push("skill name → call that skill".to_string());
-    format!(
-        "1. **MATCH tool_hint**: {}.",
-        parts.join("; ")
-    )
+    format!("1. **MATCH tool_hint**: {}.", parts.join("; "))
 }
 
 /// Generate the execution rule line from the final availability view.
@@ -293,7 +291,9 @@ mod tests {
 
     #[test]
     fn guidance_for_known_hint() {
-        assert!(hint_guidance("file_write").unwrap().contains("write_output"));
+        assert!(hint_guidance("file_write")
+            .unwrap()
+            .contains("write_output"));
     }
 
     #[test]
@@ -328,8 +328,16 @@ mod tests {
             vec!["file_exists".to_string(), "read_file".to_string()]
         );
         assert!(preferred_tool_names_with_availability("file_write", view).is_empty());
-        assert!(is_hint_available_with_availability("memory_search", &[], view));
-        assert!(!is_hint_available_with_availability("memory_write", &[], view));
+        assert!(is_hint_available_with_availability(
+            "memory_search",
+            &[],
+            view
+        ));
+        assert!(!is_hint_available_with_availability(
+            "memory_write",
+            &[],
+            view
+        ));
 
         let rule = generate_match_rule_with_availability(view);
         assert!(rule.contains("`file_read`"));
@@ -341,44 +349,99 @@ mod tests {
     /// `TaskPlanner` match arms must produce identical results here.
     #[test]
     fn exhaustive_equivalence_with_old_task_planner() {
-        fn sorted(mut v: Vec<String>) -> Vec<String> { v.sort(); v.dedup(); v }
+        fn sorted(mut v: Vec<String>) -> Vec<String> {
+            v.sort();
+            v.dedup();
+            v
+        }
 
         // ── preferred_tool_names (old match arms) ──
         assert_eq!(preferred_tool_names("analysis"), Vec::<String>::new());
         assert_eq!(preferred_tool_names("chat_history"), vec!["chat_history"]);
         assert_eq!(preferred_tool_names("memory_write"), vec!["memory_write"]);
-        assert_eq!(sorted(preferred_tool_names("memory_search")), sorted(vec!["memory_search".into(), "memory_list".into()]));
-        assert_eq!(sorted(preferred_tool_names("file_list")), sorted(vec!["list_directory".into(), "file_exists".into()]));
-        assert_eq!(sorted(preferred_tool_names("file_read")), sorted(vec!["read_file".into(), "file_exists".into()]));
-        assert_eq!(sorted(preferred_tool_names("file_write")), sorted(vec!["write_output".into(), "write_file".into()]));
+        assert_eq!(
+            sorted(preferred_tool_names("memory_search")),
+            sorted(vec!["memory_search".into(), "memory_list".into()])
+        );
+        assert_eq!(
+            sorted(preferred_tool_names("file_list")),
+            sorted(vec!["list_directory".into(), "file_exists".into()])
+        );
+        assert_eq!(
+            sorted(preferred_tool_names("file_read")),
+            sorted(vec!["read_file".into(), "file_exists".into()])
+        );
+        assert_eq!(
+            sorted(preferred_tool_names("file_write")),
+            sorted(vec!["write_output".into(), "write_file".into()])
+        );
         assert_eq!(
             sorted(preferred_tool_names("file_edit")),
-            sorted(vec!["read_file".into(), "file_exists".into(), "search_replace".into(), "preview_edit".into(), "write_file".into()])
+            sorted(vec![
+                "read_file".into(),
+                "file_exists".into(),
+                "search_replace".into(),
+                "preview_edit".into(),
+                "write_file".into()
+            ])
         );
         assert_eq!(preferred_tool_names("preview"), vec!["preview_server"]);
         assert_eq!(preferred_tool_names("command"), vec!["run_command"]);
         assert_eq!(
             sorted(preferred_tool_names("file_operation")),
             sorted(vec![
-                "read_file".into(), "list_directory".into(), "file_exists".into(),
-                "write_output".into(), "write_file".into(), "search_replace".into(),
-                "preview_edit".into(), "preview_server".into(), "run_command".into(),
+                "read_file".into(),
+                "list_directory".into(),
+                "file_exists".into(),
+                "write_output".into(),
+                "write_file".into(),
+                "search_replace".into(),
+                "preview_edit".into(),
+                "preview_server".into(),
+                "run_command".into(),
             ])
         );
         // Unknown skill hint → normalized name
-        assert_eq!(preferred_tool_names("my-custom-skill"), vec!["my_custom_skill"]);
+        assert_eq!(
+            preferred_tool_names("my-custom-skill"),
+            vec!["my_custom_skill"]
+        );
         assert_eq!(preferred_tool_names(""), Vec::<String>::new());
 
         // ── hint_guidance (old match arms) ──
-        assert_eq!(hint_guidance("file_list").unwrap(), "Preferred tools: `list_directory` (and `file_exists` if needed).");
-        assert_eq!(hint_guidance("file_read").unwrap(), "Preferred tools: `read_file` (and `file_exists` if needed).");
-        assert!(hint_guidance("file_write").unwrap().starts_with("Preferred tools: `write_output`"));
-        assert!(hint_guidance("file_edit").unwrap().contains("search_replace"));
-        assert_eq!(hint_guidance("preview").unwrap(), "Preferred tool: `preview_server`.");
-        assert_eq!(hint_guidance("command").unwrap(), "Preferred tool: `run_command`.");
-        assert_eq!(hint_guidance("chat_history").unwrap(), "Preferred tool: `chat_history`.");
-        assert_eq!(hint_guidance("memory_write").unwrap(), "Preferred tool: `memory_write`.");
-        assert!(hint_guidance("memory_search").unwrap().contains("memory_search"));
+        assert_eq!(
+            hint_guidance("file_list").unwrap(),
+            "Preferred tools: `list_directory` (and `file_exists` if needed)."
+        );
+        assert_eq!(
+            hint_guidance("file_read").unwrap(),
+            "Preferred tools: `read_file` (and `file_exists` if needed)."
+        );
+        assert!(hint_guidance("file_write")
+            .unwrap()
+            .starts_with("Preferred tools: `write_output`"));
+        assert!(hint_guidance("file_edit")
+            .unwrap()
+            .contains("search_replace"));
+        assert_eq!(
+            hint_guidance("preview").unwrap(),
+            "Preferred tool: `preview_server`."
+        );
+        assert_eq!(
+            hint_guidance("command").unwrap(),
+            "Preferred tool: `run_command`."
+        );
+        assert_eq!(
+            hint_guidance("chat_history").unwrap(),
+            "Preferred tool: `chat_history`."
+        );
+        assert_eq!(
+            hint_guidance("memory_write").unwrap(),
+            "Preferred tool: `memory_write`."
+        );
+        assert!(hint_guidance("memory_search")
+            .unwrap()
+            .contains("memory_search"));
         assert!(hint_guidance("file_operation").unwrap().contains("Legacy"));
         assert!(hint_guidance("analysis").is_none());
         assert!(hint_guidance("unknown_skill").is_none());
@@ -386,10 +449,23 @@ mod tests {
         // ── builtin hint names list (old BUILTIN_HINTS const) ──
         let names = builtin_hint_names();
         for expected in &[
-            "file_operation", "file_list", "file_read", "file_write", "file_edit",
-            "preview", "command", "chat_history", "memory_write", "memory_search", "analysis",
+            "file_operation",
+            "file_list",
+            "file_read",
+            "file_write",
+            "file_edit",
+            "preview",
+            "command",
+            "chat_history",
+            "memory_write",
+            "memory_search",
+            "analysis",
         ] {
-            assert!(names.contains(expected), "missing builtin hint: {}", expected);
+            assert!(
+                names.contains(expected),
+                "missing builtin hint: {}",
+                expected
+            );
         }
         assert_eq!(names.len(), 11, "should have exactly 11 builtin hints");
     }

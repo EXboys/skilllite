@@ -41,7 +41,10 @@ pub fn cmd_init(
     if downloaded {
         eprintln!("✅ Step 2/6: Downloaded skills into {}", skills_dir);
     } else {
-        eprintln!("✅ Step 2/6: Skills directory already exists at {}", skills_dir);
+        eprintln!(
+            "✅ Step 2/6: Skills directory already exists at {}",
+            skills_dir
+        );
     }
 
     // Step 3: Scan all skills and install dependencies
@@ -95,8 +98,7 @@ pub fn cmd_init(
         eprintln!("✅ Step 5/6: Skipping planning rules (use --use-llm to generate)");
     } else {
         eprintln!("📋 Step 5/6: Generating planning rules...");
-        let workspace = std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."));
+        let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         match crate::planning_rules_gen::generate_planning_rules(
             &workspace,
             &skills_path,
@@ -152,15 +154,23 @@ pub fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool> {
         }
     }
 
-    fs::create_dir_all(skills_path)
-        .with_context(|| format!("Failed to create skills directory: {}", skills_path.display()))?;
+    fs::create_dir_all(skills_path).with_context(|| {
+        format!(
+            "Failed to create skills directory: {}",
+            skills_path.display()
+        )
+    })?;
 
     let repo = skilllite_core::config::PathsConfig::from_env().skills_repo;
     let skills_dir_str = skills_path.to_string_lossy().to_string();
 
     eprintln!("   📥 Downloading skills from {} ...", repo);
-    skill::cmd_add(&repo, &skills_dir_str, force, false, false)
-        .with_context(|| format!("Failed to download skills from {}. Set SKILLLITE_SKILLS_REPO to customize.", repo))?;
+    skill::cmd_add(&repo, &skills_dir_str, force, false, false).with_context(|| {
+        format!(
+            "Failed to download skills from {}. Set SKILLLITE_SKILLS_REPO to customize.",
+            repo
+        )
+    })?;
 
     Ok(true)
 }
@@ -228,7 +238,10 @@ fn install_all_deps(
         match metadata::parse_skill_metadata(&skill_path) {
             Ok(mut meta) => {
                 if meta.entry_point.is_empty() && !meta.is_bash_tool_skill() {
-                    messages.push(format!("   ✓ {} (prompt-only): no dependencies needed", name));
+                    messages.push(format!(
+                        "   ✓ {} (prompt-only): no dependencies needed",
+                        name
+                    ));
                     continue;
                 }
 
@@ -262,13 +275,12 @@ fn install_all_deps(
                     };
 
                     #[cfg(not(feature = "agent"))]
-                    let resolved =
-                        dependency_resolver::resolve_packages_sync(
-                            &skill_path,
-                            meta.compatibility.as_deref(),
-                            &lang,
-                            true,
-                        );
+                    let resolved = dependency_resolver::resolve_packages_sync(
+                        &skill_path,
+                        meta.compatibility.as_deref(),
+                        &lang,
+                        true,
+                    );
 
                     if let Ok(resolved) = resolved {
                         if !resolved.packages.is_empty() {
@@ -292,9 +304,16 @@ fn install_all_deps(
 
                 let cache_dir: Option<&str> = None;
                 let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &meta);
-                match skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir) {
+                match skilllite_sandbox::env::builder::ensure_environment(
+                    &skill_path,
+                    &env_spec,
+                    cache_dir,
+                ) {
                     Ok(_) => {
-                        messages.push(format!("   ✓ {} [{}]: dependencies installed", name, env_spec.language));
+                        messages.push(format!(
+                            "   ✓ {} [{}]: dependencies installed",
+                            name, env_spec.language
+                        ));
                     }
                     Err(e) => {
                         messages.push(format!("   ✗ {}: dependency error: {}", name, e));
@@ -378,7 +397,10 @@ fn audit_all_skills(skills_path: &Path, skills: &[String]) -> (Vec<String>, bool
                 let metadata_hint = metadata::parse_skill_metadata(&skill_path)
                     .ok()
                     .map(|m| crate::security::metadata_hint_from_skill_metadata(&m));
-                match dependency_audit::audit_skill_dependencies(&skill_path, metadata_hint.as_ref()) {
+                match dependency_audit::audit_skill_dependencies(
+                    &skill_path,
+                    metadata_hint.as_ref(),
+                ) {
                     Ok(result) => {
                         if result.vulnerable_count > 0 {
                             has_vulns = true;
@@ -476,7 +498,15 @@ fn print_summary(skills_path: &Path, skills: &[String]) {
                 .and_then(|m| m.description)
                 .unwrap_or_default();
             let short: String = desc.chars().take(50).collect();
-            eprintln!("   • {}{}", name, if short.is_empty() { String::new() } else { format!(": {}", short) });
+            eprintln!(
+                "   • {}{}",
+                name,
+                if short.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", short)
+                }
+            );
         }
     }
 

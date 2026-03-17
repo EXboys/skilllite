@@ -47,8 +47,7 @@ pub fn rename(from: &Path, to: &Path) -> Result<()> {
 
 /// 删除文件
 pub fn remove_file(path: &Path) -> Result<()> {
-    std::fs::remove_file(path)
-        .with_context(|| format!("Failed to remove file: {}", path.display()))
+    std::fs::remove_file(path).with_context(|| format!("Failed to remove file: {}", path.display()))
 }
 
 /// 获取修改时间

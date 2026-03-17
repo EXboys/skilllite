@@ -53,14 +53,26 @@ pub(super) fn is_sensitive_read_path(path: &str) -> bool {
 
 /// 其他文件中需脱敏的 key（KEY=value 或 "key": "value" 格式，小写匹配）
 const SENSITIVE_KEYS: &[&str] = &[
-    "api_key", "apikey", "api-key",
-    "password", "passwd", "pwd",
-    "secret", "secret_key", "secretkey",
-    "token", "access_token", "refresh_token",
-    "credential", "credentials",
-    "private_key", "privatekey",
-    "access_key", "accesskey",
-    "auth", "authorization",
+    "api_key",
+    "apikey",
+    "api-key",
+    "password",
+    "passwd",
+    "pwd",
+    "secret",
+    "secret_key",
+    "secretkey",
+    "token",
+    "access_token",
+    "refresh_token",
+    "credential",
+    "credentials",
+    "private_key",
+    "privatekey",
+    "access_key",
+    "accesskey",
+    "auth",
+    "authorization",
 ];
 
 /// 对任意内容做敏感信息过滤（用于 read_file、run_command 等）
@@ -102,8 +114,14 @@ fn filter_line_sensitive(line: &str) -> (String, bool) {
     // KEY=value 格式
     if let Some(eq) = trimmed.find('=') {
         let key = trimmed[..eq].trim().to_lowercase().replace('-', "_");
-        let key_clean: String = key.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
-        if SENSITIVE_KEYS.iter().any(|k| key_clean == *k || key_clean.ends_with(k)) {
+        let key_clean: String = key
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if SENSITIVE_KEYS
+            .iter()
+            .any(|k| key_clean == *k || key_clean.ends_with(k))
+        {
             if let Some(pos) = out.find('=') {
                 out = format!("{}[REDACTED]", &out[..=pos]);
                 redacted = true;
@@ -116,7 +134,9 @@ fn filter_line_sensitive(line: &str) -> (String, bool) {
         let pat = format!(r#""{}"\s*:\s*"[^"]*""#, k);
         if let Ok(re) = regex::Regex::new(&pat) {
             if re.is_match(&out) {
-                out = re.replace_all(&out, format!(r#""{}": "[REDACTED]""#, k)).to_string();
+                out = re
+                    .replace_all(&out, format!(r#""{}": "[REDACTED]""#, k))
+                    .to_string();
                 redacted = true;
             }
         }
@@ -167,8 +187,8 @@ pub(super) fn resolve_within_workspace(path: &str, workspace: &Path) -> Result<P
     let normalized = normalize_path(&resolved);
 
     if !normalized.starts_with(workspace) {
-        let is_output_path = types::get_output_dir()
-            .map_or(false, |od| normalized.starts_with(Path::new(&od)));
+        let is_output_path =
+            types::get_output_dir().map_or(false, |od| normalized.starts_with(Path::new(&od)));
         if is_output_path {
             anyhow::bail!(
                 "Path escapes workspace: {} (workspace: {}). \
@@ -267,8 +287,7 @@ pub(super) fn parse_truncated_json_for_file_tools(arguments: &str) -> Option<Val
         );
     }
 
-    let content_complete_re =
-        regex::Regex::new(r#""content"\s*:\s*"((?:[^"\\]|\\.)*)""#).ok()?;
+    let content_complete_re = regex::Regex::new(r#""content"\s*:\s*"((?:[^"\\]|\\.)*)""#).ok()?;
     if let Some(caps) = content_complete_re.captures(arguments) {
         result.insert(
             "content".to_string(),

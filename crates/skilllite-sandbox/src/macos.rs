@@ -1,18 +1,12 @@
 #![cfg(target_os = "macos")]
 
-use crate::common::{
-    wait_with_timeout,
-    DEFAULT_FILE_SIZE_LIMIT_MB,
-    DEFAULT_MAX_PROCESSES,
-};
+use crate::common::{wait_with_timeout, DEFAULT_FILE_SIZE_LIMIT_MB, DEFAULT_MAX_PROCESSES};
+use crate::move_protection::{generate_log_tag, generate_move_blocking_rules, get_session_suffix};
+use crate::network_proxy::{ProxyConfig, ProxyManager};
 use crate::runner::{ExecutionResult, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::RuntimeResolver;
-use crate::move_protection::{
-    generate_log_tag, generate_move_blocking_rules, get_session_suffix,
-};
-use crate::network_proxy::{ProxyConfig, ProxyManager};
-use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use crate::seatbelt::generate_seatbelt_mandatory_deny_patterns;
+use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use anyhow::{Context, Result};
 use std::fs;
 use std::io::Write;
@@ -42,7 +36,7 @@ pub fn execute_with_limits(
         );
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
-    
+
     crate::info_log!("[INFO] using sandbox-exec (Seatbelt)...");
     match execute_with_sandbox(skill_dir, runtime, config, input_json, limits) {
         Ok(result) => Ok(result),
@@ -53,7 +47,7 @@ pub fn execute_with_limits(
             );
             Err(e.context(
                 "Sandbox execution failed. Refusing to fall back to unsandboxed execution. \
-                 Set SKILLLITE_NO_SANDBOX=1 to explicitly run without sandbox (not recommended)."
+                 Set SKILLLITE_NO_SANDBOX=1 to explicitly run without sandbox (not recommended).",
             ))
         }
     }
@@ -89,7 +83,9 @@ pub fn execute_simple_with_limits(
 
     // Add script arguments from SKILLLITE_SCRIPT_ARGS environment variable
     // This allows passing CLI arguments to scripts that use argparse
-    if let Ok(script_args) = crate::common::env_compat("SKILLLITE_SCRIPT_ARGS", "SKILLBOX_SCRIPT_ARGS") {
+    if let Ok(script_args) =
+        crate::common::env_compat("SKILLLITE_SCRIPT_ARGS", "SKILLBOX_SCRIPT_ARGS")
+    {
         if !script_args.is_empty() {
             for arg in script_args.split_whitespace() {
                 cmd.arg(arg);
@@ -157,7 +153,9 @@ pub fn execute_simple_with_limits(
 
     // Spawn the process
     crate::info_log!("[INFO] simple: spawning skill process...");
-    let mut child = cmd.spawn().with_context(|| "Failed to spawn skill process")?;
+    let mut child = cmd
+        .spawn()
+        .with_context(|| "Failed to spawn skill process")?;
     crate::info_log!("[INFO] simple: writing stdin...");
 
     // Write input to stdin
@@ -166,7 +164,10 @@ pub fn execute_simple_with_limits(
             .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
-    crate::info_log!("[INFO] simple: waiting for child (timeout {}s)...", limits.timeout_secs);
+    crate::info_log!(
+        "[INFO] simple: waiting for child (timeout {}s)...",
+        limits.timeout_secs
+    );
 
     // Wait with resource limits
     let memory_limit_bytes = limits.max_memory_bytes();
@@ -174,7 +175,7 @@ pub fn execute_simple_with_limits(
         &mut child,
         limits.timeout_secs,
         memory_limit_bytes,
-        true,  // stream stderr so user sees Pillow/playwright progress messages
+        true, // stream stderr so user sees Pillow/playwright progress messages
     )?;
 
     Ok(ExecutionResult {
@@ -193,7 +194,7 @@ fn execute_with_sandbox(
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     use std::os::unix::process::CommandExt;
-    
+
     let language = &config.language;
     let entry_point = &config.entry_point;
 
@@ -201,10 +202,8 @@ fn execute_with_sandbox(
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
-    let network_policy = security_policy::resolve_network_policy(
-        config.network_enabled,
-        &config.network_outbound,
-    );
+    let network_policy =
+        security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
 
     // Start network proxy when policy requires domain filtering
     let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
@@ -219,8 +218,11 @@ fn execute_with_sandbox(
                     tracing::warn!("Failed to start network proxy: {}", e);
                     None
                 } else {
-                    crate::info_log!("[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
-                             manager.http_port(), manager.socks5_port());
+                    crate::info_log!(
+                        "[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
+                        manager.http_port(),
+                        manager.socks5_port()
+                    );
                     Some(manager)
                 }
             }
@@ -258,7 +260,9 @@ fn execute_with_sandbox(
 
     // Add script arguments from SKILLLITE_SCRIPT_ARGS environment variable
     // This allows passing CLI arguments to scripts that use argparse
-    if let Ok(script_args) = crate::common::env_compat("SKILLLITE_SCRIPT_ARGS", "SKILLBOX_SCRIPT_ARGS") {
+    if let Ok(script_args) =
+        crate::common::env_compat("SKILLLITE_SCRIPT_ARGS", "SKILLBOX_SCRIPT_ARGS")
+    {
         if !script_args.is_empty() {
             // Split by whitespace - arguments should not contain spaces
             for arg in script_args.split_whitespace() {
@@ -269,7 +273,12 @@ fn execute_with_sandbox(
 
     // Build sandbox-exec command - directly execute interpreter (no script injection)
     let mut cmd = Command::new("sandbox-exec");
-    cmd.args(["-f", profile_path.to_str().expect("profile path must be valid UTF-8")]);
+    cmd.args([
+        "-f",
+        profile_path
+            .to_str()
+            .expect("profile path must be valid UTF-8"),
+    ]);
     cmd.arg(&resolved.interpreter);
     cmd.args(&args);
 
@@ -309,11 +318,11 @@ fn execute_with_sandbox(
     let cpu_limit_secs = limits.timeout_secs;
     let file_size_limit_mb = DEFAULT_FILE_SIZE_LIMIT_MB;
     let max_processes = DEFAULT_MAX_PROCESSES;
-    
+
     unsafe {
         cmd.pre_exec(move || {
             use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
-            
+
             // Memory limit - from SKILLLITE_MAX_MEMORY_MB
             let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
             let mem_limit = rlimit {
@@ -321,14 +330,14 @@ fn execute_with_sandbox(
                 rlim_max: memory_limit_bytes,
             };
             setrlimit(RLIMIT_AS, &mem_limit);
-            
+
             // CPU time limit - from SKILLLITE_TIMEOUT_SECS (matches EXECUTION_TIMEOUT)
             let cpu_limit = rlimit {
                 rlim_cur: cpu_limit_secs,
                 rlim_max: cpu_limit_secs,
             };
             setrlimit(RLIMIT_CPU, &cpu_limit);
-            
+
             // File size limit - 10 MB (sufficient for skill outputs; increase if needed for large images)
             let file_limit_bytes = file_size_limit_mb * 1024 * 1024;
             let file_limit = rlimit {
@@ -336,21 +345,23 @@ fn execute_with_sandbox(
                 rlim_max: file_limit_bytes,
             };
             setrlimit(RLIMIT_FSIZE, &file_limit);
-            
+
             // Max processes (fork bomb protection) - 50 processes
             let nproc_limit = rlimit {
                 rlim_cur: max_processes,
                 rlim_max: max_processes,
             };
             setrlimit(RLIMIT_NPROC, &nproc_limit);
-            
+
             Ok(())
         });
     }
 
     // Spawn the process
     crate::info_log!("[INFO] sandbox-exec: spawning...");
-    let mut child = cmd.spawn().with_context(|| "Failed to spawn sandbox-exec")?;
+    let mut child = cmd
+        .spawn()
+        .with_context(|| "Failed to spawn sandbox-exec")?;
     crate::info_log!("[INFO] sandbox-exec: writing stdin...");
 
     // Write input to stdin
@@ -359,11 +370,14 @@ fn execute_with_sandbox(
             .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
-    crate::info_log!("[INFO] sandbox-exec: waiting for child (timeout {}s)...", limits.timeout_secs);
+    crate::info_log!(
+        "[INFO] sandbox-exec: waiting for child (timeout {}s)...",
+        limits.timeout_secs
+    );
 
     // Wait with timeout and memory monitoring
     let memory_limit_bytes = limits.max_memory_bytes();
-    let (stdout, stderr, exit_code, was_killed, kill_reason) = 
+    let (stdout, stderr, exit_code, was_killed, kill_reason) =
         wait_with_timeout(&mut child, limits.timeout_secs, memory_limit_bytes, true)?;
 
     // Check if sandbox-exec itself failed
@@ -415,7 +429,7 @@ fn generate_sandbox_profile_with_proxy(
 
     let relaxed = security_policy::is_relaxed_mode();
     let allow_playwright = security_policy::should_allow_playwright();
-    
+
     // Generate unique log tag for this execution (P1: precise violation tracking)
     let command_desc = format!("skill:{}", config.name);
     let log_tag = generate_log_tag(&command_desc);
@@ -433,7 +447,8 @@ fn generate_sandbox_profile_with_proxy(
     // ============================================================
     profile.push_str("; SECURITY: Mandatory deny paths (auto-protected files)\n");
     profile.push_str("; These are ALWAYS blocked from writes, even within allowed paths\n");
-    profile.push_str("; Includes: shell configs, git hooks, IDE settings, package manager configs,\n");
+    profile
+        .push_str("; Includes: shell configs, git hooks, IDE settings, package manager configs,\n");
     profile.push_str(";           security files (.ssh, .aws, etc.), and AI agent configs\n");
     for pattern in generate_seatbelt_mandatory_deny_patterns() {
         // Add log tag to each deny pattern for tracking
@@ -448,14 +463,16 @@ fn generate_sandbox_profile_with_proxy(
         profile.push('\n');
     }
     profile.push('\n');
-    
+
     // ============================================================
     // SECURITY: Move blocking rules - Prevent bypass via mv/rename (P0)
     // Paths from canonical security_policy::get_move_protection_paths()
     // ============================================================
     profile.push_str("; SECURITY: Move blocking rules (prevents bypass via mv/rename)\n");
     profile.push_str("; Blocks moving/renaming protected paths and their ancestor directories\n");
-    for rule in generate_move_blocking_rules(&security_policy::get_move_protection_paths(), &log_tag) {
+    for rule in
+        generate_move_blocking_rules(&security_policy::get_move_protection_paths(), &log_tag)
+    {
         profile.push_str(&rule);
         profile.push('\n');
     }
@@ -486,9 +503,11 @@ fn generate_sandbox_profile_with_proxy(
         // macOS Seatbelt requires: (remote tcp "localhost:PORT") format
         profile.push_str("; SECURITY: Network access via PROXY\n");
         profile.push_str("; All outbound traffic should go through the filtering proxy\n");
-        profile.push_str(&format!("; HTTP proxy port: {:?}, SOCKS5 proxy port: {:?}\n", 
-                                  http_proxy_port, socks5_proxy_port));
-        
+        profile.push_str(&format!(
+            "; HTTP proxy port: {:?}, SOCKS5 proxy port: {:?}\n",
+            http_proxy_port, socks5_proxy_port
+        ));
+
         // Allow connections to specific proxy ports on localhost
         if let Some(http_port) = http_proxy_port {
             profile.push_str(&format!(
@@ -525,7 +544,9 @@ fn generate_sandbox_profile_with_proxy(
     }
 
     // --- Process execution whitelist (replaces blacklist approach) ---
-    profile.push_str("; SECURITY: Process execution whitelist — only the resolved interpreter is allowed\n");
+    profile.push_str(
+        "; SECURITY: Process execution whitelist — only the resolved interpreter is allowed\n",
+    );
 
     // Resolve bare interpreter names ("python3", "node") to absolute paths.
     // Bare names won't match in Seatbelt (literal) because the kernel uses full paths.
@@ -592,7 +613,7 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("; Block ALL file writes by default\n");
     profile.push_str("(deny file-write*)\n");
     profile.push_str("\n");
-    
+
     // Allow writing to isolated work directory (TMPDIR points here)
     profile.push_str("; Allow writing to isolated work directory\n");
     profile.push_str(&format!(
@@ -611,7 +632,7 @@ fn generate_sandbox_profile_with_proxy(
             ));
         }
     }
-    
+
     // Allow writing to /var/folders for system temp files (Python, Node.js cache)
     profile.push_str("; Allow writing to /var/folders for system temp files\n");
     profile.push_str("(allow file-write* (subpath \"/var/folders\"))\n");
@@ -627,16 +648,18 @@ fn generate_sandbox_profile_with_proxy(
     // These are never needed by skill scripts and can be used for sandbox escape
     // ============================================================
     profile.push_str("; SECURITY: Block high-risk IPC and kernel operations\n");
-    profile.push_str("(deny mach-register)\n");       // prevent Mach service injection
-    profile.push_str("(deny mach-priv-task-port)\n");  // prevent debugging/injecting other processes
-    profile.push_str("(deny iokit-open)\n");           // prevent direct kernel driver access
+    profile.push_str("(deny mach-register)\n"); // prevent Mach service injection
+    profile.push_str("(deny mach-priv-task-port)\n"); // prevent debugging/injecting other processes
+    profile.push_str("(deny iokit-open)\n"); // prevent direct kernel driver access
     profile.push_str("\n");
 
     // ============================================================
     // ALLOW DEFAULT - For remaining operations (mach-lookup, sysctl, signal, etc.)
     // Explicitly denied operations above are NOT overridden by allow-default.
     // ============================================================
-    profile.push_str("; Allow default for runtime compatibility (mach-lookup, sysctl, signal, etc.)\n");
+    profile.push_str(
+        "; Allow default for runtime compatibility (mach-lookup, sysctl, signal, etc.)\n",
+    );
     profile.push_str("(allow default)\n\n");
 
     // ============================================================
@@ -690,7 +713,7 @@ fn generate_sandbox_profile_with_proxy(
 }
 
 /// Generate a Seatbelt sandbox profile for macOS (legacy, without proxy)
-/// 
+///
 /// Security controls:
 /// 1. MANDATORY DENY: Always block writes to shell configs, git hooks, IDE configs, etc.
 /// 2. NETWORK: Block all network access when disabled
@@ -721,7 +744,8 @@ fn generate_sandbox_profile(
     // ============================================================
     profile.push_str("; SECURITY: Mandatory deny paths (auto-protected files)\n");
     profile.push_str("; These are ALWAYS blocked from writes, even within allowed paths\n");
-    profile.push_str("; Includes: shell configs, git hooks, IDE settings, package manager configs,\n");
+    profile
+        .push_str("; Includes: shell configs, git hooks, IDE settings, package manager configs,\n");
     profile.push_str(";           security files (.ssh, .aws, etc.), and AI agent configs\n");
     for pattern in generate_seatbelt_mandatory_deny_patterns() {
         profile.push_str(&pattern);
@@ -747,7 +771,10 @@ fn generate_sandbox_profile(
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.bash_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/\\.zsh_history\"))\n");
     profile.push_str("(deny file-read* (regex #\"^/Users/[^/]+/Library/Keychains\"))\n");
-    let legacy_relaxed = crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL").map(|s| s.trim() == "2").unwrap_or(false);
+    let legacy_relaxed =
+        crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL")
+            .map(|s| s.trim() == "2")
+            .unwrap_or(false);
     if !legacy_relaxed {
         profile.push_str("(deny file-read* (regex #\"/\\.git/\"))\n");
         profile.push_str("(deny file-read* (regex #\"/\\.env$\"))\n");
@@ -769,7 +796,9 @@ fn generate_sandbox_profile(
     profile.push_str("; SECURITY: Block process forking\n");
     profile.push_str("(deny process-fork)\n");
 
-    profile.push_str("; SECURITY: Process execution whitelist — only the resolved interpreter is allowed\n");
+    profile.push_str(
+        "; SECURITY: Process execution whitelist — only the resolved interpreter is allowed\n",
+    );
     let interpreter_abs = if interpreter_path.is_absolute() {
         interpreter_path.to_path_buf()
     } else {
@@ -807,7 +836,7 @@ fn generate_sandbox_profile(
     profile.push_str("; Block ALL file writes by default\n");
     profile.push_str("(deny file-write*)\n");
     profile.push_str("\n");
-    
+
     // Allow writing to isolated work directory (TMPDIR points here)
     profile.push_str("; Allow writing to isolated work directory\n");
     profile.push_str(&format!(
@@ -826,7 +855,7 @@ fn generate_sandbox_profile(
             ));
         }
     }
-    
+
     // Allow writing to /var/folders for system temp files (Python, Node.js cache)
     profile.push_str("; Allow writing to /var/folders for system temp files\n");
     profile.push_str("(allow file-write* (subpath \"/var/folders\"))\n");
@@ -849,7 +878,9 @@ fn generate_sandbox_profile(
     // ============================================================
     // ALLOW DEFAULT - For remaining operations (mach-lookup, sysctl, signal, etc.)
     // ============================================================
-    profile.push_str("; Allow default for runtime compatibility (mach-lookup, sysctl, signal, etc.)\n");
+    profile.push_str(
+        "; Allow default for runtime compatibility (mach-lookup, sysctl, signal, etc.)\n",
+    );
     profile.push_str("(allow default)\n\n");
 
     // ============================================================
@@ -1020,6 +1051,9 @@ mod tests {
             ),
             Some("/Library/Frameworks/Python3.framework/Versions/3.12")
         );
-        assert_eq!(extract_python_framework_version_root("/usr/bin/python3"), None);
+        assert_eq!(
+            extract_python_framework_version_root("/usr/bin/python3"),
+            None
+        );
     }
 }

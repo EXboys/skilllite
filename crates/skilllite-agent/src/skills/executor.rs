@@ -5,15 +5,15 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
 
-use skilllite_sandbox::runner::{ResourceLimits, SandboxConfig, SandboxLevel};
-use skilllite_core::skill::metadata::{self, SkillMetadata};
-use crate::high_risk;
 use super::usage_stats;
+use crate::high_risk;
 use crate::types::{EventSink, ToolResult};
+use skilllite_core::skill::metadata::{self, SkillMetadata};
+use skilllite_sandbox::runner::{ResourceLimits, SandboxConfig, SandboxLevel};
 
-use super::LoadedSkill;
 use super::loader::sanitize_tool_name;
 use super::security::{compute_skill_hash, run_security_scan};
+use super::LoadedSkill;
 
 /// Execute a skill tool call. Dispatches to sandbox execution.
 /// When `entry_point_override` is `Some` and skill has no entry_point, use it (e.g. 大模型根据 SKILL.md 推理出的入口).
@@ -25,7 +25,14 @@ pub fn execute_skill(
     event_sink: &mut dyn EventSink,
     entry_point_override: Option<&str>,
 ) -> ToolResult {
-    let result = execute_skill_inner(skill, tool_name, arguments, workspace, event_sink, entry_point_override);
+    let result = execute_skill_inner(
+        skill,
+        tool_name,
+        arguments,
+        workspace,
+        event_sink,
+        entry_point_override,
+    );
     match result {
         Ok(content) => {
             usage_stats::track_skill_execution(&skill.name, true);
@@ -58,7 +65,6 @@ thread_local! {
         std::cell::RefCell::new(HashMap::new());
 }
 
-
 fn execute_skill_inner(
     skill: &LoadedSkill,
     tool_name: &str,
@@ -80,10 +86,12 @@ fn execute_skill_inner(
     // Phase 2.5: Multi-script tool routing
     // If tool_name is in the multi_script_entries map, use that script as entry_point.
     // Try exact match first, then normalized match (hyphens → underscores).
-    let multi_script_entry: Option<&String> = skill
-        .multi_script_entries
-        .get(tool_name)
-        .or_else(|| skill.multi_script_entries.get(&sanitize_tool_name(tool_name)));
+    let multi_script_entry: Option<&String> =
+        skill.multi_script_entries.get(tool_name).or_else(|| {
+            skill
+                .multi_script_entries
+                .get(&sanitize_tool_name(tool_name))
+        });
 
     // For Level 3: security scan + user confirmation
     // Ported from Python `UnifiedExecutionService.execute_skill` L3 flow
@@ -140,7 +148,9 @@ fn execute_skill_inner(
                 return Ok("Execution cancelled: network skill not confirmed by user.".to_string());
             }
             CONFIRMED_SKILLS.with(|cache| {
-                cache.borrow_mut().insert(network_cache_key, "confirmed".to_string());
+                cache
+                    .borrow_mut()
+                    .insert(network_cache_key, "confirmed".to_string());
             });
         }
     }
@@ -158,21 +168,21 @@ fn execute_skill_inner(
 
     if metadata.is_bash_tool_skill() {
         // Bash-tool skill: extract command from arguments
-        let args: Value = serde_json::from_str(arguments)
-            .context("Invalid arguments JSON")?;
+        let args: Value = serde_json::from_str(arguments).context("Invalid arguments JSON")?;
         let command = args
             .get("command")
             .and_then(|v| v.as_str())
             .context("'command' is required for bash-tool skills")?;
 
         let skill_patterns = metadata.get_bash_patterns();
-        let validator_patterns: Vec<skilllite_sandbox::bash_validator::BashToolPattern> = skill_patterns
-            .into_iter()
-            .map(|p| skilllite_sandbox::bash_validator::BashToolPattern {
-                command_prefix: p.command_prefix,
-                raw_pattern: p.raw_pattern,
-            })
-            .collect();
+        let validator_patterns: Vec<skilllite_sandbox::bash_validator::BashToolPattern> =
+            skill_patterns
+                .into_iter()
+                .map(|p| skilllite_sandbox::bash_validator::BashToolPattern {
+                    command_prefix: p.command_prefix,
+                    raw_pattern: p.raw_pattern,
+                })
+                .collect();
         skilllite_sandbox::bash_validator::validate_bash_command(command, &validator_patterns)
             .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
 
@@ -290,7 +300,8 @@ fn execute_bash_in_skill(
         cmd.env("PATH", format!("{}:{}", bin_dir.display(), current_path));
     }
 
-    let output = cmd.output()
+    let output = cmd
+        .output()
         .with_context(|| format!("Failed to execute bash command: {}", command))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -357,9 +368,8 @@ fn execute_bash_in_skill(
 fn rewrite_output_paths(command: &str, output_dir: &Path) -> String {
     // Common file-output extensions that should be rewritten
     const OUTPUT_EXTENSIONS: &[&str] = &[
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg",
-        ".pdf", ".html", ".htm", ".json", ".csv", ".txt", ".md",
-        ".webm", ".mp4",
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".pdf", ".html", ".htm", ".json",
+        ".csv", ".txt", ".md", ".webm", ".mp4",
     ];
 
     let parts: Vec<&str> = command.split_whitespace().collect();
@@ -389,4 +399,3 @@ fn rewrite_output_paths(command: &str, output_dir: &Path) -> String {
 
     result_parts.join(" ")
 }
-

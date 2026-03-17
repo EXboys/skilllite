@@ -21,8 +21,8 @@ pub fn parse_requirements_txt(content: &str) -> Vec<Dependency> {
         if let Some(idx) = line.find(|c: char| matches!(c, '>' | '<' | '~' | '!')) {
             let name = &line[..idx];
             let rest = &line[idx..];
-            let version = rest
-                .trim_start_matches(|c: char| matches!(c, '>' | '<' | '~' | '!' | '='));
+            let version =
+                rest.trim_start_matches(|c: char| matches!(c, '>' | '<' | '~' | '!' | '='));
             let version = version.split(',').next().unwrap_or("").trim();
             push_if_valid(&mut deps, name, version, "PyPI");
         }

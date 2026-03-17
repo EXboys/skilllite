@@ -203,7 +203,9 @@ pub enum ToolHandler {
     BuiltinSync,
     BuiltinAsync,
     Memory,
-    Skill { skill_name: String },
+    Skill {
+        skill_name: String,
+    },
     /// Control tools (complete_task, update_task_plan) executed via PlanningControlExecutor.
     PlanningControl,
 }
@@ -278,10 +280,7 @@ impl ToolAvailabilityView {
         !self.skill_names.is_empty()
     }
 
-    pub fn filter_callable_skills<'a>(
-        &self,
-        skills: &'a [LoadedSkill],
-    ) -> Vec<&'a LoadedSkill> {
+    pub fn filter_callable_skills<'a>(&self, skills: &'a [LoadedSkill]) -> Vec<&'a LoadedSkill> {
         skills
             .iter()
             .filter(|skill| {
@@ -336,11 +335,7 @@ pub struct ExtensionRegistryBuilder<'a> {
 
 impl<'a> ExtensionRegistryBuilder<'a> {
     /// Create a new builder. Call `register()` for each tool provider, then `build()`.
-    pub fn new(
-        enable_memory: bool,
-        enable_memory_vector: bool,
-        skills: &'a [LoadedSkill],
-    ) -> Self {
+    pub fn new(enable_memory: bool, enable_memory_vector: bool, skills: &'a [LoadedSkill]) -> Self {
         Self {
             registered_tools: Vec::new(),
             policy: CapabilityPolicy::default(),
@@ -402,7 +397,10 @@ impl<'a> ExtensionRegistryBuilder<'a> {
         let mut availability = ToolAvailabilityView::default();
         for registered in registered_tools {
             if registered.scope == ToolScope::PlanningOnly && !self.enable_task_planning {
-                tracing::debug!("Skip PlanningOnly tool (task planning disabled): {}", registered.name());
+                tracing::debug!(
+                    "Skip PlanningOnly tool (task planning disabled): {}",
+                    registered.name()
+                );
                 continue;
             }
             if !self.policy.allows(&registered.capabilities) {
@@ -433,11 +431,7 @@ impl<'a> ExtensionRegistryBuilder<'a> {
 
 impl<'a> ExtensionRegistry<'a> {
     /// Create a registry with default tool registration (builtin + memory + skills).
-    pub fn new(
-        enable_memory: bool,
-        enable_memory_vector: bool,
-        skills: &'a [LoadedSkill],
-    ) -> Self {
+    pub fn new(enable_memory: bool, enable_memory_vector: bool, skills: &'a [LoadedSkill]) -> Self {
         Self::builder(enable_memory, enable_memory_vector, skills)
             .with_policy(CapabilityPolicy::full_access())
             .register(builtin::get_builtin_tools())
@@ -529,17 +523,23 @@ impl<'a> ExtensionRegistry<'a> {
             return ToolResult {
                 tool_call_id: String::new(),
                 tool_name: tool_name.to_string(),
-                content: format!("Tool '{}' is unavailable in the current execution mode", tool_name),
+                content: format!(
+                    "Tool '{}' is unavailable in the current execution mode",
+                    tool_name
+                ),
                 is_error: true,
                 counts_as_failure: true,
-            }
+            };
         };
 
         if !self.policy.allows(&registered.capabilities) {
             return ToolResult {
                 tool_call_id: String::new(),
                 tool_name: tool_name.to_string(),
-                content: format!("Tool '{}' is unavailable in the current execution mode", tool_name),
+                content: format!(
+                    "Tool '{}' is unavailable in the current execution mode",
+                    tool_name
+                ),
                 is_error: true,
                 counts_as_failure: true,
             };
@@ -566,7 +566,8 @@ impl<'a> ExtensionRegistry<'a> {
                 builtin::execute_builtin_tool(tool_name, arguments, workspace, Some(event_sink))
             }
             ToolHandler::BuiltinAsync => {
-                builtin::execute_async_builtin_tool(tool_name, arguments, workspace, event_sink).await
+                builtin::execute_async_builtin_tool(tool_name, arguments, workspace, event_sink)
+                    .await
             }
             ToolHandler::Memory => {
                 memory::execute_memory_tool(
@@ -582,7 +583,8 @@ impl<'a> ExtensionRegistry<'a> {
             ToolHandler::Skill { skill_name } => {
                 if let Some(skill) = skills::find_skill_by_name(self.skills, skill_name) {
                     skills::execute_skill(skill, tool_name, arguments, workspace, event_sink, None)
-                } else if let Some(skill) = skills::find_skill_by_tool_name(self.skills, tool_name) {
+                } else if let Some(skill) = skills::find_skill_by_tool_name(self.skills, tool_name)
+                {
                     skills::execute_skill(skill, tool_name, arguments, workspace, event_sink, None)
                 } else if let Some(skill) = skills::find_skill_by_name(self.skills, tool_name) {
                     // Reference-only skill (no entry_point / no scripts, just SKILL.md guidance)

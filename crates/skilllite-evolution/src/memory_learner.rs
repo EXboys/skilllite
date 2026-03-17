@@ -50,14 +50,19 @@ pub async fn evolve_memory<L: EvolutionLlm>(
         return Ok(Vec::new());
     }
 
-    let knowledge_path = chat_root.join("memory").join("evolution").join("knowledge.md");
+    let knowledge_path = chat_root
+        .join("memory")
+        .join("evolution")
+        .join("knowledge.md");
     let existing_summary = if knowledge_path.exists() {
         let full = skilllite_fs::read_file(&knowledge_path).unwrap_or_default();
         if full.len() <= EXISTING_KNOWLEDGE_CAP {
             full
         } else {
             // 取末尾一段（最近写入的），便于去重
-            full.chars().skip(full.len().saturating_sub(EXISTING_KNOWLEDGE_CAP)).collect::<String>()
+            full.chars()
+                .skip(full.len().saturating_sub(EXISTING_KNOWLEDGE_CAP))
+                .collect::<String>()
         }
     } else {
         String::new()
@@ -67,15 +72,30 @@ pub async fn evolve_memory<L: EvolutionLlm>(
         .replace("{{decisions_summary}}", &summary)
         .replace("{{existing_knowledge_summary}}", existing_summary.trim());
     let messages = vec![EvolutionMessage::user(&prompt)];
-    let content = llm.complete(&messages, model, 0.3).await?.trim().to_string();
+    let content = llm
+        .complete(&messages, model, 0.3)
+        .await?
+        .trim()
+        .to_string();
 
     let parsed = match parse_knowledge_response(&content) {
         Ok(p) => p,
         Err(e) => {
-            tracing::warn!("Memory knowledge extraction parse failed: {} — raw: {:.300}", e, content);
+            tracing::warn!(
+                "Memory knowledge extraction parse failed: {} — raw: {:.300}",
+                e,
+                content
+            );
             let _ = block_in_place(|| {
                 let conn = open_evolution_db(chat_root)?;
-                let _ = crate::log_evolution_event(&conn, chat_root, "memory_extraction_parse_failed", "", &format!("{}", e), "");
+                let _ = crate::log_evolution_event(
+                    &conn,
+                    chat_root,
+                    "memory_extraction_parse_failed",
+                    "",
+                    &format!("{}", e),
+                    "",
+                );
                 Ok::<_, anyhow::Error>(())
             });
             return Ok(Vec::new());
@@ -88,15 +108,38 @@ pub async fn evolve_memory<L: EvolutionLlm>(
         || !parsed.preferences.is_empty()
         || !parsed.patterns.is_empty();
     if parsed.skip_reason.is_some() && !has_any {
-        tracing::debug!("Memory evolution: LLM skipped extraction — {}", parsed.skip_reason.as_deref().unwrap_or(""));
+        tracing::debug!(
+            "Memory evolution: LLM skipped extraction — {}",
+            parsed.skip_reason.as_deref().unwrap_or("")
+        );
         return Ok(Vec::new());
     }
 
-    let entities = parsed.entities.into_iter().take(MAX_ENTITIES).collect::<Vec<_>>();
-    let relations = parsed.relations.into_iter().take(MAX_RELATIONS).collect::<Vec<_>>();
-    let episodes = parsed.episodes.into_iter().take(MAX_EPISODES).collect::<Vec<_>>();
-    let preferences = parsed.preferences.into_iter().take(MAX_PREFERENCES).collect::<Vec<_>>();
-    let patterns = parsed.patterns.into_iter().take(MAX_PATTERNS).collect::<Vec<_>>();
+    let entities = parsed
+        .entities
+        .into_iter()
+        .take(MAX_ENTITIES)
+        .collect::<Vec<_>>();
+    let relations = parsed
+        .relations
+        .into_iter()
+        .take(MAX_RELATIONS)
+        .collect::<Vec<_>>();
+    let episodes = parsed
+        .episodes
+        .into_iter()
+        .take(MAX_EPISODES)
+        .collect::<Vec<_>>();
+    let preferences = parsed
+        .preferences
+        .into_iter()
+        .take(MAX_PREFERENCES)
+        .collect::<Vec<_>>();
+    let patterns = parsed
+        .patterns
+        .into_iter()
+        .take(MAX_PATTERNS)
+        .collect::<Vec<_>>();
     if entities.is_empty()
         && relations.is_empty()
         && episodes.is_empty()
@@ -132,7 +175,8 @@ pub async fn evolve_memory<L: EvolutionLlm>(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let full_content = format!(
+    let full_content =
+        format!(
         "## {}\n\n### 实体\n{}\n\n### 关系\n{}\n\n### 情节\n{}\n\n### 倾向\n{}\n\n### 模式\n{}\n",
         chrono::Utc::now().format("%Y-%m-%d %H:%M"),
         if entity_block.is_empty() { "*无*".to_string() } else { entity_block },
@@ -150,7 +194,10 @@ pub async fn evolve_memory<L: EvolutionLlm>(
     let memory_dir = chat_root.join("memory").join("evolution");
     let knowledge_path = memory_dir.join("knowledge.md");
     if !gatekeeper_l1_path(chat_root, &knowledge_path, None) {
-        tracing::warn!("Memory evolution L1 path rejected: {}", knowledge_path.display());
+        tracing::warn!(
+            "Memory evolution L1 path rejected: {}",
+            knowledge_path.display()
+        );
         return Ok(Vec::new());
     }
 
@@ -176,7 +223,10 @@ pub async fn evolve_memory<L: EvolutionLlm>(
         patterns.len()
     );
 
-    Ok(vec![("memory_knowledge_added".to_string(), "knowledge".to_string())])
+    Ok(vec![(
+        "memory_knowledge_added".to_string(),
+        "knowledge".to_string(),
+    )])
 }
 
 fn query_decisions_for_memory(conn: &Connection) -> Result<String> {

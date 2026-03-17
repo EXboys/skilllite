@@ -175,7 +175,12 @@ fn probe_ollama() -> Option<(String, String, String)> {
         .iter()
         .find(|p| model_names.iter().any(|m| m.starts_with(*p)))
         .map(|s| s.to_string())
-        .unwrap_or_else(|| model_names.first().cloned().unwrap_or_else(|| "qwen2.5:7b".to_string()));
+        .unwrap_or_else(|| {
+            model_names
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "qwen2.5:7b".to_string())
+        });
 
     eprintln!(
         "   → Ollama detected with {} model(s), using: {}",
@@ -230,7 +235,8 @@ fn interactive_llm_setup() -> Result<(String, String, String)> {
             "ollama".to_string()
         };
 
-        let model = skilllite_core::config::LlmConfig::default_model_for_base(&api_base).to_string();
+        let model =
+            skilllite_core::config::LlmConfig::default_model_for_base(&api_base).to_string();
         eprintln!("   Model: {} (change via SKILLLITE_MODEL env var)", model);
 
         Ok((api_base, api_key, model))
@@ -276,7 +282,11 @@ fn ensure_skills(skills_path: &Path) -> Result<()> {
         eprintln!("   ✅ Downloaded skills into {}", skills_path.display());
     } else {
         let count = crate::init::count_skills(skills_path);
-        eprintln!("   ✅ Found {} skill(s) in {}", count, skills_path.display());
+        eprintln!(
+            "   ✅ Found {} skill(s) in {}",
+            count,
+            skills_path.display()
+        );
     }
 
     Ok(())
@@ -318,8 +328,8 @@ fn write_env_if_needed(api_base: &str, api_key: &str, model: &str) -> Result<()>
 /// Step 3: Launch the chat session.
 #[cfg(feature = "agent")]
 fn launch_chat(api_base: &str, api_key: &str, model: &str, skills_path: &Path) -> Result<()> {
-    use skilllite_agent::types::*;
     use skilllite_agent::skills;
+    use skilllite_agent::types::*;
 
     skilllite_core::config::init_llm_env(api_base, api_key, model);
 
@@ -351,12 +361,9 @@ fn launch_chat(api_base: &str, api_key: &str, model: &str, skills_path: &Path) -
     }
     eprintln!();
 
-    let rt = tokio::runtime::Runtime::new()
-        .context("Failed to create tokio runtime")?;
+    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
 
-    rt.block_on(async {
-        run_interactive_quickstart(config, loaded_skills).await
-    })
+    rt.block_on(async { run_interactive_quickstart(config, loaded_skills).await })
 }
 
 #[cfg(feature = "agent")]
@@ -364,8 +371,8 @@ async fn run_interactive_quickstart(
     config: skilllite_agent::types::AgentConfig,
     skills: Vec<skilllite_agent::skills::LoadedSkill>,
 ) -> Result<()> {
-    use skilllite_agent::types::*;
     use skilllite_agent::chat_session::ChatSession;
+    use skilllite_agent::types::*;
 
     eprintln!("🤖 SkillBox Quickstart Chat (model: {})", config.model);
     eprintln!("   Type /exit to quit, /clear to reset, /compact to compress history");

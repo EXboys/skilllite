@@ -15,11 +15,11 @@ use super::parse;
 use super::query;
 use super::scan;
 use super::SkillMeta;
-use super::SKILL_REFINEMENT_PROMPT;
-use super::MAX_REFINE_ROUNDS;
 use super::MAX_PARSE_RETRIES;
-use super::RETIRE_UNUSED_DAYS;
+use super::MAX_REFINE_ROUNDS;
 use super::RETIRE_LOW_SUCCESS_RATE;
+use super::RETIRE_UNUSED_DAYS;
+use super::SKILL_REFINEMENT_PROMPT;
 
 /// Retry fixing a skill script up to MAX_REFINE_ROUNDS times.
 pub(super) async fn refine_loop<L: EvolutionLlm>(
@@ -57,7 +57,11 @@ pub(super) async fn refine_loop<L: EvolutionLlm>(
             .replace("{{current_skill_md}}", "");
 
         let messages = vec![EvolutionMessage::user(&prompt)];
-        let content = llm.complete(&messages, model, 0.3).await?.trim().to_string();
+        let content = llm
+            .complete(&messages, model, 0.3)
+            .await?
+            .trim()
+            .to_string();
 
         let parsed = match parse::parse_refinement_response(&content) {
             Ok(Some(r)) => {
@@ -78,7 +82,8 @@ pub(super) async fn refine_loop<L: EvolutionLlm>(
                 }
                 tracing::info!(
                     "Refinement JSON parse failed (round {}), retrying with LLM feedback: {}",
-                    round, e
+                    round,
+                    e
                 );
                 let retry_msg = format!(
                     "你的输出无法解析为 JSON。错误: {}。请重新输出，严格遵循格式: {{\"fixed_script\": \"完整 Python 脚本\", \"fix_summary\": \"修正说明\", \"skip_reason\": \"若无法修正则说明原因\"}}。换行用 \\n 转义。",
@@ -248,8 +253,7 @@ pub(super) async fn refine_weakest_skill<L: EvolutionLlm>(
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ =
-                std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755));
+            let _ = std::fs::set_permissions(&script_path, std::fs::Permissions::from_mode(0o755));
         }
 
         if let Ok(conn) = feedback::open_evolution_db(chat_root) {
@@ -345,8 +349,7 @@ pub(super) fn retire_skills_with_conn(
 
         if let Some(reason) = should_retire {
             meta.archived = true;
-            let _ =
-                skilllite_fs::write_file(&meta_path, &serde_json::to_string_pretty(&meta)?);
+            let _ = skilllite_fs::write_file(&meta_path, &serde_json::to_string_pretty(&meta)?);
 
             let name = entry.file_name().to_string_lossy().to_string();
             tracing::info!("Retired skill '{}': {}", name, reason);

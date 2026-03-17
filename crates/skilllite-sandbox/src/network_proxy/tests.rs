@@ -55,7 +55,8 @@ mod tests {
     #[test]
     fn test_proxy_manager() {
         let config = ProxyConfig::with_allowed_domains(vec!["github.com".to_string()]);
-        let manager = ProxyManager::new(config).expect("test proxy manager creation should succeed");
+        let manager =
+            ProxyManager::new(config).expect("test proxy manager creation should succeed");
 
         assert!(manager.http_port().is_some());
         assert!(manager.socks5_port().is_some());

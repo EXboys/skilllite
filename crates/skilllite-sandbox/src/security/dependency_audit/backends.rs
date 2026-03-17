@@ -48,12 +48,17 @@ pub(super) fn query_osv_batch(
 
         let body = serde_json::json!({ "queries": queries });
 
-        let response = agent.post(&batch_url).send_json(&body).map_err(|e| match &e {
-            ureq::Error::Status(code, _) => anyhow::anyhow!("Audit API returned HTTP {} — {}", code, e),
-            ureq::Error::Transport(_) => {
-                anyhow::anyhow!("Cannot reach audit API at {} : {}", api_base, e)
-            }
-        })?;
+        let response = agent
+            .post(&batch_url)
+            .send_json(&body)
+            .map_err(|e| match &e {
+                ureq::Error::Status(code, _) => {
+                    anyhow::anyhow!("Audit API returned HTTP {} — {}", code, e)
+                }
+                ureq::Error::Transport(_) => {
+                    anyhow::anyhow!("Cannot reach audit API at {} : {}", api_base, e)
+                }
+            })?;
 
         let batch: OsvBatchResponse = response
             .into_json()
@@ -132,11 +137,9 @@ pub(super) fn query_pypi(
         match result {
             Ok(response) => {
                 if has_version {
-                    let pypi: PypiResponse = response
-                        .into_json()
-                        .unwrap_or(PypiResponse {
-                            vulnerabilities: Vec::new(),
-                        });
+                    let pypi: PypiResponse = response.into_json().unwrap_or(PypiResponse {
+                        vulnerabilities: Vec::new(),
+                    });
 
                     entries.push(PackageAuditEntry {
                         name: dep.name.clone(),

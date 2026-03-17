@@ -9,8 +9,8 @@
 //!
 //! ## Standard Node I/O Types
 //!
-//! `NodeTask` / `NodeContext` (input) and `NodeResult` / `NewSkill` (output) are the
-//! shared "currency" that all handlers and the future P2P routing layer understand.
+//! `NodeTask` / `NodeContext` (input) and `NodeResult` / `NewSkill` (output) live in
+//! `skilllite_core::protocol` and are the shared "currency" for handlers and P2P routing.
 //! They are transport-agnostic: stdio_rpc serialises them as JSON-RPC fields,
 //! agent-rpc maps them to JSON-Lines events, P2P broadcasts them as Gossip messages.
 //!
@@ -22,13 +22,9 @@
 //! 4. Add a match arm in `lib.rs`: `Commands::X { .. } => XHandler.serve(params)?`.
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 
 use crate::mcp;
 use crate::stdio_rpc;
-
-// Re-export protocol types from skilllite-core for Entry Layer handlers.
-pub use skilllite_core::protocol::{NewSkill, NodeContext, NodeResult, NodeTask};
 
 // ─── Protocol Parameters ─────────────────────────────────────────────────────
 
@@ -90,7 +86,9 @@ pub trait ProtocolHandler: Send + Sync {
 pub struct StdioRpcHandler;
 
 impl ProtocolHandler for StdioRpcHandler {
-    fn name(&self) -> &str { "stdio-rpc" }
+    fn name(&self) -> &str {
+        "stdio-rpc"
+    }
 
     fn serve(&self, params: ProtocolParams) -> Result<()> {
         match params {
@@ -104,7 +102,9 @@ impl ProtocolHandler for StdioRpcHandler {
 pub struct McpHandler;
 
 impl ProtocolHandler for McpHandler {
-    fn name(&self) -> &str { "mcp" }
+    fn name(&self) -> &str {
+        "mcp"
+    }
 
     fn serve(&self, params: ProtocolParams) -> Result<()> {
         match params {
@@ -124,7 +124,9 @@ pub struct AgentRpcHandler;
 
 #[cfg(feature = "agent")]
 impl ProtocolHandler for AgentRpcHandler {
-    fn name(&self) -> &str { "agent-rpc" }
+    fn name(&self) -> &str {
+        "agent-rpc"
+    }
 
     fn serve(&self, params: ProtocolParams) -> Result<()> {
         match params {
@@ -141,19 +143,37 @@ impl ProtocolHandler for AgentRpcHandler {
 pub struct SwarmHandler;
 
 impl ProtocolHandler for SwarmHandler {
-    fn name(&self) -> &str { "swarm" }
+    fn name(&self) -> &str {
+        "swarm"
+    }
 
     fn serve(&self, params: ProtocolParams) -> Result<()> {
         #[cfg(feature = "swarm")]
         {
-            let ProtocolParams::P2p { listen_addr, capability_tags, skills_dir, executor } = params else {
+            let ProtocolParams::P2p {
+                listen_addr,
+                capability_tags,
+                skills_dir,
+                executor,
+            } = params
+            else {
                 anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
             };
-            skilllite_swarm::serve_swarm(&listen_addr, capability_tags, skills_dir.as_deref(), executor)
+            skilllite_swarm::serve_swarm(
+                &listen_addr,
+                capability_tags,
+                skills_dir.as_deref(),
+                executor,
+            )
         }
         #[cfg(not(feature = "swarm"))]
         {
-            let ProtocolParams::P2p { listen_addr, capability_tags, .. } = params else {
+            let ProtocolParams::P2p {
+                listen_addr,
+                capability_tags,
+                ..
+            } = params
+            else {
                 anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
             };
             tracing::info!(

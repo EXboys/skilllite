@@ -9,11 +9,12 @@ use tokio::task::block_in_place;
 use skilllite_core::planning::PlanningRule;
 
 use crate::feedback::compute_effectiveness;
-use crate::{gatekeeper_l1_path, gatekeeper_l2_size, gatekeeper_l3_content, EvolutionLlm, EvolutionMessage};
+use crate::{
+    gatekeeper_l1_path, gatekeeper_l2_size, gatekeeper_l3_content, EvolutionLlm, EvolutionMessage,
+};
 use skilllite_fs::atomic_write;
 
-const RULE_EXTRACTION_PROMPT: &str =
-    include_str!("seed/evolution_prompts/rule_extraction.seed.md");
+const RULE_EXTRACTION_PROMPT: &str = include_str!("seed/evolution_prompts/rule_extraction.seed.md");
 const EXAMPLE_GENERATION_PROMPT: &str =
     include_str!("seed/evolution_prompts/example_generation.seed.md");
 
@@ -113,7 +114,11 @@ async fn extract_rules_from_data<L: EvolutionLlm>(
         .replace("{{failed_decisions}}", &failed);
 
     let messages = vec![EvolutionMessage::user(&prompt)];
-    let content = llm.complete(&messages, model, 0.3).await?.trim().to_string();
+    let content = llm
+        .complete(&messages, model, 0.3)
+        .await?
+        .trim()
+        .to_string();
 
     let parsed = match parse_rule_extraction_response(&content) {
         Ok(rules) => rules,
@@ -122,7 +127,14 @@ async fn extract_rules_from_data<L: EvolutionLlm>(
             tracing::warn!("Failed to parse LLM rule extraction output: {}", detail);
             let _ = block_in_place(|| {
                 let conn = crate::feedback::open_evolution_db(chat_root)?;
-                let _ = crate::log_evolution_event(&conn, chat_root, "rule_extraction_parse_failed", "", &detail, "");
+                let _ = crate::log_evolution_event(
+                    &conn,
+                    chat_root,
+                    "rule_extraction_parse_failed",
+                    "",
+                    &detail,
+                    "",
+                );
                 Ok::<_, anyhow::Error>(())
             });
             return Ok(Vec::new());
@@ -139,7 +151,11 @@ async fn extract_rules_from_data<L: EvolutionLlm>(
             continue;
         }
         if rule.priority < 50 || rule.priority > 79 {
-            tracing::warn!("Rule {} has invalid priority {} (must be 50-79), adjusting", rule.id, rule.priority);
+            tracing::warn!(
+                "Rule {} has invalid priority {} (must be 50-79), adjusting",
+                rule.id,
+                rule.priority
+            );
             let mut r = rule;
             r.priority = r.priority.clamp(50, 79);
             valid_rules.push(r);
@@ -192,7 +208,11 @@ fn parse_rule_extraction_response(content: &str) -> Result<Vec<PlanningRule>> {
 
     let mut rules = Vec::new();
     for rule_val in rules_array {
-        let id = rule_val.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let id = rule_val
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
         if id.is_empty() {
             continue;
         }
@@ -297,7 +317,11 @@ async fn generate_examples_from_data<L: EvolutionLlm>(
         .replace("{{elapsed_ms}}", &elapsed_ms.to_string());
 
     let messages = vec![EvolutionMessage::user(&prompt)];
-    let content = llm.complete(&messages, model, 0.3).await?.trim().to_string();
+    let content = llm
+        .complete(&messages, model, 0.3)
+        .await?
+        .trim()
+        .to_string();
 
     let example = match parse_example_response(&content) {
         Ok(ex) => ex,
@@ -306,7 +330,14 @@ async fn generate_examples_from_data<L: EvolutionLlm>(
             tracing::warn!("Failed to parse LLM example output: {}", detail);
             let _ = block_in_place(|| {
                 let conn = crate::feedback::open_evolution_db(chat_root)?;
-                let _ = crate::log_evolution_event(&conn, chat_root, "example_generation_parse_failed", "", &detail, "");
+                let _ = crate::log_evolution_event(
+                    &conn,
+                    chat_root,
+                    "example_generation_parse_failed",
+                    "",
+                    &detail,
+                    "",
+                );
                 Ok::<_, anyhow::Error>(())
             });
             return Ok(Vec::new());
@@ -317,7 +348,10 @@ async fn generate_examples_from_data<L: EvolutionLlm>(
         None => return Ok(Vec::new()),
     };
 
-    let combined = format!("{} {} {}", example.task_pattern, example.plan_template, example.key_insight);
+    let combined = format!(
+        "{} {} {}",
+        example.task_pattern, example.plan_template, example.key_insight
+    );
     if let Err(e) = gatekeeper_l3_content(&combined) {
         tracing::warn!("L3 rejected example {}: {}", example.id, e);
         return Ok(Vec::new());

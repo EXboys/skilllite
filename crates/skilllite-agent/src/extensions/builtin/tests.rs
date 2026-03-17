@@ -17,7 +17,9 @@ fn test_search_replace_first_occurrence() {
     });
     let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
-    assert!(result.content.contains("Successfully replaced 1 occurrence"));
+    assert!(result
+        .content
+        .contains("Successfully replaced 1 occurrence"));
     assert!(result.content.contains("\"first_changed_line\": 1"));
     assert!(result.content.contains("\"changed\": true"));
 
@@ -39,7 +41,9 @@ fn test_search_replace_requires_unique_match_by_default() {
     });
     let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(result.is_error);
-    assert!(result.content.contains("requires a unique match by default"));
+    assert!(result
+        .content
+        .contains("requires a unique match by default"));
 }
 
 #[test]
@@ -57,7 +61,9 @@ fn test_search_replace_all() {
     });
     let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
-    assert!(result.content.contains("Successfully replaced 3 occurrence"));
+    assert!(result
+        .content
+        .contains("Successfully replaced 3 occurrence"));
 
     let content = std::fs::read_to_string(&file_path).unwrap();
     assert_eq!(content, "qux bar qux baz qux\n");
@@ -490,7 +496,9 @@ fn test_fuzzy_match_indent_difference() {
     });
     let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error, "Error: {}", result.content);
-    assert!(result.content.contains("\"match_type\": \"whitespace_fuzzy\""));
+    assert!(result
+        .content
+        .contains("\"match_type\": \"whitespace_fuzzy\""));
 
     let content = std::fs::read_to_string(&file_path).unwrap();
     assert!(content.contains("let a = 10"));
@@ -538,7 +546,9 @@ fn test_fuzzy_match_multiline_indent() {
     });
     let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
-    assert!(result.content.contains("\"match_type\": \"whitespace_fuzzy\""));
+    assert!(result
+        .content
+        .contains("\"match_type\": \"whitespace_fuzzy\""));
 
     let content = std::fs::read_to_string(&file_path).unwrap();
     assert!(content.contains("    a = 10\n    b = 20"));
@@ -562,7 +572,9 @@ fn test_fuzzy_match_blank_line_difference() {
     });
     let result = execute_builtin_tool("search_replace", &args.to_string(), workspace, None);
     assert!(!result.is_error);
-    assert!(result.content.contains("\"match_type\": \"blank_line_fuzzy\""));
+    assert!(result
+        .content
+        .contains("\"match_type\": \"blank_line_fuzzy\""));
 
     let content = std::fs::read_to_string(&file_path).unwrap();
     assert!(content.starts_with("xxx\nyyy"));
@@ -652,7 +664,11 @@ fn test_grep_files_basic_match() {
 fn test_grep_files_regex_pattern() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path();
-    std::fs::write(workspace.join("code.rs"), "fn main() {\n    let x = 42;\n}\n").unwrap();
+    std::fs::write(
+        workspace.join("code.rs"),
+        "fn main() {\n    let x = 42;\n}\n",
+    )
+    .unwrap();
 
     let args = serde_json::json!({ "pattern": r"fn\s+\w+" });
     let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
@@ -981,11 +997,7 @@ fn test_insert_lines_multiline_auto_indent() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path();
     let file_path = workspace.join("test.rs");
-    std::fs::write(
-        &file_path,
-        "fn main() {\n    let x = 1;\n}\n",
-    )
-    .unwrap();
+    std::fs::write(&file_path, "fn main() {\n    let x = 1;\n}\n").unwrap();
 
     let args = serde_json::json!({
         "path": "test.rs",
@@ -1073,7 +1085,11 @@ async fn test_run_command_streams_output_and_returns_summary() {
     let args = serde_json::json!({
         "command": "printf 'hello\\n'; printf 'warn\\n' 1>&2"
     });
-    let mut sink = CaptureSink { started: Vec::new(), outputs: Vec::new(), finished: Vec::new() };
+    let mut sink = CaptureSink {
+        started: Vec::new(),
+        outputs: Vec::new(),
+        finished: Vec::new(),
+    };
 
     let outcome = run_command::execute_run_command(&args, workspace, &mut sink)
         .await
@@ -1082,8 +1098,14 @@ async fn test_run_command_streams_output_and_returns_summary() {
 
     assert_eq!(sink.started.len(), 1);
     assert_eq!(sink.started[0], "printf 'hello\\n'; printf 'warn\\n' 1>&2");
-    assert!(sink.outputs.iter().any(|(stream, chunk)| stream == "stdout" && chunk == "hello"));
-    assert!(sink.outputs.iter().any(|(stream, chunk)| stream == "stderr" && chunk == "warn"));
+    assert!(sink
+        .outputs
+        .iter()
+        .any(|(stream, chunk)| stream == "stdout" && chunk == "hello"));
+    assert!(sink
+        .outputs
+        .iter()
+        .any(|(stream, chunk)| stream == "stderr" && chunk == "warn"));
     assert_eq!(sink.finished.len(), 1);
     assert!(sink.finished[0].0);
     assert_eq!(sink.finished[0].1, 0);
@@ -1184,7 +1206,9 @@ fn test_preview_server_emits_started_and_ready_events() {
         fn on_text(&mut self, _text: &str) {}
         fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
         fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
-        fn on_confirmation_request(&mut self, _prompt: &str) -> bool { true }
+        fn on_confirmation_request(&mut self, _prompt: &str) -> bool {
+            true
+        }
         fn on_preview_started(&mut self, path: &str, port: u16) {
             self.preview_started.push((path.to_string(), port));
         }
@@ -1240,7 +1264,9 @@ async fn test_delegate_to_swarm_emits_started_and_failed_when_unconfigured() {
         fn on_text(&mut self, _text: &str) {}
         fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
         fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
-        fn on_confirmation_request(&mut self, _prompt: &str) -> bool { true }
+        fn on_confirmation_request(&mut self, _prompt: &str) -> bool {
+            true
+        }
         fn on_swarm_started(&mut self, description: &str) {
             self.swarm_started.push(description.to_string());
         }
@@ -1269,7 +1295,10 @@ async fn test_delegate_to_swarm_emits_started_and_failed_when_unconfigured() {
         .unwrap();
 
     assert!(result.contains("Swarm not configured"));
-    assert_eq!(sink.swarm_started, vec!["delegate quick summary".to_string()]);
+    assert_eq!(
+        sink.swarm_started,
+        vec!["delegate quick summary".to_string()]
+    );
     assert!(sink.swarm_progress.is_empty());
     assert_eq!(sink.swarm_failed.len(), 1);
 }

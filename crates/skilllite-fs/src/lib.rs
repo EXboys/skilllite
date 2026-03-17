@@ -8,26 +8,29 @@
 //! - backup: backup_file, prune_oldest_files
 //! - util: is_likely_binary, matches_glob
 
-mod read_write;
-mod dir;
-mod util;
-mod grep;
-mod search_replace;
 mod backup;
+mod dir;
+mod grep;
+mod read_write;
+mod search_replace;
+mod util;
 
 // Re-export public API
-pub use read_write::{read_file, read_bytes, read_bytes_limit, write_file, append_file, atomic_write, search_replace as search_replace_file};
+pub use backup::{backup_file, prune_oldest_files};
 pub use dir::{
-    read_dir, create_dir_all, copy, rename, remove_file, modified_time, file_exists,
-    list_directory, PathKind,
+    copy, create_dir_all, file_exists, list_directory, modified_time, read_dir, remove_file,
+    rename, PathKind,
+};
+pub use grep::{grep_directory, GrepMatch, SKIP_DIRS};
+pub use read_write::{
+    append_file, atomic_write, read_bytes, read_bytes_limit, read_file,
+    search_replace as search_replace_file, write_file,
+};
+pub use search_replace::{
+    apply_replace_fuzzy, apply_replace_normalize_whitespace, apply_search_replace,
+    build_failure_hint, insert_lines_at, line_byte_offsets, safe_excerpt, FuzzyReplaceResult,
 };
 pub use util::{is_likely_binary, matches_glob};
-pub use grep::{grep_directory, GrepMatch, SKIP_DIRS};
-pub use search_replace::{
-    apply_search_replace, apply_replace_fuzzy, apply_replace_normalize_whitespace,
-    insert_lines_at, line_byte_offsets, safe_excerpt, build_failure_hint, FuzzyReplaceResult,
-};
-pub use backup::{backup_file, prune_oldest_files};
 
 #[cfg(test)]
 mod tests {
@@ -42,7 +45,10 @@ mod tests {
         std::fs::write(&f, "x").unwrap();
         assert!(matches!(file_exists(&f).unwrap(), PathKind::File(1)));
         assert!(matches!(file_exists(dir.path()).unwrap(), PathKind::Dir));
-        assert!(matches!(file_exists(&dir.path().join("nonexistent")).unwrap(), PathKind::NotFound));
+        assert!(matches!(
+            file_exists(&dir.path().join("nonexistent")).unwrap(),
+            PathKind::NotFound
+        ));
     }
 
     #[test]

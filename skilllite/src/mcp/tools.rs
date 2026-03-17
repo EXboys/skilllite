@@ -109,4 +109,3 @@ pub(super) fn get_mcp_tools() -> Vec<Value> {
         }),
     ]
 }
-

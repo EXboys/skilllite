@@ -34,9 +34,7 @@ pub fn register(reg: &mut CommandRegistry) {
         } = cmd
         {
             Some(skilllite_commands::skill::cmd_remove(
-                skill_name,
-                skills_dir,
-                *force,
+                skill_name, skills_dir, *force,
             ))
         } else {
             None
@@ -50,7 +48,9 @@ pub fn register(reg: &mut CommandRegistry) {
             scan,
         } = cmd
         {
-            Some(skilllite_commands::skill::cmd_list(skills_dir, *json, *scan))
+            Some(skilllite_commands::skill::cmd_list(
+                skills_dir, *json, *scan,
+            ))
         } else {
             None
         }
@@ -82,9 +82,7 @@ pub fn register(reg: &mut CommandRegistry) {
         } = cmd
         {
             Some(skilllite_commands::skill::cmd_show(
-                skill_name,
-                skills_dir,
-                *json,
+                skill_name, skills_dir, *json,
             ))
         } else {
             None
@@ -100,10 +98,7 @@ pub fn register(reg: &mut CommandRegistry) {
         } = cmd
         {
             Some(skilllite_commands::skill::cmd_verify(
-                target,
-                skills_dir,
-                *json,
-                *strict,
+                target, skills_dir, *json, *strict,
             ))
         } else {
             None

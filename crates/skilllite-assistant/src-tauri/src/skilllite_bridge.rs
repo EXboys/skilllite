@@ -53,10 +53,7 @@ fn find_project_root(start: &str) -> std::path::PathBuf {
 /// Load .env from workspace and parents for subprocess env.
 /// Reuses skilllite_core::config::parse_dotenv_walking_up (single source of truth).
 fn load_dotenv_for_child(workspace: &str) -> Vec<(String, String)> {
-    skilllite_core::config::parse_dotenv_walking_up(
-        std::path::Path::new(workspace),
-        5,
-    )
+    skilllite_core::config::parse_dotenv_walking_up(std::path::Path::new(workspace), 5)
 }
 
 /// Config overrides from frontend (optional).
@@ -144,7 +141,10 @@ pub fn chat_stream(
         .ok_or_else(|| "Failed to open stdout".to_string())?;
 
     {
-        let mut guard = process_state.0.lock().map_err(|_| "ChatProcessState lock poisoned")?;
+        let mut guard = process_state
+            .0
+            .lock()
+            .map_err(|_| "ChatProcessState lock poisoned")?;
         *guard = Some(child);
     }
 
@@ -272,7 +272,10 @@ pub fn chat_stream(
 
     drop(stdin);
     let child_opt = {
-        let mut guard = process_state.0.lock().map_err(|_| "ChatProcessState lock poisoned")?;
+        let mut guard = process_state
+            .0
+            .lock()
+            .map_err(|_| "ChatProcessState lock poisoned")?;
         guard.take()
     };
     if let Some(mut c) = child_opt {
@@ -339,15 +342,24 @@ pub fn open_directory(module: &str) -> Result<(), String> {
     }
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open").arg(&path).spawn().map_err(|e| e.to_string())?;
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer").arg(path.to_string_lossy().to_string()).spawn().map_err(|e| e.to_string())?;
+        std::process::Command::new("explorer")
+            .arg(path.to_string_lossy().to_string())
+            .spawn()
+            .map_err(|e| e.to_string())?;
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        std::process::Command::new("xdg-open").arg(&path).spawn().map_err(|e| e.to_string())?;
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -467,7 +479,9 @@ fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
                     .and_then(|m| m.modified())
                     .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
             });
-            candidates.last().and_then(|e| parse_plan_from_file(&e.path()))
+            candidates
+                .last()
+                .and_then(|e| parse_plan_from_file(&e.path()))
         }
     };
 
@@ -575,7 +589,7 @@ pub fn read_memory_file(relative_path: &str) -> Result<String, String> {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TranscriptMessage {
     pub id: String,
-    pub role: String,   // "user" | "assistant"
+    pub role: String, // "user" | "assistant"
     pub content: String,
 }
 
@@ -604,8 +618,14 @@ fn list_transcript_paths(transcripts_dir: &std::path::Path, session_key: &str) -
         }
     }
     paths.sort_by(|a, b| {
-        let stem_a = a.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
-        let stem_b = b.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
+        let stem_a = a
+            .file_stem()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default();
+        let stem_b = b
+            .file_stem()
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default();
         let date_a = stem_a.strip_prefix(&prefix).unwrap_or("0000-00-00");
         let date_b = stem_b.strip_prefix(&prefix).unwrap_or("0000-00-00");
         date_a.cmp(date_b)
@@ -635,7 +655,9 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
     let mut entries: Vec<TranscriptEntryRaw> = Vec::new();
 
     for path in paths {
-        let Ok(file) = std::fs::File::open(&path) else { continue };
+        let Ok(file) = std::fs::File::open(&path) else {
+            continue;
+        };
         let reader = BufReader::new(file);
         for line in reader.lines() {
             let Ok(line) = line else { continue };
@@ -647,15 +669,27 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 Ok(x) => x,
                 Err(_) => continue,
             };
-            let ty = v.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string();
+            let ty = v
+                .get("type")
+                .and_then(|t| t.as_str())
+                .unwrap_or("")
+                .to_string();
             if ty == "message" {
-                let role = v.get("role").and_then(|r| r.as_str()).unwrap_or("").to_string();
+                let role = v
+                    .get("role")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 if role != "user" && role != "assistant" {
                     continue;
                 }
                 entries.push(TranscriptEntryRaw {
                     ty,
-                    id: v.get("id").and_then(|i| i.as_str()).unwrap_or("").to_string(),
+                    id: v
+                        .get("id")
+                        .and_then(|i| i.as_str())
+                        .unwrap_or("")
+                        .to_string(),
                     role,
                     content: v
                         .get("content")
@@ -678,10 +712,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
 
     let compaction_idx = entries.iter().rposition(|e| e.ty == "compaction");
     let (to_use, summary_opt) = match compaction_idx {
-        Some(idx) => (
-            entries[idx + 1..].to_vec(),
-            entries[idx].summary.clone(),
-        ),
+        Some(idx) => (entries[idx + 1..].to_vec(), entries[idx].summary.clone()),
         None => (entries, None),
     };
 
@@ -737,7 +768,9 @@ pub fn clear_transcript(
         cmd.env(k, v);
     }
 
-    let output = cmd.output().map_err(|e| format!("Failed to run clear-session: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run clear-session: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
@@ -774,7 +807,11 @@ fn skill_has_scripts(path: &std::path::Path) -> bool {
     let scripts_dir = path.join("scripts");
     if scripts_dir.is_dir() {
         if let Ok(entries) = std::fs::read_dir(&scripts_dir) {
-            if entries.filter(|e| e.as_ref().ok().map(|e| e.path().is_file()).unwrap_or(false)).count() > 0 {
+            if entries
+                .filter(|e| e.as_ref().ok().map(|e| e.path().is_file()).unwrap_or(false))
+                .count()
+                > 0
+            {
                 return true;
             }
         }
@@ -801,7 +838,12 @@ fn collect_skill_dirs(root: &std::path::Path) -> Vec<(PathBuf, String)> {
         return Vec::new();
     }
     let mut dirs = Vec::new();
-    for e in std::fs::read_dir(root).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+    for e in std::fs::read_dir(root)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+    {
         let path = e.path();
         if !path.is_dir() {
             continue;
@@ -809,7 +851,12 @@ fn collect_skill_dirs(root: &std::path::Path) -> Vec<(PathBuf, String)> {
         let name = e.file_name().to_string_lossy().into_owned();
         if name.starts_with('_') {
             if name == "_evolved" || name == "_pending" {
-                for e2 in std::fs::read_dir(&path).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+                for e2 in std::fs::read_dir(&path)
+                    .ok()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|e| e.ok())
+                {
                     let p2 = e2.path();
                     let sub = e2.file_name().to_string_lossy().into_owned();
                     if !p2.is_dir() {
@@ -818,9 +865,15 @@ fn collect_skill_dirs(root: &std::path::Path) -> Vec<(PathBuf, String)> {
                     if p2.join("SKILL.md").exists() && skill_has_scripts(&p2) {
                         dirs.push((p2, sub));
                     } else if sub == "_pending" {
-                        for e3 in std::fs::read_dir(&p2).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+                        for e3 in std::fs::read_dir(&p2)
+                            .ok()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|e| e.ok())
+                        {
                             let p3 = e3.path();
-                            if p3.is_dir() && p3.join("SKILL.md").exists() && skill_has_scripts(&p3) {
+                            if p3.is_dir() && p3.join("SKILL.md").exists() && skill_has_scripts(&p3)
+                            {
                                 dirs.push((p3, e3.file_name().to_string_lossy().into_owned()));
                             }
                         }
@@ -875,7 +928,9 @@ pub fn repair_skills(
         cmd.env(k, v);
     }
 
-    let output = cmd.output().map_err(|e| format!("执行 repair-skills 失败: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("执行 repair-skills 失败: {}", e))?;
     let out = String::from_utf8_lossy(&output.stdout);
     let err = String::from_utf8_lossy(&output.stderr);
     let combined = if err.is_empty() {

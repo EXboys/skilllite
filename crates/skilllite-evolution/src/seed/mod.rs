@@ -112,7 +112,10 @@ fn merge_seed_rules(dir: &Path) {
         if !exists {
             merged.push(seed_rule.clone());
         }
-        if let Some(existing_rule) = merged.iter_mut().find(|r| r.id == seed_rule.id && !r.mutable) {
+        if let Some(existing_rule) = merged
+            .iter_mut()
+            .find(|r| r.id == seed_rule.id && !r.mutable)
+        {
             *existing_rule = seed_rule.clone();
         }
     }
@@ -136,13 +139,22 @@ fn merge_seed_sources(dir: &Path) {
         std::fs::read_to_string(&sources_path)
             .ok()
             .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_else(|| SourceRegistry { version: 1, sources: Vec::new() })
+            .unwrap_or_else(|| SourceRegistry {
+                version: 1,
+                sources: Vec::new(),
+            })
     } else {
-        SourceRegistry { version: 1, sources: Vec::new() }
+        SourceRegistry {
+            version: 1,
+            sources: Vec::new(),
+        }
     };
 
     for seed_src in &seed_registry.sources {
-        let already_exists = existing_registry.sources.iter().any(|s| s.id == seed_src.id);
+        let already_exists = existing_registry
+            .sources
+            .iter()
+            .any(|s| s.id == seed_src.id);
         if !already_exists {
             existing_registry.sources.push(seed_src.clone());
         }
@@ -215,7 +227,12 @@ pub fn load_examples(chat_root: &Path) -> String {
 
 pub fn required_placeholders(name: &str) -> &'static [&'static str] {
     match name {
-        "planning.md" => &["{{TODAY}}", "{{RULES_SECTION}}", "{{EXAMPLES_SECTION}}", "{{OUTPUT_DIR}}"],
+        "planning.md" => &[
+            "{{TODAY}}",
+            "{{RULES_SECTION}}",
+            "{{EXAMPLES_SECTION}}",
+            "{{OUTPUT_DIR}}",
+        ],
         "execution.md" => &["{{TODAY}}", "{{SKILLS_LIST}}", "{{OUTPUT_DIR}}"],
         "system.md" => &[],
         "examples.md" => &[],

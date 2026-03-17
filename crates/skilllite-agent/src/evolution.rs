@@ -85,12 +85,12 @@ pub fn to_evolution_feedback(signal: FeedbackSignal) -> EvolutionFeedbackSignal 
 }
 
 // Re-export evolution crate for use by chat_session and other modules.
+pub use skilllite_evolution::feedback;
+pub use skilllite_evolution::seed;
 pub use skilllite_evolution::{
     check_auto_rollback, format_evolution_changes, on_shutdown, query_changes_by_txn,
     run_evolution, EvolutionMode,
 };
-pub use skilllite_evolution::feedback;
-pub use skilllite_evolution::seed;
 
 #[cfg(test)]
 mod tests {
@@ -116,7 +116,10 @@ mod tests {
         };
 
         let input = execution_feedback_to_decision_input(&feedback);
-        assert_eq!(input.rules_used, vec!["rule.alpha".to_string(), "rule.beta".to_string()]);
+        assert_eq!(
+            input.rules_used,
+            vec!["rule.alpha".to_string(), "rule.beta".to_string()]
+        );
     }
 
     #[test]

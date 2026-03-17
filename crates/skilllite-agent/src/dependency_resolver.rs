@@ -4,7 +4,9 @@
 //! Implements the LlmProvider trait to enable async resolution.
 
 #[cfg(feature = "async-resolve")]
-use skilllite_core::skill::dependency_resolver::{resolve_packages as core_resolve_packages, LlmProvider};
+use skilllite_core::skill::dependency_resolver::{
+    resolve_packages as core_resolve_packages, LlmProvider,
+};
 
 use crate::llm::LlmClient;
 use std::path::Path;
@@ -12,8 +14,8 @@ use std::path::Path;
 #[cfg(feature = "async-resolve")]
 mod llm_resolver {
     use super::*;
-    use async_trait::async_trait;
     use crate::types::ChatMessage;
+    use async_trait::async_trait;
 
     /// Implement LlmProvider for skilllite-agent's LlmClient.
     #[async_trait]

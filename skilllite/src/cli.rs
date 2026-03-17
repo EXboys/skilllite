@@ -259,7 +259,6 @@ pub enum Commands {
     },
 
     // ─── Phase 3: CLI Migration Commands (flat, no nesting) ────────────
-
     /// Add skills from a remote repository, ClawHub, or local path
     ///
     /// Examples:

@@ -293,7 +293,10 @@ impl EventSink for TerminalEventSink {
                 .as_deref()
                 .map(|h| format!(" [{}]", h))
                 .unwrap_or_default();
-            self.msg(&format!("   {}. {} {}{}", task.id, status, task.description, hint));
+            self.msg(&format!(
+                "   {}. {} {}{}",
+                task.id, status, task.description, hint
+            ));
         }
     }
 
@@ -307,7 +310,13 @@ impl EventSink for TerminalEventSink {
             for task in tasks {
                 let status = if task.completed {
                     "✅"
-                } else if task.id == tasks.iter().find(|t| !t.completed).map(|t| t.id).unwrap_or(0) {
+                } else if task.id
+                    == tasks
+                        .iter()
+                        .find(|t| !t.completed)
+                        .map(|t| t.id)
+                        .unwrap_or(0)
+                {
                     "▶"
                 } else {
                     "○"
@@ -317,7 +326,10 @@ impl EventSink for TerminalEventSink {
                     .as_deref()
                     .map(|h| format!(" [{}]", h))
                     .unwrap_or_default();
-                self.msg(&format!("     {}. {} {}{}", task.id, status, task.description, hint));
+                self.msg(&format!(
+                    "     {}. {} {}{}",
+                    task.id, status, task.description, hint
+                ));
             }
         }
     }
@@ -361,7 +373,8 @@ impl EventSink for RunModeEventSink {
         self.inner.on_command_output(stream, chunk);
     }
     fn on_command_finished(&mut self, success: bool, exit_code: i32, duration_ms: u64) {
-        self.inner.on_command_finished(success, exit_code, duration_ms);
+        self.inner
+            .on_command_finished(success, exit_code, duration_ms);
     }
     fn on_preview_started(&mut self, path: &str, port: u16) {
         self.inner.on_preview_started(path, port);

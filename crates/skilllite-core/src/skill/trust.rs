@@ -50,8 +50,10 @@ pub fn assess_skill_trust(
 ) -> TrustAssessment {
     let mut reasons = Vec::new();
 
-    if matches!(integrity, IntegritySignal::HashChanged | IntegritySignal::SignatureInvalid)
-        || matches!(signature, SignatureSignal::Invalid)
+    if matches!(
+        integrity,
+        IntegritySignal::HashChanged | IntegritySignal::SignatureInvalid
+    ) || matches!(signature, SignatureSignal::Invalid)
         || has_critical_scan
     {
         if matches!(integrity, IntegritySignal::HashChanged) {

@@ -24,7 +24,7 @@ mod tests;
 use serde_json::Value;
 use std::path::Path;
 
-use crate::types::{self, EventSink, ToolDefinition, ToolResult, safe_truncate, safe_slice_from};
+use crate::types::{self, safe_slice_from, safe_truncate, EventSink, ToolDefinition, ToolResult};
 use helpers::*;
 
 use super::registry::{RegisteredTool, ToolCapability, ToolHandler, ToolScope};
@@ -145,18 +145,17 @@ pub fn execute_builtin_tool(
 
     match result {
         Ok(content) => {
-            let final_content = if was_recovered
-                && (tool_name == "write_file" || tool_name == "write_output")
-            {
-                format!(
-                    "{}\n\n⚠️ Content may have been truncated due to token limit. \
+            let final_content =
+                if was_recovered && (tool_name == "write_file" || tool_name == "write_output") {
+                    format!(
+                        "{}\n\n⚠️ Content may have been truncated due to token limit. \
                      Consider splitting into smaller chunks or verify the output. \
                      Increase SKILLLITE_MAX_TOKENS if needed.",
+                        content
+                    )
+                } else {
                     content
-                )
-            } else {
-                content
-            };
+                };
             ToolResult {
                 tool_call_id: String::new(),
                 tool_name: tool_name.to_string(),
@@ -218,19 +217,20 @@ pub async fn execute_async_builtin_tool(
         "delegate_to_swarm" => {
             delegate_swarm::execute_delegate_to_swarm(&args, workspace, event_sink).await
         }
-        _ => Err(anyhow::anyhow!("Unknown async built-in tool: {}", tool_name)),
+        _ => Err(anyhow::anyhow!(
+            "Unknown async built-in tool: {}",
+            tool_name
+        )),
     };
 
     match result {
-        Ok(content) => {
-            ToolResult {
-                tool_call_id: String::new(),
-                tool_name: tool_name.to_string(),
-                content,
-                is_error: false,
-                counts_as_failure: false,
-            }
-        }
+        Ok(content) => ToolResult {
+            tool_call_id: String::new(),
+            tool_name: tool_name.to_string(),
+            content,
+            is_error: false,
+            counts_as_failure: false,
+        },
         Err(e) => ToolResult {
             tool_call_id: String::new(),
             tool_name: tool_name.to_string(),
@@ -281,4 +281,3 @@ pub fn process_tool_result_content_fallback(content: &str) -> String {
         head, len, tail
     )
 }
-

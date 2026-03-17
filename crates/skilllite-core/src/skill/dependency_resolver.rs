@@ -67,7 +67,10 @@ pub fn resolve_from_lock(skill_dir: &Path, compatibility: Option<&str>) -> Optio
     }
 
     let arr = lock.get("resolved_packages")?.as_array()?;
-    let packages: Vec<String> = arr.iter().filter_map(|v| v.as_str().map(String::from)).collect();
+    let packages: Vec<String> = arr
+        .iter()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect();
     if packages.is_empty() {
         None
     } else {
@@ -282,55 +285,155 @@ fn get_whitelist() -> PackagesWhitelist {
 /// Sync with Python SDK `packages_whitelist.json`.
 const PYTHON_PACKAGES: &[&str] = &[
     // HTTP / Networking
-    "requests", "httpx", "aiohttp", "urllib3", "httplib2",
+    "requests",
+    "httpx",
+    "aiohttp",
+    "urllib3",
+    "httplib2",
     // Data Science
-    "numpy", "pandas", "scipy", "scikit-learn", "statsmodels",
-    "polars", "pyarrow", "duckdb", "openpyxl",
+    "numpy",
+    "pandas",
+    "scipy",
+    "scikit-learn",
+    "statsmodels",
+    "polars",
+    "pyarrow",
+    "duckdb",
+    "openpyxl",
     // ML / AI
-    "tensorflow", "keras", "torch", "pytorch", "transformers",
-    "xgboost", "lightgbm", "catboost", "onnx", "onnxruntime",
-    "openai", "anthropic", "langchain", "langgraph", "llama-index",
+    "tensorflow",
+    "keras",
+    "torch",
+    "pytorch",
+    "transformers",
+    "xgboost",
+    "lightgbm",
+    "catboost",
+    "onnx",
+    "onnxruntime",
+    "openai",
+    "anthropic",
+    "langchain",
+    "langgraph",
+    "llama-index",
     // Visualization
-    "matplotlib", "seaborn", "plotly", "bokeh", "altair",
+    "matplotlib",
+    "seaborn",
+    "plotly",
+    "bokeh",
+    "altair",
     // Web Frameworks
-    "flask", "django", "fastapi", "starlette", "uvicorn", "gunicorn",
-    "sanic", "tornado", "bottle", "pyramid",
+    "flask",
+    "django",
+    "fastapi",
+    "starlette",
+    "uvicorn",
+    "gunicorn",
+    "sanic",
+    "tornado",
+    "bottle",
+    "pyramid",
     // Scraping / Parsing
-    "beautifulsoup4", "lxml", "scrapy", "selenium", "playwright",
-    "html5lib", "cssselect", "html2text",
+    "beautifulsoup4",
+    "lxml",
+    "scrapy",
+    "selenium",
+    "playwright",
+    "html5lib",
+    "cssselect",
+    "html2text",
     // Image / Media
-    "pillow", "opencv-python", "imageio", "scikit-image",
+    "pillow",
+    "opencv-python",
+    "imageio",
+    "scikit-image",
     // YAML / Config
-    "pyyaml", "toml", "tomli", "python-dotenv", "configparser",
+    "pyyaml",
+    "toml",
+    "tomli",
+    "python-dotenv",
+    "configparser",
     // Database
-    "sqlalchemy", "psycopg2", "psycopg2-binary", "pymysql", "redis",
-    "pymongo", "motor", "asyncpg", "aiosqlite", "peewee", "pyodps",
+    "sqlalchemy",
+    "psycopg2",
+    "psycopg2-binary",
+    "pymysql",
+    "redis",
+    "pymongo",
+    "motor",
+    "asyncpg",
+    "aiosqlite",
+    "peewee",
+    "pyodps",
     // Cloud
-    "boto3", "botocore", "google-cloud-storage", "google-auth",
-    "azure-storage-blob", "azure-identity", "oss2",
+    "boto3",
+    "botocore",
+    "google-cloud-storage",
+    "google-auth",
+    "azure-storage-blob",
+    "azure-identity",
+    "oss2",
     // Testing
-    "pytest", "mock", "responses", "fakeredis", "factory-boy",
+    "pytest",
+    "mock",
+    "responses",
+    "fakeredis",
+    "factory-boy",
     // CLI
-    "click", "typer", "argparse", "fire", "rich", "tqdm", "colorama",
+    "click",
+    "typer",
+    "argparse",
+    "fire",
+    "rich",
+    "tqdm",
+    "colorama",
     // Serialization
-    "pydantic", "attrs", "dataclasses-json", "marshmallow", "cattrs",
+    "pydantic",
+    "attrs",
+    "dataclasses-json",
+    "marshmallow",
+    "cattrs",
     // Template
-    "jinja2", "mako",
+    "jinja2",
+    "mako",
     // Task Queue
-    "celery", "rq", "dramatiq",
+    "celery",
+    "rq",
+    "dramatiq",
     // Crypto / Auth
-    "cryptography", "pyjwt", "passlib", "bcrypt", "paramiko",
+    "cryptography",
+    "pyjwt",
+    "passlib",
+    "bcrypt",
+    "paramiko",
     // Logging
-    "loguru", "structlog",
+    "loguru",
+    "structlog",
     // Async
-    "anyio", "trio", "aiofiles",
+    "anyio",
+    "trio",
+    "aiofiles",
     // Misc
-    "arrow", "pendulum", "python-dateutil", "pytz",
-    "chardet", "charset-normalizer",
-    "orjson", "ujson", "tenacity",
-    "tox", "nox", "pre-commit",
-    "mypy", "black", "ruff", "isort",
-    "setuptools", "wheel", "pip", "poetry",
+    "arrow",
+    "pendulum",
+    "python-dateutil",
+    "pytz",
+    "chardet",
+    "charset-normalizer",
+    "orjson",
+    "ujson",
+    "tenacity",
+    "tox",
+    "nox",
+    "pre-commit",
+    "mypy",
+    "black",
+    "ruff",
+    "isort",
+    "setuptools",
+    "wheel",
+    "pip",
+    "poetry",
 ];
 
 /// Python package aliases: alias → canonical pip name.
@@ -352,55 +455,121 @@ const PYTHON_ALIASES: &[(&str, &str)] = &[
 /// Comprehensive Node.js package whitelist.
 const NODE_PACKAGES: &[&str] = &[
     // HTTP
-    "axios", "node-fetch", "got", "superagent", "ky",
+    "axios",
+    "node-fetch",
+    "got",
+    "superagent",
+    "ky",
     // Web Frameworks
-    "express", "koa", "fastify", "hapi", "nest", "next",
+    "express",
+    "koa",
+    "fastify",
+    "hapi",
+    "nest",
+    "next",
     // Utility
-    "lodash", "underscore", "ramda", "fp-ts",
+    "lodash",
+    "underscore",
+    "ramda",
+    "fp-ts",
     // Date
-    "moment", "dayjs", "date-fns", "luxon",
+    "moment",
+    "dayjs",
+    "date-fns",
+    "luxon",
     // Scraping
-    "cheerio", "puppeteer", "playwright",
+    "cheerio",
+    "puppeteer",
+    "playwright",
     // Database
-    "mongoose", "sequelize", "knex", "prisma", "typeorm",
+    "mongoose",
+    "sequelize",
+    "knex",
+    "prisma",
+    "typeorm",
     // Cache
-    "ioredis", "redis",
+    "ioredis",
+    "redis",
     // Cloud
-    "aws-sdk", "@aws-sdk/client-s3", "googleapis", "openai", "@anthropic-ai/sdk",
+    "aws-sdk",
+    "@aws-sdk/client-s3",
+    "googleapis",
+    "openai",
+    "@anthropic-ai/sdk",
     // Testing
-    "jest", "mocha", "chai", "vitest", "sinon", "@playwright/test",
+    "jest",
+    "mocha",
+    "chai",
+    "vitest",
+    "sinon",
+    "@playwright/test",
     // CLI
-    "commander", "yargs", "inquirer", "meow", "cac",
+    "commander",
+    "yargs",
+    "inquirer",
+    "meow",
+    "cac",
     // Output
-    "chalk", "ora", "boxen", "cli-table3", "figures",
+    "chalk",
+    "ora",
+    "boxen",
+    "cli-table3",
+    "figures",
     // Config
-    "dotenv", "convict",
+    "dotenv",
+    "convict",
     // Auth
-    "jsonwebtoken", "bcrypt", "crypto-js", "uuid", "nanoid",
+    "jsonwebtoken",
+    "bcrypt",
+    "crypto-js",
+    "uuid",
+    "nanoid",
     // Realtime
-    "socket.io", "ws",
+    "socket.io",
+    "ws",
     // Image
-    "sharp", "jimp",
+    "sharp",
+    "jimp",
     // Frontend
-    "react", "vue", "svelte", "solid-js", "angular",
+    "react",
+    "vue",
+    "svelte",
+    "solid-js",
+    "angular",
     // Build
-    "webpack", "vite", "esbuild", "rollup", "parcel",
+    "webpack",
+    "vite",
+    "esbuild",
+    "rollup",
+    "parcel",
     // TypeScript
-    "typescript", "ts-node", "tsx",
+    "typescript",
+    "ts-node",
+    "tsx",
     // Validation
-    "zod", "yup", "joi", "ajv",
+    "zod",
+    "yup",
+    "joi",
+    "ajv",
     // Misc
-    "glob", "minimatch", "chokidar", "fs-extra",
-    "debug", "winston", "pino",
-    "p-limit", "p-queue", "p-retry",
-    "execa", "cross-env", "cross-spawn",
+    "glob",
+    "minimatch",
+    "chokidar",
+    "fs-extra",
+    "debug",
+    "winston",
+    "pino",
+    "p-limit",
+    "p-queue",
+    "p-retry",
+    "execa",
+    "cross-env",
+    "cross-spawn",
     "agent-browser",
 ];
 
 /// Node.js package aliases.
-const NODE_ALIASES: &[(&str, &str)] = &[
-    ("socket.io-client", "socket.io"),
-];
+const NODE_ALIASES: &[(&str, &str)] = &[("socket.io-client", "socket.io")];
 
 #[cfg(test)]
 mod tests {
@@ -457,10 +626,7 @@ mod tests {
 
     #[test]
     fn test_whitelist_matching_python_aliases_for_odps_and_llamaindex() {
-        let pkgs = resolve_from_whitelist(
-            "Requires Python 3.x with odps and llamaindex",
-            "python",
-        );
+        let pkgs = resolve_from_whitelist("Requires Python 3.x with odps and llamaindex", "python");
         assert!(pkgs.contains(&"pyodps".to_string()));
         assert!(pkgs.contains(&"llama-index".to_string()));
     }
@@ -485,12 +651,17 @@ mod tests {
 
     #[test]
     fn test_word_boundary_match() {
-        assert!(is_word_boundary_match("requires requests library", "requests"));
-        assert!(!is_word_boundary_match("requires request handling", "requests"));
+        assert!(is_word_boundary_match(
+            "requires requests library",
+            "requests"
+        ));
+        assert!(!is_word_boundary_match(
+            "requires request handling",
+            "requests"
+        ));
         assert!(is_word_boundary_match("pandas, numpy", "pandas"));
         assert!(is_word_boundary_match("pandas, numpy", "numpy"));
     }
-
 }
 
 // ─── LLM-based resolution (async) ──────────────────────────────────────────────
@@ -542,9 +713,9 @@ mod async_resolve {
         let candidates: Vec<String> = text
             .lines()
             .map(|l| {
-                l.trim().trim_matches(
-                    |c: char| !c.is_alphanumeric() && c != '-' && c != '_' && c != '.',
-                )
+                l.trim().trim_matches(|c: char| {
+                    !c.is_alphanumeric() && c != '-' && c != '_' && c != '.'
+                })
             })
             .filter(|l| !l.is_empty())
             .map(|l| l.to_lowercase())

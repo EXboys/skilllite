@@ -4,7 +4,6 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-
 use serde_json::Value;
 
 use anyhow::Result;
@@ -52,14 +51,23 @@ pub(super) fn handle_update_task_plan(
     };
     let mut new_tasks = Vec::new();
     for (i, t) in tasks_arr.iter().enumerate() {
-        let id = t.get("id").and_then(|v| v.as_u64()).unwrap_or((i + 1) as u64) as u32;
+        let id = t
+            .get("id")
+            .and_then(|v| v.as_u64())
+            .unwrap_or((i + 1) as u64) as u32;
         let description = t
             .get("description")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let tool_hint = t.get("tool_hint").and_then(|v| v.as_str()).map(String::from);
-        let completed = t.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+        let tool_hint = t
+            .get("tool_hint")
+            .and_then(|v| v.as_str())
+            .map(String::from);
+        let completed = t
+            .get("completed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         new_tasks.push(Task {
             id,
             description,
@@ -173,12 +181,19 @@ pub(super) fn handle_complete_task(
 
     planner.mark_completed(task_id);
     event_sink.on_task_progress(task_id, true, &planner.task_list);
-    tracing::info!("complete_task: task {} marked done. summary={:?}", task_id, summary);
+    tracing::info!(
+        "complete_task: task {} marked done. summary={:?}",
+        task_id,
+        summary
+    );
 
     super::super::types::ToolResult {
         tool_call_id: String::new(),
         tool_name: "complete_task".to_string(),
-        content: format!(r#"{{"success": true, "task_id": {}, "message": "Task {} marked as completed"}}"#, task_id, task_id),
+        content: format!(
+            r#"{{"success": true, "task_id": {}, "message": "Task {} marked as completed"}}"#,
+            task_id, task_id
+        ),
         is_error: false,
         counts_as_failure: false,
     }
@@ -196,7 +211,14 @@ pub(super) async fn execute_tool_call(
     planning_ctx: Option<&mut dyn extensions::PlanningControlExecutor>,
 ) -> ToolResult {
     registry
-        .execute(tool_name, arguments, workspace, event_sink, embed_ctx, planning_ctx)
+        .execute(
+            tool_name,
+            arguments,
+            workspace,
+            event_sink,
+            embed_ctx,
+            planning_ctx,
+        )
         .await
 }
 
@@ -248,7 +270,8 @@ pub(super) async fn process_result_content(
                 }
             }
         }
-    }}
+    }
+}
 
 /// Inject progressive disclosure docs for skill tools being called for the first time.
 /// Returns `true` if docs were injected (caller should re-prompt LLM).
@@ -303,12 +326,7 @@ pub(super) fn inject_progressive_disclosure(
     // Inject documentation as a user message prompting re-call
     let docs_text: Vec<String> = new_docs
         .iter()
-        .map(|(name, docs)| {
-            format!(
-                "## Full Documentation for skill: {}\n\n{}\n",
-                name, docs
-            )
-        })
+        .map(|(name, docs)| format!("## Full Documentation for skill: {}\n\n{}\n", name, docs))
         .collect();
 
     let tool_names: Vec<&str> = new_docs.iter().map(|(n, _)| n.as_str()).collect();
@@ -336,10 +354,7 @@ pub(super) async fn extract_goal_boundaries_llm(
 - completion_conditions: when the task is considered done (optional, null if unclear)
 Use null for any field you cannot infer. Output only valid JSON, no markdown, no other text."#;
 
-    let messages = vec![
-        ChatMessage::system(PROMPT),
-        ChatMessage::user(goal),
-    ];
+    let messages = vec![ChatMessage::system(PROMPT), ChatMessage::user(goal)];
 
     let resp = client
         .chat_completion(model, &messages, None, Some(0.2))
@@ -353,18 +368,34 @@ Use null for any field you cannot infer. Output only valid JSON, no markdown, no
 
     let raw = raw.trim();
     let json_str = if raw.starts_with("```json") {
-        raw.trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim()
+        raw.trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
     } else if raw.starts_with("```") {
         raw.trim_start_matches("```").trim_end_matches("```").trim()
     } else {
         raw
     };
 
-    let v: Value = serde_json::from_str(json_str).map_err(|e| anyhow::anyhow!("Goal boundaries JSON parse error: {}", e))?;
+    let v: Value = serde_json::from_str(json_str)
+        .map_err(|e| anyhow::anyhow!("Goal boundaries JSON parse error: {}", e))?;
 
-    let scope = v.get("scope").and_then(|s| s.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-    let exclusions = v.get("exclusions").and_then(|s| s.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
-    let completion_conditions = v.get("completion_conditions").and_then(|s| s.as_str()).map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+    let scope = v
+        .get("scope")
+        .and_then(|s| s.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let exclusions = v
+        .get("exclusions")
+        .and_then(|s| s.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let completion_conditions = v
+        .get("completion_conditions")
+        .and_then(|s| s.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
 
     Ok(GoalBoundaries {
         scope,
@@ -416,4 +447,3 @@ pub(super) fn build_agent_result(
         feedback,
     }
 }
-

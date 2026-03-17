@@ -12,7 +12,11 @@ use std::path::PathBuf;
 fn get_cache_dir() -> PathBuf {
     skilllite_sandbox::env::builder::get_cache_dir(None).unwrap_or_else(|| {
         dirs::cache_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")).join(".cache"))
+            .unwrap_or_else(|| {
+                dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".cache")
+            })
             .join("skilllite")
             .join("envs")
     })
@@ -59,7 +63,11 @@ pub fn cmd_clean(dry_run: bool, force: bool) -> Result<()> {
         eprintln!("  • {} ({})", name, format_size(*size));
     }
     eprintln!();
-    eprintln!("Total: {} ({} environments)", format_size(total_size), entries.len());
+    eprintln!(
+        "Total: {} ({} environments)",
+        format_size(total_size),
+        entries.len()
+    );
 
     if dry_run {
         eprintln!();

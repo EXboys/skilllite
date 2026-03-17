@@ -14,8 +14,8 @@ pub(super) fn execute_grep_files(args: &Value, workspace: &Path) -> Result<Strin
     let path_str = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
     let include = args.get("include").and_then(|v| v.as_str());
 
-    let re = regex::Regex::new(pattern)
-        .map_err(|e| anyhow::anyhow!("Invalid regex pattern: {}", e))?;
+    let re =
+        regex::Regex::new(pattern).map_err(|e| anyhow::anyhow!("Invalid regex pattern: {}", e))?;
 
     let resolved = resolve_within_workspace_or_output(path_str, workspace)?;
     if !resolved.exists() {

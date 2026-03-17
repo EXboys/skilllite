@@ -57,12 +57,33 @@ impl FeedbackSignal {
 pub fn classify_user_feedback(next_user_message: &str) -> FeedbackSignal {
     let msg = next_user_message.to_lowercase();
     let negative = [
-        "不对", "错了", "重来", "重新", "wrong", "redo", "fix", "不是这样",
-        "不行", "有问题", "bug", "失败",
+        "不对",
+        "错了",
+        "重来",
+        "重新",
+        "wrong",
+        "redo",
+        "fix",
+        "不是这样",
+        "不行",
+        "有问题",
+        "bug",
+        "失败",
     ];
     let positive = [
-        "好的", "谢谢", "完美", "不错", "thanks", "great", "perfect",
-        "可以", "没问题", "很好", "nice", "done", "ok",
+        "好的",
+        "谢谢",
+        "完美",
+        "不错",
+        "thanks",
+        "great",
+        "perfect",
+        "可以",
+        "没问题",
+        "很好",
+        "nice",
+        "done",
+        "ok",
     ];
     if negative.iter().any(|k| msg.contains(k)) {
         FeedbackSignal::ExplicitNegative

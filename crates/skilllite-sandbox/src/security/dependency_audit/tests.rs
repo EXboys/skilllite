@@ -59,9 +59,15 @@ mod tests {
         let deps = parse_package_json(content);
         assert_eq!(deps.len(), 3);
         assert_eq!(deps[0].ecosystem, "npm");
-        assert!(deps.iter().any(|d| d.name == "express" && d.version == "4.18.2"));
-        assert!(deps.iter().any(|d| d.name == "lodash" && d.version == "4.17.21"));
-        assert!(deps.iter().any(|d| d.name == "jest" && d.version == "29.0.0"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "express" && d.version == "4.18.2"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "lodash" && d.version == "4.17.21"));
+        assert!(deps
+            .iter()
+            .any(|d| d.name == "jest" && d.version == "29.0.0"));
     }
 
     #[test]

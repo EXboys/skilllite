@@ -7,9 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::skill::metadata;
-use crate::skill::trust::{
-    self, IntegritySignal, SignatureSignal, TrustDecision, TrustTier,
-};
+use crate::skill::trust::{self, IntegritySignal, SignatureSignal, TrustDecision, TrustTier};
 
 const MANIFEST_FILE_NAME: &str = ".skilllite-manifest.json";
 
@@ -105,7 +103,11 @@ pub fn save_manifest(skills_dir: &Path, manifest: &SkillManifest) -> Result<()> 
     Ok(())
 }
 
-pub fn upsert_installed_skill(skills_dir: &Path, skill_dir: &Path, source: &str) -> Result<SkillManifestEntry> {
+pub fn upsert_installed_skill(
+    skills_dir: &Path,
+    skill_dir: &Path,
+    source: &str,
+) -> Result<SkillManifestEntry> {
     upsert_installed_skill_with_admission(skills_dir, skill_dir, source, None)
 }
 
@@ -128,11 +130,7 @@ pub fn upsert_installed_skill_with_admission(
 }
 
 /// 仅更新已有 entry 的 admission_risk 字段，不重建整个 entry
-pub fn update_admission_risk(
-    skills_dir: &Path,
-    skill_dir: &Path,
-    risk: &str,
-) -> Result<()> {
+pub fn update_admission_risk(skills_dir: &Path, skill_dir: &Path, risk: &str) -> Result<()> {
     let mut manifest = load_manifest(skills_dir)?;
     let key = skill_key(skill_dir)?;
     if let Some(entry) = manifest.skills.get_mut(&key) {

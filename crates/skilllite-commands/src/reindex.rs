@@ -121,7 +121,10 @@ pub fn cmd_reindex(skills_dir: &str, verbose: bool, rebuild_manifest: bool) -> R
     }
 
     eprintln!();
-    eprintln!("Summary: {} skill(s) scanned, {} valid, {} error(s)", total, valid, errors);
+    eprintln!(
+        "Summary: {} skill(s) scanned, {} valid, {} error(s)",
+        total, valid, errors
+    );
     if rebuild_manifest {
         eprintln!(
             "Manifest: rebuilt/updated {} skill entr{}",

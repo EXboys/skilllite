@@ -17,10 +17,10 @@
 use std::path::Path;
 
 use super::extensions::ToolAvailabilityView;
-use skilllite_evolution::seed;
 use super::skills::LoadedSkill;
 use super::soul::{build_beliefs_block, Law, Soul};
 use super::types::{get_output_dir, safe_truncate};
+use skilllite_evolution::seed;
 
 /// Progressive disclosure mode.
 /// Summary/Standard/Full are used in tests and for API completeness.
@@ -84,7 +84,8 @@ pub fn build_system_prompt(
     parts.push(base_prompt);
 
     // Memory tools (built-in, NOT skills) — only when actually available.
-    let memory_write_available = availability.map_or(enable_memory, |view| view.has_tool("memory_write"));
+    let memory_write_available =
+        availability.map_or(enable_memory, |view| view.has_tool("memory_write"));
     let memory_search_available = availability.map_or(enable_memory, |view| {
         view.has_tool("memory_search") || view.has_tool("memory_list")
     });
@@ -102,20 +103,24 @@ pub fn build_system_prompt(
         }
         if memory_search_available {
             if availability.map_or(true, |view| view.has_tool("memory_search")) {
-                memory_lines.push("- Use memory_search to find relevant memory by keywords or natural language.".to_string());
+                memory_lines.push(
+                    "- Use memory_search to find relevant memory by keywords or natural language."
+                        .to_string(),
+                );
             }
             if availability.map_or(true, |view| view.has_tool("memory_list")) {
                 memory_lines.push("- Use memory_list to list stored memory files.".to_string());
             }
         }
-        parts.push(
-            memory_lines.join("\n"),
-        );
+        parts.push(memory_lines.join("\n"));
     }
 
     // Current date (for chat_history "昨天"/yesterday interpretation)
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    parts.push(format!("\n\nCurrent date: {} (use for chat_history: 昨天/yesterday = date minus 1 day)", today));
+    parts.push(format!(
+        "\n\nCurrent date: {} (use for chat_history: 昨天/yesterday = date minus 1 day)",
+        today
+    ));
 
     // Session and /compact hint (when in chat mode)
     if let Some(sk) = session_key {
@@ -155,7 +160,10 @@ pub fn build_system_prompt(
     // Skills context — Progressive mode: summary + "more details available" hint.
     // Full docs are injected on first tool call via inject_progressive_disclosure.
     if !visible_skills.is_empty() {
-        parts.push(build_skills_context_from_refs(&visible_skills, PromptMode::Progressive));
+        parts.push(build_skills_context_from_refs(
+            &visible_skills,
+            PromptMode::Progressive,
+        ));
     }
 
     // Bash-tool skills: inject full SKILL.md content upfront
@@ -170,11 +178,7 @@ pub fn build_system_prompt(
         for skill in bash_skills {
             let skill_md_path = skill.skill_dir.join("SKILL.md");
             if let Ok(content) = skilllite_fs::read_file(&skill_md_path) {
-                parts.push(format!(
-                    "### {}\n\n{}\n",
-                    skill.name,
-                    content
-                ));
+                parts.push(format!("### {}\n\n{}\n", skill.name, content));
             }
         }
     }
@@ -204,8 +208,16 @@ fn build_workspace_index(workspace: &str) -> Option<String> {
     const MAX_CHARS: usize = 2000;
 
     const SKIP: &[&str] = &[
-        ".git", "node_modules", "target", "__pycache__", "venv", ".venv",
-        ".tox", ".pytest_cache", ".cursor", ".skilllite",
+        ".git",
+        "node_modules",
+        "target",
+        "__pycache__",
+        "venv",
+        ".venv",
+        ".tox",
+        ".pytest_cache",
+        ".cursor",
+        ".skilllite",
     ];
 
     fn walk_tree(
@@ -232,7 +244,11 @@ fn build_workspace_index(workspace: &str) -> Option<String> {
                 return;
             }
 
-            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if name.starts_with('.') && depth == 0 {
                 continue;
             }
@@ -275,10 +291,19 @@ fn build_workspace_index(workspace: &str) -> Option<String> {
 /// Extract top-level function/class/struct signatures from key source files.
 fn extract_signatures(workspace: &std::path::Path) -> String {
     let patterns: &[(&str, &[&str])] = &[
-        ("rs", &[r"(?m)^pub(?:\(crate\))?\s+(fn|struct|enum|trait)\s+(\w+)"]),
+        (
+            "rs",
+            &[r"(?m)^pub(?:\(crate\))?\s+(fn|struct|enum|trait)\s+(\w+)"],
+        ),
         ("py", &[r"(?m)^(def|class)\s+(\w+)"]),
-        ("ts", &[r"(?m)^export\s+(?:default\s+)?(?:async\s+)?(function|class)\s+(\w+)"]),
-        ("js", &[r"(?m)^export\s+(?:default\s+)?(?:async\s+)?(function|class)\s+(\w+)"]),
+        (
+            "ts",
+            &[r"(?m)^export\s+(?:default\s+)?(?:async\s+)?(function|class)\s+(\w+)"],
+        ),
+        (
+            "js",
+            &[r"(?m)^export\s+(?:default\s+)?(?:async\s+)?(function|class)\s+(\w+)"],
+        ),
         ("go", &[r"(?m)^(func)\s+(\w+)"]),
     ];
 
@@ -286,7 +311,14 @@ fn extract_signatures(workspace: &std::path::Path) -> String {
     const MAX_SIGS: usize = 30;
 
     let skip_dirs: &[&str] = &[
-        ".git", "node_modules", "target", "__pycache__", "venv", ".venv", "test", "tests",
+        ".git",
+        "node_modules",
+        "target",
+        "__pycache__",
+        "venv",
+        ".venv",
+        "test",
+        "tests",
     ];
 
     fn scan_dir(
@@ -313,7 +345,11 @@ fn extract_signatures(workspace: &std::path::Path) -> String {
                 return;
             }
 
-            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
 
             if is_dir {
                 if skip.contains(&name.as_str()) || name.starts_with('.') {
@@ -336,12 +372,7 @@ fn extract_signatures(workspace: &std::path::Path) -> String {
                                     }
                                     let kind = caps.get(1).map_or("", |m| m.as_str());
                                     let name = caps.get(2).map_or("", |m| m.as_str());
-                                    sigs.push(format!(
-                                        "  {} {} ({})",
-                                        kind,
-                                        name,
-                                        rel.display()
-                                    ));
+                                    sigs.push(format!("  {} {} ({})", kind, name, rel.display()));
                                 }
                             }
                         }
@@ -352,7 +383,9 @@ fn extract_signatures(workspace: &std::path::Path) -> String {
         }
     }
 
-    scan_dir(workspace, workspace, patterns, &mut sigs, MAX_SIGS, skip_dirs, 0);
+    scan_dir(
+        workspace, workspace, patterns, &mut sigs, MAX_SIGS, skip_dirs, 0,
+    );
     sigs.join("\n")
 }
 
@@ -433,10 +466,7 @@ fn build_schema_hint(skill: &LoadedSkill) -> String {
     if let Some(first_tool) = skill.tool_definitions.first() {
         if let Some(required) = first_tool.function.parameters.get("required") {
             if let Some(arr) = required.as_array() {
-                let params: Vec<&str> = arr
-                    .iter()
-                    .filter_map(|v| v.as_str())
-                    .collect();
+                let params: Vec<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
                 if !params.is_empty() {
                     return format!(" (params: {})", params.join(", "));
                 }
@@ -460,7 +490,9 @@ pub fn get_skill_full_docs(skill: &LoadedSkill) -> Option<String> {
     let mut parts = Vec::new();
 
     if let Ok(content) = skilllite_fs::read_file(&skill_md_path) {
-        let notice = if skilllite_core::skill::skill_md_security::has_skill_md_high_risk_patterns(&content) {
+        let notice = if skilllite_core::skill::skill_md_security::has_skill_md_high_risk_patterns(
+            &content,
+        ) {
             SKILL_MD_SECURITY_NOTICE
         } else {
             ""
@@ -480,7 +512,8 @@ pub fn get_skill_full_docs(skill: &LoadedSkill) -> Option<String> {
             for (path, is_dir) in entries {
                 if !is_dir {
                     if let Ok(content) = skilllite_fs::read_file(&path) {
-                        let name = path.file_name()
+                        let name = path
+                            .file_name()
                             .map(|n| n.to_string_lossy().to_string())
                             .unwrap_or_default();
                         // Limit reference content
@@ -489,10 +522,7 @@ pub fn get_skill_full_docs(skill: &LoadedSkill) -> Option<String> {
                         } else {
                             content
                         };
-                        parts.push(format!(
-                            "\n### Reference: {}\n\n{}",
-                            name, truncated
-                        ));
+                        parts.push(format!("\n### Reference: {}\n\n{}", name, truncated));
                     }
                 }
             }
@@ -510,7 +540,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_test_skill(name: &str, desc: &str) -> LoadedSkill {
-        use super::super::types::{ToolDefinition, FunctionDef};
+        use super::super::types::{FunctionDef, ToolDefinition};
         LoadedSkill {
             name: name.to_string(),
             skill_dir: std::path::PathBuf::from("/tmp/test-skill"),
@@ -581,14 +611,25 @@ mod tests {
 
     #[test]
     fn test_build_system_prompt_contains_workspace() {
-        let prompt = build_system_prompt(None, &[], "/home/user/project", None, false, None, None, None, None);
+        let prompt = build_system_prompt(
+            None,
+            &[],
+            "/home/user/project",
+            None,
+            false,
+            None,
+            None,
+            None,
+            None,
+        );
         assert!(prompt.contains("Workspace: /home/user/project"));
     }
 
     #[test]
     fn test_build_system_prompt_uses_progressive_mode() {
         let skills = vec![make_test_skill("test-skill", "Test description")];
-        let prompt = build_system_prompt(None, &skills, "/tmp", None, false, None, None, None, None);
+        let prompt =
+            build_system_prompt(None, &skills, "/tmp", None, false, None, None, None, None);
 
         assert!(prompt.contains("test-skill"));
         assert!(prompt.contains("Test description"));
@@ -632,7 +673,7 @@ mod tests {
 
     #[test]
     fn test_build_schema_hint_no_required() {
-        use super::super::types::{ToolDefinition, FunctionDef};
+        use super::super::types::{FunctionDef, ToolDefinition};
         let skill = LoadedSkill {
             name: "test".to_string(),
             skill_dir: std::path::PathBuf::from("/tmp"),

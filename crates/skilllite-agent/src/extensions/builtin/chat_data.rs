@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
-use crate::types::{ToolDefinition, FunctionDef};
+use crate::types::{FunctionDef, ToolDefinition};
 
 // ─── Tool definitions ───────────────────────────────────────────────────────
 
@@ -200,7 +200,8 @@ pub(super) fn execute_chat_plan(args: &Value) -> Result<String> {
     let chat_root = chat_data_root();
     let plans_dir = chat_root.join("plans");
 
-    let plan = skilllite_executor::plan::read_latest_plan(&plans_dir, session_key, date.as_deref())?;
+    let plan =
+        skilllite_executor::plan::read_latest_plan(&plans_dir, session_key, date.as_deref())?;
 
     let Some(plan) = plan else {
         let date_str = date.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
@@ -212,12 +213,21 @@ pub(super) fn execute_chat_plan(args: &Value) -> Result<String> {
 
     let task = plan.get("task").and_then(|v| v.as_str()).unwrap_or("");
     let empty: Vec<Value> = vec![];
-    let steps = plan.get("steps").and_then(|v| v.as_array()).unwrap_or(&empty);
+    let steps = plan
+        .get("steps")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty);
 
     let mut lines = vec![format!("Task: {}", task), "Steps:".to_string()];
     for (i, step) in steps.iter().enumerate() {
-        let desc = step.get("description").and_then(|v| v.as_str()).unwrap_or("");
-        let status = step.get("status").and_then(|v| v.as_str()).unwrap_or("pending");
+        let desc = step
+            .get("description")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let status = step
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pending");
         lines.push(format!("  {}. [{}] {}", i + 1, status, desc));
     }
     Ok(lines.join("\n"))

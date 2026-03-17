@@ -16,16 +16,16 @@ use skilllite_core::skill::metadata::SkillMetadata;
 
 use super::types::ToolDefinition;
 
-use loader::{load_single_skill, load_evolved_skills, sanitize_tool_name};
+use loader::{load_evolved_skills, load_single_skill, sanitize_tool_name};
 
-mod loader;
 mod executor;
-pub(crate) mod usage_stats;
-pub(crate) mod security;
 pub mod infer_entry;
+mod loader;
+pub(crate) mod security;
+pub(crate) mod usage_stats;
 
 pub use executor::execute_skill;
-pub use security::{LockFile, read_lock_file, write_lock_file};
+pub use security::{read_lock_file, write_lock_file, LockFile};
 
 /// A loaded skill ready for invocation.
 #[derive(Debug, Clone)]
@@ -74,7 +74,11 @@ pub fn load_skills(skill_dirs: &[String]) -> Vec<LoadedSkill> {
         let evolved_dir = path.join("_evolved");
         if evolved_dir.exists() && evolved_dir.is_dir() {
             let evolved = load_evolved_skills(&evolved_dir);
-            tracing::debug!("Loaded {} evolved skills from {}", evolved.len(), evolved_dir.display());
+            tracing::debug!(
+                "Loaded {} evolved skills from {}",
+                evolved.len(),
+                evolved_dir.display()
+            );
             skills.extend(evolved);
         }
     }
@@ -96,7 +100,9 @@ pub fn find_skill_by_tool_name<'a>(
 ) -> Option<&'a LoadedSkill> {
     // Exact match first (fast path)
     if let Some(skill) = skills.iter().find(|s| {
-        s.tool_definitions.iter().any(|td| td.function.name == tool_name)
+        s.tool_definitions
+            .iter()
+            .any(|td| td.function.name == tool_name)
     }) {
         return Some(skill);
     }
@@ -104,7 +110,9 @@ pub fn find_skill_by_tool_name<'a>(
     // Normalized match: replace hyphens with underscores and compare
     let normalized = sanitize_tool_name(tool_name);
     skills.iter().find(|s| {
-        s.tool_definitions.iter().any(|td| td.function.name == normalized)
+        s.tool_definitions
+            .iter()
+            .any(|td| td.function.name == normalized)
     })
 }
 
@@ -113,10 +121,7 @@ pub fn find_skill_by_tool_name<'a>(
 /// This is useful for finding reference-only skills that have no tool definitions
 /// but are still loaded and available for documentation injection.
 /// Matches both exact name and normalized name (hyphens ↔ underscores).
-pub fn find_skill_by_name<'a>(
-    skills: &'a [LoadedSkill],
-    name: &str,
-) -> Option<&'a LoadedSkill> {
+pub fn find_skill_by_name<'a>(skills: &'a [LoadedSkill], name: &str) -> Option<&'a LoadedSkill> {
     // Exact match
     if let Some(skill) = skills.iter().find(|s| s.name == name) {
         return Some(skill);
@@ -124,5 +129,7 @@ pub fn find_skill_by_name<'a>(
     // Normalized: frontend_design matches frontend-design
     let with_hyphens = name.replace('_', "-");
     let with_underscores = name.replace('-', "_");
-    skills.iter().find(|s| s.name == with_hyphens || s.name == with_underscores)
+    skills
+        .iter()
+        .find(|s| s.name == with_hyphens || s.name == with_underscores)
 }

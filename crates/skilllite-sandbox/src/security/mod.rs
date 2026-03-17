@@ -64,7 +64,9 @@ pub mod types;
 // Re-export commonly used items for public API
 // These exports are intentionally kept for library users even if not used internally
 #[allow(unused_imports)]
-pub use default_rules::{get_default_javascript_rules, get_default_python_rules, get_default_rules};
+pub use default_rules::{
+    get_default_javascript_rules, get_default_python_rules, get_default_rules,
+};
 #[allow(unused_imports)]
 pub use rules::{RulesConfig, SecurityRule, CONFIG_FILE_NAMES};
 #[allow(unused_imports)]

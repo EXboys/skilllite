@@ -31,14 +31,12 @@ pub async fn run_single_task(
 
     skilllite_core::config::ensure_default_output_dir();
 
-    let skill_dirs = skill_dirs
-        .map(|s| s.to_vec())
-        .unwrap_or_else(|| {
-            skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
-                Path::new(workspace),
-                Some(&[".skills", "skills"]),
-            )
-        });
+    let skill_dirs = skill_dirs.map(|s| s.to_vec()).unwrap_or_else(|| {
+        skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
+            Path::new(workspace),
+            Some(&[".skills", "skills"]),
+        )
+    });
     let loaded_skills = skills::load_skills(&skill_dirs);
 
     let mut session = ChatSession::new(config, session_key, loaded_skills);
@@ -125,9 +123,7 @@ pub fn run_chat(
     config.enable_memory = !no_memory;
 
     if config.api_key.is_empty() {
-        anyhow::bail!(
-            "API key required. Set OPENAI_API_KEY env var or use --api-key flag."
-        );
+        anyhow::bail!("API key required. Set OPENAI_API_KEY env var or use --api-key flag.");
     }
 
     // Auto-discover skill directories if none specified
@@ -159,8 +155,7 @@ pub fn run_chat(
         eprintln!("└───────────────────────────────────────────────────────────");
     }
 
-    let rt = tokio::runtime::Runtime::new()
-        .context("Failed to create tokio runtime")?;
+    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
 
     if let Some(msg) = single_message {
         rt.block_on(async {
@@ -214,16 +209,14 @@ pub fn run_agent_run(
     config.enable_memory = true;
     // A4: Failure retry limit — prevents infinite loops on repeated failures
     config.max_consecutive_failures = match max_failures {
-        Some(0) => None,       // 0 = no limit
+        Some(0) => None, // 0 = no limit
         Some(n) => Some(n),
-        None => Some(5),       // default: stop after 5 consecutive failures
+        None => Some(5), // default: stop after 5 consecutive failures
     };
     // A5: Goal boundaries extracted in agent_loop (hybrid: regex + optional LLM fallback)
 
     if config.api_key.is_empty() {
-        anyhow::bail!(
-            "API key required. Set OPENAI_API_KEY env var or use --api-key flag."
-        );
+        anyhow::bail!("API key required. Set OPENAI_API_KEY env var or use --api-key flag.");
     }
 
     skilllite_core::config::ensure_default_output_dir();
@@ -235,11 +228,7 @@ pub fn run_agent_run(
             Some(cp) => {
                 let resume_msg = super::run_checkpoint::build_resume_message(&cp);
                 // Use checkpoint messages as history; skip first (system) since agent_loop adds its own
-                let history: Vec<ChatMessage> = cp
-                    .messages
-                    .into_iter()
-                    .skip(1)
-                    .collect();
+                let history: Vec<ChatMessage> = cp.messages.into_iter().skip(1).collect();
                 eprintln!("📂 从断点续跑 (run_id: {})", cp.run_id);
                 (resume_msg, cp.workspace, Some(history))
             }
@@ -254,7 +243,10 @@ pub fn run_agent_run(
     config.workspace = effective_workspace;
 
     // Optional first-run guidance: if no SOUL in chain and stdin is TTY, offer to create minimal template
-    let _ = super::soul::Soul::offer_bootstrap_soul_if_missing(&config.workspace, config.soul_path.as_deref());
+    let _ = super::soul::Soul::offer_bootstrap_soul_if_missing(
+        &config.workspace,
+        config.soul_path.as_deref(),
+    );
 
     let (effective_skill_dirs, was_auto_discovered) = if skill_dirs.is_empty() {
         let auto_dirs = skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
@@ -280,19 +272,23 @@ pub fn run_agent_run(
             format!("{} … +{} more", names[..5].join(", "), names.len() - 5)
         };
         eprintln!("│  📦 {}", list);
-        eprintln!("│  🎯 Goal: {}", effective_goal.lines().next().unwrap_or(&effective_goal));
+        eprintln!(
+            "│  🎯 Goal: {}",
+            effective_goal.lines().next().unwrap_or(&effective_goal)
+        );
         eprintln!("└───────────────────────────────────────────────────────────\n");
     }
 
-    let rt = tokio::runtime::Runtime::new()
-        .context("Failed to create tokio runtime")?;
+    let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
 
     let history_override = history_override;
     rt.block_on(async {
         let mut session = ChatSession::new(config, "run", loaded_skills);
         let mut sink = RunModeEventSink::new(verbose);
         let result = if let Some(history) = history_override {
-            session.run_turn_with_history(&effective_goal, &mut sink, history).await
+            session
+                .run_turn_with_history(&effective_goal, &mut sink, history)
+                .await
         } else {
             session.run_turn(&effective_goal, &mut sink).await
         };

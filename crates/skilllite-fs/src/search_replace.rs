@@ -108,15 +108,17 @@ pub fn apply_replace_normalize_whitespace(
 ) -> Result<FuzzyReplaceResult> {
     let escaped = regex::escape(old_string);
     let pattern = format!(r"({})([ \t]*)(\r?\n|$)", escaped);
-    let re = regex::Regex::new(&pattern)
-        .map_err(|e| anyhow::anyhow!("Invalid regex: {}", e))?;
+    let re = regex::Regex::new(&pattern).map_err(|e| anyhow::anyhow!("Invalid regex: {}", e))?;
     let matches: Vec<_> = re.find_iter(content).collect();
     let count = matches.len();
     if count == 0 {
         anyhow::bail!("old_string not found (with normalize_whitespace)");
     }
     if !replace_all && count > 1 {
-        anyhow::bail!("Found {} occurrences. Add more context or set replace_all=true.", count);
+        anyhow::bail!(
+            "Found {} occurrences. Add more context or set replace_all=true.",
+            count
+        );
     }
     let first = matches[0];
     let new_content = if replace_all {
@@ -143,11 +145,7 @@ pub fn apply_replace_normalize_whitespace(
 }
 
 /// 在指定行后插入内容，支持 auto-indent
-pub fn insert_lines_at(
-    content: &str,
-    line_num: usize,
-    insert_content: &str,
-) -> Result<String> {
+pub fn insert_lines_at(content: &str, line_num: usize, insert_content: &str) -> Result<String> {
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len();
     if line_num > total {
@@ -171,9 +169,19 @@ pub fn insert_lines_at(
         format!("{}\n", effective)
     };
     let new_content = if needs_preceding_newline {
-        format!("{}\n{}{}", &content[..insert_at], with_newline, &content[insert_at..])
+        format!(
+            "{}\n{}{}",
+            &content[..insert_at],
+            with_newline,
+            &content[insert_at..]
+        )
     } else {
-        format!("{}{}{}", &content[..insert_at], with_newline, &content[insert_at..])
+        format!(
+            "{}{}{}",
+            &content[..insert_at],
+            with_newline,
+            &content[insert_at..]
+        )
     };
     Ok(new_content)
 }
@@ -337,11 +345,17 @@ fn fuzzy_find_whitespace(content: &str, old_string: &str) -> Option<FuzzyMatch> 
     }
     let offsets = line_byte_offsets(content);
     for i in 0..=(content_lines.len() - old_lines.len()) {
-        let all_match = (0..old_lines.len())
-            .all(|j| content_lines[i + j].trim() == trimmed_old[j]);
+        let all_match = (0..old_lines.len()).all(|j| content_lines[i + j].trim() == trimmed_old[j]);
         if all_match {
             let start = offsets[i];
-            let end = fuzzy_match_end(content, &offsets, &content_lines, i, old_lines.len(), old_string.ends_with('\n'));
+            let end = fuzzy_match_end(
+                content,
+                &offsets,
+                &content_lines,
+                i,
+                old_lines.len(),
+                old_string.ends_with('\n'),
+            );
             return Some(FuzzyMatch {
                 start,
                 end,
@@ -353,7 +367,10 @@ fn fuzzy_find_whitespace(content: &str, old_string: &str) -> Option<FuzzyMatch> 
 }
 
 fn fuzzy_find_blank_lines(content: &str, old_string: &str) -> Option<FuzzyMatch> {
-    let old_non_blank: Vec<&str> = old_string.lines().filter(|l| !l.trim().is_empty()).collect();
+    let old_non_blank: Vec<&str> = old_string
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .collect();
     if old_non_blank.is_empty() {
         return None;
     }
@@ -378,7 +395,14 @@ fn fuzzy_find_blank_lines(content: &str, old_string: &str) -> Option<FuzzyMatch>
         }
         if old_idx == old_non_blank.len() {
             let start = offsets[start_line];
-            let end = fuzzy_match_end(content, &offsets, &content_lines, last_matched, 1, old_string.ends_with('\n'));
+            let end = fuzzy_match_end(
+                content,
+                &offsets,
+                &content_lines,
+                last_matched,
+                1,
+                old_string.ends_with('\n'),
+            );
             return Some(FuzzyMatch {
                 start,
                 end,
@@ -404,10 +428,7 @@ fn fuzzy_find_similarity(content: &str, old_string: &str, threshold: f64) -> Opt
     for i in 0..=(content_lines.len() - old_lines.len()) {
         let mut total = 0.0;
         for j in 0..old_lines.len() {
-            total += levenshtein_similarity(
-                old_lines[j].trim(),
-                content_lines[i + j].trim(),
-            );
+            total += levenshtein_similarity(old_lines[j].trim(), content_lines[i + j].trim());
         }
         let avg = total / old_lines.len() as f64;
         if avg > best_score {
@@ -417,7 +438,14 @@ fn fuzzy_find_similarity(content: &str, old_string: &str, threshold: f64) -> Opt
     }
     if best_score >= threshold {
         let start = offsets[best_pos];
-        let end = fuzzy_match_end(content, &offsets, &content_lines, best_pos, old_lines.len(), old_string.ends_with('\n'));
+        let end = fuzzy_match_end(
+            content,
+            &offsets,
+            &content_lines,
+            best_pos,
+            old_lines.len(),
+            old_string.ends_with('\n'),
+        );
         Some(FuzzyMatch {
             start,
             end,

@@ -84,7 +84,12 @@ pub fn build_beliefs_block(chat_root: &Path) -> String {
         .filter(|r| r.mutable || r.origin != "seed")
         .take(BELIEFS_RULES_TOP)
         .filter(|r| !r.instruction.is_empty())
-        .map(|r| format!("- {}", r.instruction.trim().lines().next().unwrap_or("").trim()))
+        .map(|r| {
+            format!(
+                "- {}",
+                r.instruction.trim().lines().next().unwrap_or("").trim()
+            )
+        })
         .filter(|s| !s.eq("- "))
         .collect::<Vec<_>>()
         .join("\n");
@@ -101,10 +106,16 @@ pub fn build_beliefs_block(chat_root: &Path) -> String {
         "╚═══════════════════════════════════╝".to_string(),
     ];
     if !decision_tendency.is_empty() {
-        parts.push(format!("\n### Decision Tendency (from rules)\n{}", decision_tendency));
+        parts.push(format!(
+            "\n### Decision Tendency (from rules)\n{}",
+            decision_tendency
+        ));
     }
     if !success_patterns.is_empty() {
-        parts.push(format!("\n### Success Patterns (from examples)\n{}", success_patterns));
+        parts.push(format!(
+            "\n### Success Patterns (from examples)\n{}",
+            success_patterns
+        ));
     }
     parts.push("═══════════════════════════════════".to_string());
     parts.join("\n")
@@ -120,7 +131,9 @@ fn load_examples_key_insights(chat_root: &Path) -> String {
         Err(_) => return String::new(),
     };
     #[derive(serde::Deserialize)]
-    struct Ex { key_insight: Option<String> }
+    struct Ex {
+        key_insight: Option<String>,
+    }
     let arr: Vec<Ex> = match serde_json::from_str(&content) {
         Ok(a) => a,
         Err(_) => return String::new(),
@@ -184,8 +197,10 @@ impl Soul {
                     "identity" => Section::Identity,
                     "core beliefs" | "core_beliefs" | "corebeliefs" => Section::CoreBeliefs,
                     "communication style" | "communication_style" => Section::CommunicationStyle,
-                    "scope & boundaries" | "scope and boundaries"
-                    | "scope_and_boundaries" | "scope" => Section::ScopeAndBoundaries,
+                    "scope & boundaries"
+                    | "scope and boundaries"
+                    | "scope_and_boundaries"
+                    | "scope" => Section::ScopeAndBoundaries,
                     _ => Section::Other,
                 };
                 continue;
@@ -342,10 +357,16 @@ impl Soul {
             parts.push(format!("\n### Core Beliefs\n{}", self.core_beliefs));
         }
         if !self.communication_style.is_empty() {
-            parts.push(format!("\n### Communication Style\n{}", self.communication_style));
+            parts.push(format!(
+                "\n### Communication Style\n{}",
+                self.communication_style
+            ));
         }
         if !self.scope_and_boundaries.is_empty() {
-            parts.push(format!("\n### Scope & Boundaries\n{}", self.scope_and_boundaries));
+            parts.push(format!(
+                "\n### Scope & Boundaries\n{}",
+                self.scope_and_boundaries
+            ));
         }
 
         parts.push("═══════════════════════════════════".to_string());
@@ -401,9 +422,18 @@ mod tests {
     fn test_sample_soul_parses_all_sections() {
         let soul = Soul::parse(MINIMAL_SOUL_TEMPLATE, "test/SOUL.md");
         assert!(!soul.identity.is_empty(), "sample has identity section");
-        assert!(!soul.core_beliefs.is_empty(), "sample has core_beliefs section");
-        assert!(!soul.communication_style.is_empty(), "sample has communication_style section");
-        assert!(!soul.scope_and_boundaries.is_empty(), "sample has scope_and_boundaries");
+        assert!(
+            !soul.core_beliefs.is_empty(),
+            "sample has core_beliefs section"
+        );
+        assert!(
+            !soul.communication_style.is_empty(),
+            "sample has communication_style section"
+        );
+        assert!(
+            !soul.scope_and_boundaries.is_empty(),
+            "sample has scope_and_boundaries"
+        );
     }
 
     #[test]
@@ -452,4 +482,3 @@ mod tests {
         assert!(block.contains("Read then edit"));
     }
 }
-

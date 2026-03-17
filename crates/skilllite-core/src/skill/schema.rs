@@ -25,7 +25,12 @@ pub fn detect_multi_script_tools(skill_dir: &Path, skill_name: &str) -> Vec<Mult
         return Vec::new();
     }
 
-    let extensions = [(".py", "python"), (".js", "node"), (".ts", "node"), (".sh", "bash")];
+    let extensions = [
+        (".py", "python"),
+        (".js", "node"),
+        (".ts", "node"),
+        (".sh", "bash"),
+    ];
     let skip_names = ["__init__.py"];
     let mut tools = Vec::new();
 
@@ -211,7 +216,13 @@ fn flexible_schema() -> Value {
 
 fn sanitize_tool_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .to_lowercase()
 }

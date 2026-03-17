@@ -20,7 +20,12 @@ pub struct RunCheckpoint {
 }
 
 impl RunCheckpoint {
-    pub fn new(goal: String, workspace: String, task_plan: Vec<Task>, messages: Vec<ChatMessage>) -> Self {
+    pub fn new(
+        goal: String,
+        workspace: String,
+        task_plan: Vec<Task>,
+        messages: Vec<ChatMessage>,
+    ) -> Self {
         Self {
             run_id: uuid::Uuid::new_v4().to_string(),
             goal,

@@ -168,7 +168,6 @@ pub async fn evolve_skills<L: EvolutionLlm>(
         }
     }
 
-
     // 同轮内名称去重：同一 name 的 skill_pending / skill_refined 只保留首次出现
     let mut seen: HashSet<String> = HashSet::new();
     changes.retain(|(t, id)| {
@@ -247,6 +246,6 @@ pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> 
 
 // ─── Re-exports ──────────────────────────────────────────────────────────────
 
-pub use validate::{validate_skills, SkillValidation};
 pub use repair::{repair_one_skill, repair_skills};
 pub use scan::track_skill_usage;
+pub use validate::{validate_skills, SkillValidation};

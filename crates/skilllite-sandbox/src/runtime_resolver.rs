@@ -42,7 +42,8 @@ impl RuntimeResolver for RuntimePaths {
                         let bin_str = bin.to_string_lossy().to_string();
                         let sep = if cfg!(windows) { ";" } else { ":" };
                         if let Ok(path) = std::env::var("PATH") {
-                            extra_env.push(("PATH".to_string(), format!("{}{}{}", bin_str, sep, path)));
+                            extra_env
+                                .push(("PATH".to_string(), format!("{}{}{}", bin_str, sep, path)));
                         } else {
                             extra_env.push(("PATH".to_string(), bin_str));
                         }

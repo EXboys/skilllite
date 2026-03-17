@@ -18,18 +18,18 @@ static VEC_INIT: Once = Once::new();
 /// Call this at process start or before the first Connection::open that may use vec0.
 #[cfg(feature = "memory_vector")]
 pub fn ensure_vec_extension_loaded() {
-    VEC_INIT.call_once(|| {
-        unsafe {
-            rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
-                sqlite_vec::sqlite3_vec_init as *const (),
-            )));
-        }
+    VEC_INIT.call_once(|| unsafe {
+        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        )));
     });
 }
 
 /// Get path to memory SQLite index for a workspace.
 pub fn index_path(workspace_root: &Path, agent_id: &str) -> std::path::PathBuf {
-    workspace_root.join("memory").join(format!("{}.sqlite", agent_id))
+    workspace_root
+        .join("memory")
+        .join(format!("{}.sqlite", agent_id))
 }
 
 /// Ensure memory index exists with FTS5 table.
@@ -137,7 +137,10 @@ pub fn chunk_content_for_embed(content: &str) -> Vec<String> {
 }
 
 fn chunk_content(content: &str) -> Vec<String> {
-    let paragraphs: Vec<&str> = content.split("\n\n").filter(|s| !s.trim().is_empty()).collect();
+    let paragraphs: Vec<&str> = content
+        .split("\n\n")
+        .filter(|s| !s.trim().is_empty())
+        .collect();
     let mut chunks = Vec::new();
     let mut current = String::new();
     let mut token_approx = 0;
@@ -167,7 +170,10 @@ fn chunk_content(content: &str) -> Vec<String> {
 /// Index a memory file into the SQLite DB (BM25).
 /// Removes existing chunks for this path before re-indexing (handles overwrite).
 pub fn index_file(conn: &Connection, path: &str, content: &str) -> Result<()> {
-    conn.execute("DELETE FROM memory_fts WHERE path = ?", rusqlite::params![path])?;
+    conn.execute(
+        "DELETE FROM memory_fts WHERE path = ?",
+        rusqlite::params![path],
+    )?;
     let chunks = chunk_content(content);
     for (i, chunk) in chunks.iter().enumerate() {
         conn.execute(
@@ -194,7 +200,10 @@ pub fn index_file_vec(
             embeddings.len()
         );
     }
-    conn.execute("DELETE FROM memory_vec WHERE path = ?", rusqlite::params![path])?;
+    conn.execute(
+        "DELETE FROM memory_vec WHERE path = ?",
+        rusqlite::params![path],
+    )?;
     let mut stmt = conn.prepare(
         "INSERT INTO memory_vec(path, chunk_index, content, embedding) VALUES (?, ?, ?, ?)",
     )?;
@@ -224,7 +233,11 @@ pub fn search_bm25(conn: &Connection, query: &str, limit: i64) -> Result<Vec<Mem
         })
     })?;
     let mut hits: Vec<MemoryHit> = rows.filter_map(|r| r.ok()).collect();
-    hits.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap_or(std::cmp::Ordering::Equal));
+    hits.sort_by(|a, b| {
+        a.score
+            .partial_cmp(&b.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     Ok(hits)
 }
 
@@ -263,11 +276,9 @@ pub fn search_vec(
 /// Check if vec0 table has any rows (vector index is populated).
 #[cfg(feature = "memory_vector")]
 pub fn has_vec_index(conn: &Connection) -> bool {
-    conn.query_row(
-        "SELECT COUNT(*) FROM memory_vec",
-        [],
-        |row| row.get::<_, i64>(0),
-    )
+    conn.query_row("SELECT COUNT(*) FROM memory_vec", [], |row| {
+        row.get::<_, i64>(0)
+    })
     .map(|n| n > 0)
     .unwrap_or(false)
 }

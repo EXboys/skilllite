@@ -33,7 +33,9 @@ const HARD_ERROR_PATTERNS: &[&str] = &[
 /// Only matches truly fatal errors, not normal operational feedback.
 fn contains_hard_error(text: &str) -> bool {
     let lower = text.to_lowercase();
-    HARD_ERROR_PATTERNS.iter().any(|pattern| lower.contains(pattern))
+    HARD_ERROR_PATTERNS
+        .iter()
+        .any(|pattern| lower.contains(pattern))
 }
 
 pub fn assess_replay_quality(result: &ReplayCaseResult) -> ReplayQualityAssessment {
@@ -116,7 +118,10 @@ mod tests {
         result.first_success = false;
         result.total_tools = 0;
         let assessment = assess_replay_quality(&result);
-        assert_eq!(assessment.failure_kind, Some(ReplayFailureKind::EmptyOrShortPlan));
+        assert_eq!(
+            assessment.failure_kind,
+            Some(ReplayFailureKind::EmptyOrShortPlan)
+        );
     }
 
     #[test]
@@ -127,18 +132,25 @@ mod tests {
             ..base_result()
         };
         let assessment = assess_replay_quality(&result);
-        assert!(assessment.quality_ok, "command failed should not be a hard error");
+        assert!(
+            assessment.quality_ok,
+            "command failed should not be a hard error"
+        );
     }
 
     #[test]
     fn test_hard_error_not_triggered_by_security_scan() {
         // Security scan results should NOT trigger hard error (normal confirmation flow)
         let result = ReplayCaseResult {
-            response_preview: "Skill 'foo' security scan results: No issues found. Allow execution?".to_string(),
+            response_preview:
+                "Skill 'foo' security scan results: No issues found. Allow execution?".to_string(),
             ..base_result()
         };
         let assessment = assess_replay_quality(&result);
-        assert!(assessment.quality_ok, "security scan should not be a hard error");
+        assert!(
+            assessment.quality_ok,
+            "security scan should not be a hard error"
+        );
     }
 
     #[test]
@@ -149,6 +161,9 @@ mod tests {
             ..base_result()
         };
         let assessment = assess_replay_quality(&result);
-        assert!(!assessment.quality_ok, "memory_limit should be a hard error");
+        assert!(
+            !assessment.quality_ok,
+            "memory_limit should be a hard error"
+        );
     }
 }

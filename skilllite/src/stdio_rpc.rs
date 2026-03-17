@@ -14,10 +14,10 @@
 //! Response: `{"jsonrpc":"2.0","id":1,"result":{...}}` or `{"jsonrpc":"2.0","id":1,"error":{...}}`
 
 use anyhow::{Context, Result};
+use serde_json::{json, Value};
 use skilllite_commands::execute;
 use skilllite_core::path_validation;
 use skilllite_sandbox::runner::{ResourceLimits, SandboxLevel};
-use serde_json::{json, Value};
 use std::io::{self, BufRead, BufReader, Write};
 use std::sync::mpsc;
 use std::thread;
@@ -64,7 +64,7 @@ pub fn serve_stdio() -> Result<()> {
 
     loop {
         let line = match read_line_limited(&mut reader) {
-            Ok(None) => break,       // EOF
+            Ok(None) => break, // EOF
             Ok(Some(l)) => l,
             Err(e) => {
                 let _ = tx.send((Value::Null, Err(format!("Request size error: {}", e))));
@@ -109,7 +109,9 @@ pub fn serve_stdio() -> Result<()> {
         let _ = done_rx.recv();
     }
     drop(tx);
-    writer_handle.join().map_err(|_| anyhow::anyhow!("Writer thread panicked"))??;
+    writer_handle
+        .join()
+        .map_err(|_| anyhow::anyhow!("Writer thread panicked"))??;
 
     Ok(())
 }
@@ -132,7 +134,9 @@ fn read_line_limited(reader: &mut impl BufRead) -> io::Result<Option<String>> {
             return if buf.is_empty() {
                 Ok(None)
             } else {
-                if buf.last() == Some(&b'\r') { buf.pop(); }
+                if buf.last() == Some(&b'\r') {
+                    buf.pop();
+                }
                 String::from_utf8(buf)
                     .map(Some)
                     .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"))
@@ -149,7 +153,9 @@ fn read_line_limited(reader: &mut impl BufRead) -> io::Result<Option<String>> {
                 }
                 buf.extend_from_slice(&available[..pos]);
                 reader.consume(pos + 1);
-                if buf.last() == Some(&b'\r') { buf.pop(); }
+                if buf.last() == Some(&b'\r') {
+                    buf.pop();
+                }
                 return String::from_utf8(buf)
                     .map(Some)
                     .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"));
@@ -228,20 +234,42 @@ fn dispatch_request(method: &str, params: &Value) -> Result<Value> {
 
 fn handle_run(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let skill_dir = p.get("skill_dir").and_then(|v| v.as_str()).context("skill_dir required")?;
-    let input_json = p.get("input_json").and_then(|v| v.as_str()).context("input_json required")?;
-    let allow_network = p.get("allow_network").and_then(|v| v.as_bool()).unwrap_or(false);
-    let cache_dir = p.get("cache_dir").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let skill_dir = p
+        .get("skill_dir")
+        .and_then(|v| v.as_str())
+        .context("skill_dir required")?;
+    let input_json = p
+        .get("input_json")
+        .and_then(|v| v.as_str())
+        .context("input_json required")?;
+    let allow_network = p
+        .get("allow_network")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let cache_dir = p
+        .get("cache_dir")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let cache_dir_ref = cache_dir.as_ref();
     let max_memory = p.get("max_memory").and_then(|v| v.as_u64());
     let timeout = p.get("timeout").and_then(|v| v.as_u64());
-    let sandbox_level = p.get("sandbox_level").and_then(|v| v.as_u64()).map(|u| u as u8);
+    let sandbox_level = p
+        .get("sandbox_level")
+        .and_then(|v| v.as_u64())
+        .map(|u| u as u8);
 
     let sandbox_level = SandboxLevel::from_env_or_cli(sandbox_level);
-    let limits = ResourceLimits::from_env()
-        .with_cli_overrides(max_memory, timeout);
+    let limits = ResourceLimits::from_env().with_cli_overrides(max_memory, timeout);
 
-    let output = execute::run_skill(skill_dir, input_json, allow_network, cache_dir_ref, limits, sandbox_level, None)?;
+    let output = execute::run_skill(
+        skill_dir,
+        input_json,
+        allow_network,
+        cache_dir_ref,
+        limits,
+        sandbox_level,
+        None,
+    )?;
     Ok(json!({
         "output": output,
         "exit_code": 0
@@ -250,20 +278,40 @@ fn handle_run(params: &Value) -> Result<Value> {
 
 fn handle_exec(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let skill_dir = p.get("skill_dir").and_then(|v| v.as_str()).context("skill_dir required")?;
-    let script_path = p.get("script_path").and_then(|v| v.as_str()).context("script_path required")?;
-    let input_json = p.get("input_json").and_then(|v| v.as_str()).context("input_json required")?;
-    let args = p.get("args").and_then(|v| v.as_str()).map(|s| s.to_string());
-    let allow_network = p.get("allow_network").and_then(|v| v.as_bool()).unwrap_or(false);
-    let cache_dir = p.get("cache_dir").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let skill_dir = p
+        .get("skill_dir")
+        .and_then(|v| v.as_str())
+        .context("skill_dir required")?;
+    let script_path = p
+        .get("script_path")
+        .and_then(|v| v.as_str())
+        .context("script_path required")?;
+    let input_json = p
+        .get("input_json")
+        .and_then(|v| v.as_str())
+        .context("input_json required")?;
+    let args = p
+        .get("args")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    let allow_network = p
+        .get("allow_network")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let cache_dir = p
+        .get("cache_dir")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let cache_dir_ref = cache_dir.as_ref();
     let max_memory = p.get("max_memory").and_then(|v| v.as_u64());
     let timeout = p.get("timeout").and_then(|v| v.as_u64());
-    let sandbox_level = p.get("sandbox_level").and_then(|v| v.as_u64()).map(|u| u as u8);
+    let sandbox_level = p
+        .get("sandbox_level")
+        .and_then(|v| v.as_u64())
+        .map(|u| u as u8);
 
     let sandbox_level = SandboxLevel::from_env_or_cli(sandbox_level);
-    let limits = ResourceLimits::from_env()
-        .with_cli_overrides(max_memory, timeout);
+    let limits = ResourceLimits::from_env().with_cli_overrides(max_memory, timeout);
 
     let output = execute::exec_script(
         skill_dir,
@@ -283,17 +331,34 @@ fn handle_exec(params: &Value) -> Result<Value> {
 
 fn handle_bash(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let skill_dir = p.get("skill_dir").and_then(|v| v.as_str()).context("skill_dir required")?;
-    let command = p.get("command").and_then(|v| v.as_str()).context("command required")?;
-    let cache_dir = p.get("cache_dir").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let skill_dir = p
+        .get("skill_dir")
+        .and_then(|v| v.as_str())
+        .context("skill_dir required")?;
+    let command = p
+        .get("command")
+        .and_then(|v| v.as_str())
+        .context("command required")?;
+    let cache_dir = p
+        .get("cache_dir")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
     let timeout = p.get("timeout").and_then(|v| v.as_u64()).unwrap_or(120);
     let cwd = p.get("cwd").and_then(|v| v.as_str()).map(|s| s.to_string());
 
-    let output = execute::bash_command(skill_dir, command, cache_dir.as_ref(), timeout, cwd.as_ref())?;
-    Ok(serde_json::from_str(&output).unwrap_or_else(|_| json!({
-        "output": output,
-        "exit_code": 0
-    })))
+    let output = execute::bash_command(
+        skill_dir,
+        command,
+        cache_dir.as_ref(),
+        timeout,
+        cwd.as_ref(),
+    )?;
+    Ok(serde_json::from_str(&output).unwrap_or_else(|_| {
+        json!({
+            "output": output,
+            "exit_code": 0
+        })
+    }))
 }
 
 #[cfg(feature = "agent")]
@@ -302,12 +367,16 @@ fn handle_build_skills_context(params: &Value) -> Result<Value> {
     use skilllite_agent::skills;
 
     let p = params.as_object().context("params must be object")?;
-    let skills_dir = p.get("skills_dir").and_then(|v| v.as_str()).context("skills_dir required")?;
-    let mode_str = p.get("mode").and_then(|v| v.as_str()).unwrap_or("progressive");
-    let skills_filter: Option<Vec<String>> = p
-        .get("skills")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
+    let skills_dir = p
+        .get("skills_dir")
+        .and_then(|v| v.as_str())
+        .context("skills_dir required")?;
+    let mode_str = p
+        .get("mode")
+        .and_then(|v| v.as_str())
+        .unwrap_or("progressive");
+    let skills_filter: Option<Vec<String>> =
+        p.get("skills").and_then(|v| v.as_array()).map(|arr| {
             arr.iter()
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()
@@ -342,11 +411,12 @@ pub fn handle_list_tools(params: &Value) -> Result<Value> {
     use skilllite_agent::skills;
 
     let p = params.as_object().context("params must be object")?;
-    let skills_dir = p.get("skills_dir").and_then(|v| v.as_str()).context("skills_dir required")?;
-    let skills_filter: Option<Vec<String>> = p
-        .get("skills")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
+    let skills_dir = p
+        .get("skills_dir")
+        .and_then(|v| v.as_str())
+        .context("skills_dir required")?;
+    let skills_filter: Option<Vec<String>> =
+        p.get("skills").and_then(|v| v.as_array()).map(|arr| {
             arr.iter()
                 .filter_map(|v| v.as_str().map(String::from))
                 .collect()

@@ -48,7 +48,11 @@ pub(super) fn scan_error_result(err: &str) -> ScanResult {
 /// Perform a security scan and cache the result.
 /// Fail-secure: on scan exception, returns a ScanResult with requires_confirmation
 /// instead of propagating Err (aligned with Python SDK behavior).
-pub(super) fn perform_scan(server: &mut McpServer, language: &str, code: &str) -> Result<(ScanResult, String, String)> {
+pub(super) fn perform_scan(
+    server: &mut McpServer,
+    language: &str,
+    code: &str,
+) -> Result<(ScanResult, String, String)> {
     let code_hash = McpServer::generate_code_hash(language, code);
     let scan_id = McpServer::generate_scan_id(&code_hash);
 
@@ -57,25 +61,31 @@ pub(super) fn perform_scan(server: &mut McpServer, language: &str, code: &str) -
         Err(e) => {
             // Fail-secure: return ScanResult requiring confirmation, not Err
             let err_result = scan_error_result(&e.to_string());
-            server.scan_cache.insert(scan_id.clone(), CachedScan {
-                scan_result: err_result.clone(),
-                code_hash: code_hash.clone(),
-                language: language.to_string(),
-                code: code.to_string(),
-                created_at: Instant::now(),
-            });
+            server.scan_cache.insert(
+                scan_id.clone(),
+                CachedScan {
+                    scan_result: err_result.clone(),
+                    code_hash: code_hash.clone(),
+                    language: language.to_string(),
+                    code: code.to_string(),
+                    created_at: Instant::now(),
+                },
+            );
             return Ok((err_result, scan_id, code_hash));
         }
     };
 
     // Cache the result
-    server.scan_cache.insert(scan_id.clone(), CachedScan {
-        scan_result: scan_result.clone(),
-        code_hash: code_hash.clone(),
-        language: language.to_string(),
-        code: code.to_string(),
-        created_at: Instant::now(),
-    });
+    server.scan_cache.insert(
+        scan_id.clone(),
+        CachedScan {
+            scan_result: scan_result.clone(),
+            code_hash: code_hash.clone(),
+            language: language.to_string(),
+            code: code.to_string(),
+            created_at: Instant::now(),
+        },
+    );
 
     Ok((scan_result, scan_id, code_hash))
 }
@@ -97,13 +107,21 @@ fn do_scan(language: &str, code: &str) -> Result<ScanResult> {
 }
 
 /// Format a scan result as a human-readable response.
-pub(super) fn format_scan_response(scan_result: &ScanResult, scan_id: &str, code_hash: &str) -> Result<String> {
+pub(super) fn format_scan_response(
+    scan_result: &ScanResult,
+    scan_id: &str,
+    code_hash: &str,
+) -> Result<String> {
     let has_high_severity = scan_result.issues.iter().any(|i| {
-        matches!(i.severity, SecuritySeverity::High | SecuritySeverity::Critical)
+        matches!(
+            i.severity,
+            SecuritySeverity::High | SecuritySeverity::Critical
+        )
     });
-    let has_critical = scan_result.issues.iter().any(|i| {
-        matches!(i.severity, SecuritySeverity::Critical)
-    });
+    let has_critical = scan_result
+        .issues
+        .iter()
+        .any(|i| matches!(i.severity, SecuritySeverity::Critical));
 
     let mut output = String::new();
 
@@ -134,9 +152,13 @@ pub(super) fn format_scan_response(scan_result: &ScanResult, scan_id: &str, code
         }
 
         if has_critical {
-            output.push_str("🚫 BLOCKED: Critical security issues found. Execution is not permitted.\n");
+            output.push_str(
+                "🚫 BLOCKED: Critical security issues found. Execution is not permitted.\n",
+            );
         } else if has_high_severity {
-            output.push_str("⚠️ High-severity issues found. User confirmation is required before execution.\n");
+            output.push_str(
+                "⚠️ High-severity issues found. User confirmation is required before execution.\n",
+            );
         }
     }
 
@@ -151,7 +173,10 @@ pub(super) fn format_scan_response(scan_result: &ScanResult, scan_id: &str, code
         "requires_confirmation": has_high_severity && !has_critical,
     });
 
-    output.push_str(&format!("\n```json\n{}\n```", serde_json::to_string_pretty(&details)?));
+    output.push_str(&format!(
+        "\n```json\n{}\n```",
+        serde_json::to_string_pretty(&details)?
+    ));
 
     Ok(output)
 }
@@ -170,9 +195,7 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
         .get("confirmed")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let scan_id = arguments
-        .get("scan_id")
-        .and_then(|v| v.as_str());
+    let scan_id = arguments.get("scan_id").and_then(|v| v.as_str());
     let sandbox_level_arg = arguments
         .get("sandbox_level")
         .and_then(|v| v.as_u64())
@@ -185,7 +208,7 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
         if confirmed {
             // Verify scan_id
             let sid = scan_id.context(
-                "scan_id is required when confirmed=true. Call scan_code first to get a scan_id."
+                "scan_id is required when confirmed=true. Call scan_code first to get a scan_id.",
             )?;
 
             // Extract needed data within a scoped borrow, then consume on success
@@ -196,9 +219,11 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
                 (
                     cached.code_hash.clone(),
                     cached.scan_result.issues.len(),
-                    cached.scan_result.issues.iter().any(|i| {
-                        matches!(i.severity, SecuritySeverity::Critical)
-                    }),
+                    cached
+                        .scan_result
+                        .issues
+                        .iter()
+                        .any(|i| matches!(i.severity, SecuritySeverity::Critical)),
                 )
             };
 
@@ -226,7 +251,11 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
             server.scan_cache.remove(sid);
 
             // Audit: execution approved
-            skilllite_core::observability::audit_confirmation_response("execute_code", true, "user");
+            skilllite_core::observability::audit_confirmation_response(
+                "execute_code",
+                true,
+                "user",
+            );
             skilllite_core::observability::security_scan_approved(
                 "execute_code",
                 sid,
@@ -237,7 +266,10 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
             let (scan_result, new_scan_id, code_hash) = perform_scan(server, language, code)?;
 
             let has_high = scan_result.issues.iter().any(|i| {
-                matches!(i.severity, SecuritySeverity::High | SecuritySeverity::Critical)
+                matches!(
+                    i.severity,
+                    SecuritySeverity::High | SecuritySeverity::Critical
+                )
             });
 
             if has_high {
@@ -253,7 +285,11 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
 }
 
 /// Execute code in the sandbox.
-pub(super) fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level: SandboxLevel) -> Result<String> {
+pub(super) fn execute_code_in_sandbox(
+    language: &str,
+    code: &str,
+    sandbox_level: SandboxLevel,
+) -> Result<String> {
     let ext = match language {
         "python" => ".py",
         "javascript" | "node" => ".js",
@@ -298,4 +334,3 @@ pub(super) fn execute_code_in_sandbox(language: &str, code: &str, sandbox_level:
 
     Ok(output)
 }
-

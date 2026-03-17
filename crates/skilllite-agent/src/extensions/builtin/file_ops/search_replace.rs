@@ -4,7 +4,9 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 
-use super::super::{get_path_arg, is_key_write_path, is_sensitive_write_path, resolve_within_workspace_or_output};
+use super::super::{
+    get_path_arg, is_key_write_path, is_sensitive_write_path, resolve_within_workspace_or_output,
+};
 use crate::high_risk;
 use crate::types::EventSink;
 
@@ -25,19 +27,23 @@ pub(super) fn execute_insert_lines(
     workspace: &Path,
     event_sink: Option<&mut dyn EventSink>,
 ) -> Result<String> {
-    let path_str = get_path_arg(args, false)
-        .ok_or_else(|| anyhow::anyhow!("'path' is required"))?;
+    let path_str =
+        get_path_arg(args, false).ok_or_else(|| anyhow::anyhow!("'path' is required"))?;
     let line_num = args
         .get("line")
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| anyhow::anyhow!("'line' is required (0 = beginning of file)"))? as usize;
+        .ok_or_else(|| anyhow::anyhow!("'line' is required (0 = beginning of file)"))?
+        as usize;
     let insert_content = args
         .get("content")
         .and_then(|v| v.as_str())
         .context("'content' is required")?;
 
     if is_sensitive_write_path(&path_str) {
-        anyhow::bail!("Blocked: editing sensitive file '{}' is not allowed", path_str);
+        anyhow::bail!(
+            "Blocked: editing sensitive file '{}' is not allowed",
+            path_str
+        );
     }
     if high_risk::confirm_write_key_path() && is_key_write_path(&path_str) {
         if let Some(sink) = event_sink {
@@ -91,9 +97,16 @@ fn execute_replace_like(
     apply_changes: bool,
     event_sink: Option<&mut dyn EventSink>,
 ) -> Result<String> {
-    let dry_run = args.get("dry_run").and_then(|v| v.as_bool()).unwrap_or(false);
+    let dry_run = args
+        .get("dry_run")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let should_write = apply_changes && !dry_run;
-    let tool_name = if should_write { "search_replace" } else { "preview_edit" };
+    let tool_name = if should_write {
+        "search_replace"
+    } else {
+        "preview_edit"
+    };
 
     let path_str = get_path_arg(args, false)
         .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
@@ -105,15 +118,25 @@ fn execute_replace_like(
         .get("new_string")
         .and_then(|v| v.as_str())
         .context("'new_string' is required")?;
-    let replace_all = args.get("replace_all").and_then(|v| v.as_bool()).unwrap_or(false);
+    let replace_all = args
+        .get("replace_all")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let normalize_whitespace = args
         .get("normalize_whitespace")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
     if is_sensitive_write_path(&path_str) {
-        skilllite_core::observability::audit_edit_failed(&path_str, tool_name, "sensitive_path_blocked");
-        anyhow::bail!("Blocked: editing sensitive file '{}' is not allowed", path_str);
+        skilllite_core::observability::audit_edit_failed(
+            &path_str,
+            tool_name,
+            "sensitive_path_blocked",
+        );
+        anyhow::bail!(
+            "Blocked: editing sensitive file '{}' is not allowed",
+            path_str
+        );
     }
     if should_write && high_risk::confirm_write_key_path() && is_key_write_path(&path_str) {
         if let Some(sink) = event_sink {
@@ -143,7 +166,12 @@ fn execute_replace_like(
         .with_context(|| format!("Failed to read file: {}", path_str))?;
 
     let result = if normalize_whitespace {
-        skilllite_fs::apply_replace_normalize_whitespace(&content, old_string, new_string, replace_all)
+        skilllite_fs::apply_replace_normalize_whitespace(
+            &content,
+            old_string,
+            new_string,
+            replace_all,
+        )
     } else {
         skilllite_fs::apply_replace_fuzzy(&content, old_string, new_string, replace_all)
     }
@@ -153,7 +181,11 @@ fn execute_replace_like(
     })?;
 
     if content == result.new_content {
-        skilllite_core::observability::audit_edit_failed(&path_str, tool_name, "no_change_produced");
+        skilllite_core::observability::audit_edit_failed(
+            &path_str,
+            tool_name,
+            "no_change_produced",
+        );
         anyhow::bail!("No changes were made: replacement produced identical content");
     }
 
@@ -162,8 +194,18 @@ fn execute_replace_like(
         .filter(|b| *b == b'\n')
         .count()
         + 1;
-    let old_excerpt = skilllite_fs::safe_excerpt(&content, result.first_match_start, result.first_match_len, 200);
-    let new_excerpt = skilllite_fs::safe_excerpt(&result.new_content, result.first_match_start, new_string.len(), 200);
+    let old_excerpt = skilllite_fs::safe_excerpt(
+        &content,
+        result.first_match_start,
+        result.first_match_len,
+        200,
+    );
+    let new_excerpt = skilllite_fs::safe_excerpt(
+        &result.new_content,
+        result.first_match_start,
+        new_string.len(),
+        200,
+    );
     let diff_excerpt = format!("- {}\n+ {}", old_excerpt, new_excerpt);
 
     let mut backup: Option<String> = None;
@@ -286,11 +328,18 @@ fn check_bracket_balance(content: &str) -> Option<String> {
                         Some((open, open_line)) => {
                             return Some(format!(
                                 "Bracket mismatch: '{}' at line {} does not match '{}' at line {}",
-                                ch, line_idx + 1, open, open_line
+                                ch,
+                                line_idx + 1,
+                                open,
+                                open_line
                             ));
                         }
                         None => {
-                            return Some(format!("Unmatched closing '{}' at line {}", ch, line_idx + 1));
+                            return Some(format!(
+                                "Unmatched closing '{}' at line {}",
+                                ch,
+                                line_idx + 1
+                            ));
                         }
                     }
                 }

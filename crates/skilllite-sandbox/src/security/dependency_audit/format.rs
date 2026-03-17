@@ -21,7 +21,8 @@ pub fn format_audit_result(result: &DependencyAuditResult) -> String {
 
     if result.scanned == 0 {
         if result.malicious.is_empty() {
-            return "ℹ  No dependencies detected (no files, lock, or inferred packages).".to_string();
+            return "ℹ  No dependencies detected (no files, lock, or inferred packages)."
+                .to_string();
         }
         return lines.join("\n");
     }
@@ -74,10 +75,7 @@ pub fn format_audit_result(result: &DependencyAuditResult) -> String {
             lines.push(format!("     └─ {}{}{}", vuln.id, summary, fix));
         }
         if entry.vulns.len() > 10 {
-            lines.push(format!(
-                "     ... and {} more",
-                entry.vulns.len() - 10
-            ));
+            lines.push(format!("     ... and {} more", entry.vulns.len() - 10));
         }
         lines.push(String::new());
     }

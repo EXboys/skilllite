@@ -8,9 +8,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 
-use super::helpers::extract_goal_boundaries_hybrid;
-use super::super::goal_boundaries;
 use super::super::extensions::ToolAvailabilityView;
+use super::super::goal_boundaries;
 use super::super::llm::LlmClient;
 use super::super::planning_guard;
 use super::super::prompt;
@@ -18,6 +17,7 @@ use super::super::skills::LoadedSkill;
 use super::super::soul::Soul;
 use super::super::task_planner::TaskPlanner;
 use super::super::types::*;
+use super::helpers::extract_goal_boundaries_hybrid;
 
 /// Output of the planning phase, consumed by the execution loop.
 pub(super) struct PlanningResult {
@@ -44,21 +44,31 @@ pub(super) async fn run_planning_phase(
 ) -> Result<PlanningResult> {
     let chat_root = skilllite_executor::chat_root();
 
-    let mut planner = TaskPlanner::new(Some(workspace), Some(&chat_root), Some(availability.clone()));
+    let mut planner = TaskPlanner::new(
+        Some(workspace),
+        Some(&chat_root),
+        Some(availability.clone()),
+    );
 
     // Build conversation context for "继续" detection.
     // Callers can set config.skip_history_for_planning=true to exclude transcript history
     // from the planning prompt (e.g. when each task is self-contained and history would
     // corrupt planning with unrelated tasks from previous turns).
     let conversation_context: Option<String> = if config.skip_history_for_planning {
-        tracing::debug!("skip_history_for_planning=true: excluding transcript from planning prompt");
+        tracing::debug!(
+            "skip_history_for_planning=true: excluding transcript from planning prompt"
+        );
         None
     } else {
         let ctx: Vec<String> = initial_messages
             .iter()
             .filter_map(|m| m.content.as_ref().map(|c| format!("[{}] {}", m.role, c)))
             .collect();
-        if ctx.is_empty() { None } else { Some(ctx.join("\n")) }
+        if ctx.is_empty() {
+            None
+        } else {
+            Some(ctx.join("\n"))
+        }
     };
 
     // A8: Load SOUL before planning so scope rules reach the planning prompt
@@ -141,10 +151,21 @@ pub(super) async fn run_planning_phase(
     messages.push(ChatMessage::user(user_message));
 
     // A13: Save initial checkpoint for --resume
-    maybe_save_checkpoint(session_key, user_message, config, &planner, &messages, &chat_root);
+    maybe_save_checkpoint(
+        session_key,
+        user_message,
+        config,
+        &planner,
+        &messages,
+        &chat_root,
+    );
 
     let _ = (soul, effective_boundaries); // used locally above; not passed to caller
-    Ok(PlanningResult { planner, messages, chat_root })
+    Ok(PlanningResult {
+        planner,
+        messages,
+        chat_root,
+    })
 }
 
 /// Build the per-iteration task-focus message injected after tool execution.
@@ -180,9 +201,17 @@ do_not_quote_or_repeat_this_block=true\n\
 [/internal_task_focus]",
         current.id,
         pending_tasks,
-        if tool_hint.is_empty() { "none" } else { tool_hint },
+        if tool_hint.is_empty() {
+            "none"
+        } else {
+            tool_hint
+        },
         already_called,
-        if preferred_tools.is_empty() { "none".to_string() } else { preferred_tools }
+        if preferred_tools.is_empty() {
+            "none".to_string()
+        } else {
+            preferred_tools
+        }
     ))
 }
 
@@ -195,7 +224,9 @@ pub(super) fn maybe_save_checkpoint(
     messages: &[ChatMessage],
     chat_root: &Path,
 ) {
-    if session_key != Some("run") { return; }
+    if session_key != Some("run") {
+        return;
+    }
     let cp = crate::run_checkpoint::RunCheckpoint::new(
         user_message.to_string(),
         config.workspace.clone(),
@@ -263,4 +294,3 @@ mod tests {
         assert_eq!(planner.task_list[0].tool_hint.as_deref(), Some("file_read"));
     }
 }
-

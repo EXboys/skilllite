@@ -1,7 +1,7 @@
-use skilllite_core::observability;
 use crate::common::{DEFAULT_MAX_MEMORY_MB, DEFAULT_TIMEOUT_SECS};
 use crate::security::{format_scan_result_compact, ScriptScanner, SecuritySeverity};
 use anyhow::Result;
+use skilllite_core::observability;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
 use std::time::Instant;
@@ -85,7 +85,9 @@ impl SandboxLevel {
         }
 
         // Read from environment variable
-        if let Ok(level_str) = crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL") {
+        if let Ok(level_str) =
+            crate::common::env_compat("SKILLLITE_SANDBOX_LEVEL", "SKILLBOX_SANDBOX_LEVEL")
+        {
             if let Ok(level) = level_str.parse::<u8>() {
                 return match level {
                     1 => Self::Level1,
@@ -118,7 +120,7 @@ impl SandboxLevel {
 }
 
 /// Resource limits for skill execution
-/// 
+///
 /// Default values are defined in `common.rs`:
 /// - `max_memory_mb`: DEFAULT_MAX_MEMORY_MB (256 MB)
 /// - `timeout_secs`: DEFAULT_TIMEOUT_SECS (30 seconds)
@@ -144,15 +146,17 @@ impl ResourceLimits {
 
     /// Load resource limits from environment variables
     pub fn from_env() -> Self {
-        let max_memory_mb = crate::common::env_compat("SKILLLITE_MAX_MEMORY_MB", "SKILLBOX_MAX_MEMORY_MB")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(DEFAULT_MAX_MEMORY_MB);
+        let max_memory_mb =
+            crate::common::env_compat("SKILLLITE_MAX_MEMORY_MB", "SKILLBOX_MAX_MEMORY_MB")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(DEFAULT_MAX_MEMORY_MB);
 
-        let timeout_secs = crate::common::env_compat("SKILLLITE_TIMEOUT_SECS", "SKILLBOX_TIMEOUT_SECS")
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(DEFAULT_TIMEOUT_SECS);
+        let timeout_secs =
+            crate::common::env_compat("SKILLLITE_TIMEOUT_SECS", "SKILLBOX_TIMEOUT_SECS")
+                .ok()
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(DEFAULT_TIMEOUT_SECS);
 
         Self {
             max_memory_mb,
@@ -161,7 +165,11 @@ impl ResourceLimits {
     }
 
     /// Override with CLI parameters
-    pub fn with_cli_overrides(mut self, cli_max_memory: Option<u64>, cli_timeout: Option<u64>) -> Self {
+    pub fn with_cli_overrides(
+        mut self,
+        cli_max_memory: Option<u64>,
+        cli_timeout: Option<u64>,
+    ) -> Self {
         if let Some(max_memory) = cli_max_memory {
             self.max_memory_mb = max_memory;
         }
@@ -180,7 +188,10 @@ fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &st
     eprintln!("│  🔐 Security Review Required                                │");
     eprintln!("├─────────────────────────────────────────────────────────────┤");
     eprintln!("│                                                             │");
-    eprintln!("│  Found {} {} severity issue(s) that need your attention.", issues_count, severity);
+    eprintln!(
+        "│  Found {} {} severity issue(s) that need your attention.",
+        issues_count, severity
+    );
     eprintln!("│                                                             │");
     eprintln!("│  These operations are flagged for review:                   │");
     eprintln!("│    • System module imports or file access                   │");
@@ -203,7 +214,7 @@ fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &st
             return true;
         }
     }
-    
+
     loop {
         eprint!("  👉 Continue execution? [y/N]: ");
         let _ = io::stderr().flush();
@@ -213,7 +224,7 @@ fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &st
             eprintln!("\n  ⏹️  Input error, cancelling");
             return false;
         }
-        
+
         let input = input.trim().to_lowercase();
         match input.as_str() {
             "y" | "yes" => {
@@ -236,7 +247,6 @@ fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &st
         }
     }
 }
-
 
 /// Run a skill in a sandboxed environment with custom resource limits and security level
 pub fn run_in_sandbox_with_limits_and_level(
@@ -265,27 +275,29 @@ pub fn run_in_sandbox_with_limits_and_level(
                 .allow_network(config.network_enabled)
                 .allow_file_ops(false)
                 .allow_process_exec(false);
-            
+
             let scan_result = scanner.scan_file(&script_path)?;
-            
-            let critical_issues: Vec<_> = scan_result.issues.iter()
+
+            let critical_issues: Vec<_> = scan_result
+                .issues
+                .iter()
                 .filter(|issue| matches!(issue.severity, SecuritySeverity::Critical))
                 .collect();
-            let high_issues: Vec<_> = scan_result.issues.iter()
+            let high_issues: Vec<_> = scan_result
+                .issues
+                .iter()
                 .filter(|issue| matches!(issue.severity, SecuritySeverity::High))
                 .collect();
-            
+
             if !critical_issues.is_empty() || !high_issues.is_empty() {
                 // Compute once; used both for suppressing the scan report and
                 // for the approval decision below.
-                let auto_approve_env = crate::common::env_compat(
-                    "SKILLLITE_AUTO_APPROVE",
-                    "SKILLBOX_AUTO_APPROVE",
-                )
-                .is_ok_and(|v| {
-                    let v = v.trim().to_lowercase();
-                    v == "1" || v == "true" || v == "yes"
-                });
+                let auto_approve_env =
+                    crate::common::env_compat("SKILLLITE_AUTO_APPROVE", "SKILLBOX_AUTO_APPROVE")
+                        .is_ok_and(|v| {
+                            let v = v.trim().to_lowercase();
+                            v == "1" || v == "true" || v == "yes"
+                        });
 
                 if !auto_approve_env {
                     eprintln!("{}", format_scan_result_compact(&scan_result));
@@ -325,7 +337,9 @@ pub fn run_in_sandbox_with_limits_and_level(
                 );
 
                 let approved = if auto_approve_env {
-                    tracing::info!("Auto-approved via SKILLLITE_AUTO_APPROVE (agent/daemon already confirmed)");
+                    tracing::info!(
+                        "Auto-approved via SKILLLITE_AUTO_APPROVE (agent/daemon already confirmed)"
+                    );
                     observability::audit_confirmation_response(&config.name, true, "auto");
                     true
                 } else if !io::stdin().is_terminal() {
@@ -333,7 +347,11 @@ pub fn run_in_sandbox_with_limits_and_level(
                         "Non-TTY stdin: blocking {} severity issues (set SKILLLITE_AUTO_APPROVE=1 to override)",
                         severity_str
                     );
-                    observability::audit_confirmation_response(&config.name, false, "non-tty-blocked");
+                    observability::audit_confirmation_response(
+                        &config.name,
+                        false,
+                        "non-tty-blocked",
+                    );
                     false
                 } else {
                     request_user_authorization(&config.name, issues_count, severity_str)
@@ -346,8 +364,11 @@ pub fn run_in_sandbox_with_limits_and_level(
                     );
                 }
             }
-            
-            if !scan_result.issues.is_empty() && critical_issues.is_empty() && high_issues.is_empty() {
+
+            if !scan_result.issues.is_empty()
+                && critical_issues.is_empty()
+                && high_issues.is_empty()
+            {
                 eprintln!("{}", format_scan_result_compact(&scan_result));
             }
         }
@@ -355,7 +376,9 @@ pub fn run_in_sandbox_with_limits_and_level(
 
     // Level 1: Execute without sandbox
     if !level.use_sandbox() {
-        tracing::warn!("Running without sandbox (Level 1) - no isolation, but with resource limits");
+        tracing::warn!(
+            "Running without sandbox (Level 1) - no isolation, but with resource limits"
+        );
         observability::audit_command_invoked(
             &config.name,
             &config.entry_point,
@@ -363,8 +386,9 @@ pub fn run_in_sandbox_with_limits_and_level(
             skill_dir.to_string_lossy().as_ref(),
         );
         let start = Instant::now();
-        let result = execute_simple_without_sandbox(skill_dir, runtime, config, input_json, limits)?;
-        
+        let result =
+            execute_simple_without_sandbox(skill_dir, runtime, config, input_json, limits)?;
+
         if result.exit_code != 0 {
             anyhow::bail!(
                 "Skill execution failed with exit code {}: {}",
@@ -374,8 +398,9 @@ pub fn run_in_sandbox_with_limits_and_level(
         }
 
         let output = result.stdout.trim();
-        let _: serde_json::Value = serde_json::from_str(output)
-            .map_err(|e| anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output))?;
+        let _: serde_json::Value = serde_json::from_str(output).map_err(|e| {
+            anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output)
+        })?;
 
         observability::audit_execution_completed(
             &config.name,
@@ -394,13 +419,8 @@ pub fn run_in_sandbox_with_limits_and_level(
         skill_dir.to_string_lossy().as_ref(),
     );
     let start = Instant::now();
-    let result = execute_platform_sandbox_with_limits(
-        skill_dir,
-        runtime,
-        config,
-        input_json,
-        limits,
-    )?;
+    let result =
+        execute_platform_sandbox_with_limits(skill_dir, runtime, config, input_json, limits)?;
 
     if result.exit_code != 0 {
         anyhow::bail!(
@@ -411,8 +431,9 @@ pub fn run_in_sandbox_with_limits_and_level(
     }
 
     let output = result.stdout.trim();
-    let _: serde_json::Value = serde_json::from_str(output)
-        .map_err(|e| anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output))?;
+    let _: serde_json::Value = serde_json::from_str(output).map_err(|e| {
+        anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output)
+    })?;
 
     observability::audit_execution_completed(
         &config.name,
@@ -450,7 +471,6 @@ fn execute_platform_sandbox_with_limits(
 ) -> Result<ExecutionResult> {
     super::linux::execute_with_limits(skill_dir, runtime, config, input_json, limits)
 }
-
 
 #[cfg(target_os = "macos")]
 fn execute_platform_sandbox_with_limits(
@@ -521,29 +541,15 @@ fn execute_simple_without_sandbox(
 ) -> Result<ExecutionResult> {
     #[cfg(target_os = "macos")]
     return super::macos::execute_simple_with_limits(
-        skill_dir,
-        runtime,
-        config,
-        input_json,
-        limits,
+        skill_dir, runtime, config, input_json, limits,
     );
 
     #[cfg(target_os = "linux")]
-    return super::linux::execute_with_limits(
-        skill_dir,
-        runtime,
-        config,
-        input_json,
-        limits,
-    );
+    return super::linux::execute_with_limits(skill_dir, runtime, config, input_json, limits);
 
     #[cfg(target_os = "windows")]
     return super::windows::execute_simple_with_limits(
-        skill_dir,
-        runtime,
-        config,
-        input_json,
-        limits,
+        skill_dir, runtime, config, input_json, limits,
     );
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]

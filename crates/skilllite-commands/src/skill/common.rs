@@ -215,10 +215,7 @@ fn integrity_json_fields(
 
     let source = report.entry.as_ref().map(|e| e.source.clone());
     let version = report.entry.as_ref().and_then(|e| e.version.clone());
-    let installed_at = report
-        .entry
-        .as_ref()
-        .map(|e| e.installed_at.to_rfc3339());
+    let installed_at = report.entry.as_ref().map(|e| e.installed_at.to_rfc3339());
 
     (status, source, version, Some(signature), installed_at)
 }

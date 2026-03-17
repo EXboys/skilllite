@@ -6,7 +6,7 @@ use anyhow::Result;
 use serde_json::{json, Value};
 use std::path::Path;
 
-use crate::types::{EventSink, ToolDefinition, FunctionDef};
+use crate::types::{EventSink, FunctionDef, ToolDefinition};
 use skilllite_core::protocol::{NodeContext, NodeResult, NodeTask};
 
 pub const SWARM_URL_ENV: &str = "SKILLLITE_SWARM_URL";
@@ -110,30 +110,31 @@ pub(super) async fn execute_delegate_to_swarm(
         .send()
         .await
     {
-        Ok(resp) if resp.status().is_success() => {
-            match resp.json::<NodeResult>().await {
-                Ok(result) => {
-                    let summary = if result.response.is_empty() {
-                        format!("remote task completed={}", result.task_completed)
-                    } else {
-                        format!("remote task completed={} response={}", result.task_completed, result.response)
-                    };
-                    event_sink.on_swarm_finished(&summary);
-                    Ok(format!(
-                        "Delegation succeeded.\nResponse: {}\nTask completed: {}",
-                        result.response, result.task_completed
-                    ))
-                }
-                Err(e) => {
-                    let msg = format!(
-                        "Delegation returned invalid response: {}. Fallback to local execution.",
-                        e
-                    );
-                    event_sink.on_swarm_failed(&msg);
-                    Ok(msg)
-                }
+        Ok(resp) if resp.status().is_success() => match resp.json::<NodeResult>().await {
+            Ok(result) => {
+                let summary = if result.response.is_empty() {
+                    format!("remote task completed={}", result.task_completed)
+                } else {
+                    format!(
+                        "remote task completed={} response={}",
+                        result.task_completed, result.response
+                    )
+                };
+                event_sink.on_swarm_finished(&summary);
+                Ok(format!(
+                    "Delegation succeeded.\nResponse: {}\nTask completed: {}",
+                    result.response, result.task_completed
+                ))
             }
-        }
+            Err(e) => {
+                let msg = format!(
+                    "Delegation returned invalid response: {}. Fallback to local execution.",
+                    e
+                );
+                event_sink.on_swarm_failed(&msg);
+                Ok(msg)
+            }
+        },
         Ok(resp) => {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();

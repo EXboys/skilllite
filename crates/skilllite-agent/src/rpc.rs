@@ -74,10 +74,7 @@ struct RpcEventSink {
 }
 
 impl RpcEventSink {
-    fn new(
-        writer: Arc<Mutex<io::Stdout>>,
-        reader: Arc<Mutex<BufReader<io::Stdin>>>,
-    ) -> Self {
+    fn new(writer: Arc<Mutex<io::Stdout>>, reader: Arc<Mutex<BufReader<io::Stdin>>>) -> Self {
         Self {
             writer,
             confirmation_rx: reader,
@@ -103,10 +100,7 @@ impl EventSink for RpcEventSink {
     }
 
     fn on_tool_call(&mut self, name: &str, arguments: &str) {
-        self.emit(
-            "tool_call",
-            json!({ "name": name, "arguments": arguments }),
-        );
+        self.emit("tool_call", json!({ "name": name, "arguments": arguments }));
     }
 
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool) {
@@ -217,7 +211,9 @@ pub fn serve_agent_rpc() -> Result<()> {
     loop {
         let mut line = String::new();
         {
-            let mut reader = reader_arc.lock().map_err(|e| anyhow::anyhow!("stdin lock poisoned: {}", e))?;
+            let mut reader = reader_arc
+                .lock()
+                .map_err(|e| anyhow::anyhow!("stdin lock poisoned: {}", e))?;
             match reader.read_line(&mut line) {
                 Ok(0) => break,
                 Ok(_) => {}
@@ -249,29 +245,16 @@ pub fn serve_agent_rpc() -> Result<()> {
             }
         };
 
-        let method = request
-            .get("method")
-            .and_then(|m| m.as_str())
-            .unwrap_or("");
-        let params = request
-            .get("params")
-            .cloned()
-            .unwrap_or(json!({}));
+        let method = request.get("method").and_then(|m| m.as_str()).unwrap_or("");
+        let params = request.get("params").cloned().unwrap_or(json!({}));
 
         match method {
             "agent_chat" => {
                 let writer_clone = Arc::clone(&writer);
                 let reader_clone = Arc::clone(&reader_arc);
-                if let Err(e) = rt.block_on(handle_agent_chat(
-                    &params,
-                    writer_clone,
-                    reader_clone,
-                )) {
-                    emit_event(
-                        &writer,
-                        "error",
-                        json!({ "message": e.to_string() }),
-                    );
+                if let Err(e) = rt.block_on(handle_agent_chat(&params, writer_clone, reader_clone))
+                {
+                    emit_event(&writer, "error", json!({ "message": e.to_string() }));
                 }
             }
             "ping" => {
@@ -333,18 +316,28 @@ async fn handle_agent_chat(
         if let Some(max) = overrides.get("max_iterations").and_then(|v| v.as_u64()) {
             config.max_iterations = max as usize;
         }
-        if let Some(plan) = overrides.get("enable_task_planning").and_then(|v| v.as_bool()) {
+        if let Some(plan) = overrides
+            .get("enable_task_planning")
+            .and_then(|v| v.as_bool())
+        {
             config.enable_task_planning = plan;
         }
         if let Some(sp) = overrides.get("soul_path").and_then(|v| v.as_str()) {
             config.soul_path = Some(sp.to_string());
         }
-        if let Some(skip) = overrides.get("skip_history_for_planning").and_then(|v| v.as_bool()) {
+        if let Some(skip) = overrides
+            .get("skip_history_for_planning")
+            .and_then(|v| v.as_bool())
+        {
             config.skip_history_for_planning = skip;
         }
     }
     // params.context.append — was documented but not parsed
-    if let Some(ctx) = params.get("context").and_then(|c| c.get("append")).and_then(|a| a.as_str()) {
+    if let Some(ctx) = params
+        .get("context")
+        .and_then(|c| c.get("append"))
+        .and_then(|a| a.as_str())
+    {
         config.context_append = Some(ctx.to_string());
     }
 
@@ -352,16 +345,17 @@ async fn handle_agent_chat(
         anyhow::bail!("API key required. Set OPENAI_API_KEY env var.");
     }
 
-    let skill_dirs: Vec<String> = if let Some(dirs) = params.get("skill_dirs").and_then(|v| v.as_array()) {
-        dirs.iter()
-            .filter_map(|d| d.as_str().map(|s| s.to_string()))
-            .collect()
-    } else {
-        skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
-            Path::new(&config.workspace),
-            Some(&[".skills", "skills"]),
-        )
-    };
+    let skill_dirs: Vec<String> =
+        if let Some(dirs) = params.get("skill_dirs").and_then(|v| v.as_array()) {
+            dirs.iter()
+                .filter_map(|d| d.as_str().map(|s| s.to_string()))
+                .collect()
+        } else {
+            skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
+                Path::new(&config.workspace),
+                Some(&[".skills", "skills"]),
+            )
+        };
 
     let loaded_skills = skills::load_skills(&skill_dirs);
 
@@ -384,14 +378,9 @@ async fn handle_agent_chat(
             emit_event(&writer, "done", data);
         }
         Err(e) => {
-            emit_event(
-                &writer,
-                "error",
-                json!({ "message": e.to_string() }),
-            );
+            emit_event(&writer, "error", json!({ "message": e.to_string() }));
         }
     }
 
     Ok(())
 }
-

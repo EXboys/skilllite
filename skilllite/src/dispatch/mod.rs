@@ -161,122 +161,123 @@ fn register_quickstart(reg: &mut CommandRegistry) {
 #[cfg(feature = "agent")]
 fn register_agent(reg: &mut CommandRegistry) {
     reg.register(|cmd| {
-            if let Commands::Chat {
-                api_base,
-                api_key,
-                model,
-                workspace,
-                skill_dir,
-                session,
-                max_iterations,
-                system_prompt,
-                verbose,
-                message,
-                plan,
-                no_plan,
-                no_memory,
-                soul,
-            } = cmd
-            {
-                Some(skilllite_agent::chat::run_chat(
-                    api_base.clone(),
-                    api_key.clone(),
-                    model.clone(),
-                    workspace.clone(),
-                    skill_dir.clone(),
-                    session.clone(),
-                    *max_iterations,
-                    system_prompt.clone(),
-                    *verbose,
-                    message.clone(),
-                    *plan,
-                    *no_plan,
-                    *no_memory,
-                    soul.clone(),
-                ))
-            } else {
-                None
-            }
-        });
+        if let Commands::Chat {
+            api_base,
+            api_key,
+            model,
+            workspace,
+            skill_dir,
+            session,
+            max_iterations,
+            system_prompt,
+            verbose,
+            message,
+            plan,
+            no_plan,
+            no_memory,
+            soul,
+        } = cmd
+        {
+            Some(skilllite_agent::chat::run_chat(
+                api_base.clone(),
+                api_key.clone(),
+                model.clone(),
+                workspace.clone(),
+                skill_dir.clone(),
+                session.clone(),
+                *max_iterations,
+                system_prompt.clone(),
+                *verbose,
+                message.clone(),
+                *plan,
+                *no_plan,
+                *no_memory,
+                soul.clone(),
+            ))
+        } else {
+            None
+        }
+    });
     reg.register(|cmd| {
-            if let Commands::ClearSession {
+        if let Commands::ClearSession {
+            session_key,
+            workspace,
+        } = cmd
+        {
+            Some(skilllite_agent::chat::run_clear_session(
                 session_key,
                 workspace,
-            } = cmd
-            {
-                Some(skilllite_agent::chat::run_clear_session(
-                    session_key, workspace,
-                ))
-            } else {
-                None
-            }
-        });
+            ))
+        } else {
+            None
+        }
+    });
     reg.register(|cmd| {
-            if let Commands::Replay {
-                dataset,
-                api_base,
-                api_key,
-                model,
-                workspace,
-                skill_dir,
-                max_iterations,
-                max_failures,
-                limit,
-                json,
-                verbose,
-                read_only,
-            } = cmd
-            {
-                Some(skilllite_commands::replay::cmd_replay(
-                    api_base.clone(),
-                    api_key.clone(),
-                    model.clone(),
-                    workspace.clone(),
-                    skill_dir.clone(),
-                    dataset.clone(),
-                    *max_iterations,
-                    *max_failures,
-                    *limit,
-                    *json,
-                    *verbose,
-                    *read_only,
-                ))
-            } else {
-                None
-            }
-        });
+        if let Commands::Replay {
+            dataset,
+            api_base,
+            api_key,
+            model,
+            workspace,
+            skill_dir,
+            max_iterations,
+            max_failures,
+            limit,
+            json,
+            verbose,
+            read_only,
+        } = cmd
+        {
+            Some(skilllite_commands::replay::cmd_replay(
+                api_base.clone(),
+                api_key.clone(),
+                model.clone(),
+                workspace.clone(),
+                skill_dir.clone(),
+                dataset.clone(),
+                *max_iterations,
+                *max_failures,
+                *limit,
+                *json,
+                *verbose,
+                *read_only,
+            ))
+        } else {
+            None
+        }
+    });
     reg.register(|cmd| {
-            if let Commands::Evolution { action } = cmd {
-                use crate::cli::EvolutionAction;
-                let r = match action {
-                    EvolutionAction::Status => skilllite_commands::evolution::cmd_status(),
-                    EvolutionAction::Reset { force } => {
-                        skilllite_commands::evolution::cmd_reset(*force)
-                    }
-                    EvolutionAction::Disable { rule_id } => {
-                        skilllite_commands::evolution::cmd_disable(rule_id)
-                    }
-                    EvolutionAction::Explain { rule_id } => {
-                        skilllite_commands::evolution::cmd_explain(rule_id)
-                    }
-                    EvolutionAction::Confirm { skill_name } => {
-                        skilllite_commands::evolution::cmd_confirm(skill_name)
-                    }
-                    EvolutionAction::Reject { skill_name } => {
-                        skilllite_commands::evolution::cmd_reject(skill_name)
-                    }
-                    EvolutionAction::Run { json } => {
-                        skilllite_commands::evolution::cmd_run(*json)
-                    }
-                    EvolutionAction::RepairSkills { skills } => {
-                        skilllite_commands::evolution::cmd_repair_skills(
-                            if skills.is_empty() { None } else { Some(skills.clone()) },
-                        )
-                    }
-                };
-                Some(r)
-            } else {
-                None
-            }
-        });
+        if let Commands::Evolution { action } = cmd {
+            use crate::cli::EvolutionAction;
+            let r = match action {
+                EvolutionAction::Status => skilllite_commands::evolution::cmd_status(),
+                EvolutionAction::Reset { force } => {
+                    skilllite_commands::evolution::cmd_reset(*force)
+                }
+                EvolutionAction::Disable { rule_id } => {
+                    skilllite_commands::evolution::cmd_disable(rule_id)
+                }
+                EvolutionAction::Explain { rule_id } => {
+                    skilllite_commands::evolution::cmd_explain(rule_id)
+                }
+                EvolutionAction::Confirm { skill_name } => {
+                    skilllite_commands::evolution::cmd_confirm(skill_name)
+                }
+                EvolutionAction::Reject { skill_name } => {
+                    skilllite_commands::evolution::cmd_reject(skill_name)
+                }
+                EvolutionAction::Run { json } => skilllite_commands::evolution::cmd_run(*json),
+                EvolutionAction::RepairSkills { skills } => {
+                    skilllite_commands::evolution::cmd_repair_skills(if skills.is_empty() {
+                        None
+                    } else {
+                        Some(skills.clone())
+                    })
+                }
+            };
+            Some(r)
+        } else {
+            None
+        }
+    });
 }

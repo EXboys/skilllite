@@ -211,7 +211,7 @@ fn parse_compatibility_for_network(compatibility: Option<&str>) -> NetworkPolicy
     };
 
     let compat_lower = compat.to_lowercase();
-    
+
     // Check for network/internet keywords (English and Chinese)
     let needs_network = compat_lower.contains("network")
         || compat_lower.contains("internet")
@@ -247,7 +247,10 @@ fn parse_compatibility_for_language(compatibility: Option<&str>) -> Option<Strin
 
     if compat_lower.contains("python") {
         Some("python".to_string())
-    } else if compat_lower.contains("node") || compat_lower.contains("javascript") || compat_lower.contains("typescript") {
+    } else if compat_lower.contains("node")
+        || compat_lower.contains("javascript")
+        || compat_lower.contains("typescript")
+    {
         Some("node".to_string())
     } else if compat_lower.contains("bash") || compat_lower.contains("shell") {
         Some("bash".to_string())
@@ -290,10 +293,11 @@ fn detect_entry_point(skill_dir: &Path) -> Option<String> {
                 if ["py", "js", "ts", "sh"].contains(&ext_str.as_ref()) {
                     // Skip test files and __init__.py
                     let name = path.file_name().unwrap_or_default().to_string_lossy();
-                    if !name.starts_with("test_") 
+                    if !name.starts_with("test_")
                         && !name.ends_with("_test.py")
                         && name != "__init__.py"
-                        && !name.starts_with('.') {
+                        && !name.starts_with('.')
+                    {
                         script_files.push(format!("scripts/{}", name));
                     }
                 }
@@ -326,10 +330,7 @@ pub fn parse_skill_metadata(skill_dir: &Path) -> Result<SkillMetadata> {
     let skill_md_path = skill_dir.join("SKILL.md");
 
     if !skill_md_path.exists() {
-        anyhow::bail!(
-            "SKILL.md not found in directory: {}",
-            skill_dir.display()
-        );
+        anyhow::bail!("SKILL.md not found in directory: {}", skill_dir.display());
     }
 
     let content = fs::read_to_string(&skill_md_path)
@@ -427,7 +428,10 @@ fn extract_yaml_front_matter(content: &str) -> Result<SkillMetadata> {
 }
 
 /// Extract YAML front matter from markdown content with auto-detection
-fn extract_yaml_front_matter_with_detection(content: &str, skill_dir: &Path) -> Result<SkillMetadata> {
+fn extract_yaml_front_matter_with_detection(
+    content: &str,
+    skill_dir: &Path,
+) -> Result<SkillMetadata> {
     extract_yaml_front_matter_impl(content, Some(skill_dir))
 }
 
@@ -438,7 +442,10 @@ fn normalize_yaml_continuation_lines(yaml: &str) -> String {
 }
 
 /// Extract YAML front matter from markdown content
-fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Result<SkillMetadata> {
+fn extract_yaml_front_matter_impl(
+    content: &str,
+    skill_dir: Option<&Path>,
+) -> Result<SkillMetadata> {
     // Match YAML front matter between --- delimiters
     let captures = YAML_FRONT_MATTER_RE
         .captures(content)
@@ -453,8 +460,8 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
     // pattern for multiline values. YAML parses ":" as a new key; we merge into previous line.
     let yaml_content = normalize_yaml_continuation_lines(yaml_content);
 
-    let front_matter: FrontMatter = serde_yaml::from_str(&yaml_content)
-        .with_context(|| "Failed to parse YAML front matter")?;
+    let front_matter: FrontMatter =
+        serde_yaml::from_str(&yaml_content).with_context(|| "Failed to parse YAML front matter")?;
 
     // 兼容：front matter 的 entry_point（若有且文件存在）→ 否则目录探测（main.* / index.* / 单脚本）。
     // 无入口时可由调用方用大模型根据 SKILL.md 推理后通过 entry_point_override 传入 run_skill。
@@ -487,13 +494,10 @@ fn extract_yaml_front_matter_impl(content: &str, skill_dir: Option<&Path>) -> Re
     let network = parse_compatibility_for_network(compatibility.as_deref());
 
     // Read resolved_packages from .skilllite.lock (written by `skilllite init`)
-    let resolved_packages = skill_dir.and_then(|dir| {
-        read_lock_file_packages(dir, compatibility.as_deref())
-    });
+    let resolved_packages =
+        skill_dir.and_then(|dir| read_lock_file_packages(dir, compatibility.as_deref()));
 
-    let requires_elevated = front_matter
-        .requires_elevated_permissions
-        .unwrap_or(false);
+    let requires_elevated = front_matter.requires_elevated_permissions.unwrap_or(false);
 
     // Resolve capabilities: top-level `capabilities:` > metadata.capabilities > infer from compatibility.
     // compatibility is official Agent Skills field; inferring from it enables routing without custom fields.
@@ -659,11 +663,19 @@ description: Browser automation CLI for AI agents.
 allowed-tools: Bash(agent-browser:*)
 ---
 "#;
-        let metadata = extract_yaml_front_matter(content)
-            .expect("continuation lines should be normalized");
+        let metadata =
+            extract_yaml_front_matter(content).expect("continuation lines should be normalized");
         assert_eq!(metadata.name, "agent-browser");
-        assert!(metadata.description.as_ref().unwrap().contains("Browser automation CLI"));
-        assert!(metadata.description.as_ref().unwrap().contains("Requires Node.js"));
+        assert!(metadata
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("Browser automation CLI"));
+        assert!(metadata
+            .description
+            .as_ref()
+            .unwrap()
+            .contains("Requires Node.js"));
     }
 
     #[test]
@@ -679,8 +691,8 @@ compatibility: Requires Python 3.x with requests library, network access
 This is a test skill.
 "#;
 
-        let metadata = extract_yaml_front_matter(content)
-            .expect("test YAML parsing should succeed");
+        let metadata =
+            extract_yaml_front_matter(content).expect("test YAML parsing should succeed");
         assert_eq!(metadata.name, "test-skill");
         assert_eq!(metadata.language, Some("python".to_string()));
         assert!(metadata.network.enabled);
@@ -715,11 +727,26 @@ This is a test skill.
 
     #[test]
     fn test_parse_compatibility_for_language() {
-        assert_eq!(parse_compatibility_for_language(Some("Requires Python 3.x")), Some("python".to_string()));
-        assert_eq!(parse_compatibility_for_language(Some("Requires Node.js")), Some("node".to_string()));
-        assert_eq!(parse_compatibility_for_language(Some("Requires JavaScript")), Some("node".to_string()));
-        assert_eq!(parse_compatibility_for_language(Some("Requires bash")), Some("bash".to_string()));
-        assert_eq!(parse_compatibility_for_language(Some("Requires git, docker")), None);
+        assert_eq!(
+            parse_compatibility_for_language(Some("Requires Python 3.x")),
+            Some("python".to_string())
+        );
+        assert_eq!(
+            parse_compatibility_for_language(Some("Requires Node.js")),
+            Some("node".to_string())
+        );
+        assert_eq!(
+            parse_compatibility_for_language(Some("Requires JavaScript")),
+            Some("node".to_string())
+        );
+        assert_eq!(
+            parse_compatibility_for_language(Some("Requires bash")),
+            Some("bash".to_string())
+        );
+        assert_eq!(
+            parse_compatibility_for_language(Some("Requires git, docker")),
+            None
+        );
         assert_eq!(parse_compatibility_for_language(None), None);
     }
 
@@ -731,8 +758,8 @@ description: A simple skill
 ---
 "#;
 
-        let metadata = extract_yaml_front_matter(content)
-            .expect("test YAML parsing should succeed");
+        let metadata =
+            extract_yaml_front_matter(content).expect("test YAML parsing should succeed");
         assert!(!metadata.network.enabled);
         assert!(metadata.network.outbound.is_empty());
     }
@@ -787,11 +814,14 @@ allowed-tools: Bash(agent-browser:*)
 Use agent-browser CLI to automate web browsing.
 "#;
 
-        let metadata = extract_yaml_front_matter(content)
-            .expect("bash tool skill YAML should parse");
+        let metadata =
+            extract_yaml_front_matter(content).expect("bash tool skill YAML should parse");
         assert_eq!(metadata.name, "agent-browser");
         assert!(metadata.entry_point.is_empty());
-        assert_eq!(metadata.allowed_tools, Some("Bash(agent-browser:*)".to_string()));
+        assert_eq!(
+            metadata.allowed_tools,
+            Some("Bash(agent-browser:*)".to_string())
+        );
         assert!(metadata.is_bash_tool_skill());
 
         let patterns = metadata.get_bash_patterns();
@@ -808,8 +838,7 @@ compatibility: Requires Python 3.x
 ---
 "#;
         // This skill has no allowed-tools, so it's not a bash tool skill
-        let metadata = extract_yaml_front_matter(content)
-            .expect("regular skill YAML should parse");
+        let metadata = extract_yaml_front_matter(content).expect("regular skill YAML should parse");
         assert!(!metadata.is_bash_tool_skill());
     }
 
@@ -827,8 +856,8 @@ metadata:
     primaryEnv: GEMINI_API_KEY
 ---
 "#;
-        let metadata = extract_yaml_front_matter(content)
-            .expect("OpenClaw format YAML should parse");
+        let metadata =
+            extract_yaml_front_matter(content).expect("OpenClaw format YAML should parse");
         assert_eq!(metadata.name, "nano-banana-pro");
         assert_eq!(
             metadata.compatibility.as_deref(),

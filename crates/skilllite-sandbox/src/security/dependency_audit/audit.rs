@@ -7,7 +7,7 @@ use anyhow::Result;
 
 use super::super::malicious_packages::{check_malicious_packages, MaliciousPackageHit};
 use super::backends::{query_osv_batch, query_pypi};
-use super::config::{self, get_custom_api, get_pypi_base, get_osv_api_base, make_agent};
+use super::config::{self, get_custom_api, get_osv_api_base, get_pypi_base, make_agent};
 use super::parsers::{parse_lock_file, parse_package_json, parse_requirements_txt};
 use super::resolve::resolve_from_metadata_fields;
 use super::types::{
@@ -85,9 +85,8 @@ pub fn audit_skill_dependencies(
 ) -> Result<DependencyAuditResult> {
     let deps = collect_dependencies(skill_dir, metadata_hint);
 
-    let malicious_hits = check_malicious_packages(
-        deps.iter().map(|d| (d.name.as_str(), d.ecosystem.as_str())),
-    );
+    let malicious_hits =
+        check_malicious_packages(deps.iter().map(|d| (d.name.as_str(), d.ecosystem.as_str())));
     if !malicious_hits.is_empty() {
         for hit in &malicious_hits {
             tracing::warn!(
@@ -126,8 +125,16 @@ pub fn audit_skill_dependencies(
         ));
     }
 
-    let pypi_deps: Vec<_> = deps.iter().filter(|d| d.ecosystem == "PyPI").cloned().collect();
-    let npm_deps: Vec<_> = deps.iter().filter(|d| d.ecosystem == "npm").cloned().collect();
+    let pypi_deps: Vec<_> = deps
+        .iter()
+        .filter(|d| d.ecosystem == "PyPI")
+        .cloned()
+        .collect();
+    let npm_deps: Vec<_> = deps
+        .iter()
+        .filter(|d| d.ecosystem == "npm")
+        .cloned()
+        .collect();
 
     let mut all_entries = Vec::new();
 
@@ -163,7 +170,11 @@ pub fn audit_skill_dependencies(
         all_entries.extend(osv_entries);
     }
 
-    Ok(build_result(all_entries, AuditBackend::Native, malicious_hits))
+    Ok(build_result(
+        all_entries,
+        AuditBackend::Native,
+        malicious_hits,
+    ))
 }
 
 pub(crate) fn build_result(

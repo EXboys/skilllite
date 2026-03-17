@@ -90,7 +90,6 @@ impl TranscriptEntry {
             Self::BranchSummary { id, .. } => Some(id),
         }
     }
-
 }
 
 /// Append an entry to transcript file. Creates file and parent dir if needed.
@@ -202,7 +201,10 @@ pub fn list_transcript_files(transcripts_dir: &Path, session_key: &str) -> Resul
         let path = e.path();
         if let Some(name) = path.file_name() {
             let name = name.to_string_lossy();
-            if name.starts_with(session_key) && name.ends_with(".jsonl") && name != format!("{}.jsonl", session_key) {
+            if name.starts_with(session_key)
+                && name.ends_with(".jsonl")
+                && name != format!("{}.jsonl", session_key)
+            {
                 files.push(path);
             }
         }
@@ -216,7 +218,10 @@ pub fn list_transcript_files(transcripts_dir: &Path, session_key: &str) -> Resul
 }
 
 fn extract_date_from_path(path: &Path, session_key: &str) -> String {
-    let name = path.file_stem().map(|s| s.to_string_lossy()).unwrap_or_default();
+    let name = path
+        .file_stem()
+        .map(|s| s.to_string_lossy())
+        .unwrap_or_default();
     if name == session_key {
         return "0000-00-00".to_string(); // legacy, treat as oldest
     }

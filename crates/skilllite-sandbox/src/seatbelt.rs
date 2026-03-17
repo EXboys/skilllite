@@ -7,7 +7,9 @@ use crate::security::policy as security_policy;
 
 // Re-export for Linux (firejail/bwrap)
 #[cfg(target_os = "linux")]
-pub use security_policy::{get_mandatory_deny_rules, MandatoryDenyRule, MANDATORY_DENY_DIRECTORIES};
+pub use security_policy::{
+    get_mandatory_deny_rules, MandatoryDenyRule, MANDATORY_DENY_DIRECTORIES,
+};
 
 use security_policy::HomePathStyle;
 
@@ -39,24 +41,15 @@ pub fn generate_seatbelt_mandatory_deny_patterns() -> Vec<String> {
         let escaped = seatbelt_regex_escape(&rule.pattern);
 
         if rule.is_directory {
-            patterns.push(format!(
-                "(deny file-write* (regex #\"(^|/){}\"))",
-                escaped
-            ));
+            patterns.push(format!("(deny file-write* (regex #\"(^|/){}\"))", escaped));
             patterns.push(format!(
                 "(deny file-write* (regex #\"(^|/){}/.+\"))",
                 escaped
             ));
         } else if rule.pattern.contains('/') {
-            patterns.push(format!(
-                "(deny file-write* (regex #\"(^|/){}\"))",
-                escaped
-            ));
+            patterns.push(format!("(deny file-write* (regex #\"(^|/){}\"))", escaped));
         } else {
-            patterns.push(format!(
-                "(deny file-write* (regex #\"(^|/){}$\"))",
-                escaped
-            ));
+            patterns.push(format!("(deny file-write* (regex #\"(^|/){}$\"))", escaped));
         }
     }
 

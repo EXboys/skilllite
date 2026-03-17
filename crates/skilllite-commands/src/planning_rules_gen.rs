@@ -11,11 +11,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[cfg(feature = "agent")]
+use skilllite_agent::llm::LlmClient;
+#[cfg(feature = "agent")]
 use skilllite_agent::planning_rules;
 #[cfg(feature = "agent")]
 use skilllite_agent::types::{AgentConfig, ChatMessage, PlanningRule};
-#[cfg(feature = "agent")]
-use skilllite_agent::llm::LlmClient;
 #[cfg(feature = "agent")]
 use skilllite_core::skill::metadata;
 
@@ -23,8 +23,7 @@ use skilllite_core::skill::metadata;
 /// Returns up to `max_chars` for summary.
 #[cfg(feature = "agent")]
 fn extract_skill_body(content: &str, max_chars: usize) -> String {
-    let re = regex::Regex::new(r"(?s)^---\s*\n.*?\n---\s*\n")
-        .expect("SKILL.md regex");
+    let re = regex::Regex::new(r"(?s)^---\s*\n.*?\n---\s*\n").expect("SKILL.md regex");
     let body = re.replace(content, "").trim().to_string();
     let summary: String = body.chars().take(max_chars).collect();
     if body.chars().count() > max_chars {
@@ -60,7 +59,11 @@ fn collect_skill_docs(skills_path: &Path, skill_names: &[String]) -> Vec<String>
             "## Skill: {}\n- description: {}\n- body:\n{}",
             name,
             if desc.is_empty() { "(none)" } else { desc },
-            if body.is_empty() { "(none)" } else { body.as_str() }
+            if body.is_empty() {
+                "(none)"
+            } else {
+                body.as_str()
+            }
         ));
     }
     docs
@@ -115,12 +118,7 @@ Example output: [{"id":"csdn_article","priority":88,"keywords":["csdn","CSDN","c
     ];
 
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
-    let resp = rt.block_on(client.chat_completion(
-        &config.model,
-        &messages,
-        None,
-        Some(0.2),
-    ))?;
+    let resp = rt.block_on(client.chat_completion(&config.model, &messages, None, Some(0.2)))?;
 
     let raw = resp
         .choices
@@ -135,8 +133,12 @@ Example output: [{"id":"csdn_article","priority":88,"keywords":["csdn","CSDN","c
         .trim_end_matches("```")
         .trim();
 
-    let generated: Vec<PlanningRule> = serde_json::from_str(cleaned)
-        .with_context(|| format!("Failed to parse LLM planning rules JSON: {}", &raw[..raw.len().min(200)]))?;
+    let generated: Vec<PlanningRule> = serde_json::from_str(cleaned).with_context(|| {
+        format!(
+            "Failed to parse LLM planning rules JSON: {}",
+            &raw[..raw.len().min(200)]
+        )
+    })?;
 
     // Dedup: check against all existing rules (seed + evolved + previous workspace)
     let existing = planning_rules::load_rules(Some(workspace), None);
@@ -179,8 +181,8 @@ Example output: [{"id":"csdn_article","priority":88,"keywords":["csdn","CSDN","c
     fs::create_dir_all(&out_dir)
         .with_context(|| format!("Failed to create {}", out_dir.display()))?;
 
-    let json = serde_json::to_string_pretty(&skill_rules)
-        .context("Failed to serialize planning rules")?;
+    let json =
+        serde_json::to_string_pretty(&skill_rules).context("Failed to serialize planning rules")?;
     fs::write(&out_path, json)
         .with_context(|| format!("Failed to write {}", out_path.display()))?;
 

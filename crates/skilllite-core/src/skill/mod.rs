@@ -1,5 +1,5 @@
-pub mod deps;
 pub mod dependency_resolver;
+pub mod deps;
 pub mod discovery;
 pub mod manifest;
 pub mod metadata;

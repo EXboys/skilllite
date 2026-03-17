@@ -15,7 +15,7 @@
 use anyhow::Result;
 
 use super::llm::LlmClient;
-use super::types::{self, ChatMessage, chunk_str, safe_slice_from, safe_truncate};
+use super::types::{self, chunk_str, safe_slice_from, safe_truncate, ChatMessage};
 
 mod filter;
 
@@ -27,11 +27,7 @@ mod filter;
 /// Unlike tool results (which have a cheap truncation tier), user inputs always use
 /// LLM summarization when over the limit — truncation would silently drop intent.
 /// A short notice is prepended so the model knows the input was compressed.
-pub async fn maybe_process_user_input(
-    client: &LlmClient,
-    model: &str,
-    input: &str,
-) -> String {
+pub async fn maybe_process_user_input(client: &LlmClient, model: &str, input: &str) -> String {
     let max_chars = types::get_user_input_max_chars();
     if input.len() <= max_chars {
         return input.to_string();
@@ -65,11 +61,7 @@ pub fn truncate_content(content: &str, max_chars: usize) -> String {
 }
 
 /// Summarize long content using LLM with configurable chunk selection strategy.
-pub async fn summarize_long_content(
-    client: &LlmClient,
-    model: &str,
-    content: &str,
-) -> String {
+pub async fn summarize_long_content(client: &LlmClient, model: &str, content: &str) -> String {
     let chunk_size = types::get_chunk_size();
     let head_chunks_count = types::get_head_chunks();
     let tail_chunks_count = types::get_tail_chunks();
@@ -172,25 +164,18 @@ fn select_chunks(
     }
 
     match strategy {
-        types::LongTextStrategy::HeadTailOnly => {
-            select_head_tail_only(
-                content,
-                &all_chunks,
-                chunk_size,
-                head_size,
-                tail_size,
-                total_len,
-                head_chunks_count,
-                tail_chunks_count,
-            )
-        }
+        types::LongTextStrategy::HeadTailOnly => select_head_tail_only(
+            content,
+            &all_chunks,
+            chunk_size,
+            head_size,
+            tail_size,
+            total_len,
+            head_chunks_count,
+            tail_chunks_count,
+        ),
         types::LongTextStrategy::HeadTailExtract => {
-            select_by_score(
-                &all_chunks,
-                total_len,
-                head_chunks_count,
-                tail_chunks_count,
-            )
+            select_by_score(&all_chunks, total_len, head_chunks_count, tail_chunks_count)
         }
         types::LongTextStrategy::MapReduceFull => select_all_chunks(&all_chunks, total_len),
     }
@@ -268,11 +253,7 @@ fn select_by_score(
     (chunks, note)
 }
 
-async fn summarize_single_chunk(
-    client: &LlmClient,
-    model: &str,
-    chunk: &str,
-) -> Result<String> {
+async fn summarize_single_chunk(client: &LlmClient, model: &str, chunk: &str) -> Result<String> {
     let prompt = format!(
         "Summarize the key information from this text excerpt. Keep it concise (under 500 chars).\n\
          Focus on: rankings, statistics, facts, dates, names, key findings. Preserve numbers.\n\
@@ -297,11 +278,7 @@ async fn summarize_single_chunk(
     Ok(text)
 }
 
-async fn merge_summaries(
-    client: &LlmClient,
-    model: &str,
-    combined: &str,
-) -> Result<String> {
+async fn merge_summaries(client: &LlmClient, model: &str, combined: &str) -> Result<String> {
     let prompt = format!(
         "The following are summaries of different parts of a long document.\n\
          Merge them into one concise summary (under 3000 chars). Preserve all key facts, numbers, rankings.\n\

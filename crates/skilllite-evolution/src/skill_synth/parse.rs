@@ -44,6 +44,8 @@ pub(super) struct RefinedSkill {
     pub fixed_script: Option<String>,
     pub fix_test_input: Option<String>,
     pub fix_skill_md: Option<String>,
+    /// LLM 返回的跳过原因，解析时保留供日志/后续使用
+    #[allow(dead_code)]
     pub skip_reason: Option<String>,
     /// 回复给用户的进度/说明，修复过程中可展示
     pub user_reply: Option<String>,
@@ -60,8 +62,7 @@ fn try_repair_truncated_skill_json(json_str: &str) -> Option<String> {
     let to_close_braces = open_braces.saturating_sub(close_braces);
 
     let last_char = trimmed.chars().last().unwrap_or(' ');
-    let in_string =
-        !matches!(last_char, '"' | '}' | ']' | ',' | ' ' | '\n' | '\t');
+    let in_string = !matches!(last_char, '"' | '}' | ']' | ',' | ' ' | '\n' | '\t');
     let ends_with_backslash = trimmed.ends_with('\\');
 
     let mut repaired = trimmed.to_string();
@@ -155,13 +156,22 @@ pub(super) fn parse_skill_generation_response(content: &str) -> Result<Option<Ge
             if err_str.contains("EOF") || err_str.contains("unexpected end of file") {
                 if let Some(repaired) = try_repair_truncated_skill_json(&json_str) {
                     serde_json::from_str(&repaired).map_err(|e2| {
-                        anyhow::anyhow!("Failed to parse skill generation JSON (after repair): {}", e2)
+                        anyhow::anyhow!(
+                            "Failed to parse skill generation JSON (after repair): {}",
+                            e2
+                        )
                     })?
                 } else {
-                    return Err(anyhow::anyhow!("Failed to parse skill generation JSON: {}", e));
+                    return Err(anyhow::anyhow!(
+                        "Failed to parse skill generation JSON: {}",
+                        e
+                    ));
                 }
             } else {
-                return Err(anyhow::anyhow!("Failed to parse skill generation JSON: {}", e));
+                return Err(anyhow::anyhow!(
+                    "Failed to parse skill generation JSON: {}",
+                    e
+                ));
             }
         }
     };
@@ -177,12 +187,20 @@ pub(super) fn parse_skill_generation_response(content: &str) -> Result<Option<Ge
         .get("skill")
         .ok_or_else(|| anyhow::anyhow!("No 'skill' field in response"))?;
 
-    let name = skill.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let name = skill
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if name.is_empty() || name.len() > 50 {
         return Ok(None);
     }
 
-    let description = skill.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let description = skill
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let entry_point = skill
         .get("entry_point")
         .and_then(|v| v.as_str())
@@ -193,8 +211,12 @@ pub(super) fn parse_skill_generation_response(content: &str) -> Result<Option<Ge
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    let skill_md_content =
-        unescape_llm_newlines(skill.get("skill_md_content").and_then(|v| v.as_str()).unwrap_or(""));
+    let skill_md_content = unescape_llm_newlines(
+        skill
+            .get("skill_md_content")
+            .and_then(|v| v.as_str())
+            .unwrap_or(""),
+    );
 
     if script_content.is_empty() || skill_md_content.is_empty() {
         return Ok(None);
@@ -237,8 +259,9 @@ pub(super) fn parse_refinement_response(content: &str) -> Result<Option<RefinedS
                         .unwrap_or("{}");
                     let from_str = from_brace.to_string();
                     if let Some(repaired2) = try_repair_unquoted_keys(&from_str) {
-                        serde_json::from_str(&repaired2)
-                            .map_err(|e2| anyhow::anyhow!("Failed to parse refinement JSON: {}", e2))?
+                        serde_json::from_str(&repaired2).map_err(|e2| {
+                            anyhow::anyhow!("Failed to parse refinement JSON: {}", e2)
+                        })?
                     } else {
                         return Err(anyhow::anyhow!("Failed to parse refinement JSON: {}", e));
                     }
@@ -284,7 +307,11 @@ pub(super) fn parse_refinement_response(content: &str) -> Result<Option<RefinedS
             if v.is_null() {
                 None
             } else if let Some(s) = v.as_str() {
-                if s.is_empty() || s == "null" { None } else { Some(s.to_string()) }
+                if s.is_empty() || s == "null" {
+                    None
+                } else {
+                    Some(s.to_string())
+                }
             } else {
                 // 模型可能返回 JSON 对象而非字符串
                 Some(serde_json::to_string(v).unwrap_or_default())
@@ -379,12 +406,16 @@ mod tests {
         assert!(result.is_some());
         let refined = result.unwrap();
         assert_eq!(refined.fix_type, FixType::TestInput);
-        assert_eq!(refined.fix_test_input.as_deref(), Some("{\"base\": 2, \"exponent\": 3}"));
+        assert_eq!(
+            refined.fix_test_input.as_deref(),
+            Some("{\"base\": 2, \"exponent\": 3}")
+        );
     }
 
     #[test]
     fn test_parse_refinement_unquoted_keys() {
-        let json = r##"{fix_type: "script", fixed_script: "a", fix_summary: "b", skip_reason: null}"##;
+        let json =
+            r##"{fix_type: "script", fixed_script: "a", fix_summary: "b", skip_reason: null}"##;
         let result = parse_refinement_response(json).unwrap();
         assert!(result.is_some(), "repair should fix unquoted keys");
         let refined = result.unwrap();
@@ -445,14 +476,20 @@ The script expects `base` and `exponent` parameters like {"base": 2}.
         let result = parse_refinement_response(content).unwrap();
         assert!(result.is_some(), "should parse JSON after <think> block");
         let refined = result.unwrap();
-        assert_eq!(refined.fix_test_input.as_deref(), Some("{\"base\": 2, \"exponent\": 10}"));
+        assert_eq!(
+            refined.fix_test_input.as_deref(),
+            Some("{\"base\": 2, \"exponent\": 10}")
+        );
     }
 
     #[test]
     fn test_parse_refinement_think_block_with_code_fence() {
         let content = "<think>\nAnalyzing the issue...\n</think>\n```json\n{\"fix_summary\": \"fix\", \"fix_test_input\": \"{\\\"start\\\": 1, \\\"end\\\": 10}\"}\n```";
         let result = parse_refinement_response(content).unwrap();
-        assert!(result.is_some(), "should parse JSON in code fence after <think>");
+        assert!(
+            result.is_some(),
+            "should parse JSON in code fence after <think>"
+        );
         let refined = result.unwrap();
         assert!(refined.fix_test_input.is_some());
     }
@@ -460,11 +497,23 @@ The script expects `base` and `exponent` parameters like {"base": 2}.
     #[test]
     fn test_strip_think_blocks() {
         // Normal closed tags
-        assert_eq!(strip_think_blocks("<think>foo</think>{\"a\":1}"), "{\"a\":1}");
+        assert_eq!(
+            strip_think_blocks("<think>foo</think>{\"a\":1}"),
+            "{\"a\":1}"
+        );
         assert_eq!(strip_think_blocks("no think here"), "no think here");
-        assert_eq!(strip_think_blocks("<think>x{y}z</think>\n{\"b\":2}"), "{\"b\":2}");
-        assert_eq!(strip_think_blocks("<thinking>analysis</thinking>{\"c\":3}"), "{\"c\":3}");
-        assert_eq!(strip_think_blocks("<reasoning>step 1</reasoning>\n{\"d\":4}"), "{\"d\":4}");
+        assert_eq!(
+            strip_think_blocks("<think>x{y}z</think>\n{\"b\":2}"),
+            "{\"b\":2}"
+        );
+        assert_eq!(
+            strip_think_blocks("<thinking>analysis</thinking>{\"c\":3}"),
+            "{\"c\":3}"
+        );
+        assert_eq!(
+            strip_think_blocks("<reasoning>step 1</reasoning>\n{\"d\":4}"),
+            "{\"d\":4}"
+        );
         // Nested / multiple think blocks
         assert_eq!(
             strip_think_blocks("<think>a</think>mid<think>b</think>{\"e\":5}"),
@@ -489,7 +538,10 @@ The script expects `base` and `exponent` parameters like {"base": 2}.
 
     #[test]
     fn test_parse_skill_generation_too_long() {
-        let long_script = (0..200).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n");
+        let long_script = (0..200)
+            .map(|i| format!("line {}", i))
+            .collect::<Vec<_>>()
+            .join("\n");
         let json = serde_json::json!({
             "skill": {
                 "name": "test",

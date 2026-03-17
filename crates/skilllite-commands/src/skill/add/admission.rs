@@ -5,8 +5,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use skilllite_core::skill::metadata;
-use skilllite_sandbox::security::ScriptScanner;
 use skilllite_sandbox::security::types::SecuritySeverity;
+use skilllite_sandbox::security::ScriptScanner;
 
 #[cfg(feature = "agent")]
 use skilllite_agent::llm::LlmClient;
@@ -118,7 +118,11 @@ fn sample_scripts_for_llm(script_files: &[PathBuf], max_files: usize, max_chars:
 }
 
 #[cfg(feature = "agent")]
-fn llm_admission_assess(skill_name: &str, skill_md: &str, script_samples: &str) -> Result<(AdmissionRisk, String)> {
+fn llm_admission_assess(
+    skill_name: &str,
+    skill_md: &str,
+    script_samples: &str,
+) -> Result<(AdmissionRisk, String)> {
     let config = AgentConfig::from_env();
     if config.api_key.trim().is_empty() {
         anyhow::bail!("LLM scan skipped: API key not configured");
@@ -144,7 +148,10 @@ Rules:
         "Skill: {skill_name}\n\nSKILL.md:\n{skill_md}\n\nScript samples:\n{script_samples}"
     );
 
-    let messages = vec![ChatMessage::system(system_prompt), ChatMessage::user(&user_prompt)];
+    let messages = vec![
+        ChatMessage::system(system_prompt),
+        ChatMessage::user(&user_prompt),
+    ];
     let client = LlmClient::new(&config.api_base, &config.api_key);
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
     let resp = rt.block_on(async {
@@ -166,9 +173,17 @@ Rules:
         .trim_start_matches("```")
         .trim_end_matches("```")
         .trim();
-    let v: serde_json::Value = serde_json::from_str(cleaned)
-        .with_context(|| format!("LLM risk JSON parse failed: {}", &raw.chars().take(180).collect::<String>()))?;
-    let risk = match v.get("risk").and_then(|r| r.as_str()).unwrap_or("suspicious") {
+    let v: serde_json::Value = serde_json::from_str(cleaned).with_context(|| {
+        format!(
+            "LLM risk JSON parse failed: {}",
+            &raw.chars().take(180).collect::<String>()
+        )
+    })?;
+    let risk = match v
+        .get("risk")
+        .and_then(|r| r.as_str())
+        .unwrap_or("suspicious")
+    {
         "safe" => AdmissionRisk::Safe,
         "malicious" => AdmissionRisk::Malicious,
         _ => AdmissionRisk::Suspicious,
@@ -186,7 +201,11 @@ Rules:
 }
 
 #[cfg(not(feature = "agent"))]
-fn llm_admission_assess(_skill_name: &str, _skill_md: &str, _script_samples: &str) -> Result<(AdmissionRisk, String)> {
+fn llm_admission_assess(
+    _skill_name: &str,
+    _skill_md: &str,
+    _script_samples: &str,
+) -> Result<(AdmissionRisk, String)> {
     anyhow::bail!("LLM scan unavailable: binary built without `agent` feature")
 }
 
@@ -197,7 +216,9 @@ pub(super) fn scan_candidate_skills(
     scan_candidate_skills_inner(candidates, scan_offline, scan_offline)
 }
 
-pub(in crate::skill) fn scan_candidate_skills_fast(candidates: &[(String, PathBuf)]) -> Vec<SkillScanReport> {
+pub(in crate::skill) fn scan_candidate_skills_fast(
+    candidates: &[(String, PathBuf)],
+) -> Vec<SkillScanReport> {
     scan_candidate_skills_inner(candidates, true, false)
 }
 
@@ -217,7 +238,10 @@ fn scan_candidate_skills_inner(
             reports.push(SkillScanReport {
                 name: name.clone(),
                 risk: AdmissionRisk::Suspicious,
-                messages: vec![format!("   ⚠ {}: missing SKILL.md, treated as suspicious", name)],
+                messages: vec![format!(
+                    "   ⚠ {}: missing SKILL.md, treated as suspicious",
+                    name
+                )],
             });
             continue;
         }
@@ -241,7 +265,10 @@ fn scan_candidate_skills_inner(
         let skill_md_path = skill_path.join("SKILL.md");
         if let Ok(content) = fs::read_to_string(&skill_md_path) {
             skill_md_content = content.clone();
-            let alerts = skilllite_core::skill::skill_md_security::scan_skill_md_suspicious_patterns(&content);
+            let alerts =
+                skilllite_core::skill::skill_md_security::scan_skill_md_suspicious_patterns(
+                    &content,
+                );
             if !alerts.is_empty() {
                 let high_count = alerts.iter().filter(|a| a.severity == "high").count();
                 if high_count > 0 {
@@ -251,10 +278,16 @@ fn scan_candidate_skills_inner(
                 }
                 messages.push(format!(
                     "   📄 {} SKILL.md: ⚠ {} alert(s) ({} high)",
-                    name, alerts.len(), high_count
+                    name,
+                    alerts.len(),
+                    high_count
                 ));
                 for a in alerts.iter().take(3) {
-                    messages.push(format!("      [{}] {}", a.severity.to_uppercase(), a.message));
+                    messages.push(format!(
+                        "      [{}] {}",
+                        a.severity.to_uppercase(),
+                        a.message
+                    ));
                 }
             }
         }
@@ -310,12 +343,17 @@ fn scan_candidate_skills_inner(
             if total_issues > 0 {
                 messages.push(format!(
                     "   🔒 {} code scan: {} issue(s) across {} file(s) ({} high / {} critical)",
-                    name, total_issues, script_files.len(), total_high, total_critical
+                    name,
+                    total_issues,
+                    script_files.len(),
+                    total_high,
+                    total_critical
                 ));
             } else {
                 messages.push(format!(
                     "   🔒 {} code scan: ✅ {} file(s) clean",
-                    name, script_files.len()
+                    name,
+                    script_files.len()
                 ));
             }
         }
@@ -355,7 +393,12 @@ fn scan_candidate_skills_inner(
             match llm_admission_assess(name, &skill_md_content, &script_samples) {
                 Ok((llm_risk, reason)) => {
                     risk = risk.max(llm_risk);
-                    messages.push(format!("   🧠 {} LLM confirm: {} ({})", name, llm_risk.as_str(), reason));
+                    messages.push(format!(
+                        "   🧠 {} LLM confirm: {} ({})",
+                        name,
+                        llm_risk.as_str(),
+                        reason
+                    ));
                 }
                 Err(e) => {
                     messages.push(format!("   🧠 {} LLM confirm skipped: {}", name, e));

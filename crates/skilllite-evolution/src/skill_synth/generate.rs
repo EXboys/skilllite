@@ -12,15 +12,15 @@ use crate::EvolutionMessage;
 
 use super::infer;
 use super::parse;
+use super::query;
 use super::refine;
 use super::repair;
-use super::query;
 use super::scan;
 use super::validate;
 use super::SkillMeta;
-use super::SKILL_GENERATION_PROMPT;
-use super::SKILL_GENERATION_FROM_FAILURES_PROMPT;
 use super::MAX_EVOLVED_SKILLS;
+use super::SKILL_GENERATION_FROM_FAILURES_PROMPT;
+use super::SKILL_GENERATION_PROMPT;
 
 /// Pre-fetched (patterns_display, executions) for success-driven generation. When `Some`, caller holds conn and passed data to avoid reopening DB.
 pub(super) type SuccessQueryData = (String, String);
@@ -45,7 +45,8 @@ pub(super) async fn generate_skill<L: EvolutionLlm>(
     if current_count >= MAX_EVOLVED_SKILLS {
         tracing::debug!(
             "Evolved skill cap reached ({}/{}), skipping generation",
-            current_count, MAX_EVOLVED_SKILLS
+            current_count,
+            MAX_EVOLVED_SKILLS
         );
         return Ok(None);
     }
@@ -54,7 +55,8 @@ pub(super) async fn generate_skill<L: EvolutionLlm>(
         Some((p, e)) => (p, e),
         None => {
             let conn = feedback::open_evolution_db(chat_root)?;
-            let (patterns_display, pattern_descs) = query::query_repeated_patterns(&conn, min_pattern_count)?;
+            let (patterns_display, pattern_descs) =
+                query::query_repeated_patterns(&conn, min_pattern_count)?;
             let executions = if !pattern_descs.is_empty() {
                 query::query_pattern_executions(&conn, &pattern_descs)?
             } else {
@@ -80,14 +82,24 @@ pub(super) async fn generate_skill<L: EvolutionLlm>(
         Ok(Some(s)) => s,
         Ok(None) => return Ok(None),
         Err(e) => {
-            tracing::warn!("Failed to parse skill generation output (after retry): {}", e);
+            tracing::warn!(
+                "Failed to parse skill generation output (after retry): {}",
+                e
+            );
             return Ok(None);
         }
     };
 
-    let name =
-        generate_skill_inner(parsed, chat_root, skills_root, &pending_dir, txn_id, llm, model)
-            .await?;
+    let name = generate_skill_inner(
+        parsed,
+        chat_root,
+        skills_root,
+        &pending_dir,
+        txn_id,
+        llm,
+        model,
+    )
+    .await?;
     if let Some(ref n) = name {
         tracing::info!("Generated evolved skill (pending confirmation): {}", n);
     }
@@ -112,7 +124,8 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
         return Ok(None);
     }
     // 写入前校验文档完整性，避免落盘不完整 SKILL.md（缺少 Usage/Examples 等）导致后续验证失败
-    if let Some(doc_err) = validate::check_skill_md_completeness_heuristic(&parsed.skill_md_content) {
+    if let Some(doc_err) = validate::check_skill_md_completeness_heuristic(&parsed.skill_md_content)
+    {
         tracing::warn!(
             "Generated SKILL.md for '{}' incomplete ({}), skipping write to avoid later validate failure",
             parsed.name, doc_err
@@ -138,7 +151,8 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
             if infer::is_description_similar(&parsed.description, &existing_desc) {
                 tracing::debug!(
                     "Skill '{}' description similar to pending '{}', skipping duplicate",
-                    parsed.name, existing_name
+                    parsed.name,
+                    existing_name
                 );
                 return Ok(None);
             }
@@ -186,10 +200,9 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
                 let (ep, ti) = infer::infer_skill_execution(llm, model, &skill_dir)
                     .await
                     .unwrap_or_else(|_| (parsed.entry_point.clone(), "{}".to_string()));
-                let _ = repair::repair_one_skill(
-                    llm, model, &skill_dir, &parsed.name, &ep, &ti, None,
-                )
-                .await?;
+                let _ =
+                    repair::repair_one_skill(llm, model, &skill_dir, &parsed.name, &ep, &ti, None)
+                        .await?;
             }
             None => {
                 let final_script = parsed.script_content.clone();
@@ -224,10 +237,8 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
         let (ep, ti) = infer::infer_skill_execution(llm, model, &skill_dir)
             .await
             .unwrap_or_else(|_| (parsed.entry_point.clone(), "{}".to_string()));
-        let _ = repair::repair_one_skill(
-            llm, model, &skill_dir, &parsed.name, &ep, &ti, None,
-        )
-        .await?;
+        let _ =
+            repair::repair_one_skill(llm, model, &skill_dir, &parsed.name, &ep, &ti, None).await?;
     }
 
     Ok(Some(parsed.name))
@@ -281,9 +292,16 @@ pub(super) async fn generate_skill_from_failures<L: EvolutionLlm>(
         }
     };
 
-    let name =
-        generate_skill_inner(parsed, chat_root, skills_root, &pending_dir, txn_id, llm, model)
-            .await?;
+    let name = generate_skill_inner(
+        parsed,
+        chat_root,
+        skills_root,
+        &pending_dir,
+        txn_id,
+        llm,
+        model,
+    )
+    .await?;
     if let Some(ref n) = name {
         tracing::info!("Generated failure-driven skill (补全): {}", n);
     }

@@ -190,10 +190,7 @@ pub fn parse_claude_tool_calls(content_blocks: &[serde_json::Value]) -> Vec<Tool
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let input = block
-                .get("input")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
+            let input = block.get("input").cloned().unwrap_or(serde_json::json!({}));
             let arguments = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
 
             calls.push(ToolCall {
@@ -225,7 +222,10 @@ pub struct AgentResult {
 impl AgentResult {
     /// Convert to protocol-layer [`NodeResult`] for stdio_rpc/agent_chat/P2P.
     /// `task_id` is echoed back; use a generated UUID when the caller did not provide one.
-    pub fn to_node_result(&self, task_id: impl Into<String>) -> skilllite_core::protocol::NodeResult {
+    pub fn to_node_result(
+        &self,
+        task_id: impl Into<String>,
+    ) -> skilllite_core::protocol::NodeResult {
         skilllite_core::protocol::NodeResult {
             task_id: task_id.into(),
             response: self.response.clone(),

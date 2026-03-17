@@ -26,17 +26,48 @@ fn task(id: u32, description: &str, tool_hint: Option<&str>) -> Task {
 fn classify_fallback_plan(user_message: &str) -> Option<FallbackPlanKind> {
     let lower = user_message.to_lowercase();
     let path_signals = [
-        "crates/", "src/", "docs/", ".rs", ".md", ".json", ".toml", ".yaml", ".yml",
-        ".meta.json", "执行路径", "task_planner", "agent_loop", "executionfeedback", "feedbacksignal",
-        "rules_used", "first_success_rate", "avg_replans", "user_correction_rate", "rule id",
+        "crates/",
+        "src/",
+        "docs/",
+        ".rs",
+        ".md",
+        ".json",
+        ".toml",
+        ".yaml",
+        ".yml",
+        ".meta.json",
+        "执行路径",
+        "task_planner",
+        "agent_loop",
+        "executionfeedback",
+        "feedbacksignal",
+        "rules_used",
+        "first_success_rate",
+        "avg_replans",
+        "user_correction_rate",
+        "rule id",
     ];
     let action_signals = [
-        "修改", "更新", "补", "修复", "接入", "接线", "增加", "添加", "整理", "写入",
-        "输出", "导出", "实现", "make ", "update ", "wire ", "add ", "fix ", "edit ",
+        "修改", "更新", "补", "修复", "接入", "接线", "增加", "添加", "整理", "写入", "输出",
+        "导出", "实现", "make ", "update ", "wire ", "add ", "fix ", "edit ",
     ];
     let verification_signals = [
-        "测试", "单测", "校验", "验证", "核对", "确保", "检查", "确认", "status",
-        "metrics", "replay", "evolution", "benchmark", "eval", "verify", "test ",
+        "测试",
+        "单测",
+        "校验",
+        "验证",
+        "核对",
+        "确保",
+        "检查",
+        "确认",
+        "status",
+        "metrics",
+        "replay",
+        "evolution",
+        "benchmark",
+        "eval",
+        "verify",
+        "test ",
     ];
 
     let has_path_signal = path_signals.iter().any(|s| lower.contains(s));
@@ -106,8 +137,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(guard.fallback_tasks.len(), 3);
-        assert_eq!(guard.fallback_tasks[0].tool_hint.as_deref(), Some("file_read"));
-        assert_eq!(guard.fallback_tasks[1].tool_hint.as_deref(), Some("file_edit"));
+        assert_eq!(
+            guard.fallback_tasks[0].tool_hint.as_deref(),
+            Some("file_read")
+        );
+        assert_eq!(
+            guard.fallback_tasks[1].tool_hint.as_deref(),
+            Some("file_edit")
+        );
     }
 
     #[test]

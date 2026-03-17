@@ -1,7 +1,7 @@
 //! SOCKS5 Proxy server for filtering other TCP traffic.
 
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream, SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -210,7 +210,8 @@ impl Socks5Proxy {
                         Err(e) => {
                             tracing::warn!(
                                 "[SOCKS5 Proxy] Failed to connect to {}: {}",
-                                target_addr, e
+                                target_addr,
+                                e
                             );
                             Self::send_reply(&mut client, 0x05)?;
                             return Ok(());
@@ -231,13 +232,17 @@ impl Socks5Proxy {
         Self::send_reply(&mut client, 0x00)?;
 
         let mut target = target_stream;
-        tunnel::tunnel_data(&mut client, &mut target, 8192, Duration::from_secs(60), false)
+        tunnel::tunnel_data(
+            &mut client,
+            &mut target,
+            8192,
+            Duration::from_secs(60),
+            false,
+        )
     }
 
     fn send_reply(client: &mut TcpStream, rep: u8) -> std::io::Result<()> {
-        let reply = [
-            0x05, rep, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        ];
+        let reply = [0x05, rep, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         client.write_all(&reply)?;
         client.flush()
     }

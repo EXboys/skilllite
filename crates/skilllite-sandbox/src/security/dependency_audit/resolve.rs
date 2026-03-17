@@ -150,10 +150,7 @@ fn infer_packages_with_llm(context: &str, language: &str) -> Option<Vec<String>>
         "temperature": 0
     });
 
-    let url = format!(
-        "{}/chat/completions",
-        cfg.api_base.trim_end_matches('/')
-    );
+    let url = format!("{}/chat/completions", cfg.api_base.trim_end_matches('/'));
 
     let response = agent
         .post(&url)

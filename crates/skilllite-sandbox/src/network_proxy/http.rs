@@ -1,7 +1,7 @@
 //! HTTP Proxy server for filtering HTTP/HTTPS traffic.
 
 use std::io::{BufRead, BufReader, Write};
-use std::net::{TcpListener, TcpStream, SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
@@ -111,7 +111,14 @@ impl HttpProxy {
             return Self::handle_connect(&mut client, &mut reader, target, &config);
         }
 
-        Self::handle_http_request(&mut client, &mut reader, method, target, &request_line, &config)
+        Self::handle_http_request(
+            &mut client,
+            &mut reader,
+            method,
+            target,
+            &request_line,
+            &config,
+        )
     }
 
     fn handle_connect(
@@ -145,10 +152,9 @@ impl HttpProxy {
 
         let target_addr = format!("{}:{}", host, port);
         let mut target_stream = match TcpStream::connect_timeout(
-            &target_addr
-                .to_socket_addrs()?
-                .next()
-                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Could not resolve host"))?,
+            &target_addr.to_socket_addrs()?.next().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "Could not resolve host")
+            })?,
             Duration::from_secs(30),
         ) {
             Ok(s) => s,
@@ -166,7 +172,13 @@ impl HttpProxy {
         target_stream.set_read_timeout(Some(Duration::from_secs(120)))?;
         target_stream.set_write_timeout(Some(Duration::from_secs(120)))?;
 
-        tunnel::tunnel_data(client, &mut target_stream, 32768, Duration::from_secs(120), true)
+        tunnel::tunnel_data(
+            client,
+            &mut target_stream,
+            32768,
+            Duration::from_secs(120),
+            true,
+        )
     }
 
     fn handle_http_request(
@@ -179,7 +191,13 @@ impl HttpProxy {
     ) -> std::io::Result<()> {
         let host = if target.starts_with("http://") {
             let url = &target[7..];
-            url.split('/').next().unwrap_or("").split(':').next().unwrap_or("").to_string()
+            url.split('/')
+                .next()
+                .unwrap_or("")
+                .split(':')
+                .next()
+                .unwrap_or("")
+                .to_string()
         } else {
             return Self::send_error(client, 400, "Bad Request - Invalid URL");
         };
@@ -212,10 +230,9 @@ impl HttpProxy {
         let target_addr = format!("{}:{}", target_host, target_port);
 
         let mut target_stream = match TcpStream::connect_timeout(
-            &target_addr
-                .to_socket_addrs()?
-                .next()
-                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Could not resolve host"))?,
+            &target_addr.to_socket_addrs()?.next().ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::NotFound, "Could not resolve host")
+            })?,
             Duration::from_secs(30),
         ) {
             Ok(s) => s,
@@ -243,7 +260,13 @@ impl HttpProxy {
         target_stream.write_all(b"\r\n")?;
         target_stream.flush()?;
 
-        tunnel::tunnel_data(&mut target_stream, client, 32768, Duration::from_secs(120), true)
+        tunnel::tunnel_data(
+            &mut target_stream,
+            client,
+            32768,
+            Duration::from_secs(120),
+            true,
+        )
     }
 
     fn send_error(client: &mut TcpStream, code: u16, message: &str) -> std::io::Result<()> {

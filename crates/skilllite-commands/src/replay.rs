@@ -65,7 +65,12 @@ fn truncate_preview(text: &str, max_chars: usize) -> String {
     if text.chars().count() <= max_chars {
         return text.trim().to_string();
     }
-    text.chars().take(max_chars).collect::<String>().trim().to_string() + "..."
+    text.chars()
+        .take(max_chars)
+        .collect::<String>()
+        .trim()
+        .to_string()
+        + "..."
 }
 
 pub fn load_replay_cases(dataset_path: &Path) -> Result<Vec<ReplayCase>> {
@@ -181,7 +186,14 @@ pub fn cmd_replay(
         eprintln!("│  样本数: {}", total_cases);
         eprintln!("│  模型: {}", config.model);
         eprintln!("│  工作区: {}", config.workspace);
-        eprintln!("│  模式: {}", if read_only { "只读评测" } else { "可修改回放" });
+        eprintln!(
+            "│  模式: {}",
+            if read_only {
+                "只读评测"
+            } else {
+                "可修改回放"
+            }
+        );
         if !loaded_skills.is_empty() {
             eprintln!("│  已加载技能: {}", loaded_skills.len());
         }
@@ -283,10 +295,7 @@ pub fn cmd_replay(
     let completed_cases = results.iter().filter(|r| r.success).count();
     let quality_passed_cases = results.iter().filter(|r| r.quality_ok).count();
     let effective_completed_cases = results.iter().filter(|r| r.effective_success).count();
-    let first_success_cases = results
-        .iter()
-        .filter(|r| r.first_success)
-        .count();
+    let first_success_cases = results.iter().filter(|r| r.first_success).count();
     let effective_first_success_cases = results
         .iter()
         .filter(|r| r.effective_success && r.first_success)
@@ -339,13 +348,23 @@ pub fn cmd_replay(
     } else {
         eprintln!("\nReplay summary");
         eprintln!("  完成率: {:.0}%", report.summary.completion_rate * 100.0);
-        eprintln!("  有效完成率: {:.0}%", report.summary.effective_completion_rate * 100.0);
-        eprintln!("  首次成功率: {:.0}%", report.summary.first_success_rate * 100.0);
+        eprintln!(
+            "  有效完成率: {:.0}%",
+            report.summary.effective_completion_rate * 100.0
+        );
+        eprintln!(
+            "  首次成功率: {:.0}%",
+            report.summary.first_success_rate * 100.0
+        );
         eprintln!(
             "  有效首次成功率: {:.0}%",
             report.summary.effective_first_success_rate * 100.0
         );
-        eprintln!("  质量通过率: {:.0}%", (report.summary.quality_passed_cases as f64 / report.summary.total_cases.max(1) as f64) * 100.0);
+        eprintln!(
+            "  质量通过率: {:.0}%",
+            (report.summary.quality_passed_cases as f64 / report.summary.total_cases.max(1) as f64)
+                * 100.0
+        );
         eprintln!("  平均 replan: {:.2}", report.summary.avg_replans);
         eprintln!("  平均 tool calls: {:.2}", report.summary.avg_tool_calls);
         eprintln!("  总耗时: {} ms", report.summary.total_elapsed_ms);

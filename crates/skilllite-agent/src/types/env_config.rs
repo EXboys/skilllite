@@ -66,11 +66,7 @@ pub fn get_long_text_strategy() -> LongTextStrategy {
 }
 
 /// Number of chunks to select in extract mode. Uses ratio or head+tail count as floor.
-pub fn get_extract_top_k(
-    total_chunks: usize,
-    head_chunks: usize,
-    tail_chunks: usize,
-) -> usize {
+pub fn get_extract_top_k(total_chunks: usize, head_chunks: usize, tail_chunks: usize) -> usize {
     let ratio = std::env::var("SKILLLITE_EXTRACT_TOP_K_RATIO")
         .ok()
         .and_then(|v| v.parse::<f64>().ok())
@@ -131,10 +127,7 @@ pub fn get_compaction_threshold() -> usize {
 /// When enabled, before compacting we run a silent agent turn to remind the model
 /// to write durable memories. `SKILLLITE_MEMORY_FLUSH_ENABLED`. Default true.
 pub fn get_memory_flush_enabled() -> bool {
-    let v = skilllite_core::config::loader::env_optional(
-        "SKILLLITE_MEMORY_FLUSH_ENABLED",
-        &[],
-    );
+    let v = skilllite_core::config::loader::env_optional("SKILLLITE_MEMORY_FLUSH_ENABLED", &[]);
     match v.as_deref().map(|s| s.to_lowercase()) {
         Some(s) if matches!(s.as_str(), "0" | "false" | "no" | "off") => false,
         _ => true,
@@ -168,12 +161,8 @@ pub fn get_compact_planning(model: Option<&str>) -> bool {
         Some(m) => m.to_lowercase(),
         None => return false, // unknown model → full
     };
-    let compact_models = [
-        "claude-4.6",
-        "gpt-4.5",
-        "gpt-5",
-        "gemini-2.5",
-        "gemini-3.0",
-    ];
-    compact_models.iter().any(|p| model.starts_with(p) || model.contains(p))
+    let compact_models = ["claude-4.6", "gpt-4.5", "gpt-5", "gemini-2.5", "gemini-3.0"];
+    compact_models
+        .iter()
+        .any(|p| model.starts_with(p) || model.contains(p))
 }

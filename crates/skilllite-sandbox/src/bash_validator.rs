@@ -49,8 +49,7 @@ pub enum BashValidationError {
 /// Operators that could chain multiple commands together.
 /// We treat their presence anywhere in the command string as an injection attempt.
 const CHAIN_OPERATORS: &[&str] = &[
-    ";", "&&", "||", "|", "`", "$(", "${", "\n", "\r",
-    // Redirect-based attacks
+    ";", "&&", "||", "|", "`", "$(", "${", "\n", "\r", // Redirect-based attacks
     ">(",
 ];
 
@@ -134,16 +133,14 @@ pub fn validate_bash_command(
         }
         // Also block absolute paths to blocked commands (e.g. /bin/rm, /usr/bin/sudo)
         if first_word.ends_with(&format!("/{}", blocked)) {
-            return Err(BashValidationError::BlockedPrefix(
-                first_word.to_string(),
-            ));
+            return Err(BashValidationError::BlockedPrefix(first_word.to_string()));
         }
     }
 
     // 3. Must match at least one allowed pattern's command prefix
-    let matches_pattern = allowed_patterns.iter().any(|pattern| {
-        trimmed.starts_with(&pattern.command_prefix)
-    });
+    let matches_pattern = allowed_patterns
+        .iter()
+        .any(|pattern| trimmed.starts_with(&pattern.command_prefix));
 
     if !matches_pattern {
         let allowed = allowed_patterns
@@ -195,7 +192,9 @@ mod tests {
     #[test]
     fn test_valid_command_with_args() {
         let patterns = agent_browser_patterns();
-        assert!(validate_bash_command("agent-browser screenshot --path page.png", &patterns).is_ok());
+        assert!(
+            validate_bash_command("agent-browser screenshot --path page.png", &patterns).is_ok()
+        );
     }
 
     #[test]
@@ -292,10 +291,16 @@ mod tests {
     fn test_reject_unknown_command() {
         let patterns = agent_browser_patterns();
         let result = validate_bash_command("unknown-tool do-thing", &patterns);
-        assert!(matches!(result, Err(BashValidationError::NoMatchingPattern { .. })));
+        assert!(matches!(
+            result,
+            Err(BashValidationError::NoMatchingPattern { .. })
+        ));
         // Verify the error message includes the allowed patterns
         let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("agent-browser:*"), "error should show allowed patterns");
+        assert!(
+            err_msg.contains("agent-browser:*"),
+            "error should show allowed patterns"
+        );
     }
 
     // ---- Edge cases ----
@@ -321,7 +326,9 @@ mod tests {
     #[test]
     fn test_valid_with_leading_spaces() {
         let patterns = agent_browser_patterns();
-        assert!(validate_bash_command("  agent-browser open https://example.com", &patterns).is_ok());
+        assert!(
+            validate_bash_command("  agent-browser open https://example.com", &patterns).is_ok()
+        );
     }
 
     // ---- G3: Unicode NFKC normalization ----

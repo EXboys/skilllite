@@ -5,11 +5,11 @@ use futures_util::StreamExt;
 use serde_json::{json, Value};
 
 use crate::types::{
-    ChatMessage, EventSink, FunctionCall, ToolCall, ToolDefinition,
-    parse_claude_tool_calls, get_max_tokens,
+    get_max_tokens, parse_claude_tool_calls, ChatMessage, EventSink, FunctionCall, ToolCall,
+    ToolDefinition,
 };
 
-use super::{ChatCompletionResponse, Choice, ChoiceMessage, Usage, LlmClient};
+use super::{ChatCompletionResponse, Choice, ChoiceMessage, LlmClient, Usage};
 
 impl LlmClient {
     pub(super) fn convert_messages_for_claude(
@@ -63,8 +63,8 @@ impl LlmClient {
                     // Tool use blocks
                     if let Some(ref tool_calls) = msg.tool_calls {
                         for tc in tool_calls {
-                            let input: Value = serde_json::from_str(&tc.function.arguments)
-                                .unwrap_or(json!({}));
+                            let input: Value =
+                                serde_json::from_str(&tc.function.arguments).unwrap_or(json!({}));
                             content_blocks.push(json!({
                                 "type": "tool_use",
                                 "id": tc.id,
@@ -152,7 +152,10 @@ impl LlmClient {
             anyhow::bail!("Claude API error ({}): {}", status, body_text);
         }
 
-        let response: Value = resp.json().await.context("Failed to parse Claude response")?;
+        let response: Value = resp
+            .json()
+            .await
+            .context("Failed to parse Claude response")?;
         Self::convert_claude_response(response, model)
     }
 
@@ -209,7 +212,10 @@ impl LlmClient {
     }
 
     /// Convert a non-streaming Claude response into our unified format.
-    pub(super) fn convert_claude_response(response: Value, model: &str) -> Result<ChatCompletionResponse> {
+    pub(super) fn convert_claude_response(
+        response: Value,
+        model: &str,
+    ) -> Result<ChatCompletionResponse> {
         let content_blocks = response
             .get("content")
             .and_then(|c| c.as_array())
@@ -248,7 +254,8 @@ impl LlmClient {
             Some(Usage {
                 prompt_tokens: u.get("input_tokens")?.as_u64()?,
                 completion_tokens: u.get("output_tokens")?.as_u64()?,
-                total_tokens: u.get("input_tokens")?.as_u64()? + u.get("output_tokens")?.as_u64()?,
+                total_tokens: u.get("input_tokens")?.as_u64()?
+                    + u.get("output_tokens")?.as_u64()?,
             })
         });
 
@@ -365,8 +372,7 @@ impl LlmClient {
                         if let Some(delta) = chunk.get("delta") {
                             match delta.get("type").and_then(|t| t.as_str()) {
                                 Some("text_delta") => {
-                                    if let Some(text) = delta.get("text").and_then(|t| t.as_str())
-                                    {
+                                    if let Some(text) = delta.get("text").and_then(|t| t.as_str()) {
                                         text_content.push_str(text);
                                         event_sink.on_text_chunk(text);
                                     }
@@ -464,5 +470,4 @@ impl LlmClient {
     // ═══════════════════════════════════════════════════════════════════════════
     // OpenAI SSE stream accumulator
     // ═══════════════════════════════════════════════════════════════════════════
-
 }

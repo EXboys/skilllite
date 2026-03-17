@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
-use crate::types::{self, ToolDefinition, FunctionDef};
+use crate::types::{self, FunctionDef, ToolDefinition};
 
 use super::normalize_path;
 
@@ -68,7 +68,10 @@ pub(super) fn execute_write_output(args: &Value, workspace: &Path) -> Result<Str
         .get("content")
         .and_then(|v| v.as_str())
         .context("'content' is required")?;
-    let append = args.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
+    let append = args
+        .get("append")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
     let output_root = match types::get_output_dir() {
         Some(dir) => PathBuf::from(dir),
@@ -92,8 +95,9 @@ pub(super) fn execute_write_output(args: &Value, workspace: &Path) -> Result<Str
     }
 
     if append {
-        skilllite_fs::append_file(&normalized, content)
-            .with_context(|| format!("Failed to append to output file: {}", normalized.display()))?;
+        skilllite_fs::append_file(&normalized, content).with_context(|| {
+            format!("Failed to append to output file: {}", normalized.display())
+        })?;
     } else {
         skilllite_fs::write_file(&normalized, content)
             .with_context(|| format!("Failed to write output file: {}", normalized.display()))?;

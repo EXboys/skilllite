@@ -51,12 +51,12 @@ const TIMEOUT_GRACE_SECS: u64 = 2;
 #[cfg(target_os = "macos")]
 pub fn get_process_memory(pid: u32) -> Option<u64> {
     use std::process::Command;
-    
+
     let output = Command::new("ps")
         .args(["-o", "rss=", "-p", &pid.to_string()])
         .output()
         .ok()?;
-    
+
     if output.status.success() {
         let rss_str = String::from_utf8_lossy(&output.stdout);
         // ps returns RSS in KB, convert to bytes
@@ -64,7 +64,7 @@ pub fn get_process_memory(pid: u32) -> Option<u64> {
             return Some(rss_kb * 1024);
         }
     }
-    
+
     None
 }
 
@@ -242,7 +242,10 @@ pub fn wait_with_timeout(
             kill_with_progressive_timeout(child, stdout_handle, stderr_handle);
             return Ok((
                 String::new(),
-                format!("Process killed: exceeded timeout of {} seconds", timeout_secs),
+                format!(
+                    "Process killed: exceeded timeout of {} seconds",
+                    timeout_secs
+                ),
                 -1,
                 true,
                 Some("timeout".to_string()),
@@ -346,7 +349,7 @@ fn get_children_peak_rss_bytes() -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_memory_check_interval() {
         assert_eq!(MEMORY_CHECK_INTERVAL_MS, 100);

@@ -12,9 +12,7 @@ use std::path::Path;
 
 use crate::types::{FunctionDef, ToolDefinition, ToolResult};
 
-use super::registry::{
-    MemoryVectorContext, RegisteredTool, ToolCapability, ToolHandler,
-};
+use super::registry::{MemoryVectorContext, RegisteredTool, ToolCapability, ToolHandler};
 
 // ─── Tool definitions ───────────────────────────────────────────────────────
 
@@ -177,10 +175,7 @@ async fn execute_memory_search(
         .get("query")
         .and_then(|v| v.as_str())
         .context("'query' is required")?;
-    let limit = args
-        .get("limit")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(10);
+    let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(10);
 
     let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
     if !idx_path.exists() {
@@ -191,9 +186,8 @@ async fn execute_memory_search(
     skilllite_executor::memory::ensure_index(&conn)?;
 
     #[cfg(feature = "memory_vector")]
-    let use_vec = enable_vector
-        && embed_ctx.is_some()
-        && skilllite_executor::memory::has_vec_index(&conn);
+    let use_vec =
+        enable_vector && embed_ctx.is_some() && skilllite_executor::memory::has_vec_index(&conn);
 
     #[cfg(not(feature = "memory_vector"))]
     let use_vec = false;
@@ -204,7 +198,12 @@ async fn execute_memory_search(
             let ctx = embed_ctx.context("embed_ctx disappeared despite is_some() check")?;
             let embeddings = ctx
                 .client
-                .embed(&ctx.embed_config.model, &[query], Some(&ctx.embed_config.api_base), Some(&ctx.embed_config.api_key))
+                .embed(
+                    &ctx.embed_config.model,
+                    &[query],
+                    Some(&ctx.embed_config.api_base),
+                    Some(&ctx.embed_config.api_key),
+                )
                 .await
                 .context("Embedding API failed")?;
             let query_emb = embeddings.first().context("No embedding returned")?;
@@ -300,10 +299,27 @@ async fn execute_memory_write(
             let chunks = skilllite_executor::memory::chunk_content_for_embed(&final_content);
             if !chunks.is_empty() {
                 let texts: Vec<&str> = chunks.iter().map(|s| s.as_str()).collect();
-                match ctx.client.embed(&ctx.embed_config.model, &texts, Some(&ctx.embed_config.api_base), Some(&ctx.embed_config.api_key)).await {
+                match ctx
+                    .client
+                    .embed(
+                        &ctx.embed_config.model,
+                        &texts,
+                        Some(&ctx.embed_config.api_base),
+                        Some(&ctx.embed_config.api_key),
+                    )
+                    .await
+                {
                     Ok(embeddings) if embeddings.len() == chunks.len() => {
-                        skilllite_executor::memory::ensure_vec0_table(&conn, ctx.embed_config.dimension)?;
-                        skilllite_executor::memory::index_file_vec(&conn, rel_path, &chunks, &embeddings)?;
+                        skilllite_executor::memory::ensure_vec0_table(
+                            &conn,
+                            ctx.embed_config.dimension,
+                        )?;
+                        skilllite_executor::memory::index_file_vec(
+                            &conn,
+                            rel_path,
+                            &chunks,
+                            &embeddings,
+                        )?;
                     }
                     Ok(_) => {
                         tracing::warn!("Embedding count mismatch, skipping vector index");
@@ -345,11 +361,7 @@ fn execute_memory_list(chat_root: &Path) -> Result<String> {
 }
 
 /// Recursively collect .md files in memory directory (skip .sqlite files).
-fn collect_memory_files(
-    base: &Path,
-    current: &Path,
-    files: &mut Vec<String>,
-) -> Result<()> {
+fn collect_memory_files(base: &Path, current: &Path, files: &mut Vec<String>) -> Result<()> {
     if !current.is_dir() {
         return Ok(());
     }
@@ -412,7 +424,10 @@ pub fn build_memory_context(
 /// Index `memory/evolution/knowledge.md` into the memory FTS so it can be found by
 /// memory_search and build_memory_context. Call this after memory evolution writes the file.
 pub fn index_evolution_knowledge(chat_root: &Path, agent_id: &str) -> Result<()> {
-    let path = chat_root.join("memory").join("evolution").join("knowledge.md");
+    let path = chat_root
+        .join("memory")
+        .join("evolution")
+        .join("knowledge.md");
     if !path.exists() {
         return Ok(());
     }
@@ -436,6 +451,7 @@ pub fn index_evolution_knowledge(chat_root: &Path, agent_id: &str) -> Result<()>
 /// Write a structured experience entry to memory (e.g. tool effectiveness, task pattern).
 /// Creates or appends to a topic-specific file under `memory/evolution/`.
 /// Used by the evolution engine to persist aggregated insights.
+#[allow(dead_code)]
 pub fn write_structured_experience(
     chat_root: &Path,
     agent_id: &str,
@@ -460,11 +476,10 @@ pub fn write_structured_experience(
         skilllite_fs::create_dir_all(parent)?;
     }
     if let Ok(conn) = Connection::open(&idx_path) {
-        let _ = skilllite_executor::memory::ensure_index(&conn)
-            .and_then(|_| {
-                let rel = format!("evolution/{}.md", topic);
-                skilllite_executor::memory::index_file(&conn, &rel, &final_content)
-            });
+        let _ = skilllite_executor::memory::ensure_index(&conn).and_then(|_| {
+            let rel = format!("evolution/{}.md", topic);
+            skilllite_executor::memory::index_file(&conn, &rel, &final_content)
+        });
     }
 
     Ok(())

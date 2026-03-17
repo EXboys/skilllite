@@ -21,10 +21,8 @@ static B64_LITERAL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"['"]([A-Za-z0-9+/]{50,}={0,2})['"]"#).expect("B64_LITERAL_RE is valid")
 });
 static DECODE_RE_PY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(
-        r"base64\s*\.\s*(?:b64decode|decodebytes|decode)\s*\(|codecs\s*\.\s*decode\s*\(",
-    )
-    .expect("DECODE_RE_PY is valid")
+    Regex::new(r"base64\s*\.\s*(?:b64decode|decodebytes|decode)\s*\(|codecs\s*\.\s*decode\s*\(")
+        .expect("DECODE_RE_PY is valid")
 });
 static DECODE_RE_JS: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"atob\s*\(|Buffer\s*\.\s*from\s*\([^)]*['"]base64['"]"#)
@@ -243,9 +241,7 @@ impl ScriptScanner {
     fn is_comment_line(line: &str, language: &str) -> bool {
         match language {
             "python" => {
-                line.starts_with('#')
-                    || line.starts_with("\"\"\"")
-                    || line.starts_with("'''")
+                line.starts_with('#') || line.starts_with("\"\"\"") || line.starts_with("'''")
             }
             "javascript" | "node" => {
                 line.starts_with("//") || line.starts_with("/*") || line.starts_with('*')
@@ -304,25 +300,24 @@ impl ScriptScanner {
                 // decode call + visible base64 literal on the same line
                 (true, Some(cap)) => {
                     let b64_str = &cap[1];
-                    let (severity, detail) =
-                        if let Some(danger) = analyze_decoded_base64(b64_str) {
-                            (
+                    let (severity, detail) = if let Some(danger) = analyze_decoded_base64(b64_str) {
+                        (
                                 SecuritySeverity::Critical,
                                 format!(
                                     "Base64 decode call with literal that decodes to dangerous content: {}",
                                     danger
                                 ),
                             )
-                        } else {
-                            (
-                                SecuritySeverity::High,
-                                format!(
-                                    "Base64 decode call with embedded literal ({} chars) — \
+                    } else {
+                        (
+                            SecuritySeverity::High,
+                            format!(
+                                "Base64 decode call with embedded literal ({} chars) — \
                                      possible encoded payload",
-                                    b64_str.len()
-                                ),
-                            )
-                        };
+                                b64_str.len()
+                            ),
+                        )
+                    };
                     issues.push(SecurityIssue {
                         rule_id: "base64-encoded-payload".to_string(),
                         severity,
@@ -665,7 +660,10 @@ fn format_scan_result_impl(result: &ScanResult, compact: bool) -> String {
                 "Critical" => "🔴",
                 _ => "⚪",
             };
-            output.push_str(&format!("  {} {}× {} [{}]\n", icon, count, rule_id, severity_str));
+            output.push_str(&format!(
+                "  {} {}× {} [{}]\n",
+                icon, count, rule_id, severity_str
+            ));
         }
         if result.is_safe {
             output.push_str("\n✅ All clear - only informational items found.");
@@ -696,10 +694,16 @@ fn format_scan_result_impl(result: &ScanResult, compact: bool) -> String {
 
         output.push_str(&format!(
             "  {} #{} [{}] {}\n",
-            severity_icon, idx + 1, severity_label, issue.issue_type
+            severity_icon,
+            idx + 1,
+            severity_label,
+            issue.issue_type
         ));
         output.push_str(&format!("     ├─ Rule: {}\n", issue.rule_id));
-        output.push_str(&format!("     ├─ Line {}: {}\n", issue.line_number, issue.description));
+        output.push_str(&format!(
+            "     ├─ Line {}: {}\n",
+            issue.line_number, issue.description
+        ));
         output.push_str(&format!("     └─ Code: {}\n\n", issue.code_snippet));
     }
 
@@ -741,7 +745,12 @@ pub fn format_scan_result_json(result: &ScanResult) -> String {
     let high_count = result
         .issues
         .iter()
-        .filter(|i| matches!(i.severity, SecuritySeverity::High | SecuritySeverity::Critical))
+        .filter(|i| {
+            matches!(
+                i.severity,
+                SecuritySeverity::High | SecuritySeverity::Critical
+            )
+        })
         .count();
     let medium_count = result
         .issues

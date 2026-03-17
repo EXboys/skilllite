@@ -69,7 +69,14 @@ pub trait EvolutionLlm: Send + Sync {
 /// Should be called at the LLM layer so all downstream consumers get clean output.
 pub fn strip_think_blocks(content: &str) -> &str {
     const CLOSING_TAGS: &[&str] = &["</think>", "</thinking>", "</reasoning>"];
-    const OPENING_TAGS: &[&str] = &["<think>", "<think\n", "<thinking>", "<thinking\n", "<reasoning>", "<reasoning\n"];
+    const OPENING_TAGS: &[&str] = &[
+        "<think>",
+        "<think\n",
+        "<thinking>",
+        "<thinking\n",
+        "<reasoning>",
+        "<reasoning\n",
+    ];
 
     // Case 1: find the last closing tag, take content after it
     let mut best_end: Option<usize> = None;
@@ -285,10 +292,16 @@ impl EvolutionThresholds {
 
     pub fn from_env() -> Self {
         let parse_i64 = |key: &str, default: i64| {
-            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
         };
         let parse_f64 = |key: &str, default: f64| {
-            std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
         };
         let profile = match std::env::var(evo_keys::SKILLLITE_EVO_PROFILE)
             .ok()
@@ -309,14 +322,38 @@ impl EvolutionThresholds {
             cooldown_hours: parse_f64(evo_keys::SKILLLITE_EVO_COOLDOWN_HOURS, base.cooldown_hours),
             recent_days: parse_i64(evo_keys::SKILLLITE_EVO_RECENT_DAYS, base.recent_days),
             recent_limit: parse_i64(evo_keys::SKILLLITE_EVO_RECENT_LIMIT, base.recent_limit),
-            meaningful_min_tools: parse_i64(evo_keys::SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS, base.meaningful_min_tools),
-            meaningful_threshold_skills: parse_i64(evo_keys::SKILLLITE_EVO_MEANINGFUL_THRESHOLD_SKILLS, base.meaningful_threshold_skills),
-            meaningful_threshold_memory: parse_i64(evo_keys::SKILLLITE_EVO_MEANINGFUL_THRESHOLD_MEMORY, base.meaningful_threshold_memory),
-            meaningful_threshold_prompts: parse_i64(evo_keys::SKILLLITE_EVO_MEANINGFUL_THRESHOLD_PROMPTS, base.meaningful_threshold_prompts),
-            failures_min_prompts: parse_i64(evo_keys::SKILLLITE_EVO_FAILURES_MIN_PROMPTS, base.failures_min_prompts),
-            replans_min_prompts: parse_i64(evo_keys::SKILLLITE_EVO_REPLANS_MIN_PROMPTS, base.replans_min_prompts),
-            repeated_pattern_min_count: parse_i64(evo_keys::SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT, base.repeated_pattern_min_count),
-            repeated_pattern_min_success_rate: parse_f64(evo_keys::SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE, base.repeated_pattern_min_success_rate),
+            meaningful_min_tools: parse_i64(
+                evo_keys::SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS,
+                base.meaningful_min_tools,
+            ),
+            meaningful_threshold_skills: parse_i64(
+                evo_keys::SKILLLITE_EVO_MEANINGFUL_THRESHOLD_SKILLS,
+                base.meaningful_threshold_skills,
+            ),
+            meaningful_threshold_memory: parse_i64(
+                evo_keys::SKILLLITE_EVO_MEANINGFUL_THRESHOLD_MEMORY,
+                base.meaningful_threshold_memory,
+            ),
+            meaningful_threshold_prompts: parse_i64(
+                evo_keys::SKILLLITE_EVO_MEANINGFUL_THRESHOLD_PROMPTS,
+                base.meaningful_threshold_prompts,
+            ),
+            failures_min_prompts: parse_i64(
+                evo_keys::SKILLLITE_EVO_FAILURES_MIN_PROMPTS,
+                base.failures_min_prompts,
+            ),
+            replans_min_prompts: parse_i64(
+                evo_keys::SKILLLITE_EVO_REPLANS_MIN_PROMPTS,
+                base.replans_min_prompts,
+            ),
+            repeated_pattern_min_count: parse_i64(
+                evo_keys::SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT,
+                base.repeated_pattern_min_count,
+            ),
+            repeated_pattern_min_success_rate: parse_f64(
+                evo_keys::SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE,
+                base.repeated_pattern_min_success_rate,
+            ),
         }
     }
 }
@@ -361,7 +398,11 @@ pub fn should_evolve_with_mode(conn: &Connection, mode: EvolutionMode) -> Result
 }
 
 /// When force=true (e.g. manual `skilllite evolution run`), bypass decision thresholds.
-fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Result<EvolutionScope> {
+fn should_evolve_impl(
+    conn: &Connection,
+    mode: EvolutionMode,
+    force: bool,
+) -> Result<EvolutionScope> {
     if mode.is_disabled() {
         return Ok(EvolutionScope::default());
     }
@@ -409,8 +450,7 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
                 COUNT(CASE WHEN failed_tools > 0 THEN 1 END),
                 COUNT(CASE WHEN replans > 0 THEN 1 END)
              FROM decisions WHERE {}",
-            thresholds.meaningful_min_tools,
-            recent_condition
+            thresholds.meaningful_min_tools, recent_condition
         ),
         [],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
@@ -488,7 +528,8 @@ fn should_evolve_impl(conn: &Connection, mode: EvolutionMode, force: bool) -> Re
         }
         if mode.prompts_enabled()
             && meaningful >= thresholds.meaningful_threshold_prompts
-            && (failures >= thresholds.failures_min_prompts || replans >= thresholds.replans_min_prompts)
+            && (failures >= thresholds.failures_min_prompts
+                || replans >= thresholds.replans_min_prompts)
         {
             scope.prompts = true;
         }
@@ -536,13 +577,24 @@ pub fn gatekeeper_l2_size(new_rules: usize, new_examples: usize, new_skills: usi
 }
 
 const SENSITIVE_PATTERNS: &[&str] = &[
-    "api_key", "api-key", "apikey",
-    "secret", "password", "passwd",
-    "token", "bearer",
-    "private_key", "private-key",
-    "-----BEGIN", "-----END",
-    "skip scan", "bypass", "disable security",
-    "eval(", "exec(", "__import__",
+    "api_key",
+    "api-key",
+    "apikey",
+    "secret",
+    "password",
+    "passwd",
+    "token",
+    "bearer",
+    "private_key",
+    "private-key",
+    "-----BEGIN",
+    "-----END",
+    "skip scan",
+    "bypass",
+    "disable security",
+    "eval(",
+    "exec(",
+    "__import__",
 ];
 
 pub fn gatekeeper_l3_content(content: &str) -> Result<()> {
@@ -724,8 +776,10 @@ pub fn mark_decisions_evolved(conn: &Connection, ids: &[i64]) -> Result<()> {
         placeholders.join(",")
     );
     let mut stmt = conn.prepare(&sql)?;
-    let params: Vec<Box<dyn rusqlite::types::ToSql>> =
-        ids.iter().map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>).collect();
+    let params: Vec<Box<dyn rusqlite::types::ToSql>> = ids
+        .iter()
+        .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>)
+        .collect();
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
     stmt.execute(param_refs.as_slice())?;
     Ok(())
@@ -751,7 +805,8 @@ pub async fn run_evolution<L: EvolutionLlm>(
         return Ok(EvolutionRunResult::SkippedBusy);
     }
 
-    let result = run_evolution_inner(chat_root, skills_root, llm, api_base, api_key, model, force).await;
+    let result =
+        run_evolution_inner(chat_root, skills_root, llm, api_base, api_key, model, force).await;
 
     finish_evolution();
     result
@@ -774,13 +829,23 @@ async fn run_evolution_inner<L: EvolutionLlm>(
     let txn_id = format!("evo_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
     tracing::info!(
         "Starting evolution txn={} (prompts={}, memory={}, skills={})",
-        txn_id, scope.prompts, scope.memory, scope.skills
+        txn_id,
+        scope.prompts,
+        scope.memory,
+        scope.skills
     );
     let snapshot_files = if scope.prompts {
-        create_snapshot(chat_root, &txn_id, &[
-            "rules.json", "examples.json",
-            "planning.md", "execution.md", "system.md",
-        ])?
+        create_snapshot(
+            chat_root,
+            &txn_id,
+            &[
+                "rules.json",
+                "examples.json",
+                "planning.md",
+                "execution.md",
+                "system.md",
+            ],
+        )?
     } else {
         Vec::new()
     };
@@ -804,7 +869,16 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         async {
             if scope.skills {
                 let generate = true;
-                skill_synth::evolve_skills(chat_root, skills_root, llm, model, &txn_id, generate, force).await
+                skill_synth::evolve_skills(
+                    chat_root,
+                    skills_root,
+                    llm,
+                    model,
+                    &txn_id,
+                    generate,
+                    force,
+                )
+                .await
             } else {
                 Ok(Vec::new())
             }
@@ -882,9 +956,23 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         let auto_rolled_back = check_auto_rollback(&conn, chat_root)?;
         if auto_rolled_back {
             tracing::info!("EVO: auto-rollback triggered for txn={}", txn_id);
-            let _ = log_evolution_event(&conn, chat_root, "evolution_judgement", "rollback", "Auto-rollback triggered due to performance degradation", &txn_id);
+            let _ = log_evolution_event(
+                &conn,
+                chat_root,
+                "evolution_judgement",
+                "rollback",
+                "Auto-rollback triggered due to performance degradation",
+                &txn_id,
+            );
         } else {
-            let _ = log_evolution_event(&conn, chat_root, "evolution_judgement", "no_rollback", "No auto-rollback triggered", &txn_id);
+            let _ = log_evolution_event(
+                &conn,
+                chat_root,
+                "evolution_judgement",
+                "no_rollback",
+                "No auto-rollback triggered",
+                &txn_id,
+            );
         }
         // let _ = feedback::export_judgement(&conn, &chat_root.join("JUDGEMENT.md")); // Removed for refactor
         if let Ok(Some(summary)) = feedback::build_latest_judgement(&conn) {
@@ -897,7 +985,11 @@ async fn run_evolution_inner<L: EvolutionLlm>(
                 &txn_id,
             );
             // Insert new judgement output to file here
-            let judgement_output = format!("## Evolution Judgement\n\n**Judgement:** {}\n\n**Reason:** {}\n", summary.judgement.as_str(), summary.reason);
+            let judgement_output = format!(
+                "## Evolution Judgement\n\n**Judgement:** {}\n\n**Reason:** {}\n",
+                summary.judgement.as_str(),
+                summary.reason
+            );
             let judgement_path = chat_root.join("JUDGEMENT.md");
             if let Err(e) = skilllite_fs::atomic_write(&judgement_path, &judgement_output) {
                 tracing::warn!("Failed to write JUDGEMENT.md: {}", e);
@@ -944,7 +1036,10 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             .collect();
 
         // External learner writes to prompts/rules.json; include it when external merged/promoted rules but snapshot didn't cover it (e.g. no scope.prompts).
-        if all_changes.iter().any(|(t, _)| t == "external_rule_added" || t == "external_rule_promoted") {
+        if all_changes
+            .iter()
+            .any(|(t, _)| t == "external_rule_added" || t == "external_rule_promoted")
+        {
             const EXTERNAL_RULES_FILE: &str = "rules.json";
             if !modified_files.iter().any(|f| f == EXTERNAL_RULES_FILE) {
                 let rules_path = prompts_dir.join(EXTERNAL_RULES_FILE);
@@ -966,12 +1061,11 @@ async fn run_evolution_inner<L: EvolutionLlm>(
 }
 
 pub fn query_changes_by_txn(conn: &Connection, txn_id: &str) -> Vec<(String, String)> {
-    let mut stmt = match conn.prepare(
-        "SELECT type, target_id FROM evolution_log WHERE version = ?1",
-    ) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
+    let mut stmt =
+        match conn.prepare("SELECT type, target_id FROM evolution_log WHERE version = ?1") {
+            Ok(s) => s,
+            Err(_) => return Vec::new(),
+        };
     stmt.query_map(params![txn_id], |row| {
         Ok((
             row.get::<_, String>(0)?,
@@ -995,7 +1089,10 @@ pub fn format_evolution_changes(changes: &[(String, String)]) -> Vec<String> {
                 "rule_retired" => format!("\u{1f5d1}\u{fe0f} 已退役低效规则: {}", id),
                 "example_added" => format!("\u{1f4d6} 已新增示例: {}", id),
                 "skill_generated" => format!("\u{2728} 已自动生成 Skill: {}", id),
-                "skill_pending" => format!("\u{1f4a1} 新 Skill {} 待确认（运行 `skilllite evolution confirm {}` 加入）", id, id),
+                "skill_pending" => format!(
+                    "\u{1f4a1} 新 Skill {} 待确认（运行 `skilllite evolution confirm {}` 加入）",
+                    id, id
+                ),
                 "skill_refined" => format!("\u{1f527} 已优化 Skill: {}", id),
                 "skill_retired" => format!("\u{1f4e6} 已归档 Skill: {}", id),
                 "evolution_judgement" => {
@@ -1037,7 +1134,6 @@ pub fn on_shutdown(chat_root: &Path) {
 }
 
 // ─── Auto-rollback ───────────────────────────────────────────────────────────
-
 
 /// Executes the rollback actions (restoring snapshot, logging).
 fn execute_evolution_rollback(

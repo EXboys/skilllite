@@ -1,8 +1,10 @@
 //! Security commands: security scan, dependency audit.
 
-use skilllite_core::path_validation::validate_path_under_root;
-use skilllite_sandbox::security::{format_scan_result_compact, format_scan_result_json, ScriptScanner};
 use anyhow::Result;
+use skilllite_core::path_validation::validate_path_under_root;
+use skilllite_sandbox::security::{
+    format_scan_result_compact, format_scan_result_json, ScriptScanner,
+};
 
 /// Perform security scan on a script.
 pub fn security_scan_script(
@@ -61,7 +63,6 @@ pub(crate) fn metadata_hint_from_skill_metadata(
 /// dependency inference — sandbox never imports or parses skill metadata.
 #[cfg(feature = "audit")]
 pub fn dependency_audit_skill(skill_dir: &str, json_output: bool) -> Result<()> {
-
     let path = validate_path_under_root(skill_dir, "Skill directory")?;
 
     // Parse SKILL.md in commands layer; fill resolved_packages from compatibility when needed
@@ -69,8 +70,10 @@ pub fn dependency_audit_skill(skill_dir: &str, json_output: bool) -> Result<()> 
         .ok()
         .map(|m| metadata_hint_from_skill_metadata(&m));
 
-    let result =
-        skilllite_sandbox::security::dependency_audit::audit_skill_dependencies(&path, metadata_hint.as_ref())?;
+    let result = skilllite_sandbox::security::dependency_audit::audit_skill_dependencies(
+        &path,
+        metadata_hint.as_ref(),
+    )?;
 
     if json_output {
         println!(

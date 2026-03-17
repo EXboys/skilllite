@@ -59,7 +59,8 @@ impl SessionStore {
             fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(self)?;
-        fs::write(path, content).with_context(|| format!("Failed to write session store: {}", path.display()))
+        fs::write(path, content)
+            .with_context(|| format!("Failed to write session store: {}", path.display()))
     }
 
     pub fn get(&self, session_key: &str) -> Option<&SessionEntry> {

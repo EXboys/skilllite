@@ -12,12 +12,10 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::types::{
-    ChatMessage, EventSink, ToolCall, ToolDefinition, ToolFormat, safe_truncate,
-};
+use super::types::{safe_truncate, ChatMessage, EventSink, ToolCall, ToolDefinition, ToolFormat};
 
-mod openai;
 mod claude;
+mod openai;
 
 #[cfg(test)]
 mod tests;
@@ -67,8 +65,14 @@ impl LlmClient {
     ) -> Result<ChatCompletionResponse> {
         let format = detect_tool_format(model, &self.api_base);
         match format {
-            ToolFormat::Claude => self.claude_chat_completion(model, messages, tools, temperature).await,
-            ToolFormat::OpenAI => self.openai_chat_completion(model, messages, tools, temperature).await,
+            ToolFormat::Claude => {
+                self.claude_chat_completion(model, messages, tools, temperature)
+                    .await
+            }
+            ToolFormat::OpenAI => {
+                self.openai_chat_completion(model, messages, tools, temperature)
+                    .await
+            }
         }
     }
 
@@ -101,7 +105,13 @@ impl LlmClient {
     /// Handles both OpenAI-standard format (`{"data": [{"embedding": [...]}]}`)
     /// and Dashscope native format (`{"output": {"embeddings": [{"embedding": [...]}]}}`).
     #[allow(dead_code)]
-    pub async fn embed(&self, model: &str, texts: &[&str], custom_url: Option<&str>, custom_key: Option<&str>) -> Result<Vec<Vec<f32>>> {
+    pub async fn embed(
+        &self,
+        model: &str,
+        texts: &[&str],
+        custom_url: Option<&str>,
+        custom_key: Option<&str>,
+    ) -> Result<Vec<Vec<f32>>> {
         if texts.is_empty() {
             return Ok(Vec::new());
         }
@@ -133,7 +143,10 @@ impl LlmClient {
             let body_text = resp.text().await.unwrap_or_default();
             anyhow::bail!("Embedding API error ({}): {}", status, body_text);
         }
-        let json: Value = resp.json().await.context("Failed to parse embedding response")?;
+        let json: Value = resp
+            .json()
+            .await
+            .context("Failed to parse embedding response")?;
 
         // Try OpenAI-standard format: {"data": [{"embedding": [...]}]}
         if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
@@ -141,7 +154,8 @@ impl LlmClient {
         }
 
         // Fallback: Dashscope native format: {"output": {"embeddings": [{"embedding": [...]}]}}
-        if let Some(items) = json.get("output")
+        if let Some(items) = json
+            .get("output")
             .and_then(|o| o.get("embeddings"))
             .and_then(|e| e.as_array())
         {
@@ -220,7 +234,6 @@ pub struct Usage {
     pub completion_tokens: u64,
     pub total_tokens: u64,
 }
-
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

@@ -8,12 +8,15 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::time::Instant;
 
-use super::helpers::{execute_tool_call, handle_complete_task, handle_update_task_plan, inject_progressive_disclosure, process_result_content};
 use super::super::extensions::{self, MemoryVectorContext, PlanningControlExecutor};
 use super::super::llm::LlmClient;
 use super::super::skills::LoadedSkill;
 use super::super::task_planner::TaskPlanner;
 use super::super::types::*;
+use super::helpers::{
+    execute_tool_call, handle_complete_task, handle_update_task_plan,
+    inject_progressive_disclosure, process_result_content,
+};
 
 /// Helper to get current timestamp string
 fn timestamp_now() -> String {
@@ -44,8 +47,17 @@ fn write_tool_to_transcript(
     // Get transcript path (transcripts live under chat root)
     let chat_root = skilllite_executor::chat_root();
     let transcripts_dir = chat_root.join("transcripts");
-    let t_path = match skilllite_executor::transcript::transcript_path_today(&transcripts_dir, session_key) {
-        p if p.parent().map(|p| skilllite_fs::create_dir_all(p).is_ok()).unwrap_or(false) => p,
+    let t_path = match skilllite_executor::transcript::transcript_path_today(
+        &transcripts_dir,
+        session_key,
+    ) {
+        p if p
+            .parent()
+            .map(|p| skilllite_fs::create_dir_all(p).is_ok())
+            .unwrap_or(false) =>
+        {
+            p
+        }
         _ => return,
     };
 
@@ -88,7 +100,7 @@ pub(super) struct ExecutionState {
     pub replan_count: usize,
     pub tools_detail: Vec<ToolExecDetail>,
     pub context_overflow_retries: usize,
-        pub iterations: usize,
+    pub iterations: usize,
     pub rules_used: Vec<String>,
 }
 
@@ -152,7 +164,11 @@ impl PlanningControlExecutor for PlanningControlExecutorImpl<'_> {
                      Do NOT call update_task_plan again.",
                     self.state.replan_count
                 ));
-                tracing::info!("Replan soft limit reached ({}/{})", self.state.replan_count, MAX_REPLANS_PER_SESSION);
+                tracing::info!(
+                    "Replan soft limit reached ({}/{})",
+                    self.state.replan_count,
+                    MAX_REPLANS_PER_SESSION
+                );
             }
             r
         } else if tool_name == "complete_task" {
@@ -230,7 +246,10 @@ pub(super) async fn execute_tool_batch_planning(
                 counts_as_failure: false,
             };
             event_sink.on_tool_result(tool_name, &result.content, false);
-            messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
+            messages.push(ChatMessage::tool_result(
+                &result.tool_call_id,
+                &result.content,
+            ));
             continue;
         }
 
@@ -274,10 +293,10 @@ pub(super) async fn execute_tool_batch_planning(
             task_transitioned = true;
         }
         if !is_planning_control {
-            planning_executor
-                .state
-                .tools_detail
-                .push(ToolExecDetail { tool: tool_name.clone(), success: !result.is_error });
+            planning_executor.state.tools_detail.push(ToolExecDetail {
+                tool: tool_name.clone(),
+                success: !result.is_error,
+            });
         }
 
         let elapsed_ms = start_time.elapsed().as_millis() as u64;
@@ -292,16 +311,23 @@ pub(super) async fn execute_tool_batch_planning(
         );
 
         event_sink.on_tool_result(tool_name, &result.content, result.is_error);
-        messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
+        messages.push(ChatMessage::tool_result(
+            &result.tool_call_id,
+            &result.content,
+        ));
         planning_executor.state.total_tool_calls += 1;
         planning_executor.state.tool_calls_current_task += 1;
     }
 
-    let failure_limit_reached = max_consecutive_failures
-        .map_or(false, |limit| state.consecutive_failures >= limit);
+    let failure_limit_reached =
+        max_consecutive_failures.map_or(false, |limit| state.consecutive_failures >= limit);
     let depth_limit_reached = state.tool_calls_current_task >= max_tool_calls_per_task;
 
-    ToolBatchOutcome { disclosure_injected: false, failure_limit_reached, depth_limit_reached }
+    ToolBatchOutcome {
+        disclosure_injected: false,
+        failure_limit_reached,
+        depth_limit_reached,
+    }
 }
 
 // ── Simple-mode batch ─────────────────────────────────────────────────────────
@@ -338,13 +364,7 @@ pub(super) async fn execute_tool_batch_simple(
 
         let start_time = Instant::now();
         let mut result = execute_tool_call(
-            registry,
-            tool_name,
-            arguments,
-            workspace,
-            event_sink,
-            embed_ctx,
-            None,
+            registry, tool_name, arguments, workspace, event_sink, embed_ctx, None,
         )
         .await;
         result.tool_call_id = tc.id.clone();
@@ -356,7 +376,10 @@ pub(super) async fn execute_tool_batch_simple(
         } else if !result.is_error {
             state.consecutive_failures = 0;
         }
-        state.tools_detail.push(ToolExecDetail { tool: tool_name.clone(), success: !result.is_error });
+        state.tools_detail.push(ToolExecDetail {
+            tool: tool_name.clone(),
+            success: !result.is_error,
+        });
 
         let elapsed_ms = start_time.elapsed().as_millis() as u64;
         // Write to transcript for complete traceability
@@ -371,12 +394,15 @@ pub(super) async fn execute_tool_batch_simple(
         );
 
         event_sink.on_tool_result(tool_name, &result.content, result.is_error);
-        messages.push(ChatMessage::tool_result(&result.tool_call_id, &result.content));
+        messages.push(ChatMessage::tool_result(
+            &result.tool_call_id,
+            &result.content,
+        ));
         state.total_tool_calls += 1;
     }
 
-    let failure_limit_reached = max_consecutive_failures
-        .map_or(false, |limit| state.consecutive_failures >= limit);
+    let failure_limit_reached =
+        max_consecutive_failures.map_or(false, |limit| state.consecutive_failures >= limit);
     ToolBatchOutcome {
         disclosure_injected: false,
         failure_limit_reached,
@@ -435,7 +461,10 @@ mod tests {
                 call_type: "function".to_string(),
                 function: FunctionCall {
                     name: "file_exists".to_string(),
-                    arguments: format!(r#"{{"path":"{}"}}"#, workspace.join("missing.txt").display()),
+                    arguments: format!(
+                        r#"{{"path":"{}"}}"#,
+                        workspace.join("missing.txt").display()
+                    ),
                 },
             },
             ToolCall {
@@ -530,4 +559,3 @@ mod tests {
         assert_eq!(state.failed_tool_calls, 0);
     }
 }
-

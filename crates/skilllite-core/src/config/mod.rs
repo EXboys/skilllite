@@ -13,14 +13,14 @@ pub mod env_keys;
 pub mod loader;
 pub mod schema;
 
+pub use loader::{
+    ensure_default_output_dir, init_daemon_env, init_llm_env, remove_env_var, set_env_var,
+    ScopedEnvGuard,
+};
 #[allow(unused_imports)] // 供后续迁移 observability 等模块使用
 pub use loader::{
     env_bool, env_optional, env_or, load_dotenv, load_dotenv_from_dir, parse_dotenv_from_dir,
     parse_dotenv_walking_up,
-};
-pub use loader::{
-    ensure_default_output_dir, init_daemon_env, init_llm_env, remove_env_var, set_env_var,
-    ScopedEnvGuard,
 };
 pub use schema::{
     AgentFeatureFlags, CacheConfig, EmbeddingConfig, LlmConfig, ObservabilityConfig, PathsConfig,

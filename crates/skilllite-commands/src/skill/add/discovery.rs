@@ -86,7 +86,8 @@ fn find_skill_by_name_recursive(dir: &Path, name: &str, results: &mut Vec<PathBu
         let p = entry.path();
         if p.is_dir() {
             let dir_name = p.file_name().unwrap_or_default().to_string_lossy();
-            if dir_name.starts_with('.') || dir_name == "node_modules" || dir_name == "__pycache__" {
+            if dir_name.starts_with('.') || dir_name == "node_modules" || dir_name == "__pycache__"
+            {
                 continue;
             }
             if dir_name == name && p.join("SKILL.md").exists() {
@@ -100,8 +101,18 @@ fn find_skill_by_name_recursive(dir: &Path, name: &str, results: &mut Vec<PathBu
 // ─── Skill Copy ─────────────────────────────────────────────────────────────
 
 const COPY_EXCLUDE_DIRS: &[&str] = &[
-    ".git", "__pycache__", "node_modules", "venv", ".venv", ".tox", ".mypy_cache", ".pytest_cache",
-    ".ruff_cache", "dist", "build", "*.egg-info",
+    ".git",
+    "__pycache__",
+    "node_modules",
+    "venv",
+    ".venv",
+    ".tox",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    "*.egg-info",
 ];
 
 const COPY_EXCLUDE_FILES: &[&str] = &[".DS_Store", "Thumbs.db"];
@@ -171,13 +182,14 @@ pub(super) fn install_skill_deps(skills_dir: &Path, installed: &[String]) -> Vec
             Ok(meta) => {
                 let cache_dir: Option<&str> = None;
                 let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &meta);
-                match skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir) {
+                match skilllite_sandbox::env::builder::ensure_environment(
+                    &skill_path,
+                    &env_spec,
+                    cache_dir,
+                ) {
                     Ok(_) => {
                         let lang = &env_spec.language;
-                        messages.push(format!(
-                            "   ✓ {} [{}]: dependencies installed",
-                            name, lang
-                        ));
+                        messages.push(format!("   ✓ {} [{}]: dependencies installed", name, lang));
                     }
                     Err(e) => {
                         messages.push(format!("   ✗ {}: dependency error: {}", name, e));

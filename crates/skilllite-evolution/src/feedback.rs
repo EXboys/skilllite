@@ -155,12 +155,18 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_dr_rule ON decision_rules(rule_id);
         CREATE INDEX IF NOT EXISTS idx_dr_decision ON decision_rules(decision_id);
         CREATE INDEX IF NOT EXISTS idx_evo_log_ts ON evolution_log(ts);
-        "#,)
-    ?;
+        "#,
+    )?;
     // Backward-compatible migration: add column for existing DBs (ignored if column exists).
-    let _ = conn.execute("ALTER TABLE decisions ADD COLUMN tool_sequence_key TEXT", []);
+    let _ = conn.execute(
+        "ALTER TABLE decisions ADD COLUMN tool_sequence_key TEXT",
+        [],
+    );
     // Index must be created after ALTER TABLE so existing DBs have the column first.
-    let _ = conn.execute("CREATE INDEX IF NOT EXISTS idx_decisions_seq ON decisions(tool_sequence_key)", []);
+    let _ = conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_decisions_seq ON decisions(tool_sequence_key)",
+        [],
+    );
     Ok(())
 }
 
@@ -211,9 +217,8 @@ pub fn insert_decision(
     let decision_id = conn.last_insert_rowid();
 
     if !feedback.rules_used.is_empty() {
-        let mut stmt = conn.prepare(
-            "INSERT INTO decision_rules (decision_id, rule_id) VALUES (?1, ?2)",
-        )?;
+        let mut stmt =
+            conn.prepare("INSERT INTO decision_rules (decision_id, rule_id) VALUES (?1, ?2)")?;
         for rule_id in &feedback.rules_used {
             stmt.execute(params![decision_id, rule_id])?;
         }
@@ -223,14 +228,22 @@ pub fn insert_decision(
 }
 
 pub fn count_unprocessed_decisions(conn: &Connection) -> Result<i64> {
-    conn.query_row("SELECT COUNT(*) FROM decisions WHERE evolved = 0", [], |r| r.get(0))
-        .map_err(Into::into)
+    conn.query_row(
+        "SELECT COUNT(*) FROM decisions WHERE evolved = 0",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(Into::into)
 }
 
 /// Diagnostic: count unprocessed decisions with/without task_description.
 /// Evolution requires task_description to learn from decisions.
 pub fn count_decisions_with_task_desc(conn: &Connection) -> Result<(i64, i64)> {
-    let total: i64 = conn.query_row("SELECT COUNT(*) FROM decisions WHERE evolved = 0", [], |r| r.get(0))?;
+    let total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM decisions WHERE evolved = 0",
+        [],
+        |r| r.get(0),
+    )?;
     let with_desc: i64 = conn.query_row(
         "SELECT COUNT(*) FROM decisions WHERE evolved = 0 AND task_description IS NOT NULL",
         [],
@@ -411,7 +424,15 @@ pub fn compute_egl_for_rule(conn: &Connection, rule_id: &str) -> Result<f64> {
          JOIN decision_rules dr ON d.id = dr.decision_id
          WHERE dr.rule_id = ?1 AND d.ts > datetime('now', '-30 days')", // Last 30 days
         params![rule_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+            ))
+        },
     )?;
 
     if total_count == 0 {
@@ -431,7 +452,9 @@ pub fn compute_egl_for_rule(conn: &Connection, rule_id: &str) -> Result<f64> {
     let w_replans = 0.5;
     let w_correction = 0.7;
 
-    let egl = (success_rate * w_success) - (avg_replans * w_replans) - (user_correction_rate * w_correction);
+    let egl = (success_rate * w_success)
+        - (avg_replans * w_replans)
+        - (user_correction_rate * w_correction);
     Ok(egl)
 }
 
@@ -611,8 +634,8 @@ mod tests {
             rules_used: vec![],
             tools_detail: vec![],
         };
-        let decision_id = insert_decision(&conn, Some("session1"), &input, FeedbackSignal::Neutral)
-            .unwrap();
+        let decision_id =
+            insert_decision(&conn, Some("session1"), &input, FeedbackSignal::Neutral).unwrap();
         assert!(decision_id > 0);
 
         let count: i64 = conn
@@ -638,9 +661,11 @@ mod tests {
         update_last_decision_feedback(&conn, "s1", FeedbackSignal::ExplicitPositive).unwrap();
 
         let feedback: String = conn
-            .query_row("SELECT feedback FROM decisions WHERE session_id = 's1'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT feedback FROM decisions WHERE session_id = 's1'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(feedback, "pos");
     }

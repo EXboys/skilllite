@@ -20,9 +20,7 @@ pub fn get_cache_dir(override_dir: Option<&str>) -> Option<PathBuf> {
             config::load_dotenv();
             config::CacheConfig::cache_dir().map(PathBuf::from)
         })
-        .or_else(|| {
-            dirs::cache_dir().map(|d| d.join("skilllite"))
-        })?;
+        .or_else(|| dirs::cache_dir().map(|d| d.join("skilllite")))?;
     Some(base.join("envs"))
 }
 
@@ -35,8 +33,12 @@ pub fn ensure_environment(
 ) -> Result<PathBuf> {
     let lang = &spec.language;
 
-    let base = get_cache_dir(cache_dir)
-        .unwrap_or_else(|| PathBuf::from(".").join(".cache").join("skilllite").join("envs"));
+    let base = get_cache_dir(cache_dir).unwrap_or_else(|| {
+        PathBuf::from(".")
+            .join(".cache")
+            .join("skilllite")
+            .join("envs")
+    });
     std::fs::create_dir_all(&base).context("Create cache dir")?;
 
     let key = cache_key(skill_dir, spec, lang)?;
@@ -83,11 +85,7 @@ pub fn build_runtime_paths(env_dir: &Path) -> RuntimePaths {
             Some(env_dir.join("node_modules")),
         )
     } else {
-        (
-            default_system_python_command(),
-            PathBuf::from("node"),
-            None,
-        )
+        (default_system_python_command(), PathBuf::from("node"), None)
     };
 
     RuntimePaths {
@@ -101,7 +99,13 @@ pub fn build_runtime_paths(env_dir: &Path) -> RuntimePaths {
 fn cache_key(skill_dir: &Path, spec: &EnvSpec, lang: &str) -> Result<String> {
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
-    hasher.update(skill_dir.canonicalize().unwrap_or_else(|_| skill_dir.to_path_buf()).to_string_lossy().as_bytes());
+    hasher.update(
+        skill_dir
+            .canonicalize()
+            .unwrap_or_else(|_| skill_dir.to_path_buf())
+            .to_string_lossy()
+            .as_bytes(),
+    );
     hasher.update(lang.as_bytes());
     if let Some(ref pkgs) = spec.resolved_packages {
         for p in pkgs {
@@ -137,10 +141,7 @@ fn ensure_python_env(skill_dir: &Path, spec: &EnvSpec, env_path: &Path) -> Resul
         cmd.current_dir(skill_dir);
         let out = cmd.output().context("Create venv")?;
         if !out.status.success() {
-            anyhow::bail!(
-                "venv failed: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
+            anyhow::bail!("venv failed: {}", String::from_utf8_lossy(&out.stderr));
         }
 
         if !packages.is_empty() {
@@ -181,7 +182,8 @@ fn ensure_node_env(skill_dir: &Path, spec: &EnvSpec, env_path: &Path) -> Result<
 
         let package_json = skill_dir.join("package.json");
         if package_json.exists() {
-            std::fs::copy(&package_json, env_path.join("package.json")).context("Copy package.json")?;
+            std::fs::copy(&package_json, env_path.join("package.json"))
+                .context("Copy package.json")?;
         } else if let Some(ref pkgs) = spec.resolved_packages {
             // Bash-tool skills without package.json may list deps in .skilllite.lock (from skilllite init)
             let deps: std::collections::HashMap<String, String> =
@@ -255,7 +257,8 @@ fn collect_node_packages(skill_dir: &Path, spec: &EnvSpec) -> Result<Vec<String>
     }
 
     let content = std::fs::read_to_string(&package_json).context("Read package.json")?;
-    let package_json: serde_json::Value = serde_json::from_str(&content).context("Parse package.json")?;
+    let package_json: serde_json::Value =
+        serde_json::from_str(&content).context("Parse package.json")?;
     let mut packages = Vec::new();
 
     for section in ["dependencies", "devDependencies"] {
@@ -290,10 +293,7 @@ fn pip_path_in_env(env_path: &Path) -> PathBuf {
 
 fn requests_playwright_browsers(packages: &[String]) -> bool {
     packages.iter().any(|pkg| {
-        let base = pkg
-            .split(['=', '<', '>', '!', '~'])
-            .next()
-            .unwrap_or(pkg);
+        let base = pkg.split(['=', '<', '>', '!', '~']).next().unwrap_or(pkg);
         let normalized = base
             .split_once('[')
             .map(|(name, _)| name)
@@ -327,8 +327,14 @@ fn install_playwright_browsers_for_python(skill_dir: &Path, env_path: &Path) -> 
 }
 
 fn install_playwright_browsers_for_node(env_path: &Path) -> Result<()> {
-    let unix_cli = env_path.join("node_modules").join(".bin").join("playwright");
-    let windows_cli = env_path.join("node_modules").join(".bin").join("playwright.cmd");
+    let unix_cli = env_path
+        .join("node_modules")
+        .join(".bin")
+        .join("playwright");
+    let windows_cli = env_path
+        .join("node_modules")
+        .join(".bin")
+        .join("playwright.cmd");
 
     let mut cmd = if unix_cli.exists() {
         let mut cmd = Command::new(unix_cli);
@@ -449,10 +455,14 @@ mod tests {
 
         if cfg!(windows) {
             assert_eq!(candidates[0].program, PathBuf::from("python"));
-            assert!(candidates.iter().any(|c| c.program == PathBuf::from("py") && c.args == vec!["-3"]));
+            assert!(candidates
+                .iter()
+                .any(|c| c.program == PathBuf::from("py") && c.args == vec!["-3"]));
         } else {
             assert_eq!(candidates[0].program, PathBuf::from("python3"));
-            assert!(candidates.iter().any(|c| c.program == PathBuf::from("python")));
+            assert!(candidates
+                .iter()
+                .any(|c| c.program == PathBuf::from("python")));
         }
     }
 
@@ -528,8 +538,12 @@ mod tests {
             resolved_packages: None,
         };
 
-        let packages = collect_python_packages(temp_dir.path(), &spec).expect("collect python packages");
-        assert_eq!(packages, vec!["pyodps==0.12.5".to_string(), "playwright".to_string()]);
+        let packages =
+            collect_python_packages(temp_dir.path(), &spec).expect("collect python packages");
+        assert_eq!(
+            packages,
+            vec!["pyodps==0.12.5".to_string(), "playwright".to_string()]
+        );
     }
 
     #[test]
@@ -550,7 +564,8 @@ mod tests {
             resolved_packages: None,
         };
 
-        let packages = collect_node_packages(temp_dir.path(), &spec).expect("collect node packages");
+        let packages =
+            collect_node_packages(temp_dir.path(), &spec).expect("collect node packages");
         assert!(packages.contains(&"playwright".to_string()));
         assert!(packages.contains(&"@anthropic-ai/sdk".to_string()));
     }
@@ -561,7 +576,11 @@ mod tests {
             "playwright==1.51.0".to_string(),
             "requests".to_string(),
         ]));
-        assert!(requests_playwright_browsers(&["@playwright/test".to_string()]));
-        assert!(!requests_playwright_browsers(&["playwright-core".to_string()]));
+        assert!(requests_playwright_browsers(&[
+            "@playwright/test".to_string()
+        ]));
+        assert!(!requests_playwright_browsers(&[
+            "playwright-core".to_string()
+        ]));
     }
 }

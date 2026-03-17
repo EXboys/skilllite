@@ -73,7 +73,9 @@ impl Discovery {
         )
         .context("Invalid ServiceInfo")?;
 
-        self.daemon.register(service).context("Failed to register mDNS service")?;
+        self.daemon
+            .register(service)
+            .context("Failed to register mDNS service")?;
         tracing::info!(
             instance = %instance_name,
             addr = %format!("{}:{}", ip, port),
@@ -93,7 +95,10 @@ impl Discovery {
     /// Shutdown the daemon.
     pub fn shutdown(&self) -> Result<()> {
         self.shutdown.store(true, Ordering::SeqCst);
-        let _rx = self.daemon.shutdown().context("Failed to shutdown mDNS daemon")?;
+        let _rx = self
+            .daemon
+            .shutdown()
+            .context("Failed to shutdown mDNS daemon")?;
         Ok(())
     }
 }

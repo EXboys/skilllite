@@ -12,9 +12,8 @@ fn position_score(chunk_index: usize, total_chunks: usize) -> f64 {
         return 1.0;
     }
     let head_threshold = (total_chunks as f64 * 0.2).ceil().max(1.0) as usize;
-    let tail_start = total_chunks.saturating_sub(
-        (total_chunks as f64 * 0.2).ceil().max(1.0) as usize,
-    );
+    let tail_start =
+        total_chunks.saturating_sub((total_chunks as f64 * 0.2).ceil().max(1.0) as usize);
     if chunk_index < head_threshold {
         1.0
     } else if chunk_index >= tail_start {
@@ -47,8 +46,7 @@ static NUMBER_RE: OnceLock<Regex> = OnceLock::new();
 
 fn entity_score(chunk: &str) -> f64 {
     let num_re = NUMBER_RE.get_or_init(|| {
-        Regex::new(r"\d+[%.,]?|\d+\.\d+|[①-⑳]|[一二三四五六七八九十百千]+")
-            .expect("number regex")
+        Regex::new(r"\d+[%.,]?|\d+\.\d+|[①-⑳]|[一二三四五六七八九十百千]+").expect("number regex")
     });
     let num_count = num_re.find_iter(chunk).count();
     // Numbers: 0-2 = 0, 3-5 = 0.3, 6+ = 0.6

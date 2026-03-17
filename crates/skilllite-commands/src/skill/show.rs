@@ -21,8 +21,14 @@ pub fn cmd_show(skill_name: &str, skills_dir: &str, json_output: bool) -> Result
 
     eprintln!("📦 Skill: {}", meta.name);
     eprintln!("   Path: {}", skill_path.display());
-    eprintln!("   Integrity: {}", common::status_label_for_skill(&skill_path));
-    eprintln!("   Security Rating: {}", common::security_rating_for_skill(&skill_path));
+    eprintln!(
+        "   Integrity: {}",
+        common::status_label_for_skill(&skill_path)
+    );
+    eprintln!(
+        "   Security Rating: {}",
+        common::security_rating_for_skill(&skill_path)
+    );
     if let Some(ref desc) = meta.description {
         eprintln!("   Description: {}", desc);
     }
@@ -41,7 +47,11 @@ pub fn cmd_show(skill_name: &str, skills_dir: &str, json_output: bool) -> Result
     }
     eprintln!(
         "   Network: {}",
-        if meta.network.enabled { "enabled" } else { "disabled" }
+        if meta.network.enabled {
+            "enabled"
+        } else {
+            "disabled"
+        }
     );
     if !meta.network.outbound.is_empty() {
         eprintln!("   Outbound: {}", meta.network.outbound.join(", "));

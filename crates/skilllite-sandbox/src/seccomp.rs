@@ -130,8 +130,8 @@ const BPF_K: u16 = 0x00;
 const BPF_RET: u16 = 0x06;
 
 // Seccomp data offsets
-const SECCOMP_DATA_NR: u32 = 0;        // Syscall number offset
-const SECCOMP_DATA_ARGS: u32 = 16;     // Args offset (args[0] is at offset 16)
+const SECCOMP_DATA_NR: u32 = 0; // Syscall number offset
+const SECCOMP_DATA_ARGS: u32 = 16; // Args offset (args[0] is at offset 16)
 
 // ============================================================================
 // Unix Socket Filter Configuration
@@ -259,11 +259,25 @@ fn build_sandbox_filter() -> Vec<SockFilter> {
     let mut f: Vec<SockFilter> = Vec::with_capacity(34);
 
     // [0] Load syscall number
-    f.push(SockFilter::new(BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_NR));
+    f.push(SockFilter::new(
+        BPF_LD | BPF_W | BPF_ABS,
+        0,
+        0,
+        SECCOMP_DATA_NR,
+    ));
 
     // Unconditional blocks — pattern: if syscall == X, deny; else fall through
     // "jt=0" means jump 0 forward (= next instruction = deny), "jf=1" means skip deny
-    let unconditional = [PTRACE, MOUNT, UMOUNT2, KEYCTL, KEXEC_LOAD, KEXEC_FILE_LOAD, PIVOT_ROOT, CHROOT];
+    let unconditional = [
+        PTRACE,
+        MOUNT,
+        UMOUNT2,
+        KEYCTL,
+        KEXEC_LOAD,
+        KEXEC_FILE_LOAD,
+        PIVOT_ROOT,
+        CHROOT,
+    ];
     for nr in unconditional {
         f.push(SockFilter::new(BPF_JMP | BPF_JEQ | BPF_K, 0, 1, nr));
         f.push(deny);
@@ -272,28 +286,73 @@ fn build_sandbox_filter() -> Vec<SockFilter> {
     // --- socket(AF_UNIX) block ---
     // remaining after this point: clone(5) + unshare(5) + allow(1) = 11
     f.push(SockFilter::new(BPF_JMP | BPF_JEQ | BPF_K, 0, 3, SOCKET)); // if not socket, skip 3
-    f.push(SockFilter::new(BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_ARGS)); // load arg0 (domain)
+    f.push(SockFilter::new(
+        BPF_LD | BPF_W | BPF_ABS,
+        0,
+        0,
+        SECCOMP_DATA_ARGS,
+    )); // load arg0 (domain)
     f.push(SockFilter::new(BPF_JMP | BPF_JEQ | BPF_K, 0, 1, AF_UNIX)); // if AF_UNIX -> deny
     f.push(deny);
     // Reload syscall number (destroyed by arg load above)
-    f.push(SockFilter::new(BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_NR));
+    f.push(SockFilter::new(
+        BPF_LD | BPF_W | BPF_ABS,
+        0,
+        0,
+        SECCOMP_DATA_NR,
+    ));
 
     // --- clone(CLONE_NEWUSER) block ---
     // clone's flags argument: arg0 on x86_64, arg0 on aarch64 (clone3 uses struct but clone uses register)
     // remaining after this: unshare(5) + allow(1) = 6
     f.push(SockFilter::new(BPF_JMP | BPF_JEQ | BPF_K, 0, 4, CLONE)); // if not clone, skip 4
-    f.push(SockFilter::new(BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_ARGS)); // load arg0 (flags)
-    f.push(SockFilter::new(BPF_ALU | BPF_AND | BPF_K, 0, 0, CLONE_NEWUSER)); // flags & CLONE_NEWUSER
-    f.push(SockFilter::new(BPF_JMP | BPF_JEQ | BPF_K, 0, 1, CLONE_NEWUSER)); // if set -> deny
+    f.push(SockFilter::new(
+        BPF_LD | BPF_W | BPF_ABS,
+        0,
+        0,
+        SECCOMP_DATA_ARGS,
+    )); // load arg0 (flags)
+    f.push(SockFilter::new(
+        BPF_ALU | BPF_AND | BPF_K,
+        0,
+        0,
+        CLONE_NEWUSER,
+    )); // flags & CLONE_NEWUSER
+    f.push(SockFilter::new(
+        BPF_JMP | BPF_JEQ | BPF_K,
+        0,
+        1,
+        CLONE_NEWUSER,
+    )); // if set -> deny
     f.push(deny);
     // Reload syscall number
-    f.push(SockFilter::new(BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_NR));
+    f.push(SockFilter::new(
+        BPF_LD | BPF_W | BPF_ABS,
+        0,
+        0,
+        SECCOMP_DATA_NR,
+    ));
 
     // --- unshare(CLONE_NEWUSER) block ---
     f.push(SockFilter::new(BPF_JMP | BPF_JEQ | BPF_K, 0, 4, UNSHARE)); // if not unshare, skip 4
-    f.push(SockFilter::new(BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_ARGS)); // load arg0 (flags)
-    f.push(SockFilter::new(BPF_ALU | BPF_AND | BPF_K, 0, 0, CLONE_NEWUSER)); // flags & CLONE_NEWUSER
-    f.push(SockFilter::new(BPF_JMP | BPF_JEQ | BPF_K, 0, 1, CLONE_NEWUSER)); // if set -> deny
+    f.push(SockFilter::new(
+        BPF_LD | BPF_W | BPF_ABS,
+        0,
+        0,
+        SECCOMP_DATA_ARGS,
+    )); // load arg0 (flags)
+    f.push(SockFilter::new(
+        BPF_ALU | BPF_AND | BPF_K,
+        0,
+        0,
+        CLONE_NEWUSER,
+    )); // flags & CLONE_NEWUSER
+    f.push(SockFilter::new(
+        BPF_JMP | BPF_JEQ | BPF_K,
+        0,
+        1,
+        CLONE_NEWUSER,
+    )); // if set -> deny
     f.push(deny);
 
     // Allow everything else
@@ -336,9 +395,7 @@ pub fn is_seccomp_supported() -> bool {
     {
         // Try to check if seccomp is available
         // We do this by checking if the kernel supports it
-        let ret = unsafe {
-            libc::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0)
-        };
+        let ret = unsafe { libc::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) };
         ret == 0
     }
 
@@ -351,13 +408,19 @@ pub fn is_seccomp_supported() -> bool {
 /// Get the current architecture name
 pub fn get_architecture() -> &'static str {
     #[cfg(target_arch = "x86_64")]
-    { "x86_64" }
-    
+    {
+        "x86_64"
+    }
+
     #[cfg(target_arch = "aarch64")]
-    { "aarch64" }
-    
+    {
+        "aarch64"
+    }
+
     #[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
-    { "unsupported" }
+    {
+        "unsupported"
+    }
 }
 
 // ============================================================================
@@ -383,7 +446,7 @@ mod tests {
         let arch = get_architecture();
         #[cfg(target_arch = "x86_64")]
         assert_eq!(arch, "x86_64");
-        
+
         #[cfg(target_arch = "aarch64")]
         assert_eq!(arch, "aarch64");
     }
@@ -394,7 +457,10 @@ mod tests {
         let filter = build_sandbox_filter();
         assert!(!filter.is_empty());
         // 1 (LD) + 16 (8 unconditional × 2) + 5 (socket) + 6 (clone) + 6 (unshare) + 1 (ALLOW) = 35
-        assert!(filter.len() > 6, "expanded filter should have more instructions than the old 6-instruction filter");
+        assert!(
+            filter.len() > 6,
+            "expanded filter should have more instructions than the old 6-instruction filter"
+        );
     }
 
     #[test]

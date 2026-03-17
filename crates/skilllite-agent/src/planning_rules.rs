@@ -10,8 +10,8 @@
 
 use std::path::Path;
 
-use skilllite_evolution::seed;
 use super::types::PlanningRule;
+use skilllite_evolution::seed;
 
 /// Load planning rules.
 ///
@@ -40,7 +40,11 @@ pub fn load_rules(workspace: Option<&Path>, chat_root: Option<&Path>) -> Vec<Pla
                 if let Ok(ws_rules) = serde_json::from_str::<Vec<PlanningRule>>(&content) {
                     let ws_count = ws_rules.len();
                     merge_workspace_rules(&mut rules, ws_rules);
-                    tracing::debug!("Merged {} workspace rules from {}", ws_count, path.display());
+                    tracing::debug!(
+                        "Merged {} workspace rules from {}",
+                        ws_count,
+                        path.display()
+                    );
                 }
             }
         }
@@ -92,16 +96,44 @@ pub fn compact_examples_section(user_message: &str) -> String {
         || msg_lower.contains("city")
         || msg_lower.contains("place");
     let candidates: Vec<(&str, &str, &str)> = vec![
-        ("介绍", "景点", "介绍+地点/景点/路线: agent-browser or http-request for fresh info. NOT []."),
-        ("城市", "全方位", "城市/地方/全方位分析: http-request for fresh data. NOT chat_history."),
-        ("对比", "优劣势", "对比/优劣势: http-request for fresh data. NOT chat_history."),
-        ("分析", "稳定性", "分析稳定性/项目: chat_history (ONLY when analyzing chat/project, NOT places)"),
+        (
+            "介绍",
+            "景点",
+            "介绍+地点/景点/路线: agent-browser or http-request for fresh info. NOT [].",
+        ),
+        (
+            "城市",
+            "全方位",
+            "城市/地方/全方位分析: http-request for fresh data. NOT chat_history.",
+        ),
+        (
+            "对比",
+            "优劣势",
+            "对比/优劣势: http-request for fresh data. NOT chat_history.",
+        ),
+        (
+            "分析",
+            "稳定性",
+            "分析稳定性/项目: chat_history (ONLY when analyzing chat/project, NOT places)",
+        ),
         ("历史", "记录", "历史记录: chat_history + analysis."),
-        ("输出到", "保存到", "输出到output: write_output, file_write."),
-        ("继续", "", "继续: use context to infer task, often http-request."),
+        (
+            "输出到",
+            "保存到",
+            "输出到output: write_output, file_write.",
+        ),
+        (
+            "继续",
+            "",
+            "继续: use context to infer task, often http-request.",
+        ),
         ("天气", "气象", "天气: weather skill."),
         ("官网", "网站", "官网/网站: file_write + preview, 2 tasks."),
-        ("refactor", "panic", "编码refactor: file_read定位→file_edit修改→command测试."),
+        (
+            "refactor",
+            "panic",
+            "编码refactor: file_read定位→file_edit修改→command测试.",
+        ),
         ("整理", "项目", "模糊请求: file_list探索→analysis总结/确认."),
     ];
     let mut added = 0;
@@ -111,10 +143,9 @@ pub fn compact_examples_section(user_message: &str) -> String {
         }
         let matches = user_message.contains(k1)
             || msg_lower.contains(&k1.to_lowercase())
-            || (!k2.is_empty() && (user_message.contains(k2) || msg_lower.contains(&k2.to_lowercase())));
-        let skip = matches
-            && k1 == "分析"
-            && is_city_or_place;
+            || (!k2.is_empty()
+                && (user_message.contains(k2) || msg_lower.contains(&k2.to_lowercase())));
+        let skip = matches && k1 == "分析" && is_city_or_place;
         if matches && !skip {
             lines.push(format!("Example - {}: {}", k1, text));
             added += 1;

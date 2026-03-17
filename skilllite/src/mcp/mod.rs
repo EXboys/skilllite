@@ -17,20 +17,20 @@
 //!   - Caller re-calls with `confirmed=true` + `scan_id` → executes
 //!   - Hard-blocked issues (Critical severity) cannot be overridden
 
+mod handlers;
+mod scan;
 mod state;
 mod tools;
-mod scan;
-mod handlers;
 
 use anyhow::Result;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 
+use handlers::{handle_get_skill_info, handle_initialize, handle_list_skills, handle_run_skill};
+use scan::{handle_execute_code, handle_scan_code};
 use state::McpServer;
 use tools::get_mcp_tools;
-use handlers::{handle_initialize, handle_list_skills, handle_get_skill_info, handle_run_skill};
-use scan::{handle_scan_code, handle_execute_code};
 
 /// Maximum JSON-RPC request size (10 MB) to prevent OOM DoS.
 const MAX_REQUEST_SIZE: usize = 10 * 1024 * 1024;
@@ -54,7 +54,9 @@ fn read_line_limited(reader: &mut impl BufRead) -> io::Result<Option<String>> {
             return if buf.is_empty() {
                 Ok(None)
             } else {
-                if buf.last() == Some(&b'\r') { buf.pop(); }
+                if buf.last() == Some(&b'\r') {
+                    buf.pop();
+                }
                 String::from_utf8(buf)
                     .map(Some)
                     .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"))
@@ -71,7 +73,9 @@ fn read_line_limited(reader: &mut impl BufRead) -> io::Result<Option<String>> {
                 }
                 buf.extend_from_slice(&available[..pos]);
                 reader.consume(pos + 1);
-                if buf.last() == Some(&b'\r') { buf.pop(); }
+                if buf.last() == Some(&b'\r') {
+                    buf.pop();
+                }
                 return String::from_utf8(buf)
                     .map(Some)
                     .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid UTF-8"));
@@ -129,7 +133,7 @@ pub fn serve_mcp_stdio(skills_dir: &str) -> Result<()> {
 
     loop {
         let line = match read_line_limited(&mut reader) {
-            Ok(None) => break,       // EOF
+            Ok(None) => break, // EOF
             Ok(Some(l)) => l,
             Err(e) => {
                 let err_resp = json!({
@@ -243,7 +247,11 @@ pub fn serve_mcp_stdio(skills_dir: &str) -> Result<()> {
 }
 
 /// Send a JSON-RPC 2.0 response.
-fn send_response(stdout: &mut io::Stdout, id: Option<Value>, result: Result<Value, Value>) -> Result<()> {
+fn send_response(
+    stdout: &mut io::Stdout,
+    id: Option<Value>,
+    result: Result<Value, Value>,
+) -> Result<()> {
     let id = id.unwrap_or(Value::Null);
     let resp = match result {
         Ok(res) => json!({
@@ -261,4 +269,3 @@ fn send_response(stdout: &mut io::Stdout, id: Option<Value>, result: Result<Valu
     stdout.flush()?;
     Ok(())
 }
-

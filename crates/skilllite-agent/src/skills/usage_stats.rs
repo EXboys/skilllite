@@ -1,11 +1,10 @@
-
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
-use chrono::{Utc, DateTime};
 
 const USAGE_STATS_FILE: &str = "skill_usage_stats.json";
 
@@ -41,11 +40,14 @@ impl SkillUsageStats {
     }
 
     pub fn update_usage(&mut self, skill_name: &str, success: bool) {
-        let entry = self.stats.entry(skill_name.to_string()).or_insert_with(|| SkillUsage {
-            success_count: 0,
-            failure_count: 0,
-            last_used_time: Utc::now(),
-        });
+        let entry = self
+            .stats
+            .entry(skill_name.to_string())
+            .or_insert_with(|| SkillUsage {
+                success_count: 0,
+                failure_count: 0,
+                last_used_time: Utc::now(),
+            });
         if success {
             entry.success_count += 1;
         } else {
@@ -69,9 +71,7 @@ lazy_static::lazy_static! {
 }
 
 pub fn track_skill_execution(skill_name: &str, success: bool) {
-    let mut stats = GLOBAL_USAGE_STATS
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut stats = GLOBAL_USAGE_STATS.lock().unwrap_or_else(|e| e.into_inner());
     stats.update_usage(skill_name, success);
     let data_dir = skilllite_core::config::PathsConfig::from_env().data_dir;
     if let Err(e) = stats.save(&data_dir) {

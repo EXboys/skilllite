@@ -159,7 +159,7 @@ impl ProxyConfig {
         if pattern_clean.starts_with("*.") {
             // Wildcard pattern: *.example.com matches sub.example.com and example.com
             let suffix = &pattern_clean[1..]; // .example.com
-            let base = &pattern_clean[2..];   // example.com
+            let base = &pattern_clean[2..]; // example.com
             domain.ends_with(suffix) || domain == base
         } else {
             domain == pattern_clean

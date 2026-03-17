@@ -65,7 +65,10 @@ pub(super) async fn check_skill_md_completeness<L: EvolutionLlm>(
             }
         }
         Err(e) => {
-            tracing::warn!("LLM doc quality check failed: {}, falling back to heuristic", e);
+            tracing::warn!(
+                "LLM doc quality check failed: {}, falling back to heuristic",
+                e
+            );
             check_skill_md_completeness_heuristic(&content)
         }
     }
@@ -74,8 +77,7 @@ pub(super) async fn check_skill_md_completeness<L: EvolutionLlm>(
 /// 启发式检测 SKILL.md 完整性（LLM 不可用时的 fallback）。
 /// 也可在生成阶段对尚未落盘的 skill_md_content 做写入前校验。
 pub(super) fn check_skill_md_completeness_heuristic(content: &str) -> Option<String> {
-    let has_examples =
-        has_section_with_content(content, &["example", "usage", "用法", "示例"]);
+    let has_examples = has_section_with_content(content, &["example", "usage", "用法", "示例"]);
     let has_params = has_section_with_content(
         content,
         &["input schema", "parameters", "parameter", "参数"],
@@ -281,22 +283,23 @@ pub async fn validate_skills<L: EvolutionLlm>(
     for (idx, (skill_dir, skill_name)) in skill_dirs.iter().enumerate() {
         eprintln!("  [{}/{}] {} ...", idx + 1, total, skill_name);
 
-        let (entry_point, test_input) = match infer::infer_skill_execution(llm, model, skill_dir).await {
-            Ok(ep) => ep,
-            Err(e) => {
-                let err = format!("推理失败: {}", e);
-                tracing::warn!("Skill '{}' {}", skill_name, err);
-                results.push(SkillValidation {
-                    skill_dir: skill_dir.clone(),
-                    skill_name: skill_name.clone(),
-                    passed: false,
-                    entry_point: None,
-                    test_input: None,
-                    error: err,
-                });
-                continue;
-            }
-        };
+        let (entry_point, test_input) =
+            match infer::infer_skill_execution(llm, model, skill_dir).await {
+                Ok(ep) => ep,
+                Err(e) => {
+                    let err = format!("推理失败: {}", e);
+                    tracing::warn!("Skill '{}' {}", skill_name, err);
+                    results.push(SkillValidation {
+                        skill_dir: skill_dir.clone(),
+                        skill_name: skill_name.clone(),
+                        passed: false,
+                        entry_point: None,
+                        test_input: None,
+                        error: err,
+                    });
+                    continue;
+                }
+            };
 
         // 验证前先安装依赖；无 package.json/requirements.txt 时从 SKILL.md compatibility 推断
         let env_path: Option<PathBuf> = super::env_helper::ensure_skill_deps_and_env(skill_dir);

@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::ExitStatus;
 
 use crate::high_risk;
-use crate::types::{EventSink, ToolDefinition, FunctionDef, safe_truncate, safe_slice_from};
+use crate::types::{safe_slice_from, safe_truncate, EventSink, FunctionDef, ToolDefinition};
 
 use super::helpers::filter_sensitive_content_in_text;
 
@@ -35,19 +35,46 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
 // ─── Dangerous command detection ────────────────────────────────────────────
 
 const DANGEROUS_PATTERNS: &[(&str, &str)] = &[
-    (r"rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|.*--force)", "rm with force flag — may delete files irreversibly"),
-    (r"rm\s+-[a-zA-Z]*r[a-zA-Z]*\s+/\s*$", "rm -rf / — system destruction"),
-    (r"(curl|wget)\s+.*\|\s*(bash|sh|zsh)", "piping remote script to shell — remote code execution risk"),
-    (r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;\s*:", "fork bomb — will crash the system"),
-    (r"chmod\s+(-[a-zA-Z]*R|--recursive)\s+777", "recursive chmod 777 — insecure permission change"),
+    (
+        r"rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|.*--force)",
+        "rm with force flag — may delete files irreversibly",
+    ),
+    (
+        r"rm\s+-[a-zA-Z]*r[a-zA-Z]*\s+/\s*$",
+        "rm -rf / — system destruction",
+    ),
+    (
+        r"(curl|wget)\s+.*\|\s*(bash|sh|zsh)",
+        "piping remote script to shell — remote code execution risk",
+    ),
+    (
+        r":\(\)\s*\{\s*:\|:\s*&\s*\}\s*;\s*:",
+        "fork bomb — will crash the system",
+    ),
+    (
+        r"chmod\s+(-[a-zA-Z]*R|--recursive)\s+777",
+        "recursive chmod 777 — insecure permission change",
+    ),
 ];
 
 /// 检测是否尝试读取敏感文件（cat .env 等），直接 block 不可绕过
 const SENSITIVE_FILE_READ_PATTERNS: &[(&str, &str)] = &[
-    (r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.env", "reading .env file"),
-    (r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.key", "reading .key file"),
-    (r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.pem", "reading .pem file"),
-    (r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.git/config", "reading .git/config"),
+    (
+        r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.env",
+        "reading .env file",
+    ),
+    (
+        r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.key",
+        "reading .key file",
+    ),
+    (
+        r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.pem",
+        "reading .pem file",
+    ),
+    (
+        r"(?i)(cat|head|tail|less|more|type|od|xxd|strings)\s+[^\n;|]*\.git/config",
+        "reading .git/config",
+    ),
     (r"(?i)\.\s+[^\n;|]*\.env\b", "sourcing .env file"),
     (r"(?i)source\s+[^\n;|]*\.env", "sourcing .env file"),
 ];
@@ -211,8 +238,14 @@ pub(super) async fn execute_run_command(
             return Ok(build_timeout_outcome());
         }
     };
-    let exit_code = status.code().unwrap_or(if status.success() { 0 } else { -1 });
-    event_sink.on_command_finished(status.success(), exit_code, start_time.elapsed().as_millis() as u64);
+    let exit_code = status
+        .code()
+        .unwrap_or(if status.success() { 0 } else { -1 });
+    event_sink.on_command_finished(
+        status.success(),
+        exit_code,
+        start_time.elapsed().as_millis() as u64,
+    );
 
     let stdout_text = stdout_lines.join("\n");
     let stderr_text = stderr_lines.join("\n");
@@ -239,7 +272,9 @@ fn build_command_result(
     stderr_text: &str,
     redacted: bool,
 ) -> RunCommandOutcome {
-    let code = status.code().unwrap_or(if status.success() { 0 } else { -1 });
+    let code = status
+        .code()
+        .unwrap_or(if status.success() { 0 } else { -1 });
     let mut result = if status.success() {
         format!("Command succeeded (exit {}).", code)
     } else {
@@ -297,7 +332,11 @@ fn build_output_preview(success: bool, stdout_text: &str, stderr_text: &str) -> 
             parts.push(build_preview_block("stdout tail", stdout_text, 3, true));
         }
     }
-    parts.into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n")
+    parts
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 fn build_preview_block(label: &str, text: &str, max_lines: usize, prefer_tail: bool) -> String {

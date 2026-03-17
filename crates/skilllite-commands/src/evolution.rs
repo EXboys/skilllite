@@ -19,7 +19,11 @@ fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     let ws: PathBuf = workspace
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .or_else(|| std::env::var(env_paths::SKILLLITE_WORKSPACE).ok().map(PathBuf::from))
+        .or_else(|| {
+            std::env::var(env_paths::SKILLLITE_WORKSPACE)
+                .ok()
+                .map(PathBuf::from)
+        })
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let ws = if ws.is_absolute() {
         ws
@@ -54,8 +58,14 @@ pub fn cmd_status() -> Result<()> {
 
     // Recent metrics trend
     println!("📈 核心指标趋势 (最近 7 天)");
-    println!("  {:10} {:>8} {:>8} {:>8}", "日期", "成功率", "Replan", "纠正率");
-    println!("  {:10} {:>8} {:>8} {:>8}", "──────────", "────────", "────────", "────────");
+    println!(
+        "  {:10} {:>8} {:>8} {:>8}",
+        "日期", "成功率", "Replan", "纠正率"
+    );
+    println!(
+        "  {:10} {:>8} {:>8} {:>8}",
+        "──────────", "────────", "────────", "────────"
+    );
 
     let mut stmt = conn.prepare(
         "SELECT date, first_success_rate, avg_replans, user_correction_rate
@@ -145,8 +155,6 @@ pub fn cmd_status() -> Result<()> {
     }
     println!();
 
-
-
     Ok(())
 }
 
@@ -216,13 +224,16 @@ pub fn cmd_disable(rule_id: &str) -> Result<()> {
     let content = std::fs::read_to_string(&rules_path)?;
     let mut rules: Vec<serde_json::Value> = serde_json::from_str(&content)?;
 
-    let pos = rules.iter().position(|r| {
-        r.get("id").and_then(|v| v.as_str()) == Some(rule_id)
-    });
+    let pos = rules
+        .iter()
+        .position(|r| r.get("id").and_then(|v| v.as_str()) == Some(rule_id));
 
     match pos {
         Some(idx) => {
-            let is_mutable = rules[idx].get("mutable").and_then(|v| v.as_bool()).unwrap_or(true);
+            let is_mutable = rules[idx]
+                .get("mutable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
             if !is_mutable {
                 anyhow::bail!("规则 '{}' 是种子规则（不可变），无法禁用", rule_id);
             }
@@ -230,7 +241,10 @@ pub fn cmd_disable(rule_id: &str) -> Result<()> {
                 .as_object_mut()
                 .context("rule entry is not a JSON object")?
                 .insert("disabled".to_string(), serde_json::Value::Bool(true));
-            let desc = rules[idx].get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+            let desc = rules[idx]
+                .get("description")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
             let new_content = serde_json::to_string_pretty(&rules)?;
             std::fs::write(&rules_path, new_content)?;
             println!("✅ 已禁用规则: {}", rule_id);
@@ -261,9 +275,9 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
     let content = std::fs::read_to_string(&rules_path)?;
     let rules: Vec<serde_json::Value> = serde_json::from_str(&content)?;
 
-    let rule = rules.iter().find(|r| {
-        r.get("id").and_then(|v| v.as_str()) == Some(rule_id)
-    });
+    let rule = rules
+        .iter()
+        .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(rule_id));
 
     match rule {
         Some(rule) => {
@@ -285,18 +299,34 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
             if let Some(action) = rule.get("action").and_then(|v| v.as_str()) {
                 println!("动作: {}", action);
             }
-            if let Some(th) = rule.get("tool_hint").and_then(|v| v.as_str()).filter(|s| !s.is_empty() && *s != "null") {
+            if let Some(th) = rule
+                .get("tool_hint")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty() && *s != "null")
+            {
                 println!("建议工具: {}", th);
             }
             if let Some(r) = rule.get("rationale").and_then(|v| v.as_str()) {
                 println!("依据: {}", r);
             }
 
-            let mutable = rule.get("mutable").and_then(|v| v.as_bool()).unwrap_or(true);
-            let reusable = rule.get("reusable").and_then(|v| v.as_bool()).unwrap_or(false);
-            let origin = rule.get("origin").and_then(|v| v.as_str()).unwrap_or("unknown");
+            let mutable = rule
+                .get("mutable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+            let reusable = rule
+                .get("reusable")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let origin = rule
+                .get("origin")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown");
             let priority = rule.get("priority").and_then(|v| v.as_u64()).unwrap_or(0);
-            let disabled = rule.get("disabled").and_then(|v| v.as_bool()).unwrap_or(false);
+            let disabled = rule
+                .get("disabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
 
             println!();
             println!("属性:");
@@ -326,7 +356,10 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
             } else {
                 for entry in &history {
                     let date = &entry.ts[..std::cmp::min(16, entry.ts.len())];
-                    println!("  {} {} [{}] {}", date, entry.event_type, entry.txn_id, entry.reason);
+                    println!(
+                        "  {} {} [{}] {}",
+                        date, entry.event_type, entry.txn_id, entry.reason
+                    );
                 }
             }
 
@@ -338,7 +371,10 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
             }
         }
         None => {
-            anyhow::bail!("未找到规则: '{}'\n提示: 使用 `skilllite evolution status` 查看所有规则", rule_id);
+            anyhow::bail!(
+                "未找到规则: '{}'\n提示: 使用 `skilllite evolution status` 查看所有规则",
+                rule_id
+            );
         }
     }
 
@@ -349,8 +385,9 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
 /// Skills are project-level: moves from _pending to _evolved within workspace/.skills/.
 /// Logs skill_confirmed to evolution.log for EvoTown reward (human-approved = effective).
 pub fn cmd_confirm(skill_name: &str) -> Result<()> {
-    let skills_root = resolve_skills_root(None)
-        .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。"))?;
+    let skills_root = resolve_skills_root(None).ok_or_else(|| {
+        anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。")
+    })?;
     skilllite_evolution::skill_synth::confirm_pending_skill(&skills_root, skill_name)?;
     let root = paths::chat_root();
     if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&root) {
@@ -369,8 +406,9 @@ pub fn cmd_confirm(skill_name: &str) -> Result<()> {
 
 /// `skilllite evolution reject <skill_name>` — remove pending skill without adding (A10).
 pub fn cmd_reject(skill_name: &str) -> Result<()> {
-    let skills_root = resolve_skills_root(None)
-        .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。"))?;
+    let skills_root = resolve_skills_root(None).ok_or_else(|| {
+        anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。")
+    })?;
     skilllite_evolution::skill_synth::reject_pending_skill(&skills_root, skill_name)?;
     println!("✅ Skill '{}' 已拒绝", skill_name);
     Ok(())
@@ -416,7 +454,9 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
                 .iter()
                 .find(|(t, _)| t == "skill_pending" || t == "skill_refined")
                 .and_then(|(_, skill_name)| {
-                    skills_root.as_ref().and_then(|sr| build_new_skill(sr, skill_name, &txn_id))
+                    skills_root
+                        .as_ref()
+                        .and_then(|sr| build_new_skill(sr, skill_name, &txn_id))
                 });
 
             let summary: Vec<String> = skilllite_evolution::format_evolution_changes(&changes);
@@ -446,7 +486,9 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
             // Diagnostic: help user understand why
             let mut hint = String::from("Evolution: nothing to evolve");
             if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&root) {
-                if let Ok((total, with_desc)) = skilllite_evolution::feedback::count_decisions_with_task_desc(&conn) {
+                if let Ok((total, with_desc)) =
+                    skilllite_evolution::feedback::count_decisions_with_task_desc(&conn)
+                {
                     if total > 0 && with_desc == 0 {
                         hint.push_str("\n\n提示: 进化需要 task_description。当前待处理决策均无 task_description。");
                         hint.push_str("\n请使用最新构建: cargo build && ./target/debug/skilllite run --goal \"...\"");
@@ -455,7 +497,9 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
                             .query_row("SELECT COUNT(*) FROM decisions", [], |r| r.get(0))
                             .unwrap_or(0);
                         if all_count > 0 {
-                            hint.push_str("\n\n提示: 待处理决策队列为空。已有决策均已进化完毕（已进化）。");
+                            hint.push_str(
+                                "\n\n提示: 待处理决策队列为空。已有决策均已进化完毕（已进化）。",
+                            );
                             hint.push_str("\n请执行新任务积累新决策后再触发进化。");
                         } else {
                             hint.push_str("\n\n提示: 进化队列为空。请先运行 skilllite run 或 skilllite chat 积累决策。");
@@ -492,9 +536,7 @@ fn build_new_skill(skills_root: &Path, skill_name: &str, txn_id: &str) -> Option
         .join("_evolved")
         .join("_pending")
         .join(skill_name);
-    let evolved_path = skills_root
-        .join("_evolved")
-        .join(skill_name);
+    let evolved_path = skills_root.join("_evolved").join(skill_name);
 
     let (path, skill_dir) = if pending_path.exists() {
         (pending_path.clone(), pending_path)
@@ -536,7 +578,12 @@ fn is_fetchable_source(source: &str) -> bool {
     if s.starts_with("clawhub:") {
         return s.len() > 8 && !s[8..].trim().is_empty();
     }
-    if Path::new(s).is_absolute() || s.starts_with("./") || s.starts_with("../") || s == "." || s == ".." {
+    if Path::new(s).is_absolute()
+        || s.starts_with("./")
+        || s.starts_with("../")
+        || s == "."
+        || s == ".."
+    {
         return true;
     }
     if s.contains("://") || s.contains('@') {
@@ -551,8 +598,9 @@ fn is_fetchable_source(source: &str) -> bool {
 /// `skilllite evolution repair-skills [SKILL_NAME...]` — 验证技能并修复失败的。
 /// 不传技能名时验证并修复所有失败技能；传一个或多个技能名时仅验证并修复这些技能，缩短执行时间。
 pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
-    let skills_root = resolve_skills_root(None)
-        .ok_or_else(|| anyhow::anyhow!("无法解析工作区。请设置 SKILLLITE_WORKSPACE 或在项目目录运行。"))?;
+    let skills_root = resolve_skills_root(None).ok_or_else(|| {
+        anyhow::anyhow!("无法解析工作区。请设置 SKILLLITE_WORKSPACE 或在项目目录运行。")
+    })?;
 
     let config = AgentConfig::from_env();
     if config.api_key.is_empty() {
@@ -591,7 +639,10 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
         .map(|v| (v.skill_name.clone(), true))
         .collect();
 
-    println!("\n🔧 修复 {} 个失败的技能（进化的→大模型修复，下载的→可选从源头更新）...", failed.len());
+    println!(
+        "\n🔧 修复 {} 个失败的技能（进化的→大模型修复，下载的→可选从源头更新）...",
+        failed.len()
+    );
 
     for (idx, v) in validated.iter().filter(|v| !v.passed).enumerate() {
         let (ep, ti) = match (&v.entry_point, &v.test_input) {
@@ -603,7 +654,11 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
             }
         };
 
-        let is_evolved = v.skill_dir.as_os_str().to_string_lossy().contains("_evolved");
+        let is_evolved = v
+            .skill_dir
+            .as_os_str()
+            .to_string_lossy()
+            .contains("_evolved");
         let manifest_key = v
             .skill_dir
             .file_name()
@@ -616,25 +671,37 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
         };
 
         let ok = if is_evolved {
-            eprintln!("🔧 [{}/{}] {}（进化技能，大模型修复）...", idx + 1, failed.len(), v.skill_name);
+            eprintln!(
+                "🔧 [{}/{}] {}（进化技能，大模型修复）...",
+                idx + 1,
+                failed.len(),
+                v.skill_name
+            );
             let on_msg = |msg: &str| eprintln!("  💬 {}", msg);
-            let (ok, reason) = rt.block_on(skilllite_evolution::skill_synth::repair_one_skill(
-                &adapter,
-                &config.model,
-                &v.skill_dir,
-                &v.skill_name,
-                ep,
-                ti,
-                Some(&on_msg),
-            ))
-            .unwrap_or_else(|e| (false, format!("{}", e)));
+            let (ok, reason) = rt
+                .block_on(skilllite_evolution::skill_synth::repair_one_skill(
+                    &adapter,
+                    &config.model,
+                    &v.skill_dir,
+                    &v.skill_name,
+                    ep,
+                    ti,
+                    Some(&on_msg),
+                ))
+                .unwrap_or_else(|e| (false, format!("{}", e)));
             if !ok && !reason.is_empty() {
                 eprintln!("  ❌ {}", reason);
             }
             ok
         } else if let Some(ref e) = entry {
             if is_remote_source(&e.source) && is_fetchable_source(&e.source) {
-                eprintln!("🔧 [{}/{}] {}（来自 {}）", idx + 1, failed.len(), v.skill_name, e.source);
+                eprintln!(
+                    "🔧 [{}/{}] {}（来自 {}）",
+                    idx + 1,
+                    failed.len(),
+                    v.skill_name,
+                    e.source
+                );
                 print!("  是否从源头更新？(y/n) [n]: ");
                 let _ = io::stdout().flush();
                 let mut line = String::new();
@@ -642,7 +709,8 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
                     eprintln!("  ⏭️ 跳过");
                     false
                 } else {
-                    let yes = line.trim().eq_ignore_ascii_case("y") || line.trim().eq_ignore_ascii_case("yes");
+                    let yes = line.trim().eq_ignore_ascii_case("y")
+                        || line.trim().eq_ignore_ascii_case("yes");
                     if yes {
                         match crate::skill::update_skill_from_source(
                             &skills_root,
@@ -665,53 +733,72 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
                     }
                 }
             } else if is_remote_source(&e.source) && !is_fetchable_source(&e.source) {
-                eprintln!("🔧 [{}/{}] {}（来源为标识「{}」，无法拉取，大模型修复）...", idx + 1, failed.len(), v.skill_name, e.source);
+                eprintln!(
+                    "🔧 [{}/{}] {}（来源为标识「{}」，无法拉取，大模型修复）...",
+                    idx + 1,
+                    failed.len(),
+                    v.skill_name,
+                    e.source
+                );
                 let on_msg = |msg: &str| eprintln!("  💬 {}", msg);
-                let (ok, reason) = rt.block_on(skilllite_evolution::skill_synth::repair_one_skill(
-                    &adapter,
-                    &config.model,
-                    &v.skill_dir,
-                    &v.skill_name,
-                    ep,
-                    ti,
-                    Some(&on_msg),
-                ))
-                .unwrap_or_else(|e| (false, format!("{}", e)));
+                let (ok, reason) = rt
+                    .block_on(skilllite_evolution::skill_synth::repair_one_skill(
+                        &adapter,
+                        &config.model,
+                        &v.skill_dir,
+                        &v.skill_name,
+                        ep,
+                        ti,
+                        Some(&on_msg),
+                    ))
+                    .unwrap_or_else(|e| (false, format!("{}", e)));
                 if !ok && !reason.is_empty() {
                     eprintln!("  ❌ {}", reason);
                 }
                 ok
             } else {
-                eprintln!("🔧 [{}/{}] {}（大模型修复）...", idx + 1, failed.len(), v.skill_name);
+                eprintln!(
+                    "🔧 [{}/{}] {}（大模型修复）...",
+                    idx + 1,
+                    failed.len(),
+                    v.skill_name
+                );
                 let on_msg = |msg: &str| eprintln!("  💬 {}", msg);
-                let (ok, reason) = rt.block_on(skilllite_evolution::skill_synth::repair_one_skill(
-                    &adapter,
-                    &config.model,
-                    &v.skill_dir,
-                    &v.skill_name,
-                    ep,
-                    ti,
-                    Some(&on_msg),
-                ))
-                .unwrap_or_else(|e| (false, format!("{}", e)));
+                let (ok, reason) = rt
+                    .block_on(skilllite_evolution::skill_synth::repair_one_skill(
+                        &adapter,
+                        &config.model,
+                        &v.skill_dir,
+                        &v.skill_name,
+                        ep,
+                        ti,
+                        Some(&on_msg),
+                    ))
+                    .unwrap_or_else(|e| (false, format!("{}", e)));
                 if !ok && !reason.is_empty() {
                     eprintln!("  ❌ {}", reason);
                 }
                 ok
             }
         } else {
-            eprintln!("🔧 [{}/{}] {}（大模型修复）...", idx + 1, failed.len(), v.skill_name);
+            eprintln!(
+                "🔧 [{}/{}] {}（大模型修复）...",
+                idx + 1,
+                failed.len(),
+                v.skill_name
+            );
             let on_msg = |msg: &str| eprintln!("  💬 {}", msg);
-            let (ok, reason) = rt.block_on(skilllite_evolution::skill_synth::repair_one_skill(
-                &adapter,
-                &config.model,
-                &v.skill_dir,
-                &v.skill_name,
-                ep,
-                ti,
-                Some(&on_msg),
-            ))
-            .unwrap_or_else(|e| (false, format!("{}", e)));
+            let (ok, reason) = rt
+                .block_on(skilllite_evolution::skill_synth::repair_one_skill(
+                    &adapter,
+                    &config.model,
+                    &v.skill_dir,
+                    &v.skill_name,
+                    ep,
+                    ti,
+                    Some(&on_msg),
+                ))
+                .unwrap_or_else(|e| (false, format!("{}", e)));
             if !ok && !reason.is_empty() {
                 eprintln!("  ❌ {}", reason);
             }
@@ -723,9 +810,23 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
 
     let ok_count = results.iter().filter(|(_, ok)| *ok).count();
     let fail_count = results.len() - ok_count;
-    println!("\n🔧 技能修复完成: 共 {} 个技能, {} 成功, {} 失败", results.len(), ok_count, fail_count);
+    println!(
+        "\n🔧 技能修复完成: 共 {} 个技能, {} 成功, {} 失败",
+        results.len(),
+        ok_count,
+        fail_count
+    );
     for (name, ok) in &results {
-        println!("  {} {} {}", if *ok { "✅" } else { "❌" }, name, if *ok { "(通过/已更新)" } else { "(未通过)" });
+        println!(
+            "  {} {} {}",
+            if *ok { "✅" } else { "❌" },
+            name,
+            if *ok {
+                "(通过/已更新)"
+            } else {
+                "(未通过)"
+            }
+        );
     }
 
     Ok(())

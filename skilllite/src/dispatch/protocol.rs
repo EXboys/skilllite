@@ -11,10 +11,7 @@ pub fn register(reg: &mut CommandRegistry) {
     reg.register(|cmd| {
         if let Commands::Serve { stdio } = cmd {
             if *stdio {
-                Some(
-                    crate::protocol::StdioRpcHandler
-                        .serve(crate::protocol::ProtocolParams::Stdio),
-                )
+                Some(crate::protocol::StdioRpcHandler.serve(crate::protocol::ProtocolParams::Stdio))
             } else {
                 Some(Ok(()))
             }
@@ -26,10 +23,7 @@ pub fn register(reg: &mut CommandRegistry) {
     #[cfg(feature = "agent")]
     reg.register(|cmd| {
         if matches!(cmd, Commands::AgentRpc) {
-            Some(
-                crate::protocol::AgentRpcHandler
-                    .serve(crate::protocol::ProtocolParams::AgentRpc),
-            )
+            Some(crate::protocol::AgentRpcHandler.serve(crate::protocol::ProtocolParams::AgentRpc))
         } else {
             None
         }
@@ -41,12 +35,15 @@ pub fn register(reg: &mut CommandRegistry) {
             #[cfg(feature = "swarm")]
             {
                 #[cfg(feature = "agent")]
-                let executor: Option<std::sync::Arc<dyn skilllite_swarm::TaskExecutor>> =
-                    Some(std::sync::Arc::new(swarm_executor::AgentTaskExecutor::new(
-                        skills_dir.clone(),
-                    )));
+                let executor: Option<
+                    std::sync::Arc<dyn skilllite_swarm::TaskExecutor>,
+                > = Some(std::sync::Arc::new(swarm_executor::AgentTaskExecutor::new(
+                    skills_dir.clone(),
+                )));
                 #[cfg(not(feature = "agent"))]
-                let executor: Option<std::sync::Arc<dyn skilllite_swarm::TaskExecutor>> = None;
+                let executor: Option<
+                    std::sync::Arc<dyn skilllite_swarm::TaskExecutor>,
+                > = None;
                 Some(
                     crate::protocol::SwarmHandler.serve(crate::protocol::ProtocolParams::P2p {
                         listen_addr: listen.clone(),

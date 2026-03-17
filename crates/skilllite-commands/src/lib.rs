@@ -20,18 +20,18 @@ pub mod execute;
 pub mod scan;
 pub mod security;
 
-pub mod skill;
-pub mod ide;
 pub mod env;
-pub mod reindex;
-pub mod init;
 #[cfg(feature = "agent")]
 pub mod evolution;
+pub mod ide;
+pub mod init;
 #[cfg(feature = "agent")]
 pub mod planning_rules_gen;
 #[cfg(feature = "agent")]
 pub mod quickstart;
+pub mod reindex;
 #[cfg(feature = "agent")]
 pub mod replay;
 #[cfg(feature = "agent")]
 pub mod replay_quality;
+pub mod skill;

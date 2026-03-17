@@ -2,13 +2,13 @@
 //!
 //! Implements run_skill, exec_script, bash_command, validate_skill, show_skill_info.
 
+use anyhow::{Context, Result};
+use serde_json::json;
 use skilllite_core::path_validation::validate_skill_path;
+use skilllite_core::skill;
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::trust::TrustDecision;
 use skilllite_sandbox::runner::SandboxConfig;
-use skilllite_core::skill;
-use anyhow::{Context, Result};
-use serde_json::json;
 use std::path::Path;
 use std::sync::Mutex;
 
@@ -40,7 +40,9 @@ pub fn run_skill(
     }
 
     if metadata.entry_point.is_empty() {
-        anyhow::bail!("This skill has no entry point and cannot be executed. It is a prompt-only skill.");
+        anyhow::bail!(
+            "This skill has no entry point and cannot be executed. It is a prompt-only skill."
+        );
     }
 
     let _input: serde_json::Value = serde_json::from_str(input_json)
@@ -48,7 +50,11 @@ pub fn run_skill(
 
     skilllite_sandbox::info_log!("[INFO] ensure_environment start...");
     let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &metadata);
-    let env_path = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir.map(|s| s.as_str()))?;
+    let env_path = skilllite_sandbox::env::builder::ensure_environment(
+        &skill_path,
+        &env_spec,
+        cache_dir.map(|s| s.as_str()),
+    )?;
     skilllite_sandbox::info_log!("[INFO] ensure_environment done");
 
     let mut effective_metadata = metadata;
@@ -106,7 +112,11 @@ pub fn exec_script(
         meta.entry_point = script_path.to_string();
         meta.language = Some(language.clone());
         let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &meta);
-        let env = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir.map(|s| s.as_str()))?;
+        let env = skilllite_sandbox::env::builder::ensure_environment(
+            &skill_path,
+            &env_spec,
+            cache_dir.map(|s| s.as_str()),
+        )?;
         (meta, env)
     } else {
         let meta = skill::metadata::SkillMetadata {
@@ -132,7 +142,11 @@ pub fn exec_script(
             compatibility: None,
             resolved_packages: None,
         };
-        let env = skilllite_sandbox::env::builder::ensure_environment(&skill_path, &env_spec, cache_dir.map(|s| s.as_str()))?;
+        let env = skilllite_sandbox::env::builder::ensure_environment(
+            &skill_path,
+            &env_spec,
+            cache_dir.map(|s| s.as_str()),
+        )?;
         (meta, env)
     };
 
@@ -141,7 +155,9 @@ pub fn exec_script(
         effective_metadata.network.enabled = true;
     }
 
-    let _guard = EXEC_ENV_MUTEX.lock().map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
+    let _guard = EXEC_ENV_MUTEX
+        .lock()
+        .map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
     let _args_guard = if let Some(ref args_str) = args {
         skilllite_core::config::set_env_var("SKILLLITE_SCRIPT_ARGS", args_str);
         Some(ScopedEnvGuard("SKILLLITE_SCRIPT_ARGS"))
@@ -186,16 +202,20 @@ pub fn bash_command(
 
     let skill_patterns = metadata.get_bash_patterns();
     if skill_patterns.is_empty() {
-        anyhow::bail!("Skill '{}' has allowed-tools but no Bash(...) patterns found", metadata.name);
+        anyhow::bail!(
+            "Skill '{}' has allowed-tools but no Bash(...) patterns found",
+            metadata.name
+        );
     }
 
-    let validator_patterns: Vec<skilllite_sandbox::bash_validator::BashToolPattern> = skill_patterns
-        .into_iter()
-        .map(|p| skilllite_sandbox::bash_validator::BashToolPattern {
-            command_prefix: p.command_prefix,
-            raw_pattern: p.raw_pattern,
-        })
-        .collect();
+    let validator_patterns: Vec<skilllite_sandbox::bash_validator::BashToolPattern> =
+        skill_patterns
+            .into_iter()
+            .map(|p| skilllite_sandbox::bash_validator::BashToolPattern {
+                command_prefix: p.command_prefix,
+                raw_pattern: p.raw_pattern,
+            })
+            .collect();
     skilllite_sandbox::bash_validator::validate_bash_command(command, &validator_patterns)
         .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
 
@@ -245,7 +265,8 @@ fn execute_bash_with_env(
         }
     }
 
-    let mut child = cmd.spawn()
+    let mut child = cmd
+        .spawn()
         .with_context(|| format!("Failed to spawn bash command: {}", command))?;
 
     let memory_limit = skilllite_sandbox::runner::ResourceLimits::from_env().max_memory_bytes();
@@ -311,7 +332,10 @@ pub fn show_skill_info(skill_dir: &str) -> Result<()> {
 }
 
 /// Build a `SandboxConfig` from `SkillMetadata`, resolving language via `detect_language`.
-fn build_sandbox_config(skill_dir: &Path, metadata: &skill::metadata::SkillMetadata) -> SandboxConfig {
+fn build_sandbox_config(
+    skill_dir: &Path,
+    metadata: &skill::metadata::SkillMetadata,
+) -> SandboxConfig {
     SandboxConfig {
         name: metadata.name.clone(),
         entry_point: metadata.entry_point.clone(),
@@ -348,7 +372,10 @@ fn detect_script_language(script_path: &Path) -> Result<String> {
                     }
                 }
             }
-            anyhow::bail!("Cannot detect language for script: {}", script_path.display())
+            anyhow::bail!(
+                "Cannot detect language for script: {}",
+                script_path.display()
+            )
         }
         _ => anyhow::bail!("Unsupported script extension: .{}", extension),
     }

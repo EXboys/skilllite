@@ -49,7 +49,8 @@ impl McpServer {
     /// Remove expired scan cache entries.
     pub fn cleanup_expired_scans(&mut self) {
         let now = Instant::now();
-        self.scan_cache.retain(|_, v| now.duration_since(v.created_at) < self.cache_ttl);
+        self.scan_cache
+            .retain(|_, v| now.duration_since(v.created_at) < self.cache_ttl);
     }
 
     /// Generate a code hash: SHA256(language:code) full hexdigest.
@@ -90,4 +91,3 @@ impl McpServer {
         hex::encode(hasher.finalize())[..16].to_string()
     }
 }
-

@@ -53,11 +53,20 @@ pub fn scan_skill_md_suspicious_patterns(content: &str) -> Vec<SkillMdAlert> {
 
     // Medium severity: instructions to run in terminal
     for (pattern, msg) in [
-        ("run in terminal", "Instructions to run command in user terminal"),
-        ("copy and paste", "Instructions to copy-paste command (social engineering)"),
+        (
+            "run in terminal",
+            "Instructions to run command in user terminal",
+        ),
+        (
+            "copy and paste",
+            "Instructions to copy-paste command (social engineering)",
+        ),
         ("copy and run", "Instructions to copy and run command"),
         ("run this command", "Direct instruction to run a command"),
-        ("execute this command", "Direct instruction to execute a command"),
+        (
+            "execute this command",
+            "Direct instruction to execute a command",
+        ),
         ("在终端运行", "Instructions to run in terminal (Chinese)"),
         ("复制并执行", "Instructions to copy and execute (Chinese)"),
     ] {

@@ -4,18 +4,18 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::PathBuf;
 
-use skilllite_core::skill::metadata;
 use skilllite_core::skill::manifest;
+use skilllite_core::skill::metadata;
 
 use super::common;
 
-mod source;
-mod discovery;
 mod admission;
+mod discovery;
+mod source;
 
-use source::{parse_source, fetch_from_clawhub, clone_repo};
-use discovery::{discover_skills, copy_skill, install_skill_deps};
 use admission::{scan_candidate_skills, AdmissionRisk};
+use discovery::{copy_skill, discover_skills, install_skill_deps};
+use source::{clone_repo, fetch_from_clawhub, parse_source};
 
 pub(in crate::skill) use admission::scan_candidate_skills_fast;
 
@@ -149,10 +149,7 @@ pub fn cmd_add(
             }
         }
         if !malicious.is_empty() {
-            eprintln!(
-                "   ❌ Blocked malicious skill(s): {}",
-                malicious.join(", ")
-            );
+            eprintln!("   ❌ Blocked malicious skill(s): {}", malicious.join(", "));
         }
         if !suspicious.is_empty() && !force {
             eprintln!(
@@ -171,7 +168,8 @@ pub fn cmd_add(
             .iter()
             .map(|r| (r.name.clone(), r.risk.as_str()))
             .collect();
-        let blocked: std::collections::HashSet<&str> = malicious.iter().map(|s| s.as_str()).collect();
+        let blocked: std::collections::HashSet<&str> =
+            malicious.iter().map(|s| s.as_str()).collect();
         let skipped_suspicious: std::collections::HashSet<&str> = if force {
             std::collections::HashSet::new()
         } else {
@@ -257,11 +255,7 @@ pub fn update_skill_from_source(
         td
     };
 
-    let skills = discover_skills(
-        &repo_dir,
-        parsed.subpath.as_deref(),
-        Some(skill_name),
-    );
+    let skills = discover_skills(&repo_dir, parsed.subpath.as_deref(), Some(skill_name));
 
     let skill_path = skills
         .into_iter()

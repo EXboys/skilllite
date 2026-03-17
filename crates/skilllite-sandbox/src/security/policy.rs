@@ -214,8 +214,8 @@ pub fn get_sensitive_read_project_regex_patterns(relaxed: bool) -> Vec<&'static 
         return vec![];
     }
     vec![
-        r"/\.git/",       // any path containing .git/
-        r"/\.env$",       // path ending with .env
+        r"/\.git/",        // any path containing .git/
+        r"/\.env$",        // path ending with .env
         r"/\.env\.[^/]+$", // path ending with .env.xxx
     ]
 }
@@ -328,7 +328,10 @@ pub fn resolve_network_policy(network_enabled: bool, outbound: &[String]) -> Res
     // Extract domain parts (strip :port if present) for proxy filtering.
     // e.g. "*:80" → "*", "*.github.com:443" → "*.github.com"
     ResolvedNetworkPolicy::ProxyFiltered {
-        domains: outbound.iter().map(|s| strip_port_suffix(s.trim()).to_string()).collect(),
+        domains: outbound
+            .iter()
+            .map(|s| strip_port_suffix(s.trim()).to_string())
+            .collect(),
     }
 }
 

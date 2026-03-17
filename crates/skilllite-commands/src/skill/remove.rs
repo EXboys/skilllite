@@ -3,8 +3,8 @@
 use anyhow::{Context, Result};
 use std::fs;
 
-use skilllite_core::skill::metadata;
 use skilllite_core::skill::manifest;
+use skilllite_core::skill::metadata;
 
 use super::common;
 
@@ -45,10 +45,7 @@ pub fn cmd_remove(skill_name: &str, skills_dir: &str, force: bool) -> Result<()>
     }
 
     if !force {
-        let dir_name = skill_path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy();
+        let dir_name = skill_path.file_name().unwrap_or_default().to_string_lossy();
         eprint!(
             "Remove skill '{}' from {}? [y/N] ",
             dir_name,

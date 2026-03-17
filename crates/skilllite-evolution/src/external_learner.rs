@@ -13,8 +13,8 @@ use std::path::Path;
 use anyhow::Result;
 use rusqlite::Connection;
 
-use skilllite_core::planning::{PlanningRule, SourceEntry, SourceRegistry};
 use crate::feedback::open_evolution_db;
+use skilllite_core::planning::{PlanningRule, SourceEntry, SourceRegistry};
 
 use skilllite_fs::atomic_write;
 // use crate::feedback; // unused import, commented out
@@ -101,7 +101,9 @@ fn prioritize_sources(sources: &[SourceEntry]) -> Vec<&SourceEntry> {
         // Within same region: sort by composite score descending
         let score_a = a.accessibility_score * a.quality_score;
         let score_b = b.accessibility_score * b.quality_score;
-        score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+        score_b
+            .partial_cmp(&score_a)
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
 
     enabled
@@ -222,7 +224,10 @@ fn parse_rss(raw: &str) -> Vec<(String, String)> {
         let title = extract_xml_tag(item, "title").unwrap_or_default();
         let desc = extract_xml_tag(item, "description").unwrap_or_default();
         // Strip basic HTML tags from description
-        let desc_clean = strip_html_basic(&desc).chars().take(120).collect::<String>();
+        let desc_clean = strip_html_basic(&desc)
+            .chars()
+            .take(120)
+            .collect::<String>();
         if !title.is_empty() {
             results.push((title, desc_clean));
         }
@@ -267,8 +272,7 @@ fn parse_hn_algolia_json(raw: &str) -> Vec<(String, String)> {
         return Vec::new();
     };
     let hits = v["hits"].as_array().cloned().unwrap_or_default();
-    hits
-        .iter()
+    hits.iter()
         .take(10)
         .filter_map(|hit| {
             let title = hit["title"].as_str()?.to_string();
@@ -347,7 +351,11 @@ async fn extract_rules_from_content<L: EvolutionLlm>(
         .replace("{{existing_rules_summary}}", existing_summary);
 
     let messages = vec![EvolutionMessage::user(&prompt)];
-    let content = llm.complete(&messages, model, 0.3).await?.trim().to_string();
+    let content = llm
+        .complete(&messages, model, 0.3)
+        .await?
+        .trim()
+        .to_string();
 
     if content.is_empty() {
         return Ok(Vec::new());
@@ -372,10 +380,7 @@ fn parse_external_rule_response(content: &str) -> Result<Vec<PlanningRule>> {
     for val in arr {
         let id = val["id"].as_str().unwrap_or("").to_string();
         if id.is_empty() || !id.starts_with("ext_") {
-            tracing::warn!(
-                "External rule rejected: id '{}' must start with 'ext_'",
-                id
-            );
+            tracing::warn!("External rule rejected: id '{}' must start with 'ext_'", id);
             continue;
         }
         let instruction = val["instruction"].as_str().unwrap_or("").to_string();
@@ -390,11 +395,19 @@ fn parse_external_rule_response(content: &str) -> Result<Vec<PlanningRule>> {
         let priority = val["priority"].as_u64().unwrap_or(50).clamp(45, 55) as u32;
         let keywords: Vec<String> = val["keywords"]
             .as_array()
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let context_keywords: Vec<String> = val["context_keywords"]
             .as_array()
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         let tool_hint = val["tool_hint"]
             .as_str()
@@ -673,7 +686,7 @@ pub async fn run_external_learning<L: EvolutionLlm>(
 
     // Phase 3+4: one conn for promote check + logging
     let conn = open_evolution_db(chat_root)?;
-        let _promoted: Vec<PlanningRule> = Vec::new(); // Temporarily disabled
+    let _promoted: Vec<PlanningRule> = Vec::new(); // Temporarily disabled
     let promotion_changes: Vec<(String, String)> = Vec::new(); // Temporarily disabled
     all_changes.extend(promotion_changes);
 
@@ -712,12 +725,7 @@ mod tests {
     use crate::feedback;
     use skilllite_core::planning::{SourceEntry, SourceRegistry};
 
-    fn make_source(
-        id: &str,
-        region: &str,
-        accessibility: f32,
-        quality: f32,
-    ) -> SourceEntry {
+    fn make_source(id: &str, region: &str, accessibility: f32, quality: f32) -> SourceEntry {
         SourceEntry {
             id: id.to_string(),
             name: id.to_string(),

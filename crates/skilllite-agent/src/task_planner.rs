@@ -14,7 +14,6 @@ use std::path::Path;
 use anyhow::Result;
 
 use super::extensions::ToolAvailabilityView;
-use skilllite_evolution::seed;
 use super::goal_boundaries::GoalBoundaries;
 use super::llm::LlmClient;
 use super::planning_rules;
@@ -22,6 +21,7 @@ use super::skills::LoadedSkill;
 use super::soul::Soul;
 use super::tool_hint_resolver;
 use super::types::*;
+use skilllite_evolution::seed;
 
 /// Resolve the output directory path for prompt injection.
 fn resolve_output_dir() -> String {
@@ -35,7 +35,10 @@ fn resolve_output_dir() -> String {
 
 /// Filter rules by user message: include rules with empty keywords (always) or
 /// rules whose keywords match the user message.
-fn filter_rules_for_user_message<'a>(rules: &'a [PlanningRule], user_message: &str) -> Vec<&'a PlanningRule> {
+fn filter_rules_for_user_message<'a>(
+    rules: &'a [PlanningRule],
+    user_message: &str,
+) -> Vec<&'a PlanningRule> {
     let msg_lower = user_message.to_lowercase();
     rules
         .iter()
@@ -131,29 +134,41 @@ impl TaskPlanner {
         }
     }
 
-    fn filter_rules_by_available_skills(&self, rules: &[PlanningRule], skills: &[LoadedSkill]) -> Vec<PlanningRule> {
-        rules.iter().filter(|r| {
-            match r.tool_hint.as_deref() {
+    fn filter_rules_by_available_skills(
+        &self,
+        rules: &[PlanningRule],
+        skills: &[LoadedSkill],
+    ) -> Vec<PlanningRule> {
+        rules
+            .iter()
+            .filter(|r| match r.tool_hint.as_deref() {
                 None => true,
                 Some(hint) => match self.availability.as_ref() {
-                    Some(view) => tool_hint_resolver::is_hint_available_with_availability(hint, skills, view),
+                    Some(view) => {
+                        tool_hint_resolver::is_hint_available_with_availability(hint, skills, view)
+                    }
                     None => tool_hint_resolver::is_hint_available(hint, skills),
                 },
-            }
-        }).cloned().collect()
+            })
+            .cloned()
+            .collect()
     }
 
     fn sanitize_task_hints(&self, tasks: &mut [Task], skills: &[LoadedSkill]) {
         for task in tasks.iter_mut() {
             if let Some(ref hint) = task.tool_hint {
                 let available = match self.availability.as_ref() {
-                    Some(view) => tool_hint_resolver::is_hint_available_with_availability(hint, skills, view),
+                    Some(view) => {
+                        tool_hint_resolver::is_hint_available_with_availability(hint, skills, view)
+                    }
                     None => tool_hint_resolver::is_hint_available(hint, skills),
                 };
                 if !available {
                     tracing::info!(
                         "Stripped unavailable tool_hint '{}' from task {}: {}",
-                        hint, task.id, task.description
+                        hint,
+                        task.id,
+                        task.description
                     );
                     task.tool_hint = None;
                 }
@@ -204,7 +219,8 @@ impl TaskPlanner {
                 .join("\n")
         };
 
-        let planning_prompt = self.build_planning_prompt(&skills_info, user_message, Some(model), soul);
+        let planning_prompt =
+            self.build_planning_prompt(&skills_info, user_message, Some(model), soul);
 
         let mut user_content = format!(
             "**PRIMARY — Plan ONLY based on this**:\nUser request: {}\n\n",
@@ -270,7 +286,10 @@ impl TaskPlanner {
                         Ok(tasks)
                     }
                     Err(e) => {
-                        tracing::warn!("规划解析失败，使用 fallback 单任务。parse_task_list error: {}", e);
+                        tracing::warn!(
+                            "规划解析失败，使用 fallback 单任务。parse_task_list error: {}",
+                            e
+                        );
                         let fallback = vec![Task {
                             id: 1,
                             description: user_message.to_string(),
@@ -343,7 +362,10 @@ impl TaskPlanner {
             }
         }
 
-        tracing::debug!("parse_task_list raw (first 500 chars): {}", &raw[..raw.len().min(500)]);
+        tracing::debug!(
+            "parse_task_list raw (first 500 chars): {}",
+            &raw[..raw.len().min(500)]
+        );
         anyhow::bail!("No valid JSON task array found in LLM response")
     }
 
@@ -402,11 +424,7 @@ impl TaskPlanner {
     fn auto_enhance_tasks(&self, tasks: &mut Vec<Task>) {
         let has_skill_creation = tasks.iter().any(|t| {
             let desc_lower = t.description.to_lowercase();
-            let hint_lower = t
-                .tool_hint
-                .as_deref()
-                .unwrap_or("")
-                .to_lowercase();
+            let hint_lower = t.tool_hint.as_deref().unwrap_or("").to_lowercase();
             desc_lower.contains("skill-creator") || hint_lower.contains("skill-creator")
         });
 
@@ -438,7 +456,8 @@ impl TaskPlanner {
     ) -> String {
         let compact = get_compact_planning(model);
         let rules_section = if compact {
-            let filtered: Vec<&PlanningRule> = filter_rules_for_user_message(&self.available_rules, user_message);
+            let filtered: Vec<&PlanningRule> =
+                filter_rules_for_user_message(&self.available_rules, user_message);
             build_rules_section(&filtered.iter().map(|r| (*r).clone()).collect::<Vec<_>>())
         } else {
             build_rules_section(&self.available_rules)
@@ -450,10 +469,14 @@ impl TaskPlanner {
         };
         let output_dir = resolve_output_dir();
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        let yesterday = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+        let yesterday = (chrono::Local::now() - chrono::Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string();
 
         let template = seed::load_prompt_file_with_project(
-            self.chat_root.as_deref().unwrap_or(Path::new("/nonexistent")),
+            self.chat_root
+                .as_deref()
+                .unwrap_or(Path::new("/nonexistent")),
             self.workspace.as_deref(),
             "planning.md",
             include_str!("seed/planning.seed.md"),
@@ -481,7 +504,9 @@ impl TaskPlanner {
             None => skills.iter().collect(),
         };
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-        let yesterday = (chrono::Local::now() - chrono::Duration::days(1)).format("%Y-%m-%d").to_string();
+        let yesterday = (chrono::Local::now() - chrono::Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string();
         let skills_list: Vec<String> = visible_skills
             .iter()
             .map(|s| {
@@ -491,7 +516,10 @@ impl TaskPlanner {
                     .as_deref()
                     .unwrap_or("No description");
                 if s.metadata.entry_point.is_empty() && !s.metadata.is_bash_tool_skill() {
-                    format!("  - **{}**: {} ⛔ [Reference Only — NOT a callable tool, do NOT call it]", s.name, desc)
+                    format!(
+                        "  - **{}**: {} ⛔ [Reference Only — NOT a callable tool, do NOT call it]",
+                        s.name, desc
+                    )
                 } else {
                     format!("  - **{}**: {}", s.name, desc)
                 }
@@ -501,7 +529,9 @@ impl TaskPlanner {
         let output_dir = resolve_output_dir();
 
         let template = seed::load_prompt_file_with_project(
-            self.chat_root.as_deref().unwrap_or(Path::new("/nonexistent")),
+            self.chat_root
+                .as_deref()
+                .unwrap_or(Path::new("/nonexistent")),
             self.workspace.as_deref(),
             "execution.md",
             include_str!("seed/execution.seed.md"),
@@ -800,10 +830,11 @@ mod tests {
             },
         ];
 
-        planner.matched_rule_ids = filter_rules_for_user_message(&planner.available_rules, "帮我查天气")
-            .into_iter()
-            .map(|r| r.id.clone())
-            .collect();
+        planner.matched_rule_ids =
+            filter_rules_for_user_message(&planner.available_rules, "帮我查天气")
+                .into_iter()
+                .map(|r| r.id.clone())
+                .collect();
 
         assert_eq!(
             planner.matched_rule_ids(),
@@ -871,13 +902,11 @@ mod tests {
         // We only care about the side effect on matched_rule_ids here.
         // The actual LLM call and task parsing are not relevant for this specific test.
         // So, we directly call filter_rules_for_user_message as generate_task_list does.
-        planner.matched_rule_ids = filter_rules_for_user_message(
-            &planner.available_rules,
-            "请帮我查询一下天气情况",
-        )
-        .into_iter()
-        .map(|r| r.id.clone())
-        .collect();
+        planner.matched_rule_ids =
+            filter_rules_for_user_message(&planner.available_rules, "请帮我查询一下天气情况")
+                .into_iter()
+                .map(|r| r.id.clone())
+                .collect();
 
         // Assert that the matched_rule_ids contains the expected rule IDs from the fallback (seed) rules
         let expected_ids = vec![

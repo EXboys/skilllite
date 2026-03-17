@@ -150,17 +150,20 @@ pub(super) fn query_pattern_executions(
     let mut stmt = conn.prepare(&sql)?;
 
     let rows: Vec<String> = stmt
-        .query_map(rusqlite::params_from_iter(task_descriptions.iter()), |row| {
-            let desc: String = row.get(0)?;
-            let tools: Option<String> = row.get(1)?;
-            let elapsed: i64 = row.get(2)?;
-            Ok(format!(
-                "- 任务: {} | 工具: {} | 耗时: {}ms",
-                desc,
-                tools.unwrap_or_else(|| "N/A".to_string()),
-                elapsed
-            ))
-        })?
+        .query_map(
+            rusqlite::params_from_iter(task_descriptions.iter()),
+            |row| {
+                let desc: String = row.get(0)?;
+                let tools: Option<String> = row.get(1)?;
+                let elapsed: i64 = row.get(2)?;
+                Ok(format!(
+                    "- 任务: {} | 工具: {} | 耗时: {}ms",
+                    desc,
+                    tools.unwrap_or_else(|| "N/A".to_string()),
+                    elapsed
+                ))
+            },
+        )?
         .filter_map(|r| r.ok())
         .collect();
 

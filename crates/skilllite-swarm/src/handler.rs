@@ -29,7 +29,10 @@ fn parse_listen_addr(addr: &str) -> Result<(String, u16)> {
     let (host, port_str) = match parts.as_slice() {
         [h, p] => (*h, *p),
         [p] if p.parse::<u16>().is_ok() => ("0.0.0.0", *p),
-        _ => anyhow::bail!("Invalid listen address: expected host:port or :port, got {}", addr),
+        _ => anyhow::bail!(
+            "Invalid listen address: expected host:port or :port, got {}",
+            addr
+        ),
     };
     let port: u16 = port_str.parse().context("Invalid port number")?;
     Ok((host.to_string(), port))
@@ -54,7 +57,10 @@ async fn handle_status(State(state): State<AppState>) -> impl IntoResponse {
         Some(id) => ("busy", serde_json::Value::String(id.clone())),
         None => ("idle", serde_json::Value::Null),
     };
-    (StatusCode::OK, Json(serde_json::json!({ "status": status, "current_task_id": task_id_val })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "status": status, "current_task_id": task_id_val })),
+    )
 }
 
 #[derive(serde::Deserialize)]
@@ -65,7 +71,10 @@ struct CanDoQuery {
 
 /// GET /can-do — "谁能做" broadcast target: respond "我来" when local capabilities match.
 /// Query: ?required=tag1,tag2. Returns { "can_do": true, "instance_name": "..." } or can_do: false.
-async fn handle_can_do(State(state): State<AppState>, Query(q): Query<CanDoQuery>) -> impl IntoResponse {
+async fn handle_can_do(
+    State(state): State<AppState>,
+    Query(q): Query<CanDoQuery>,
+) -> impl IntoResponse {
     let required: Vec<String> = q
         .required
         .as_deref()
@@ -111,11 +120,8 @@ async fn handle_task(
             v.sort();
             v
         };
-        let inferred = crate::llm_routing::infer_required_capabilities(
-            &task.description,
-            &all_tags,
-        )
-        .await;
+        let inferred =
+            crate::llm_routing::infer_required_capabilities(&task.description, &all_tags).await;
         if inferred.is_empty() {
             task.context.required_capabilities.clone()
         } else {
@@ -136,11 +142,24 @@ async fn handle_task(
         let client = reqwest::Client::new();
         let mut respondents: Vec<crate::discovery::PeerInfo> = Vec::new();
         for peer in &peers {
-            let url = format!("http://{}/can-do?required={}", peer.addr, urlencoding::encode(&can_do_query));
-            match client.get(&url).timeout(Duration::from_secs(3)).send().await {
+            let url = format!(
+                "http://{}/can-do?required={}",
+                peer.addr,
+                urlencoding::encode(&can_do_query)
+            );
+            match client
+                .get(&url)
+                .timeout(Duration::from_secs(3))
+                .send()
+                .await
+            {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(json) = resp.json::<serde_json::Value>().await {
-                        if json.get("can_do").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        if json
+                            .get("can_do")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false)
+                        {
                             respondents.push(peer.clone());
                         }
                     }
@@ -221,9 +240,10 @@ async fn handle_task(
                 let task_id = task_id.clone();
                 let current_task = state.current_task.clone();
                 let s1 = stream::iter([
-                    Ok::<_, anyhow::Error>(Bytes::from(
-                        format!("{{\"event\":\"received\",\"task_id\":\"{}\"}}\n", task_id),
-                    )),
+                    Ok::<_, anyhow::Error>(Bytes::from(format!(
+                        "{{\"event\":\"received\",\"task_id\":\"{}\"}}\n",
+                        task_id
+                    ))),
                     Ok(Bytes::from("{\"event\":\"executing\"}\n")),
                 ]);
                 let s2 = stream::once(async move {
@@ -237,12 +257,17 @@ async fn handle_task(
                     match result {
                         Ok(res) => {
                             let json = serde_json::to_string(&res).map_err(anyhow::Error::msg)?;
-                            Ok(Bytes::from(format!("{{\"event\":\"done\",\"result\":{}}}\n", json)))
+                            Ok(Bytes::from(format!(
+                                "{{\"event\":\"done\",\"result\":{}}}\n",
+                                json
+                            )))
                         }
                         Err(e) => {
-                            let json =
-                                serde_json::json!({"error":"execution_failed","message":e.to_string()});
-                            Ok(Bytes::from(format!("{{\"event\":\"error\",\"error\":{}}}\n", json)))
+                            let json = serde_json::json!({"error":"execution_failed","message":e.to_string()});
+                            Ok(Bytes::from(format!(
+                                "{{\"event\":\"error\",\"error\":{}}}\n",
+                                json
+                            )))
                         }
                     }
                 });
@@ -381,7 +406,8 @@ pub fn serve_swarm(
             }
         }
         if !tried {
-            path.parent().map(|p| skilllite_core::config::load_dotenv_from_dir(p));
+            path.parent()
+                .map(|p| skilllite_core::config::load_dotenv_from_dir(p));
         }
     }
 
@@ -398,7 +424,8 @@ pub fn serve_swarm(
     discovery.register(&instance_name, &host, port, &capability_tags)?;
 
     let browse_rx = discovery.browse()?;
-    let peers: Arc<std::sync::Mutex<Vec<crate::discovery::PeerInfo>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let peers: Arc<std::sync::Mutex<Vec<crate::discovery::PeerInfo>>> =
+        Arc::new(std::sync::Mutex::new(Vec::new()));
 
     // Spawn browse loop — populate peers, exclude self
     let peers_browse = peers.clone();
@@ -409,7 +436,12 @@ pub fn serve_swarm(
         while !shutdown_browse.load(Ordering::SeqCst) {
             match browse_rx.recv_timeout(Duration::from_millis(500)) {
                 Ok(ServiceEvent::ServiceResolved(resolved)) => {
-                    let instance_name = resolved.fullname.split('.').next().unwrap_or("").to_string();
+                    let instance_name = resolved
+                        .fullname
+                        .split('.')
+                        .next()
+                        .unwrap_or("")
+                        .to_string();
                     if instance_name == my_instance {
                         continue; // skip self
                     }
@@ -426,7 +458,9 @@ pub fn serve_swarm(
                         capabilities: caps.clone(),
                     };
                     if let Ok(mut p) = peers_browse.lock() {
-                        if let Some(existing) = p.iter_mut().find(|x| x.instance_name == info.instance_name) {
+                        if let Some(existing) =
+                            p.iter_mut().find(|x| x.instance_name == info.instance_name)
+                        {
                             *existing = info;
                         } else {
                             tracing::info!(
@@ -482,8 +516,8 @@ pub fn serve_swarm(
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        let std_listener = std::net::TcpListener::bind(listen_addr)
-            .context("Failed to bind TCP listener")?;
+        let std_listener =
+            std::net::TcpListener::bind(listen_addr).context("Failed to bind TCP listener")?;
         let listener = tokio::net::TcpListener::from_std(std_listener)?;
         axum::serve(listener, app).await?;
         Ok::<(), anyhow::Error>(())

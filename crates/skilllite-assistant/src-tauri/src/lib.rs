@@ -27,7 +27,9 @@ async fn skilllite_chat_stream(
 }
 
 #[tauri::command]
-fn skilllite_stop(process_state: tauri::State<'_, skilllite_bridge::ChatProcessState>) -> Result<(), String> {
+fn skilllite_stop(
+    process_state: tauri::State<'_, skilllite_bridge::ChatProcessState>,
+) -> Result<(), String> {
     skilllite_bridge::stop_chat(&process_state)
 }
 
@@ -43,7 +45,9 @@ async fn skilllite_load_recent() -> skilllite_bridge::RecentData {
 }
 
 #[tauri::command]
-async fn skilllite_load_transcript(session_key: Option<String>) -> Vec<skilllite_bridge::TranscriptMessage> {
+async fn skilllite_load_transcript(
+    session_key: Option<String>,
+) -> Vec<skilllite_bridge::TranscriptMessage> {
     let key = session_key.unwrap_or_else(|| "default".to_string());
     tauri::async_runtime::spawn_blocking(move || skilllite_bridge::load_transcript(&key))
         .await
@@ -70,7 +74,9 @@ async fn skilllite_clear_transcript(
 #[tauri::command]
 async fn skilllite_read_memory_file(relative_path: String) -> Result<String, String> {
     let path = relative_path.clone();
-    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_memory_file(&path)).await {
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_memory_file(&path))
+        .await
+    {
         Ok(inner) => inner,
         Err(e) => Err(e.to_string()),
     }
@@ -79,7 +85,9 @@ async fn skilllite_read_memory_file(relative_path: String) -> Result<String, Str
 #[tauri::command]
 async fn skilllite_read_output_file(relative_path: String) -> Result<String, String> {
     let path = relative_path.clone();
-    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_output_file(&path)).await {
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_output_file(&path))
+        .await
+    {
         Ok(inner) => inner,
         Err(e) => Err(e.to_string()),
     }
@@ -88,7 +96,11 @@ async fn skilllite_read_output_file(relative_path: String) -> Result<String, Str
 #[tauri::command]
 async fn skilllite_read_output_file_base64(relative_path: String) -> Result<String, String> {
     let path = relative_path.clone();
-    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_output_file_base64(&path)).await {
+    match tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::read_output_file_base64(&path)
+    })
+    .await
+    {
         Ok(inner) => inner,
         Err(e) => Err(e.to_string()),
     }
@@ -96,7 +108,9 @@ async fn skilllite_read_output_file_base64(relative_path: String) -> Result<Stri
 
 #[tauri::command]
 async fn skilllite_open_directory(module: String) -> Result<(), String> {
-    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::open_directory(&module)).await {
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::open_directory(&module))
+        .await
+    {
         Ok(inner) => inner,
         Err(e) => Err(e.to_string()),
     }
@@ -167,7 +181,11 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
             let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().expect("default window icon must be set in tauri.conf.json").clone())
+                .icon(
+                    app.default_window_icon()
+                        .expect("default window icon must be set in tauri.conf.json")
+                        .clone(),
+                )
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .tooltip("SkillLite Assistant")

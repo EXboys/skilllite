@@ -5,7 +5,7 @@ use std::path::Path;
 
 use skilllite_core::skill::metadata::{self, SkillMetadata};
 
-use crate::types::{ToolDefinition, FunctionDef};
+use crate::types::{FunctionDef, ToolDefinition};
 
 use super::LoadedSkill;
 
@@ -26,7 +26,9 @@ pub(super) fn load_evolved_skills(evolved_dir: &Path) -> Vec<LoadedSkill> {
         let meta_path = skill_dir.join(".meta.json");
         if meta_path.exists() {
             if let Ok(content) = skilllite_fs::read_file(&meta_path) {
-                if let Ok(meta) = serde_json::from_str::<skilllite_evolution::skill_synth::SkillMeta>(&content) {
+                if let Ok(meta) =
+                    serde_json::from_str::<skilllite_evolution::skill_synth::SkillMeta>(&content)
+                {
                     if meta.archived {
                         tracing::debug!("Skipping archived evolved skill: {}", meta.name);
                         continue;
@@ -63,7 +65,10 @@ pub(super) fn load_single_skill(skill_dir: &Path) -> Option<LoadedSkill> {
         // Bash-tool skill: command string parameter
         let patterns = metadata.get_bash_patterns();
         let desc = metadata.description.clone().unwrap_or_else(|| {
-            format!("Execute commands for {}. Allowed patterns: {:?}", name, patterns)
+            format!(
+                "Execute commands for {}. Allowed patterns: {:?}",
+                name, patterns
+            )
         });
         vec![ToolDefinition {
             tool_type: "function".to_string(),
@@ -84,17 +89,17 @@ pub(super) fn load_single_skill(skill_dir: &Path) -> Option<LoadedSkill> {
         }]
     } else if !metadata.entry_point.is_empty() {
         // Regular skill with entry point — try argparse schema inference
-        let desc = metadata.description.clone().unwrap_or_else(|| {
-            format!("Execute skill: {}", name)
+        let desc = metadata
+            .description
+            .clone()
+            .unwrap_or_else(|| format!("Execute skill: {}", name));
+        let schema = infer_entry_point_schema(skill_dir, &metadata).unwrap_or_else(|| {
+            serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+            })
         });
-        let schema = infer_entry_point_schema(skill_dir, &metadata)
-            .unwrap_or_else(|| {
-                serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "additionalProperties": true
-                })
-            });
         vec![ToolDefinition {
             tool_type: "function".to_string(),
             function: FunctionDef {
@@ -185,10 +190,7 @@ fn detect_multi_script_tools(
 
                 let script_path = format!("scripts/{}", fname);
 
-                let desc = format!(
-                    "Execute {} from skill '{}'",
-                    script_path, skill_name
-                );
+                let desc = format!("Execute {} from skill '{}'", script_path, skill_name);
 
                 // Try argparse inference for Python scripts
                 let schema = if fname.ends_with(".py") {
@@ -230,7 +232,10 @@ fn flexible_schema() -> serde_json::Value {
 /// Try to infer parameter schema from a skill's entry point script.
 /// If the entry point is a Python file, parse argparse calls.
 
-fn infer_entry_point_schema(skill_dir: &Path, metadata: &SkillMetadata) -> Option<serde_json::Value> {
+fn infer_entry_point_schema(
+    skill_dir: &Path,
+    metadata: &SkillMetadata,
+) -> Option<serde_json::Value> {
     let entry = &metadata.entry_point;
     if entry.is_empty() {
         return None;
@@ -287,10 +292,7 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
             .and_then(|re| re.captures(kwargs_str))
         {
             if let Some(m) = help_cap.get(1) {
-                prop.insert(
-                    "description".to_string(),
-                    serde_json::json!(m.as_str()),
-                );
+                prop.insert("description".to_string(), serde_json::json!(m.as_str()));
             }
         }
 
@@ -392,7 +394,13 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
 
 pub(super) fn sanitize_tool_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .to_lowercase()
 }

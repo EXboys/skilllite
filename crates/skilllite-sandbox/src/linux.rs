@@ -1,11 +1,11 @@
 #![cfg(target_os = "linux")]
 
 use crate::common::wait_with_timeout;
+use crate::network_proxy::{ProxyConfig, ProxyManager};
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::{ResolvedRuntime, RuntimeResolver};
-use crate::network_proxy::{ProxyConfig, ProxyManager};
-use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use crate::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
+use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use anyhow::{Context, Result};
 use nix::mount::{mount, MsFlags};
 use nix::sched::{unshare, CloneFlags};
@@ -46,11 +46,14 @@ pub fn execute_with_limits(
         tracing::warn!("Sandbox disabled via SKILLLITE_NO_SANDBOX - running without protection");
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
-    
+
     match execute_with_seccomp(skill_dir, runtime, config, input_json, limits) {
         Ok(result) => Ok(result),
         Err(e) => {
-            tracing::info!("Seccomp sandbox failed ({}), trying namespace isolation...", e);
+            tracing::info!(
+                "Seccomp sandbox failed ({}), trying namespace isolation...",
+                e
+            );
             match execute_with_namespaces(skill_dir, runtime, config, input_json, limits) {
                 Ok(result) => Ok(result),
                 Err(e2) => {
@@ -163,7 +166,9 @@ fn execute_simple_with_limits(
         });
     }
 
-    let mut child = cmd.spawn().with_context(|| "Failed to spawn skill process")?;
+    let mut child = cmd
+        .spawn()
+        .with_context(|| "Failed to spawn skill process")?;
 
     if let Some(mut stdin) = child.stdin.take() {
         stdin
@@ -210,7 +215,7 @@ fn execute_with_seccomp(
     // Use bwrap (bubblewrap) if available for unprivileged sandboxing
     // bwrap is commonly available on Linux and provides namespace isolation without root
     let bwrap_path = which_bwrap();
-    
+
     if let Some(bwrap) = bwrap_path {
         return execute_with_bwrap(
             &bwrap,
@@ -242,7 +247,9 @@ fn execute_with_seccomp(
     }
 
     // No sandbox tool available
-    anyhow::bail!("No sandbox tool available (bwrap or firejail). Install bubblewrap: apt install bubblewrap")
+    anyhow::bail!(
+        "No sandbox tool available (bwrap or firejail). Install bubblewrap: apt install bubblewrap"
+    )
 }
 
 /// Check if bwrap (bubblewrap) is available
@@ -293,10 +300,8 @@ fn execute_with_bwrap(
 ) -> Result<ExecutionResult> {
     let env_path = &runtime.env_dir;
     let interpreter_path = resolve_command_path(&resolved.interpreter);
-    let network_policy = security_policy::resolve_network_policy(
-        config.network_enabled,
-        &config.network_outbound,
-    );
+    let network_policy =
+        security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
 
     // Start network proxy when policy requires domain filtering
     let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
@@ -311,8 +316,11 @@ fn execute_with_bwrap(
                     tracing::warn!("Failed to start network proxy: {}", e);
                     None
                 } else {
-                    tracing::info!("Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
-                             manager.http_port(), manager.socks5_port());
+                    tracing::info!(
+                        "Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
+                        manager.http_port(),
+                        manager.socks5_port()
+                    );
                     Some(manager)
                 }
             }
@@ -329,11 +337,11 @@ fn execute_with_bwrap(
     };
 
     let mut cmd = Command::new(bwrap);
-    
+
     // Basic isolation
-    cmd.args(["--unshare-all"]);  // Unshare all namespaces
-    cmd.args(["--die-with-parent"]);  // Kill sandbox if parent dies
-    
+    cmd.args(["--unshare-all"]); // Unshare all namespaces
+    cmd.args(["--die-with-parent"]); // Kill sandbox if parent dies
+
     // Mount minimal filesystem
     cmd.args(["--ro-bind", "/usr", "/usr"]);
     cmd.args(["--ro-bind", "/lib", "/lib"]);
@@ -374,21 +382,21 @@ fn execute_with_bwrap(
             cmd.args(["--ro-bind", etc_file, etc_file]);
         }
     }
-    
+
     // Mount skill directory as read-only
     let skill_dir_str = skill_dir.to_string_lossy();
     cmd.args(["--ro-bind", &skill_dir_str, &skill_dir_str]);
-    
+
     // Create empty home with --dir /home first, then bind env_path so Python/Node env is readable
     cmd.args(["--dir", "/home"]);
     cmd.args(["--dir", "/root"]);
-    
+
     // Mount environment directory (Python venv / Node node_modules) - must be after --dir or it gets overwritten
     if !env_path.as_os_str().is_empty() && env_path.exists() {
         let env_path_str = env_path.to_string_lossy();
         cmd.args(["--ro-bind", &env_path_str, &env_path_str]);
     }
-    
+
     let relaxed = security_policy::is_relaxed_mode();
     if relaxed {
         if let Ok(home) = std::env::var("HOME") {
@@ -399,14 +407,14 @@ fn execute_with_bwrap(
             }
         }
     }
-    
+
     // Mount work directory as read-write
     let work_dir_str = work_dir.to_string_lossy();
     cmd.args(["--bind", &work_dir_str, "/tmp"]);
-    
+
     // Create minimal /dev
     cmd.args(["--dev", "/dev"]);
-    
+
     // Create /proc.
     // On bare metal / macOS we can mount a real procfs via --proc.
     // Inside Docker, even with seccomp:unconfined, mounting procfs from a user
@@ -425,20 +433,20 @@ fn execute_with_bwrap(
         // Real procfs – fully isolated process view on bare-metal / macOS
         cmd.args(["--proc", "/proc"]);
     }
-    
+
     // Network isolation (from security_policy - aligns with macOS)
     if security_policy::is_network_blocked(&network_policy) {
         cmd.args(["--unshare-net"]);
     } else {
         cmd.args(["--share-net"]);
     }
-    
+
     // Set environment
     cmd.args(["--setenv", "SKILLLITE_SANDBOX", "1"]);
     cmd.args(["--setenv", "SKILLBOX_SANDBOX", "1"]); // legacy compat
     cmd.args(["--setenv", "TMPDIR", "/tmp"]);
     cmd.args(["--setenv", "HOME", "/tmp"]);
-    
+
     if let Some(ref manager) = proxy_manager {
         for (key, value) in manager.get_proxy_env_vars() {
             cmd.args(["--setenv", &key, &value]);
@@ -447,7 +455,7 @@ fn execute_with_bwrap(
     for (k, v) in &resolved.extra_env {
         cmd.args(["--setenv", k, v]);
     }
-    
+
     // Block mandatory deny directories using tmpfs (makes them empty)
     for dir in MANDATORY_DENY_DIRECTORIES {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/user".to_string());
@@ -461,7 +469,7 @@ fn execute_with_bwrap(
             cmd.args(["--tmpfs", &full_path]);
         }
     }
-    
+
     // Generate seccomp BPF filter file for Unix socket blocking.
     //
     // bwrap --seccomp FD expects an *open file descriptor* (integer), not a
@@ -490,15 +498,15 @@ fn execute_with_bwrap(
     if seccomp_raw_fd.is_some() {
         cmd.args(["--seccomp", "3"]);
     }
-    
+
     // Add the program and arguments
     cmd.arg("--");
     cmd.arg(&interpreter_path);
     cmd.arg(entry_point);
-    
+
     // Set working directory
     cmd.current_dir(skill_dir);
-    
+
     // Set up stdin/stdout/stderr
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
@@ -513,8 +521,8 @@ fn execute_with_bwrap(
     unsafe {
         cmd.pre_exec(move || {
             use nix::libc::{
-                rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC,
-                dup2, fcntl, close, F_GETFD, F_SETFD, FD_CLOEXEC,
+                close, dup2, fcntl, rlimit, setrlimit, FD_CLOEXEC, F_GETFD, F_SETFD, RLIMIT_AS,
+                RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC,
             };
 
             let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
@@ -559,14 +567,17 @@ fn execute_with_bwrap(
     }
 
     // Spawn the process
-    let mut child = cmd.spawn().with_context(|| "Failed to spawn bwrap sandbox")?;
-    
+    let mut child = cmd
+        .spawn()
+        .with_context(|| "Failed to spawn bwrap sandbox")?;
+
     // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(input_json.as_bytes())
+        stdin
+            .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
-    
+
     // Wait with timeout and memory monitoring
     let (stdout, stderr, exit_code, _, _) = wait_with_timeout(
         &mut child,
@@ -574,10 +585,10 @@ fn execute_with_bwrap(
         limits.max_memory_bytes(),
         true,
     )?;
-    
+
     // Proxy manager will be dropped here, stopping the proxy servers
     drop(proxy_manager);
-    
+
     Ok(ExecutionResult {
         stdout,
         stderr,
@@ -668,8 +679,16 @@ fn generate_seccomp_bpf_file(path: &Path) -> Result<()> {
     filter.push((BPF_LD | BPF_W | BPF_ABS, 0, 0, SECCOMP_DATA_NR));
 
     // Unconditional blocks
-    for syscall in [nr::PTRACE, nr::MOUNT, nr::UMOUNT2, nr::KEYCTL,
-                    nr::KEXEC_LOAD, nr::KEXEC_FILE_LOAD, nr::PIVOT_ROOT, nr::CHROOT] {
+    for syscall in [
+        nr::PTRACE,
+        nr::MOUNT,
+        nr::UMOUNT2,
+        nr::KEYCTL,
+        nr::KEXEC_LOAD,
+        nr::KEXEC_FILE_LOAD,
+        nr::PIVOT_ROOT,
+        nr::CHROOT,
+    ] {
         filter.push((BPF_JMP | BPF_JEQ | BPF_K, 0, 1, syscall));
         filter.push(deny);
     }
@@ -726,10 +745,8 @@ fn execute_with_firejail(
 ) -> Result<ExecutionResult> {
     let env_path = &runtime.env_dir;
     let interpreter_path = resolve_command_path(&resolved.interpreter);
-    let network_policy = security_policy::resolve_network_policy(
-        config.network_enabled,
-        &config.network_outbound,
-    );
+    let network_policy =
+        security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
 
     let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
         let domains = match &network_policy {
@@ -743,8 +760,11 @@ fn execute_with_firejail(
                     tracing::warn!("Failed to start network proxy: {}", e);
                     None
                 } else {
-                    tracing::info!("Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
-                             manager.http_port(), manager.socks5_port());
+                    tracing::info!(
+                        "Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
+                        manager.http_port(),
+                        manager.socks5_port()
+                    );
                     Some(manager)
                 }
             }
@@ -761,17 +781,17 @@ fn execute_with_firejail(
     };
 
     let mut cmd = Command::new(firejail);
-    
+
     // Security options
     cmd.args(["--quiet"]);
-    cmd.args(["--noprofile"]);  // Don't use default profile
-    cmd.args(["--private"]);  // New /home and /root
-    cmd.args(["--private-tmp"]);  // New /tmp
-    cmd.args(["--private-dev"]);  // Minimal /dev
-    cmd.args(["--noroot"]);  // No root in sandbox
-    cmd.args(["--caps.drop=all"]);  // Drop all capabilities
-    cmd.args(["--seccomp"]);  // Enable seccomp (includes Unix socket blocking)
-    
+    cmd.args(["--noprofile"]); // Don't use default profile
+    cmd.args(["--private"]); // New /home and /root
+    cmd.args(["--private-tmp"]); // New /tmp
+    cmd.args(["--private-dev"]); // Minimal /dev
+    cmd.args(["--noroot"]); // No root in sandbox
+    cmd.args(["--caps.drop=all"]); // Drop all capabilities
+    cmd.args(["--seccomp"]); // Enable seccomp (includes Unix socket blocking)
+
     // File system restrictions
     cmd.args(["--read-only=/usr"]);
     cmd.args(["--read-only=/lib"]);
@@ -783,19 +803,19 @@ fn execute_with_firejail(
         cmd.args([&format!("--whitelist={}", runtime_root_str)]);
         cmd.args([&format!("--read-only={}", runtime_root_str)]);
     }
-    
+
     // Whitelist skill directory (read-only)
     let skill_dir_str = skill_dir.to_string_lossy();
     cmd.args([&format!("--whitelist={}", skill_dir_str)]);
     cmd.args([&format!("--read-only={}", skill_dir_str)]);
-    
+
     // Whitelist environment directory if exists
     if !env_path.as_os_str().is_empty() && env_path.exists() {
         let env_path_str = env_path.to_string_lossy();
         cmd.args([&format!("--whitelist={}", env_path_str)]);
         cmd.args([&format!("--read-only={}", env_path_str)]);
     }
-    
+
     // Network isolation (from security_policy - aligns with macOS)
     if security_policy::is_network_blocked(&network_policy) {
         cmd.args(["--net=none"]);
@@ -804,29 +824,29 @@ fn execute_with_firejail(
     } else {
         tracing::info!("Network enabled (wildcard or direct)");
     }
-    
+
     // Block sensitive directories using mandatory deny list from security module
     cmd.args(["--blacklist=/etc/passwd"]);
     cmd.args(["--blacklist=/etc/shadow"]);
-    
+
     // Add all mandatory deny paths from security module
     for arg in generate_firejail_blacklist_args() {
         cmd.arg(&arg);
     }
-    
+
     // Add the program and arguments
     cmd.arg("--");
     cmd.arg(&interpreter_path);
     cmd.arg(entry_point);
-    
+
     // Set working directory
     cmd.current_dir(skill_dir);
-    
+
     // Set up stdin/stdout/stderr
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
-    
+
     // Set environment
     cmd.env("SKILLLITE_SANDBOX", "1");
     cmd.env("SKILLBOX_SANDBOX", "1"); // legacy compat
@@ -837,30 +857,34 @@ fn execute_with_firejail(
     for (k, v) in &resolved.extra_env {
         cmd.env(k, v);
     }
-    
+
     // Set proxy environment variables if proxy is running
     if let Some(ref manager) = proxy_manager {
         for (key, value) in manager.get_proxy_env_vars() {
             cmd.env(&key, &value);
         }
     }
-    
+
     // Spawn the process
-    let mut child = cmd.spawn().with_context(|| "Failed to spawn firejail sandbox")?;
-    
+    let mut child = cmd
+        .spawn()
+        .with_context(|| "Failed to spawn firejail sandbox")?;
+
     // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(input_json.as_bytes())
+        stdin
+            .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
-    
+
     // Wait for completion
-    let output = child.wait_with_output()
+    let output = child
+        .wait_with_output()
         .with_context(|| "Failed to wait for firejail sandbox")?;
-    
+
     // Proxy manager will be dropped here, stopping the proxy servers
     drop(proxy_manager);
-    
+
     Ok(ExecutionResult {
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
@@ -919,13 +943,17 @@ fn execute_with_namespaces(
     unsafe {
         cmd.pre_exec(|| {
             unshare(CloneFlags::CLONE_NEWUTS | CloneFlags::CLONE_NEWPID | CloneFlags::CLONE_NEWNET)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("unshare failed: {}", e)))?;
+                .map_err(|e| {
+                    std::io::Error::new(std::io::ErrorKind::Other, format!("unshare failed: {}", e))
+                })?;
             Ok(())
         });
     }
 
     // Spawn the process
-    let mut child = cmd.spawn().with_context(|| "Failed to spawn skill process")?;
+    let mut child = cmd
+        .spawn()
+        .with_context(|| "Failed to spawn skill process")?;
 
     // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
@@ -950,11 +978,7 @@ fn execute_with_namespaces(
 }
 /// Set up mount namespace with read-only binds
 #[allow(dead_code)]
-fn setup_mount_namespace(
-    root_path: &Path,
-    skill_dir: &Path,
-    env_dir: &Path,
-) -> Result<()> {
+fn setup_mount_namespace(root_path: &Path, skill_dir: &Path, env_dir: &Path) -> Result<()> {
     // Create necessary directories
     fs::create_dir_all(root_path.join("usr"))?;
     fs::create_dir_all(root_path.join("lib"))?;
@@ -1033,19 +1057,15 @@ fn resolve_command_path(cmd: &Path) -> PathBuf {
 }
 
 fn resolve_which(cmd: &Path) -> Option<PathBuf> {
-    Command::new("which")
-        .arg(cmd)
-        .output()
-        .ok()
-        .and_then(|o| {
-            if o.status.success() {
-                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Some(PathBuf::from(path));
-                }
+    Command::new("which").arg(cmd).output().ok().and_then(|o| {
+        if o.status.success() {
+            let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if !path.is_empty() {
+                return Some(PathBuf::from(path));
             }
-            None
-        })
+        }
+        None
+    })
 }
 
 fn collect_additional_runtime_roots(interpreter: &Path, env_path: &Path) -> Vec<PathBuf> {

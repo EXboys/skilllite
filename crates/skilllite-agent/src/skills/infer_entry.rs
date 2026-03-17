@@ -25,7 +25,11 @@ fn list_script_paths(skill_dir: &Path) -> Vec<String> {
             continue;
         }
         let name = path.file_name().unwrap_or_default().to_string_lossy();
-        if name.starts_with("test_") || name.ends_with("_test.py") || name == "__init__.py" || name.starts_with('.') {
+        if name.starts_with("test_")
+            || name.ends_with("_test.py")
+            || name == "__init__.py"
+            || name.starts_with('.')
+        {
             continue;
         }
         paths.push(format!("scripts/{}", name));
@@ -67,7 +71,11 @@ pub async fn infer_entry_point_from_skill_md<L: EvolutionLlm>(
     );
 
     let messages = vec![EvolutionMessage::user(&prompt)];
-    let response = llm.complete(&messages, model, 0.0).await?.trim().to_string();
+    let response = llm
+        .complete(&messages, model, 0.0)
+        .await?
+        .trim()
+        .to_string();
     let response_upper = response.to_uppercase();
     if response_upper == "NONE" || response.is_empty() {
         return Ok(None);

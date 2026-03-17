@@ -4,7 +4,7 @@
 //! against local capability_tags and discovered peers. Local match → execute;
 //! otherwise → forward to matching peer or broadcast "who can do".
 
-use skilllite_core::protocol::{NodeTask, NodeResult};
+use skilllite_core::protocol::{NodeResult, NodeTask};
 
 use crate::discovery::PeerInfo;
 
@@ -63,7 +63,7 @@ fn matching_peers(required: &[String], peers: &[PeerInfo]) -> Vec<PeerInfo> {
         let a_loopback = a.addr.starts_with("127.");
         let b_loopback = b.addr.starts_with("127.");
         match (a_loopback, b_loopback) {
-            (true, false) => std::cmp::Ordering::Less,   // loopback first
+            (true, false) => std::cmp::Ordering::Less, // loopback first
             (false, true) => std::cmp::Ordering::Greater,
             _ => a.addr.cmp(&b.addr),
         }
@@ -125,7 +125,10 @@ pub fn route_task(
 /// Implemented by the skilllite binary (agent integration).
 pub trait TaskExecutor: Send + Sync + std::fmt::Debug {
     /// Execute the task locally and return the result.
-    fn execute(&self, task: NodeTask) -> Result<NodeResult, Box<dyn std::error::Error + Send + Sync>>;
+    fn execute(
+        &self,
+        task: NodeTask,
+    ) -> Result<NodeResult, Box<dyn std::error::Error + Send + Sync>>;
 }
 
 #[cfg(test)]
@@ -139,12 +142,18 @@ mod tests {
 
     #[test]
     fn test_capabilities_match_satisfied() {
-        assert!(capabilities_match(&["python".into()], &["python".into(), "web".into()]));
+        assert!(capabilities_match(
+            &["python".into()],
+            &["python".into(), "web".into()]
+        ));
     }
 
     #[test]
     fn test_capabilities_match_missing() {
-        assert!(!capabilities_match(&["python".into(), "ml".into()], &["python".into()]));
+        assert!(!capabilities_match(
+            &["python".into(), "ml".into()],
+            &["python".into()]
+        ));
     }
 
     #[test]
@@ -166,7 +175,9 @@ mod tests {
             capabilities: vec!["calc".into()],
         }];
         let target = route_task(&task, &local, &peers);
-        assert!(matches!(target, RouteTarget::Forward(ref v) if v.len() == 1 && v[0].instance_name == "peer1"));
+        assert!(
+            matches!(target, RouteTarget::Forward(ref v) if v.len() == 1 && v[0].instance_name == "peer1")
+        );
     }
 
     #[test]
@@ -197,9 +208,14 @@ mod tests {
             },
         ];
         let target = route_task(&task, &local, &peers);
-        let RouteTarget::Forward(v) = target else { panic!("expected Forward") };
+        let RouteTarget::Forward(v) = target else {
+            panic!("expected Forward")
+        };
         assert_eq!(v.len(), 1, "should dedupe to one peer by port");
-        assert!(v[0].addr.starts_with("127."), "should prefer 127.0.0.1 over LAN IP");
+        assert!(
+            v[0].addr.starts_with("127."),
+            "should prefer 127.0.0.1 over LAN IP"
+        );
     }
 
     #[test]

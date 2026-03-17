@@ -133,15 +133,20 @@ pub(super) fn reflect_planning(
 
     *consecutive_no_tool += 1;
     if *consecutive_no_tool >= max_no_tool_retries {
-        tracing::warn!("LLM failed to make progress after {} attempts, stopping", max_no_tool_retries);
+        tracing::warn!(
+            "LLM failed to make progress after {} attempts, stopping",
+            max_no_tool_retries
+        );
         return ReflectionOutcome::Break;
     }
 
     if let Some(nudge) = planner.build_nudge_message() {
-        tracing::info!("Auto-nudge (attempt {}): pending tasks remain", *consecutive_no_tool);
+        tracing::info!(
+            "Auto-nudge (attempt {}): pending tasks remain",
+            *consecutive_no_tool
+        );
         return ReflectionOutcome::Nudge(nudge);
     }
 
     ReflectionOutcome::Break
 }
-

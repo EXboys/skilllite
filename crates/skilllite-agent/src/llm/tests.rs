@@ -4,7 +4,6 @@ use super::*;
 use crate::types::{ChatMessage, FunctionCall, ToolCall};
 use serde_json::json;
 
-
 #[test]
 fn test_detect_tool_format_openai() {
     assert_eq!(

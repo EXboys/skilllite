@@ -5,18 +5,21 @@ use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
 
+use super::chat_root_for_rpc;
 use super::memory::{ensure_index, index_file, index_path, search_bm25};
-use super::session::SessionStore;
 use super::plan::{append_plan, read_latest_plan};
+use super::session::SessionStore;
 use super::transcript::{
     append_entry, ensure_session_header, read_entries_for_session, transcript_path_today,
     TranscriptEntry,
 };
-use super::chat_root_for_rpc;
 
 pub fn handle_session_create(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
+    let session_key = p
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
 
     let root = chat_root_for_rpc(workspace_path)?;
@@ -38,7 +41,10 @@ pub fn handle_session_create(params: &Value) -> Result<Value> {
 
 pub fn handle_session_get(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
+    let session_key = p
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
 
     let root = chat_root_for_rpc(workspace_path)?;
@@ -59,7 +65,10 @@ pub fn handle_session_get(params: &Value) -> Result<Value> {
 
 pub fn handle_session_update(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
+    let session_key = p
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
 
     let root = chat_root_for_rpc(workspace_path)?;
@@ -90,7 +99,10 @@ pub fn handle_session_update(params: &Value) -> Result<Value> {
 
 pub fn handle_transcript_append(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
+    let session_key = p
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
     let entry_json = p.get("entry").context("entry required")?;
 
@@ -126,7 +138,10 @@ pub fn handle_transcript_append(params: &Value) -> Result<Value> {
 
 pub fn handle_transcript_read(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
+    let session_key = p
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
 
     let root = chat_root_for_rpc(workspace_path)?;
@@ -151,11 +166,17 @@ fn plans_dir_for_workspace(workspace_path: Option<&str>) -> Result<std::path::Pa
 /// Each plan is appended as a new line, preserving history (no overwrite).
 pub fn handle_plan_write(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
+    let session_key = p
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
     let task_id = p.get("task_id").and_then(|v| v.as_str()).unwrap_or("");
     let task = p.get("task").and_then(|v| v.as_str()).unwrap_or("");
-    let task_list = p.get("steps").or(p.get("task_list")).context("steps or task_list required")?;
+    let task_list = p
+        .get("steps")
+        .or(p.get("task_list"))
+        .context("steps or task_list required")?;
     let tasks = task_list.as_array().context("steps must be array")?;
 
     let plans_dir = plans_dir_for_workspace(workspace_path)?;
@@ -180,7 +201,10 @@ pub fn handle_plan_write(params: &Value) -> Result<Value> {
 /// Read latest plan from plans/{session_key}-{date}.jsonl (or legacy .json).
 pub fn handle_plan_read(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
+    let session_key = p
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .context("session_key required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
     let date = p.get("date").and_then(|v| v.as_str());
 
@@ -196,12 +220,18 @@ fn task_list_to_plan_steps(tasks: &[Value]) -> Result<(Vec<Value>, i64)> {
     let mut current_step_id: i64 = 0;
     let mut found_running = false;
     for (i, task) in tasks.iter().enumerate() {
-        let completed = task.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+        let completed = task
+            .get("completed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let status = if completed {
             "completed"
         } else if !found_running {
             found_running = true;
-            current_step_id = task.get("id").and_then(|v| v.as_i64()).unwrap_or((i + 1) as i64);
+            current_step_id = task
+                .get("id")
+                .and_then(|v| v.as_i64())
+                .unwrap_or((i + 1) as i64);
             "running"
         } else {
             "pending"
@@ -216,7 +246,10 @@ fn task_list_to_plan_steps(tasks: &[Value]) -> Result<(Vec<Value>, i64)> {
         steps.push(step);
     }
     if current_step_id == 0 && !tasks.is_empty() {
-        current_step_id = tasks.last().and_then(|t| t.get("id").and_then(|v| v.as_i64())).unwrap_or(1);
+        current_step_id = tasks
+            .last()
+            .and_then(|t| t.get("id").and_then(|v| v.as_i64()))
+            .unwrap_or(1);
     }
     Ok((steps, current_step_id))
 }
@@ -232,11 +265,12 @@ fn plan_textify_inner(tasks: &[Value]) -> Result<String> {
             .get("tool_hint")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty());
-        let completed = task.get("completed").and_then(|v| v.as_bool()).unwrap_or(false);
+        let completed = task
+            .get("completed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
         let status = if completed { "✓" } else { "○" };
-        let tool_part = tool_hint
-            .map(|t| format!(" [{}]", t))
-            .unwrap_or_default();
+        let tool_part = tool_hint.map(|t| format!(" [{}]", t)).unwrap_or_default();
         lines.push(format!("{}. {} {}{}", i + 1, status, desc, tool_part));
     }
     Ok(lines.join("\n"))
@@ -244,8 +278,14 @@ fn plan_textify_inner(tasks: &[Value]) -> Result<String> {
 
 pub fn handle_transcript_ensure(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let session_key = p.get("session_key").and_then(|v| v.as_str()).context("session_key required")?;
-    let session_id = p.get("session_id").and_then(|v| v.as_str()).context("session_id required")?;
+    let session_key = p
+        .get("session_key")
+        .and_then(|v| v.as_str())
+        .context("session_key required")?;
+    let session_id = p
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .context("session_id required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
     let cwd = p.get("cwd").and_then(|v| v.as_str());
 
@@ -259,11 +299,20 @@ pub fn handle_transcript_ensure(params: &Value) -> Result<Value> {
 
 pub fn handle_memory_write(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let rel_path = p.get("rel_path").and_then(|v| v.as_str()).context("rel_path required")?;
-    let content = p.get("content").and_then(|v| v.as_str()).context("content required")?;
+    let rel_path = p
+        .get("rel_path")
+        .and_then(|v| v.as_str())
+        .context("rel_path required")?;
+    let content = p
+        .get("content")
+        .and_then(|v| v.as_str())
+        .context("content required")?;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
     let append = p.get("append").and_then(|v| v.as_bool()).unwrap_or(false);
-    let agent_id = p.get("agent_id").and_then(|v| v.as_str()).unwrap_or("default");
+    let agent_id = p
+        .get("agent_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default");
 
     let root = chat_root_for_rpc(workspace_path)?;
     let full_path = root.join("memory").join(rel_path);
@@ -301,10 +350,16 @@ pub fn handle_memory_write(params: &Value) -> Result<Value> {
 
 pub fn handle_memory_search(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let query = p.get("query").and_then(|v| v.as_str()).context("query required")?;
+    let query = p
+        .get("query")
+        .and_then(|v| v.as_str())
+        .context("query required")?;
     let limit = p.get("limit").and_then(|v| v.as_u64()).unwrap_or(10) as i64;
     let workspace_path = p.get("workspace_path").and_then(|v| v.as_str());
-    let agent_id = p.get("agent_id").and_then(|v| v.as_str()).unwrap_or("default");
+    let agent_id = p
+        .get("agent_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("default");
 
     let root = chat_root_for_rpc(workspace_path)?;
     let idx_path = index_path(&root, agent_id);
@@ -332,7 +387,10 @@ pub fn handle_memory_search(params: &Value) -> Result<Value> {
 
 pub fn handle_token_count(params: &Value) -> Result<Value> {
     let p = params.as_object().context("params must be object")?;
-    let text = p.get("text").and_then(|v| v.as_str()).context("text required")?;
+    let text = p
+        .get("text")
+        .and_then(|v| v.as_str())
+        .context("text required")?;
 
     // Approximate: ~4 chars per token
     let count = (text.len() as f64 / 4.0).ceil() as u64;

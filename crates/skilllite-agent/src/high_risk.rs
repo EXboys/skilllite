@@ -5,13 +5,14 @@
 //! - "all": 等同默认（全部确认）
 //! - 默认: "write_key_path,run_command,network"
 
-use std::sync::LazyLock;
 use std::collections::HashSet;
+use std::sync::LazyLock;
 
 static CONFIRM_SET: LazyLock<HashSet<String>> = LazyLock::new(|| {
     skilllite_core::config::load_dotenv();
-    let raw = std::env::var(skilllite_core::config::env_keys::high_risk::SKILLLITE_HIGH_RISK_CONFIRM)
-        .unwrap_or_else(|_| "write_key_path,run_command,network".to_string());
+    let raw =
+        std::env::var(skilllite_core::config::env_keys::high_risk::SKILLLITE_HIGH_RISK_CONFIRM)
+            .unwrap_or_else(|_| "write_key_path,run_command,network".to_string());
     let raw = raw.trim().to_lowercase();
     if raw == "none" {
         return HashSet::new();

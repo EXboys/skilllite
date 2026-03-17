@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Mutex;
 
-use crate::types::{EventSink, ToolDefinition, FunctionDef};
+use crate::types::{EventSink, FunctionDef, ToolDefinition};
 
 use super::{get_path_arg, normalize_path, resolve_within_workspace_or_output};
 
@@ -62,10 +62,7 @@ pub(super) fn execute_preview_server(
 ) -> Result<String> {
     let dir_path = get_path_arg(args, true)
         .ok_or_else(|| anyhow::anyhow!("'directory_path' or 'path' is required"))?;
-    let requested_port = args
-        .get("port")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(8765) as u16;
+    let requested_port = args.get("port").and_then(|v| v.as_u64()).unwrap_or(8765) as u16;
     let should_open_browser = args
         .get("open_browser")
         .and_then(|v| v.as_bool())
@@ -74,7 +71,9 @@ pub(super) fn execute_preview_server(
     let resolved = resolve_within_workspace_or_output(&dir_path, workspace)?;
 
     let (serve_dir, target_file) = if resolved.is_file() {
-        let fname = resolved.file_name().map(|f| f.to_string_lossy().to_string());
+        let fname = resolved
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string());
         (resolved.parent().unwrap_or(&resolved).to_path_buf(), fname)
     } else {
         (resolved.clone(), None)
@@ -89,7 +88,9 @@ pub(super) fn execute_preview_server(
     event_sink.on_preview_started(&serve_dir_str, requested_port);
 
     {
-        let guard = ACTIVE_PREVIEW.lock().map_err(|e| anyhow::anyhow!("Preview lock poisoned: {}", e))?;
+        let guard = ACTIVE_PREVIEW
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Preview lock poisoned: {}", e))?;
         if let Some(ref state) = *guard {
             if state.serve_dir == serve_dir_str {
                 let url = build_preview_url(state.port, target_file.as_deref());
@@ -134,7 +135,9 @@ pub(super) fn execute_preview_server(
     };
 
     {
-        let mut guard = ACTIVE_PREVIEW.lock().map_err(|e| anyhow::anyhow!("Preview lock poisoned: {}", e))?;
+        let mut guard = ACTIVE_PREVIEW
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Preview lock poisoned: {}", e))?;
         *guard = Some(PreviewServerState {
             serve_dir: serve_dir_str.clone(),
             port: used_port,

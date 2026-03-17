@@ -57,7 +57,11 @@ pub fn cmd_list(skills_dir: &str, json_output: bool, scan: bool) -> Result<()> {
                             .to_string_lossy()
                             .to_string()
                     });
-                if name.is_empty() { None } else { Some((name, p.clone())) }
+                if name.is_empty() {
+                    None
+                } else {
+                    Some((name, p.clone()))
+                }
             })
             .collect();
 
@@ -71,11 +75,8 @@ pub fn cmd_list(skills_dir: &str, json_output: bool, scan: bool) -> Result<()> {
 
         for report in &reports {
             if let Some((_, skill_path)) = candidates.iter().find(|(n, _)| n == &report.name) {
-                let _ = manifest::update_admission_risk(
-                    &skills_path,
-                    skill_path,
-                    report.risk.as_str(),
-                );
+                let _ =
+                    manifest::update_admission_risk(&skills_path, skill_path, report.risk.as_str());
             }
         }
         eprintln!("✅ Scan complete. Ratings updated.\n");
@@ -121,10 +122,7 @@ pub fn cmd_list(skills_dir: &str, json_output: bool, scan: bool) -> Result<()> {
                 eprintln!("    path: {}", skill_path.display());
             }
             Err(e) => {
-                let name = skill_path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
+                let name = skill_path.file_name().unwrap_or_default().to_string_lossy();
                 eprintln!("  • {}", name);
                 eprintln!("    ⚠ Could not parse SKILL.md: {}", e);
             }

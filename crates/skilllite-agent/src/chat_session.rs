@@ -7,11 +7,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
 
-use skilllite_executor::{
-    memory as executor_memory,
-    session,
-    transcript,
-};
+use skilllite_executor::{memory as executor_memory, session, transcript};
 
 use skilllite_core::config::env_keys::evolution as evo_env_keys;
 
@@ -213,7 +209,10 @@ impl ChatSession {
                                     let _ = store.save(&sessions_path);
                                 }
                             }
-                            tracing::debug!("Early memory flush completed (threshold={})", flush_threshold);
+                            tracing::debug!(
+                                "Early memory flush completed (threshold={})",
+                                flush_threshold
+                            );
                         }
                     }
                 }
@@ -252,7 +251,9 @@ impl ChatSession {
         // Uses original user_message for accurate intent-based vector search.
         if self.config.enable_memory {
             let workspace = std::path::Path::new(&self.config.workspace);
-            if let Some(mem_ctx) = extensions::build_memory_context(workspace, "default", user_message) {
+            if let Some(mem_ctx) =
+                extensions::build_memory_context(workspace, "default", user_message)
+            {
                 history.push(ChatMessage::system(&mem_ctx));
             }
         }
@@ -328,7 +329,12 @@ impl ChatSession {
         let api_key = self.config.api_key.clone();
         let model = self.config.model.clone();
         self.periodic_evolution_handle = Some(spawn_periodic_evolution(
-            data_root, workspace, api_base, api_key, model, interval_secs,
+            data_root,
+            workspace,
+            api_base,
+            api_key,
+            model,
+            interval_secs,
         ));
     }
 
@@ -348,7 +354,11 @@ impl ChatSession {
             return;
         };
         if count >= threshold {
-            tracing::debug!("Decision-count trigger: {} unprocessed >= {}, spawning evolution", count, threshold);
+            tracing::debug!(
+                "Decision-count trigger: {} unprocessed >= {}, spawning evolution",
+                count,
+                threshold
+            );
             let data_root = self.data_root.clone();
             let workspace = self.config.workspace.clone();
             let api_base = self.config.api_base.clone();
@@ -454,10 +464,7 @@ impl ChatSession {
     /// Compact old messages: summarize via LLM, write compaction entry.
     /// Before compaction, runs pre-compaction memory flush (OpenClaw-style) when enabled:
     /// a silent agent turn reminds the model to write durable memories to memory/YYYY-MM-DD.md.
-    async fn compact_history(
-        &mut self,
-        history: Vec<ChatMessage>,
-    ) -> Result<Vec<ChatMessage>> {
+    async fn compact_history(&mut self, history: Vec<ChatMessage>) -> Result<Vec<ChatMessage>> {
         let threshold = get_compaction_threshold();
         if history.len() < threshold {
             return Ok(history);
@@ -465,22 +472,28 @@ impl ChatSession {
 
         // Pre-compaction memory flush (OpenClaw-style): give model a chance to save to memory
         // before we summarize away the conversation. Runs once per compaction cycle.
-        if self.config.enable_memory
-            && get_memory_flush_enabled()
-        {
+        if self.config.enable_memory && get_memory_flush_enabled() {
             let sessions_path = self.data_root.join("sessions.json");
             if let Ok(store) = session::SessionStore::load(&sessions_path) {
                 if let Some(entry) = store.get(&self.session_key) {
                     let next_compaction_count = entry.compaction_count + 1;
-                    let need_flush = entry.memory_flush_compaction_count != Some(next_compaction_count);
+                    let need_flush =
+                        entry.memory_flush_compaction_count != Some(next_compaction_count);
                     if need_flush {
                         if let Err(e) = self.run_memory_flush_turn(&history).await {
-                            tracing::warn!("Memory flush failed (continuing with compaction): {}", e);
+                            tracing::warn!(
+                                "Memory flush failed (continuing with compaction): {}",
+                                e
+                            );
                         } else {
                             if let Ok(mut store) = session::SessionStore::load(&sessions_path) {
-                                if let Some(session_entry) = store.sessions.get_mut(&self.session_key) {
-                                    session_entry.memory_flush_compaction_count = Some(next_compaction_count);
-                                    session_entry.memory_flush_at = Some(chrono::Utc::now().to_rfc3339());
+                                if let Some(session_entry) =
+                                    store.sessions.get_mut(&self.session_key)
+                                {
+                                    session_entry.memory_flush_compaction_count =
+                                        Some(next_compaction_count);
+                                    session_entry.memory_flush_at =
+                                        Some(chrono::Utc::now().to_rfc3339());
                                     let _ = store.save(&sessions_path);
                                 }
                             }
@@ -799,7 +812,8 @@ async fn run_evolution_and_emit_summary(
         let sr = if ws.is_absolute() {
             ws.join(".skills")
         } else {
-            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            std::env::current_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."))
                 .join(workspace)
                 .join(".skills")
         };
@@ -861,8 +875,18 @@ pub fn spawn_periodic_evolution(
         let interval = std::time::Duration::from_secs(interval_secs);
         loop {
             tokio::time::sleep(interval).await;
-            tracing::debug!("Periodic evolution trigger fired (every {}s)", interval_secs);
-            run_evolution_and_emit_summary(&data_root, workspace.as_str(), &api_base, &api_key, &model).await;
+            tracing::debug!(
+                "Periodic evolution trigger fired (every {}s)",
+                interval_secs
+            );
+            run_evolution_and_emit_summary(
+                &data_root,
+                workspace.as_str(),
+                &api_base,
+                &api_key,
+                &model,
+            )
+            .await;
         }
     })
 }
@@ -880,7 +904,8 @@ pub fn spawn_evolution_once(
             return;
         }
         tracing::debug!("Decision-count evolution trigger fired");
-        run_evolution_and_emit_summary(&data_root, workspace.as_str(), &api_base, &api_key, &model).await;
+        run_evolution_and_emit_summary(&data_root, workspace.as_str(), &api_base, &api_key, &model)
+            .await;
     })
 }
 
@@ -892,20 +917,16 @@ pub fn shutdown_evolution(data_root: &std::path::Path) {
 /// Convert a transcript entry to a ChatMessage.
 fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<ChatMessage> {
     match entry {
-        transcript::TranscriptEntry::Message {
-            role, content, ..
-        } => Some(ChatMessage {
+        transcript::TranscriptEntry::Message { role, content, .. } => Some(ChatMessage {
             role: role.clone(),
             content: content.clone(),
             tool_calls: None,
             tool_call_id: None,
             name: None,
         }),
-        transcript::TranscriptEntry::Compaction { summary, .. } => {
-            summary.as_ref().map(|s| {
-                ChatMessage::system(&format!("[Previous conversation summary]\n{}", s))
-            })
-        }
+        transcript::TranscriptEntry::Compaction { summary, .. } => summary
+            .as_ref()
+            .map(|s| ChatMessage::system(&format!("[Previous conversation summary]\n{}", s))),
         _ => None,
     }
 }

@@ -14,8 +14,7 @@ pub fn read_file(path: &Path) -> Result<String> {
 
 /// 读取文件为原始字节
 pub fn read_bytes(path: &Path) -> Result<Vec<u8>> {
-    std::fs::read(path)
-        .with_context(|| format!("Failed to read file: {}", path.display()))
+    std::fs::read(path).with_context(|| format!("Failed to read file: {}", path.display()))
 }
 
 /// 读取文件前 `limit` 字节（用于二进制检测等）
@@ -67,14 +66,15 @@ pub fn atomic_write(path: &Path, content: &str) -> Result<()> {
 }
 
 /// 在文件内做精确 search_replace，返回替换次数
-pub fn search_replace(path: &Path, old_string: &str, new_string: &str, replace_all: bool) -> Result<usize> {
+pub fn search_replace(
+    path: &Path,
+    old_string: &str,
+    new_string: &str,
+    replace_all: bool,
+) -> Result<usize> {
     let content = read_file(path)?;
-    let (new_content, count) = crate::search_replace::apply_search_replace(
-        &content,
-        old_string,
-        new_string,
-        replace_all,
-    )?;
+    let (new_content, count) =
+        crate::search_replace::apply_search_replace(&content, old_string, new_string, replace_all)?;
     if count > 0 {
         write_file(path, &new_content)?;
     }

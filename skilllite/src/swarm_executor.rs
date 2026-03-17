@@ -25,7 +25,10 @@ impl AgentTaskExecutor {
 
 #[cfg(feature = "agent")]
 impl TaskExecutor for AgentTaskExecutor {
-    fn execute(&self, task: NodeTask) -> Result<NodeResult, Box<dyn std::error::Error + Send + Sync>> {
+    fn execute(
+        &self,
+        task: NodeTask,
+    ) -> Result<NodeResult, Box<dyn std::error::Error + Send + Sync>> {
         // Run in a separate thread to avoid "Cannot start a runtime from within a runtime":
         // handle_task runs on axum's tokio runtime; block_on would nest runtimes.
         let task = task.clone();

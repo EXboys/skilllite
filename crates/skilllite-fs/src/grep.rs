@@ -69,7 +69,11 @@ fn grep_recursive(
         if results.len() >= max_matches {
             return Ok(());
         }
-        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         if is_dir {
             if skip_dirs.contains(&name.as_str()) || name.starts_with('.') {
                 continue;
@@ -126,11 +130,7 @@ fn grep_single_file(
                 *files_matched += 1;
                 file_has_match = true;
             }
-            results.push((
-                rel_path.clone(),
-                line_num + 1,
-                line.to_string(),
-            ));
+            results.push((rel_path.clone(), line_num + 1, line.to_string()));
         }
     }
     Ok(())

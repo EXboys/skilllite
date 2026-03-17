@@ -42,7 +42,11 @@ pub fn append_plan(plans_dir: &Path, session_key: &str, plan_json: &Value) -> Re
 }
 
 /// Read plan entries from jsonl. Returns all entries in order.
-fn read_plan_entries(plans_dir: &Path, session_key: &str, date: Option<&str>) -> Result<Vec<Value>> {
+fn read_plan_entries(
+    plans_dir: &Path,
+    session_key: &str,
+    date: Option<&str>,
+) -> Result<Vec<Value>> {
     let path = plan_path_jsonl(plans_dir, session_key, date);
     if !path.exists() {
         return Ok(Vec::new());
@@ -95,8 +99,7 @@ pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBu
         .filter(|p| p.is_file())
         .filter(|p| {
             p.extension().map_or(false, |e| e == "jsonl" || e == "json")
-                && p
-                    .file_stem()
+                && p.file_stem()
                     .and_then(|s| s.to_str())
                     .map_or(false, |n| n.starts_with(session_key))
         })

@@ -27,10 +27,7 @@ pub(super) fn run_l4_scan(
     let scanner = ScriptScanner::new().allow_network(allow_network);
     let result = scanner.scan_content(script_content, script_path)?;
     if !result.is_safe {
-        tracing::warn!(
-            "L4 security scan found issues in {}",
-            script_path.display()
-        );
+        tracing::warn!("L4 security scan found issues in {}", script_path.display());
     }
     Ok(result.is_safe)
 }

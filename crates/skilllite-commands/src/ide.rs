@@ -277,15 +277,18 @@ pub fn cmd_cursor(
         let config_path = global_dir.join("mcp.json");
         let sd_clean = skills_dir.strip_prefix("./").unwrap_or(skills_dir);
         let abs_skills = project.join(sd_clean);
-        (global_dir, config_path, abs_skills.to_string_lossy().to_string())
+        (
+            global_dir,
+            config_path,
+            abs_skills.to_string_lossy().to_string(),
+        )
     } else {
         let cursor = project.join(".cursor");
         let config_path = cursor.join("mcp.json");
         (cursor, config_path, skills_dir.to_string())
     };
 
-    fs::create_dir_all(&cursor_dir)
-        .context("Failed to create .cursor directory")?;
+    fs::create_dir_all(&cursor_dir).context("Failed to create .cursor directory")?;
 
     // Generate MCP config
     let cmd_executable = &command[0];
@@ -324,11 +327,8 @@ pub fn cmd_cursor(
         json!({ "mcpServers": { "skilllite": mcp_entry } })
     };
 
-    fs::write(
-        &mcp_config_path,
-        serde_json::to_string_pretty(&config)?,
-    )
-    .context("Failed to write mcp.json")?;
+    fs::write(&mcp_config_path, serde_json::to_string_pretty(&config)?)
+        .context("Failed to write mcp.json")?;
 
     // Get available skills
     let sd_clean = skills_dir.strip_prefix("./").unwrap_or(skills_dir);
@@ -380,11 +380,7 @@ pub fn cmd_cursor(
 }
 
 /// `skilllite ide opencode`
-pub fn cmd_opencode(
-    project_dir: Option<&str>,
-    skills_dir: &str,
-    force: bool,
-) -> Result<()> {
+pub fn cmd_opencode(project_dir: Option<&str>, skills_dir: &str, force: bool) -> Result<()> {
     let project = project_dir
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));

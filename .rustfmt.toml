@@ -1,0 +1,5 @@
+# 项目统一格式，后续只跑 cargo fmt 即可保持
+edition = "2021"
+max_width = 100
+tab_spaces = 4
+use_small_heuristics = "Default"

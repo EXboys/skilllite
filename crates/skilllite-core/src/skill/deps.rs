@@ -25,7 +25,7 @@ pub enum DependencyType {
 }
 
 /// Detect dependencies from compatibility field or allowed-tools in metadata
-/// 
+///
 /// The compatibility field follows Claude Agent Skills specification:
 /// Examples:
 ///   - "Requires Python 3.x with requests library"
@@ -86,7 +86,7 @@ pub fn detect_dependencies(_skill_dir: &Path, metadata: &SkillMetadata) -> Resul
 }
 
 /// Parse compatibility string to extract package names
-/// 
+///
 /// Examples:
 ///   - "Requires Python 3.x with requests library" -> ["requests"]
 ///   - "Requires Python 3.x, pandas, numpy, network access" -> ["pandas", "numpy"]
@@ -101,41 +101,119 @@ pub fn parse_compatibility_for_packages(compatibility: Option<&str>) -> Vec<Stri
 
     // Common Python packages (sync with packages_whitelist.json)
     let known_python_packages = [
-        "requests", "pandas", "numpy", "scipy", "matplotlib", "seaborn",
-        "sklearn", "scikit-learn", "tensorflow", "torch", "pytorch",
-        "flask", "django", "fastapi", "aiohttp", "httpx",
-        "beautifulsoup", "bs4", "lxml", "selenium", "html2text",
-        "pillow", "opencv", "cv2", "pyyaml", "yaml",
-        "sqlalchemy", "psycopg2", "pymysql", "redis", "pymongo", "pyodps",
-        "boto3", "google-cloud", "azure", "oss2",
-        "pytest", "unittest", "mock",
-        "click", "argparse", "typer",
-        "pydantic", "dataclasses", "attrs",
-        "jinja2", "mako",
-        "celery", "rq",
-        "cryptography", "jwt", "passlib",
-        "playwright", "openpyxl", "pyarrow", "polars", "duckdb",
-        "openai", "anthropic", "langchain", "langgraph", "llama-index",
-        "aiofiles", "tenacity", "orjson", "ujson",
+        "requests",
+        "pandas",
+        "numpy",
+        "scipy",
+        "matplotlib",
+        "seaborn",
+        "sklearn",
+        "scikit-learn",
+        "tensorflow",
+        "torch",
+        "pytorch",
+        "flask",
+        "django",
+        "fastapi",
+        "aiohttp",
+        "httpx",
+        "beautifulsoup",
+        "bs4",
+        "lxml",
+        "selenium",
+        "html2text",
+        "pillow",
+        "opencv",
+        "cv2",
+        "pyyaml",
+        "yaml",
+        "sqlalchemy",
+        "psycopg2",
+        "pymysql",
+        "redis",
+        "pymongo",
+        "pyodps",
+        "boto3",
+        "google-cloud",
+        "azure",
+        "oss2",
+        "pytest",
+        "unittest",
+        "mock",
+        "click",
+        "argparse",
+        "typer",
+        "pydantic",
+        "dataclasses",
+        "attrs",
+        "jinja2",
+        "mako",
+        "celery",
+        "rq",
+        "cryptography",
+        "jwt",
+        "passlib",
+        "playwright",
+        "openpyxl",
+        "pyarrow",
+        "polars",
+        "duckdb",
+        "openai",
+        "anthropic",
+        "langchain",
+        "langgraph",
+        "llama-index",
+        "aiofiles",
+        "tenacity",
+        "orjson",
+        "ujson",
     ];
 
     // Common Node.js packages (sync with packages_whitelist.json)
     let known_node_packages = [
-        "axios", "node-fetch", "got",
-        "express", "koa", "fastify", "hapi",
-        "lodash", "underscore", "ramda",
-        "moment", "dayjs", "date-fns",
-        "cheerio", "puppeteer", "playwright", "@playwright/test",
-        "mongoose", "sequelize", "knex", "prisma",
+        "axios",
+        "node-fetch",
+        "got",
+        "express",
+        "koa",
+        "fastify",
+        "hapi",
+        "lodash",
+        "underscore",
+        "ramda",
+        "moment",
+        "dayjs",
+        "date-fns",
+        "cheerio",
+        "puppeteer",
+        "playwright",
+        "@playwright/test",
+        "mongoose",
+        "sequelize",
+        "knex",
+        "prisma",
         "ioredis",
-        "aws-sdk", "googleapis", "openai", "@anthropic-ai/sdk",
-        "jest", "mocha", "chai",
-        "commander", "yargs", "inquirer",
-        "chalk", "ora", "boxen",
+        "aws-sdk",
+        "googleapis",
+        "openai",
+        "@anthropic-ai/sdk",
+        "jest",
+        "mocha",
+        "chai",
+        "commander",
+        "yargs",
+        "inquirer",
+        "chalk",
+        "ora",
+        "boxen",
         "dotenv",
-        "jsonwebtoken", "bcrypt", "crypto-js",
-        "socket.io", "ws",
-        "sharp", "jimp",
+        "jsonwebtoken",
+        "bcrypt",
+        "crypto-js",
+        "socket.io",
+        "ws",
+        "sharp",
+        "jimp",
     ];
 
     let compat_lower = compat.to_lowercase();
@@ -168,7 +246,7 @@ fn is_word_match(text: &str, word: &str) -> bool {
     // Simple word boundary check
     let word_chars: Vec<char> = word.chars().collect();
     let text_chars: Vec<char> = text.chars().collect();
-    
+
     let mut i = 0;
     while i <= text_chars.len().saturating_sub(word_chars.len()) {
         // Check if word matches at position i
@@ -179,13 +257,14 @@ fn is_word_match(text: &str, word: &str) -> bool {
                 break;
             }
         }
-        
+
         if matches {
             // Check word boundaries
             let before_ok = i == 0 || !text_chars[i - 1].is_alphanumeric();
             let after_pos = i + word_chars.len();
-            let after_ok = after_pos >= text_chars.len() || !text_chars[after_pos].is_alphanumeric();
-            
+            let after_ok =
+                after_pos >= text_chars.len() || !text_chars[after_pos].is_alphanumeric();
+
             if before_ok && after_ok {
                 return true;
             }
@@ -226,14 +305,20 @@ pub fn get_cache_key(dep_info: &DependencyInfo) -> String {
             if dep_info.content_hash.is_empty() {
                 "py-none".to_string()
             } else {
-                format!("py-{}", &dep_info.content_hash[..16.min(dep_info.content_hash.len())])
+                format!(
+                    "py-{}",
+                    &dep_info.content_hash[..16.min(dep_info.content_hash.len())]
+                )
             }
         }
         DependencyType::Node => {
             if dep_info.content_hash.is_empty() {
                 "node-none".to_string()
             } else {
-                format!("node-{}", &dep_info.content_hash[..16.min(dep_info.content_hash.len())])
+                format!(
+                    "node-{}",
+                    &dep_info.content_hash[..16.min(dep_info.content_hash.len())]
+                )
             }
         }
         DependencyType::None => "none".to_string(),

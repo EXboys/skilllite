@@ -9,7 +9,7 @@ use std::sync::Mutex;
 
 use chrono::Utc;
 use serde_json::json;
-use tracing_subscriber::{EnvFilter, prelude::*};
+use tracing_subscriber::{prelude::*, EnvFilter};
 
 static AUDIT_PATH: Mutex<Option<String>> = Mutex::new(None);
 static SECURITY_EVENTS_PATH: Mutex<Option<String>> = Mutex::new(None);
@@ -71,7 +71,9 @@ fn get_audit_path() -> Option<String> {
             return Some(p.clone());
         }
     }
-    let path = crate::config::ObservabilityConfig::from_env().audit_log.clone()?;
+    let path = crate::config::ObservabilityConfig::from_env()
+        .audit_log
+        .clone()?;
     if path.is_empty() {
         return None;
     }
@@ -93,7 +95,9 @@ fn get_security_events_path() -> Option<String> {
             return Some(p.clone());
         }
     }
-    let path = crate::config::ObservabilityConfig::from_env().security_events_log.clone()?;
+    let path = crate::config::ObservabilityConfig::from_env()
+        .security_events_log
+        .clone()?;
     if path.is_empty() {
         return None;
     }
@@ -357,12 +361,7 @@ pub fn audit_edit_failed(path: &str, tool_name: &str, reason: &str) {
 // ─── Evolution audit events (EVO-5) ─────────────────────────────────────────
 
 /// Audit: evolution event — logged when evolution produces changes or rolls back.
-pub fn audit_evolution_event(
-    event_type: &str,
-    target_id: &str,
-    reason: &str,
-    txn_id: &str,
-) {
+pub fn audit_evolution_event(event_type: &str, target_id: &str, reason: &str, txn_id: &str) {
     if let Some(path) = get_audit_path() {
         let record = json!({
             "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),

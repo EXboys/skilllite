@@ -2,8 +2,8 @@
 //!
 //! 从环境变量加载，统一 fallback 逻辑。
 
-use super::env_keys::{observability as obv_keys, llm};
-use super::loader::{env_bool, env_or, env_optional};
+use super::env_keys::{llm, observability as obv_keys};
+use super::loader::{env_bool, env_optional, env_or};
 use std::path::PathBuf;
 
 /// LLM API 配置
@@ -19,11 +19,9 @@ impl LlmConfig {
     pub fn from_env() -> Self {
         super::loader::load_dotenv();
         Self {
-            api_base: env_or(
-                llm::API_BASE,
-                llm::API_BASE_ALIASES,
-                || "https://api.openai.com/v1".to_string(),
-            ),
+            api_base: env_or(llm::API_BASE, llm::API_BASE_ALIASES, || {
+                "https://api.openai.com/v1".to_string()
+            }),
             api_key: env_or(llm::API_KEY, llm::API_KEY_ALIASES, String::new),
             model: env_or(llm::MODEL, llm::MODEL_ALIASES, || "gpt-4o".to_string()),
         }
@@ -72,27 +70,22 @@ impl PathsConfig {
     pub fn from_env() -> Self {
         let default_data_dir = crate::paths::data_root();
         super::loader::load_dotenv();
-        let workspace = super::loader::env_optional(
-            super::env_keys::paths::SKILLLITE_WORKSPACE,
-            &[],
-        )
-        .unwrap_or_else(|| {
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .to_string_lossy()
-                .to_string()
-        });
+        let workspace =
+            super::loader::env_optional(super::env_keys::paths::SKILLLITE_WORKSPACE, &[])
+                .unwrap_or_else(|| {
+                    std::env::current_dir()
+                        .unwrap_or_else(|_| PathBuf::from("."))
+                        .to_string_lossy()
+                        .to_string()
+                });
 
-        let output_dir = super::loader::env_optional(
-            super::env_keys::paths::SKILLLITE_OUTPUT_DIR,
-            &[],
-        );
+        let output_dir =
+            super::loader::env_optional(super::env_keys::paths::SKILLLITE_OUTPUT_DIR, &[]);
 
-        let skills_repo = super::loader::env_or(
-            super::env_keys::paths::SKILLLITE_SKILLS_REPO,
-            &[],
-            || "EXboys/skilllite".to_string(),
-        );
+        let skills_repo =
+            super::loader::env_or(super::env_keys::paths::SKILLLITE_SKILLS_REPO, &[], || {
+                "EXboys/skilllite".to_string()
+            });
 
         let skills_root =
             super::loader::env_optional(super::env_keys::paths::SKILLBOX_SKILLS_ROOT, &[]);
@@ -102,7 +95,8 @@ impl PathsConfig {
             output_dir,
             skills_repo,
             skills_root,
-            data_dir: default_data_dir,        }
+            data_dir: default_data_dir,
+        }
     }
 }
 
@@ -143,11 +137,9 @@ impl EmbeddingConfig {
             "SKILLLITE_EMBEDDING_BASE_URL",
             &["EMBEDDING_BASE_URL"],
             || {
-                super::loader::env_or(
-                    llm::API_BASE,
-                    llm::API_BASE_ALIASES,
-                    || "https://api.openai.com/v1".to_string(),
-                )
+                super::loader::env_or(llm::API_BASE, llm::API_BASE_ALIASES, || {
+                    "https://api.openai.com/v1".to_string()
+                })
             },
         );
         let api_key = super::loader::env_or(
@@ -156,15 +148,19 @@ impl EmbeddingConfig {
             || super::loader::env_or(llm::API_KEY, llm::API_KEY_ALIASES, || "".to_string()),
         );
         let (default_model, default_dim) = Self::default_for_base(&api_base);
-        let model = super::loader::env_or(
-            "SKILLLITE_EMBEDDING_MODEL",
-            &["EMBEDDING_MODEL"],
-            || default_model.to_string(),
-        );
+        let model =
+            super::loader::env_or("SKILLLITE_EMBEDDING_MODEL", &["EMBEDDING_MODEL"], || {
+                default_model.to_string()
+            });
         let dimension = super::loader::env_optional("SKILLLITE_EMBEDDING_DIMENSION", &[])
             .and_then(|s| s.parse::<usize>().ok())
             .unwrap_or(default_dim);
-        Self { model, dimension, api_base, api_key }
+        Self {
+            model,
+            dimension,
+            api_base,
+            api_key,
+        }
     }
 
     /// 按 api_base 推断默认 embedding 模型和维度
@@ -183,7 +179,7 @@ impl EmbeddingConfig {
             ("nomic-embed-text", 768)
         } else if base_lower.contains("minimax") {
             // MiniMax embedding
-            ("text-embedding-01",  1536)
+            ("text-embedding-01", 1536)
         } else if base_lower.contains("api.openai.com") {
             ("text-embedding-3-small", 1536)
         } else {
@@ -208,23 +204,27 @@ impl ObservabilityConfig {
         static CACHE: OnceLock<ObservabilityConfig> = OnceLock::new();
         CACHE.get_or_init(|| {
             super::loader::load_dotenv();
-        let quiet = env_bool(obv_keys::SKILLLITE_QUIET, obv_keys::QUIET_ALIASES, false);
-        let log_level = env_or(
-            obv_keys::SKILLLITE_LOG_LEVEL,
-            obv_keys::LOG_LEVEL_ALIASES,
-            || "skilllite=info,skilllite_swarm=info".to_string(),
-        );
-        let log_json = env_bool(obv_keys::SKILLLITE_LOG_JSON, obv_keys::LOG_JSON_ALIASES, false);
-        let audit_log = env_optional(obv_keys::SKILLLITE_AUDIT_LOG, obv_keys::AUDIT_LOG_ALIASES);
-        let security_events_log =
-            env_optional(obv_keys::SKILLLITE_SECURITY_EVENTS_LOG, &[]);
-        Self {
-            quiet,
-            log_level,
-            log_json,
-            audit_log,
-            security_events_log,
-        }
+            let quiet = env_bool(obv_keys::SKILLLITE_QUIET, obv_keys::QUIET_ALIASES, false);
+            let log_level = env_or(
+                obv_keys::SKILLLITE_LOG_LEVEL,
+                obv_keys::LOG_LEVEL_ALIASES,
+                || "skilllite=info,skilllite_swarm=info".to_string(),
+            );
+            let log_json = env_bool(
+                obv_keys::SKILLLITE_LOG_JSON,
+                obv_keys::LOG_JSON_ALIASES,
+                false,
+            );
+            let audit_log =
+                env_optional(obv_keys::SKILLLITE_AUDIT_LOG, obv_keys::AUDIT_LOG_ALIASES);
+            let security_events_log = env_optional(obv_keys::SKILLLITE_SECURITY_EVENTS_LOG, &[]);
+            Self {
+                quiet,
+                log_level,
+                log_json,
+                audit_log,
+                security_events_log,
+            }
         })
     }
 }

@@ -76,8 +76,8 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_github = Regex::new(r"github\.com/([^/]+)/([^/]+?)(?:\.git)?/*$")
-        .expect("static regex re_github");
+    let re_github =
+        Regex::new(r"github\.com/([^/]+)/([^/]+?)(?:\.git)?/*$").expect("static regex re_github");
     if let Some(cap) = re_github.captures(source) {
         return ParsedSource {
             source_type: "github".into(),
@@ -88,8 +88,7 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         };
     }
 
-    let re_gitlab = Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$")
-        .expect("static regex re_gitlab");
+    let re_gitlab = Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").expect("static regex re_gitlab");
     if let Some(cap) = re_gitlab.captures(source) {
         let repo_path = &cap[1];
         if repo_path.contains('/') {
@@ -103,8 +102,7 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    let re_at_filter = Regex::new(r"^([^/]+)/([^/@]+)@(.+)$")
-        .expect("static regex re_at_filter");
+    let re_at_filter = Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").expect("static regex re_at_filter");
     if let Some(cap) = re_at_filter.captures(source) {
         if !source.contains(':') {
             return ParsedSource {
@@ -117,8 +115,8 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
         }
     }
 
-    let re_shorthand = Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$")
-        .expect("static regex re_shorthand");
+    let re_shorthand =
+        Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").expect("static regex re_shorthand");
     if let Some(cap) = re_shorthand.captures(source) {
         if !source.contains(':') && !source.starts_with('.') {
             return ParsedSource {
@@ -141,7 +139,6 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
 }
 
 // ─── ClawHub Download ──────────────────────────────────────────────────────
-
 
 const CLAWHUB_DOWNLOAD_URL: &str = "https://clawhub.ai/api/v1/download";
 
@@ -169,7 +166,9 @@ pub(super) fn fetch_from_clawhub(slug: &str) -> Result<PathBuf> {
 
     let mut reader = resp.into_reader();
     let mut bytes = Vec::new();
-    reader.read_to_end(&mut bytes).context("Failed to read zip from ClawHub")?;
+    reader
+        .read_to_end(&mut bytes)
+        .context("Failed to read zip from ClawHub")?;
 
     let temp_dir = tempfile::tempdir().context("Failed to create temp directory")?;
     #[allow(deprecated)]
@@ -191,8 +190,8 @@ pub(super) fn fetch_from_clawhub(slug: &str) -> Result<PathBuf> {
             if let Some(parent) = out_path.parent() {
                 let _ = fs::create_dir_all(parent);
             }
-            let mut out_file =
-                fs::File::create(&out_path).with_context(|| format!("Failed to create {}", out_path.display()))?;
+            let mut out_file = fs::File::create(&out_path)
+                .with_context(|| format!("Failed to create {}", out_path.display()))?;
             std::io::copy(&mut file, &mut out_file)
                 .with_context(|| format!("Failed to extract {}", name))?;
         }
@@ -220,7 +219,9 @@ pub(super) fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<PathBuf> {
     }
     cmd.arg(url).arg(&temp_path);
 
-    let output = cmd.output().context("Failed to execute git clone. Is git installed?")?;
+    let output = cmd
+        .output()
+        .context("Failed to execute git clone. Is git installed?")?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);

@@ -8,11 +8,11 @@ use anyhow::Result;
 
 use skilllite_sandbox::env::builder;
 
+use super::SkillMeta;
+use super::MAX_PARSE_RETRIES;
+use super::SKILL_EXECUTION_INFERENCE_PROMPT;
 use crate::EvolutionLlm;
 use crate::EvolutionMessage;
-use super::SkillMeta;
-use super::SKILL_EXECUTION_INFERENCE_PROMPT;
-use super::MAX_PARSE_RETRIES;
 
 /// 从文本中提取第一个平衡的 JSON 对象 {...}
 pub(super) fn extract_first_json_object(text: &str) -> Option<&str> {
@@ -66,7 +66,12 @@ pub(super) fn list_scripts(skill_dir: &Path) -> Vec<String> {
         if !root.is_dir() {
             continue;
         }
-        for e in std::fs::read_dir(&root).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+        for e in std::fs::read_dir(&root)
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+        {
             let p = e.path();
             if p.is_file() {
                 if let Some(ext) = p.extension() {
@@ -210,7 +215,11 @@ pub(super) fn list_pending_skill_descriptions(pending_dir: &Path) -> Vec<(String
 
 /// 轻量描述相似度：用于同轮内避免明显重复。当任一描述包含另一（归一化后）或完全相同时返回 true。
 fn normalize_desc(s: &str) -> String {
-    s.trim().to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
+    s.trim()
+        .to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub(super) fn is_description_similar(a: &str, b: &str) -> bool {
@@ -299,8 +308,10 @@ pub(super) async fn infer_skill_execution<L: EvolutionLlm>(
     let parsed: InferResult = match parsed {
         Some(p) => p,
         None => {
-            let fallback =
-                scripts.first().cloned().unwrap_or_else(|| "scripts/main.py".to_string());
+            let fallback = scripts
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "scripts/main.py".to_string());
             let full = skill_dir.join(&fallback);
             if full.exists() {
                 return Ok((fallback, "{}".to_string()));
@@ -316,7 +327,8 @@ pub(super) async fn infer_skill_execution<L: EvolutionLlm>(
     if !scripts.contains(&entry) {
         tracing::warn!(
             "LLM 返回 entry_point '{}' 不在列表 [{}] 中，改用第一项",
-            entry, scripts_list
+            entry,
+            scripts_list
         );
         entry = scripts.first().cloned().unwrap_or_default();
         if entry.is_empty() {

@@ -4,14 +4,14 @@ use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
 
+use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
+use skilllite_core::skill::metadata;
+use skilllite_core::skill::trust::TrustDecision;
 use skilllite_sandbox::runner::SandboxLevel;
 use skilllite_sandbox::security::types::SecuritySeverity;
-use skilllite_core::skill::metadata;
-use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
-use skilllite_core::skill::trust::TrustDecision;
 
+use super::scan::{format_scan_response, perform_scan};
 use super::state::{ConfirmedSkill, McpServer};
-use super::scan::{perform_scan, format_scan_response};
 
 /// Handle the `initialize` request.
 pub(super) fn handle_initialize(_params: &Value) -> Value {
@@ -91,7 +91,11 @@ pub(super) fn handle_get_skill_info(server: &McpServer, arguments: &Value) -> Re
     let skill_md_path = skill_dir.join("SKILL.md");
 
     if !skill_md_path.exists() {
-        anyhow::bail!("Skill '{}' not found in {}", skill_name, server.skills_dir.display());
+        anyhow::bail!(
+            "Skill '{}' not found in {}",
+            skill_name,
+            server.skills_dir.display()
+        );
     }
 
     let skill_content = std::fs::read_to_string(&skill_md_path)
@@ -107,8 +111,16 @@ pub(super) fn handle_get_skill_info(server: &McpServer, arguments: &Value) -> Re
         if let Ok(entries) = std::fs::read_dir(&scripts_dir) {
             for entry in entries.flatten() {
                 let fname = entry.file_name().to_string_lossy().to_string();
-                if fname.ends_with(".py") || fname.ends_with(".js") || fname.ends_with(".ts") || fname.ends_with(".sh") {
-                    if !fname.starts_with("test_") && !fname.ends_with("_test.py") && !fname.starts_with('.') && fname != "__init__.py" {
+                if fname.ends_with(".py")
+                    || fname.ends_with(".js")
+                    || fname.ends_with(".ts")
+                    || fname.ends_with(".sh")
+                {
+                    if !fname.starts_with("test_")
+                        && !fname.ends_with("_test.py")
+                        && !fname.starts_with('.')
+                        && fname != "__init__.py"
+                    {
                         scripts.push(fname);
                     }
                 }
@@ -148,7 +160,8 @@ fn parse_argparse_schema_from_path(script_path: &Path) -> Option<Value> {
 
     let arg_re = regex::Regex::new(
         r#"\.add_argument\s*\(\s*['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?([^)]*)\)"#,
-    ).ok()?;
+    )
+    .ok()?;
 
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
@@ -178,18 +191,29 @@ fn parse_argparse_schema_from_path(script_path: &Path) -> Option<Value> {
         prop.insert("type".to_string(), json!("string"));
 
         if let Some(help_cap) = regex::Regex::new(r#"help\s*=\s*['"]([^'"]+)['"]"#)
-            .ok().and_then(|re| re.captures(kwargs_str))
+            .ok()
+            .and_then(|re| re.captures(kwargs_str))
         {
-            prop.insert("description".to_string(), json!(help_cap.get(1).map(|m| m.as_str()).unwrap_or("")));
+            prop.insert(
+                "description".to_string(),
+                json!(help_cap.get(1).map(|m| m.as_str()).unwrap_or("")),
+            );
         }
 
         if let Some(type_cap) = regex::Regex::new(r"type\s*=\s*(\w+)")
-            .ok().and_then(|re| re.captures(kwargs_str))
+            .ok()
+            .and_then(|re| re.captures(kwargs_str))
         {
             match type_cap.get(1).map(|m| m.as_str()).unwrap_or("") {
-                "int" => { prop.insert("type".to_string(), json!("integer")); }
-                "float" => { prop.insert("type".to_string(), json!("number")); }
-                "bool" => { prop.insert("type".to_string(), json!("boolean")); }
+                "int" => {
+                    prop.insert("type".to_string(), json!("integer"));
+                }
+                "float" => {
+                    prop.insert("type".to_string(), json!("number"));
+                }
+                "bool" => {
+                    prop.insert("type".to_string(), json!("boolean"));
+                }
                 _ => {}
             }
         }
@@ -222,22 +246,21 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         .get("skill_name")
         .and_then(|v| v.as_str())
         .context("skill_name is required")?;
-    let input = arguments
-        .get("input")
-        .cloned()
-        .unwrap_or(json!({}));
+    let input = arguments.get("input").cloned().unwrap_or(json!({}));
     let confirmed = arguments
         .get("confirmed")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let scan_id = arguments
-        .get("scan_id")
-        .and_then(|v| v.as_str());
+    let scan_id = arguments.get("scan_id").and_then(|v| v.as_str());
 
     // Find the skill
     let skill_dir = server.skills_dir.join(skill_name);
     if !skill_dir.exists() || !skill_dir.join("SKILL.md").exists() {
-        anyhow::bail!("Skill '{}' not found in {}", skill_name, server.skills_dir.display());
+        anyhow::bail!(
+            "Skill '{}' not found in {}",
+            skill_name,
+            server.skills_dir.display()
+        );
     }
     let integrity = manifest::evaluate_skill_status(&server.skills_dir, &skill_dir)?;
     match integrity.status {
@@ -279,7 +302,9 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         let code_hash = McpServer::compute_skill_hash(&skill_dir, &meta.entry_point);
 
         // Check session-level confirmation cache
-        let already_confirmed = server.confirmed_skills.get(skill_name)
+        let already_confirmed = server
+            .confirmed_skills
+            .get(skill_name)
             .map_or(false, |c| c.code_hash == code_hash);
 
         if !already_confirmed {
@@ -293,9 +318,11 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
                     let cached = server.scan_cache.get(sid).context(
                         "Invalid or expired scan_id. Please review the security report and try again."
                     )?;
-                    let has_critical = cached.scan_result.issues.iter().any(|i| {
-                        matches!(i.severity, SecuritySeverity::Critical)
-                    });
+                    let has_critical = cached
+                        .scan_result
+                        .issues
+                        .iter()
+                        .any(|i| matches!(i.severity, SecuritySeverity::Critical));
                     if has_critical {
                         anyhow::bail!(
                             "Execution blocked: Critical security issues cannot be overridden."
@@ -308,7 +335,9 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
                 server.scan_cache.remove(sid);
 
                 // Audit: scan approved
-                skilllite_core::observability::audit_confirmation_response(skill_name, true, "user");
+                skilllite_core::observability::audit_confirmation_response(
+                    skill_name, true, "user",
+                );
                 skilllite_core::observability::security_scan_approved(
                     skill_name,
                     sid,
@@ -316,10 +345,9 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
                 );
 
                 // Cache confirmation
-                server.confirmed_skills.insert(
-                    skill_name.to_string(),
-                    ConfirmedSkill { code_hash },
-                );
+                server
+                    .confirmed_skills
+                    .insert(skill_name.to_string(), ConfirmedSkill { code_hash });
             } else {
                 // Perform security scan on entry point
                 let entry_path = if !meta.entry_point.is_empty() {
@@ -331,7 +359,8 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
 
                 if entry_path.exists() {
                     let code = std::fs::read_to_string(&entry_path).unwrap_or_default();
-                    let language = if entry_path.extension().and_then(|e| e.to_str()) == Some("py") {
+                    let language = if entry_path.extension().and_then(|e| e.to_str()) == Some("py")
+                    {
                         "python"
                     } else if entry_path.extension().and_then(|e| e.to_str()) == Some("js") {
                         "javascript"
@@ -339,10 +368,14 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
                         "bash"
                     };
 
-                    let (scan_result, new_scan_id, new_code_hash) = perform_scan(server, language, &code)?;
+                    let (scan_result, new_scan_id, new_code_hash) =
+                        perform_scan(server, language, &code)?;
 
                     let has_high = scan_result.issues.iter().any(|i| {
-                        matches!(i.severity, SecuritySeverity::High | SecuritySeverity::Critical)
+                        matches!(
+                            i.severity,
+                            SecuritySeverity::High | SecuritySeverity::Critical
+                        )
                     });
 
                     if has_high {
@@ -356,23 +389,26 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
                         skilllite_core::observability::security_scan_high(
                             skill_name,
                             "High",
-                            &serde_json::json!(scan_result.issues.iter().map(|i| {
-                                serde_json::json!({
-                                    "rule": i.rule_id,
-                                    "severity": format!("{:?}", i.severity),
-                                    "description": i.description,
+                            &serde_json::json!(scan_result
+                                .issues
+                                .iter()
+                                .map(|i| {
+                                    serde_json::json!({
+                                        "rule": i.rule_id,
+                                        "severity": format!("{:?}", i.severity),
+                                        "description": i.description,
+                                    })
                                 })
-                            }).collect::<Vec<_>>()),
+                                .collect::<Vec<_>>()),
                         );
                         return format_scan_response(&scan_result, &new_scan_id, &new_code_hash);
                     }
                 }
 
                 // No high-severity issues — cache and proceed
-                server.confirmed_skills.insert(
-                    skill_name.to_string(),
-                    ConfirmedSkill { code_hash },
-                );
+                server
+                    .confirmed_skills
+                    .insert(skill_name.to_string(), ConfirmedSkill { code_hash });
             }
         }
     }
@@ -420,4 +456,3 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
 
     Ok(output)
 }
-

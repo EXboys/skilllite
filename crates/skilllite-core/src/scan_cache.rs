@@ -49,8 +49,7 @@ pub fn get_cached(content_hash: &str) -> Result<Option<(String, String)>> {
         return Ok(None);
     }
     let content = fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("read cache: {}", e))?;
-    let map: HashMap<String, CachedEntry> =
-        serde_json::from_str(&content).unwrap_or_default();
+    let map: HashMap<String, CachedEntry> = serde_json::from_str(&content).unwrap_or_default();
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()

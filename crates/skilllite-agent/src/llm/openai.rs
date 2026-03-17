@@ -5,8 +5,7 @@ use futures_util::StreamExt;
 use serde_json::{json, Value};
 
 use crate::types::{
-    ChatMessage, EventSink, FunctionCall, ToolCall, ToolDefinition,
-    get_max_tokens,
+    get_max_tokens, ChatMessage, EventSink, FunctionCall, ToolCall, ToolDefinition,
 };
 
 use super::{ChatCompletionResponse, Choice, ChoiceMessage, LlmClient};
@@ -256,8 +255,7 @@ impl LlmClient {
                         }
 
                         // Accumulate tool calls silently (deltas arrive by index)
-                        if let Some(tc_deltas) =
-                            delta.get("tool_calls").and_then(|v| v.as_array())
+                        if let Some(tc_deltas) = delta.get("tool_calls").and_then(|v| v.as_array())
                         {
                             for tc_delta in tc_deltas {
                                 let idx =
@@ -281,8 +279,7 @@ impl LlmClient {
                                     tool_calls[idx].id = id.to_string();
                                 }
                                 if let Some(func) = tc_delta.get("function") {
-                                    if let Some(name) = func.get("name").and_then(|v| v.as_str())
-                                    {
+                                    if let Some(name) = func.get("name").and_then(|v| v.as_str()) {
                                         tool_calls[idx].function.name.push_str(name);
                                     }
                                     if let Some(args) =

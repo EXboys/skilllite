@@ -45,7 +45,7 @@ pub fn execute_with_limits(
                     );
                     return Err(e.context(
                         "WSL2 sandbox execution failed. \
-                         Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended)."
+                         Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended).",
                     ));
                 }
             }
@@ -73,7 +73,7 @@ pub fn execute_with_limits(
             );
             Err(e.context(
                 "Windows sandbox execution failed. No adequate isolation available. \
-                 Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended)."
+                 Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended).",
             ))
         }
     }
@@ -114,7 +114,9 @@ fn check_wsl2_status() -> Wsl2Status {
     if skilllite_ok {
         Wsl2Status::Ready
     } else {
-        Wsl2Status::Available { skilllite_missing: true }
+        Wsl2Status::Available {
+            skilllite_missing: true,
+        }
     }
 }
 
@@ -147,8 +149,8 @@ fn execute_via_wsl2(
     input_json: &str,
     limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    let wsl_skill_dir = windows_to_wsl_path(skill_dir)
-        .context("Failed to convert skill_dir to WSL path")?;
+    let wsl_skill_dir =
+        windows_to_wsl_path(skill_dir).context("Failed to convert skill_dir to WSL path")?;
 
     let mut args = vec![
         "-e".to_string(),
@@ -175,7 +177,8 @@ fn execute_via_wsl2(
         .context("Failed to spawn skilllite via WSL")?;
 
     if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(input_json.as_bytes())
+        stdin
+            .write_all(input_json.as_bytes())
             .context("Failed to write input to WSL stdin")?;
     }
 
@@ -185,7 +188,8 @@ fn execute_via_wsl2(
     loop {
         match child.try_wait() {
             Ok(Some(status)) => {
-                let output = child.wait_with_output()
+                let output = child
+                    .wait_with_output()
                     .context("Failed to read WSL output")?;
                 return Ok(ExecutionResult {
                     stdout: String::from_utf8_lossy(&output.stdout).to_string(),
@@ -277,7 +281,10 @@ fn execute_with_native_isolation(
     // Attach Job Object for resource limits (best-effort)
     let job_handle = attach_job_object(&child, &limits);
     if let Err(ref e) = job_handle {
-        tracing::warn!("Failed to create Job Object: {}. Resource limits not enforced.", e);
+        tracing::warn!(
+            "Failed to create Job Object: {}. Resource limits not enforced.",
+            e
+        );
     }
 
     if let Some(mut stdin) = child.stdin.take() {
@@ -310,7 +317,10 @@ fn execute_with_native_isolation(
                     let _ = child.kill();
                     return Ok(ExecutionResult {
                         stdout: String::new(),
-                        stderr: format!("Process killed: exceeded timeout of {}s", limits.timeout_secs),
+                        stderr: format!(
+                            "Process killed: exceeded timeout of {}s",
+                            limits.timeout_secs
+                        ),
                         exit_code: -1,
                     });
                 }
@@ -327,10 +337,7 @@ fn execute_with_native_isolation(
 /// - Memory limit (JOB_OBJECT_LIMIT_PROCESS_MEMORY)
 /// - Process count limit (JOB_OBJECT_LIMIT_ACTIVE_PROCESS)
 /// - Kill-on-close (all child processes die when handle closes)
-fn attach_job_object(
-    child: &std::process::Child,
-    limits: &ResourceLimits,
-) -> Result<()> {
+fn attach_job_object(child: &std::process::Child, limits: &ResourceLimits) -> Result<()> {
     use std::os::windows::io::AsRawHandle;
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
     use windows_sys::Win32::System::JobObjects::*;
@@ -362,8 +369,7 @@ fn attach_job_object(
         }
 
         let mut info: JobObjectExtendedLimitInfo = std::mem::zeroed();
-        info.basic.LimitFlags =
-            JOB_OBJECT_LIMIT_PROCESS_MEMORY
+        info.basic.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY
             | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
             | JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         info.process_memory_limit = (limits.max_memory_mb * 1024 * 1024) as usize;
@@ -447,7 +453,10 @@ pub fn execute_simple_with_limits(
     let mut child = cmd.spawn().context("Failed to execute skill")?;
 
     if let Err(e) = attach_job_object(&child, &limits) {
-        tracing::warn!("Failed to attach Job Object: {}. Resource limits not enforced.", e);
+        tracing::warn!(
+            "Failed to attach Job Object: {}. Resource limits not enforced.",
+            e
+        );
     }
 
     if let Some(mut stdin) = child.stdin.take() {
@@ -480,7 +489,10 @@ pub fn execute_simple_with_limits(
                     let _ = child.kill();
                     return Ok(ExecutionResult {
                         stdout: String::new(),
-                        stderr: format!("Process killed: exceeded timeout of {}s", limits.timeout_secs),
+                        stderr: format!(
+                            "Process killed: exceeded timeout of {}s",
+                            limits.timeout_secs
+                        ),
                         exit_code: -1,
                     });
                 }
@@ -509,7 +521,8 @@ fn execute_bash_via_wsl(
         let _ = stdin.write_all(input_json.as_bytes());
     }
 
-    let output = child.wait_with_output()
+    let output = child
+        .wait_with_output()
         .context("Failed to wait for WSL bash")?;
 
     Ok(ExecutionResult {
@@ -537,7 +550,9 @@ pub fn diagnose_wsl() -> String {
         Wsl2Status::Available { .. } => {
             report.push_str("WSL2: Available but skilllite is NOT installed in WSL\n\n");
             report.push_str("To install skilllite in WSL:\n");
-            report.push_str("  wsl -e sh -c 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh'\n");
+            report.push_str(
+                "  wsl -e sh -c 'curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs | sh'\n",
+            );
             report.push_str("  wsl -e sh -c 'cargo install --path /mnt/c/path/to/skilllite'\n");
         }
         Wsl2Status::NotAvailable => {

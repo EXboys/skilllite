@@ -32,7 +32,9 @@ pub fn workspace_root(workspace_path: Option<&str>) -> Result<std::path::PathBuf
 /// Resolve chat root for session/transcript/memory RPC.
 /// When workspace_path is None: use chat_root() (SKILLLITE_WORKSPACE/chat or ~/.skilllite/chat).
 /// When provided: treat as data root and return path/chat. If path already ends with "chat", use as-is.
-pub fn chat_root_for_rpc(workspace_path: Option<&str>) -> Result<std::path::PathBuf, ExecutorError> {
+pub fn chat_root_for_rpc(
+    workspace_path: Option<&str>,
+) -> Result<std::path::PathBuf, ExecutorError> {
     if let Some(p) = workspace_path {
         let path = std::path::PathBuf::from(p);
         let data_root = if path.is_absolute() {
