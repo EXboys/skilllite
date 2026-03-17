@@ -282,10 +282,16 @@ impl SandboxEnvConfig {
         .ok()
         .unwrap_or(30);
 
-        let auto_approve =
-            env_bool(sb_keys::SKILLLITE_AUTO_APPROVE, sb_keys::AUTO_APPROVE_ALIASES, false);
-        let no_sandbox =
-            env_bool(sb_keys::SKILLLITE_NO_SANDBOX, sb_keys::NO_SANDBOX_ALIASES, false);
+        let auto_approve = env_bool(
+            sb_keys::SKILLLITE_AUTO_APPROVE,
+            sb_keys::AUTO_APPROVE_ALIASES,
+            false,
+        );
+        let no_sandbox = env_bool(
+            sb_keys::SKILLLITE_NO_SANDBOX,
+            sb_keys::NO_SANDBOX_ALIASES,
+            false,
+        );
         let allow_playwright = env_bool(
             sb_keys::SKILLLITE_ALLOW_PLAYWRIGHT,
             sb_keys::ALLOW_PLAYWRIGHT_ALIASES,

@@ -82,8 +82,7 @@ pub fn execute_simple_with_limits(
     }
 
     // Script arguments from config (SKILLLITE_SCRIPT_ARGS / SKILLBOX_SCRIPT_ARGS)
-    if let Some(ref script_args) =
-        skilllite_core::config::SandboxEnvConfig::from_env().script_args
+    if let Some(ref script_args) = skilllite_core::config::SandboxEnvConfig::from_env().script_args
     {
         if !script_args.is_empty() {
             for arg in script_args.split_whitespace() {
@@ -258,8 +257,7 @@ fn execute_with_sandbox(
     let mut args = vec![entry_point.to_string()];
 
     // Script arguments from config (SKILLLITE_SCRIPT_ARGS / SKILLBOX_SCRIPT_ARGS)
-    if let Some(ref script_args) =
-        skilllite_core::config::SandboxEnvConfig::from_env().script_args
+    if let Some(ref script_args) = skilllite_core::config::SandboxEnvConfig::from_env().script_args
     {
         if !script_args.is_empty() {
             for arg in script_args.split_whitespace() {

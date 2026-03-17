@@ -179,7 +179,9 @@ fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &st
 
     // Check if auto-approve is enabled via config (SKILLLITE_* / SKILLBOX_*)
     if skilllite_core::config::SandboxEnvConfig::from_env().auto_approve {
-        tracing::info!("Auto-approved via SKILLLITE_AUTO_APPROVE (or legacy SKILLBOX_AUTO_APPROVE)");
+        tracing::info!(
+            "Auto-approved via SKILLLITE_AUTO_APPROVE (or legacy SKILLBOX_AUTO_APPROVE)"
+        );
         observability::audit_confirmation_response(skill_id, true, "auto");
         return true;
     }
