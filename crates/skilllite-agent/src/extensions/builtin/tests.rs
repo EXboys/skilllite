@@ -1160,7 +1160,7 @@ async fn test_execute_async_builtin_run_command_marks_nonzero_exit_as_error() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path();
     let arguments = serde_json::json!({
-        "command": "echo ok && ls nonexistent_file"
+        "command": "echo ok && false"
     })
     .to_string();
     let mut sink = SilentEventSink;
