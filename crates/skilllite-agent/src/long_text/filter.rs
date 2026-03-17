@@ -23,6 +23,12 @@ fn position_score(chunk_index: usize, total_chunks: usize) -> f64 {
     }
 }
 
+/// Fallback regex that never matches (used when a static pattern fails to compile).
+/// Uses `$^` (end then start) which is valid and matches no string.
+fn never_match_regex() -> Regex {
+    Regex::new("$^").unwrap_or_else(|_| unreachable!("$^ is valid"))
+}
+
 /// Discourse markers: sentences with summary/conclusion cues get a bonus.
 /// Matches: 总结, 结论, 关键, 重要, 要点, 综上所述, 实验表明, 结果表明, 主要发现
 static DISCOURSE_RE: OnceLock<Regex> = OnceLock::new();
@@ -30,7 +36,7 @@ static DISCOURSE_RE: OnceLock<Regex> = OnceLock::new();
 fn discourse_score(chunk: &str) -> f64 {
     let re = DISCOURSE_RE.get_or_init(|| {
         Regex::new(r"总结|结论|关键|重要|要点|综上所述|实验表明|结果表明|主要发现|核心|概括")
-            .expect("discourse regex")
+            .unwrap_or_else(|_| never_match_regex())
     });
     let matches = re.find_iter(chunk).count();
     if matches == 0 {
@@ -46,7 +52,8 @@ static NUMBER_RE: OnceLock<Regex> = OnceLock::new();
 
 fn entity_score(chunk: &str) -> f64 {
     let num_re = NUMBER_RE.get_or_init(|| {
-        Regex::new(r"\d+[%.,]?|\d+\.\d+|[①-⑳]|[一二三四五六七八九十百千]+").expect("number regex")
+        Regex::new(r"\d+[%.,]?|\d+\.\d+|[①-⑳]|[一二三四五六七八九十百千]+")
+            .unwrap_or_else(|_| never_match_regex())
     });
     let num_count = num_re.find_iter(chunk).count();
     // Numbers: 0-2 = 0, 3-5 = 0.3, 6+ = 0.6

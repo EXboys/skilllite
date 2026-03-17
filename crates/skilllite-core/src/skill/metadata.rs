@@ -7,18 +7,24 @@ use std::sync::LazyLock;
 
 // ─── Pre-compiled Regex statics ───────────────────────────────────────────────
 
+/// Fallback regex that never matches (used when a static pattern fails to compile).
+/// Uses `$^` (end then start) which is valid and matches no string.
+fn never_match_regex() -> Regex {
+    Regex::new("$^").unwrap_or_else(|_| unreachable!("$^ is valid"))
+}
+
 /// Matches YAML continuation lines: newline + indent + colon + space.
 static YAML_CONTINUATION_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\n(\s+):(\s+)").expect("YAML_CONTINUATION_RE is valid"));
+    LazyLock::new(|| Regex::new(r"\n(\s+):(\s+)").unwrap_or_else(|_| never_match_regex()));
 
 /// Matches YAML front matter between --- delimiters (dotall mode).
 static YAML_FRONT_MATTER_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)^---\s*\n(.*?)\n---").expect("YAML_FRONT_MATTER_RE is valid")
+    Regex::new(r"(?s)^---\s*\n(.*?)\n---").unwrap_or_else(|_| never_match_regex())
 });
 
 /// Matches `Bash(...)` patterns inside allowed_tools strings.
 static ALLOWED_TOOLS_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"Bash\(([^)]+)\)").expect("ALLOWED_TOOLS_RE is valid"));
+    LazyLock::new(|| Regex::new(r"Bash\(([^)]+)\)").unwrap_or_else(|_| never_match_regex()));
 
 /// Front matter data (official Agent Skills fields per Claude specification)
 /// See: https://docs.anthropic.com/en/docs/agents-and-tools/agent-skills/specification

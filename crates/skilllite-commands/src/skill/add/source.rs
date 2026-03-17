@@ -9,22 +9,30 @@ use std::sync::LazyLock;
 
 // ─── Static regexes (compiled once at first use) ──────────────────────────────
 
+/// Fallback regex that never matches (used when a static pattern fails to compile).
+/// Uses `$^` (end then start) which is valid and matches no string.
+fn never_match_regex() -> Regex {
+    Regex::new("$^").unwrap_or_else(|_| unreachable!("$^ is valid"))
+}
+
 static RE_TREE_PATH: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)").expect("static regex re_tree_path")
+    Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)/(.+)")
+        .unwrap_or_else(|_| never_match_regex())
 });
 static RE_TREE_BRANCH: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$").expect("static regex re_tree_branch")
+    Regex::new(r"github\.com/([^/]+)/([^/]+)/tree/([^/]+)$").unwrap_or_else(|_| never_match_regex())
 });
 static RE_GITHUB: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"github\.com/([^/]+)/([^/]+?)(?:\.git)?/*$").expect("static regex re_github")
+    Regex::new(r"github\.com/([^/]+)/([^/]+?)(?:\.git)?/*$").unwrap_or_else(|_| never_match_regex())
 });
 static RE_GITLAB: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").expect("static regex re_gitlab")
+    Regex::new(r"gitlab\.com/(.+?)(?:\.git)?/?$").unwrap_or_else(|_| never_match_regex())
 });
-static RE_AT_FILTER: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").expect("static regex re_at_filter"));
+static RE_AT_FILTER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([^/]+)/([^/@]+)@(.+)$").unwrap_or_else(|_| never_match_regex())
+});
 static RE_SHORTHAND: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").expect("static regex re_shorthand")
+    Regex::new(r"^([^/]+)/([^/]+)(?:/(.+))?$").unwrap_or_else(|_| never_match_regex())
 });
 
 // ─── Source Parsing ─────────────────────────────────────────────────────────

@@ -272,14 +272,21 @@ async fn handle_task(
                     }
                 });
                 let body = Body::from_stream(s1.chain(s2));
-                return Response::builder()
+                return match Response::builder()
                     .status(StatusCode::OK)
                     .header(header::CONTENT_TYPE, "application/x-ndjson")
                     .body(body)
-                    // SAFETY: StatusCode::OK and "application/x-ndjson" are statically valid;
-                    // builder failure is structurally impossible here.
-                    .expect("valid status and header — Response::builder cannot fail")
-                    .into_response();
+                {
+                    Ok(resp) => resp.into_response(),
+                    Err(e) => {
+                        tracing::error!(err = %e, "Response::builder failed");
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(serde_json::json!({"error":"internal","message":e.to_string()})),
+                        )
+                            .into_response()
+                    }
+                };
             }
             let start = std::time::Instant::now();
             let exec = exec.clone();

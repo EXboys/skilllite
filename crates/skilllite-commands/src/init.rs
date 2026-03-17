@@ -260,15 +260,27 @@ fn install_all_deps(
                         let client_opt = llm_client.as_ref();
                         let model_opt = model.as_deref();
                         if let (Some(client), Some(m)) = (client_opt, model_opt) {
-                            let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
-                            rt.block_on(skilllite_agent::dependency_resolver::resolve_packages(
-                                &skill_path,
-                                meta.compatibility.as_deref(),
-                                &lang,
-                                Some(client),
-                                Some(m),
-                                true,
-                            ))
+                            match tokio::runtime::Runtime::new() {
+                                Ok(rt) => rt.block_on(
+                                    skilllite_agent::dependency_resolver::resolve_packages(
+                                        &skill_path,
+                                        meta.compatibility.as_deref(),
+                                        &lang,
+                                        Some(client),
+                                        Some(m),
+                                        true,
+                                    ),
+                                ),
+                                Err(e) => {
+                                    tracing::warn!(skill = %name, err = %e, "tokio runtime failed, skipping LLM dependency resolution");
+                                    dependency_resolver::resolve_packages_sync(
+                                        &skill_path,
+                                        meta.compatibility.as_deref(),
+                                        &lang,
+                                        true,
+                                    )
+                                }
+                            }
                         } else {
                             dependency_resolver::resolve_packages_sync(
                                 &skill_path,

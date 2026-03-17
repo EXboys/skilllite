@@ -9,6 +9,8 @@ use anyhow::{Context, Result};
 use std::fs;
 #[cfg(feature = "agent")]
 use std::path::{Path, PathBuf};
+#[cfg(feature = "agent")]
+use std::sync::LazyLock;
 
 #[cfg(feature = "agent")]
 use skilllite_agent::llm::LlmClient;
@@ -19,12 +21,21 @@ use skilllite_agent::types::{AgentConfig, ChatMessage, PlanningRule};
 #[cfg(feature = "agent")]
 use skilllite_core::skill::metadata;
 
+/// Regex for SKILL.md front matter (content after first `---...---` block).
+#[cfg(feature = "agent")]
+static SKILL_MD_FRONT_MATTER_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"(?s)^---\s*\n.*?\n---\s*\n")
+        .unwrap_or_else(|_| regex::Regex::new("$^").unwrap_or_else(|_| unreachable!("$^ is valid")))
+});
+
 /// Extract body content from SKILL.md (content after the closing `---` of front matter).
 /// Returns up to `max_chars` for summary.
 #[cfg(feature = "agent")]
 fn extract_skill_body(content: &str, max_chars: usize) -> String {
-    let re = regex::Regex::new(r"(?s)^---\s*\n.*?\n---\s*\n").expect("SKILL.md regex");
-    let body = re.replace(content, "").trim().to_string();
+    let body = SKILL_MD_FRONT_MATTER_RE
+        .replace(content, "")
+        .trim()
+        .to_string();
     let summary: String = body.chars().take(max_chars).collect();
     if body.chars().count() > max_chars {
         format!("{}...", summary)
@@ -117,7 +128,7 @@ Example output: [{"id":"csdn_article","priority":88,"keywords":["csdn","CSDN","c
         ChatMessage::user(&user_content),
     ];
 
-    let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
+    let rt = tokio::runtime::Runtime::new().context("tokio runtime")?;
     let resp = rt.block_on(client.chat_completion(&config.model, &messages, None, Some(0.2)))?;
 
     let raw = resp
