@@ -166,7 +166,8 @@ async fn skilllite_probe_ollama() -> skilllite_bridge::OllamaProbeResult {
         .await
         .unwrap_or_else(|_| skilllite_bridge::OllamaProbeResult {
             available: false,
-            model: None,
+            models: vec![],
+            has_embedding: false,
         })
 }
 

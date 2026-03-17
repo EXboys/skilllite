@@ -65,7 +65,7 @@ pub struct ChatConfigOverrides {
     pub workspace: Option<String>,
 }
 
-/// Resolve skilllite binary path: bundled resource first, else "skilllite" from PATH.
+/// Resolve skilllite binary path: bundled resource first, then ~/.skilllite/bin, else PATH.
 fn resolve_skilllite_path(window: &Window) -> (PathBuf, bool) {
     let exe_name = if cfg!(target_os = "windows") {
         "skilllite.exe"
@@ -76,6 +76,12 @@ fn resolve_skilllite_path(window: &Window) -> (PathBuf, bool) {
         let bundled = res_dir.join(exe_name);
         if bundled.exists() {
             return (bundled, true);
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        let dev_bin = home.join(".skilllite").join("bin").join(exe_name);
+        if dev_bin.exists() {
+            return (dev_bin, true);
         }
     }
     (PathBuf::from("skilllite"), false)
@@ -115,6 +121,11 @@ pub fn chat_stream(
         if let Some(ref key) = cfg.api_key {
             if !key.is_empty() {
                 cmd.env("OPENAI_API_KEY", key);
+            }
+        }
+        if let Some(ref base) = cfg.api_base {
+            if !base.is_empty() {
+                cmd.env("OPENAI_BASE_URL", base);
             }
         }
     }
@@ -983,29 +994,34 @@ pub fn init_workspace(dir: &str, skilllite_path: &std::path::Path) -> Result<(),
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct OllamaProbeResult {
     pub available: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    /// All installed model names.
+    pub models: Vec<String>,
+    /// Whether an embedding-capable model is present (name contains "embed").
+    pub has_embedding: bool,
 }
 
-/// Probe Ollama at localhost:11434; returns availability and first model name if any.
+/// Probe Ollama at localhost:11434; returns availability, all model names, and embedding support.
 pub fn probe_ollama() -> OllamaProbeResult {
+    let empty = OllamaProbeResult { available: false, models: vec![], has_embedding: false };
     let body = match ollama_get_tags() {
         Ok(b) => b,
-        Err(_) => return OllamaProbeResult { available: false, model: None },
+        Err(_) => return empty,
     };
     let json: serde_json::Value = match serde_json::from_str(&body) {
         Ok(j) => j,
-        Err(_) => return OllamaProbeResult { available: false, model: None },
+        Err(_) => return empty,
     };
-    let models = match json.get("models").and_then(|m| m.as_array()) {
-        Some(a) if !a.is_empty() => a,
-        _ => return OllamaProbeResult { available: true, model: None },
+    let arr = match json.get("models").and_then(|m| m.as_array()) {
+        Some(a) => a,
+        None => return OllamaProbeResult { available: true, models: vec![], has_embedding: false },
     };
-    let first = models
+    let models: Vec<String> = arr
         .iter()
-        .find_map(|m| m.get("name").and_then(|n| n.as_str()))
-        .map(|s| s.to_string());
-    OllamaProbeResult { available: true, model: first }
+        .filter_map(|m| m.get("name").and_then(|n| n.as_str()))
+        .map(|s| s.to_string())
+        .collect();
+    let has_embedding = models.iter().any(|n| n.contains("embed"));
+    OllamaProbeResult { available: true, models, has_embedding }
 }
 
 fn ollama_get_tags() -> Result<String, ()> {

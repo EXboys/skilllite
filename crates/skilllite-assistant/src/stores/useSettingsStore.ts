@@ -1,7 +1,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+export type Provider = "api" | "ollama";
+
 export interface Settings {
+  provider: Provider;
   apiKey: string;
   model: string;
   workspace: string;
@@ -11,6 +14,7 @@ export interface Settings {
 }
 
 const defaultSettings: Settings = {
+  provider: "api",
   apiKey: "",
   model: "gpt-4o",
   workspace: ".",

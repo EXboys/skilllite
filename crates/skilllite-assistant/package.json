@@ -10,7 +10,7 @@
     "tauri": "tauri",
     "icon": "tauri icon app-icon.png --output src-tauri/icons",
     "prebuild:tauri": "bash scripts/prebuild-skilllite.sh",
-    "tauri:build": "CI=true tauri build"
+    "tauri:build": "cross-env CI=true tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",
@@ -29,6 +29,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "cross-env": "^10.1.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "~5.6.2",

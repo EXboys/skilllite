@@ -13,6 +13,7 @@ export default function OnboardingModal() {
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("gpt-4o");
   const [workspace, setWorkspace] = useState("");
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaModel, setOllamaModel] = useState<string | null>(null);
   const [ollamaLoading, setOllamaLoading] = useState(false);
   const [initCreating, setInitCreating] = useState(false);
@@ -22,9 +23,13 @@ export default function OnboardingModal() {
     if (step === "mode") return;
     if (mode === "ollama") {
       setOllamaLoading(true);
-      invoke<{ available: boolean; model?: string }>("skilllite_probe_ollama")
+      invoke<{ available: boolean; models: string[]; has_embedding: boolean }>("skilllite_probe_ollama")
         .then((r) => {
-          if (r.available && r.model) setOllamaModel(r.model);
+          if (r.available) {
+            const chatModels = r.models.filter((m) => !m.includes("embed"));
+            setOllamaModels(chatModels);
+            if (chatModels.length > 0) setOllamaModel(chatModels[0]);
+          }
         })
         .finally(() => setOllamaLoading(false));
     }
@@ -34,6 +39,7 @@ export default function OnboardingModal() {
     const ws = workspace.trim() || ".";
     if (mode === "ollama") {
       setSettings({
+        provider: "ollama",
         apiKey: "ollama",
         apiBase: "http://localhost:11434/v1",
         model: ollamaModel || "llama3.2",
@@ -42,6 +48,7 @@ export default function OnboardingModal() {
       });
     } else {
       setSettings({
+        provider: "api",
         apiKey: apiKey.trim(),
         model: model.trim() || "gpt-4o",
         workspace: ws,
@@ -203,24 +210,27 @@ export default function OnboardingModal() {
             </p>
             {ollamaLoading ? (
               <p className="text-sm text-ink-mute mb-4">正在检测 Ollama…</p>
-            ) : ollamaModel ? (
+            ) : ollamaModels.length > 0 ? (
               <p className="text-sm text-ink-mute dark:text-ink-dark-mute mb-4">
-                已检测到本地模型：<strong>{ollamaModel}</strong>
+                已检测到 {ollamaModels.length} 个本地模型
               </p>
             ) : (
               <p className="text-sm text-ink-mute dark:text-ink-dark-mute mb-4">
                 未检测到 Ollama 或未安装模型。请先安装并运行 Ollama，或在上一步选择「配置 API Key」。
               </p>
             )}
-            {!ollamaLoading && ollamaModel && (
+            {!ollamaLoading && ollamaModels.length > 0 && (
               <div className="mb-2">
                 <label className="block text-xs text-ink-mute mb-1">使用模型</label>
-                <input
-                  type="text"
-                  value={ollamaModel}
+                <select
+                  value={ollamaModel || ""}
                   onChange={(e) => setOllamaModel(e.target.value)}
                   className="w-full rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-sm"
-                />
+                >
+                  {ollamaModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
               </div>
             )}
             <div className="flex justify-end gap-2">
