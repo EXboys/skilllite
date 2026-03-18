@@ -6,6 +6,14 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - main
+    paths:
+      - 'crates/skilllite-assistant/**'
+      - 'crates/skilllite-agent/**'
+      - 'crates/skilllite-core/**'
+      - 'skilllite/**'
+      - 'Cargo.lock'
   workflow_dispatch:
 
 permissions:
