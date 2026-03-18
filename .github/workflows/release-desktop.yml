@@ -105,8 +105,8 @@ jobs:
     name: Upload desktop assets to Release
     needs: build-desktop
     runs-on: ubuntu-latest
-    # 仅 tag 触发时上传；允许部分平台成功（fail_on_unmatched_files: false）
-    if: always() && startsWith(github.ref, 'refs/tags/') && !cancelled()
+    # tag 触发或手动触发时上传；允许部分平台成功（fail_on_unmatched_files: false）
+    if: always() && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch') && !cancelled()
     permissions:
       contents: write
 
@@ -119,10 +119,24 @@ jobs:
       - name: List artifacts
         run: find ./desktop-artifacts -type f
 
-      - name: Upload to existing Release
+      - name: Upload to existing Release (tag push)
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
+          files: |
+            desktop-artifacts/skilllite-assistant-darwin-arm64/*.dmg
+            desktop-artifacts/skilllite-assistant-windows-x64/*.msi
+            desktop-artifacts/skilllite-assistant-linux-x64/*.AppImage
+          fail_on_unmatched_files: false
+
+      - name: Create draft Release (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-${{ github.sha }}
+          name: "Desktop Build (manual)"
+          draft: true
           files: |
             desktop-artifacts/skilllite-assistant-darwin-arm64/*.dmg
             desktop-artifacts/skilllite-assistant-windows-x64/*.msi
