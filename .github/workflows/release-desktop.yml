@@ -75,13 +75,15 @@ jobs:
         run: npm ci
 
       # macOS：导入 Developer ID 证书以便 Tauri 构建时签名（配置 Secrets 后生效，未配置则跳过即不签名）
+      # 注意：if 条件中不能使用 secrets，故在脚本内判断是否跳过
       - name: Import Apple Developer certificate (macOS)
-        if: matrix.os == 'macos-latest' && secrets.APPLE_CERTIFICATE != ''
+        if: matrix.os == 'macos-latest'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then echo "APPLE_CERTIFICATE not set, skipping signing"; exit 0; fi
           echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
@@ -94,12 +96,14 @@ jobs:
           echo "Using signing identity: $SIGNING_IDENTITY"
 
       # macOS：用 App Store Connect API 密钥做公证时，把 .p8 内容写回为临时文件（不填 APPLE_ID/APPLE_PASSWORD 时用）
+      # 注意：if 条件中不能使用 secrets，故在脚本内判断是否跳过
       - name: Prepare Apple API key for notarization (macOS)
-        if: matrix.os == 'macos-latest' && secrets.APPLE_API_KEY != '' && secrets.APPLE_API_KEY_P8 != ''
+        if: matrix.os == 'macos-latest'
         working-directory: crates/skilllite-assistant
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
         run: |
+          if [ -z "$APPLE_API_KEY_P8" ]; then echo "APPLE_API_KEY_P8 not set, skipping"; exit 0; fi
           echo "$APPLE_API_KEY_P8" > authkey.p8
           echo "APPLE_API_KEY_PATH=${{ github.workspace }}/crates/skilllite-assistant/authkey.p8" >> $GITHUB_ENV
 
