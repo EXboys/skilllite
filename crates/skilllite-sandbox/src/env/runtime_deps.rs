@@ -244,13 +244,20 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
         return Ok(python_bin);
     }
 
-    report("This skill requires Python but none was found on your system. Preparing automatically...");
+    report(
+        "This skill requires Python but none was found on your system. Preparing automatically...",
+    );
     std::fs::create_dir_all(runtime_dir).context("Create runtime dir")?;
     // Remove stale dirs from previous failed runs so we have a clean extract and a single cpython-* candidate
     if python_dir.exists() {
         let _ = std::fs::remove_dir_all(&python_dir);
     }
-    for e in std::fs::read_dir(runtime_dir).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+    for e in std::fs::read_dir(runtime_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+    {
         let path = e.path();
         let name = e.file_name().to_string_lossy().into_owned();
         if name.starts_with("cpython-") && path.is_dir() {
@@ -313,7 +320,11 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
         || extracted_root.join("python.exe").exists()
     {
         extracted_root.clone()
-    } else if extracted_root.join("install").join("bin").join("python").exists()
+    } else if extracted_root
+        .join("install")
+        .join("bin")
+        .join("python")
+        .exists()
         || extracted_root.join("install").join("python.exe").exists()
     {
         extracted_root.join("install")
@@ -323,8 +334,7 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
             extracted_root.display()
         );
     };
-    if install_root.join("bin").join("python").exists()
-        || install_root.join("python.exe").exists()
+    if install_root.join("bin").join("python").exists() || install_root.join("python.exe").exists()
     {
         // Remove stale target dir from a previous failed run so rename can succeed
         if python_dir.exists() {
@@ -557,14 +567,21 @@ pub fn ensure_node_runtime(
         return Ok((node_bin, npm_bin));
     }
 
-    report("This skill requires Node.js but none was found on your system. Preparing automatically...");
+    report(
+        "This skill requires Node.js but none was found on your system. Preparing automatically...",
+    );
     std::fs::create_dir_all(runtime_dir).context("Create runtime dir")?;
     // Remove stale dirs from previous failed runs (same as Python)
     if node_dir.exists() {
         let _ = std::fs::remove_dir_all(&node_dir);
     }
     let node_prefix = format!("node-v{}-", NODE_VERSION);
-    for e in std::fs::read_dir(runtime_dir).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+    for e in std::fs::read_dir(runtime_dir)
+        .ok()
+        .into_iter()
+        .flatten()
+        .filter_map(|e| e.ok())
+    {
         let path = e.path();
         let name = e.file_name().to_string_lossy().into_owned();
         if name.starts_with(&node_prefix) && path.is_dir() {

@@ -54,9 +54,23 @@ pub fn ensure_environment(
     let env_path = base.join(key);
 
     if lang == "python" {
-        ensure_python_env(skill_dir, spec, &env_path, cache_dir, progress, confirm_download)?;
+        ensure_python_env(
+            skill_dir,
+            spec,
+            &env_path,
+            cache_dir,
+            progress,
+            confirm_download,
+        )?;
     } else if lang == "node" {
-        ensure_node_env(skill_dir, spec, &env_path, cache_dir, progress, confirm_download)?;
+        ensure_node_env(
+            skill_dir,
+            spec,
+            &env_path,
+            cache_dir,
+            progress,
+            confirm_download,
+        )?;
     } else {
         return Ok(PathBuf::new());
     }
