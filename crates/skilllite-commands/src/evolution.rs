@@ -713,7 +713,8 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>, from_source: bool) 
                         eprintln!("  ⏭️ 跳过（非交互环境，可加 --from-source 自动从源头更新）");
                         false
                     } else {
-                        line.trim().eq_ignore_ascii_case("y") || line.trim().eq_ignore_ascii_case("yes")
+                        line.trim().eq_ignore_ascii_case("y")
+                            || line.trim().eq_ignore_ascii_case("yes")
                     }
                 };
                 if yes {
