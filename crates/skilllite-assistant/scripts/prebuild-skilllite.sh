@@ -19,6 +19,15 @@ if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
 else
   cp -f target/release/skilllite "$RESOURCES/"
   echo "Bundled: $RESOURCES/skilllite"
+
+  # macOS: sign the resource binary so Apple notarization succeeds
+  # (Tauri only auto-signs the main binary, not files under resources/)
+  if [[ "$OSTYPE" == "darwin"* ]] && [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+    codesign --force --sign "$APPLE_SIGNING_IDENTITY" \
+      --options runtime --timestamp \
+      "$RESOURCES/skilllite"
+    echo "Signed resource binary: $RESOURCES/skilllite"
+  fi
 fi
 
 # 安装到 ~/.skilllite/bin（供 tauri dev 使用）

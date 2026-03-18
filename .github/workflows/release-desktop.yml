@@ -110,6 +110,7 @@ jobs:
 
       - name: Build Tauri app (skilllite binary bundled via beforeBuildCommand)
         working-directory: crates/skilllite-assistant
+        shell: bash
         run: |
           # Unset empty Apple env vars so Tauri won't pick the wrong notarization method
           [ -z "$APPLE_ID" ] && unset APPLE_ID
