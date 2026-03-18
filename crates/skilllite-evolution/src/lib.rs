@@ -83,7 +83,7 @@ pub fn strip_think_blocks(content: &str) -> &str {
     for tag in CLOSING_TAGS {
         if let Some(pos) = content.rfind(tag) {
             let end = pos + tag.len();
-            if best_end.map_or(true, |bp| end > bp) {
+            if best_end.is_none_or(|bp| end > bp) {
                 best_end = Some(end);
             }
         }

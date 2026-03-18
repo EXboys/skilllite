@@ -111,18 +111,16 @@ pub(super) fn handle_get_skill_info(server: &McpServer, arguments: &Value) -> Re
         if let Ok(entries) = std::fs::read_dir(&scripts_dir) {
             for entry in entries.flatten() {
                 let fname = entry.file_name().to_string_lossy().to_string();
-                if fname.ends_with(".py")
+                if (fname.ends_with(".py")
                     || fname.ends_with(".js")
                     || fname.ends_with(".ts")
-                    || fname.ends_with(".sh")
+                    || fname.ends_with(".sh"))
+                    && !fname.starts_with("test_")
+                    && !fname.ends_with("_test.py")
+                    && !fname.starts_with('.')
+                    && fname != "__init__.py"
                 {
-                    if !fname.starts_with("test_")
-                        && !fname.ends_with("_test.py")
-                        && !fname.starts_with('.')
-                        && fname != "__init__.py"
-                    {
-                        scripts.push(fname);
-                    }
+                    scripts.push(fname);
                 }
             }
         }
@@ -162,6 +160,8 @@ fn parse_argparse_schema_from_path(script_path: &Path) -> Option<Value> {
         r#"\.add_argument\s*\(\s*['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?([^)]*)\)"#,
     )
     .ok()?;
+    let re_help = regex::Regex::new(r#"help\s*=\s*['"]([^'"]+)['"]"#).ok();
+    let re_type = regex::Regex::new(r"type\s*=\s*(\w+)").ok();
 
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
@@ -171,17 +171,17 @@ fn parse_argparse_schema_from_path(script_path: &Path) -> Option<Value> {
         let second_arg = caps.get(2).map(|m| m.as_str());
         let kwargs_str = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
-        let (param_name, is_positional) = if arg_name.starts_with("--") {
-            (arg_name[2..].replace('-', "_"), false)
-        } else if arg_name.starts_with('-') {
+        let (param_name, is_positional) = if let Some(stripped) = arg_name.strip_prefix("--") {
+            (stripped.replace('-', "_"), false)
+        } else if let Some(stripped) = arg_name.strip_prefix('-') {
             if let Some(s) = second_arg {
-                if s.starts_with("--") {
-                    (s[2..].replace('-', "_"), false)
+                if let Some(s2) = s.strip_prefix("--") {
+                    (s2.replace('-', "_"), false)
                 } else {
-                    (arg_name[1..].to_string(), false)
+                    (stripped.to_string(), false)
                 }
             } else {
-                (arg_name[1..].to_string(), false)
+                (stripped.to_string(), false)
             }
         } else {
             (arg_name.replace('-', "_"), true)
@@ -190,20 +190,14 @@ fn parse_argparse_schema_from_path(script_path: &Path) -> Option<Value> {
         let mut prop = serde_json::Map::new();
         prop.insert("type".to_string(), json!("string"));
 
-        if let Some(help_cap) = regex::Regex::new(r#"help\s*=\s*['"]([^'"]+)['"]"#)
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(help_cap) = re_help.as_ref().and_then(|re| re.captures(kwargs_str)) {
             prop.insert(
                 "description".to_string(),
                 json!(help_cap.get(1).map(|m| m.as_str()).unwrap_or("")),
             );
         }
 
-        if let Some(type_cap) = regex::Regex::new(r"type\s*=\s*(\w+)")
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(type_cap) = re_type.as_ref().and_then(|re| re.captures(kwargs_str)) {
             match type_cap.get(1).map(|m| m.as_str()).unwrap_or("") {
                 "int" => {
                     prop.insert("type".to_string(), json!("integer"));
@@ -305,7 +299,7 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         let already_confirmed = server
             .confirmed_skills
             .get(skill_name)
-            .map_or(false, |c| c.code_hash == code_hash);
+            .is_some_and(|c| c.code_hash == code_hash);
 
         if !already_confirmed {
             if confirmed {

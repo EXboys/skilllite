@@ -133,10 +133,10 @@ pub fn resolve_from_whitelist(compatibility: &str, language: &str) -> Vec<String
 
     // Check aliases (e.g. "cv2" → "opencv-python", "PIL" → "pillow")
     for (alias, canonical) in aliases {
-        if is_word_boundary_match(&compat_lower, &alias.to_lowercase()) {
-            if !matched.contains(canonical) {
-                matched.push(canonical.clone());
-            }
+        if is_word_boundary_match(&compat_lower, &alias.to_lowercase())
+            && !matched.contains(canonical)
+        {
+            matched.push(canonical.clone());
         }
     }
 

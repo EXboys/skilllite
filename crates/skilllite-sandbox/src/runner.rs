@@ -51,20 +51,15 @@ pub struct SandboxConfig {
 }
 
 /// Sandbox security levels
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SandboxLevel {
     /// Level 1: No sandbox - execute directly without any isolation
     Level1,
     /// Level 2: Sandbox isolation only (macOS Seatbelt / Linux namespace + seccomp)
     Level2,
     /// Level 3: Sandbox isolation + static code scanning (default)
+    #[default]
     Level3,
-}
-
-impl Default for SandboxLevel {
-    fn default() -> Self {
-        Self::Level3
-    }
 }
 
 impl SandboxLevel {

@@ -132,7 +132,7 @@ pub(super) fn execute_chat_history(args: &Value) -> Result<String> {
     let date: Option<String> = args
         .get("date")
         .and_then(|v| v.as_str())
-        .map(|s| normalize_date(s));
+        .map(normalize_date);
 
     let chat_root = chat_data_root();
     let transcripts_dir = chat_root.join("transcripts");
@@ -171,16 +171,19 @@ pub(super) fn execute_chat_history(args: &Value) -> Result<String> {
     for entry in entries {
         match entry {
             TranscriptEntry::Session { .. } => {}
-            TranscriptEntry::Message { role, content, .. } => {
-                if let Some(c) = content {
-                    lines.push(format!("[{}] {}", role, c.trim()));
-                }
+            TranscriptEntry::Message {
+                role,
+                content: Some(c),
+                ..
+            } => {
+                lines.push(format!("[{}] {}", role, c.trim()));
             }
-            TranscriptEntry::Compaction { summary, .. } => {
-                if let Some(s) = summary {
-                    lines.push(format!("[compaction] {}", s));
-                }
+            TranscriptEntry::Compaction {
+                summary: Some(s), ..
+            } => {
+                lines.push(format!("[compaction] {}", s));
             }
+            TranscriptEntry::Message { .. } | TranscriptEntry::Compaction { .. } => {}
             _ => {}
         }
     }
@@ -195,7 +198,7 @@ pub(super) fn execute_chat_plan(args: &Value) -> Result<String> {
     let date: Option<String> = args
         .get("date")
         .and_then(|v| v.as_str())
-        .map(|s| normalize_date(s));
+        .map(normalize_date);
 
     let chat_root = chat_data_root();
     let plans_dir = chat_root.join("plans");

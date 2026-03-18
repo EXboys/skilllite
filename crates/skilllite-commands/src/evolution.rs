@@ -575,8 +575,8 @@ fn is_fetchable_source(source: &str) -> bool {
     if s.is_empty() {
         return false;
     }
-    if s.starts_with("clawhub:") {
-        return s.len() > 8 && !s[8..].trim().is_empty();
+    if let Some(stripped) = s.strip_prefix("clawhub:") {
+        return !stripped.trim().is_empty();
     }
     if Path::new(s).is_absolute()
         || s.starts_with("./")

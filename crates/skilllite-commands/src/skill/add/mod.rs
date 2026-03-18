@@ -183,7 +183,7 @@ pub fn cmd_add(
             if skipped_suspicious.contains(skill_name.as_str()) {
                 continue;
             }
-            let dest = skills_path.join(&skill_name);
+            let dest = skills_path.join(skill_name);
             copy_skill(skill_path, &dest)?;
             let admission = risk_by_name.get(skill_name).copied();
             let _entry = manifest::upsert_installed_skill_with_admission(

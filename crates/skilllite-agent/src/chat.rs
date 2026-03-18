@@ -284,7 +284,6 @@ pub fn run_agent_run(
 
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
 
-    let history_override = history_override;
     rt.block_on(async {
         let mut session = ChatSession::new(config, "run", loaded_skills);
         let mut sink = RunModeEventSink::new(verbose);

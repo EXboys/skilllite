@@ -587,8 +587,8 @@ pub async fn run_external_learning<L: EvolutionLlm>(
     // Phase 1: sync DB check (drop before any await)
     let should_run = {
         let conn = open_evolution_db(chat_root)?;
-        let run = should_run_external_learning(&conn);
-        run // conn dropped here
+
+        should_run_external_learning(&conn) // conn dropped here
     };
     if !should_run {
         return Ok(Vec::new());

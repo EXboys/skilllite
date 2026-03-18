@@ -116,7 +116,7 @@ pub(super) async fn parse_skill_generation_with_retry<L: EvolutionLlm>(
 ) -> Result<Option<GeneratedSkill>> {
     let content = llm.complete(messages, model, 0.3).await?.trim().to_string();
     match parse_skill_generation_response(&content) {
-        ok @ Ok(_) => return ok,
+        ok @ Ok(_) => ok,
         Err(e) => {
             for attempt in 0..MAX_PARSE_RETRIES {
                 tracing::info!(

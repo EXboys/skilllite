@@ -54,7 +54,7 @@ pub fn build_system_prompt(
     let mut parts = Vec::new();
 
     // Law block: built-in immutable constraints, always applied first
-    parts.push(Law::default().to_system_prompt_block());
+    parts.push(Law.to_system_prompt_block());
 
     // Beliefs block: derived from rules.json + examples.json (no separate file)
     if let Some(root) = chat_root {
@@ -102,13 +102,13 @@ pub fn build_system_prompt(
             );
         }
         if memory_search_available {
-            if availability.map_or(true, |view| view.has_tool("memory_search")) {
+            if availability.is_none_or(|view| view.has_tool("memory_search")) {
                 memory_lines.push(
                     "- Use memory_search to find relevant memory by keywords or natural language."
                         .to_string(),
                 );
             }
-            if availability.map_or(true, |view| view.has_tool("memory_list")) {
+            if availability.is_none_or(|view| view.has_tool("memory_list")) {
                 memory_lines.push("- Use memory_list to list stored memory files.".to_string());
             }
         }

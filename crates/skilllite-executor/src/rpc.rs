@@ -150,7 +150,7 @@ pub fn handle_transcript_read(params: &Value) -> Result<Value> {
     let entries = read_entries_for_session(&transcripts_dir, session_key)?;
     let arr: Vec<Value> = entries
         .into_iter()
-        .map(|e| serde_json::to_value(e))
+        .map(serde_json::to_value)
         .filter_map(Result::ok)
         .collect();
     Ok(json!(arr))

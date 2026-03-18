@@ -175,9 +175,8 @@ fn execute_replace_like(
     } else {
         skilllite_fs::apply_replace_fuzzy(&content, old_string, new_string, replace_all)
     }
-    .map_err(|e| {
+    .inspect_err(|e| {
         skilllite_core::observability::audit_edit_failed(&path_str, tool_name, &e.to_string());
-        e
     })?;
 
     if content == result.new_content {

@@ -310,7 +310,7 @@ pub fn cmd_cursor(
             .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
         {
             Some(mut existing) => {
-                if !existing.get("mcpServers").is_some() {
+                if existing.get("mcpServers").is_none() {
                     existing["mcpServers"] = json!({});
                 }
                 existing["mcpServers"]["skilllite"] = mcp_entry;
@@ -413,11 +413,11 @@ pub fn cmd_opencode(project_dir: Option<&str>, skills_dir: &str, force: bool) ->
             .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
         {
             Some(mut existing) => {
-                if !existing.get("mcp").is_some() {
+                if existing.get("mcp").is_none() {
                     existing["mcp"] = json!({});
                 }
                 existing["mcp"]["skilllite"] = mcp_entry;
-                if !existing.get("$schema").is_some() {
+                if existing.get("$schema").is_none() {
                     existing["$schema"] = json!("https://opencode.ai/config.json");
                 }
                 eprintln!("✓ Updated existing opencode.json");

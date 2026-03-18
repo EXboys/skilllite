@@ -42,9 +42,10 @@ impl Socks5Proxy {
 
     /// Start the proxy server in a background thread
     pub fn start(&mut self) -> std::io::Result<thread::JoinHandle<()>> {
-        let listener = self.listener.take().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::Other, "Proxy already started")
-        })?;
+        let listener = self
+            .listener
+            .take()
+            .ok_or_else(|| std::io::Error::other("Proxy already started"))?;
 
         self.running.store(true, Ordering::SeqCst);
         let running = Arc::clone(&self.running);
@@ -181,12 +182,9 @@ impl Socks5Proxy {
         };
 
         {
-            let cfg = config.read().map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("proxy config lock: {}", e),
-                )
-            })?;
+            let cfg = config
+                .read()
+                .map_err(|e| std::io::Error::other(format!("proxy config lock: {}", e)))?;
             let allowed = if atyp == 0x01 || atyp == 0x04 {
                 cfg.is_ip_connection_allowed(&host)
             } else {

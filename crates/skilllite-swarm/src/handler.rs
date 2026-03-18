@@ -414,7 +414,7 @@ pub fn serve_swarm(
         }
         if !tried {
             path.parent()
-                .map(|p| skilllite_core::config::load_dotenv_from_dir(p));
+                .map(skilllite_core::config::load_dotenv_from_dir);
         }
     }
 

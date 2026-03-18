@@ -142,8 +142,8 @@ mod tests {
     fn test_extract_scope_and_exclusions() {
         let goal = "重构 src/ 目录。范围：仅 src/。排除：不要动 test/。";
         let b = extract_goal_boundaries(goal);
-        assert!(b.scope.as_ref().map_or(false, |s| s.contains("src")));
-        assert!(b.exclusions.as_ref().map_or(false, |s| s.contains("test")));
+        assert!(b.scope.as_ref().is_some_and(|s| s.contains("src")));
+        assert!(b.exclusions.as_ref().is_some_and(|s| s.contains("test")));
     }
 
     #[test]
@@ -154,8 +154,10 @@ mod tests {
 
     #[test]
     fn test_to_planning_block() {
-        let mut b = GoalBoundaries::default();
-        b.completion_conditions = Some("all tests pass".to_string());
+        let b = GoalBoundaries {
+            completion_conditions: Some("all tests pass".to_string()),
+            ..Default::default()
+        };
         let block = b.to_planning_block();
         assert!(block.contains("Completion conditions"));
         assert!(block.contains("all tests pass"));

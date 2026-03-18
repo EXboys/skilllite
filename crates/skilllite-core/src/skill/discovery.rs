@@ -78,7 +78,7 @@ pub fn discover_skills_in_workspace(
 /// Returns parent dirs (e.g. `.skills`, `skills`) so `load_skills` can:
 /// - scan subdirs for regular skills
 /// - load evolved skills from `_evolved/` (EVO-4)
-/// Using parent dirs ensures both regular and evolved skills are loaded.
+///   Using parent dirs ensures both regular and evolved skills are loaded.
 pub fn discover_skill_dirs_for_loading(
     workspace: &Path,
     search_dirs: Option<&[&str]>,

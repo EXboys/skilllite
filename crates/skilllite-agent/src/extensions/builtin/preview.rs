@@ -108,7 +108,7 @@ pub(super) fn execute_preview_server(
 
     let listener = {
         let mut bound = None;
-        for p in requested_port..requested_port.saturating_add(20).min(65535) {
+        for p in requested_port..requested_port.saturating_add(20) {
             match std::net::TcpListener::bind(("127.0.0.1", p)) {
                 Ok(l) => {
                     bound = Some((l, p));
@@ -368,8 +368,8 @@ fn url_decode(s: &str) -> String {
     let mut chars = s.bytes();
     while let Some(b) = chars.next() {
         if b == b'%' {
-            let hi = chars.next().and_then(|c| hex_val(c));
-            let lo = chars.next().and_then(|c| hex_val(c));
+            let hi = chars.next().and_then(hex_val);
+            let lo = chars.next().and_then(hex_val);
             if let (Some(h), Some(l)) = (hi, lo) {
                 result.push((h << 4 | l) as char);
             } else {

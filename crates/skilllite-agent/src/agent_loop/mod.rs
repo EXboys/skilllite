@@ -93,11 +93,12 @@ async fn run_simple_loop(
     let client = LlmClient::new(&config.api_base, &config.api_key)?;
     let workspace = Path::new(&config.workspace);
     let embed_config = EmbeddingConfig::from_env();
-    let embed_ctx =
-        (config.enable_memory_vector && !config.api_key.is_empty()).then(|| MemoryVectorContext {
+    let embed_ctx = (config.enable_memory_vector && !config.api_key.is_empty()).then_some(
+        MemoryVectorContext {
             client: &client,
             embed_config: &embed_config,
-        });
+        },
+    );
 
     let registry = if config.read_only_tools {
         extensions::ExtensionRegistry::read_only_with_task_planning(
@@ -215,7 +216,7 @@ async fn run_simple_loop(
             messages.push(ChatMessage::assistant(content));
         }
 
-        let has_tool_calls = tool_calls.as_ref().map_or(false, |tc| !tc.is_empty());
+        let has_tool_calls = tool_calls.as_ref().is_some_and(|tc| !tc.is_empty());
 
         // ── Reflection phase (no tool calls) ─────────────────────────────
         if !has_tool_calls {
@@ -320,11 +321,12 @@ async fn run_with_task_planning(
     let client = LlmClient::new(&config.api_base, &config.api_key)?;
     let workspace = Path::new(&config.workspace);
     let embed_config = EmbeddingConfig::from_env();
-    let embed_ctx =
-        (config.enable_memory_vector && !config.api_key.is_empty()).then(|| MemoryVectorContext {
+    let embed_ctx = (config.enable_memory_vector && !config.api_key.is_empty()).then_some(
+        MemoryVectorContext {
             client: &client,
             embed_config: &embed_config,
-        });
+        },
+    );
 
     let registry = if config.read_only_tools {
         extensions::ExtensionRegistry::read_only_with_task_planning(
@@ -452,12 +454,12 @@ async fn run_with_task_planning(
             .ok_or_else(|| anyhow::anyhow!("No choices in LLM response"))?;
         let assistant_content = choice.message.content.clone();
         let tool_calls = choice.message.tool_calls.clone();
-        let has_tool_calls = tool_calls.as_ref().map_or(false, |tc| !tc.is_empty());
+        let has_tool_calls = tool_calls.as_ref().is_some_and(|tc| !tc.is_empty());
         let suppressed_planning_text =
             should_suppress_planning_assistant_text(&planner, has_tool_calls)
                 && assistant_content
                     .as_ref()
-                    .map_or(false, |content| !content.trim().is_empty());
+                    .is_some_and(|content| !content.trim().is_empty());
         let assistant_content = if suppressed_planning_text {
             tracing::info!("Suppressed free-form assistant text during pending task execution");
             None
@@ -560,7 +562,7 @@ async fn run_with_task_planning(
             tracing::info!("All tasks completed, ending iteration");
             let has_substantial = assistant_content
                 .as_ref()
-                .map_or(false, |c| c.trim().len() > 50);
+                .is_some_and(|c| c.trim().len() > 50);
             if !has_substantial {
                 if let Ok(resp) = client
                     .chat_completion_stream(

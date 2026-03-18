@@ -263,8 +263,8 @@ pub fn build_failure_hint(content: &str, old_string: &str) -> String {
         best_pos + window,
         best_score
     );
-    for i in start..end {
-        hint.push_str(&format!("{:>6}|{}\n", i + 1, content_lines[i]));
+    for (i, line) in content_lines.iter().enumerate().take(end).skip(start) {
+        hint.push_str(&format!("{:>6}|{}\n", i + 1, line));
     }
     hint
 }
@@ -382,11 +382,11 @@ fn fuzzy_find_blank_lines(content: &str, old_string: &str) -> Option<FuzzyMatch>
         }
         let mut old_idx = 0;
         let mut last_matched = start_line;
-        for i in start_line..content_lines.len() {
-            if content_lines[i].trim().is_empty() {
+        for (i, line) in content_lines.iter().enumerate().skip(start_line) {
+            if line.trim().is_empty() {
                 continue;
             }
-            if old_idx < old_non_blank.len() && content_lines[i] == old_non_blank[old_idx] {
+            if old_idx < old_non_blank.len() && *line == old_non_blank[old_idx] {
                 old_idx += 1;
                 last_matched = i;
             } else {
@@ -493,10 +493,10 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     }
     let mut prev: Vec<usize> = (0..=b_len).collect();
     let mut curr = vec![0; b_len + 1];
-    for i in 0..a_len {
+    for (i, &ac) in a.iter().enumerate().take(a_len) {
         curr[0] = i + 1;
-        for j in 0..b_len {
-            let cost = if a[i] == b[j] { 0 } else { 1 };
+        for (j, &bc) in b.iter().enumerate() {
+            let cost = if ac == bc { 0 } else { 1 };
             curr[j + 1] = (prev[j] + cost).min(curr[j] + 1).min(prev[j + 1] + 1);
         }
         std::mem::swap(&mut prev, &mut curr);

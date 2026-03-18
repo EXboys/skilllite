@@ -74,7 +74,7 @@ fn classify_fallback_plan(user_message: &str) -> Option<FallbackPlanKind> {
     let has_action_signal = action_signals.iter().any(|s| lower.contains(s));
     let has_verification_signal = verification_signals.iter().any(|s| lower.contains(s));
 
-    if (has_path_signal && has_action_signal) || (has_action_signal && has_verification_signal) {
+    if has_action_signal && (has_path_signal || has_verification_signal) {
         Some(FallbackPlanKind::ChangeAndVerify)
     } else if has_path_signal && has_verification_signal {
         Some(FallbackPlanKind::InspectOnly)

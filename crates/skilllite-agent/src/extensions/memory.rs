@@ -368,7 +368,7 @@ fn collect_memory_files(base: &Path, current: &Path, files: &mut Vec<String>) ->
     for (path, is_dir) in skilllite_fs::read_dir(current)? {
         if is_dir {
             collect_memory_files(base, &path, files)?;
-        } else if path.extension().map_or(false, |ext| ext == "md") {
+        } else if path.extension().is_some_and(|ext| ext == "md") {
             if let Ok(rel) = path.strip_prefix(base) {
                 files.push(rel.to_string_lossy().to_string());
             }

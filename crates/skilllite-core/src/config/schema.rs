@@ -180,8 +180,6 @@ impl EmbeddingConfig {
         } else if base_lower.contains("minimax") {
             // MiniMax embedding
             ("text-embedding-01", 1536)
-        } else if base_lower.contains("api.openai.com") {
-            ("text-embedding-3-small", 1536)
         } else {
             ("text-embedding-3-small", 1536)
         }

@@ -233,7 +233,7 @@ impl LlmClient {
                     }
                 }
                 Some("tool_use") => {
-                    let tc = parse_claude_tool_calls(&[block.clone()]);
+                    let tc = parse_claude_tool_calls(std::slice::from_ref(block));
                     tool_calls.extend(tc);
                 }
                 _ => {}

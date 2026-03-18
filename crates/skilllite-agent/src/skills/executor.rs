@@ -102,7 +102,7 @@ fn execute_skill_inner(
         // Check session-level confirmation cache
         let already_confirmed = CONFIRMED_SKILLS.with(|cache| {
             let cache = cache.borrow();
-            cache.get(&skill.name).map_or(false, |h| h == &code_hash)
+            cache.get(&skill.name) == Some(&code_hash)
         });
 
         if !already_confirmed {
@@ -194,7 +194,7 @@ fn execute_skill_inner(
         let effective_cwd = skilllite_core::config::PathsConfig::from_env()
             .output_dir
             .as_ref()
-            .map(|s| std::path::PathBuf::from(s))
+            .map(std::path::PathBuf::from)
             .filter(|p| p.is_dir())
             .unwrap_or_else(|| workspace.to_path_buf());
 
@@ -366,7 +366,6 @@ fn execute_bash_in_skill(
 ///
 ///   "agent-browser open https://example.com"
 ///   → unchanged (URL, not a file path)
-
 fn rewrite_output_paths(command: &str, output_dir: &Path) -> String {
     // Common file-output extensions that should be rewritten
     const OUTPUT_EXTENSIONS: &[&str] = &[

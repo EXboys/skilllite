@@ -164,7 +164,7 @@ pub fn exec_script(
     let _guard = EXEC_ENV_MUTEX
         .lock()
         .map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
-    let _args_guard = if let Some(ref args_str) = args {
+    let _args_guard = if let Some(args_str) = args {
         skilllite_core::config::set_env_var("SKILLLITE_SCRIPT_ARGS", args_str);
         Some(ScopedEnvGuard("SKILLLITE_SCRIPT_ARGS"))
     } else {

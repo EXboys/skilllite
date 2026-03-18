@@ -256,7 +256,7 @@ pub const PROCESS_DENYLIST_MACOS: &[&str] = &["/usr/bin/osascript"];
 
 /// Get full process denylist for a platform (used by Linux sandbox implementations)
 pub fn get_process_exec_denylist(relaxed: bool, platform: HomePathStyle) -> Vec<&'static str> {
-    let mut list: Vec<&'static str> = PROCESS_DENYLIST_ALWAYS.iter().copied().collect();
+    let mut list: Vec<&'static str> = PROCESS_DENYLIST_ALWAYS.to_vec();
     if !relaxed {
         list.extend(PROCESS_DENYLIST_STRICT_ONLY);
     }

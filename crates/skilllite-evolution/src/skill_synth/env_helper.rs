@@ -16,7 +16,7 @@ pub(super) fn ensure_skill_deps_and_env(skill_dir: &Path) -> Option<PathBuf> {
         && meta
             .compatibility
             .as_ref()
-            .map_or(false, |c| !c.trim().is_empty())
+            .is_some_and(|c| !c.trim().is_empty())
     {
         let lang = metadata::detect_language(skill_dir, &meta);
         if let Ok(resolved) = dependency_resolver::resolve_packages_sync(

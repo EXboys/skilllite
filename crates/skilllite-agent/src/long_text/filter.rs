@@ -14,9 +14,7 @@ fn position_score(chunk_index: usize, total_chunks: usize) -> f64 {
     let head_threshold = (total_chunks as f64 * 0.2).ceil().max(1.0) as usize;
     let tail_start =
         total_chunks.saturating_sub((total_chunks as f64 * 0.2).ceil().max(1.0) as usize);
-    if chunk_index < head_threshold {
-        1.0
-    } else if chunk_index >= tail_start {
+    if chunk_index < head_threshold || chunk_index >= tail_start {
         1.0
     } else {
         0.25

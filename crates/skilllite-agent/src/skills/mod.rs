@@ -87,7 +87,6 @@ pub fn load_skills(skill_dirs: &[String]) -> Vec<LoadedSkill> {
 }
 
 /// Load evolved skills from `_evolved/` directory, filtering out archived ones.
-
 /// Find a loaded skill by tool name.
 ///
 /// Supports fuzzy matching: normalizes both the query and registered names

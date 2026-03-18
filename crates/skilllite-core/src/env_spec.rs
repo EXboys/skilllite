@@ -32,11 +32,11 @@ impl EnvSpec {
             let compat_has_agent_browser = meta
                 .compatibility
                 .as_ref()
-                .map_or(false, |c| c.to_lowercase().contains("agent-browser"));
+                .is_some_and(|c| c.to_lowercase().contains("agent-browser"));
             let resolved_has_agent_browser = meta
                 .resolved_packages
                 .as_ref()
-                .map_or(false, |p| p.iter().any(|s| s.contains("agent-browser")));
+                .is_some_and(|p| p.iter().any(|s| s.contains("agent-browser")));
             if has_pkg || compat_has_agent_browser || resolved_has_agent_browser {
                 "node".to_string()
             } else {

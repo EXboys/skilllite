@@ -1,5 +1,3 @@
-#![cfg(target_os = "macos")]
-
 use crate::common::{wait_with_timeout, DEFAULT_FILE_SIZE_LIMIT_MB, DEFAULT_MAX_PROCESSES};
 use crate::move_protection::{generate_log_tag, generate_move_blocking_rules, get_session_suffix};
 use crate::network_proxy::{ProxyConfig, ProxyManager};
@@ -476,7 +474,7 @@ fn generate_sandbox_profile_with_proxy(
         profile.push_str(&rule);
         profile.push('\n');
     }
-    profile.push_str("\n");
+    profile.push('\n');
     // ============================================================
     // SECURITY: Network isolation with proxy support (from security_policy)
     // ============================================================
@@ -511,7 +509,7 @@ fn generate_sandbox_profile_with_proxy(
                 socks_port
             ));
         }
-        profile.push_str("\n");
+        profile.push('\n');
     } else {
         // Network enabled but no proxy configured
         // Block all network access by default for security
@@ -593,7 +591,7 @@ fn generate_sandbox_profile_with_proxy(
 
     // Deny all other process execution (whitelist-only)
     profile.push_str("(deny process-exec)\n");
-    profile.push_str("\n");
+    profile.push('\n');
 
     // ============================================================
     // SECURITY: File write restrictions (deny-default mode)
@@ -602,7 +600,7 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("; SECURITY: File write restrictions (deny-default mode)\n");
     profile.push_str("; Block ALL file writes by default\n");
     profile.push_str("(deny file-write*)\n");
-    profile.push_str("\n");
+    profile.push('\n');
 
     // Allow writing to isolated work directory (TMPDIR points here)
     profile.push_str("; Allow writing to isolated work directory\n");
@@ -631,7 +629,7 @@ fn generate_sandbox_profile_with_proxy(
     if relaxed {
         profile.push_str("(allow file-write* (regex #\"^/Users/[^/]+/Library/Caches\"))\n");
     }
-    profile.push_str("\n");
+    profile.push('\n');
 
     // ============================================================
     // SECURITY: Block high-risk IPC and kernel operations
@@ -641,7 +639,7 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("(deny mach-register)\n"); // prevent Mach service injection
     profile.push_str("(deny mach-priv-task-port)\n"); // prevent debugging/injecting other processes
     profile.push_str("(deny iokit-open)\n"); // prevent direct kernel driver access
-    profile.push_str("\n");
+    profile.push('\n');
 
     // ============================================================
     // ALLOW DEFAULT - For remaining operations (mach-lookup, sysctl, signal, etc.)
@@ -697,7 +695,7 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("(allow file-read* (subpath \"/dev\"))\n");
     // - Timezone: override /etc deny, allow localtime only
     profile.push_str("(allow file-read* (literal \"/private/etc/localtime\"))\n");
-    profile.push_str("\n");
+    profile.push('\n');
 
     Ok(profile)
 }
@@ -767,7 +765,7 @@ fn generate_sandbox_profile(
         profile.push_str("(deny file-read* (regex #\"/\\.env$\"))\n");
         profile.push_str("(deny file-read* (regex #\"/\\.env\\.[^/]+$\"))\n");
     }
-    profile.push_str("\n");
+    profile.push('\n');
 
     // ============================================================
     // SECURITY: Network isolation
@@ -813,7 +811,7 @@ fn generate_sandbox_profile(
         }
     }
     profile.push_str("(deny process-exec)\n");
-    profile.push_str("\n");
+    profile.push('\n');
 
     // ============================================================
     // SECURITY: File write restrictions (deny-default mode)
@@ -822,7 +820,7 @@ fn generate_sandbox_profile(
     profile.push_str("; SECURITY: File write restrictions (deny-default mode)\n");
     profile.push_str("; Block ALL file writes by default\n");
     profile.push_str("(deny file-write*)\n");
-    profile.push_str("\n");
+    profile.push('\n');
 
     // Allow writing to isolated work directory (TMPDIR points here)
     profile.push_str("; Allow writing to isolated work directory\n");
@@ -851,7 +849,7 @@ fn generate_sandbox_profile(
     if relaxed {
         profile.push_str("(allow file-write* (regex #\"^/Users/[^/]+/Library/Caches\"))\n");
     }
-    profile.push_str("\n");
+    profile.push('\n');
 
     // ============================================================
     // SECURITY: Block high-risk IPC and kernel operations
@@ -860,7 +858,7 @@ fn generate_sandbox_profile(
     profile.push_str("(deny mach-register)\n");
     profile.push_str("(deny mach-priv-task-port)\n");
     profile.push_str("(deny iokit-open)\n");
-    profile.push_str("\n");
+    profile.push('\n');
 
     // ============================================================
     // ALLOW DEFAULT - For remaining operations (mach-lookup, sysctl, signal, etc.)
@@ -892,7 +890,7 @@ fn generate_sandbox_profile(
         profile.push_str("(allow file-read* (subpath \"/opt/homebrew\"))\n");
         profile.push_str("(allow file-read* (subpath \"/opt/local\"))\n");
     }
-    profile.push_str("\n");
+    profile.push('\n');
 
     if config.network_enabled {
         profile.push_str("; Network access enabled\n");

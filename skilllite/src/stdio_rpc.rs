@@ -184,7 +184,7 @@ fn read_line_limited(reader: &mut impl BufRead) -> io::Result<Option<String>> {
 fn skip_until_newline(reader: &mut impl BufRead) {
     loop {
         match reader.fill_buf() {
-            Ok(b) if b.is_empty() => break,
+            Ok([]) => break,
             Ok(b) => {
                 if let Some(pos) = b.iter().position(|&c| c == b'\n') {
                     reader.consume(pos + 1);

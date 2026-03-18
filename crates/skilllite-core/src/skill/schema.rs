@@ -96,22 +96,29 @@ pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
 
+    let re_help = regex::Regex::new(r#"help\s*=\s*['"]([^'"]+)['"]"#).ok();
+    let re_type = regex::Regex::new(r"type\s*=\s*(\w+)").ok();
+    let re_action = regex::Regex::new(r#"action\s*=\s*['"](\w+)['"]"#).ok();
+    let re_nargs = regex::Regex::new(r#"nargs\s*=\s*['"]?([^,\s)]+)['"]?"#).ok();
+    let re_choices = regex::Regex::new(r"choices\s*=\s*\[([^\]]+)\]").ok();
+    let re_choice_quoted = regex::Regex::new(r#"['"]([^'"]+)['"]"#).ok();
+
     for caps in arg_re.captures_iter(&content) {
         let arg_name = caps.get(1)?.as_str();
         let second_arg = caps.get(2).map(|m| m.as_str());
         let kwargs_str = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
-        let (param_name, is_positional) = if arg_name.starts_with("--") {
-            (arg_name[2..].replace('-', "_"), false)
-        } else if arg_name.starts_with('-') {
+        let (param_name, is_positional) = if let Some(stripped) = arg_name.strip_prefix("--") {
+            (stripped.replace('-', "_"), false)
+        } else if let Some(stripped) = arg_name.strip_prefix('-') {
             if let Some(s) = second_arg {
-                if s.starts_with("--") {
-                    (s[2..].replace('-', "_"), false)
+                if let Some(s2) = s.strip_prefix("--") {
+                    (s2.replace('-', "_"), false)
                 } else {
-                    (arg_name[1..].to_string(), false)
+                    (stripped.to_string(), false)
                 }
             } else {
-                (arg_name[1..].to_string(), false)
+                (stripped.to_string(), false)
             }
         } else {
             (arg_name.replace('-', "_"), true)
@@ -120,20 +127,14 @@ pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
         let mut prop = serde_json::Map::new();
         prop.insert("type".to_string(), json!("string"));
 
-        if let Some(help_cap) = regex::Regex::new(r#"help\s*=\s*['"]([^'"]+)['"]"#)
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(help_cap) = re_help.as_ref().and_then(|re| re.captures(kwargs_str)) {
             prop.insert(
                 "description".to_string(),
                 json!(help_cap.get(1).map(|m| m.as_str()).unwrap_or("")),
             );
         }
 
-        if let Some(type_cap) = regex::Regex::new(r"type\s*=\s*(\w+)")
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(type_cap) = re_type.as_ref().and_then(|re| re.captures(kwargs_str)) {
             match type_cap.get(1).map(|m| m.as_str()).unwrap_or("") {
                 "int" => {
                     let _ = prop.insert("type".to_string(), json!("integer"));
@@ -148,20 +149,14 @@ pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
             };
         }
 
-        if let Some(action_cap) = regex::Regex::new(r#"action\s*=\s*['"](\w+)['"]"#)
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(action_cap) = re_action.as_ref().and_then(|re| re.captures(kwargs_str)) {
             let action = action_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             if action == "store_true" || action == "store_false" {
                 prop.insert("type".to_string(), json!("boolean"));
             }
         }
 
-        if let Some(nargs_cap) = regex::Regex::new(r#"nargs\s*=\s*['"]?([^,\s)]+)['"]?"#)
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(nargs_cap) = re_nargs.as_ref().and_then(|re| re.captures(kwargs_str)) {
             let nargs = nargs_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             if nargs == "*" || nargs == "+" || nargs.parse::<u32>().is_ok() {
                 prop.insert("type".to_string(), json!("array"));
@@ -169,13 +164,10 @@ pub fn parse_argparse_schema(script_path: &Path) -> Option<Value> {
             }
         }
 
-        if let Some(choices_cap) = regex::Regex::new(r"choices\s*=\s*\[([^\]]+)\]")
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(choices_cap) = re_choices.as_ref().and_then(|re| re.captures(kwargs_str)) {
             let choices_str = choices_cap.get(1).map(|m| m.as_str()).unwrap_or("");
-            let choices: Vec<String> = regex::Regex::new(r#"['"]([^'"]+)['"]"#)
-                .ok()
+            let choices: Vec<String> = re_choice_quoted
+                .as_ref()
                 .map(|re| {
                     re.captures_iter(choices_str)
                         .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))

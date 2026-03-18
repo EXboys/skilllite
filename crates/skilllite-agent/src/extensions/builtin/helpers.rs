@@ -188,7 +188,7 @@ pub(super) fn resolve_within_workspace(path: &str, workspace: &Path) -> Result<P
 
     if !normalized.starts_with(workspace) {
         let is_output_path =
-            types::get_output_dir().map_or(false, |od| normalized.starts_with(Path::new(&od)));
+            types::get_output_dir().is_some_and(|od| normalized.starts_with(Path::new(&od)));
         if is_output_path {
             anyhow::bail!(
                 "Path escapes workspace: {} (workspace: {}). \

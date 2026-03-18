@@ -37,7 +37,7 @@ pub(super) fn discover_skills(
                 }
             }
         }
-        let skill_name = sp.split('/').last().unwrap_or(sp);
+        let skill_name = sp.split('/').next_back().unwrap_or(sp);
         for search_dir in SKILL_SEARCH_DIRS {
             if *search_dir == "." {
                 continue;

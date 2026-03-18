@@ -128,10 +128,10 @@ pub fn get_compaction_threshold() -> usize {
 /// to write durable memories. `SKILLLITE_MEMORY_FLUSH_ENABLED`. Default true.
 pub fn get_memory_flush_enabled() -> bool {
     let v = skilllite_core::config::loader::env_optional("SKILLLITE_MEMORY_FLUSH_ENABLED", &[]);
-    match v.as_deref().map(|s| s.to_lowercase()) {
-        Some(s) if matches!(s.as_str(), "0" | "false" | "no" | "off") => false,
-        _ => true,
-    }
+    !matches!(
+        v.as_deref().map(|s| s.to_lowercase()),
+        Some(s) if matches!(s.as_str(), "0" | "false" | "no" | "off")
+    )
 }
 
 /// Memory flush threshold: run memory flush when history approaches compaction.

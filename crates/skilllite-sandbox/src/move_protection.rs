@@ -46,7 +46,7 @@ pub fn get_session_suffix() -> &'static str {
 fn base64_encode(input: &str) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
     let bytes = input.as_bytes();
-    let mut result = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(bytes.len().div_ceil(3) * 4);
 
     for chunk in bytes.chunks(3) {
         let b0 = chunk[0] as usize;
@@ -157,7 +157,7 @@ pub fn glob_to_regex(glob_pattern: &str) -> String {
             '[' => {
                 // Character class - pass through
                 result.push('[');
-                while let Some(inner) = chars.next() {
+                for inner in chars.by_ref() {
                     if inner == ']' {
                         result.push(']');
                         break;

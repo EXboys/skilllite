@@ -199,7 +199,7 @@ pub(super) async fn refine_weakest_skill<L: EvolutionLlm>(
         if rate >= 0.60 {
             continue;
         }
-        if weakest.as_ref().map_or(true, |(_, _, r)| rate < *r) {
+        if weakest.as_ref().is_none_or(|(_, _, r)| rate < *r) {
             let name = entry.file_name().to_string_lossy().to_string();
             weakest = Some((name.clone(), meta.clone(), rate));
         }
@@ -334,17 +334,15 @@ pub(super) fn retire_skills_with_conn(
             } else {
                 None
             }
-        } else {
-            if let Ok(created) = chrono::DateTime::parse_from_rfc3339(&meta.created_at) {
-                let days = (created.with_timezone(&chrono::Utc) - now).num_days().abs();
-                if days >= RETIRE_UNUSED_DAYS {
-                    Some(format!("never used, {} days since creation", days))
-                } else {
-                    None
-                }
+        } else if let Ok(created) = chrono::DateTime::parse_from_rfc3339(&meta.created_at) {
+            let days = (created.with_timezone(&chrono::Utc) - now).num_days().abs();
+            if days >= RETIRE_UNUSED_DAYS {
+                Some(format!("never used, {} days since creation", days))
             } else {
                 None
             }
+        } else {
+            None
         };
 
         if let Some(reason) = should_retire {

@@ -1,6 +1,6 @@
 # SkillLite 项目架构文档
 
-> **说明**：本文档已同步至 v0.1.11 多 crate 架构。Rust 采用 Cargo workspace，各模块拆分为独立 crate；Python SDK 为薄桥接层（~600 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`。
+> **说明**：本文档已同步至 v0.1.14 多 crate 架构。Rust 采用 Cargo workspace，各模块拆分为独立 crate；Python SDK 为薄桥接层（~600 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`。
 >
 > **入口与能力域**：新人可先看 **[入口与能力域一览](./ENTRYPOINTS-AND-DOMAINS.md)**，一页理清 CLI / Python / MCP / Desktop / Swarm 各对应谁、依赖哪些 crate、适用场景。
 
@@ -156,7 +156,7 @@ skillLite/
 │       └── src-tauri/
 │
 ├── python-sdk/                    # Python SDK (薄桥接层)
-│   ├── pyproject.toml             # 包配置 (v0.1.10, 零运行时依赖)
+│   ├── pyproject.toml             # 包配置 (v0.1.14, 零运行时依赖)
 │   └── skilllite/
 │       ├── __init__.py            # 导出 chat, run_skill, scan_code, execute_code
 │       ├── api.py                 # 核心 API (subprocess 调用 skilllite 二进制)
@@ -164,7 +164,7 @@ skillLite/
 │       ├── cli.py                 # CLI 入口 (转发到 binary)
 │       └── ipc.py                 # IPC 客户端
 │
-├── langchain-skilllite/           # LangChain 适配器 (独立包, v0.1.8)
+├── langchain-skilllite/           # LangChain 适配器 (独立包, v0.1.14)
 │   └── langchain_skilllite/
 │       ├── core.py                # SkillManager, SkillInfo
 │       ├── tools.py               # SkillLiteTool, SkillLiteToolkit
@@ -489,7 +489,7 @@ registry.register(memory::tools());
 
 ### 8. LangChain 集成 (langchain-skilllite)
 
-> 独立包 `pip install langchain-skilllite`（v0.1.8）
+> 独立包 `pip install langchain-skilllite`（v0.1.14）
 
 | 模块 | 职责 |
 |------|------|
@@ -497,7 +497,7 @@ registry.register(memory::tools());
 | `tools.py` | SkillLiteTool, SkillLiteToolkit — LangChain 工具适配 |
 | `callbacks.py` | 回调处理器 |
 
-**依赖**：`langchain-core>=0.3.0`, `skilllite>=0.1.8`
+**依赖**：`langchain-core>=0.3.0`, `skilllite>=0.1.14`
 
 ---
 

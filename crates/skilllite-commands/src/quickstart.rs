@@ -261,7 +261,7 @@ fn interactive_llm_setup() -> Result<(String, String, String)> {
 }
 
 fn prompt_api_key(env_var_name: &str) -> Result<String> {
-    eprint!("   {} (or set {} env var): ", "API Key", env_var_name);
+    eprint!("   API Key (or set {} env var): ", env_var_name);
     std::io::stderr().flush()?;
     let mut key = String::new();
     std::io::stdin().read_line(&mut key)?;

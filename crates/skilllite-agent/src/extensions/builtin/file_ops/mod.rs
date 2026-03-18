@@ -248,8 +248,8 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
             }
 
             let mut output = String::new();
-            for i in (start - 1)..end {
-                output.push_str(&format!("{:>6}|{}\n", i + 1, lines[i]));
+            for (i, line) in lines.iter().enumerate().take(end).skip(start - 1) {
+                output.push_str(&format!("{:>6}|{}\n", i + 1, line));
             }
 
             if start_line.is_some() || end_line.is_some() {

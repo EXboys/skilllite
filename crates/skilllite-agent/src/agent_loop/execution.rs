@@ -320,7 +320,7 @@ pub(super) async fn execute_tool_batch_planning(
     }
 
     let failure_limit_reached =
-        max_consecutive_failures.map_or(false, |limit| state.consecutive_failures >= limit);
+        max_consecutive_failures.is_some_and(|limit| state.consecutive_failures >= limit);
     let depth_limit_reached = state.tool_calls_current_task >= max_tool_calls_per_task;
 
     ToolBatchOutcome {
@@ -402,7 +402,7 @@ pub(super) async fn execute_tool_batch_simple(
     }
 
     let failure_limit_reached =
-        max_consecutive_failures.map_or(false, |limit| state.consecutive_failures >= limit);
+        max_consecutive_failures.is_some_and(|limit| state.consecutive_failures >= limit);
     ToolBatchOutcome {
         disclosure_injected: false,
         failure_limit_reached,

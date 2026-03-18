@@ -297,7 +297,7 @@ fn scan_candidate_skills_inner(
             || skill_path.join("package.json").exists()
             || skill_path.join(".skilllite.lock").exists()
             || meta.resolved_packages.is_some()
-            || meta.compatibility.as_ref().map_or(false, |c| !c.is_empty());
+            || meta.compatibility.as_ref().is_some_and(|c| !c.is_empty());
 
         if script_files.is_empty() && !has_deps {
             let skill_type = if meta.is_bash_tool_skill() {

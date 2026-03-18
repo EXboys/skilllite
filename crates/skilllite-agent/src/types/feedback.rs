@@ -29,17 +29,12 @@ pub struct ToolExecDetail {
 }
 
 /// User feedback signal classified from the next user message.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum FeedbackSignal {
     ExplicitPositive,
     ExplicitNegative,
+    #[default]
     Neutral,
-}
-
-impl Default for FeedbackSignal {
-    fn default() -> Self {
-        Self::Neutral
-    }
 }
 
 impl FeedbackSignal {

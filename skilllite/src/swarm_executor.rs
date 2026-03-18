@@ -45,10 +45,10 @@ impl TaskExecutor for AgentTaskExecutor {
             Ok::<_, Box<dyn std::error::Error + Send + Sync>>(result.to_node_result(&task.id))
         });
         handle.join().map_err(|e| {
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Agent execution thread panicked: {:?}", e),
-            )) as Box<dyn std::error::Error + Send + Sync>
+            Box::new(std::io::Error::other(format!(
+                "Agent execution thread panicked: {:?}",
+                e
+            ))) as Box<dyn std::error::Error + Send + Sync>
         })?
     }
 }

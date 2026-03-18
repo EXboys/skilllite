@@ -171,7 +171,6 @@ impl LlmClient {
     /// Claude differences:
     ///   - System prompt is a separate `system` field (not a message)
     ///   - Tool results are user messages with `tool_result` content blocks
-
     pub(super) async fn accumulate_openai_stream(
         &self,
         resp: reqwest::Response,

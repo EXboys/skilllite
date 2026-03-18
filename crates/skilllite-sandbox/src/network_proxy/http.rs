@@ -42,9 +42,10 @@ impl HttpProxy {
 
     /// Start the proxy server in a background thread
     pub fn start(&mut self) -> std::io::Result<thread::JoinHandle<()>> {
-        let listener = self.listener.take().ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::Other, "Proxy already started")
-        })?;
+        let listener = self
+            .listener
+            .take()
+            .ok_or_else(|| std::io::Error::other("Proxy already started"))?;
 
         self.running.store(true, Ordering::SeqCst);
         let running = Arc::clone(&self.running);
@@ -99,7 +100,7 @@ impl HttpProxy {
         let mut request_line = String::new();
         reader.read_line(&mut request_line)?;
 
-        let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
+        let parts: Vec<&str> = request_line.split_whitespace().collect();
         if parts.len() < 3 {
             return Self::send_error(&mut client, 400, "Bad Request");
         }
@@ -130,12 +131,9 @@ impl HttpProxy {
         let (host, port) = Self::parse_host_port(target, 443)?;
 
         {
-            let cfg = config.read().map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("proxy config lock: {}", e),
-                )
-            })?;
+            let cfg = config
+                .read()
+                .map_err(|e| std::io::Error::other(format!("proxy config lock: {}", e)))?;
             if !cfg.is_domain_allowed(&host) {
                 let blocked_target = format!("{}:{}", host, port);
                 observability::security_blocked_network(
@@ -194,8 +192,7 @@ impl HttpProxy {
         _request_line: &str,
         config: &Arc<RwLock<ProxyConfig>>,
     ) -> std::io::Result<()> {
-        let host = if target.starts_with("http://") {
-            let url = &target[7..];
+        let host = if let Some(url) = target.strip_prefix("http://") {
             url.split('/')
                 .next()
                 .unwrap_or("")
@@ -208,12 +205,9 @@ impl HttpProxy {
         };
 
         {
-            let cfg = config.read().map_err(|e| {
-                std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("proxy config lock: {}", e),
-                )
-            })?;
+            let cfg = config
+                .read()
+                .map_err(|e| std::io::Error::other(format!("proxy config lock: {}", e)))?;
             if !cfg.is_domain_allowed(&host) {
                 observability::security_blocked_network(
                     "unknown",
@@ -251,8 +245,7 @@ impl HttpProxy {
             }
         };
 
-        let path = if target.starts_with("http://") {
-            let url = &target[7..];
+        let path = if let Some(url) = target.strip_prefix("http://") {
             if let Some(pos) = url.find('/') {
                 &url[pos..]
             } else {
@@ -302,10 +295,10 @@ impl HttpProxy {
     }
 
     fn parse_url_host_port(url: &str) -> std::io::Result<(String, u16)> {
-        let url = if url.starts_with("http://") {
-            &url[7..]
-        } else if url.starts_with("https://") {
-            &url[8..]
+        let url = if let Some(u) = url.strip_prefix("http://") {
+            u
+        } else if let Some(u) = url.strip_prefix("https://") {
+            u
         } else {
             url
         };

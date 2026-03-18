@@ -98,10 +98,10 @@ pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBu
         .map(|(p, _)| p)
         .filter(|p| p.is_file())
         .filter(|p| {
-            p.extension().map_or(false, |e| e == "jsonl" || e == "json")
+            p.extension().is_some_and(|e| e == "jsonl" || e == "json")
                 && p.file_stem()
                     .and_then(|s| s.to_str())
-                    .map_or(false, |n| n.starts_with(session_key))
+                    .is_some_and(|n| n.starts_with(session_key))
         })
         .collect();
     files.sort_by(|a, b| {

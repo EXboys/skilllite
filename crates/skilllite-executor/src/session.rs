@@ -31,17 +31,9 @@ pub struct SessionEntry {
     pub extra: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SessionStore {
     pub sessions: HashMap<String, SessionEntry>,
-}
-
-impl Default for SessionStore {
-    fn default() -> Self {
-        Self {
-            sessions: HashMap::new(),
-        }
-    }
 }
 
 impl SessionStore {

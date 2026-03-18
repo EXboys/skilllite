@@ -452,7 +452,7 @@ fn retire_low_effectiveness_rules_with_conn(
             kept.push(rule);
             continue;
         }
-        let eff = compute_effectiveness(&conn, &rule.id).unwrap_or(-1.0);
+        let eff = compute_effectiveness(conn, &rule.id).unwrap_or(-1.0);
         if eff < 0.0 {
             kept.push(rule);
             continue;
@@ -473,7 +473,7 @@ fn retire_low_effectiveness_rules_with_conn(
                 trigger_count
             );
             let _ = crate::log_evolution_event(
-                &conn,
+                conn,
                 chat_root,
                 "rule_retired",
                 &rule.id,

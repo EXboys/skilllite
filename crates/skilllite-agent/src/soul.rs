@@ -15,8 +15,8 @@
 //!   1. Explicit `--soul <path>` CLI flag
 //!   2. `.skilllite/SOUL.md` (workspace-level)
 //!   3. `~/.skilllite/SOUL.md` (global fallback)
-//!   If none found, returns `None` — no automatic creation.
-//!   Optional first-run guidance: `offer_bootstrap_soul_if_missing()` can prompt to create a minimal template.
+//!      If none found, returns `None` — no automatic creation.
+//!      Optional first-run guidance: `offer_bootstrap_soul_if_missing()` can prompt to create a minimal template.
 //!
 //! Format (Markdown with `##` section headings):
 //!   ## Identity | ## Core Beliefs | ## Communication Style | ## Scope & Boundaries
@@ -191,8 +191,8 @@ impl Soul {
 
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with("## ") {
-                let heading = trimmed[3..].trim().to_lowercase();
+            if let Some(rest) = trimmed.strip_prefix("## ") {
+                let heading = rest.trim().to_lowercase();
                 current = match heading.as_str() {
                     "identity" => Section::Identity,
                     "core beliefs" | "core_beliefs" | "corebeliefs" => Section::CoreBeliefs,
@@ -438,7 +438,7 @@ mod tests {
 
     #[test]
     fn test_law_prompt_contains_mandatory_rules() {
-        let law = Law::default();
+        let law = Law;
         let block = law.to_system_prompt_block();
         assert!(block.contains("LAW"));
         assert!(block.contains("Do not harm humans"));

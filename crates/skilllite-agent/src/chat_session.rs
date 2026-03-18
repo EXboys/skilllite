@@ -5,7 +5,7 @@
 //! and memory integration.
 
 use anyhow::Result;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use skilllite_executor::{memory as executor_memory, session, transcript};
 
@@ -495,17 +495,13 @@ impl ChatSession {
                                 "Memory flush failed (continuing with compaction): {}",
                                 e
                             );
-                        } else {
-                            if let Ok(mut store) = session::SessionStore::load(&sessions_path) {
-                                if let Some(session_entry) =
-                                    store.sessions.get_mut(&self.session_key)
-                                {
-                                    session_entry.memory_flush_compaction_count =
-                                        Some(next_compaction_count);
-                                    session_entry.memory_flush_at =
-                                        Some(chrono::Utc::now().to_rfc3339());
-                                    let _ = store.save(&sessions_path);
-                                }
+                        } else if let Ok(mut store) = session::SessionStore::load(&sessions_path) {
+                            if let Some(session_entry) = store.sessions.get_mut(&self.session_key) {
+                                session_entry.memory_flush_compaction_count =
+                                    Some(next_compaction_count);
+                                session_entry.memory_flush_at =
+                                    Some(chrono::Utc::now().to_rfc3339());
+                                let _ = store.save(&sessions_path);
                             }
                         }
                     }
@@ -809,7 +805,7 @@ impl ChatSession {
 /// Run evolution once and emit summary. Shared by periodic and decision-count triggers.
 /// workspace: project root for skill evolution (skills written to workspace/.skills/_evolved/).
 async fn run_evolution_and_emit_summary(
-    data_root: &PathBuf,
+    data_root: &Path,
     workspace: &str,
     api_base: &str,
     api_key: &str,

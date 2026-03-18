@@ -582,12 +582,10 @@ mod tests {
             assert_eq!(candidates[0].program, PathBuf::from("python"));
             assert!(candidates
                 .iter()
-                .any(|c| c.program == PathBuf::from("py") && c.args == vec!["-3"]));
+                .any(|c| c.program == Path::new("py") && c.args == vec!["-3"]));
         } else {
             assert_eq!(candidates[0].program, PathBuf::from("python3"));
-            assert!(candidates
-                .iter()
-                .any(|c| c.program == PathBuf::from("python")));
+            assert!(candidates.iter().any(|c| c.program == Path::new("python")));
         }
     }
 

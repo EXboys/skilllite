@@ -47,7 +47,6 @@ pub(super) fn load_evolved_skills(evolved_dir: &Path) -> Vec<LoadedSkill> {
 }
 
 /// Load a single skill from a directory.
-
 pub(super) fn load_single_skill(skill_dir: &Path) -> Option<LoadedSkill> {
     let metadata = match metadata::parse_skill_metadata(skill_dir) {
         Ok(m) => m,
@@ -136,7 +135,6 @@ pub(super) fn load_single_skill(skill_dir: &Path) -> Option<LoadedSkill> {
 /// a separate tool definition for each.
 /// Returns (tool_definitions, entry_map: tool_name → script_path).
 /// Ported from Python `detect_all_scripts` + `analyze_multi_script_skill`.
-
 fn detect_multi_script_tools(
     skill_dir: &Path,
     skill_name: &str,
@@ -194,7 +192,7 @@ fn detect_multi_script_tools(
 
                 // Try argparse inference for Python scripts
                 let schema = if fname.ends_with(".py") {
-                    parse_argparse_schema(&path).unwrap_or_else(|| flexible_schema())
+                    parse_argparse_schema(&path).unwrap_or_else(flexible_schema)
                 } else {
                     flexible_schema()
                 };
@@ -218,7 +216,6 @@ fn detect_multi_script_tools(
 }
 
 /// Return a flexible JSON schema that accepts any properties.
-
 fn flexible_schema() -> serde_json::Value {
     serde_json::json!({
         "type": "object",
@@ -231,7 +228,6 @@ fn flexible_schema() -> serde_json::Value {
 
 /// Try to infer parameter schema from a skill's entry point script.
 /// If the entry point is a Python file, parse argparse calls.
-
 fn infer_entry_point_schema(
     skill_dir: &Path,
     metadata: &SkillMetadata,
@@ -249,7 +245,6 @@ fn infer_entry_point_schema(
 
 /// Parse Python script for argparse `add_argument` calls and generate JSON schema.
 /// Ported from Python `tool_builder.py` `_parse_argparse_schema`.
-
 fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
     let content = skilllite_fs::read_file(script_path).ok()?;
 
@@ -257,6 +252,13 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
         r#"\.add_argument\s*\(\s*['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?([^)]*)\)"#,
     )
     .ok()?;
+    let re_help = regex::Regex::new(r#"help\s*=\s*['"]([^'"]+)['"]"#).ok();
+    let re_type = regex::Regex::new(r"type\s*=\s*(\w+)").ok();
+    let re_action = regex::Regex::new(r#"action\s*=\s*['"](\w+)['"]"#).ok();
+    let re_nargs = regex::Regex::new(r#"nargs\s*=\s*['"]?([^,\s)]+)['"]?"#).ok();
+    let re_choices = regex::Regex::new(r"choices\s*=\s*\[([^\]]+)\]").ok();
+    let re_choice_quoted = regex::Regex::new(r#"['"]([^'"]+)['"]"#).ok();
+    let re_default = regex::Regex::new(r"default\s*=\s*([^,)]+)").ok();
 
     let mut properties = serde_json::Map::new();
     let mut required = Vec::new();
@@ -267,17 +269,17 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
         let kwargs_str = caps.get(3).map(|m| m.as_str()).unwrap_or("");
 
         // Determine parameter name
-        let (param_name, is_positional) = if arg_name.starts_with("--") {
-            (arg_name[2..].replace('-', "_"), false)
-        } else if arg_name.starts_with('-') {
+        let (param_name, is_positional) = if let Some(stripped) = arg_name.strip_prefix("--") {
+            (stripped.replace('-', "_"), false)
+        } else if let Some(stripped) = arg_name.strip_prefix('-') {
             if let Some(s) = second_arg {
-                if s.starts_with("--") {
-                    (s[2..].replace('-', "_"), false)
+                if let Some(s2) = s.strip_prefix("--") {
+                    (s2.replace('-', "_"), false)
                 } else {
-                    (arg_name[1..].to_string(), false)
+                    (stripped.to_string(), false)
                 }
             } else {
-                (arg_name[1..].to_string(), false)
+                (stripped.to_string(), false)
             }
         } else {
             (arg_name.replace('-', "_"), true)
@@ -287,20 +289,14 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
         prop.insert("type".to_string(), serde_json::json!("string"));
 
         // Extract help text
-        if let Some(help_cap) = regex::Regex::new(r#"help\s*=\s*['"]([^'"]+)['"]"#)
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(help_cap) = re_help.as_ref().and_then(|re| re.captures(kwargs_str)) {
             if let Some(m) = help_cap.get(1) {
                 prop.insert("description".to_string(), serde_json::json!(m.as_str()));
             }
         }
 
         // Extract type
-        if let Some(type_cap) = regex::Regex::new(r"type\s*=\s*(\w+)")
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(type_cap) = re_type.as_ref().and_then(|re| re.captures(kwargs_str)) {
             match type_cap.get(1).map(|m| m.as_str()).unwrap_or("") {
                 "int" => {
                     prop.insert("type".to_string(), serde_json::json!("integer"));
@@ -316,10 +312,7 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
         }
 
         // Check action=store_true/store_false
-        if let Some(action_cap) = regex::Regex::new(r#"action\s*=\s*['"](\w+)['"]"#)
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(action_cap) = re_action.as_ref().and_then(|re| re.captures(kwargs_str)) {
             let action = action_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             if action == "store_true" || action == "store_false" {
                 prop.insert("type".to_string(), serde_json::json!("boolean"));
@@ -327,10 +320,7 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
         }
 
         // Check nargs
-        if let Some(nargs_cap) = regex::Regex::new(r#"nargs\s*=\s*['"]?([^,\s)]+)['"]?"#)
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(nargs_cap) = re_nargs.as_ref().and_then(|re| re.captures(kwargs_str)) {
             let nargs = nargs_cap.get(1).map(|m| m.as_str()).unwrap_or("");
             if nargs == "*" || nargs == "+" || nargs.parse::<u32>().is_ok() {
                 prop.insert("type".to_string(), serde_json::json!("array"));
@@ -339,13 +329,10 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
         }
 
         // Check choices
-        if let Some(choices_cap) = regex::Regex::new(r"choices\s*=\s*\[([^\]]+)\]")
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(choices_cap) = re_choices.as_ref().and_then(|re| re.captures(kwargs_str)) {
             let choices_str = choices_cap.get(1).map(|m| m.as_str()).unwrap_or("");
-            let choices: Vec<String> = regex::Regex::new(r#"['"]([^'"]+)['"]"#)
-                .ok()
+            let choices: Vec<String> = re_choice_quoted
+                .as_ref()
                 .map(|re| {
                     re.captures_iter(choices_str)
                         .filter_map(|c| c.get(1).map(|m| m.as_str().to_string()))
@@ -358,10 +345,7 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
         }
 
         // Check default
-        if let Some(default_cap) = regex::Regex::new(r"default\s*=\s*([^,)]+)")
-            .ok()
-            .and_then(|re| re.captures(kwargs_str))
-        {
+        if let Some(default_cap) = re_default.as_ref().and_then(|re| re.captures(kwargs_str)) {
             let val = default_cap.get(1).map(|m| m.as_str()).unwrap_or("").trim();
             if val != "None" && val != "\"\"" && val != "''" {
                 let cleaned = val.trim_matches(|c| c == '"' || c == '\'');
@@ -391,7 +375,6 @@ fn parse_argparse_schema(script_path: &Path) -> Option<serde_json::Value> {
 
 /// Sanitize skill name to a valid tool function name.
 /// Replaces non-alphanumeric chars with underscore, lowercases.
-
 pub(super) fn sanitize_tool_name(name: &str) -> String {
     name.chars()
         .map(|c| {

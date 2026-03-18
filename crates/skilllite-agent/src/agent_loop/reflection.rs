@@ -40,7 +40,7 @@ pub(super) fn reflect_simple(
             all_tools_len
         );
         // Remove the text-only assistant message so it doesn't pollute history
-        if messages.last().map_or(false, |m| m.role == "assistant") {
+        if messages.last().is_some_and(|m| m.role == "assistant") {
             messages.pop();
         }
         *no_tool_retries += 1;
@@ -88,7 +88,7 @@ pub(super) fn reflect_planning(
 ) -> ReflectionOutcome {
     if suppress_stream {
         // Pop the hallucinated assistant message (user never saw it)
-        if messages.last().map_or(false, |m| m.role == "assistant") {
+        if messages.last().is_some_and(|m| m.role == "assistant") {
             messages.pop();
         }
         tracing::info!(
@@ -126,7 +126,7 @@ pub(super) fn reflect_planning(
     }
 
     // Tasks still pending — swallow the premature summary so user never sees it
-    if messages.last().map_or(false, |m| m.role == "assistant") {
+    if messages.last().is_some_and(|m| m.role == "assistant") {
         messages.pop();
     }
     tracing::info!("Swallowed no-tool assistant text while tasks are pending");

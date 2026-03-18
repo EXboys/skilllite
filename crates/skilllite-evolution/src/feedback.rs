@@ -26,10 +26,11 @@ pub struct ToolExecDetail {
 }
 
 /// User feedback signal for the last decision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FeedbackSignal {
     ExplicitPositive,
     ExplicitNegative,
+    #[default]
     Neutral,
 }
 
@@ -79,12 +80,6 @@ pub struct RuleHistoryEntry {
     pub event_type: String,
     pub txn_id: String,
     pub reason: String,
-}
-
-impl Default for FeedbackSignal {
-    fn default() -> Self {
-        Self::Neutral
-    }
 }
 
 impl FeedbackSignal {
