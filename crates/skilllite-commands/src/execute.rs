@@ -55,6 +55,7 @@ pub fn run_skill(
         &env_spec,
         cache_dir.map(|s| s.as_str()),
         None,
+        skilllite_sandbox::cli_confirm_download(),
     )?;
     skilllite_sandbox::info_log!("[INFO] ensure_environment done");
 
@@ -118,6 +119,7 @@ pub fn exec_script(
             &env_spec,
             cache_dir.map(|s| s.as_str()),
             None,
+            skilllite_sandbox::cli_confirm_download(),
         )?;
         (meta, env)
     } else {
@@ -149,6 +151,7 @@ pub fn exec_script(
             &env_spec,
             cache_dir.map(|s| s.as_str()),
             None,
+            skilllite_sandbox::cli_confirm_download(),
         )?;
         (meta, env)
     };
@@ -229,6 +232,7 @@ pub fn bash_command(
         &env_spec,
         cache_dir.map(|s| s.as_str()),
         None,
+        skilllite_sandbox::cli_confirm_download(),
     )?;
     skilllite_sandbox::info_log!("[INFO] bash: ensure_environment done");
 

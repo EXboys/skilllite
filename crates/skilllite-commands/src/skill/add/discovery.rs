@@ -187,6 +187,7 @@ pub(super) fn install_skill_deps(skills_dir: &Path, installed: &[String]) -> Vec
                     &env_spec,
                     cache_dir,
                     None,
+                    skilllite_sandbox::cli_confirm_download(),
                 ) {
                     Ok(_) => {
                         let lang = &env_spec.language;

@@ -28,6 +28,13 @@
 //!   mirror (e.g. `https://npmmirror.com/mirrors/node`).
 //!   If the primary URL fails (e.g. connection error), we try one built-in fallback mirror
 //!   before giving up.
+//!
+//! ## Download confirmation
+//!
+//! Callers can pass a [`RuntimeConfirmDownloadFn`] to `ensure_environment`; if set, it is
+//! invoked before downloading Python/Node. Return `false` to abort. When not set, download
+//! proceeds without confirmation. For CLI/desktop: pass a callback that prompts the user
+//! (and checks `SKILLLITE_AUTO_APPROVE_RUNTIME=1` to skip prompt in CI/automation).
 
 use anyhow::{Context, Result};
 use std::io::Read;
@@ -36,6 +43,80 @@ use std::process::Command;
 
 /// Optional progress callback for provisioning (e.g. desktop can show "Preparing Python… 45%").
 pub type RuntimeProgressFn = Option<Box<dyn Fn(&str) + Send>>;
+
+/// Kind of runtime that may need to be downloaded.
+#[derive(Clone, Debug)]
+pub enum RuntimeDownloadKind {
+    Python,
+    Node,
+}
+
+/// Request to confirm a runtime download (CLI/desktop can prompt user).
+#[derive(Clone, Debug)]
+pub struct RuntimeDownloadRequest {
+    pub kind: RuntimeDownloadKind,
+    /// Approximate size in MB for UX (e.g. "Download Python (~50 MB)?")
+    pub approx_size_mb: u32,
+    /// Short label, e.g. "Python 3.12" or "Node.js 20"
+    pub label: &'static str,
+}
+
+impl RuntimeDownloadRequest {
+    pub fn python() -> Self {
+        Self {
+            kind: RuntimeDownloadKind::Python,
+            approx_size_mb: 50,
+            label: "Python 3.12",
+        }
+    }
+    pub fn node() -> Self {
+        Self {
+            kind: RuntimeDownloadKind::Node,
+            approx_size_mb: 35,
+            label: "Node.js 20",
+        }
+    }
+}
+
+/// Optional callback to confirm before downloading a runtime. If `Some`, called before any
+/// download; if it returns `false`, provisioning is aborted. Pass `None` to allow download
+/// without confirmation (or use env `SKILLLITE_AUTO_APPROVE_RUNTIME=1` when using a prompt).
+pub type RuntimeConfirmDownloadFn = Option<Box<dyn Fn(&RuntimeDownloadRequest) -> bool + Send>>;
+
+/// Build a default CLI confirm callback: prints a prompt to stderr, reads Y/n from stdin.
+/// If `SKILLLITE_AUTO_APPROVE_RUNTIME=1` is set, auto-approves without prompting.
+pub fn cli_confirm_download() -> RuntimeConfirmDownloadFn {
+    Some(Box::new(|req: &RuntimeDownloadRequest| -> bool {
+        if std::env::var("SKILLLITE_AUTO_APPROVE_RUNTIME")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            return true;
+        }
+        let kind_label = match req.kind {
+            RuntimeDownloadKind::Python => "Python",
+            RuntimeDownloadKind::Node => "Node.js",
+        };
+        eprintln!();
+        eprintln!(
+            "This skill requires {} but no compatible version was found on your system.",
+            kind_label
+        );
+        eprintln!(
+            "SkillLite needs to download {} (~{} MB) to set up the runtime environment.",
+            req.label, req.approx_size_mb
+        );
+        eprint!("Allow download? [Y/n] ");
+        use std::io::Write;
+        let _ = std::io::stderr().flush();
+        let mut input = String::new();
+        if std::io::stdin().read_line(&mut input).is_err() {
+            return false;
+        }
+        let answer = input.trim().to_lowercase();
+        answer.is_empty() || answer == "y" || answer == "yes"
+    }))
+}
 
 /// Minimum Python version we accept from the system (otherwise use bundled). (3, 10) = 3.10+.
 pub const MIN_PYTHON_VERSION: (u32, u32) = (3, 10);
@@ -148,6 +229,8 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
     let report = |msg: &str| {
         if let Some(ref f) = progress {
             f(msg);
+        } else {
+            eprintln!("[runtime] {}", msg);
         }
         tracing::info!("[runtime] {}", msg);
     };
@@ -161,8 +244,19 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
         return Ok(python_bin);
     }
 
-    report("该技能需要 Python 环境，检测到您的系统未安装，正在为您自动准备…");
+    report("This skill requires Python but none was found on your system. Preparing automatically...");
     std::fs::create_dir_all(runtime_dir).context("Create runtime dir")?;
+    // Remove stale dirs from previous failed runs so we have a clean extract and a single cpython-* candidate
+    if python_dir.exists() {
+        let _ = std::fs::remove_dir_all(&python_dir);
+    }
+    for e in std::fs::read_dir(runtime_dir).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+        let path = e.path();
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.starts_with("cpython-") && path.is_dir() {
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
     let archive_path = runtime_dir.join(&archive_name);
 
     let (primary_base, fallback_base) = python_download_bases();
@@ -172,12 +266,14 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
         PYTHON_RELEASE_TAG,
         archive_name
     );
-    report("正在准备 Python 环境…");
+    report("Downloading Python runtime...");
     let download_ok = download_with_progress(&url_primary, &archive_path, &progress).is_ok();
     if !download_ok {
         tracing::info!("[runtime] Primary Python URL failed, trying fallback mirror");
         if let Some(ref f) = progress {
-            f("主源较慢或不可达，正在尝试镜像…");
+            f("Primary source unreachable, trying fallback mirror...");
+        } else {
+            eprintln!("[runtime] Primary source unreachable, trying fallback mirror...");
         }
         let url_fallback = format!(
             "{}/{}/{}",
@@ -188,7 +284,7 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
         download_with_progress(&url_fallback, &archive_path, &progress)?;
     }
     if let Some(expected) = expected_python_sha256(&archive_name) {
-        report("正在校验完整性…");
+        report("Verifying integrity...");
         verify_sha256(&archive_path, expected)?;
     } else {
         let _ = std::fs::remove_file(&archive_path);
@@ -197,22 +293,46 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
             archive_name
         );
     }
-    report("正在解压…");
+    report("Extracting...");
     extract_tar_gz(&archive_path, runtime_dir)?;
     std::fs::remove_file(&archive_path).ok();
-    // Tarball top-level dir is e.g. cpython-{version}+{tag}-{triple}-install_only
+    // Top-level dir: official install_only uses "python" (python/install/* rewritten to python/*);
+    // older or alternate builds may use "cpython-{version}+{tag}-{triple}-install_only"
     let extracted_root = std::fs::read_dir(runtime_dir)
         .context("Read runtime dir")?
         .filter_map(|e| e.ok())
-        .find(|e| e.path().is_dir() && e.file_name().to_string_lossy().starts_with("cpython-"))
+        .filter(|e| e.path().is_dir())
+        .find(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            name == "python" || name.starts_with("cpython-")
+        })
         .map(|e| e.path())
-        .context("No cpython-* dir after extract")?;
-    if extracted_root.join("bin").join("python").exists()
+        .context("No python/ or cpython-* dir after extract")?;
+    // Prefer bin/python (or python.exe) at root; some archives have install/ as the actual tree
+    let install_root = if extracted_root.join("bin").join("python").exists()
         || extracted_root.join("python.exe").exists()
     {
-        std::fs::rename(&extracted_root, &python_dir).context("Rename extracted Python dir")?;
+        extracted_root.clone()
+    } else if extracted_root.join("install").join("bin").join("python").exists()
+        || extracted_root.join("install").join("python.exe").exists()
+    {
+        extracted_root.join("install")
+    } else {
+        anyhow::bail!(
+            "Python binary not found under {} (expected bin/python or install/bin/python)",
+            extracted_root.display()
+        );
+    };
+    if install_root.join("bin").join("python").exists()
+        || install_root.join("python.exe").exists()
+    {
+        // Remove stale target dir from a previous failed run so rename can succeed
+        if python_dir.exists() {
+            std::fs::remove_dir_all(&python_dir).context("Remove stale python dir for rename")?;
+        }
+        std::fs::rename(&install_root, &python_dir).context("Rename extracted Python dir")?;
     }
-    report("Python 环境就绪，可以开始使用。");
+    report("Python runtime is ready.");
     if python_bin.exists() {
         Ok(python_bin)
     } else {
@@ -320,7 +440,8 @@ fn verify_sha256(archive_path: &Path, expected_hex: &str) -> Result<()> {
     if got != expected {
         let _ = std::fs::remove_file(archive_path);
         anyhow::bail!(
-            "Runtime archive integrity check failed: expected sha256 {} got {}",
+            "Runtime archive integrity check failed: expected sha256 {} got {}. \
+            If using a mirror, try another or set SKILLLITE_RUNTIME_PYTHON_BASE_URL / SKILLLITE_RUNTIME_NODE_BASE_URL.",
             expected_hex,
             got
         );
@@ -328,10 +449,20 @@ fn verify_sha256(archive_path: &Path, expected_hex: &str) -> Result<()> {
     Ok(())
 }
 
+/// Build a ureq agent with connect and read timeouts for runtime downloads.
+#[cfg(feature = "runtime-deps")]
+fn runtime_http_agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(30))
+        .timeout_read(std::time::Duration::from_secs(300))
+        .build()
+}
+
 /// Fetch SHASUMS256.txt and return the expected SHA-256 hex for the given archive filename.
 #[cfg(feature = "runtime-deps")]
 fn fetch_node_sha256(sums_url: &str, archive_name: &str) -> Result<String> {
-    let resp = ureq::get(sums_url)
+    let resp = runtime_http_agent()
+        .get(sums_url)
         .call()
         .context("Fetch Node SHASUMS256.txt")?;
     let body = resp.into_string().context("Read SHASUMS256 body")?;
@@ -359,7 +490,10 @@ fn fetch_node_sha256(sums_url: &str, archive_name: &str) -> Result<String> {
 
 #[cfg(feature = "runtime-deps")]
 fn download_with_progress(url: &str, path: &Path, progress: &RuntimeProgressFn) -> Result<()> {
-    let resp = ureq::get(url).call().context("Download request")?;
+    let resp = runtime_http_agent()
+        .get(url)
+        .call()
+        .context("Download request")?;
     let len: usize = resp
         .header("Content-Length")
         .and_then(|h| h.parse().ok())
@@ -377,8 +511,11 @@ fn download_with_progress(url: &str, path: &Path, progress: &RuntimeProgressFn) 
         total += n;
         if len > 0 && total % (1024 * 1024) < 8192 {
             let pct = (total as f64 / len as f64 * 100.0) as u32;
+            let msg = format!("Downloading... {}%", pct);
             if let Some(ref f) = progress {
-                f(&format!("正在准备… {}%", pct));
+                f(&msg);
+            } else {
+                eprintln!("[runtime] {}", msg);
             }
         }
     }
@@ -402,6 +539,8 @@ pub fn ensure_node_runtime(
     let report = |msg: &str| {
         if let Some(ref f) = progress {
             f(msg);
+        } else {
+            eprintln!("[runtime] {}", msg);
         }
         tracing::info!("[runtime] {}", msg);
     };
@@ -418,39 +557,56 @@ pub fn ensure_node_runtime(
         return Ok((node_bin, npm_bin));
     }
 
-    report("该技能需要 Node.js 环境，检测到您的系统未安装，正在为您自动准备…");
+    report("This skill requires Node.js but none was found on your system. Preparing automatically...");
     std::fs::create_dir_all(runtime_dir).context("Create runtime dir")?;
+    // Remove stale dirs from previous failed runs (same as Python)
+    if node_dir.exists() {
+        let _ = std::fs::remove_dir_all(&node_dir);
+    }
+    let node_prefix = format!("node-v{}-", NODE_VERSION);
+    for e in std::fs::read_dir(runtime_dir).ok().into_iter().flatten().filter_map(|e| e.ok()) {
+        let path = e.path();
+        let name = e.file_name().to_string_lossy().into_owned();
+        if name.starts_with(&node_prefix) && path.is_dir() {
+            let _ = std::fs::remove_dir_all(path);
+        }
+    }
     let archive_name = format!("node-v{}-{}.tar.gz", NODE_VERSION, node_suffix);
     let (primary_base, fallback_base) = node_download_bases();
     let base = primary_base.trim_end_matches('/');
     let url_primary = format!("{}/v{}/{}", base, NODE_VERSION, archive_name);
     let sums_url_primary = format!("{}/v{}/SHASUMS256.txt", base, NODE_VERSION);
     let archive_path = runtime_dir.join(&archive_name);
-    report("正在准备 Node.js 环境…");
+    report("Downloading Node.js runtime...");
     let primary_ok = download_with_progress(&url_primary, &archive_path, &progress).is_ok();
     let sums_url_used = if primary_ok {
         sums_url_primary
     } else {
         tracing::info!("[runtime] Primary Node URL failed, trying fallback mirror");
         if let Some(ref f) = progress {
-            f("主源较慢或不可达，正在尝试镜像…");
+            f("Primary source unreachable, trying fallback mirror...");
+        } else {
+            eprintln!("[runtime] Primary source unreachable, trying fallback mirror...");
         }
         let fallback = fallback_base.trim_end_matches('/');
         let url_fb = format!("{}/v{}/{}", fallback, NODE_VERSION, archive_name);
         download_with_progress(&url_fb, &archive_path, &progress)?;
         format!("{}/v{}/SHASUMS256.txt", fallback, NODE_VERSION)
     };
-    report("正在校验完整性…");
+    report("Verifying integrity...");
     let expected = fetch_node_sha256(&sums_url_used, &archive_name)?;
     verify_sha256(&archive_path, &expected)?;
-    report("正在解压…");
+    report("Extracting...");
     extract_tar_gz(&archive_path, runtime_dir)?;
     std::fs::remove_file(&archive_path).ok();
     let extracted = runtime_dir.join(format!("node-v{}-{}", NODE_VERSION, node_suffix));
     if extracted.exists() {
+        if node_dir.exists() {
+            std::fs::remove_dir_all(&node_dir).context("Remove stale node dir for rename")?;
+        }
         std::fs::rename(&extracted, &node_dir).context("Rename extracted Node dir")?;
     }
-    report("Node.js 环境就绪，可以开始使用。");
+    report("Node.js runtime is ready.");
     let npm_bin = node_dir.join("bin").join("npm");
     #[cfg(windows)]
     let npm_bin = node_dir.join("npm.cmd");

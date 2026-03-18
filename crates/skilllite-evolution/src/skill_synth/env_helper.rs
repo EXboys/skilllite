@@ -31,5 +31,5 @@ pub(super) fn ensure_skill_deps_and_env(skill_dir: &Path) -> Option<PathBuf> {
         }
     }
     let env_spec = EnvSpec::from_metadata(skill_dir, &meta);
-    env_builder::ensure_environment(skill_dir, &env_spec, None, None).ok()
+    env_builder::ensure_environment(skill_dir, &env_spec, None, None, None).ok()
 }

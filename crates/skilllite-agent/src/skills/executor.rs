@@ -163,6 +163,7 @@ fn execute_skill_inner(
         &env_spec,
         cache_dir.as_deref(),
         None,
+        None,
     )?;
 
     let limits = ResourceLimits::from_env();

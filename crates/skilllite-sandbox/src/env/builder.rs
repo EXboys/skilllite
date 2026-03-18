@@ -11,7 +11,7 @@ use skilllite_core::EnvSpec;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::env::runtime_deps::{self, RuntimeProgressFn};
+use crate::env::runtime_deps::{self, RuntimeConfirmDownloadFn, RuntimeProgressFn};
 use crate::runner::RuntimePaths;
 
 /// Return the cache directory for skill environments.
@@ -32,11 +32,13 @@ pub fn get_cache_dir(override_dir: Option<&str>) -> Option<PathBuf> {
 /// P0: If system Python/Node is missing or too old, progress callback reports reason and
 /// provisioning progress (pass None to skip). Desktop can pass e.g.
 /// `Some(Box::new(|msg| { /* show in UI */ }))` for transparent UX.
+/// Pass `confirm_download` to ask user before downloading a runtime; if it returns false, provisioning is aborted.
 pub fn ensure_environment(
     skill_dir: &Path,
     spec: &EnvSpec,
     cache_dir: Option<&str>,
     progress: RuntimeProgressFn,
+    confirm_download: RuntimeConfirmDownloadFn,
 ) -> Result<PathBuf> {
     let lang = &spec.language;
 
@@ -52,9 +54,9 @@ pub fn ensure_environment(
     let env_path = base.join(key);
 
     if lang == "python" {
-        ensure_python_env(skill_dir, spec, &env_path, cache_dir, progress)?;
+        ensure_python_env(skill_dir, spec, &env_path, cache_dir, progress, confirm_download)?;
     } else if lang == "node" {
-        ensure_node_env(skill_dir, spec, &env_path, cache_dir, progress)?;
+        ensure_node_env(skill_dir, spec, &env_path, cache_dir, progress, confirm_download)?;
     } else {
         return Ok(PathBuf::new());
     }
@@ -64,6 +66,18 @@ pub fn ensure_environment(
 
 /// Build RuntimePaths from an environment directory (or empty for system interpreters).
 pub fn build_runtime_paths(env_dir: &Path) -> RuntimePaths {
+    // Read bundled node path from marker file written by ensure_node_env
+    let resolve_node_bin = |dir: &Path| -> PathBuf {
+        let marker = dir.join(".skilllite_node_bin");
+        if let Ok(contents) = std::fs::read_to_string(&marker) {
+            let p = PathBuf::from(contents.trim());
+            if p.exists() {
+                return p;
+            }
+        }
+        PathBuf::from("node")
+    };
+
     if env_dir.as_os_str().is_empty() || !env_dir.exists() {
         return RuntimePaths {
             python: default_system_python_command(),
@@ -73,26 +87,19 @@ pub fn build_runtime_paths(env_dir: &Path) -> RuntimePaths {
         };
     }
 
-    let (python, node, node_modules) = if env_dir.join("bin").join("python").exists() {
-        (
-            env_dir.join("bin").join("python"),
-            PathBuf::from("node"),
-            None::<PathBuf>,
-        )
+    let node = resolve_node_bin(env_dir);
+
+    let (python, node_modules) = if env_dir.join("bin").join("python").exists() {
+        (env_dir.join("bin").join("python"), None::<PathBuf>)
     } else if env_dir.join("Scripts").join("python.exe").exists() {
-        (
-            env_dir.join("Scripts").join("python.exe"),
-            PathBuf::from("node"),
-            None,
-        )
+        (env_dir.join("Scripts").join("python.exe"), None)
     } else if env_dir.join("node_modules").exists() {
         (
             default_system_python_command(),
-            PathBuf::from("node"),
             Some(env_dir.join("node_modules")),
         )
     } else {
-        (default_system_python_command(), PathBuf::from("node"), None)
+        (default_system_python_command(), None)
     };
 
     RuntimePaths {
@@ -140,6 +147,7 @@ fn ensure_python_env(
     env_path: &Path,
     cache_dir: Option<&str>,
     progress: RuntimeProgressFn,
+    confirm_download: RuntimeConfirmDownloadFn,
 ) -> Result<()> {
     let packages = collect_python_packages(skill_dir, spec)?;
     let python_path = python_path_in_env(env_path);
@@ -148,7 +156,7 @@ fn ensure_python_env(
     if !env_exists {
         std::fs::create_dir_all(env_path).context("Create venv dir")?;
 
-        let python = resolve_python(cache_dir, progress)?;
+        let python = resolve_python(cache_dir, progress, confirm_download)?;
         let mut cmd = Command::new(&python.program);
         cmd.args(&python.args).arg("-m").arg("venv").arg(env_path);
         cmd.current_dir(skill_dir);
@@ -192,19 +200,28 @@ fn ensure_node_env(
     env_path: &Path,
     cache_dir: Option<&str>,
     progress: RuntimeProgressFn,
+    confirm_download: RuntimeConfirmDownloadFn,
 ) -> Result<()> {
     let packages = collect_node_packages(skill_dir, spec)?;
     let env_exists = env_path.join("node_modules").exists();
 
-    if !env_exists {
-        std::fs::create_dir_all(env_path).context("Create node env dir")?;
+    // Always ensure node/npm are available (even if no deps to install),
+    // so build_runtime_paths can find the bundled node binary later.
+    let (node_bin, _npm_path) = resolve_node(cache_dir, progress, confirm_download)?;
 
+    // Write a marker so build_runtime_paths knows where node lives
+    std::fs::create_dir_all(env_path).context("Create node env dir")?;
+    let node_bin_marker = env_path.join(".skilllite_node_bin");
+    std::fs::write(&node_bin_marker, node_bin.to_string_lossy().as_bytes())
+        .context("Write node bin marker")?;
+
+    if !env_exists {
         let package_json = skill_dir.join("package.json");
-        if package_json.exists() {
+        let has_deps = if package_json.exists() {
             std::fs::copy(&package_json, env_path.join("package.json"))
                 .context("Copy package.json")?;
+            true
         } else if let Some(ref pkgs) = spec.resolved_packages {
-            // Bash-tool skills without package.json may list deps in .skilllite.lock (from skilllite init)
             let deps: std::collections::HashMap<String, String> =
                 pkgs.iter().map(|p| (p.clone(), "*".to_string())).collect();
             let pkg = serde_json::json!({
@@ -218,25 +235,27 @@ fn ensure_node_env(
                 serde_json::to_string_pretty(&pkg).context("Serialize package.json")?,
             )
             .context("Write package.json")?;
+            true
         } else {
-            return Ok(());
-        }
-        let lock = skill_dir.join("package-lock.json");
-        if lock.exists() {
-            let _ = std::fs::copy(&lock, env_path.join("package-lock.json"));
-        }
+            false
+        };
 
-        let (_, npm_path) = resolve_node(cache_dir, progress)?;
-        let out = Command::new(&npm_path)
-            .args(["install", "--omit=dev"])
-            .current_dir(env_path)
-            .output()
-            .context("npm install")?;
-        if !out.status.success() {
-            anyhow::bail!(
-                "npm install failed: {}",
-                String::from_utf8_lossy(&out.stderr)
-            );
+        if has_deps {
+            let lock = skill_dir.join("package-lock.json");
+            if lock.exists() {
+                let _ = std::fs::copy(&lock, env_path.join("package-lock.json"));
+            }
+            let out = Command::new(&_npm_path)
+                .args(["install", "--omit=dev"])
+                .current_dir(env_path)
+                .output()
+                .context("npm install")?;
+            if !out.status.success() {
+                anyhow::bail!(
+                    "npm install failed: {}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
         }
     }
 
@@ -417,7 +436,11 @@ fn which_python() -> Result<PythonCommand> {
 }
 
 /// Prefer system Python (if version >= MIN_PYTHON_VERSION); otherwise provision to ~/.skilllite/runtime/.
-fn resolve_python(cache_dir: Option<&str>, progress: RuntimeProgressFn) -> Result<PythonCommand> {
+fn resolve_python(
+    cache_dir: Option<&str>,
+    progress: RuntimeProgressFn,
+    confirm_download: RuntimeConfirmDownloadFn,
+) -> Result<PythonCommand> {
     if let Ok(cmd) = which_python() {
         let out = Command::new(&cmd.program)
             .args(&cmd.args)
@@ -437,6 +460,19 @@ fn resolve_python(cache_dir: Option<&str>, progress: RuntimeProgressFn) -> Resul
     }
     let runtime_dir = runtime_deps::get_runtime_dir(cache_dir)
         .context("Cannot determine runtime dir for Python")?;
+    let python_bin_path = runtime_dir.join("python-3.12").join("bin").join("python");
+    #[cfg(windows)]
+    let python_bin_path = runtime_dir.join("python-3.12").join("python.exe");
+    if !python_bin_path.exists() {
+        if let Some(ref confirm) = confirm_download {
+            let req = runtime_deps::RuntimeDownloadRequest::python();
+            if !confirm(&req) {
+                anyhow::bail!(
+                    "Runtime download declined. To allow automatic download, set SKILLLITE_AUTO_APPROVE_RUNTIME=1."
+                );
+            }
+        }
+    }
     let python_bin = runtime_deps::ensure_python_runtime(&runtime_dir, progress)?;
     Ok(PythonCommand {
         program: python_bin,
@@ -448,12 +484,26 @@ fn resolve_python(cache_dir: Option<&str>, progress: RuntimeProgressFn) -> Resul
 fn resolve_node(
     cache_dir: Option<&str>,
     progress: RuntimeProgressFn,
+    confirm_download: RuntimeConfirmDownloadFn,
 ) -> Result<(PathBuf, PathBuf)> {
     if let (Some(node), Some(npm)) = (runtime_deps::which_node(), runtime_deps::which_npm()) {
         return Ok((node, npm));
     }
     let runtime_dir = runtime_deps::get_runtime_dir(cache_dir)
         .context("Cannot determine runtime dir for Node")?;
+    let node_bin_path = runtime_dir.join("node-20").join("bin").join("node");
+    #[cfg(windows)]
+    let node_bin_path = runtime_dir.join("node-20").join("node.exe");
+    if !node_bin_path.exists() {
+        if let Some(ref confirm) = confirm_download {
+            let req = runtime_deps::RuntimeDownloadRequest::node();
+            if !confirm(&req) {
+                anyhow::bail!(
+                    "Runtime download declined. To allow automatic download, set SKILLLITE_AUTO_APPROVE_RUNTIME=1."
+                );
+            }
+        }
+    }
     runtime_deps::ensure_node_runtime(&runtime_dir, progress)
 }
 

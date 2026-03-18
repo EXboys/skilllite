@@ -326,6 +326,7 @@ fn install_all_deps(
                     &env_spec,
                     cache_dir,
                     None,
+                    skilllite_sandbox::cli_confirm_download(),
                 ) {
                     Ok(_) => {
                         messages.push(format!(
