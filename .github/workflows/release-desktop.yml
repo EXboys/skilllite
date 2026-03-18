@@ -89,11 +89,12 @@ jobs:
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -u build.keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign >/dev/null 2>&1
+          rm -f certificate.p12
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           SIGNING_IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
           echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> $GITHUB_ENV
-          echo "Using signing identity: $SIGNING_IDENTITY"
+          echo "Signing identity configured (identity not logged)."
 
       # macOS：用 App Store Connect API 密钥做公证时，把 .p8 内容写回为临时文件（不填 APPLE_ID/APPLE_PASSWORD 时用）
       # 注意：if 条件中不能使用 secrets，故在脚本内判断是否跳过
@@ -113,6 +114,7 @@ jobs:
         env:
           CI: true
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
