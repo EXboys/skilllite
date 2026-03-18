@@ -597,7 +597,8 @@ fn is_fetchable_source(source: &str) -> bool {
 
 /// `skilllite evolution repair-skills [SKILL_NAME...]` — 验证技能并修复失败的。
 /// 不传技能名时验证并修复所有失败技能；传一个或多个技能名时仅验证并修复这些技能，缩短执行时间。
-pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
+/// `from_source`: 对下载的技能失败时自动从源头更新，不交互询问（桌面/CI 等非 TTY 时传 true）。
+pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>, from_source: bool) -> Result<()> {
     let skills_root = resolve_skills_root(None).ok_or_else(|| {
         anyhow::anyhow!("无法解析工作区。请设置 SKILLLITE_WORKSPACE 或在项目目录运行。")
     })?;
@@ -702,35 +703,38 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>) -> Result<()> {
                     v.skill_name,
                     e.source
                 );
-                print!("  是否从源头更新？(y/n) [n]: ");
-                let _ = io::stdout().flush();
-                let mut line = String::new();
-                if io::stdin().read_line(&mut line).is_err() {
-                    eprintln!("  ⏭️ 跳过");
-                    false
+                let yes = if from_source {
+                    true
                 } else {
-                    let yes = line.trim().eq_ignore_ascii_case("y")
-                        || line.trim().eq_ignore_ascii_case("yes");
-                    if yes {
-                        match crate::skill::update_skill_from_source(
-                            &skills_root,
-                            &v.skill_name,
-                            &e.source,
-                        ) {
-                            Ok(()) => {
-                                eprintln!("  ✅ 已从源头更新");
-                                true
-                            }
-                            Err(err) => {
-                                eprintln!("  ❌ 更新失败: {}", err);
-                                eprintln!("  💡 可改用大模型修复：重新执行 repair-skills 并选 n 后会自动用大模型修");
-                                false
-                            }
-                        }
-                    } else {
-                        eprintln!("  ⏭️ 已跳过");
+                    print!("  是否从源头更新？(y/n) [n]: ");
+                    let _ = io::stdout().flush();
+                    let mut line = String::new();
+                    if io::stdin().read_line(&mut line).is_err() {
+                        eprintln!("  ⏭️ 跳过（非交互环境，可加 --from-source 自动从源头更新）");
                         false
+                    } else {
+                        line.trim().eq_ignore_ascii_case("y") || line.trim().eq_ignore_ascii_case("yes")
                     }
+                };
+                if yes {
+                    match crate::skill::update_skill_from_source(
+                        &skills_root,
+                        &v.skill_name,
+                        &e.source,
+                    ) {
+                        Ok(()) => {
+                            eprintln!("  ✅ 已从源头更新");
+                            true
+                        }
+                        Err(err) => {
+                            eprintln!("  ❌ 更新失败: {}", err);
+                            eprintln!("  💡 可改用大模型修复：重新执行 repair-skills 并选 n 后会自动用大模型修");
+                            false
+                        }
+                    }
+                } else {
+                    eprintln!("  ⏭️ 已跳过");
+                    false
                 }
             } else if is_remote_source(&e.source) && !is_fetchable_source(&e.source) {
                 eprintln!(

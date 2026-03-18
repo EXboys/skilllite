@@ -375,7 +375,10 @@ pub fn open_directory(module: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn collect_md_files(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<String>) {
+/// (path, modified_time) pair for sorting by modification time.
+type FileWithMtime = (String, std::time::SystemTime);
+
+fn collect_md_files(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec<FileWithMtime>) {
     if !dir.is_dir() {
         return;
     }
@@ -388,7 +391,8 @@ fn collect_md_files(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec
             collect_md_files(&p, base, out);
         } else if p.extension().map_or(false, |e| e == "md") {
             if let Ok(rel) = p.strip_prefix(base) {
-                out.push(rel.to_string_lossy().to_string());
+                let mtime = p.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+                out.push((rel.to_string_lossy().to_string(), mtime));
             }
         }
     }
@@ -397,7 +401,7 @@ fn collect_md_files(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec
 fn collect_output_files_inner(
     dir: &std::path::Path,
     base: &std::path::Path,
-    out: &mut Vec<String>,
+    out: &mut Vec<FileWithMtime>,
 ) {
     if !dir.is_dir() {
         return;
@@ -416,11 +420,18 @@ fn collect_output_files_inner(
             let ext_lower = ext.to_string_lossy().to_lowercase();
             if EXTS.contains(&ext_lower.as_str()) {
                 if let Ok(rel) = p.strip_prefix(base) {
-                    out.push(rel.to_string_lossy().to_string());
+                    let mtime = p.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+                    out.push((rel.to_string_lossy().to_string(), mtime));
                 }
             }
         }
     }
+}
+
+/// Sort by modification time descending (newest first) and return paths only.
+fn sort_newest_first(mut items: Vec<FileWithMtime>) -> Vec<String> {
+    items.sort_by(|a, b| b.1.cmp(&a.1));
+    items.into_iter().map(|(path, _)| path).collect()
 }
 
 /// Load memory files from chat_root (for parallel execution).
@@ -429,9 +440,8 @@ fn load_memory_files(chat_root: &std::path::Path) -> Vec<String> {
     let mut out = Vec::new();
     if memory_dir.exists() {
         collect_md_files(&memory_dir, &memory_dir, &mut out);
-        out.sort();
     }
-    out
+    sort_newest_first(out)
 }
 
 /// Load output files from chat_root (for parallel execution).
@@ -440,9 +450,8 @@ fn load_output_files(chat_root: &std::path::Path) -> Vec<String> {
     let mut out = Vec::new();
     if output_dir.exists() {
         collect_output_files_inner(&output_dir, &output_dir, &mut out);
-        out.sort();
     }
-    out
+    sort_newest_first(out)
 }
 
 /// Load latest plan from chat_root (for parallel execution).
@@ -932,6 +941,51 @@ pub fn list_skill_names(workspace: &str) -> Vec<String> {
     v
 }
 
+/// Resolve skill directory path by name (searches .skills and skills, incl. _evolved/_pending). Returns None if not found.
+fn find_skill_dir(workspace: &str, skill_name: &str) -> Option<std::path::PathBuf> {
+    let root = find_project_root(workspace);
+    for skills_sub in [".skills", "skills"] {
+        let dir = root.join(skills_sub);
+        for (path, name) in collect_skill_dirs(&dir) {
+            if name == skill_name {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
+/// Open the given skill's directory in the system file manager.
+pub fn open_skill_directory(workspace: &str, skill_name: &str) -> Result<(), String> {
+    let path = find_skill_dir(workspace, skill_name)
+        .ok_or_else(|| format!("未找到技能目录: {}", skill_name))?;
+    if !path.exists() || !path.is_dir() {
+        return Err(format!("技能目录不存在: {}", path.display()));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(path.to_string_lossy().to_string())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Run `skilllite evolution repair-skills [skill_names...]`. If skill_names is empty, repairs all failed; otherwise only those.
 pub fn repair_skills(
     workspace: &str,
@@ -945,6 +999,7 @@ pub fn repair_skills(
     for name in skill_names {
         cmd.arg(name);
     }
+    cmd.arg("--from-source");
     cmd.current_dir(&root)
         .env("SKILLLITE_WORKSPACE", root.to_string_lossy().as_ref())
         .stdout(std::process::Stdio::piped())
@@ -968,6 +1023,76 @@ pub fn repair_skills(
         return Err(combined);
     }
     Ok(combined)
+}
+
+/// Run `skilllite add <source>` in the workspace. Installs to workspace .skills (creates if needed).
+/// Source: owner/repo, owner/repo@skill-name, https://github.com/..., or local path.
+pub fn add_skill(
+    workspace: &str,
+    source: &str,
+    force: bool,
+    skilllite_path: &std::path::Path,
+) -> Result<String, String> {
+    let root = find_project_root(workspace);
+    let source = source.trim();
+    if source.is_empty() {
+        return Err("请填写来源，例如：owner/repo 或 owner/repo@skill-name".to_string());
+    }
+
+    let mut cmd = std::process::Command::new(skilllite_path);
+    cmd.arg("add").arg(source).arg("--skills-dir").arg(".skills");
+    if force {
+        cmd.arg("--force");
+    }
+    cmd.current_dir(&root)
+        .env("SKILLLITE_WORKSPACE", root.to_string_lossy().as_ref())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    for (k, v) in load_dotenv_for_child(workspace) {
+        cmd.env(k, v);
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("执行 skilllite add 失败: {}", e))?;
+    let out = String::from_utf8_lossy(&output.stdout);
+    let err = String::from_utf8_lossy(&output.stderr);
+    let combined = if err.is_empty() {
+        out.trim().to_string()
+    } else {
+        format!("{}\n{}", out.trim(), err.trim())
+    };
+    if !output.status.success() {
+        return Err(combined);
+    }
+    Ok(summarise_add_output(&combined))
+}
+
+/// 从 skilllite add 的完整输出中提取简短摘要，避免在桌面端刷屏。
+fn summarise_add_output(output: &str) -> String {
+    if output.is_empty() {
+        return "已添加".to_string();
+    }
+    // 匹配 "🎉 Successfully added 14 skill(s) from obra/superpowers" 或 "Successfully added 1 skill(s)"
+    let line = output
+        .lines()
+        .find(|line| line.contains("Successfully added") && line.contains("skill(s)"));
+    if let Some(line) = line {
+        let line = line.trim().trim_start_matches("🎉 ").trim();
+        if let Some(after) = line.strip_prefix("Successfully added ") {
+            let num_str = after.split_whitespace().next().unwrap_or("");
+            if let Ok(n) = num_str.parse::<u32>() {
+                let from = after.split(" from ").nth(1).map(str::trim);
+                return if let Some(src) = from {
+                    format!("已添加 {} 个技能（来自 {}）", n, src)
+                } else {
+                    format!("已添加 {} 个技能", n)
+                };
+            }
+        }
+    }
+    "已添加".to_string()
 }
 
 // ─── Onboarding: init workspace, probe Ollama ─────────────────────────────────

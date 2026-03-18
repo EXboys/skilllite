@@ -12,6 +12,7 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
-    "dialog:default"
+    "dialog:default",
+    "shell:allow-open"
   ]
 }

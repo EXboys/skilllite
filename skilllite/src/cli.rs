@@ -699,5 +699,9 @@ pub enum EvolutionAction {
         /// 仅验证并修复这些技能（目录名）；不传则处理全部失败技能
         #[arg(value_name = "SKILL_NAME")]
         skills: Vec<String>,
+
+        /// 对「下载的技能」失败时自动从源头更新，不交互询问（供桌面/CI 等非 TTY 环境）
+        #[arg(long)]
+        from_source: bool,
     },
 }

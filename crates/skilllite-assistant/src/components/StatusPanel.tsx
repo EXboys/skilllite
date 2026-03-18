@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useStatusStore, type TaskItem, type LogEntry } from "../stores/useStatusStore";
+import { useSettingsStore } from "../stores/useSettingsStore";
 import { groupMemoryFiles } from "../utils/fileUtils";
 
 export type DetailModule = "plan" | "mem" | "log" | "output" | null;
@@ -242,19 +244,27 @@ function skillDisplayName(name: string): string {
   return map[name] || name;
 }
 
+const SKILLS_SH_URL = "https://skills.sh/";
+
 function SkillRepairSection() {
+  const { settings } = useSettingsStore();
+  const workspace = settings.workspace || ".";
   const [skillNames, setSkillNames] = useState<string[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingList, setLoadingList] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [repairResult, setRepairResult] = useState<string | null>(null);
   const [resultIsError, setResultIsError] = useState(false);
+  const [addSource, setAddSource] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addResult, setAddResult] = useState<string | null>(null);
+  const [addResultIsError, setAddResultIsError] = useState(false);
 
   const loadSkills = useCallback(async () => {
     setLoadingList(true);
     setRepairResult(null);
     try {
-      const names = await invoke<string[]>("skilllite_list_skills", { workspace: null });
+      const names = await invoke<string[]>("skilllite_list_skills", { workspace });
       setSkillNames(names);
       setSelected(new Set());
     } catch (e) {
@@ -263,7 +273,7 @@ function SkillRepairSection() {
     } finally {
       setLoadingList(false);
     }
-  }, []);
+  }, [workspace]);
 
   useEffect(() => {
     loadSkills();
@@ -288,7 +298,7 @@ function SkillRepairSection() {
     try {
       const toRepair = selected.size > 0 ? Array.from(selected) : [];
       const out = await invoke<string>("skilllite_repair_skills", {
-        workspace: null,
+        workspace,
         skillNames: toRepair,
       });
       setRepairResult(out || "修复完成");
@@ -297,6 +307,29 @@ function SkillRepairSection() {
       setResultIsError(true);
     } finally {
       setRepairing(false);
+    }
+  };
+
+  const runAdd = async () => {
+    const source = addSource.trim();
+    if (!source) return;
+    setAdding(true);
+    setAddResult(null);
+    setAddResultIsError(false);
+    try {
+      const out = await invoke<string>("skilllite_add_skill", {
+        workspace,
+        source,
+        force: false,
+      });
+      setAddResult(out || "已添加");
+      setAddSource("");
+      loadSkills();
+    } catch (e) {
+      setAddResult(String(e));
+      setAddResultIsError(true);
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -346,6 +379,42 @@ function SkillRepairSection() {
         </div>
       </div>
 
+      {/* 添加技能：来源输入 + 添加按钮 + skills.sh 链接 */}
+      <div className="mb-2 flex flex-col gap-1.5">
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={addSource}
+            onChange={(e) => setAddSource(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && runAdd()}
+            placeholder="owner/repo 或 owner/repo@skill-name"
+            className="flex-1 min-w-0 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-2.5 py-1.5 text-xs placeholder:text-ink-mute dark:placeholder:text-ink-dark-mute"
+          />
+          <button
+            type="button"
+            onClick={runAdd}
+            disabled={adding || !addSource.trim()}
+            className="shrink-0 px-2.5 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {adding ? "添加中…" : "添加"}
+          </button>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => openUrl(SKILLS_SH_URL)}
+            className="text-xs text-ink-mute dark:text-ink-dark-mute hover:text-accent hover:underline text-left"
+          >
+            在 skills.sh 浏览更多技能
+          </button>
+          {addResult != null && (
+            <span className={`text-xs ${addResultIsError ? "text-red-600 dark:text-red-400" : "text-ink-mute dark:text-ink-dark-mute"}`}>
+              {addResult}
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* 技能列表：卡片式 */}
       <div
         className="rounded-lg border border-border dark:border-border-dark bg-gray-50/50 dark:bg-surface-dark/50 overflow-y-auto mb-3"
@@ -382,7 +451,26 @@ function SkillRepairSection() {
                     onChange={() => toggleOne(name)}
                     className="rounded border-border dark:border-border-dark text-accent focus:ring-accent/40 shrink-0"
                   />
-                  <span className="truncate text-xs font-medium">{skillDisplayName(name)}</span>
+                  <span className="truncate text-xs font-medium flex-1 min-w-0">{skillDisplayName(name)}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      invoke("skilllite_open_skill_directory", { workspace, skillName: name }).catch((err) => {
+                        console.error("[skilllite-assistant] open_skill_directory failed:", err);
+                        setRepairResult(`打开目录失败: ${err}`);
+                        setResultIsError(true);
+                      });
+                    }}
+                    className="p-1 rounded text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 shrink-0"
+                    title="打开技能目录"
+                    aria-label="打开目录"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                    </svg>
+                  </button>
                 </label>
               </li>
             ))}

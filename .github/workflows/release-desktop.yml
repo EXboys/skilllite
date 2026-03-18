@@ -110,7 +110,14 @@ jobs:
 
       - name: Build Tauri app (skilllite binary bundled via beforeBuildCommand)
         working-directory: crates/skilllite-assistant
-        run: npm run tauri:build
+        run: |
+          # Unset empty Apple env vars so Tauri won't pick the wrong notarization method
+          [ -z "$APPLE_ID" ] && unset APPLE_ID
+          [ -z "$APPLE_PASSWORD" ] && unset APPLE_PASSWORD
+          [ -z "$APPLE_API_KEY" ] && unset APPLE_API_KEY
+          [ -z "$APPLE_API_ISSUER" ] && unset APPLE_API_ISSUER
+          [ -z "$APPLE_API_KEY_PATH" ] && unset APPLE_API_KEY_PATH
+          npm run tauri:build
         env:
           CI: true
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}

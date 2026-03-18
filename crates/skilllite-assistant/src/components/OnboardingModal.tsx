@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../stores/useSettingsStore";
@@ -16,12 +16,47 @@ export default function OnboardingModal() {
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaModel, setOllamaModel] = useState<string | null>(null);
   const [ollamaLoading, setOllamaLoading] = useState(false);
+  const [ollamaAutoDetected, setOllamaAutoDetected] = useState(false);
   const [initCreating, setInitCreating] = useState(false);
   const [initError, setInitError] = useState("");
+  const initialProbeDoneRef = useRef(false);
+  const userChoseModeRef = useRef(false);
+
+  // 零配置默认：挂载时检测本机 Ollama，可用则预选「使用本地模型」并进入配置步骤（若用户尚未点击任一选项）
+  useEffect(() => {
+    let cancelled = false;
+    setOllamaLoading(true);
+    invoke<{ available: boolean; models: string[]; has_embedding: boolean }>("skilllite_probe_ollama")
+      .then((r) => {
+        if (cancelled || userChoseModeRef.current) return;
+        if (r.available) {
+          const chatModels = r.models.filter((m) => !m.includes("embed"));
+          if (chatModels.length > 0) {
+            initialProbeDoneRef.current = true;
+            setOllamaModels(chatModels);
+            setOllamaModel(chatModels[0]);
+            setMode("ollama");
+            setStep("config");
+            setOllamaAutoDetected(true);
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setOllamaLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (step === "mode") return;
     if (mode === "ollama") {
+      if (initialProbeDoneRef.current) {
+        setOllamaLoading(false);
+        return;
+      }
       setOllamaLoading(true);
       invoke<{ available: boolean; models: string[]; has_embedding: boolean }>("skilllite_probe_ollama")
         .then((r) => {
@@ -118,10 +153,16 @@ export default function OnboardingModal() {
             <p className="text-sm font-medium text-ink dark:text-ink-dark mb-2">
               1. 选择使用方式
             </p>
+            {ollamaLoading && mode === null && (
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute mb-2">
+                正在检测本机 Ollama…
+              </p>
+            )}
             <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={() => {
+                  userChoseModeRef.current = true;
                   setMode("api");
                   setStep("config");
                 }}
@@ -137,6 +178,7 @@ export default function OnboardingModal() {
               <button
                 type="button"
                 onClick={() => {
+                  userChoseModeRef.current = true;
                   setMode("ollama");
                   setStep("config");
                 }}
@@ -208,6 +250,11 @@ export default function OnboardingModal() {
             <p className="text-sm font-medium text-ink dark:text-ink-dark mb-2">
               2. 本地 Ollama
             </p>
+            {ollamaAutoDetected && (
+              <p className="text-xs text-green-600 dark:text-green-400 mb-3">
+                已检测到本机 Ollama，已为您选择「使用本地模型」，无需 API Key 即可聊天。
+              </p>
+            )}
             {ollamaLoading ? (
               <p className="text-sm text-ink-mute mb-4">正在检测 Ollama…</p>
             ) : ollamaModels.length > 0 ? (
@@ -236,7 +283,10 @@ export default function OnboardingModal() {
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setStep("mode")}
+                onClick={() => {
+                  setStep("mode");
+                  setOllamaAutoDetected(false);
+                }}
                 className="px-3 py-1.5 text-sm text-ink-mute"
               >
                 上一步

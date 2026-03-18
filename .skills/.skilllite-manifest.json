@@ -17,6 +17,22 @@
       "installed_at": "2026-03-10T12:31:28.983467Z",
       "admission_risk": "safe"
     },
+    "brainstorming": {
+      "name": "brainstorming",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "ba64743ab4351e0f9e72269748927adafaa204a86d4819e515d2b819ce14033b",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.521120Z",
+      "installed_at": "2026-03-18T14:03:12.521120Z",
+      "admission_risk": "safe"
+    },
     "calculator": {
       "name": "calculator",
       "source": "Exboys/skilllite",
@@ -65,6 +81,38 @@
       "installed_at": "2026-03-10T12:31:28.992232Z",
       "admission_risk": "safe"
     },
+    "dispatching-parallel-agents": {
+      "name": "dispatching-parallel-agents",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "6f85a00af7ae36fae408382d663cbcb440964a8a53ee4ee12ae32fccb9b3a841",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.521820Z",
+      "installed_at": "2026-03-18T14:03:12.521820Z",
+      "admission_risk": "safe"
+    },
+    "executing-plans": {
+      "name": "executing-plans",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "3e5b7e1129aff11bc07b46330f0b6d82823ebfea5591247ccb992b4b43e2e4f2",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.522226Z",
+      "installed_at": "2026-03-18T14:03:12.522226Z",
+      "admission_risk": "safe"
+    },
     "find-skills": {
       "name": "find-skills",
       "source": "Exboys/skilllite",
@@ -79,6 +127,22 @@
       ],
       "tier_updated_at": "2026-03-10T12:31:28.993779Z",
       "installed_at": "2026-03-10T12:31:28.993779Z",
+      "admission_risk": "safe"
+    },
+    "finishing-a-development-branch": {
+      "name": "finishing-a-development-branch",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "eff0217a6697cd6be04c93a28ad8e556488a18361713cf19d967d489e2caf0ff",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.522642Z",
+      "installed_at": "2026-03-18T14:03:12.522642Z",
       "admission_risk": "safe"
     },
     "frontend-design": {
@@ -145,6 +209,22 @@
       "installed_at": "2026-02-24T05:08:26.727828Z",
       "admission_risk": "suspicious"
     },
+    "receiving-code-review": {
+      "name": "receiving-code-review",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "b90b1e180f11fa06053fc0f9fb0a957935dce35168897d1aff6be33e14545b3e",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.523126Z",
+      "installed_at": "2026-03-18T14:03:12.523126Z",
+      "admission_risk": "safe"
+    },
     "remotion-best-practices": {
       "name": "remotion-best-practices",
       "source": "remotion-dev/skills",
@@ -159,6 +239,22 @@
       ],
       "tier_updated_at": "2026-03-11T07:09:05.582802Z",
       "installed_at": "2026-03-11T07:09:05.582803Z",
+      "admission_risk": "safe"
+    },
+    "requesting-code-review": {
+      "name": "requesting-code-review",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "da2dfc5126d4d7f0547f257ef5a4e53569273698ac9d0a81db1950e8fd4654e6",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.523977Z",
+      "installed_at": "2026-03-18T14:03:12.523977Z",
       "admission_risk": "safe"
     },
     "skill-creator": {
@@ -177,6 +273,54 @@
       "installed_at": "2026-03-10T12:31:29.004923Z",
       "admission_risk": "safe"
     },
+    "subagent-driven-development": {
+      "name": "subagent-driven-development",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "5f3ede03b3c711459ce9af9e02074b9595fe4ec3d8c108ffa320752431c75c35",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.524968Z",
+      "installed_at": "2026-03-18T14:03:12.524969Z",
+      "admission_risk": "safe"
+    },
+    "systematic-debugging": {
+      "name": "systematic-debugging",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "75a8a456c6adf0b648d0740b86614f930539da1f2665266ab6ad744cadfd6b79",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.527266Z",
+      "installed_at": "2026-03-18T14:03:12.527266Z",
+      "admission_risk": "safe"
+    },
+    "test-driven-development": {
+      "name": "test-driven-development",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "b078532e190983b849818c11a7d4797dcbae9dfe04fadabf9b90ca5ee63650c8",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.527891Z",
+      "installed_at": "2026-03-18T14:03:12.527891Z",
+      "admission_risk": "safe"
+    },
     "text-processor": {
       "name": "text-processor",
       "source": "Exboys/skilllite",
@@ -192,6 +336,54 @@
       "tier_updated_at": "2026-03-10T12:31:29.007597Z",
       "installed_at": "2026-03-10T12:31:29.007597Z",
       "admission_risk": "suspicious"
+    },
+    "using-git-worktrees": {
+      "name": "using-git-worktrees",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "898e7cff32ffbc562afbca2cb858aaf9d4f7190817c5881405f1f7b5bf55e789",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.528381Z",
+      "installed_at": "2026-03-18T14:03:12.528381Z",
+      "admission_risk": "safe"
+    },
+    "using-superpowers": {
+      "name": "using-superpowers",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "08384a16826e1312d937c2ae882d2497671e64bb7662a05291130e2507b8d18c",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.529150Z",
+      "installed_at": "2026-03-18T14:03:12.529151Z",
+      "admission_risk": "safe"
+    },
+    "verification-before-completion": {
+      "name": "verification-before-completion",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "9f704f1335e61a3ce258270d9f492cf487af55f1db0b9fc1bc5fa2173ebd38fa",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.529521Z",
+      "installed_at": "2026-03-18T14:03:12.529521Z",
+      "admission_risk": "safe"
     },
     "weather": {
       "name": "weather",
@@ -223,6 +415,38 @@
       ],
       "tier_updated_at": "2026-03-10T12:31:29.010387Z",
       "installed_at": "2026-03-10T12:31:29.010387Z",
+      "admission_risk": "safe"
+    },
+    "writing-plans": {
+      "name": "writing-plans",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "982ac45c2ee31e511eaf4332ac7fefe7da54923c893e04ac1d71def729dca205",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.529989Z",
+      "installed_at": "2026-03-18T14:03:12.529989Z",
+      "admission_risk": "safe"
+    },
+    "writing-skills": {
+      "name": "writing-skills",
+      "source": "obra/superpowers",
+      "version": null,
+      "hash": "97a22e752c7d934f023b48f3824e8a17229475cf48ae69ac357e8f8fc131c557",
+      "signature_status": "UNSIGNED",
+      "trust_tier": "COMMUNITY",
+      "trust_score": 63,
+      "tier_reason": [
+        "known repository source",
+        "unsigned package"
+      ],
+      "tier_updated_at": "2026-03-18T14:03:12.531507Z",
+      "installed_at": "2026-03-18T14:03:12.531507Z",
       "admission_risk": "safe"
     },
     "xiaohongshu-writer": {

@@ -117,6 +117,14 @@ async fn skilllite_open_directory(module: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn skilllite_open_skill_directory(workspace: Option<String>, skill_name: String) -> Result<(), String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::open_skill_directory(&ws, &skill_name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn skilllite_confirm(app: tauri::AppHandle, approved: bool) -> Result<(), String> {
     let state = app.state::<skilllite_bridge::ConfirmationState>();
     let mut guard = state
@@ -147,6 +155,22 @@ async fn skilllite_repair_skills(
     let path = skilllite_bridge::resolve_skilllite_path_app(&app);
     tauri::async_runtime::spawn_blocking(move || {
         skilllite_bridge::repair_skills(&ws, &skill_names, &path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_add_skill(
+    app: tauri::AppHandle,
+    workspace: Option<String>,
+    source: String,
+    force: bool,
+) -> Result<String, String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    let path = skilllite_bridge::resolve_skilllite_path_app(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::add_skill(&ws, &source, force, &path)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -185,9 +209,11 @@ pub fn run() {
             skilllite_read_output_file,
             skilllite_read_output_file_base64,
             skilllite_open_directory,
+            skilllite_open_skill_directory,
             skilllite_confirm,
             skilllite_list_skills,
             skilllite_repair_skills,
+            skilllite_add_skill,
             skilllite_init_workspace,
             skilllite_probe_ollama
         ])
