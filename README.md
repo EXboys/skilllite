@@ -23,7 +23,9 @@
 
 ---
 
-**A lightweight secure Self-evolution engine built in Rust, featuring a built-in native system-level sandbox, zero dependencies, and fully local execution..**
+**A lightweight secure Self-evolution engine built in Rust, featuring a built-in native system-level sandbox, zero dependencies, and fully local execution.**
+
+Workspace and CLI binary versions are defined in the root `Cargo.toml` under `[workspace.package]` (kept in sync with the PyPI `skilllite` package).
 
 AI Agents need to evolve — learning better prompts, accumulating memory, and generating new skills from experience. But self-evolution is inherently risky: evolved code can be malicious, evolved rules can jailbreak. **SkillLite solves this with a single binary**: an immutable security core constrains all evolution, so your Agent gets smarter without compromising safety. Zero dependencies, local-first, LLM-agnostic.
 
@@ -458,7 +460,7 @@ skilllite/                         Dependency Flow
 
 ### SDK & Integrations
 
-- **python-sdk** (`pip install skilllite`) — Thin bridge (~600 lines), zero runtime deps
+- **python-sdk** (`pip install skilllite`) — Thin bridge (~630 lines of Python), zero runtime deps
 - **langchain-skilllite** (`pip install langchain-skilllite`) — LangChain / LangGraph adapter
 
 <details>

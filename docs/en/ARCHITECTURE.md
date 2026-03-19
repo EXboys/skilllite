@@ -1,6 +1,6 @@
 # SkillLite Project Architecture
 
-> **Note**: This document is synced to the v0.1.15 multi-crate architecture. Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~600 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`.
+> **Note**: This document matches the root `Cargo.toml` `[workspace.package]` version (currently **v0.1.15**). Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~630 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`.
 >
 > **Entry points and domains**: For a one-page map of CLI / Python / MCP / Desktop / Swarm (what they are, which crates they use, one-line use case), see [Entry Points and Capability Domains](./ENTRYPOINTS-AND-DOMAINS.md). (中文版：[入口与能力域一览](../zh/ENTRYPOINTS-AND-DOMAINS.md))
 
@@ -128,7 +128,7 @@ skillLite/
 │   │
 │   ├── skilllite-agent/           # Agent loop (agent feature)
 │   │   └── src/
-│   │       ├── agent_loop/        # planning, execution, reflection, helpers
+│   │       ├── agent_loop/        # mod + planning / execution / reflection / helpers
 │   │       ├── chat.rs
 │   │       ├── chat_session.rs
 │   │       ├── llm/
@@ -154,8 +154,8 @@ skillLite/
 │   │
 │   ├── skilllite-swarm/           # P2P (mDNS, task routing; swarm feature)
 │   │
-│   └── skilllite-assistant/       # Tauri 2 + React desktop
-│       └── src-tauri/
+│   └── skilllite-assistant/       # Tauri 2 + React desktop (not in default workspace members; see root Cargo.toml exclude)
+│       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (thin bridge layer)
 │   ├── pyproject.toml             # Package config (v0.1.15, zero runtime deps)
@@ -166,7 +166,7 @@ skillLite/
 │       ├── cli.py                 # CLI entry (forwards to binary)
 │       └── ipc.py                 # IPC client
 │
-├── langchain-skilllite/           # LangChain adapter (separate package, v0.1.15)
+├── langchain-skilllite/           # LangChain adapter (separate package; version in that crate's pyproject.toml)
 │   └── langchain_skilllite/
 │       ├── core.py                # SkillManager, SkillInfo
 │       ├── tools.py               # SkillLiteTool, SkillLiteToolkit
@@ -397,8 +397,8 @@ pub enum SecuritySeverity {
 | Module | Responsibility |
 |--------|---------------|
 | `chat.rs` | CLI chat entry (single `--message` / interactive REPL) |
-| `agent_loop.rs` | Agent main loop (LLM call → tool execution → result return) |
-| `llm.rs` | LLM HTTP client (supports OpenAI-compatible API and Claude Native API, streaming/non-streaming) |
+| `agent_loop/` | Agent main loop (`mod` orchestration; `planning` / `execution` / `reflection` / `helpers` submodules) |
+| `llm/` | LLM HTTP client (OpenAI-compatible API, Claude Native API, streaming/non-streaming) |
 | `chat_session.rs` | Chat session management |
 | `prompt.rs` | System prompt construction |
 | `skills.rs` | Skill loading and tool definition generation |
@@ -472,7 +472,7 @@ Separate from `skilllite-agent::rpc` — the latter is dedicated to Agent Chat s
 
 ### 7. Python SDK (python-sdk)
 
-> **Note**: The Python SDK is a thin bridge layer (~600 lines), zero runtime dependencies, all operations performed via subprocess calls to the skilllite binary.
+> **Note**: The Python SDK is a thin bridge layer (~630 lines), zero runtime dependencies, all operations performed via subprocess calls to the skilllite binary.
 
 **Modules:**
 
@@ -491,7 +491,7 @@ Separate from `skilllite-agent::rpc` — the latter is dedicated to Agent Chat s
 
 ### 8. LangChain Integration (langchain-skilllite)
 
-> Separate package `pip install langchain-skilllite` (v0.1.15)
+> Separate package `pip install langchain-skilllite`; version is defined in `langchain-skilllite/pyproject.toml` (released independently from the main repo `skilllite` PyPI package).
 
 | Module | Responsibility |
 |--------|---------------|
@@ -499,7 +499,7 @@ Separate from `skilllite-agent::rpc` — the latter is dedicated to Agent Chat s
 | `tools.py` | SkillLiteTool, SkillLiteToolkit — LangChain tool adapters |
 | `callbacks.py` | Callback handler |
 
-**Dependencies**: `langchain-core>=0.3.0`, `skilllite>=0.1.15`
+**Dependencies** (see that package's `pyproject.toml`): `langchain-core>=0.3.0`, `skilllite>=0.1.8`
 
 ---
 
@@ -838,7 +838,7 @@ Core doesn't depend on upper layers; Agent is Core's customer, not part of Core
 
 1. Create a module under `skilllite-agent/extensions/`, implement `tool_definitions()` and execution logic
 2. Register the tool in `extensions/registry.rs`
-3. Do not modify `agent_loop.rs`
+3. Do not wire new tools by editing `agent_loop/mod.rs` core orchestration; add capabilities via `extensions/`
 
 ### Supporting New Platform Sandboxes
 
@@ -858,5 +858,5 @@ Core doesn't depend on upper layers; Agent is Core's customer, not part of Core
 
 ---
 
-*Document version: 1.4.0*
-*Last updated: 2026-03-15*
+*Document version: 1.4.1*
+*Last updated: 2026-03-20*

@@ -1,6 +1,6 @@
 # SkillLite 项目架构文档
 
-> **说明**：本文档已同步至 v0.1.15 多 crate 架构。Rust 采用 Cargo workspace，各模块拆分为独立 crate；Python SDK 为薄桥接层（~600 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`。
+> **说明**：本文档与根目录 `Cargo.toml` 中 `[workspace.package]` 版本一致（当前 **v0.1.15**）。Rust 为 Cargo workspace 多 crate；Python SDK 为薄桥接层（约 630 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`。
 >
 > **入口与能力域**：新人可先看 **[入口与能力域一览](./ENTRYPOINTS-AND-DOMAINS.md)**，一页理清 CLI / Python / MCP / Desktop / Swarm 各对应谁、依赖哪些 crate、适用场景。
 
@@ -126,7 +126,7 @@ skillLite/
 │   │
 │   ├── skilllite-agent/           # Agent 循环 (agent feature)
 │   │   └── src/
-│   │       ├── agent_loop/        # planning, execution, reflection, helpers
+│   │       ├── agent_loop/        # mod + planning / execution / reflection / helpers
 │   │       ├── chat.rs
 │   │       ├── chat_session.rs
 │   │       ├── llm/
@@ -152,8 +152,8 @@ skillLite/
 │   │
 │   ├── skilllite-swarm/           # P2P 组网 (mDNS、任务路由，swarm feature)
 │   │
-│   └── skilllite-assistant/       # Tauri 2 + React 桌面端
-│       └── src-tauri/
+│   └── skilllite-assistant/       # Tauri 2 + React 桌面端（不在根 workspace 默认 members，见根 Cargo.toml exclude）
+│       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (薄桥接层)
 │   ├── pyproject.toml             # 包配置 (v0.1.15, 零运行时依赖)
@@ -164,7 +164,7 @@ skillLite/
 │       ├── cli.py                 # CLI 入口 (转发到 binary)
 │       └── ipc.py                 # IPC 客户端
 │
-├── langchain-skilllite/           # LangChain 适配器 (独立包, v0.1.15)
+├── langchain-skilllite/           # LangChain 适配器（独立包，当前 pyproject 版本见该目录）
 │   └── langchain_skilllite/
 │       ├── core.py                # SkillManager, SkillInfo
 │       ├── tools.py               # SkillLiteTool, SkillLiteToolkit
@@ -395,8 +395,8 @@ pub enum SecuritySeverity {
 | 模块 | 职责 |
 |------|------|
 | `chat.rs` | CLI 聊天入口（单次 `--message` / 交互式 REPL） |
-| `agent_loop.rs` | Agent 主循环（LLM 调用 → 工具执行 → 结果返回） |
-| `llm.rs` | LLM HTTP 客户端（支持 OpenAI 兼容 API 和 Claude Native API，流式/非流式） |
+| `agent_loop/` | Agent 主循环（`mod` 编排；`planning` / `execution` / `reflection` / `helpers` 子模块） |
+| `llm/` | LLM HTTP 客户端（OpenAI 兼容 API、Claude Native API，流式/非流式） |
 | `chat_session.rs` | 聊天会话管理 |
 | `prompt.rs` | 系统提示词构建 |
 | `skills.rs` | Skill 加载和工具定义生成 |
@@ -470,7 +470,7 @@ registry.register(memory::tools());
 
 ### 7. Python SDK (python-sdk)
 
-> **说明**：Python SDK 为薄桥接层（~600 行），零运行时依赖，通过 subprocess 调用 skilllite 二进制完成所有操作。
+> **说明**：Python SDK 为薄桥接层（约 630 行），零运行时依赖，通过 subprocess 调用 skilllite 二进制完成所有操作。
 
 **模块与职责**：
 
@@ -489,7 +489,7 @@ registry.register(memory::tools());
 
 ### 8. LangChain 集成 (langchain-skilllite)
 
-> 独立包 `pip install langchain-skilllite`（v0.1.15）
+> 独立包 `pip install langchain-skilllite`；版本以 `langchain-skilllite/pyproject.toml` 为准（与主仓库 `skilllite` PyPI 包解耦发布）。
 
 | 模块 | 职责 |
 |------|------|
@@ -497,7 +497,7 @@ registry.register(memory::tools());
 | `tools.py` | SkillLiteTool, SkillLiteToolkit — LangChain 工具适配 |
 | `callbacks.py` | 回调处理器 |
 
-**依赖**：`langchain-core>=0.3.0`, `skilllite>=0.1.15`
+**依赖**（见该包 `pyproject.toml`）：`langchain-core>=0.3.0`，`skilllite>=0.1.8`
 
 ---
 
@@ -836,7 +836,7 @@ Core 不依赖上层；Agent 是 Core 的客户，不是 Core 的一部分
 
 1. 在 `skilllite-agent/extensions/` 下创建模块，实现 `tool_definitions()` 和执行逻辑
 2. 在 `extensions/registry.rs` 中注册工具
-3. 不修改 `agent_loop.rs`
+3. 不通过改动 `agent_loop/mod.rs` 主循环硬接工具；编排逻辑保持稳定，新能力走 extensions
 
 ### 如果需要支持新平台沙箱
 
@@ -856,5 +856,5 @@ Core 不依赖上层；Agent 是 Core 的客户，不是 Core 的一部分
 
 ---
 
-*文档版本: 1.4.0*
-*最后更新: 2026-03-15*
+*文档版本: 1.4.1*
+*最后更新: 2026-03-20*
