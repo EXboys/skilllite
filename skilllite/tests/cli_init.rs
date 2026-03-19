@@ -8,7 +8,9 @@
 
 mod common;
 
-use common::{create_calculator_skill, create_prompt_only_skill, run_in_dir, stderr_str, stdout_str};
+use common::{
+    create_calculator_skill, create_prompt_only_skill, run_in_dir, stderr_str, stdout_str,
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // skilllite init — with pre-existing skills (avoids network download)
@@ -100,13 +102,7 @@ fn init_custom_skills_dir() {
     .unwrap();
 
     let out = run_in_dir(
-        &[
-            "init",
-            "-s",
-            "custom-skills",
-            "--skip-deps",
-            "--skip-audit",
-        ],
+        &["init", "-s", "custom-skills", "--skip-deps", "--skip-audit"],
         tmp.path(),
     );
     assert!(

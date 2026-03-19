@@ -148,5 +148,8 @@ fn unknown_subcommand_fails() {
 #[test]
 fn ls_is_alias_for_list() {
     let out = run(&["ls", "--help"]);
-    assert!(out.status.success(), "`ls` should be accepted as alias for `list`");
+    assert!(
+        out.status.success(),
+        "`ls` should be accepted as alias for `list`"
+    );
 }

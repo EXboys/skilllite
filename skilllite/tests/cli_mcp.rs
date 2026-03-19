@@ -6,7 +6,9 @@
 
 mod common;
 
-use common::{create_calculator_skill, create_prompt_only_skill, run_in_dir_with_stdin, stdout_str};
+use common::{
+    create_calculator_skill, create_prompt_only_skill, run_in_dir_with_stdin, stdout_str,
+};
 use serde_json::{json, Value};
 
 /// Build a JSON-RPC 2.0 request string (terminated with newline).
@@ -106,10 +108,7 @@ fn mcp_tools_list_returns_tool_definitions() {
         .as_array()
         .expect("tools should be an array");
 
-    let tool_names: Vec<&str> = tools
-        .iter()
-        .filter_map(|t| t["name"].as_str())
-        .collect();
+    let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
 
     assert!(
         tool_names.contains(&"list_skills"),
@@ -126,10 +125,7 @@ fn mcp_tools_list_returns_tool_definitions() {
     );
 
     for tool in tools {
-        assert!(
-            tool.get("name").is_some(),
-            "each tool should have a name"
-        );
+        assert!(tool.get("name").is_some(), "each tool should have a name");
         assert!(
             tool.get("description").is_some(),
             "each tool should have a description"

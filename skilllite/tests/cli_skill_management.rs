@@ -87,7 +87,10 @@ fn show_json_returns_valid_json() {
     let tmp = tempfile::tempdir().unwrap();
     create_calculator_skill(tmp.path());
 
-    let out = run_in_dir(&["show", "calculator", "-s", ".skills", "--json"], tmp.path());
+    let out = run_in_dir(
+        &["show", "calculator", "-s", ".skills", "--json"],
+        tmp.path(),
+    );
     assert!(out.status.success());
     let text = stdout_str(&out);
     let parsed: serde_json::Value =
@@ -114,10 +117,7 @@ fn scan_skill_returns_json() {
     create_calculator_skill(tmp.path());
 
     let skill_path = tmp.path().join(".skills").join("calculator");
-    let out = run_in_dir(
-        &["scan", skill_path.to_str().unwrap()],
-        tmp.path(),
-    );
+    let out = run_in_dir(&["scan", skill_path.to_str().unwrap()], tmp.path());
     assert!(out.status.success());
     let text = stdout_str(&out);
     let parsed: serde_json::Value =
@@ -132,10 +132,7 @@ fn scan_detects_entry_point() {
     create_calculator_skill(tmp.path());
 
     let skill_path = tmp.path().join(".skills").join("calculator");
-    let out = run_in_dir(
-        &["scan", skill_path.to_str().unwrap()],
-        tmp.path(),
-    );
+    let out = run_in_dir(&["scan", skill_path.to_str().unwrap()], tmp.path());
     assert!(out.status.success());
     let text = stdout_str(&out);
     let parsed: serde_json::Value = serde_json::from_str(text.trim()).unwrap();
@@ -151,10 +148,7 @@ fn scan_prompt_only_skill() {
     create_prompt_only_skill(tmp.path());
 
     let skill_path = tmp.path().join(".skills").join("prompt-helper");
-    let out = run_in_dir(
-        &["scan", skill_path.to_str().unwrap()],
-        tmp.path(),
-    );
+    let out = run_in_dir(&["scan", skill_path.to_str().unwrap()], tmp.path());
     assert!(out.status.success());
     let text = stdout_str(&out);
     let parsed: serde_json::Value = serde_json::from_str(text.trim()).unwrap();
@@ -167,7 +161,10 @@ fn scan_prompt_only_skill() {
 
 #[test]
 fn scan_nonexistent_dir_fails() {
-    let out = run_in_dir(&["scan", "/nonexistent/path/xyz"], std::path::Path::new("/tmp"));
+    let out = run_in_dir(
+        &["scan", "/nonexistent/path/xyz"],
+        std::path::Path::new("/tmp"),
+    );
     assert!(!out.status.success());
 }
 
@@ -181,10 +178,7 @@ fn validate_valid_skill_passes() {
     create_calculator_skill(tmp.path());
 
     let skill_path = tmp.path().join(".skills").join("calculator");
-    let out = run_in_dir(
-        &["validate", skill_path.to_str().unwrap()],
-        tmp.path(),
-    );
+    let out = run_in_dir(&["validate", skill_path.to_str().unwrap()], tmp.path());
     assert!(out.status.success());
     let text = stdout_str(&out);
     assert!(
@@ -240,7 +234,10 @@ fn verify_json_returns_valid_json() {
         let parsed: serde_json::Value =
             serde_json::from_str(text.trim()).expect("verify --json should return valid JSON");
         assert!(parsed.is_object());
-        assert!(parsed.get("status").is_some(), "JSON should have 'status' field");
+        assert!(
+            parsed.get("status").is_some(),
+            "JSON should have 'status' field"
+        );
     }
 }
 
@@ -264,10 +261,7 @@ fn info_shows_skill_details() {
     create_calculator_skill(tmp.path());
 
     let skill_path = tmp.path().join(".skills").join("calculator");
-    let out = run_in_dir(
-        &["info", skill_path.to_str().unwrap()],
-        tmp.path(),
-    );
+    let out = run_in_dir(&["info", skill_path.to_str().unwrap()], tmp.path());
     assert!(out.status.success());
     let text = stderr_str(&out) + &stdout_str(&out);
     assert!(
