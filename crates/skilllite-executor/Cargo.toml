@@ -1,10 +1,10 @@
 [package]
 name = "skilllite-executor"
-version = "0.1.15"
-edition = "2021"
-authors = ["EX <boyex345@gmail.com>"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "SkillLite Executor: session, transcript, memory storage"
-license = "MIT"
 
 [features]
 default = []

@@ -1,10 +1,10 @@
 [package]
 name = "skilllite-swarm"
-version = "0.1.15"
-edition = "2021"
-authors = ["EX <boyex345@gmail.com>"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "SkillLite P2P swarm: mDNS discovery, peer mesh, task routing"
-license = "MIT"
 
 [dependencies]
 skilllite-core = { path = "../skilllite-core" }

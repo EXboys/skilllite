@@ -1,10 +1,10 @@
 [package]
 name = "skilllite-fs"
-version = "0.1.15"
-edition = "2021"
-authors = ["EX <boyex345@gmail.com>"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "SkillLite FS: centralized file read/write/search_replace"
-license = "MIT"
 
 [dependencies]
 anyhow = "1.0"

@@ -1,10 +1,10 @@
 [package]
 name = "skilllite-sandbox"
-version = "0.1.15"
-edition = "2021"
-authors = ["EX <boyex345@gmail.com>"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "SkillLite Sandbox: secure execution engine + environment builder"
-license = "MIT"
 
 [features]
 default = ["runtime-deps"]

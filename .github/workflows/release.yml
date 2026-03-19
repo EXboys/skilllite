@@ -227,8 +227,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set version from tag
-        shell: bash
-        run: python -c "import os,re; p='python-sdk/pyproject.toml'; v=os.environ.get('VERSION','0.0.0').lstrip('v'); s=open(p).read(); open(p,'w').write(re.sub(r'^version = \".*\"', f'version = \"{v}\"', s, count=1, flags=re.M))"
+        run: python scripts/set_pyproject_version.py
 
       - name: Download binary artifact
         uses: actions/download-artifact@v4
@@ -287,7 +286,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set version from tag
-        run: python -c "import os,re; p='python-sdk/pyproject.toml'; v=os.environ.get('VERSION','0.0.0').lstrip('v'); s=open(p).read(); open(p,'w').write(re.sub(r'^version = \".*\"', f'version = \"{v}\"', s, count=1, flags=re.M))"
+        run: python scripts/set_pyproject_version.py
 
       - name: Set up Python
         uses: actions/setup-python@v5

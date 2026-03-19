@@ -1,11 +1,11 @@
 [package]
 name = "skilllite"
-version = "0.1.15"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 default-run = "skilllite"
-authors = ["EX <boyex345@gmail.com>"]
 description = "A lightweight Skills secure execution engine"
-license = "MIT"
 repository = "https://github.com/EXboys/skilllite"
 keywords = ["agent", "skills", "sandbox", "security"]
 categories = ["command-line-utilities", "development-tools"]

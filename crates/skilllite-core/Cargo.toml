@@ -1,10 +1,10 @@
 [package]
 name = "skilllite-core"
-version = "0.1.15"
-edition = "2021"
-authors = ["EX <boyex345@gmail.com>"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
 description = "SkillLite Core: config, skill metadata, path validation, observability"
-license = "MIT"
 
 [dependencies]
 skilllite-fs = { path = "../skilllite-fs" }
