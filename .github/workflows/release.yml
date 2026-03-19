@@ -239,7 +239,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p python-sdk/skilllite/bins
-          tar -xzf ${{ matrix.asset_name }}/${{ matrix.archive }} -C python-sdk/skilllite/bins
+          # v4: single-artifact may extract to cwd; older or multi-file may use artifact-name subdir
+          if [ -f "${{ matrix.archive }}" ]; then
+            tar -xzf "${{ matrix.archive }}" -C python-sdk/skilllite/bins
+          else
+            tar -xzf "${{ matrix.asset_name }}/${{ matrix.archive }}" -C python-sdk/skilllite/bins
+          fi
           chmod +x python-sdk/skilllite/bins/${{ matrix.binary_name }}
 
       - name: Prepare binary (Windows)
@@ -247,7 +252,9 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path python-sdk/skilllite/bins
-          Expand-Archive -Path "${{ matrix.asset_name }}/${{ matrix.archive }}" -DestinationPath python-sdk/skilllite/bins
+          $arch = "${{ matrix.archive }}"
+          if (-not (Test-Path $arch)) { $arch = "${{ matrix.asset_name }}/${{ matrix.archive }}" }
+          Expand-Archive -Path $arch -DestinationPath python-sdk/skilllite/bins
 
       - name: Set up Python
         uses: actions/setup-python@v5
