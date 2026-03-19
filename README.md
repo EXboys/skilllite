@@ -560,6 +560,7 @@ MIT — See [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) for third-party
 ## 📚 Documentation
 
 - [Getting Started](./docs/en/GETTING_STARTED.md) — Installation and quick start guide
+- [Changelog](./CHANGELOG.md) — Version history and upgrade notes
 - [Environment Variables Reference](./docs/en/ENV_REFERENCE.md) — Complete env var documentation
 - [Architecture](./docs/en/ARCHITECTURE.md) — Project architecture and design
 - [Architecture Comparison](./docs/zh/CLAUDE-CODE-OPENCLAW-ARCHITECTURE-COMPARISON.md) — Claude Code vs OpenClaw vs OpenCode vs SkillLite（中文）
