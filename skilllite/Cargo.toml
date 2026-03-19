@@ -1,6 +1,6 @@
 [package]
 name = "skilllite"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2021"
 default-run = "skilllite"
 authors = ["EX <boyex345@gmail.com>"]

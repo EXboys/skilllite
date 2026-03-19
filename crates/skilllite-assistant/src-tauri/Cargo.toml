@@ -1,6 +1,6 @@
 [package]
 name = "skilllite-assistant"
-version = "0.1.14"
+version = "0.1.15"
 description = "SkillLite Desktop Assistant"
 authors = ["SkillLite Contributors"]
 license = "MIT"

@@ -3266,7 +3266,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skilllite-assistant"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3283,7 +3283,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-core"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3302,7 +3302,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-fs"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "anyhow",
  "regex",

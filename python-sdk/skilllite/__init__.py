@@ -10,5 +10,5 @@ pip install skilllite → full CLI + sandbox API
 from .api import scan_code, execute_code, chat, run_skill
 from .binary import get_binary
 
-__version__ = "0.1.14"
+__version__ = "0.1.15"
 __all__ = ["scan_code", "execute_code", "chat", "run_skill", "get_binary"]

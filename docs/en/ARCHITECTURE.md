@@ -1,6 +1,6 @@
 # SkillLite Project Architecture
 
-> **Note**: This document is synced to the v0.1.14 multi-crate architecture. Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~600 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`.
+> **Note**: This document is synced to the v0.1.15 multi-crate architecture. Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~600 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`.
 >
 > **Entry points and domains**: For a one-page map of CLI / Python / MCP / Desktop / Swarm (what they are, which crates they use, one-line use case), see [Entry Points and Capability Domains](./ENTRYPOINTS-AND-DOMAINS.md). (中文版：[入口与能力域一览](../zh/ENTRYPOINTS-AND-DOMAINS.md))
 
@@ -158,7 +158,7 @@ skillLite/
 │       └── src-tauri/
 │
 ├── python-sdk/                    # Python SDK (thin bridge layer)
-│   ├── pyproject.toml             # Package config (v0.1.14, zero runtime deps)
+│   ├── pyproject.toml             # Package config (v0.1.15, zero runtime deps)
 │   └── skilllite/
 │       ├── __init__.py            # Exports: chat, run_skill, scan_code, execute_code
 │       ├── api.py                 # Core API (subprocess calls to skilllite binary)
@@ -166,7 +166,7 @@ skillLite/
 │       ├── cli.py                 # CLI entry (forwards to binary)
 │       └── ipc.py                 # IPC client
 │
-├── langchain-skilllite/           # LangChain adapter (separate package, v0.1.14)
+├── langchain-skilllite/           # LangChain adapter (separate package, v0.1.15)
 │   └── langchain_skilllite/
 │       ├── core.py                # SkillManager, SkillInfo
 │       ├── tools.py               # SkillLiteTool, SkillLiteToolkit
@@ -491,7 +491,7 @@ Separate from `skilllite-agent::rpc` — the latter is dedicated to Agent Chat s
 
 ### 8. LangChain Integration (langchain-skilllite)
 
-> Separate package `pip install langchain-skilllite` (v0.1.14)
+> Separate package `pip install langchain-skilllite` (v0.1.15)
 
 | Module | Responsibility |
 |--------|---------------|
@@ -499,7 +499,7 @@ Separate from `skilllite-agent::rpc` — the latter is dedicated to Agent Chat s
 | `tools.py` | SkillLiteTool, SkillLiteToolkit — LangChain tool adapters |
 | `callbacks.py` | Callback handler |
 
-**Dependencies**: `langchain-core>=0.3.0`, `skilllite>=0.1.14`
+**Dependencies**: `langchain-core>=0.3.0`, `skilllite>=0.1.15`
 
 ---
 

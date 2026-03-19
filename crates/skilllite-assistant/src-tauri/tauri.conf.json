@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "SkillLite Assistant",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "identifier": "com.skilllite.assistant",
   "build": {
     "beforeDevCommand": "bash scripts/prebuild-skilllite.sh && npm run dev",
