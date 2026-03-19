@@ -40,6 +40,7 @@ pub enum PromptMode {
 ///
 /// EVO-2: The base system prompt is loaded from `~/.skilllite/chat/prompts/system.md`
 /// (or compiled-in seed fallback). A custom_prompt override still takes precedence.
+#[allow(clippy::too_many_arguments)]
 pub fn build_system_prompt(
     custom_prompt: Option<&str>,
     skills: &[LoadedSkill],
@@ -229,6 +230,7 @@ fn build_workspace_index(workspace: &str) -> Option<String> {
         max_chars: usize,
         skip: &[&str],
     ) {
+        let _ = base; // retained for future relative-path display
         if *total >= max_chars || depth > 3 {
             return;
         }

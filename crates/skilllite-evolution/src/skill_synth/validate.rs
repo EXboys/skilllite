@@ -109,8 +109,8 @@ fn has_section_with_content(content: &str, keywords: &[&str]) -> bool {
         if !keywords.iter().any(|kw| heading_lower.contains(kw)) {
             continue;
         }
-        for j in (i + 1)..lines.len() {
-            let next = lines[j].trim();
+        for next_line in &lines[(i + 1)..] {
+            let next = next_line.trim();
             if next.is_empty() {
                 continue;
             }

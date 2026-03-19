@@ -308,6 +308,7 @@ pub(super) async fn generate_skill_from_failures<L: EvolutionLlm>(
     Ok(name)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_skill_files(
     skill_dir: &Path,
     skill_md_path: &Path,

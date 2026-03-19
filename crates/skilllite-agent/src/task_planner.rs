@@ -181,6 +181,7 @@ impl TaskPlanner {
     /// `goal_boundaries`: Optional extracted boundaries (scope, exclusions, completion conditions)
     /// to inject into planning. Used in run mode for long-running tasks.
     /// `soul`: Optional SOUL identity document; when present, Scope & Boundaries are injected (A8).
+    #[allow(clippy::too_many_arguments)]
     pub async fn generate_task_list(
         &mut self,
         client: &LlmClient,

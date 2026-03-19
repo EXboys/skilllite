@@ -190,6 +190,7 @@ fn select_all_chunks(all_chunks: &[String], total_len: usize) -> (Vec<String>, S
     (all_chunks.to_vec(), note)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn select_head_tail_only(
     content: &str,
     all_chunks: &[String],

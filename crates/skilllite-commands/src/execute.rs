@@ -79,6 +79,7 @@ pub fn run_skill(
 }
 
 /// Execute a specific script directly in sandbox.
+#[allow(clippy::too_many_arguments)]
 pub fn exec_script(
     skill_dir: &str,
     script_path: &str,

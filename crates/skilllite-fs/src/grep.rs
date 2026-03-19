@@ -51,6 +51,7 @@ pub fn grep_directory(
     Ok((results, files_matched))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn grep_recursive(
     dir: &Path,
     base: Option<&Path>,

@@ -451,7 +451,7 @@ fn extract_json_array(content: &str) -> String {
 // ─── Source registry evolution ───────────────────────────────────────────────
 
 /// Apply pause/retire logic to sources based on accessibility + quality scores.
-fn evolve_sources(sources: &mut Vec<SourceEntry>) -> Vec<(String, String)> {
+fn evolve_sources(sources: &mut [SourceEntry]) -> Vec<(String, String)> {
     let mut changes = Vec::new();
     for source in sources.iter_mut() {
         // Only pause/retire mutable sources (seed sources can't be retired, only paused)

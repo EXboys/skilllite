@@ -31,6 +31,7 @@ pub(super) struct PlanningResult {
 /// Covers: soul loading, goal-boundary extraction (regex + optional LLM),
 /// task-list generation via LLM, system-prompt building, initial message
 /// construction, and initial run-mode checkpoint.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn run_planning_phase(
     config: &AgentConfig,
     initial_messages: Vec<ChatMessage>,

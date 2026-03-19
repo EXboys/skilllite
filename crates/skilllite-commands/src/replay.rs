@@ -107,6 +107,7 @@ pub fn load_replay_cases(dataset_path: &Path) -> Result<Vec<ReplayCase>> {
     Ok(cases)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn cmd_replay(
     api_base: Option<String>,
     api_key: Option<String>,

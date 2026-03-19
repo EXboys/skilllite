@@ -80,6 +80,7 @@ pub fn run_clear_session(session_key: &str, workspace: &str) -> Result<()> {
 }
 
 /// Top-level entry-point called from `main()` for the `chat` subcommand.
+#[allow(clippy::too_many_arguments)]
 pub fn run_chat(
     api_base: Option<String>,
     api_key: Option<String>,
@@ -179,6 +180,7 @@ pub fn run_chat(
 /// Replan (update_task_plan) does not wait for user — agent continues immediately.
 /// Confirmations (run_command, L3 skill scan) are auto-approved.
 /// A13: When resume=true, load checkpoint and continue from last state.
+#[allow(clippy::too_many_arguments)]
 pub fn run_agent_run(
     api_base: Option<String>,
     api_key: Option<String>,

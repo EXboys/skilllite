@@ -402,6 +402,7 @@ fn execute_with_sandbox(
 /// 7. PROCESS FORK: Denied by default (allowed only for Playwright)
 /// 8. IPC/KERNEL: Block mach-register, mach-priv-task-port, iokit-open
 /// 9. LOGTAG: Embed unique tag in deny rules for precise violation tracking (P1)
+#[allow(clippy::too_many_arguments)]
 fn generate_sandbox_profile_with_proxy(
     skill_dir: &Path,
     env_path: &Path,

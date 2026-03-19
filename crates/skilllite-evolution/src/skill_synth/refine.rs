@@ -22,6 +22,7 @@ use super::RETIRE_UNUSED_DAYS;
 use super::SKILL_REFINEMENT_PROMPT;
 
 /// Retry fixing a skill script up to MAX_REFINE_ROUNDS times.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn refine_loop<L: EvolutionLlm>(
     llm: &L,
     model: &str,
