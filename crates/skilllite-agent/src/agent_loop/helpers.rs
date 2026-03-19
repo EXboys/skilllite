@@ -447,3 +447,123 @@ pub(super) fn build_agent_result(
         feedback,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::task_planner::TaskPlanner;
+    use crate::types::{ChatMessage, ExecutionFeedback, SilentEventSink, Task};
+
+    #[test]
+    fn handle_update_task_plan_rejects_invalid_json() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        let mut sink = SilentEventSink;
+        let r = handle_update_task_plan("not json", &mut planner, &[], &mut sink);
+        assert!(r.is_error);
+        assert!(r.content.contains("Invalid JSON"));
+    }
+
+    #[test]
+    fn handle_update_task_plan_requires_tasks_array() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        let mut sink = SilentEventSink;
+        let r = handle_update_task_plan(r#"{"reason":"x"}"#, &mut planner, &[], &mut sink);
+        assert!(r.is_error);
+        assert!(r.content.contains("tasks"));
+    }
+
+    #[test]
+    fn handle_update_task_plan_rejects_empty_task_list() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        let mut sink = SilentEventSink;
+        let r = handle_update_task_plan(
+            r#"{"tasks":[]}"#,
+            &mut planner,
+            &[],
+            &mut sink,
+        );
+        assert!(r.is_error);
+        assert!(r.content.contains("empty"));
+    }
+
+    #[test]
+    fn handle_update_task_plan_merges_with_completed_tasks() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 10,
+            description: "done".into(),
+            tool_hint: None,
+            completed: true,
+        }];
+        let mut sink = SilentEventSink;
+        let r = handle_update_task_plan(
+            r#"{"tasks":[{"description":"next step","completed":false}],"reason":"pivot"}"#,
+            &mut planner,
+            &[],
+            &mut sink,
+        );
+        assert!(!r.is_error);
+        assert_eq!(planner.task_list.len(), 2);
+        assert!(planner.task_list[0].completed);
+        assert_eq!(planner.task_list[0].id, 10);
+        assert!(!planner.task_list[1].completed);
+        assert_eq!(planner.task_list[1].id, 11);
+        assert!(r.content.contains("Reason: pivot"));
+    }
+
+    #[test]
+    fn handle_complete_task_errors_on_wrong_id() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 1,
+            description: "a".into(),
+            tool_hint: None,
+            completed: false,
+        }];
+        let mut sink = SilentEventSink;
+        let r = handle_complete_task(r#"{"task_id": 9}"#, &mut planner, &mut sink);
+        assert!(r.is_error);
+        assert!(r.content.contains("current task"));
+    }
+
+    #[test]
+    fn handle_complete_task_marks_current_done() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 3,
+            description: "a".into(),
+            tool_hint: None,
+            completed: false,
+        }];
+        let mut sink = SilentEventSink;
+        let r = handle_complete_task(
+            r#"{"task_id":3,"summary":"ok"}"#,
+            &mut planner,
+            &mut sink,
+        );
+        assert!(!r.is_error);
+        assert!(planner.task_list[0].completed);
+        assert!(r.content.contains("\"task_id\": 3"));
+    }
+
+    #[test]
+    fn build_agent_result_picks_last_assistant_text() {
+        let messages = vec![
+            ChatMessage::user("hi"),
+            ChatMessage::assistant("first"),
+            ChatMessage::assistant("final answer"),
+        ];
+        let plan = vec![Task {
+            id: 1,
+            description: "t".into(),
+            tool_hint: None,
+            completed: true,
+        }];
+        let out = build_agent_result(messages.clone(), 2, 4, plan.clone(), ExecutionFeedback::default());
+        assert_eq!(out.response, "final answer");
+        assert_eq!(out.tool_calls_count, 2);
+        assert_eq!(out.iterations, 4);
+        assert_eq!(out.task_plan.len(), plan.len());
+        assert_eq!(out.task_plan[0].id, plan[0].id);
+    }
+}

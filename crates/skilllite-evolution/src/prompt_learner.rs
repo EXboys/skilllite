@@ -607,3 +607,26 @@ pub fn extract_json_block(content: &str) -> String {
 
     content.to_string()
 }
+
+#[cfg(test)]
+mod extract_json_tests {
+    use super::extract_json_block;
+
+    #[test]
+    fn extract_json_block_fenced_json() {
+        let s = "intro\n```json\n{\"a\":1}\n```\ntrailer";
+        assert_eq!(extract_json_block(s), "{\"a\":1}");
+    }
+
+    #[test]
+    fn extract_json_block_brace_span() {
+        let s = "prefix {\"x\": true} suffix";
+        assert_eq!(extract_json_block(s), "{\"x\": true}");
+    }
+
+    #[test]
+    fn extract_json_block_plain_after_strip_think() {
+        let s = "<think>\n</think>\n{\"k\":\"v\"}";
+        assert_eq!(extract_json_block(s), "{\"k\":\"v\"}");
+    }
+}

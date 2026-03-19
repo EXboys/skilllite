@@ -515,3 +515,69 @@ fn execute_simple_without_sandbox(
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
     anyhow::bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sandbox_level_from_cli_maps_1_2_3() {
+        assert_eq!(
+            SandboxLevel::from_env_or_cli(Some(1)),
+            SandboxLevel::Level1
+        );
+        assert_eq!(
+            SandboxLevel::from_env_or_cli(Some(2)),
+            SandboxLevel::Level2
+        );
+        assert_eq!(
+            SandboxLevel::from_env_or_cli(Some(3)),
+            SandboxLevel::Level3
+        );
+    }
+
+    #[test]
+    fn sandbox_level_invalid_cli_defaults_to_level3() {
+        assert_eq!(
+            SandboxLevel::from_env_or_cli(Some(0)),
+            SandboxLevel::Level3
+        );
+        assert_eq!(
+            SandboxLevel::from_env_or_cli(Some(9)),
+            SandboxLevel::Level3
+        );
+    }
+
+    #[test]
+    fn sandbox_level_use_flags() {
+        assert!(!SandboxLevel::Level1.use_sandbox());
+        assert!(!SandboxLevel::Level1.use_code_scanning());
+        assert!(SandboxLevel::Level2.use_sandbox());
+        assert!(!SandboxLevel::Level2.use_code_scanning());
+        assert!(SandboxLevel::Level3.use_sandbox());
+        assert!(SandboxLevel::Level3.use_code_scanning());
+    }
+
+    #[test]
+    fn resource_limits_max_memory_bytes() {
+        let lim = ResourceLimits {
+            max_memory_mb: 128,
+            timeout_secs: 10,
+        };
+        assert_eq!(lim.max_memory_bytes(), 128 * 1024 * 1024);
+    }
+
+    #[test]
+    fn resource_limits_with_cli_overrides() {
+        let base = ResourceLimits {
+            max_memory_mb: 100,
+            timeout_secs: 20,
+        };
+        let o = base.with_cli_overrides(Some(512), Some(60));
+        assert_eq!(o.max_memory_mb, 512);
+        assert_eq!(o.timeout_secs, 60);
+        let partial = base.with_cli_overrides(None, Some(99));
+        assert_eq!(partial.max_memory_mb, 100);
+        assert_eq!(partial.timeout_secs, 99);
+    }
+}

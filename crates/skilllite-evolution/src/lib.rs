@@ -1204,3 +1204,99 @@ pub fn check_auto_rollback(conn: &Connection, chat_root: &Path) -> Result<bool> 
 
     Ok(false)
 }
+
+#[cfg(test)]
+mod lib_tests {
+    use super::*;
+    use std::path::Path;
+    use std::sync::Mutex;
+
+    static EVO_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn strip_think_blocks_after_closing_tag() {
+        let s = "<think>\nhidden\n</think>\nvisible reply";
+        assert_eq!(strip_think_blocks(s), "visible reply");
+    }
+
+    #[test]
+    fn strip_think_blocks_plain_text_unchanged() {
+        let s = "no think tags here";
+        assert_eq!(strip_think_blocks(s), s);
+    }
+
+    #[test]
+    fn strip_think_blocks_reasoning_tag() {
+        let s = "<reasoning>x</reasoning>\nhello";
+        assert_eq!(strip_think_blocks(s), "hello");
+    }
+
+    #[test]
+    fn evolution_message_constructors() {
+        let u = EvolutionMessage::user("u");
+        assert_eq!(u.role, "user");
+        assert_eq!(u.content.as_deref(), Some("u"));
+        let sy = EvolutionMessage::system("s");
+        assert_eq!(sy.role, "system");
+    }
+
+    #[test]
+    fn evolution_mode_capability_flags() {
+        assert!(EvolutionMode::All.prompts_enabled());
+        assert!(EvolutionMode::All.memory_enabled());
+        assert!(EvolutionMode::All.skills_enabled());
+        assert!(EvolutionMode::PromptsOnly.prompts_enabled());
+        assert!(!EvolutionMode::PromptsOnly.memory_enabled());
+        assert!(!EvolutionMode::MemoryOnly.prompts_enabled());
+        assert!(EvolutionMode::MemoryOnly.memory_enabled());
+        assert!(EvolutionMode::Disabled.is_disabled());
+    }
+
+    #[test]
+    fn evolution_run_result_txn_id() {
+        assert_eq!(
+            EvolutionRunResult::Completed(Some("t1".into())).txn_id(),
+            Some("t1")
+        );
+        assert_eq!(EvolutionRunResult::SkippedBusy.txn_id(), None);
+    }
+
+    #[test]
+    fn gatekeeper_l2_size_bounds() {
+        assert!(gatekeeper_l2_size(5, 3, 1));
+        assert!(!gatekeeper_l2_size(6, 0, 0));
+        assert!(!gatekeeper_l2_size(0, 4, 0));
+        assert!(!gatekeeper_l2_size(0, 0, 2));
+    }
+
+    #[test]
+    fn gatekeeper_l3_rejects_secret_pattern() {
+        assert!(gatekeeper_l3_content("safe text").is_ok());
+        assert!(gatekeeper_l3_content("has api_key in body").is_err());
+    }
+
+    #[test]
+    fn gatekeeper_l1_path_allows_prompts_under_chat_root() {
+        let root = Path::new("/home/u/.skilllite/chat");
+        let target = root.join("prompts/rules.json");
+        assert!(gatekeeper_l1_path(root, &target, None));
+        let bad = Path::new("/etc/passwd");
+        assert!(!gatekeeper_l1_path(root, bad, None));
+    }
+
+    #[test]
+    fn try_start_evolution_is_exclusive() {
+        let _g = EVO_LOCK.lock().expect("evo lock");
+        finish_evolution();
+        assert!(try_start_evolution());
+        assert!(!try_start_evolution());
+        finish_evolution();
+    }
+
+    #[test]
+    fn evolution_thresholds_default_nonzero_cooldown() {
+        let t = EvolutionThresholds::default();
+        assert!(t.cooldown_hours > 0.0);
+        assert!(t.recent_days > 0);
+    }
+}

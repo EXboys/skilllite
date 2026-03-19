@@ -294,3 +294,32 @@ fn load_prompt_file(chat_root: &Path, name: &str, fallback: &str) -> String {
     }
     fallback.to_string()
 }
+
+#[cfg(test)]
+mod template_tests {
+    use super::{required_placeholders, validate_template};
+
+    #[test]
+    fn required_placeholders_planning_lists_four() {
+        let p = required_placeholders("planning.md");
+        assert_eq!(p.len(), 4);
+        assert!(p.contains(&"{{RULES_SECTION}}"));
+    }
+
+    #[test]
+    fn validate_template_reports_missing_placeholders() {
+        let missing = validate_template("planning.md", "no placeholders");
+        assert!(!missing.is_empty());
+        assert!(missing.contains(&"{{TODAY}}"));
+        let ok = validate_template(
+            "planning.md",
+            "{{TODAY}}{{RULES_SECTION}}{{EXAMPLES_SECTION}}{{OUTPUT_DIR}}",
+        );
+        assert!(ok.is_empty());
+    }
+
+    #[test]
+    fn validate_template_unknown_name_is_permissive() {
+        assert!(validate_template("other.md", "").is_empty());
+    }
+}
