@@ -522,30 +522,15 @@ mod tests {
 
     #[test]
     fn sandbox_level_from_cli_maps_1_2_3() {
-        assert_eq!(
-            SandboxLevel::from_env_or_cli(Some(1)),
-            SandboxLevel::Level1
-        );
-        assert_eq!(
-            SandboxLevel::from_env_or_cli(Some(2)),
-            SandboxLevel::Level2
-        );
-        assert_eq!(
-            SandboxLevel::from_env_or_cli(Some(3)),
-            SandboxLevel::Level3
-        );
+        assert_eq!(SandboxLevel::from_env_or_cli(Some(1)), SandboxLevel::Level1);
+        assert_eq!(SandboxLevel::from_env_or_cli(Some(2)), SandboxLevel::Level2);
+        assert_eq!(SandboxLevel::from_env_or_cli(Some(3)), SandboxLevel::Level3);
     }
 
     #[test]
     fn sandbox_level_invalid_cli_defaults_to_level3() {
-        assert_eq!(
-            SandboxLevel::from_env_or_cli(Some(0)),
-            SandboxLevel::Level3
-        );
-        assert_eq!(
-            SandboxLevel::from_env_or_cli(Some(9)),
-            SandboxLevel::Level3
-        );
+        assert_eq!(SandboxLevel::from_env_or_cli(Some(0)), SandboxLevel::Level3);
+        assert_eq!(SandboxLevel::from_env_or_cli(Some(9)), SandboxLevel::Level3);
     }
 
     #[test]

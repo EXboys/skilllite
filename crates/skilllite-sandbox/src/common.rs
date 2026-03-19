@@ -363,14 +363,14 @@ mod tests {
         let _g = ENV_MUTEX.lock().expect("env test lock");
         const K_NEW: &str = "SKILLLITE_UT_ENV_COMPAT_NEW";
         const K_OLD: &str = "SKILLBOX_UT_ENV_COMPAT_OLD";
-        let _ = std::env::remove_var(K_NEW);
-        let _ = std::env::remove_var(K_OLD);
+        std::env::remove_var(K_NEW);
+        std::env::remove_var(K_OLD);
         std::env::set_var(K_NEW, "alpha");
         assert_eq!(env_compat(K_NEW, K_OLD).unwrap(), "alpha");
-        let _ = std::env::remove_var(K_NEW);
+        std::env::remove_var(K_NEW);
         std::env::set_var(K_OLD, "beta");
         assert_eq!(env_compat(K_NEW, K_OLD).unwrap(), "beta");
-        let _ = std::env::remove_var(K_OLD);
+        std::env::remove_var(K_OLD);
     }
 
     #[test]
@@ -378,14 +378,14 @@ mod tests {
         let _g = ENV_MUTEX.lock().expect("env test lock");
         const K_NEW: &str = "SKILLLITE_UT_ENV_COMPAT_SET_A";
         const K_OLD: &str = "SKILLBOX_UT_ENV_COMPAT_SET_B";
-        let _ = std::env::remove_var(K_NEW);
-        let _ = std::env::remove_var(K_OLD);
+        std::env::remove_var(K_NEW);
+        std::env::remove_var(K_OLD);
         assert!(!env_compat_is_set(K_NEW, K_OLD));
         std::env::set_var(K_NEW, "1");
         assert!(env_compat_is_set(K_NEW, K_OLD));
-        let _ = std::env::remove_var(K_NEW);
+        std::env::remove_var(K_NEW);
         std::env::set_var(K_OLD, "1");
         assert!(env_compat_is_set(K_NEW, K_OLD));
-        let _ = std::env::remove_var(K_OLD);
+        std::env::remove_var(K_OLD);
     }
 }

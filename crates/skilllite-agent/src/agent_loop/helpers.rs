@@ -476,12 +476,7 @@ mod tests {
     fn handle_update_task_plan_rejects_empty_task_list() {
         let mut planner = TaskPlanner::new(None, None, None);
         let mut sink = SilentEventSink;
-        let r = handle_update_task_plan(
-            r#"{"tasks":[]}"#,
-            &mut planner,
-            &[],
-            &mut sink,
-        );
+        let r = handle_update_task_plan(r#"{"tasks":[]}"#, &mut planner, &[], &mut sink);
         assert!(r.is_error);
         assert!(r.content.contains("empty"));
     }
@@ -536,11 +531,7 @@ mod tests {
             completed: false,
         }];
         let mut sink = SilentEventSink;
-        let r = handle_complete_task(
-            r#"{"task_id":3,"summary":"ok"}"#,
-            &mut planner,
-            &mut sink,
-        );
+        let r = handle_complete_task(r#"{"task_id":3,"summary":"ok"}"#, &mut planner, &mut sink);
         assert!(!r.is_error);
         assert!(planner.task_list[0].completed);
         assert!(r.content.contains("\"task_id\": 3"));
@@ -559,7 +550,13 @@ mod tests {
             tool_hint: None,
             completed: true,
         }];
-        let out = build_agent_result(messages.clone(), 2, 4, plan.clone(), ExecutionFeedback::default());
+        let out = build_agent_result(
+            messages.clone(),
+            2,
+            4,
+            plan.clone(),
+            ExecutionFeedback::default(),
+        );
         assert_eq!(out.response, "final answer");
         assert_eq!(out.tool_calls_count, 2);
         assert_eq!(out.iterations, 4);
