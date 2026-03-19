@@ -107,54 +107,13 @@ pub fn load_replay_cases(dataset_path: &Path) -> Result<Vec<ReplayCase>> {
     Ok(cases)
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Run replay over a JSONL dataset. Caller builds `config` from env + CLI (api_base, skill_dirs, etc.).
 pub fn cmd_replay(
-    api_base: Option<String>,
-    api_key: Option<String>,
-    model: Option<String>,
-    workspace: Option<String>,
-    skill_dirs: Vec<String>,
+    config: skilllite_agent::types::AgentConfig,
     dataset: String,
-    max_iterations: usize,
-    max_failures: Option<usize>,
     limit: Option<usize>,
     json_output: bool,
-    verbose: bool,
-    read_only: bool,
 ) -> Result<()> {
-    let mut config = skilllite_agent::types::AgentConfig::from_env();
-    if let Some(base) = api_base {
-        config.api_base = base;
-    }
-    if let Some(key) = api_key {
-        config.api_key = key;
-    }
-    if let Some(model) = model {
-        config.model = model;
-    }
-    if let Some(workspace) = workspace {
-        config.workspace = workspace;
-    }
-    config.max_iterations = max_iterations;
-    config.verbose = verbose;
-    config.enable_task_planning = true;
-    config.enable_memory = true;
-    config.read_only_tools = read_only;
-    if read_only {
-        config.context_append = Some(
-            "Replay is running in read-only evaluation mode. \
-             You must not modify files, write outputs, write memory, execute shell commands, \
-             start preview servers, delegate tasks, or execute skills. \
-             Only inspect the workspace and report findings."
-                .to_string(),
-        );
-    }
-    config.max_consecutive_failures = match max_failures {
-        Some(0) => None,
-        Some(n) => Some(n),
-        None => Some(5),
-    };
-
     if config.api_key.is_empty() {
         anyhow::bail!("API key required. Set OPENAI_API_KEY env var or use --api-key.");
     }
@@ -165,15 +124,15 @@ pub fn cmd_replay(
         cases.truncate(limit.min(cases.len()));
     }
 
-    let effective_skill_dirs = if skill_dirs.is_empty() {
+    let effective_skill_dirs = if config.skill_dirs.is_empty() {
         skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
             Path::new(&config.workspace),
             Some(&[".skills", "skills"]),
         )
     } else {
-        skill_dirs
+        config.skill_dirs.clone()
     };
-    let loaded_skills = if read_only {
+    let loaded_skills = if config.read_only_tools {
         Vec::new()
     } else {
         skilllite_agent::skills::load_skills(&effective_skill_dirs)
@@ -189,7 +148,7 @@ pub fn cmd_replay(
         eprintln!("│  工作区: {}", config.workspace);
         eprintln!(
             "│  模式: {}",
-            if read_only {
+            if config.read_only_tools {
                 "只读评测"
             } else {
                 "可修改回放"
@@ -215,7 +174,7 @@ pub fn cmd_replay(
 
         let started = Instant::now();
         let case_result = rt.block_on(async {
-            let mut sink: Box<dyn skilllite_agent::types::EventSink> = if verbose {
+            let mut sink: Box<dyn skilllite_agent::types::EventSink> = if config.verbose {
                 Box::new(skilllite_agent::types::RunModeEventSink::new(true))
             } else {
                 Box::new(skilllite_agent::types::SilentEventSink)

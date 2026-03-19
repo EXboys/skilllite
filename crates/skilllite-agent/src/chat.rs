@@ -80,58 +80,20 @@ pub fn run_clear_session(session_key: &str, workspace: &str) -> Result<()> {
 }
 
 /// Top-level entry-point called from `main()` for the `chat` subcommand.
-#[allow(clippy::too_many_arguments)]
+/// Caller should build `config` from env + CLI overrides (e.g. `AgentConfig::from_env()` then set api_base, skill_dirs, etc.).
 pub fn run_chat(
-    api_base: Option<String>,
-    api_key: Option<String>,
-    model: Option<String>,
-    workspace: Option<String>,
-    skill_dirs: Vec<String>,
+    config: AgentConfig,
     session_key: String,
-    max_iterations: usize,
-    system_prompt: Option<String>,
-    verbose: bool,
     single_message: Option<String>,
-    plan: bool,
-    no_plan: bool,
-    no_memory: bool,
-    soul_path: Option<String>,
 ) -> Result<()> {
-    let mut config = AgentConfig::from_env();
-    if let Some(base) = api_base {
-        config.api_base = base;
-    }
-    if let Some(key) = api_key {
-        config.api_key = key;
-    }
-    if let Some(m) = model {
-        config.model = m;
-    }
-    if let Some(ws) = workspace {
-        config.workspace = ws;
-    }
-    config.max_iterations = max_iterations;
-    config.system_prompt = system_prompt;
-    config.verbose = verbose;
-    config.soul_path = soul_path;
-
     skilllite_core::config::ensure_default_output_dir();
-
-    // Enable task planning: --plan > --no-plan > config (default true)
-    if plan {
-        config.enable_task_planning = true;
-    } else if no_plan {
-        config.enable_task_planning = false;
-    }
-
-    config.enable_memory = !no_memory;
 
     if config.api_key.is_empty() {
         anyhow::bail!("API key required. Set OPENAI_API_KEY env var or use --api-key flag.");
     }
 
     // Auto-discover skill directories if none specified
-    let (effective_skill_dirs, was_auto_discovered) = if skill_dirs.is_empty() {
+    let (effective_skill_dirs, was_auto_discovered) = if config.skill_dirs.is_empty() {
         let auto_dirs = skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
             Path::new(&config.workspace),
             Some(&[".skills", "skills"]),
@@ -139,7 +101,7 @@ pub fn run_chat(
         let has_skills = !auto_dirs.is_empty();
         (auto_dirs, has_skills)
     } else {
-        (skill_dirs, false)
+        (config.skill_dirs.clone(), false)
     };
 
     // Load skills & print banner
@@ -161,6 +123,7 @@ pub fn run_chat(
 
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
 
+    let verbose = config.verbose;
     if let Some(msg) = single_message {
         rt.block_on(async {
             let mut session = ChatSession::new(config, &session_key, loaded_skills);
@@ -180,46 +143,10 @@ pub fn run_chat(
 /// Replan (update_task_plan) does not wait for user — agent continues immediately.
 /// Confirmations (run_command, L3 skill scan) are auto-approved.
 /// A13: When resume=true, load checkpoint and continue from last state.
-#[allow(clippy::too_many_arguments)]
-pub fn run_agent_run(
-    api_base: Option<String>,
-    api_key: Option<String>,
-    model: Option<String>,
-    workspace: Option<String>,
-    skill_dirs: Vec<String>,
-    soul_path: Option<String>,
-    goal: String,
-    max_iterations: usize,
-    verbose: bool,
-    max_failures: Option<usize>,
-    resume: bool,
-) -> Result<()> {
-    let mut config = AgentConfig::from_env();
-    if let Some(base) = api_base {
-        config.api_base = base;
-    }
-    if let Some(key) = api_key {
-        config.api_key = key;
-    }
-    if let Some(m) = model {
-        config.model = m;
-    }
-    if let Some(ws) = workspace {
-        config.workspace = ws;
-    }
-    config.max_iterations = max_iterations;
-    config.soul_path = soul_path;
-    config.verbose = verbose;
-    config.enable_task_planning = true;
-    config.enable_memory = true;
-    // A4: Failure retry limit — prevents infinite loops on repeated failures
-    config.max_consecutive_failures = match max_failures {
-        Some(0) => None, // 0 = no limit
-        Some(n) => Some(n),
-        None => Some(5), // default: stop after 5 consecutive failures
-    };
-    // A5: Goal boundaries extracted in agent_loop (hybrid: regex + optional LLM fallback)
-
+///
+/// Caller should build `config` with run-mode defaults (e.g. enable_task_planning=true,
+/// max_consecutive_failures set, soul_path, skill_dirs, etc.).
+pub fn run_agent_run(config: AgentConfig, goal: String, resume: bool) -> Result<()> {
     if config.api_key.is_empty() {
         anyhow::bail!("API key required. Set OPENAI_API_KEY env var or use --api-key flag.");
     }
@@ -245,6 +172,7 @@ pub fn run_agent_run(
         (goal, config.workspace.clone(), None)
     };
 
+    let mut config = config;
     config.workspace = effective_workspace;
 
     // Optional first-run guidance: if no SOUL in chain and stdin is TTY, offer to create minimal template
@@ -253,7 +181,7 @@ pub fn run_agent_run(
         config.soul_path.as_deref(),
     );
 
-    let (effective_skill_dirs, was_auto_discovered) = if skill_dirs.is_empty() {
+    let (effective_skill_dirs, was_auto_discovered) = if config.skill_dirs.is_empty() {
         let auto_dirs = skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
             Path::new(&config.workspace),
             Some(&[".skills", "skills"]),
@@ -261,7 +189,7 @@ pub fn run_agent_run(
         let has_skills = !auto_dirs.is_empty();
         (auto_dirs, has_skills)
     } else {
-        (skill_dirs, false)
+        (config.skill_dirs.clone(), false)
     };
 
     let loaded_skills = skills::load_skills(&effective_skill_dirs);
@@ -286,6 +214,7 @@ pub fn run_agent_run(
 
     let rt = tokio::runtime::Runtime::new().context("Failed to create tokio runtime")?;
 
+    let verbose = config.verbose;
     rt.block_on(async {
         let mut session = ChatSession::new(config, "run", loaded_skills);
         let mut sink = RunModeEventSink::new(verbose);

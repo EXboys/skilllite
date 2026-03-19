@@ -178,21 +178,34 @@ fn register_agent(reg: &mut CommandRegistry) {
             soul,
         } = cmd
         {
+            let mut config = skilllite_agent::types::AgentConfig::from_env();
+            if let Some(base) = api_base.clone() {
+                config.api_base = base;
+            }
+            if let Some(key) = api_key.clone() {
+                config.api_key = key;
+            }
+            if let Some(m) = model.clone() {
+                config.model = m;
+            }
+            if let Some(ws) = workspace.clone() {
+                config.workspace = ws;
+            }
+            config.skill_dirs = skill_dir.clone();
+            config.max_iterations = *max_iterations;
+            config.system_prompt = system_prompt.clone();
+            config.verbose = *verbose;
+            config.soul_path = soul.clone();
+            if *plan {
+                config.enable_task_planning = true;
+            } else if *no_plan {
+                config.enable_task_planning = false;
+            }
+            config.enable_memory = !*no_memory;
             Some(skilllite_agent::chat::run_chat(
-                api_base.clone(),
-                api_key.clone(),
-                model.clone(),
-                workspace.clone(),
-                skill_dir.clone(),
+                config,
                 session.clone(),
-                *max_iterations,
-                system_prompt.clone(),
-                *verbose,
                 message.clone(),
-                *plan,
-                *no_plan,
-                *no_memory,
-                soul.clone(),
             ))
         } else {
             None
@@ -228,19 +241,44 @@ fn register_agent(reg: &mut CommandRegistry) {
             read_only,
         } = cmd
         {
+            let mut config = skilllite_agent::types::AgentConfig::from_env();
+            if let Some(base) = api_base.clone() {
+                config.api_base = base;
+            }
+            if let Some(key) = api_key.clone() {
+                config.api_key = key;
+            }
+            if let Some(m) = model.clone() {
+                config.model = m;
+            }
+            if let Some(ws) = workspace.clone() {
+                config.workspace = ws;
+            }
+            config.skill_dirs = skill_dir.clone();
+            config.max_iterations = *max_iterations;
+            config.verbose = *verbose;
+            config.read_only_tools = *read_only;
+            if *read_only {
+                config.context_append = Some(
+                    "Replay is running in read-only evaluation mode. \
+                     You must not modify files, write outputs, write memory, execute shell commands, \
+                     start preview servers, delegate tasks, or execute skills. \
+                     Only inspect the workspace and report findings."
+                        .to_string(),
+                );
+            }
+            config.enable_task_planning = true;
+            config.enable_memory = true;
+            config.max_consecutive_failures = match *max_failures {
+                Some(0) => None,
+                Some(n) => Some(n),
+                None => Some(5),
+            };
             Some(skilllite_commands::replay::cmd_replay(
-                api_base.clone(),
-                api_key.clone(),
-                model.clone(),
-                workspace.clone(),
-                skill_dir.clone(),
+                config,
                 dataset.clone(),
-                *max_iterations,
-                *max_failures,
                 *limit,
                 *json,
-                *verbose,
-                *read_only,
             ))
         } else {
             None

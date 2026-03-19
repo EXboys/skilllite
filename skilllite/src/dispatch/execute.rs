@@ -33,19 +33,22 @@ pub fn register(reg: &mut CommandRegistry) {
                     #[cfg(feature = "agent")]
                     {
                         let g = goal.as_deref().unwrap_or("");
-                        skilllite_agent::chat::run_agent_run(
-                            None,
-                            None,
-                            None,
-                            workspace.clone(),
-                            skill_dirs.clone(),
-                            soul.clone(),
-                            g.to_string(),
-                            *max_iterations,
-                            true,
-                            *max_failures,
-                            *resume,
-                        )
+                        let mut config = skilllite_agent::types::AgentConfig::from_env();
+                        if let Some(ws) = workspace.clone() {
+                            config.workspace = ws;
+                        }
+                        config.skill_dirs = skill_dirs.clone();
+                        config.soul_path = soul.clone();
+                        config.max_iterations = *max_iterations;
+                        config.verbose = true;
+                        config.enable_task_planning = true;
+                        config.enable_memory = true;
+                        config.max_consecutive_failures = match *max_failures {
+                            Some(0) => None,
+                            Some(n) => Some(n),
+                            None => Some(5),
+                        };
+                        skilllite_agent::chat::run_agent_run(config, g.to_string(), *resume)
                     }
                     #[cfg(not(feature = "agent"))]
                     {
