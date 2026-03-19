@@ -154,7 +154,7 @@ jobs:
     name: Create Release
     needs: build
     runs-on: ubuntu-latest
-    if: always() && startsWith(github.ref, 'refs/tags/') && !cancelled()
+    if: always() && startsWith(github.ref, 'refs/tags/') && !cancelled() && needs.build.result == 'success'
     permissions:
       contents: write
 
@@ -191,15 +191,95 @@ jobs:
             ./artifacts/skilllite-windows-x64/skilllite-windows-x64.zip
             ./artifacts/skilllite-windows-x64-sandbox/skilllite-windows-x64-sandbox.zip
 
-  publish-pypi:
-    name: Publish to PyPI
-    needs: release
-    runs-on: ubuntu-latest
-    if: always() && startsWith(github.ref, 'refs/tags/') && needs.release.result == 'success'
+  # 各平台打带二进制的 wheel，供 PyPI 发布
+  build-pypi-wheels:
+    name: Wheel ${{ matrix.asset_name }}
+    needs: build
+    if: always() && startsWith(github.ref, 'refs/tags/') && !cancelled() && needs.build.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - asset_name: skilllite-linux-x64
+            runs_on: ubuntu-latest
+            archive: skilllite-linux-x64.tar.gz
+            binary_name: skilllite
+          - asset_name: skilllite-darwin-x64
+            runs_on: macos-15-intel
+            archive: skilllite-darwin-x64.tar.gz
+            binary_name: skilllite
+          - asset_name: skilllite-darwin-arm64
+            runs_on: macos-latest
+            archive: skilllite-darwin-arm64.tar.gz
+            binary_name: skilllite
+          - asset_name: skilllite-windows-x64
+            runs_on: windows-latest
+            archive: skilllite-windows-x64.zip
+            binary_name: skilllite.exe
+
+    runs-on: ${{ matrix.runs_on }}
+
+    env:
+      VERSION: ${{ github.ref_name }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: python -c "import os,re; p='python-sdk/pyproject.toml'; v=os.environ.get('VERSION','0.0.0').lstrip('v'); s=open(p).read(); open(p,'w').write(re.sub(r'^version = \".*\"', f'version = \"{v}\"', s, count=1, flags=re.M))"
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+
+      - name: Prepare binary (Unix)
+        if: matrix.binary_name == 'skilllite'
+        shell: bash
+        run: |
+          mkdir -p python-sdk/skilllite/bins
+          tar -xzf ${{ matrix.asset_name }}/${{ matrix.archive }} -C python-sdk/skilllite/bins
+          chmod +x python-sdk/skilllite/bins/${{ matrix.binary_name }}
+
+      - name: Prepare binary (Windows)
+        if: matrix.binary_name == 'skilllite.exe'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path python-sdk/skilllite/bins
+          Expand-Archive -Path "${{ matrix.asset_name }}/${{ matrix.archive }}" -DestinationPath python-sdk/skilllite/bins
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build deps and build wheel
+        run: |
+          python -m pip install --upgrade pip build
+          cd python-sdk && python -m build --wheel
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pypi-wheel-${{ matrix.asset_name }}
+          path: python-sdk/dist/*.whl
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [release, build-pypi-wheels]
+    runs-on: ubuntu-latest
+    if: always() && startsWith(github.ref, 'refs/tags/') && needs.release.result == 'success' && needs.build-pypi-wheels.result == 'success'
+
+    env:
+      VERSION: ${{ github.ref_name }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: python -c "import os,re; p='python-sdk/pyproject.toml'; v=os.environ.get('VERSION','0.0.0').lstrip('v'); s=open(p).read(); open(p,'w').write(re.sub(r'^version = \".*\"', f'version = \"{v}\"', s, count=1, flags=re.M))"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -211,9 +291,31 @@ jobs:
           python -m pip install --upgrade pip
           pip install build twine
 
-      - name: Build package
+      - name: Build sdist (no binary)
         working-directory: ./python-sdk
-        run: python -m build
+        run: python -m build --sdist
+
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pypi-wheel-*
+          path: wheel-artifacts
+          merge-multiple: false
+
+      - name: Merge wheels into dist
+        run: |
+          mkdir -p python-sdk/dist
+          find wheel-artifacts -name '*.whl' -exec cp {} python-sdk/dist/ \;
+
+      - name: Verify dist (4 wheels + 1 sdist)
+        run: |
+          n_whl=$(find python-sdk/dist -name '*.whl' | wc -l)
+          n_sdist=$(find python-sdk/dist -name '*.tar.gz' | wc -l)
+          if [ "$n_whl" -ne 4 ] || [ "$n_sdist" -ne 1 ]; then
+            echo "Expected 4 wheels and 1 sdist, got $n_whl wheels and $n_sdist sdist"
+            ls -la python-sdk/dist/
+            exit 1
+          fi
 
       - name: Publish to PyPI
         working-directory: ./python-sdk
