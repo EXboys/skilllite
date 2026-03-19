@@ -39,3 +39,36 @@ jobs:
 
       - name: Verify skilllite-sandbox
         run: ./target/release/skilllite-sandbox --version
+
+  python-sdk:
+    name: Python SDK (ruff, mypy, pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python-sdk
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dev tools
+        run: pip install ruff mypy pytest
+
+      - name: Ruff check
+        run: ruff check .
+
+      - name: Ruff format
+        run: ruff format --check .
+
+      - name: Mypy
+        run: mypy skilllite
+
+      - name: Install package (editable, for pytest)
+        run: pip install -e .
+
+      - name: Pytest
+        run: pytest

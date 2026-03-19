@@ -12,7 +12,7 @@ import queue
 import subprocess
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional, cast
 
 from .binary import get_binary
 
@@ -62,17 +62,17 @@ class IPCClient:
     Batch-sends concurrent requests so daemon receives them together for parallel processing.
     """
 
-    def __init__(self, binary: str, cwd: Optional[str] = None):
+    def __init__(self, binary: str, cwd: str | None = None):
         self.binary = binary
         self.cwd = cwd or os.getcwd()
-        self._process: Optional[subprocess.Popen] = None
+        self._process: subprocess.Popen | None = None
         self._request_id = 0
         self._id_lock = threading.Lock()
         self._send_queue: queue.Queue = queue.Queue()
-        self._pending: Dict[int, queue.Queue] = {}
+        self._pending: dict[int, queue.Queue] = {}
         self._pending_lock = threading.Lock()
-        self._reader_thread: Optional[threading.Thread] = None
-        self._writer_thread: Optional[threading.Thread] = None
+        self._reader_thread: threading.Thread | None = None
+        self._writer_thread: threading.Thread | None = None
         self._shutdown = threading.Event()
 
     def start(self) -> None:
@@ -177,7 +177,7 @@ class IPCClient:
         if self._reader_thread and self._reader_thread.is_alive():
             self._reader_thread.join(timeout=1)
 
-    def _request(self, method: str, params: Dict[str, Any], timeout: float = 60) -> Dict[str, Any]:
+    def _request(self, method: str, params: dict[str, Any], timeout: float = 60) -> dict[str, Any]:
         """Send JSON-RPC request, return result or raise on error. Safe for concurrent calls."""
         if not self._process or self._process.poll() is not None:
             raise RuntimeError("IPC daemon not running")
@@ -196,7 +196,7 @@ class IPCClient:
                 raise RuntimeError("IPC daemon closed")
             if "error" in resp:
                 raise RuntimeError(resp["error"].get("message", str(resp["error"])))
-            return resp.get("result", {})
+            return cast(dict[str, Any], resp.get("result", {}))
         finally:
             with self._pending_lock:
                 self._pending.pop(req_id, None)
@@ -208,7 +208,7 @@ class IPCClient:
         *,
         sandbox_level: int = 3,
         allow_network: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Run a skill. Returns {output, exit_code}."""
         return self._request(
             "run",
@@ -228,7 +228,7 @@ class IPCClient:
         *,
         sandbox_level: int = 3,
         allow_network: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute a script. Returns {output, exit_code}."""
         return self._request(
             "exec",

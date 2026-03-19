@@ -5,14 +5,13 @@ Binary resolution: bundled first, then PATH.
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 BINARY_NAME = "skilllite.exe" if sys.platform == "win32" else "skilllite"
 
-_bundled_cache: Optional[str] = None
+_bundled_cache: str | None = None
 
 
-def get_bundled_binary() -> Optional[str]:
+def get_bundled_binary() -> str | None:
     """Return path to bundled skilllite binary, or None."""
     global _bundled_cache
     if _bundled_cache is not None:
@@ -29,10 +28,11 @@ def get_bundled_binary() -> Optional[str]:
     return None
 
 
-def get_binary() -> Optional[str]:
+def get_binary() -> str | None:
     """Resolve binary: bundled first, then PATH."""
     bundled = get_bundled_binary()
     if bundled:
         return bundled
     import shutil
+
     return shutil.which(BINARY_NAME)

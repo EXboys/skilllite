@@ -10,12 +10,12 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 _EXT = {"python": ".py", "javascript": ".js", "bash": ".sh"}
 
 
-def scan_code(language: str, code: str) -> Dict[str, Any]:
+def scan_code(language: str, code: str) -> dict[str, Any]:
     """
     Scan code for security issues.
 
@@ -64,6 +64,7 @@ def scan_code(language: str, code: str) -> Dict[str, Any]:
             }
     finally:
         import shutil
+
         shutil.rmtree(tmpdir, ignore_errors=True)
 
 
@@ -72,9 +73,9 @@ def execute_code(
     code: str,
     *,
     confirmed: bool = False,
-    scan_id: Optional[str] = None,
+    scan_id: str | None = None,
     sandbox_level: int = 3,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Execute code in sandbox.
 
@@ -165,7 +166,7 @@ def run_skill(
     sandbox_level: int = 3,
     allow_network: bool = False,
     auto_approve: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Run a skill with the given input JSON.
 
@@ -231,15 +232,15 @@ def chat(
     message: str,
     *,
     skills_dir: str = ".skills",
-    workspace: Optional[str] = None,
+    workspace: str | None = None,
     max_iterations: int = 50,
     verbose: bool = True,
     session: str = "default",
-    model: Optional[str] = None,
-    cwd: Optional[str] = None,
-    env: Optional[Dict[str, str]] = None,
+    model: str | None = None,
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
     stream: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Run agent chat (single-shot mode). Bridges Python → binary without exposing CLI.
 
@@ -301,7 +302,7 @@ def chat(
         env=run_env,
     )
 
-    out = {
+    out: dict[str, Any] = {
         "success": result.returncode == 0,
         "exit_code": result.returncode,
     }
