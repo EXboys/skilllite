@@ -1,16 +1,17 @@
-use crate::common::{wait_with_timeout, DEFAULT_FILE_SIZE_LIMIT_MB, DEFAULT_MAX_PROCESSES};
+use crate::common::{
+    self, get_script_args_from_env, pipe_stdio, resolve_which, spawn_write_and_wait,
+    start_network_proxy,
+};
 use crate::move_protection::{generate_log_tag, generate_move_blocking_rules, get_session_suffix};
-use crate::network_proxy::{ProxyConfig, ProxyManager};
 use crate::runner::{ExecutionResult, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::RuntimeResolver;
 use crate::seatbelt::generate_seatbelt_mandatory_deny_patterns;
 use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::fs;
-use std::io::Write;
 use std::net::ToSocketAddrs;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Execute a skill in a macOS sandbox with custom resource limits
@@ -59,126 +60,46 @@ pub fn execute_simple_with_limits(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    use std::os::unix::process::CommandExt;
-
     crate::info_log!("[INFO] simple: executing {}...", config.entry_point);
-    let language = &config.language;
-    let entry_point = &config.entry_point;
 
     let resolved = runtime
-        .resolve(language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+        .resolve(&config.language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", config.language))?;
 
-    // Create temporary directory for work
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
     let mut cmd = Command::new(&resolved.interpreter);
-    cmd.arg(entry_point);
+    cmd.arg(&config.entry_point);
     for (k, v) in resolved.extra_env {
         cmd.env(k, v);
     }
-
-    // Script arguments from config (SKILLLITE_SCRIPT_ARGS / SKILLBOX_SCRIPT_ARGS)
-    if let Some(ref script_args) = skilllite_core::config::SandboxEnvConfig::from_env().script_args
-    {
-        if !script_args.is_empty() {
-            for arg in script_args.split_whitespace() {
-                cmd.arg(arg);
-            }
-        }
+    for arg in get_script_args_from_env() {
+        cmd.arg(arg);
     }
 
-    // Set working directory
     cmd.current_dir(skill_dir);
+    pipe_stdio(&mut cmd);
 
-    // Set up stdin/stdout/stderr
-    cmd.stdin(Stdio::piped());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    // Set environment variables
     cmd.env("SKILLLITE_SANDBOX", "0");
-    cmd.env("SKILLBOX_SANDBOX", "0"); // legacy compat
+    cmd.env("SKILLBOX_SANDBOX", "0");
     cmd.env("TMPDIR", work_dir);
-
     if !config.network_enabled {
         cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
-        cmd.env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
     }
 
-    // Apply resource limits via pre_exec (kernel-enforced, not polling-only)
-    let memory_limit_mb = limits.max_memory_mb;
-    let cpu_limit_secs = limits.timeout_secs;
-    let file_size_limit_mb = crate::common::DEFAULT_FILE_SIZE_LIMIT_MB;
-    let max_processes = crate::common::DEFAULT_MAX_PROCESSES;
+    unsafe { common::set_rlimits_pre_exec(&mut cmd, &limits) };
 
-    unsafe {
-        cmd.pre_exec(move || {
-            use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
-
-            let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
-            let mem_limit = rlimit {
-                rlim_cur: memory_limit_bytes,
-                rlim_max: memory_limit_bytes,
-            };
-            setrlimit(RLIMIT_AS, &mem_limit);
-
-            let cpu_limit = rlimit {
-                rlim_cur: cpu_limit_secs,
-                rlim_max: cpu_limit_secs,
-            };
-            setrlimit(RLIMIT_CPU, &cpu_limit);
-
-            let file_limit_bytes = file_size_limit_mb * 1024 * 1024;
-            let file_limit = rlimit {
-                rlim_cur: file_limit_bytes,
-                rlim_max: file_limit_bytes,
-            };
-            setrlimit(RLIMIT_FSIZE, &file_limit);
-
-            let nproc_limit = rlimit {
-                rlim_cur: max_processes,
-                rlim_max: max_processes,
-            };
-            setrlimit(RLIMIT_NPROC, &nproc_limit);
-
-            Ok(())
-        });
-    }
-
-    // Spawn the process
     crate::info_log!("[INFO] simple: spawning skill process...");
-    let mut child = cmd
-        .spawn()
-        .with_context(|| "Failed to spawn skill process")?;
-    crate::info_log!("[INFO] simple: writing stdin...");
-
-    // Write input to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(input_json.as_bytes())
-            .with_context(|| "Failed to write to stdin")?;
-    }
-    crate::info_log!(
-        "[INFO] simple: waiting for child (timeout {}s)...",
-        limits.timeout_secs
-    );
-
-    // Wait with resource limits
-    let memory_limit_bytes = limits.max_memory_bytes();
-    let (stdout, stderr, exit_code, _, _) = wait_with_timeout(
-        &mut child,
-        limits.timeout_secs,
-        memory_limit_bytes,
-        true, // stream stderr so user sees Pillow/playwright progress messages
+    let (result, _, _) = spawn_write_and_wait(
+        &mut cmd,
+        input_json,
+        &limits,
+        true,
+        "Failed to spawn skill process",
     )?;
-
-    Ok(ExecutionResult {
-        stdout,
-        stderr,
-        exit_code,
-    })
+    Ok(result)
 }
 
 /// Execute with macOS sandbox-exec with resource limits and network proxy (pure Rust, no script injection)
@@ -189,55 +110,17 @@ fn execute_with_sandbox(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    use std::os::unix::process::CommandExt;
-
-    let language = &config.language;
-    let entry_point = &config.entry_point;
-
-    // Create temporary directory for sandbox profile and work
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
     let network_policy =
         security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
 
-    // Start network proxy when policy requires domain filtering
-    let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
-        let domains = match &network_policy {
-            ResolvedNetworkPolicy::ProxyFiltered { domains } => domains.clone(),
-            _ => vec![],
-        };
-        let proxy_config = ProxyConfig::with_allowed_domains(domains);
-        match ProxyManager::new(proxy_config) {
-            Ok(mut manager) => {
-                if let Err(e) = manager.start() {
-                    tracing::warn!("Failed to start network proxy: {}", e);
-                    None
-                } else {
-                    crate::info_log!(
-                        "[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
-                        manager.http_port(),
-                        manager.socks5_port()
-                    );
-                    Some(manager)
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Failed to create network proxy: {}", e);
-                None
-            }
-        }
-    } else if security_policy::is_allow_all_network(&network_policy) {
-        crate::info_log!("[INFO] Network access allowed for all domains (wildcard '*' configured)");
-        None
-    } else {
-        None
-    };
+    let proxy_manager = start_network_proxy(&network_policy);
 
-    // Resolve runtime BEFORE generating profile (profile needs interpreter path for whitelist)
     let resolved = runtime
-        .resolve(language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+        .resolve(&config.language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", config.language))?;
 
     // Generate sandbox profile with proxy ports if available
     let profile_path = work_dir.join("sandbox.sb");
@@ -252,142 +135,57 @@ fn execute_with_sandbox(
         &resolved.interpreter,
     )?;
     fs::write(&profile_path, &profile_content)?;
-    let mut args = vec![entry_point.to_string()];
 
-    // Script arguments from config (SKILLLITE_SCRIPT_ARGS / SKILLBOX_SCRIPT_ARGS)
-    if let Some(ref script_args) = skilllite_core::config::SandboxEnvConfig::from_env().script_args
-    {
-        if !script_args.is_empty() {
-            for arg in script_args.split_whitespace() {
-                args.push(arg.to_string());
-            }
-        }
-    }
+    let mut args = vec![config.entry_point.to_string()];
+    args.extend(get_script_args_from_env());
 
-    // Build sandbox-exec command - directly execute interpreter (no script injection)
     let mut cmd = Command::new("sandbox-exec");
     cmd.arg("-f").arg(&profile_path);
     cmd.arg(&resolved.interpreter);
     cmd.args(&args);
 
-    // Set working directory
     cmd.current_dir(skill_dir);
+    pipe_stdio(&mut cmd);
 
-    // Set up stdin/stdout/stderr
-    cmd.stdin(Stdio::piped());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    // Set environment variables
     cmd.env("SKILLLITE_SANDBOX", "1");
-    cmd.env("SKILLBOX_SANDBOX", "1"); // legacy compat
+    cmd.env("SKILLBOX_SANDBOX", "1");
     cmd.env("TMPDIR", work_dir);
-    // Expose output dir for skills that save files (e.g. csdn-article, xiaohongshu-writer)
     if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
         cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
     }
-    // Do not override HOME - some libs (fonts, cache) need it for path lookup
 
     for (k, v) in &resolved.extra_env {
         cmd.env(k, v);
     }
-
-    // Set proxy environment variables if proxy is running
     if let Some(ref manager) = proxy_manager {
         for (key, value) in manager.get_proxy_env_vars() {
             cmd.env(&key, &value);
         }
     }
 
-    // Apply resource limits using pre_exec (pure Rust, no script injection)
-    // Use limits from env (SKILLLITE_TIMEOUT_SECS, SKILLLITE_MAX_MEMORY_MB) so RLIMIT_CPU
-    // matches user's EXECUTION_TIMEOUT (e.g. 120s). Previously hardcoded 30s caused early kill.
-    let memory_limit_mb = limits.max_memory_mb;
-    let cpu_limit_secs = limits.timeout_secs;
-    let file_size_limit_mb = DEFAULT_FILE_SIZE_LIMIT_MB;
-    let max_processes = DEFAULT_MAX_PROCESSES;
+    unsafe { common::set_rlimits_pre_exec(&mut cmd, &limits) };
 
-    unsafe {
-        cmd.pre_exec(move || {
-            use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
-
-            // Memory limit - from SKILLLITE_MAX_MEMORY_MB
-            let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
-            let mem_limit = rlimit {
-                rlim_cur: memory_limit_bytes,
-                rlim_max: memory_limit_bytes,
-            };
-            setrlimit(RLIMIT_AS, &mem_limit);
-
-            // CPU time limit - from SKILLLITE_TIMEOUT_SECS (matches EXECUTION_TIMEOUT)
-            let cpu_limit = rlimit {
-                rlim_cur: cpu_limit_secs,
-                rlim_max: cpu_limit_secs,
-            };
-            setrlimit(RLIMIT_CPU, &cpu_limit);
-
-            // File size limit - 10 MB (sufficient for skill outputs; increase if needed for large images)
-            let file_limit_bytes = file_size_limit_mb * 1024 * 1024;
-            let file_limit = rlimit {
-                rlim_cur: file_limit_bytes,
-                rlim_max: file_limit_bytes,
-            };
-            setrlimit(RLIMIT_FSIZE, &file_limit);
-
-            // Max processes (fork bomb protection) - 50 processes
-            let nproc_limit = rlimit {
-                rlim_cur: max_processes,
-                rlim_max: max_processes,
-            };
-            setrlimit(RLIMIT_NPROC, &nproc_limit);
-
-            Ok(())
-        });
-    }
-
-    // Spawn the process
     crate::info_log!("[INFO] sandbox-exec: spawning...");
-    let mut child = cmd
-        .spawn()
-        .with_context(|| "Failed to spawn sandbox-exec")?;
-    crate::info_log!("[INFO] sandbox-exec: writing stdin...");
+    let (result, was_killed, kill_reason) = spawn_write_and_wait(
+        &mut cmd,
+        input_json,
+        &limits,
+        true,
+        "Failed to spawn sandbox-exec",
+    )?;
 
-    // Write input to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(input_json.as_bytes())
-            .with_context(|| "Failed to write to stdin")?;
-    }
-    crate::info_log!(
-        "[INFO] sandbox-exec: waiting for child (timeout {}s)...",
-        limits.timeout_secs
-    );
-
-    // Wait with timeout and memory monitoring
-    let memory_limit_bytes = limits.max_memory_bytes();
-    let (stdout, stderr, exit_code, was_killed, kill_reason) =
-        wait_with_timeout(&mut child, limits.timeout_secs, memory_limit_bytes, true)?;
-
-    // Check if sandbox-exec itself failed
-    if exit_code == 1 && stderr.is_empty() && stdout.is_empty() && !was_killed {
+    if result.exit_code == 1 && result.stderr.is_empty() && result.stdout.is_empty() && !was_killed
+    {
         anyhow::bail!("sandbox-exec failed to execute");
     }
-
-    // Log if process was killed
     if was_killed {
         if let Some(reason) = &kill_reason {
             tracing::error!("Process terminated due to: {}", reason);
         }
     }
 
-    // Proxy manager will be dropped here, stopping the proxy servers
     drop(proxy_manager);
-
-    Ok(ExecutionResult {
-        stdout,
-        stderr,
-        exit_code,
-    })
+    Ok(result)
 }
 
 /// Generate a Seatbelt sandbox profile for macOS with network proxy support
@@ -947,24 +745,6 @@ fn resolve_host_to_ips(host: &str) -> Option<Vec<String>> {
         }
         Err(_) => None,
     }
-}
-
-/// Resolve a bare command name (e.g. "python3", "node") to its absolute path via PATH lookup.
-/// Returns None if the command is not found.
-fn resolve_which(cmd: &Path) -> Option<std::path::PathBuf> {
-    Command::new("/usr/bin/which")
-        .arg(cmd)
-        .output()
-        .ok()
-        .and_then(|o| {
-            if o.status.success() {
-                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Some(std::path::PathBuf::from(path));
-                }
-            }
-            None
-        })
 }
 
 fn extract_python_framework_version_root(canonical_path: &str) -> Option<&str> {

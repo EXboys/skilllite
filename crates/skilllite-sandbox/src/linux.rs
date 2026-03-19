@@ -1,11 +1,13 @@
 #![cfg(target_os = "linux")]
 
-use crate::common::wait_with_timeout;
-use crate::network_proxy::{ProxyConfig, ProxyManager};
+use crate::common::{
+    self, pipe_stdio, resolve_command_path, resolve_which, spawn_write_and_wait,
+    start_network_proxy,
+};
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::{ResolvedRuntime, RuntimeResolver};
 use crate::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
-use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
+use crate::security::policy::{self as security_policy};
 use anyhow::{Context, Result};
 use nix::mount::{mount, MsFlags};
 use nix::sched::{unshare, CloneFlags};
@@ -14,7 +16,7 @@ use std::fs;
 use std::io::Write;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tempfile::TempDir;
 
 /// Execute a skill in a Linux sandbox
@@ -91,14 +93,12 @@ fn execute_simple_with_limits(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
 
     let resolved = runtime
-        .resolve(language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+        .resolve(&config.language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", config.language))?;
 
-    // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
@@ -108,86 +108,27 @@ fn execute_simple_with_limits(
         cmd.env(k, v);
     }
 
-    // Set working directory
     cmd.current_dir(skill_dir);
+    pipe_stdio(&mut cmd);
 
-    // Set up stdin/stdout/stderr
-    cmd.stdin(Stdio::piped());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    // Set environment variables
     cmd.env("SKILLLITE_SANDBOX", "0")
-        .env("SKILLBOX_SANDBOX", "0"); // legacy compat
+        .env("SKILLBOX_SANDBOX", "0");
     cmd.env("TMPDIR", work_dir);
-
     if !config.network_enabled {
         cmd.env("SKILLLITE_NETWORK_DISABLED", "1")
-            .env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
+            .env("SKILLBOX_NETWORK_DISABLED", "1");
     }
 
-    // Apply resource limits via pre_exec (kernel-enforced, not polling-only)
-    let memory_limit_mb = limits.max_memory_mb;
-    let cpu_limit_secs = limits.timeout_secs;
-    let file_size_limit_mb = crate::common::DEFAULT_FILE_SIZE_LIMIT_MB;
-    let max_processes = crate::common::DEFAULT_MAX_PROCESSES;
+    unsafe { common::set_rlimits_pre_exec(&mut cmd, &limits) };
 
-    unsafe {
-        cmd.pre_exec(move || {
-            use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
-
-            let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
-            let mem_limit = rlimit {
-                rlim_cur: memory_limit_bytes,
-                rlim_max: memory_limit_bytes,
-            };
-            setrlimit(RLIMIT_AS, &mem_limit);
-
-            let cpu_limit = rlimit {
-                rlim_cur: cpu_limit_secs,
-                rlim_max: cpu_limit_secs,
-            };
-            setrlimit(RLIMIT_CPU, &cpu_limit);
-
-            let file_limit_bytes = file_size_limit_mb * 1024 * 1024;
-            let file_limit = rlimit {
-                rlim_cur: file_limit_bytes,
-                rlim_max: file_limit_bytes,
-            };
-            setrlimit(RLIMIT_FSIZE, &file_limit);
-
-            let nproc_limit = rlimit {
-                rlim_cur: max_processes,
-                rlim_max: max_processes,
-            };
-            setrlimit(RLIMIT_NPROC, &nproc_limit);
-
-            Ok(())
-        });
-    }
-
-    let mut child = cmd
-        .spawn()
-        .with_context(|| "Failed to spawn skill process")?;
-
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(input_json.as_bytes())
-            .with_context(|| "Failed to write to stdin")?;
-    }
-
-    let (stdout, stderr, exit_code, _, _) = wait_with_timeout(
-        &mut child,
-        limits.timeout_secs,
-        limits.max_memory_bytes(),
+    let (result, _, _) = spawn_write_and_wait(
+        &mut cmd,
+        input_json,
+        &limits,
         true,
+        "Failed to spawn skill process",
     )?;
-
-    Ok(ExecutionResult {
-        stdout,
-        stderr,
-        exit_code,
-    })
+    Ok(result)
 }
 
 /// Execute with seccomp-based sandbox (works without root privileges)
@@ -212,10 +153,7 @@ fn execute_with_seccomp(
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
-    // Use bwrap (bubblewrap) if available for unprivileged sandboxing
-    // bwrap is commonly available on Linux and provides namespace isolation without root
-    let bwrap_path = which_bwrap();
-
+    let bwrap_path = resolve_which(Path::new("bwrap"));
     if let Some(bwrap) = bwrap_path {
         return execute_with_bwrap(
             &bwrap,
@@ -230,8 +168,7 @@ fn execute_with_seccomp(
         );
     }
 
-    // Fallback: Use firejail if available
-    let firejail_path = which_firejail();
+    let firejail_path = resolve_which(Path::new("firejail"));
     if let Some(firejail) = firejail_path {
         return execute_with_firejail(
             &firejail,
@@ -252,40 +189,6 @@ fn execute_with_seccomp(
     )
 }
 
-/// Check if bwrap (bubblewrap) is available
-fn which_bwrap() -> Option<std::path::PathBuf> {
-    std::process::Command::new("which")
-        .arg("bwrap")
-        .output()
-        .ok()
-        .and_then(|o| {
-            if o.status.success() {
-                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Some(std::path::PathBuf::from(path));
-                }
-            }
-            None
-        })
-}
-
-/// Check if firejail is available
-fn which_firejail() -> Option<std::path::PathBuf> {
-    std::process::Command::new("which")
-        .arg("firejail")
-        .output()
-        .ok()
-        .and_then(|o| {
-            if o.status.success() {
-                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                if !path.is_empty() {
-                    return Some(std::path::PathBuf::from(path));
-                }
-            }
-            None
-        })
-}
-
 /// Execute with bubblewrap (bwrap) sandbox with network proxy support
 fn execute_with_bwrap(
     bwrap: &Path,
@@ -303,38 +206,7 @@ fn execute_with_bwrap(
     let network_policy =
         security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
 
-    // Start network proxy when policy requires domain filtering
-    let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
-        let domains = match &network_policy {
-            ResolvedNetworkPolicy::ProxyFiltered { domains } => domains.clone(),
-            _ => vec![],
-        };
-        let proxy_config = ProxyConfig::with_allowed_domains(domains);
-        match ProxyManager::new(proxy_config) {
-            Ok(mut manager) => {
-                if let Err(e) = manager.start() {
-                    tracing::warn!("Failed to start network proxy: {}", e);
-                    None
-                } else {
-                    tracing::info!(
-                        "Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
-                        manager.http_port(),
-                        manager.socks5_port()
-                    );
-                    Some(manager)
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Failed to create network proxy: {}", e);
-                None
-            }
-        }
-    } else if security_policy::is_allow_all_network(&network_policy) {
-        tracing::info!("Network access allowed for all domains (wildcard '*' configured)");
-        None
-    } else {
-        None
-    };
+    let proxy_manager = start_network_proxy(&network_policy);
 
     let mut cmd = Command::new(bwrap);
 
@@ -507,12 +379,8 @@ fn execute_with_bwrap(
     // Set working directory
     cmd.current_dir(skill_dir);
 
-    // Set up stdin/stdout/stderr
-    cmd.stdin(Stdio::piped());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
+    pipe_stdio(&mut cmd);
 
-    // Apply resource limits via pre_exec — inherited by bwrap's child process through fork+exec
     let memory_limit_mb = limits.max_memory_mb;
     let cpu_limit_secs = limits.timeout_secs;
     let file_size_limit_mb = crate::common::DEFAULT_FILE_SIZE_LIMIT_MB;
@@ -520,36 +388,14 @@ fn execute_with_bwrap(
 
     unsafe {
         cmd.pre_exec(move || {
-            use nix::libc::{
-                close, dup2, fcntl, rlimit, setrlimit, FD_CLOEXEC, F_GETFD, F_SETFD, RLIMIT_AS,
-                RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC,
-            };
+            use nix::libc::{close, dup2, fcntl, FD_CLOEXEC, F_GETFD, F_SETFD};
 
-            let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
-            let mem_limit = rlimit {
-                rlim_cur: memory_limit_bytes,
-                rlim_max: memory_limit_bytes,
-            };
-            setrlimit(RLIMIT_AS, &mem_limit);
-
-            let cpu_limit = rlimit {
-                rlim_cur: cpu_limit_secs,
-                rlim_max: cpu_limit_secs,
-            };
-            setrlimit(RLIMIT_CPU, &cpu_limit);
-
-            let file_limit_bytes = file_size_limit_mb * 1024 * 1024;
-            let file_limit = rlimit {
-                rlim_cur: file_limit_bytes,
-                rlim_max: file_limit_bytes,
-            };
-            setrlimit(RLIMIT_FSIZE, &file_limit);
-
-            let nproc_limit = rlimit {
-                rlim_cur: max_processes,
-                rlim_max: max_processes,
-            };
-            setrlimit(RLIMIT_NPROC, &nproc_limit);
+            common::apply_rlimits(
+                memory_limit_mb,
+                cpu_limit_secs,
+                file_size_limit_mb,
+                max_processes,
+            );
 
             // If we have an open seccomp BPF fd, dup2 it to FD 3 and clear
             // CLOEXEC so bwrap can read it after execve.
@@ -566,34 +412,16 @@ fn execute_with_bwrap(
         });
     }
 
-    // Spawn the process
-    let mut child = cmd
-        .spawn()
-        .with_context(|| "Failed to spawn bwrap sandbox")?;
-
-    // Write input to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(input_json.as_bytes())
-            .with_context(|| "Failed to write to stdin")?;
-    }
-
-    // Wait with timeout and memory monitoring
-    let (stdout, stderr, exit_code, _, _) = wait_with_timeout(
-        &mut child,
-        limits.timeout_secs,
-        limits.max_memory_bytes(),
+    let (result, _, _) = spawn_write_and_wait(
+        &mut cmd,
+        input_json,
+        &limits,
         true,
+        "Failed to spawn bwrap sandbox",
     )?;
 
-    // Proxy manager will be dropped here, stopping the proxy servers
     drop(proxy_manager);
-
-    Ok(ExecutionResult {
-        stdout,
-        stderr,
-        exit_code,
-    })
+    Ok(result)
 }
 
 /// Generate a seccomp BPF filter file for bwrap's `--seccomp` option.
@@ -748,37 +576,7 @@ fn execute_with_firejail(
     let network_policy =
         security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
 
-    let proxy_manager = if security_policy::should_use_proxy(&network_policy) {
-        let domains = match &network_policy {
-            ResolvedNetworkPolicy::ProxyFiltered { domains } => domains.clone(),
-            _ => vec![],
-        };
-        let proxy_config = ProxyConfig::with_allowed_domains(domains);
-        match ProxyManager::new(proxy_config) {
-            Ok(mut manager) => {
-                if let Err(e) = manager.start() {
-                    tracing::warn!("Failed to start network proxy: {}", e);
-                    None
-                } else {
-                    tracing::info!(
-                        "Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
-                        manager.http_port(),
-                        manager.socks5_port()
-                    );
-                    Some(manager)
-                }
-            }
-            Err(e) => {
-                tracing::warn!("Failed to create network proxy: {}", e);
-                None
-            }
-        }
-    } else if security_policy::is_allow_all_network(&network_policy) {
-        tracing::info!("Network access allowed for all domains (wildcard '*' configured)");
-        None
-    } else {
-        None
-    };
+    let proxy_manager = start_network_proxy(&network_policy);
 
     let mut cmd = Command::new(firejail);
 
@@ -839,17 +637,11 @@ fn execute_with_firejail(
     cmd.arg(&interpreter_path);
     cmd.arg(entry_point);
 
-    // Set working directory
     cmd.current_dir(skill_dir);
+    pipe_stdio(&mut cmd);
 
-    // Set up stdin/stdout/stderr
-    cmd.stdin(Stdio::piped());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    // Set environment
     cmd.env("SKILLLITE_SANDBOX", "1")
-        .env("SKILLBOX_SANDBOX", "1"); // legacy compat
+        .env("SKILLBOX_SANDBOX", "1");
     cmd.env("TMPDIR", work_dir);
     if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
         cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
@@ -857,32 +649,26 @@ fn execute_with_firejail(
     for (k, v) in &resolved.extra_env {
         cmd.env(k, v);
     }
-
-    // Set proxy environment variables if proxy is running
     if let Some(ref manager) = proxy_manager {
         for (key, value) in manager.get_proxy_env_vars() {
             cmd.env(&key, &value);
         }
     }
 
-    // Spawn the process
     let mut child = cmd
         .spawn()
         .with_context(|| "Failed to spawn firejail sandbox")?;
 
-    // Write input to stdin
     if let Some(mut stdin) = child.stdin.take() {
         stdin
             .write_all(input_json.as_bytes())
             .with_context(|| "Failed to write to stdin")?;
     }
 
-    // Wait for completion
     let output = child
         .wait_with_output()
         .with_context(|| "Failed to wait for firejail sandbox")?;
 
-    // Proxy manager will be dropped here, stopping the proxy servers
     drop(proxy_manager);
 
     Ok(ExecutionResult {
@@ -900,14 +686,12 @@ fn execute_with_namespaces(
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    let language = &config.language;
     let entry_point = skill_dir.join(&config.entry_point);
 
     let resolved = runtime
-        .resolve(language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+        .resolve(&config.language)
+        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", config.language))?;
 
-    // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
@@ -917,29 +701,20 @@ fn execute_with_namespaces(
         cmd.env(k, v);
     }
 
-    // Set up stdin/stdout/stderr
-    cmd.stdin(Stdio::piped());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-
-    // Set working directory
+    pipe_stdio(&mut cmd);
     cmd.current_dir(skill_dir);
 
-    // Set environment variables
     cmd.env("SKILLLITE_SANDBOX", "1")
-        .env("SKILLBOX_SANDBOX", "1"); // legacy compat
+        .env("SKILLBOX_SANDBOX", "1");
     cmd.env("TMPDIR", work_dir);
     if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
         cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
     }
-
     if !config.network_enabled {
         cmd.env("SKILLLITE_NETWORK_DISABLED", "1")
-            .env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
+            .env("SKILLBOX_NETWORK_DISABLED", "1");
     }
 
-    // Create unshared namespaces
-    // This requires root privileges
     unsafe {
         cmd.pre_exec(|| {
             unshare(CloneFlags::CLONE_NEWUTS | CloneFlags::CLONE_NEWPID | CloneFlags::CLONE_NEWNET)
@@ -950,31 +725,14 @@ fn execute_with_namespaces(
         });
     }
 
-    // Spawn the process
-    let mut child = cmd
-        .spawn()
-        .with_context(|| "Failed to spawn skill process")?;
-
-    // Write input to stdin
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin
-            .write_all(input_json.as_bytes())
-            .with_context(|| "Failed to write to stdin")?;
-    }
-
-    // Wait with timeout and memory monitoring
-    let (stdout, stderr, exit_code, _, _) = wait_with_timeout(
-        &mut child,
-        limits.timeout_secs,
-        limits.max_memory_bytes(),
+    let (result, _, _) = spawn_write_and_wait(
+        &mut cmd,
+        input_json,
+        &limits,
         true,
+        "Failed to spawn skill process",
     )?;
-
-    Ok(ExecutionResult {
-        stdout,
-        stderr,
-        exit_code,
-    })
+    Ok(result)
 }
 /// Set up mount namespace with read-only binds
 #[allow(dead_code)]
@@ -1046,26 +804,6 @@ fn setup_mount_namespace(root_path: &Path, skill_dir: &Path, env_dir: &Path) -> 
     )?;
 
     Ok(())
-}
-
-fn resolve_command_path(cmd: &Path) -> PathBuf {
-    if cmd.is_absolute() {
-        cmd.to_path_buf()
-    } else {
-        resolve_which(cmd).unwrap_or_else(|| cmd.to_path_buf())
-    }
-}
-
-fn resolve_which(cmd: &Path) -> Option<PathBuf> {
-    Command::new("which").arg(cmd).output().ok().and_then(|o| {
-        if o.status.success() {
-            let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if !path.is_empty() {
-                return Some(PathBuf::from(path));
-            }
-        }
-        None
-    })
 }
 
 fn collect_additional_runtime_roots(interpreter: &Path, env_path: &Path) -> Vec<PathBuf> {

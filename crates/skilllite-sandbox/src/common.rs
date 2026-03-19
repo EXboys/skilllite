@@ -3,11 +3,16 @@
 //! This module provides shared functionality used by both macOS and Linux
 //! sandbox implementations, including process monitoring and resource limits.
 
-use anyhow::Result;
-use std::io::Read;
-use std::process::Child;
+use anyhow::{Context, Result};
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
+
+use crate::network_proxy::{ProxyConfig, ProxyManager};
+use crate::runner::{ExecutionResult, ResourceLimits};
+use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 
 // ============================================================
 // Environment Variable Compatibility Layer
@@ -344,6 +349,215 @@ fn get_children_peak_rss_bytes() -> Option<u64> {
 #[cfg(not(unix))]
 fn get_children_peak_rss_bytes() -> Option<u64> {
     None
+}
+
+// ============================================================
+// Command Resolution (Unix)
+// ============================================================
+
+/// Resolve a bare command name (e.g. "python3", "node") to its absolute path via PATH lookup.
+#[cfg(unix)]
+pub fn resolve_which(cmd: &Path) -> Option<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let which_cmd = "/usr/bin/which";
+    #[cfg(not(target_os = "macos"))]
+    let which_cmd = "which";
+
+    Command::new(which_cmd)
+        .arg(cmd)
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                let path = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !path.is_empty() {
+                    return Some(PathBuf::from(path));
+                }
+            }
+            None
+        })
+}
+
+/// Resolve a command path: returns as-is if absolute, otherwise looks up via PATH.
+#[cfg(unix)]
+pub fn resolve_command_path(cmd: &Path) -> PathBuf {
+    if cmd.is_absolute() {
+        cmd.to_path_buf()
+    } else {
+        resolve_which(cmd).unwrap_or_else(|| cmd.to_path_buf())
+    }
+}
+
+// ============================================================
+// Resource Limits — pre_exec helpers (Unix)
+// ============================================================
+
+/// Apply POSIX resource limits (RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC).
+///
+/// # Safety
+/// Must be called inside a `pre_exec` closure (after fork, before exec).
+#[cfg(unix)]
+pub unsafe fn apply_rlimits(
+    memory_limit_mb: u64,
+    cpu_limit_secs: u64,
+    file_size_limit_mb: u64,
+    max_processes: u64,
+) {
+    use nix::libc::{rlimit, setrlimit, RLIMIT_AS, RLIMIT_CPU, RLIMIT_FSIZE, RLIMIT_NPROC};
+
+    let memory_limit_bytes = memory_limit_mb * 1024 * 1024;
+    let mem = rlimit {
+        rlim_cur: memory_limit_bytes,
+        rlim_max: memory_limit_bytes,
+    };
+    setrlimit(RLIMIT_AS, &mem);
+
+    let cpu = rlimit {
+        rlim_cur: cpu_limit_secs,
+        rlim_max: cpu_limit_secs,
+    };
+    setrlimit(RLIMIT_CPU, &cpu);
+
+    let file = rlimit {
+        rlim_cur: file_size_limit_mb * 1024 * 1024,
+        rlim_max: file_size_limit_mb * 1024 * 1024,
+    };
+    setrlimit(RLIMIT_FSIZE, &file);
+
+    let nproc = rlimit {
+        rlim_cur: max_processes,
+        rlim_max: max_processes,
+    };
+    setrlimit(RLIMIT_NPROC, &nproc);
+}
+
+/// Register a `pre_exec` hook that applies the standard resource limits.
+///
+/// # Safety
+/// `pre_exec` closures run after fork in the child process.
+#[cfg(unix)]
+pub unsafe fn set_rlimits_pre_exec(cmd: &mut Command, limits: &ResourceLimits) {
+    use std::os::unix::process::CommandExt;
+
+    let memory_limit_mb = limits.max_memory_mb;
+    let cpu_limit_secs = limits.timeout_secs;
+    let file_size_limit_mb = DEFAULT_FILE_SIZE_LIMIT_MB;
+    let max_processes = DEFAULT_MAX_PROCESSES;
+
+    cmd.pre_exec(move || {
+        apply_rlimits(
+            memory_limit_mb,
+            cpu_limit_secs,
+            file_size_limit_mb,
+            max_processes,
+        );
+        Ok(())
+    });
+}
+
+// ============================================================
+// Network Proxy Setup
+// ============================================================
+
+/// Create and start a network proxy if the resolved policy requires domain filtering.
+/// Returns `None` if no proxy is needed or if proxy creation/start fails.
+pub fn start_network_proxy(network_policy: &ResolvedNetworkPolicy) -> Option<ProxyManager> {
+    if security_policy::should_use_proxy(network_policy) {
+        let domains = match network_policy {
+            ResolvedNetworkPolicy::ProxyFiltered { domains } => domains.clone(),
+            _ => vec![],
+        };
+        let proxy_config = ProxyConfig::with_allowed_domains(domains);
+        match ProxyManager::new(proxy_config) {
+            Ok(mut manager) => {
+                if let Err(e) = manager.start() {
+                    tracing::warn!("Failed to start network proxy: {}", e);
+                    None
+                } else {
+                    crate::info_log!(
+                        "[INFO] Network proxy started - HTTP: {:?}, SOCKS5: {:?}",
+                        manager.http_port(),
+                        manager.socks5_port()
+                    );
+                    Some(manager)
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create network proxy: {}", e);
+                None
+            }
+        }
+    } else if security_policy::is_allow_all_network(network_policy) {
+        crate::info_log!("[INFO] Network access allowed for all domains (wildcard '*' configured)");
+        None
+    } else {
+        None
+    }
+}
+
+// ============================================================
+// Spawn + stdin + wait helpers
+// ============================================================
+
+/// Spawn a child, pipe `input_json` to its stdin, and wait with timeout/memory monitoring.
+///
+/// The command must have `stdin(Stdio::piped())`, `stdout(Stdio::piped())`,
+/// `stderr(Stdio::piped())` already set.
+///
+/// Returns `(ExecutionResult, was_killed, kill_reason)`.
+pub fn spawn_write_and_wait(
+    cmd: &mut Command,
+    input_json: &str,
+    limits: &ResourceLimits,
+    stream_stderr: bool,
+    spawn_context: &str,
+) -> Result<(ExecutionResult, bool, Option<String>)> {
+    let mut child = cmd.spawn().with_context(|| spawn_context.to_string())?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(input_json.as_bytes())
+            .with_context(|| "Failed to write to stdin")?;
+    }
+
+    let (stdout, stderr, exit_code, was_killed, kill_reason) = wait_with_timeout(
+        &mut child,
+        limits.timeout_secs,
+        limits.max_memory_bytes(),
+        stream_stderr,
+    )?;
+
+    Ok((
+        ExecutionResult {
+            stdout,
+            stderr,
+            exit_code,
+        },
+        was_killed,
+        kill_reason,
+    ))
+}
+
+/// Prepare stdin/stdout/stderr piping on a `Command`.
+pub fn pipe_stdio(cmd: &mut Command) {
+    cmd.stdin(Stdio::piped());
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+}
+
+// ============================================================
+// Script Arguments Helper
+// ============================================================
+
+/// Read script arguments from environment config (SKILLLITE_SCRIPT_ARGS / SKILLBOX_SCRIPT_ARGS).
+pub fn get_script_args_from_env() -> Vec<String> {
+    if let Some(ref script_args) = skilllite_core::config::SandboxEnvConfig::from_env().script_args
+    {
+        if !script_args.is_empty() {
+            return script_args.split_whitespace().map(String::from).collect();
+        }
+    }
+    Vec::new()
 }
 
 #[cfg(test)]
