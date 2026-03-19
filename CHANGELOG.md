@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Workspace version management**: All crate versions now inherit from `[workspace.package]` in root `Cargo.toml`. Bumping a release only requires changing one line.
+- **CI: fix Windows PyPI wheel build**: Replaced inline `python -c` version injection with a standalone script (`scripts/set_pyproject_version.py`) to avoid PowerShell parsing errors on Windows runners.
 - Release pipeline injects the Git tag (e.g. `v0.1.15`) into the package version, so PyPI version matches the GitHub release.
 - Pre-upload check: CI verifies exactly 4 wheels + 1 sdist before publishing; job fails if any artifact is missing.
 - GitHub Release is created only when the build job succeeds.
