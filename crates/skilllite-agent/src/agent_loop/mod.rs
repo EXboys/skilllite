@@ -203,20 +203,19 @@ async fn run_simple_loop(
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("No choices in LLM response"))?;
-        let assistant_content = choice.message.content.clone();
-        let tool_calls = choice.message.tool_calls.clone();
+        let assistant_content = choice.message.content;
+        let tool_calls = choice.message.tool_calls;
+        let has_tool_calls = tool_calls.as_ref().is_some_and(|tc| !tc.is_empty());
 
-        // Add assistant message to history
-        if let Some(ref tcs) = tool_calls {
+        // Add assistant message to history (move tool_calls into message, avoid clone)
+        if let Some(tcs) = tool_calls {
             messages.push(ChatMessage::assistant_with_tool_calls(
                 assistant_content.as_deref(),
-                tcs.clone(),
+                tcs,
             ));
         } else if let Some(ref content) = assistant_content {
             messages.push(ChatMessage::assistant(content));
         }
-
-        let has_tool_calls = tool_calls.as_ref().is_some_and(|tc| !tc.is_empty());
 
         // ── Reflection phase (no tool calls) ─────────────────────────────
         if !has_tool_calls {
@@ -240,9 +239,9 @@ async fn run_simple_loop(
 
         // ── Execution phase (tool calls present) ──────────────────────────
         no_tool_retries = 0;
-        let tool_calls = match tool_calls {
-            Some(tc) => tc,
-            None => continue,
+        let tool_calls = match messages.last().and_then(|m| m.tool_calls.clone()) {
+            Some(tc) if !tc.is_empty() => tc,
+            _ => continue,
         };
 
         let outcome = execute_tool_batch_simple(
@@ -452,25 +451,23 @@ async fn run_with_task_planning(
             .into_iter()
             .next()
             .ok_or_else(|| anyhow::anyhow!("No choices in LLM response"))?;
-        let assistant_content = choice.message.content.clone();
-        let tool_calls = choice.message.tool_calls.clone();
+        let mut assistant_content = choice.message.content;
+        let tool_calls = choice.message.tool_calls;
         let has_tool_calls = tool_calls.as_ref().is_some_and(|tc| !tc.is_empty());
         let suppressed_planning_text =
             should_suppress_planning_assistant_text(&planner, has_tool_calls)
                 && assistant_content
                     .as_ref()
                     .is_some_and(|content| !content.trim().is_empty());
-        let assistant_content = if suppressed_planning_text {
+        if suppressed_planning_text {
             tracing::info!("Suppressed free-form assistant text during pending task execution");
-            None
-        } else {
-            assistant_content
-        };
+            assistant_content = None;
+        }
 
-        if let Some(ref tcs) = tool_calls {
+        if let Some(tcs) = tool_calls {
             messages.push(ChatMessage::assistant_with_tool_calls(
                 assistant_content.as_deref(),
-                tcs.clone(),
+                tcs,
             ));
         } else if let Some(ref content) = assistant_content {
             messages.push(ChatMessage::assistant(content));
@@ -505,9 +502,9 @@ async fn run_with_task_planning(
 
         // ── Execution phase (tool calls present) ──────────────────────────────
         consecutive_no_tool = 0;
-        let tool_calls = match tool_calls {
-            Some(tc) => tc,
-            None => continue,
+        let tool_calls = match messages.last().and_then(|m| m.tool_calls.clone()) {
+            Some(tc) if !tc.is_empty() => tc,
+            _ => continue,
         };
 
         let outcome = execute_tool_batch_planning(
@@ -598,18 +595,13 @@ async fn run_with_task_planning(
         // Task focus: inject progress update with already-called tools
         let tools_called: Vec<String> = {
             let mut seen = HashSet::new();
-            state
-                .tools_detail
-                .iter()
-                .filter(|d| d.success)
-                .filter_map(|d| {
-                    if seen.insert(d.tool.clone()) {
-                        Some(d.tool.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect()
+            let mut result = Vec::new();
+            for d in state.tools_detail.iter().filter(|d| d.success) {
+                if seen.insert(d.tool.as_str()) {
+                    result.push(d.tool.clone());
+                }
+            }
+            result
         };
         if let Some(focus_msg) = build_task_focus_message(&planner, &tools_called) {
             messages.push(ChatMessage::system(&focus_msg));

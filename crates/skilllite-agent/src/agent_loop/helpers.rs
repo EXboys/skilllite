@@ -99,14 +99,15 @@ pub(super) fn handle_update_task_plan(
         t.id = next_id + i as u32;
         t.completed = false;
     }
+    let new_count = new_tasks.len();
     let mut merged = completed_tasks;
-    merged.extend(new_tasks.clone());
+    merged.extend(new_tasks);
     planner.task_list = merged;
     event_sink.on_task_plan(&planner.task_list);
     let reason = args.get("reason").and_then(|v| v.as_str()).unwrap_or("");
     let mut content = format!(
         "Task plan updated ({} tasks). Continue with the new plan.",
-        new_tasks.len()
+        new_count
     );
     if !reason.is_empty() {
         content.push_str(&format!("\nReason: {}", reason));
