@@ -68,6 +68,7 @@ skillLite/
 │   └── src/
 │       ├── main.rs                # 入口
 │       ├── lib.rs
+│       ├── error.rs               # skilllite::Error（thiserror；依赖层 anyhow 经 Other 收敛）
 │       ├── cli.rs                 # 命令行参数
 │       ├── protocol.rs            # 协议定义
 │       ├── command_registry.rs    # 命令注册与分发

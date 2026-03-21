@@ -70,6 +70,7 @@ skillLite/
 │   └── src/
 │       ├── main.rs                # Entry point
 │       ├── lib.rs
+│       ├── error.rs               # skilllite::Error (thiserror; anyhow from deps via Other)
 │       ├── cli.rs                 # CLI args
 │       ├── protocol.rs            # Protocol definitions
 │       ├── command_registry.rs    # Command registration & dispatch

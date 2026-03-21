@@ -2,12 +2,12 @@
 
 use std::io::Read;
 
-use anyhow::Context;
 use skilllite_core::path_validation::validate_skill_path;
 use skilllite_core::skill::metadata::parse_skill_metadata;
 
 use crate::cli::Commands;
 use crate::command_registry::CommandRegistry;
+use crate::Error;
 
 pub fn register(reg: &mut CommandRegistry) {
     reg.register(|cmd| {
@@ -28,7 +28,9 @@ pub fn register(reg: &mut CommandRegistry) {
             resume,
         } = cmd
         {
-            let run = || {
+            #[cfg(not(feature = "agent"))]
+            let _ = (soul, workspace, skill_dirs, max_iterations, max_failures);
+            let run = || -> crate::Result<()> {
                 if *resume || goal.is_some() {
                     #[cfg(feature = "agent")]
                     {
@@ -48,13 +50,18 @@ pub fn register(reg: &mut CommandRegistry) {
                             Some(n) => Some(n),
                             None => Some(5),
                         };
-                        skilllite_agent::chat::run_agent_run(config, g.to_string(), *resume)
+                        skilllite_agent::chat::run_agent_run(
+                            config,
+                            g.to_string(),
+                            *resume,
+                        )
+                        .map_err(Into::into)
                     }
                     #[cfg(not(feature = "agent"))]
                     {
-                        anyhow::bail!(
-                            "Agent run mode requires the agent feature. Build with: cargo build --features agent"
-                        )
+                        return Err(Error::msg(
+                            "Agent run mode requires the agent feature. Build with: cargo build --features agent",
+                        ));
                     }
                 } else if let (Some(sd), Some(ij)) = (skill_dir, input_json) {
                     let input_json = if ij == "-" {
@@ -74,8 +81,9 @@ pub fn register(reg: &mut CommandRegistry) {
                             if config.api_key.is_empty() {
                                 None
                             } else {
-                                let rt = tokio::runtime::Runtime::new()
-                                    .context("tokio runtime for entry inference")?;
+                                let rt = tokio::runtime::Runtime::new().map_err(|e| {
+                                    Error::with_context("tokio runtime for entry inference", e)
+                                })?;
                                 let llm = skilllite_agent::llm::LlmClient::new(
                                     &config.api_base,
                                     &config.api_key,
@@ -115,9 +123,9 @@ pub fn register(reg: &mut CommandRegistry) {
                     println!("{}", result);
                     Ok(())
                 } else {
-                    anyhow::bail!(
-                        "Use either: skilllite run <SKILL_DIR> '<INPUT_JSON>'  OR  skilllite run --goal \"...\" [--soul SOUL.md]  OR  skilllite run --resume"
-                    )
+                    Err(Error::msg(
+                        "Use either: skilllite run <SKILL_DIR> '<INPUT_JSON>'  OR  skilllite run --goal \"...\" [--soul SOUL.md]  OR  skilllite run --resume",
+                    ))
                 }
             };
             Some(run())
@@ -139,7 +147,7 @@ pub fn register(reg: &mut CommandRegistry) {
             sandbox_level,
         } = cmd
         {
-            let run = || {
+            let run = || -> crate::Result<()> {
                 let input_json = if input_json == "-" {
                     let mut s = String::new();
                     std::io::stdin().read_to_string(&mut s)?;
@@ -179,7 +187,7 @@ pub fn register(reg: &mut CommandRegistry) {
             cwd,
         } = cmd
         {
-            let r = (|| {
+            let r = (|| -> crate::Result<()> {
                 let result = skilllite_commands::execute::bash_command(
                     skill_dir,
                     command,
@@ -188,7 +196,7 @@ pub fn register(reg: &mut CommandRegistry) {
                     cwd.as_ref(),
                 )?;
                 println!("{}", result);
-                Ok::<(), anyhow::Error>(())
+                Ok(())
             })();
             Some(r)
         } else {
@@ -202,10 +210,10 @@ pub fn register(reg: &mut CommandRegistry) {
             preview_lines,
         } = cmd
         {
-            let r = (|| {
+            let r = (|| -> crate::Result<()> {
                 let result = skilllite_commands::scan::scan_skill(skill_dir, *preview_lines)?;
                 println!("{}", result);
-                Ok::<(), anyhow::Error>(())
+                Ok(())
             })();
             Some(r)
         } else {
@@ -215,10 +223,10 @@ pub fn register(reg: &mut CommandRegistry) {
 
     reg.register(|cmd| {
         if let Commands::Validate { skill_dir } = cmd {
-            let r = (|| {
+            let r = (|| -> crate::Result<()> {
                 skilllite_commands::execute::validate_skill(skill_dir)?;
                 println!("Skill validation passed!");
-                Ok::<(), anyhow::Error>(())
+                Ok(())
             })();
             Some(r)
         } else {
@@ -228,7 +236,7 @@ pub fn register(reg: &mut CommandRegistry) {
 
     reg.register(|cmd| {
         if let Commands::Info { skill_dir } = cmd {
-            Some(skilllite_commands::execute::show_skill_info(skill_dir))
+            Some(skilllite_commands::execute::show_skill_info(skill_dir).map_err(Into::into))
         } else {
             None
         }
@@ -243,13 +251,16 @@ pub fn register(reg: &mut CommandRegistry) {
             json,
         } = cmd
         {
-            Some(skilllite_commands::security::security_scan_script(
-                script_path,
-                *allow_network,
-                *allow_file_ops,
-                *allow_process_exec,
-                *json,
-            ))
+            Some(
+                skilllite_commands::security::security_scan_script(
+                    script_path,
+                    *allow_network,
+                    *allow_file_ops,
+                    *allow_process_exec,
+                    *json,
+                )
+                .map_err(Into::into),
+            )
         } else {
             None
         }

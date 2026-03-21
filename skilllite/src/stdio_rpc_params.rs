@@ -3,18 +3,20 @@
 //! Each struct implements `TryFrom<&Value>` for parsing `params` from JSON-RPC requests,
 //! centralizing validation and reducing boilerplate in handlers.
 
-use anyhow::{Context, Result};
+use crate::Error;
+use crate::Result;
 use serde_json::Value;
 
 fn obj(v: &Value) -> Result<&serde_json::Map<String, Value>> {
-    v.as_object().context("params must be object")
+    v.as_object()
+        .ok_or_else(|| Error::msg("params must be object"))
 }
 
 fn req_str(p: &serde_json::Map<String, Value>, key: &str) -> Result<String> {
     p.get(key)
         .and_then(|v| v.as_str())
         .map(String::from)
-        .context(format!("{key} required"))
+        .ok_or_else(|| Error::msg(format!("{key} required")))
 }
 
 fn opt_str(p: &serde_json::Map<String, Value>, key: &str) -> Option<String> {
@@ -29,6 +31,7 @@ fn opt_u64(p: &serde_json::Map<String, Value>, key: &str) -> Option<u64> {
     p.get(key).and_then(|v| v.as_u64())
 }
 
+#[cfg(feature = "agent")]
 fn opt_array_strings(p: &serde_json::Map<String, Value>, key: &str) -> Option<Vec<String>> {
     p.get(key).and_then(|v| v.as_array()).map(|arr| {
         arr.iter()
@@ -50,7 +53,7 @@ pub struct IpcRunParams {
 }
 
 impl TryFrom<&Value> for IpcRunParams {
-    type Error = anyhow::Error;
+    type Error = crate::Error;
 
     fn try_from(v: &Value) -> Result<Self> {
         let p = obj(v)?;
@@ -81,7 +84,7 @@ pub struct IpcExecParams {
 }
 
 impl TryFrom<&Value> for IpcExecParams {
-    type Error = anyhow::Error;
+    type Error = crate::Error;
 
     fn try_from(v: &Value) -> Result<Self> {
         let p = obj(v)?;
@@ -110,7 +113,7 @@ pub struct IpcBashParams {
 }
 
 impl TryFrom<&Value> for IpcBashParams {
-    type Error = anyhow::Error;
+    type Error = crate::Error;
 
     fn try_from(v: &Value) -> Result<Self> {
         let p = obj(v)?;
@@ -135,7 +138,7 @@ pub struct IpcBuildSkillsContextParams {
 
 #[cfg(feature = "agent")]
 impl TryFrom<&Value> for IpcBuildSkillsContextParams {
-    type Error = anyhow::Error;
+    type Error = crate::Error;
 
     fn try_from(v: &Value) -> Result<Self> {
         let p = obj(v)?;
@@ -158,7 +161,7 @@ pub struct IpcListToolsParams {
 
 #[cfg(feature = "agent")]
 impl TryFrom<&Value> for IpcListToolsParams {
-    type Error = anyhow::Error;
+    type Error = crate::Error;
 
     fn try_from(v: &Value) -> Result<Self> {
         let p = obj(v)?;

@@ -21,10 +21,10 @@
 //! 3. Add a `Commands` variant in `cli.rs`.
 //! 4. Add a match arm in `lib.rs`: `Commands::X { .. } => XHandler.serve(params)?`.
 
-use anyhow::Result;
-
 use crate::mcp;
 use crate::stdio_rpc;
+use crate::Error;
+use crate::Result;
 
 // ─── Protocol Parameters ─────────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ impl ProtocolHandler for StdioRpcHandler {
     fn serve(&self, params: ProtocolParams) -> Result<()> {
         match params {
             ProtocolParams::Stdio => stdio_rpc::serve_stdio(),
-            _ => anyhow::bail!("StdioRpcHandler requires ProtocolParams::Stdio"),
+            _ => Err(Error::msg("StdioRpcHandler requires ProtocolParams::Stdio")),
         }
     }
 }
@@ -109,7 +109,7 @@ impl ProtocolHandler for McpHandler {
     fn serve(&self, params: ProtocolParams) -> Result<()> {
         match params {
             ProtocolParams::Mcp { skills_dir } => mcp::serve_mcp_stdio(&skills_dir),
-            _ => anyhow::bail!("McpHandler requires ProtocolParams::Mcp"),
+            _ => Err(Error::msg("McpHandler requires ProtocolParams::Mcp")),
         }
     }
 }
@@ -130,8 +130,10 @@ impl ProtocolHandler for AgentRpcHandler {
 
     fn serve(&self, params: ProtocolParams) -> Result<()> {
         match params {
-            ProtocolParams::AgentRpc => skilllite_agent::rpc::serve_agent_rpc(),
-            _ => anyhow::bail!("AgentRpcHandler requires ProtocolParams::AgentRpc"),
+            ProtocolParams::AgentRpc => skilllite_agent::rpc::serve_agent_rpc().map_err(Into::into),
+            _ => Err(Error::msg(
+                "AgentRpcHandler requires ProtocolParams::AgentRpc",
+            )),
         }
     }
 }
@@ -157,7 +159,7 @@ impl ProtocolHandler for SwarmHandler {
                 executor,
             } = params
             else {
-                anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
+                return Err(Error::msg("SwarmHandler requires ProtocolParams::P2p"));
             };
             skilllite_swarm::serve_swarm(
                 &listen_addr,
@@ -165,6 +167,7 @@ impl ProtocolHandler for SwarmHandler {
                 skills_dir.as_deref(),
                 executor,
             )
+            .map_err(Into::into)
         }
         #[cfg(not(feature = "swarm"))]
         {
@@ -174,7 +177,7 @@ impl ProtocolHandler for SwarmHandler {
                 ..
             } = params
             else {
-                anyhow::bail!("SwarmHandler requires ProtocolParams::P2p");
+                return Err(Error::msg("SwarmHandler requires ProtocolParams::P2p"));
             };
             tracing::info!(
                 listen = %listen_addr,

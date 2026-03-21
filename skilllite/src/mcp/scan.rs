@@ -1,7 +1,9 @@
 //! Security scanning, code execution, and sandbox logic for the MCP server.
 
-use anyhow::{Context, Result};
 use serde_json::{json, Value};
+
+use crate::Error;
+use crate::Result;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -18,11 +20,11 @@ pub(super) fn handle_scan_code(server: &mut McpServer, arguments: &Value) -> Res
     let language = arguments
         .get("language")
         .and_then(|v| v.as_str())
-        .context("language is required")?;
+        .ok_or_else(|| Error::msg("language is required"))?;
     let code = arguments
         .get("code")
         .and_then(|v| v.as_str())
-        .context("code is required")?;
+        .ok_or_else(|| Error::msg("code is required"))?;
 
     let (scan_result, scan_id, code_hash) = perform_scan(server, language, code)?;
 
@@ -103,7 +105,7 @@ fn do_scan(language: &str, code: &str) -> Result<ScanResult> {
     std::fs::write(&temp_path, code)?;
 
     let scanner = ScriptScanner::new();
-    scanner.scan_file(&temp_path)
+    scanner.scan_file(&temp_path).map_err(Into::into)
 }
 
 /// Format a scan result as a human-readable response.
@@ -186,11 +188,11 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
     let language = arguments
         .get("language")
         .and_then(|v| v.as_str())
-        .context("language is required")?;
+        .ok_or_else(|| Error::msg("language is required"))?;
     let code = arguments
         .get("code")
         .and_then(|v| v.as_str())
-        .context("code is required")?;
+        .ok_or_else(|| Error::msg("code is required"))?;
     let confirmed = arguments
         .get("confirmed")
         .and_then(|v| v.as_bool())
@@ -207,15 +209,19 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
     if sandbox_level == SandboxLevel::Level3 {
         if confirmed {
             // Verify scan_id
-            let sid = scan_id.context(
-                "scan_id is required when confirmed=true. Call scan_code first to get a scan_id.",
-            )?;
+            let sid = scan_id.ok_or_else(|| {
+                Error::msg(
+                    "scan_id is required when confirmed=true. Call scan_code first to get a scan_id.",
+                )
+            })?;
 
             // Extract needed data within a scoped borrow, then consume on success
             let (cached_code_hash, issues_count, has_critical) = {
-                let cached = server.scan_cache.get(sid).context(
-                    "Invalid or expired scan_id. The scan may have expired (TTL: 300s). Please call scan_code again."
-                )?;
+                let cached = server.scan_cache.get(sid).ok_or_else(|| {
+                    Error::msg(
+                        "Invalid or expired scan_id. The scan may have expired (TTL: 300s). Please call scan_code again.",
+                    )
+                })?;
                 (
                     cached.code_hash.clone(),
                     cached.scan_result.issues.len(),
@@ -230,9 +236,9 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
             // Verify code_hash matches
             let current_hash = McpServer::generate_code_hash(language, code);
             if cached_code_hash != current_hash {
-                anyhow::bail!(
-                    "Code has changed since the scan. Please call scan_code again with the new code."
-                );
+                return Err(Error::msg(
+                    "Code has changed since the scan. Please call scan_code again with the new code.",
+                ));
             }
 
             // Check for critical issues — cannot override
@@ -242,9 +248,9 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
                     sid,
                     issues_count,
                 );
-                anyhow::bail!(
-                    "Execution blocked: Critical security issues cannot be overridden even with confirmation."
-                );
+                return Err(Error::msg(
+                    "Execution blocked: Critical security issues cannot be overridden even with confirmation.",
+                ));
             }
 
             // One-time consumption: remove scan_id to prevent replay (F4)
@@ -294,7 +300,7 @@ pub(super) fn execute_code_in_sandbox(
         "python" => ".py",
         "javascript" | "node" => ".js",
         "bash" | "shell" => ".sh",
-        _ => anyhow::bail!("Unsupported language: {}", language),
+        _ => return Err(Error::msg(format!("Unsupported language: {}", language))),
     };
 
     // Create a temporary skill-like directory

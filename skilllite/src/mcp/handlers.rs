@@ -1,8 +1,10 @@
 //! MCP request handlers: initialize, list_skills, get_skill_info, run_skill.
 
-use anyhow::{Context, Result};
 use serde_json::{json, Value};
 use std::path::Path;
+
+use crate::Error;
+use crate::Result;
 
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::metadata;
@@ -39,8 +41,12 @@ pub(super) fn handle_list_skills(server: &McpServer) -> Result<String> {
     let mut skills = Vec::new();
 
     // Scan subdirectories for skills
-    let entries = std::fs::read_dir(skills_dir)
-        .with_context(|| format!("Failed to read skills directory: {}", skills_dir.display()))?;
+    let entries = std::fs::read_dir(skills_dir).map_err(|e| {
+        Error::with_context(
+            format!("Failed to read skills directory: {}", skills_dir.display()),
+            e,
+        )
+    })?;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -85,21 +91,22 @@ pub(super) fn handle_get_skill_info(server: &McpServer, arguments: &Value) -> Re
     let skill_name = arguments
         .get("skill_name")
         .and_then(|v| v.as_str())
-        .context("skill_name is required")?;
+        .ok_or_else(|| Error::msg("skill_name is required"))?;
 
     let skill_dir = server.skills_dir.join(skill_name);
     let skill_md_path = skill_dir.join("SKILL.md");
 
     if !skill_md_path.exists() {
-        anyhow::bail!(
+        return Err(Error::msg(format!(
             "Skill '{}' not found in {}",
             skill_name,
             server.skills_dir.display()
-        );
+        )));
     }
 
-    let skill_content = std::fs::read_to_string(&skill_md_path)
-        .with_context(|| format!("Failed to read SKILL.md for '{}'", skill_name))?;
+    let skill_content = std::fs::read_to_string(&skill_md_path).map_err(|e| {
+        Error::with_context(format!("Failed to read SKILL.md for '{}'", skill_name), e)
+    })?;
 
     // Also parse metadata for structured info
     let meta = metadata::parse_skill_metadata(&skill_dir)?;
@@ -239,7 +246,7 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
     let skill_name = arguments
         .get("skill_name")
         .and_then(|v| v.as_str())
-        .context("skill_name is required")?;
+        .ok_or_else(|| Error::msg("skill_name is required"))?;
     let input = arguments.get("input").cloned().unwrap_or(json!({}));
     let confirmed = arguments
         .get("confirmed")
@@ -250,39 +257,39 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
     // Find the skill
     let skill_dir = server.skills_dir.join(skill_name);
     if !skill_dir.exists() || !skill_dir.join("SKILL.md").exists() {
-        anyhow::bail!(
+        return Err(Error::msg(format!(
             "Skill '{}' not found in {}",
             skill_name,
             server.skills_dir.display()
-        );
+        )));
     }
     let integrity = manifest::evaluate_skill_status(&server.skills_dir, &skill_dir)?;
     match integrity.status {
         SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => {}
         SkillIntegrityStatus::HashChanged => {
-            anyhow::bail!(
-                "Execution blocked: Skill fingerprint changed since installation. Please reinstall this skill before running."
-            );
+            return Err(Error::msg(
+                "Execution blocked: Skill fingerprint changed since installation. Please reinstall this skill before running.",
+            ));
         }
         SkillIntegrityStatus::SignatureInvalid => {
-            anyhow::bail!(
-                "Execution blocked: Skill signature is invalid. Please verify source and reinstall."
-            );
+            return Err(Error::msg(
+                "Execution blocked: Skill signature is invalid. Please verify source and reinstall.",
+            ));
         }
     }
     // Trust tier enforcement
     match integrity.trust_decision {
         TrustDecision::Deny => {
-            anyhow::bail!(
-                "Execution blocked: Skill trust tier is Deny. Reinstall from trusted source or verify integrity."
-            );
+            return Err(Error::msg(
+                "Execution blocked: Skill trust tier is Deny. Reinstall from trusted source or verify integrity.",
+            ));
         }
         TrustDecision::RequireConfirm => {
             if !confirmed {
-                anyhow::bail!(
+                return Err(Error::msg(format!(
                     "Execution blocked: Skill requires confirmation (trust tier: {:?}). Pass confirmed=true to run.",
                     integrity.trust_tier
-                );
+                )));
             }
         }
         TrustDecision::Allow => {}
@@ -304,23 +311,27 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         if !already_confirmed {
             if confirmed {
                 // Verify scan_id
-                let sid = scan_id.context(
-                    "scan_id is required when confirmed=true. The skill security scan must be reviewed first."
-                )?;
+                let sid = scan_id.ok_or_else(|| {
+                    Error::msg(
+                        "scan_id is required when confirmed=true. The skill security scan must be reviewed first.",
+                    )
+                })?;
 
                 let issues_count = {
-                    let cached = server.scan_cache.get(sid).context(
-                        "Invalid or expired scan_id. Please review the security report and try again."
-                    )?;
+                    let cached = server.scan_cache.get(sid).ok_or_else(|| {
+                        Error::msg(
+                            "Invalid or expired scan_id. Please review the security report and try again.",
+                        )
+                    })?;
                     let has_critical = cached
                         .scan_result
                         .issues
                         .iter()
                         .any(|i| matches!(i.severity, SecuritySeverity::Critical));
                     if has_critical {
-                        anyhow::bail!(
-                            "Execution blocked: Critical security issues cannot be overridden."
-                        );
+                        return Err(Error::msg(
+                            "Execution blocked: Critical security issues cannot be overridden.",
+                        ));
                     }
                     cached.scan_result.issues.len()
                 };

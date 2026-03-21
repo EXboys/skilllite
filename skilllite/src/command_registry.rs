@@ -5,10 +5,10 @@
 //! 2. 在对应 dispatch 模块中调用 `reg.register(...)` 注册处理逻辑
 //! 3. lib.rs 无需修改
 
-use anyhow::Result;
 use std::sync::Arc;
 
 use crate::cli::Commands;
+use crate::Result;
 
 /// 命令处理器：接收解析后的 Commands，若匹配则返回 Some(result)，否则返回 None
 pub type CommandHandler = Arc<dyn Fn(&Commands) -> Option<Result<()>> + Send + Sync>;

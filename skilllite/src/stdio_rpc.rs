@@ -13,9 +13,12 @@
 //! Request: `{"jsonrpc":"2.0","id":1,"method":"run"|"exec"|...","params":{...}}`
 //! Response: `{"jsonrpc":"2.0","id":1,"result":{...}}` or `{"jsonrpc":"2.0","id":1,"error":{...}}`
 
-use anyhow::Result;
 use serde_json::{json, Value};
+
+use crate::Error;
+use crate::Result;
 use skilllite_commands::execute;
+#[cfg(feature = "agent")]
 use skilllite_core::path_validation;
 use skilllite_sandbox::runner::{ResourceLimits, SandboxLevel};
 
@@ -115,7 +118,7 @@ pub fn serve_stdio() -> Result<()> {
     drop(tx);
     writer_handle
         .join()
-        .map_err(|_| anyhow::anyhow!("Writer thread panicked"))??;
+        .map_err(|_| Error::msg("Writer thread panicked"))??;
 
     Ok(())
 }
@@ -198,6 +201,12 @@ fn skip_until_newline(reader: &mut impl BufRead) {
     }
 }
 
+/// Map executor-layer `anyhow::Result` into this crate's [`Error`].
+#[cfg(feature = "executor")]
+fn map_executor<T>(r: anyhow::Result<T>) -> Result<T> {
+    r.map_err(Into::into)
+}
+
 /// Dispatch JSON-RPC request to the appropriate handler.
 fn dispatch_request(method: &str, params: &Value) -> Result<Value> {
     match method {
@@ -205,34 +214,38 @@ fn dispatch_request(method: &str, params: &Value) -> Result<Value> {
         "exec" => handle_exec(params),
         "bash" => handle_bash(params),
         #[cfg(feature = "executor")]
-        "session_create" => skilllite_executor::rpc::handle_session_create(params),
+        "session_create" => map_executor(skilllite_executor::rpc::handle_session_create(params)),
         #[cfg(feature = "executor")]
-        "session_get" => skilllite_executor::rpc::handle_session_get(params),
+        "session_get" => map_executor(skilllite_executor::rpc::handle_session_get(params)),
         #[cfg(feature = "executor")]
-        "session_update" => skilllite_executor::rpc::handle_session_update(params),
+        "session_update" => map_executor(skilllite_executor::rpc::handle_session_update(params)),
         #[cfg(feature = "executor")]
-        "transcript_append" => skilllite_executor::rpc::handle_transcript_append(params),
+        "transcript_append" => {
+            map_executor(skilllite_executor::rpc::handle_transcript_append(params))
+        }
         #[cfg(feature = "executor")]
-        "transcript_read" => skilllite_executor::rpc::handle_transcript_read(params),
+        "transcript_read" => map_executor(skilllite_executor::rpc::handle_transcript_read(params)),
         #[cfg(feature = "executor")]
-        "transcript_ensure" => skilllite_executor::rpc::handle_transcript_ensure(params),
+        "transcript_ensure" => {
+            map_executor(skilllite_executor::rpc::handle_transcript_ensure(params))
+        }
         #[cfg(feature = "executor")]
-        "memory_write" => skilllite_executor::rpc::handle_memory_write(params),
+        "memory_write" => map_executor(skilllite_executor::rpc::handle_memory_write(params)),
         #[cfg(feature = "executor")]
-        "memory_search" => skilllite_executor::rpc::handle_memory_search(params),
+        "memory_search" => map_executor(skilllite_executor::rpc::handle_memory_search(params)),
         #[cfg(feature = "executor")]
-        "token_count" => skilllite_executor::rpc::handle_token_count(params),
+        "token_count" => map_executor(skilllite_executor::rpc::handle_token_count(params)),
         #[cfg(feature = "executor")]
-        "plan_textify" => skilllite_executor::rpc::handle_plan_textify(params),
+        "plan_textify" => map_executor(skilllite_executor::rpc::handle_plan_textify(params)),
         #[cfg(feature = "executor")]
-        "plan_write" => skilllite_executor::rpc::handle_plan_write(params),
+        "plan_write" => map_executor(skilllite_executor::rpc::handle_plan_write(params)),
         #[cfg(feature = "executor")]
-        "plan_read" => skilllite_executor::rpc::handle_plan_read(params),
+        "plan_read" => map_executor(skilllite_executor::rpc::handle_plan_read(params)),
         #[cfg(feature = "agent")]
         "build_skills_context" => handle_build_skills_context(params),
         #[cfg(feature = "agent")]
         "list_tools" => handle_list_tools(params),
-        _ => anyhow::bail!("Method not found: {}", method),
+        _ => Err(Error::msg(format!("Method not found: {}", method))),
     }
 }
 

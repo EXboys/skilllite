@@ -1,5 +1,7 @@
 //! SkillLite CLI library — shared by skilllite and skilllite-sandbox binaries.
 
+pub mod error;
+
 mod cli;
 mod command_registry;
 mod dispatch;
@@ -10,8 +12,14 @@ mod stdio_rpc_params;
 #[cfg(all(feature = "agent", feature = "swarm"))]
 mod swarm_executor;
 
+pub use error::Error;
+
+/// Library [`Result`](std::result::Result) with [`Error`].
+pub type Result<T> = error::Result<T>;
+
 use clap::Parser;
 use cli::Cli;
+#[cfg(feature = "agent")]
 use std::collections::HashSet;
 
 /// Aggregate capability tags from skills. When agent feature is on, loads skills
@@ -40,7 +48,7 @@ fn aggregate_capability_tags(_skills_dir: Option<&[String]>) -> Vec<String> {
 
 /// Run the CLI — parses args and dispatches to command handlers.
 /// Used by both `skilllite` (full) and `skilllite-sandbox` (minimal) binaries.
-pub fn run_cli() -> anyhow::Result<()> {
+pub fn run_cli() -> Result<()> {
     let cli = Cli::parse();
     #[cfg(feature = "agent")]
     let is_chat = matches!(cli.command, cli::Commands::Chat { .. });

@@ -33,23 +33,25 @@ fn register_ide(reg: &mut CommandRegistry) {
             force,
         } = cmd
         {
-            Some(skilllite_commands::ide::cmd_cursor(
-                project_dir.as_deref(),
-                skills_dir,
-                *global,
-                *force,
-            ))
+            Some(
+                skilllite_commands::ide::cmd_cursor(
+                    project_dir.as_deref(),
+                    skills_dir,
+                    *global,
+                    *force,
+                )
+                .map_err(Into::into),
+            )
         } else if let Commands::InitOpencode {
             project_dir,
             skills_dir,
             force,
         } = cmd
         {
-            Some(skilllite_commands::ide::cmd_opencode(
-                project_dir.as_deref(),
-                skills_dir,
-                *force,
-            ))
+            Some(
+                skilllite_commands::ide::cmd_opencode(project_dir.as_deref(), skills_dir, *force)
+                    .map_err(Into::into),
+            )
         } else {
             None
         }
@@ -59,7 +61,7 @@ fn register_ide(reg: &mut CommandRegistry) {
 fn register_env(reg: &mut CommandRegistry) {
     reg.register(|cmd| {
         if let Commands::CleanEnv { dry_run, force } = cmd {
-            Some(skilllite_commands::env::cmd_clean(*dry_run, *force))
+            Some(skilllite_commands::env::cmd_clean(*dry_run, *force).map_err(Into::into))
         } else {
             None
         }
@@ -74,11 +76,10 @@ fn register_reindex(reg: &mut CommandRegistry) {
             rebuild_manifest,
         } = cmd
         {
-            Some(skilllite_commands::reindex::cmd_reindex(
-                skills_dir,
-                *verbose,
-                *rebuild_manifest,
-            ))
+            Some(
+                skilllite_commands::reindex::cmd_reindex(skills_dir, *verbose, *rebuild_manifest)
+                    .map_err(Into::into),
+            )
         } else {
             None
         }
@@ -89,9 +90,10 @@ fn register_security(reg: &mut CommandRegistry) {
     #[cfg(feature = "audit")]
     reg.register(|cmd| {
         if let Commands::DependencyAudit { skill_dir, json } = cmd {
-            Some(skilllite_commands::security::dependency_audit_skill(
-                skill_dir, *json,
-            ))
+            Some(
+                skilllite_commands::security::dependency_audit_skill(skill_dir, *json)
+                    .map_err(Into::into),
+            )
         } else {
             None
         }
@@ -110,14 +112,17 @@ fn register_init(reg: &mut CommandRegistry) {
             use_llm,
         } = cmd
         {
-            Some(skilllite_commands::init::cmd_init(
-                skills_dir,
-                *skip_deps,
-                *skip_audit,
-                *strict,
-                *force,
-                *use_llm,
-            ))
+            Some(
+                skilllite_commands::init::cmd_init(
+                    skills_dir,
+                    *skip_deps,
+                    *skip_audit,
+                    *strict,
+                    *force,
+                    *use_llm,
+                )
+                .map_err(Into::into),
+            )
         } else {
             None
         }
@@ -133,14 +138,17 @@ fn register_init(reg: &mut CommandRegistry) {
             ..
         } = cmd
         {
-            Some(skilllite_commands::init::cmd_init(
-                skills_dir,
-                *skip_deps,
-                *skip_audit,
-                *strict,
-                *force,
-                false,
-            ))
+            Some(
+                skilllite_commands::init::cmd_init(
+                    skills_dir,
+                    *skip_deps,
+                    *skip_audit,
+                    *strict,
+                    *force,
+                    false,
+                )
+                .map_err(Into::into),
+            )
         } else {
             None
         }
@@ -151,7 +159,7 @@ fn register_init(reg: &mut CommandRegistry) {
 fn register_quickstart(reg: &mut CommandRegistry) {
     reg.register(|cmd| {
         if let Commands::Quickstart { skills_dir } = cmd {
-            Some(skilllite_commands::quickstart::cmd_quickstart(skills_dir))
+            Some(skilllite_commands::quickstart::cmd_quickstart(skills_dir).map_err(Into::into))
         } else {
             None
         }
@@ -202,11 +210,10 @@ fn register_agent(reg: &mut CommandRegistry) {
                 config.enable_task_planning = false;
             }
             config.enable_memory = !*no_memory;
-            Some(skilllite_agent::chat::run_chat(
-                config,
-                session.clone(),
-                message.clone(),
-            ))
+            Some(
+                skilllite_agent::chat::run_chat(config, session.clone(), message.clone())
+                    .map_err(Into::into),
+            )
         } else {
             None
         }
@@ -217,10 +224,10 @@ fn register_agent(reg: &mut CommandRegistry) {
             workspace,
         } = cmd
         {
-            Some(skilllite_agent::chat::run_clear_session(
-                session_key,
-                workspace,
-            ))
+            Some(
+                skilllite_agent::chat::run_clear_session(session_key, workspace)
+                    .map_err(Into::into),
+            )
         } else {
             None
         }
@@ -274,12 +281,15 @@ fn register_agent(reg: &mut CommandRegistry) {
                 Some(n) => Some(n),
                 None => Some(5),
             };
-            Some(skilllite_commands::replay::cmd_replay(
-                config,
-                dataset.clone(),
-                *limit,
-                *json,
-            ))
+            Some(
+                skilllite_commands::replay::cmd_replay(
+                    config,
+                    dataset.clone(),
+                    *limit,
+                    *json,
+                )
+                .map_err(Into::into),
+            )
         } else {
             None
         }
@@ -317,7 +327,7 @@ fn register_agent(reg: &mut CommandRegistry) {
                     *from_source,
                 ),
             };
-            Some(r)
+            Some(r.map_err(Into::into))
         } else {
             None
         }

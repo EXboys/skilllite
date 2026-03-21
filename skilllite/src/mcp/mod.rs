@@ -22,8 +22,10 @@ mod scan;
 mod state;
 mod tools;
 
-use anyhow::Result;
 use serde_json::{json, Value};
+
+use crate::Error;
+use crate::Result;
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::PathBuf;
 
@@ -200,7 +202,7 @@ pub fn serve_mcp_stdio(skills_dir: &str) -> Result<()> {
                     "run_skill" => handle_run_skill(&mut server, &arguments),
                     "scan_code" => handle_scan_code(&mut server, &arguments),
                     "execute_code" => handle_execute_code(&mut server, &arguments),
-                    _ => Err(anyhow::anyhow!("Unknown tool: {}", tool_name)),
+                    _ => Err(Error::msg(format!("Unknown tool: {}", tool_name))),
                 };
 
                 match result {
@@ -250,7 +252,7 @@ pub fn serve_mcp_stdio(skills_dir: &str) -> Result<()> {
 fn send_response(
     stdout: &mut io::Stdout,
     id: Option<Value>,
-    result: Result<Value, Value>,
+    result: std::result::Result<Value, Value>,
 ) -> Result<()> {
     let id = id.unwrap_or(Value::Null);
     let resp = match result {
