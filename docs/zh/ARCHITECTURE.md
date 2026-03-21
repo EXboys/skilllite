@@ -140,7 +140,7 @@ skillLite/
 │   ├── skilllite-commands/        # CLI 命令实现
 │   │   └── src/
 │   │       ├── execute.rs         # run_skill, exec_script, bash_command
-│   │       ├── scan.rs
+│   │       ├── scan.rs            # walkdir 递归 + rayon 并行分析
 │   │       ├── security.rs
 │   │       ├── skill/             # add, remove, list, show, verify
 │   │       ├── ide.rs
@@ -774,7 +774,8 @@ tempfile = "3.10"                                # 临时文件
 sha2 = "..."                                     # SHA 哈希
 tracing = "..."                                  # 结构化日志
 chrono = "..."                                   # 时间处理
-rayon = "..."                                    # 线程池
+rayon = "..."                                    # 线程池 (stdio_rpc, skilllite-commands scan)
+walkdir = "2.5"                                  # 递归目录遍历 (skilllite-commands scan)
 zip = "..."                                      # ZIP 解压
 
 # 可选 (feature-gated)

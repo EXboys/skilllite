@@ -142,7 +142,7 @@ skillLite/
 │   ├── skilllite-commands/        # CLI command implementations
 │   │   └── src/
 │   │       ├── execute.rs         # run_skill, exec_script, bash_command
-│   │       ├── scan.rs
+│   │       ├── scan.rs            # walkdir recursive + rayon parallel analysis
 │   │       ├── security.rs
 │   │       ├── skill/             # add, remove, list, show, verify
 │   │       ├── ide.rs
@@ -776,7 +776,8 @@ tempfile = "3.10"                                # Temporary files
 sha2 = "..."                                     # SHA hashing
 tracing = "..."                                  # Structured logging
 chrono = "..."                                   # Time handling
-rayon = "..."                                    # Thread pool
+rayon = "..."                                    # Thread pool (stdio_rpc, skilllite-commands scan)
+walkdir = "2.5"                                  # Recursive dir walk (skilllite-commands scan)
 zip = "..."                                      # ZIP extraction
 
 # Optional (feature-gated)

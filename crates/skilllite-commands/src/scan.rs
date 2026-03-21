@@ -1,9 +1,11 @@
 //! Skill scan command: scan directory and analyze executable scripts.
 
 use anyhow::Result;
+use rayon::prelude::*;
 use skilllite_core::path_validation::validate_skill_path;
 use skilllite_core::skill;
 use std::fs;
+use walkdir::WalkDir;
 
 /// Scan skill directory and return JSON with all executable scripts.
 pub fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
@@ -52,11 +54,10 @@ pub fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
     result["directories"]["references"] = serde_json::json!(skill_path.join("references").exists());
     result["directories"]["assets"] = serde_json::json!(skill_path.join("assets").exists());
 
-    let mut scripts = Vec::new();
-    scan_scripts_recursive(&skill_path, &skill_path, &mut scripts, preview_lines)?;
+    let mut scripts = scan_scripts_parallel(&skill_path, preview_lines)?;
 
     if let Some(entry_point) = result["skill_metadata"]["entry_point"].as_str() {
-        for script in &mut scripts {
+        for script in scripts.iter_mut() {
             if let Some(path) = script.get("path").and_then(|p| p.as_str()) {
                 if path == entry_point {
                     script["is_entry_point"] = serde_json::json!(true);
@@ -138,47 +139,46 @@ fn build_llm_prompt_hint(result: &serde_json::Value) -> String {
     hints.join("\n")
 }
 
-fn scan_scripts_recursive(
+const SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    "__pycache__",
+    ".git",
+    "venv",
+    ".venv",
+    "assets",
+    "references",
+];
+
+/// Collects script file paths via walkdir, then analyzes them in parallel with rayon.
+fn scan_scripts_parallel(
     base_path: &std::path::Path,
-    current_path: &std::path::Path,
-    scripts: &mut Vec<serde_json::Value>,
     preview_lines: usize,
-) -> Result<()> {
-    let entries = fs::read_dir(current_path)
-        .map_err(|e| anyhow::anyhow!("Failed to read directory: {}", e))?;
-
-    for entry in entries {
-        let entry = entry?;
-        let path = entry.path();
-        let file_name = entry.file_name().to_string_lossy().to_string();
-
-        if file_name.starts_with('.') {
-            continue;
-        }
-
-        if path.is_dir() {
-            let skip_dirs = [
-                "node_modules",
-                "__pycache__",
-                ".git",
-                "venv",
-                ".venv",
-                "assets",
-                "references",
-            ];
-            if skip_dirs.contains(&file_name.as_str()) {
-                continue;
+) -> Result<Vec<serde_json::Value>> {
+    let script_paths: Vec<std::path::PathBuf> = WalkDir::new(base_path)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            if name.starts_with('.') {
+                return false;
             }
-            scan_scripts_recursive(base_path, &path, scripts, preview_lines)?;
-            continue;
-        }
+            if e.file_type().is_dir() && SKIP_DIRS.contains(&name.as_ref()) {
+                return false;
+            }
+            true
+        })
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .map(|e| e.into_path())
+        .collect();
 
-        if let Some(script_info) = analyze_script_file(&path, base_path, preview_lines) {
-            scripts.push(script_info);
-        }
-    }
+    let base_path = base_path.to_path_buf();
+    let scripts: Vec<serde_json::Value> = script_paths
+        .par_iter()
+        .filter_map(|path| analyze_script_file(path, &base_path, preview_lines))
+        .collect();
 
-    Ok(())
+    Ok(scripts)
 }
 
 fn analyze_script_file(
