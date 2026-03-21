@@ -9,6 +9,7 @@ use super::super::types::*;
 // ── Outcome ───────────────────────────────────────────────────────────────────
 
 /// What the caller should do after the reflection phase.
+#[derive(Debug)]
 pub(super) enum ReflectionOutcome {
     /// Keep looping — no nudge needed (simple mode: made progress or empty first-pass).
     Continue,
@@ -149,4 +150,149 @@ pub(super) fn reflect_planning(
     }
 
     ReflectionOutcome::Break
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::task_planner::TaskPlanner;
+    use crate::types::{ChatMessage, SilentEventSink, Task};
+
+    fn planner_with_tasks(tasks: Vec<Task>) -> TaskPlanner {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = tasks;
+        planner
+    }
+
+    #[test]
+    fn test_reflect_simple_first_iteration_with_tools_nudges() {
+        let mut no_tool_retries = 0;
+        let mut messages = vec![
+            ChatMessage::user("Do something"),
+            ChatMessage::assistant("I will do it"),
+        ];
+        let mut sink = SilentEventSink;
+        let content = Some("I will do it".to_string());
+
+        let out = reflect_simple(
+            &content,
+            5,
+            1,
+            &mut no_tool_retries,
+            3,
+            &mut sink,
+            &mut messages,
+        );
+
+        match &out {
+            ReflectionOutcome::Nudge(s) => {
+                assert!(s.contains("call the appropriate tool functions"));
+                assert!(s.contains("Do not describe"));
+            }
+            _ => panic!("expected Nudge, got {:?}", out),
+        }
+        assert_eq!(no_tool_retries, 1);
+        assert_eq!(messages.len(), 1);
+    }
+
+    #[test]
+    fn test_reflect_simple_break_when_has_content() {
+        let mut no_tool_retries = 1;
+        let mut messages = vec![];
+        let mut sink = SilentEventSink;
+        let content = Some("Here is the result".to_string());
+
+        let out = reflect_simple(
+            &content,
+            5,
+            2,
+            &mut no_tool_retries,
+            3,
+            &mut sink,
+            &mut messages,
+        );
+
+        assert!(matches!(out, ReflectionOutcome::Break));
+        assert_eq!(no_tool_retries, 2);
+    }
+
+    #[test]
+    fn test_reflect_simple_break_when_max_retries() {
+        let mut no_tool_retries = 2;
+        let mut messages = vec![];
+        let mut sink = SilentEventSink;
+        let content = None;
+
+        let out = reflect_simple(
+            &content,
+            5,
+            3,
+            &mut no_tool_retries,
+            3,
+            &mut sink,
+            &mut messages,
+        );
+
+        assert!(matches!(out, ReflectionOutcome::Break));
+        assert_eq!(no_tool_retries, 3);
+    }
+
+    #[test]
+    fn test_reflect_planning_all_completed_breaks() {
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Done".to_string(),
+            tool_hint: None,
+            completed: true,
+        }]);
+        let mut consecutive_no_tool = 0;
+        let mut messages = vec![];
+        let mut sink = SilentEventSink;
+        let content = Some("All done!".to_string());
+
+        let out = reflect_planning(
+            &content,
+            false,
+            &mut planner,
+            &mut consecutive_no_tool,
+            3,
+            &mut sink,
+            &mut messages,
+        );
+
+        assert!(matches!(out, ReflectionOutcome::Break));
+    }
+
+    #[test]
+    fn test_reflect_planning_pending_tasks_nudges() {
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Generate a page".to_string(),
+            tool_hint: Some("file_operation".to_string()),
+            completed: false,
+        }]);
+        let mut consecutive_no_tool = 0;
+        let mut messages = vec![ChatMessage::assistant("I'll summarize...")];
+        let mut sink = SilentEventSink;
+        let content = Some("I'll summarize...".to_string());
+
+        let out = reflect_planning(
+            &content,
+            false,
+            &mut planner,
+            &mut consecutive_no_tool,
+            3,
+            &mut sink,
+            &mut messages,
+        );
+
+        match &out {
+            ReflectionOutcome::Nudge(s) => {
+                assert!(s.contains("task") || s.contains("Task") || s.contains("pending"));
+            }
+            ReflectionOutcome::Break => {}
+            _ => panic!("expected Nudge or Break, got {:?}", out),
+        }
+        assert_eq!(messages.len(), 0);
+    }
 }
