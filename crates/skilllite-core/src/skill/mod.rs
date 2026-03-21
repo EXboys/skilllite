@@ -1,3 +1,4 @@
+pub mod denylist;
 pub mod dependency_resolver;
 pub mod deps;
 pub mod discovery;

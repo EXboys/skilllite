@@ -73,6 +73,27 @@ pub mod observability {
 
     /// 审计上下文：谁调用了 Skill（如 session_id、invoker），用于 audit 日志
     pub const SKILLLITE_AUDIT_CONTEXT: &str = "SKILLLITE_AUDIT_CONTEXT";
+
+    /// 逗号分隔的 SKILL 名称列表，与 `skill-denylist.txt` 合并；命中则执行前拒绝（P1 手动禁用）
+    pub const SKILLLITE_SKILL_DENYLIST: &str = "SKILLLITE_SKILL_DENYLIST";
+
+    /// `skilllite audit-report --alert` 或需 webhook 时的告警 URL
+    pub const SKILLLITE_AUDIT_ALERT_WEBHOOK: &str = "SKILLLITE_AUDIT_ALERT_WEBHOOK";
+
+    /// 时间窗内单 Skill 调用次数超过此值则预警（默认 200）
+    pub const SKILLLITE_AUDIT_ALERT_MAX_INVOCATIONS_PER_SKILL: &str =
+        "SKILLLITE_AUDIT_ALERT_MAX_INVOCATIONS_PER_SKILL";
+
+    /// 参与「失败率」判定的最少调用次数（默认 5）
+    pub const SKILLLITE_AUDIT_ALERT_MIN_INVOCATIONS_FOR_FAILURE: &str =
+        "SKILLLITE_AUDIT_ALERT_MIN_INVOCATIONS_FOR_FAILURE";
+
+    /// 失败率不低于此值则预警，0.0–1.0（默认 0.5）
+    pub const SKILLLITE_AUDIT_ALERT_FAILURE_RATIO: &str = "SKILLLITE_AUDIT_ALERT_FAILURE_RATIO";
+
+    /// 时间窗内 edit 事件触及的不重复路径数超过此值则预警（默认 80）
+    pub const SKILLLITE_AUDIT_ALERT_EDIT_UNIQUE_PATHS: &str =
+        "SKILLLITE_AUDIT_ALERT_EDIT_UNIQUE_PATHS";
 }
 
 /// Memory 向量检索

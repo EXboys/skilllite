@@ -429,6 +429,30 @@ pub enum Commands {
         json: bool,
     },
 
+    /// Summarize audit JSONL: per-skill invocations, failure rates, edit path distribution; optional alerts
+    #[command(name = "audit-report")]
+    AuditReport {
+        /// Audit directory (contains audit_YYYY-MM-DD.jsonl) or set SKILLLITE_AUDIT_LOG
+        #[arg(long, value_name = "DIR", env = "SKILLLITE_AUDIT_LOG")]
+        audit_dir: Option<String>,
+
+        /// Time window in hours
+        #[arg(long, default_value_t = 24)]
+        hours: u64,
+
+        /// Print JSON instead of text
+        #[arg(long, default_value = "false")]
+        json: bool,
+
+        /// Evaluate alert rules: stderr + tracing; optional webhook
+        #[arg(long, default_value = "false")]
+        alert: bool,
+
+        /// Webhook URL for alert JSON (or SKILLLITE_AUDIT_ALERT_WEBHOOK)
+        #[arg(long, value_name = "URL", env = "SKILLLITE_AUDIT_ALERT_WEBHOOK")]
+        webhook: Option<String>,
+    },
+
     /// Clean cached virtual environments
     #[command(name = "clean-env")]
     CleanEnv {

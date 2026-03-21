@@ -16,6 +16,7 @@ pub fn register_all(reg: &mut CommandRegistry) {
     register_env(reg);
     register_reindex(reg);
     register_security(reg);
+    register_audit_report(reg);
     register_init(reg);
     #[cfg(feature = "agent")]
     {
@@ -93,6 +94,32 @@ fn register_security(reg: &mut CommandRegistry) {
             Some(
                 skilllite_commands::security::dependency_audit_skill(skill_dir, *json)
                     .map_err(Into::into),
+            )
+        } else {
+            None
+        }
+    });
+}
+
+fn register_audit_report(reg: &mut CommandRegistry) {
+    reg.register(|cmd| {
+        if let Commands::AuditReport {
+            audit_dir,
+            hours,
+            json,
+            alert,
+            webhook,
+        } = cmd
+        {
+            Some(
+                skilllite_commands::audit_report::cmd_audit_report(
+                    audit_dir.as_deref(),
+                    *hours,
+                    *json,
+                    *alert,
+                    webhook.as_deref(),
+                )
+                .map_err(Into::into),
             )
         } else {
             None

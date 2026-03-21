@@ -23,6 +23,7 @@ rayon = "1.10"
 serde = { version = "1", features = ["derive"] }
 walkdir = "2.5"
 serde_json = "1.0"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 tracing = "0.1"
 regex = "1.10"
 dirs = "5.0"

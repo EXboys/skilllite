@@ -224,6 +224,16 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_SUPPLY_CHAIN_BLOCK` | bool | `false` | P0 observable vs P1 block: `1` blocks on HashChanged/SignatureInvalid/TrustDeny; `0` (default) only shows status |
 | `SKILLLITE_LOG_LEVEL` | string | `info` | Rust log level (**recommended**) |
 | `SKILLLITE_LOG_JSON` | bool | `false` | Output JSON logs |
+| `SKILLLITE_SKILL_DENYLIST` | string | - | **P1 manual deny**: comma-separated SKILL `name` values (same as audit `skill_id`), merged with denylist files below; if matched, `run` / `exec` / `bash` / Agent / MCP refuse before execution |
+| `SKILLLITE_AUDIT_ALERT_WEBHOOK` | string | - | With `skilllite audit-report --alert`, POST JSON alerts to this URL (or use `--webhook`) in addition to stderr and tracing |
+| `SKILLLITE_AUDIT_ALERT_MAX_INVOCATIONS_PER_SKILL` | int | `200` | Alert: `skill_invocation` count for one skill exceeds this in the window |
+| `SKILLLITE_AUDIT_ALERT_MIN_INVOCATIONS_FOR_FAILURE` | int | `5` | Alert: minimum invocations before failure-rate rule applies |
+| `SKILLLITE_AUDIT_ALERT_FAILURE_RATIO` | float | `0.5` | Alert: failure rate ≥ this (0–1) with invocations ≥ previous row |
+| `SKILLLITE_AUDIT_ALERT_EDIT_UNIQUE_PATHS` | int | `80` | Alert: distinct paths in `edit_*` events exceed this in the window |
+
+**P1 denylist files** (merged with `SKILLLITE_SKILL_DENYLIST`, one `name` per line, `#` comments): `~/.skilllite/skill-denylist.txt`, `{data_root}/.skilllite/skill-denylist.txt`, and `./.skilllite/skill-denylist.txt` from the current working directory. **Unblock**: remove the name from those files or from the env var (re-read on each execution; no process restart required).
+
+**P1 audit analysis**: `skilllite audit-report [--dir DIR] [--hours N] [--json] [--alert] [--webhook URL]` — aggregates `audit_*.jsonl` for per-skill invocation counts, failure rates, and `edit_*` path distribution; `--alert` emits to stderr and tracing (target `skilllite::audit`), optionally POSTs to the webhook.
 
 **Edit audit (Agent built-in tools)**: `search_replace`, `preview_edit`, and `insert_lines` append JSONL lines with events such as `edit_applied`, `edit_previewed`, `edit_failed`, and `edit_inserted`. Each record includes `edit_id` (UUID), top-level `path`, `workspace`, and on failure `reason` / `tool`; each write is followed by `flush` for streaming consumers.
 

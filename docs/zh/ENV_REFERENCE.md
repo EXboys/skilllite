@@ -224,6 +224,16 @@
 | `SKILLLITE_SUPPLY_CHAIN_BLOCK` | bool | `false` | P0 可观测 vs P1 可阻断：`1` 时 HashChanged/SignatureInvalid/TrustDeny 会阻断执行；`0`（默认）仅展示状态不阻断 |
 | `SKILLLITE_LOG_LEVEL` | string | `info` | Rust 日志级别（**推荐**） |
 | `SKILLLITE_LOG_JSON` | bool | `false` | 是否输出 JSON 格式日志 |
+| `SKILLLITE_SKILL_DENYLIST` | string | - | **P1 手动禁用**：逗号分隔的 SKILL `name`（与审计 `skill_id` 一致），与下方 denylist 文件合并；命中则 `run` / `exec` / `bash` / Agent / MCP 执行前拒绝 |
+| `SKILLLITE_AUDIT_ALERT_WEBHOOK` | string | - | `skilllite audit-report --alert` 命中规则时，除 stderr 与 tracing 外，可 POST JSON 告警到此 URL（也可用命令行 `--webhook`） |
+| `SKILLLITE_AUDIT_ALERT_MAX_INVOCATIONS_PER_SKILL` | int | `200` | 告警：时间窗内单 Skill `skill_invocation` 次数超过此值 |
+| `SKILLLITE_AUDIT_ALERT_MIN_INVOCATIONS_FOR_FAILURE` | int | `5` | 告警：至少多少次调用才参与「失败率」判定 |
+| `SKILLLITE_AUDIT_ALERT_FAILURE_RATIO` | float | `0.5` | 告警：失败率 ≥ 此值（0–1）且调用次数 ≥ 上一项时触发 |
+| `SKILLLITE_AUDIT_ALERT_EDIT_UNIQUE_PATHS` | int | `80` | 告警：时间窗内 `edit_*` 事件触及的不重复路径数超过此值 |
+
+**P1 denylist 文件**（与 `SKILLLITE_SKILL_DENYLIST` 合并，每行一个 `name`，`#` 为注释）：`~/.skilllite/skill-denylist.txt`、`{data_root}/.skilllite/skill-denylist.txt`、当前工作目录下 `.skilllite/skill-denylist.txt`。**解禁**：从上述文件或环境变量中移除对应名称即可（每次执行前重新读取，无需重启进程）。
+
+**P1 审计分析**：`skilllite audit-report [--dir DIR] [--hours N] [--json] [--alert] [--webhook URL]` — 汇总 `audit_*.jsonl` 在时间窗内的各 Skill 调用次数、失败率、`edit_*` 路径分布；`--alert` 在命中规则时输出到 stderr 与 `tracing`（target `skilllite::audit`），并可 POST 到 webhook。
 
 **Edit 审计（Agent 内置工具）**：`search_replace`、`preview_edit`、`insert_lines` 会写入 JSONL，事件类型包括 `edit_applied`、`edit_previewed`、`edit_failed`、`edit_inserted`。每条记录含 `edit_id`（UUID）、顶层 `path`、`workspace`、失败时的 `reason`/`tool` 等；写入后 `flush`，便于流式消费。
 

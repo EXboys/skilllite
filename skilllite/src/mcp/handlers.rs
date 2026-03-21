@@ -263,6 +263,11 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
             server.skills_dir.display()
         )));
     }
+    let meta_early = metadata::parse_skill_metadata(&skill_dir)?;
+    if let Some(msg) = skilllite_core::skill::denylist::deny_reason_for_skill_name(&meta_early.name)
+    {
+        return Err(Error::msg(msg));
+    }
     let integrity = manifest::evaluate_skill_status(&server.skills_dir, &skill_dir)?;
     let block = skilllite_core::config::supply_chain_block_enabled();
     if block {
@@ -306,7 +311,7 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         );
     }
 
-    let meta = metadata::parse_skill_metadata(&skill_dir)?;
+    let meta = meta_early;
     let sandbox_level = SandboxLevel::from_env_or_cli(None);
 
     // Security check for Level 3

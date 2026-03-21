@@ -31,9 +31,9 @@ pub fn run_skill(
     entry_point_override: Option<&str>,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
-    enforce_skill_integrity_before_execution(&skill_path)?;
-
     let mut metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
+    enforce_skill_denylist(&metadata.name)?;
+    enforce_skill_integrity_before_execution(&skill_path)?;
     if let Some(ep) = entry_point_override {
         if !ep.is_empty() && skill_path.join(ep).is_file() {
             metadata.entry_point = ep.to_string();
@@ -92,7 +92,6 @@ pub fn exec_script(
     sandbox_level: skilllite_sandbox::runner::SandboxLevel,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
-    enforce_skill_integrity_before_execution(&skill_path)?;
     let full_script_path = skill_path.join(script_path);
 
     if !full_script_path.exists() {
@@ -157,6 +156,8 @@ pub fn exec_script(
         )?;
         (meta, env)
     };
+    enforce_skill_denylist(&metadata.name)?;
+    enforce_skill_integrity_before_execution(&skill_path)?;
 
     let mut effective_metadata = metadata;
     if allow_network {
@@ -197,9 +198,9 @@ pub fn bash_command(
     cwd: Option<&String>,
 ) -> Result<String> {
     let skill_path = validate_skill_path(skill_dir)?;
-    enforce_skill_integrity_before_execution(&skill_path)?;
-
     let metadata = skill::metadata::parse_skill_metadata(&skill_path)?;
+    enforce_skill_denylist(&metadata.name)?;
+    enforce_skill_integrity_before_execution(&skill_path)?;
 
     if !metadata.is_bash_tool_skill() {
         anyhow::bail!(
@@ -389,6 +390,13 @@ fn detect_script_language(script_path: &Path) -> Result<String> {
         }
         _ => anyhow::bail!("Unsupported script extension: .{}", extension),
     }
+}
+
+fn enforce_skill_denylist(skill_name: &str) -> Result<()> {
+    if let Some(msg) = skilllite_core::skill::denylist::deny_reason_for_skill_name(skill_name) {
+        anyhow::bail!("{}", msg);
+    }
+    Ok(())
 }
 
 fn enforce_skill_integrity_before_execution(skill_path: &Path) -> Result<()> {

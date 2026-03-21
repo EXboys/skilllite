@@ -16,6 +16,7 @@
 //!   scan     — scan_skill and script analysis
 //!   security — security_scan_script, dependency_audit_skill
 
+pub mod audit_report;
 pub mod execute;
 pub mod scan;
 pub mod security;

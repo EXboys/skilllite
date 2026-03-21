@@ -75,6 +75,9 @@ fn execute_skill_inner(
 ) -> Result<String> {
     let skill_dir = &skill.skill_dir;
     let mut metadata = skill.metadata.clone();
+    if let Some(msg) = skilllite_core::skill::denylist::deny_reason_for_skill_name(&metadata.name) {
+        anyhow::bail!(msg);
+    }
     if metadata.entry_point.is_empty() {
         if let Some(ep) = entry_point_override {
             if !ep.is_empty() && skill_dir.join(ep).is_file() {
