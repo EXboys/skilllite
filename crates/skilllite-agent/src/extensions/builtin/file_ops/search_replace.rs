@@ -39,7 +39,14 @@ pub(super) fn execute_insert_lines(
         .and_then(|v| v.as_str())
         .context("'content' is required")?;
 
+    let workspace_str = workspace.to_string_lossy();
     if is_sensitive_write_path(&path_str) {
+        skilllite_core::observability::audit_edit_failed(
+            &path_str,
+            "insert_lines",
+            "sensitive_path_blocked",
+            Some(workspace_str.as_ref()),
+        );
         anyhow::bail!(
             "Blocked: editing sensitive file '{}' is not allowed",
             path_str
@@ -60,20 +67,40 @@ pub(super) fn execute_insert_lines(
 
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
     if !resolved.exists() {
+        skilllite_core::observability::audit_edit_failed(
+            &path_str,
+            "insert_lines",
+            "file_not_found",
+            Some(workspace_str.as_ref()),
+        );
         anyhow::bail!("File not found: {}", path_str);
     }
 
     let content = skilllite_fs::read_file(&resolved)
         .with_context(|| format!("Failed to read file: {}", path_str))?;
     let new_content = skilllite_fs::insert_lines_at(&content, line_num, insert_content)?;
+    let inserted_lines = insert_content.lines().count().max(1);
 
     let backup = backup_file_before_edit(&resolved);
     skilllite_fs::write_file(&resolved, &new_content)
         .with_context(|| format!("Failed to write file: {}", path_str))?;
 
+    let insert_preview: String = insert_content.chars().take(200).collect();
+    let diff_excerpt = if insert_content.len() > 200 {
+        format!("+ {}...", insert_preview)
+    } else {
+        format!("+ {}", insert_preview)
+    };
+    skilllite_core::observability::audit_edit_inserted(
+        &path_str,
+        line_num,
+        inserted_lines,
+        &diff_excerpt,
+        Some(workspace_str.as_ref()),
+    );
+
     let validation_warning = validate_syntax(&resolved, &new_content);
     let lines = content.lines().count();
-    let inserted_lines = insert_content.lines().count().max(1);
     let result = json!({
         "path": path_str,
         "inserted_after_line": line_num,
@@ -127,11 +154,13 @@ fn execute_replace_like(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    let workspace_str = workspace.to_string_lossy().to_string();
     if is_sensitive_write_path(&path_str) {
         skilllite_core::observability::audit_edit_failed(
             &path_str,
             tool_name,
             "sensitive_path_blocked",
+            Some(&workspace_str),
         );
         anyhow::bail!(
             "Blocked: editing sensitive file '{}' is not allowed",
@@ -154,11 +183,21 @@ fn execute_replace_like(
 
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
     if !resolved.exists() {
-        skilllite_core::observability::audit_edit_failed(&path_str, tool_name, "file_not_found");
+        skilllite_core::observability::audit_edit_failed(
+            &path_str,
+            tool_name,
+            "file_not_found",
+            Some(&workspace_str),
+        );
         anyhow::bail!("File not found: {}", path_str);
     }
     if resolved.is_dir() {
-        skilllite_core::observability::audit_edit_failed(&path_str, tool_name, "path_is_directory");
+        skilllite_core::observability::audit_edit_failed(
+            &path_str,
+            tool_name,
+            "path_is_directory",
+            Some(&workspace_str),
+        );
         anyhow::bail!("Path is a directory, not a file: {}", path_str);
     }
 
@@ -176,7 +215,12 @@ fn execute_replace_like(
         skilllite_fs::apply_replace_fuzzy(&content, old_string, new_string, replace_all)
     }
     .inspect_err(|e| {
-        skilllite_core::observability::audit_edit_failed(&path_str, tool_name, &e.to_string());
+        skilllite_core::observability::audit_edit_failed(
+            &path_str,
+            tool_name,
+            &e.to_string(),
+            Some(&workspace_str),
+        );
     })?;
 
     if content == result.new_content {
@@ -184,6 +228,7 @@ fn execute_replace_like(
             &path_str,
             tool_name,
             "no_change_produced",
+            Some(&workspace_str),
         );
         anyhow::bail!("No changes were made: replacement produced identical content");
     }
@@ -220,6 +265,7 @@ fn execute_replace_like(
             result.replaced_count,
             first_changed_line,
             &diff_excerpt,
+            Some(&workspace_str),
         );
     } else {
         skilllite_core::observability::audit_edit_previewed(
@@ -227,6 +273,7 @@ fn execute_replace_like(
             result.replaced_count,
             first_changed_line,
             &diff_excerpt,
+            Some(&workspace_str),
         );
     }
 

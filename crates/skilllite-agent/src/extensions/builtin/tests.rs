@@ -2,6 +2,12 @@
 
 use super::*;
 
+/// 测试启动时禁用审计，避免 edit 操作污染真实 audit 日志。
+#[ctor::ctor]
+fn disable_audit_in_tests() {
+    std::env::set_var("SKILLLITE_AUDIT_DISABLED", "1");
+}
+
 #[test]
 fn test_search_replace_first_occurrence() {
     let tmp = tempfile::tempdir().unwrap();

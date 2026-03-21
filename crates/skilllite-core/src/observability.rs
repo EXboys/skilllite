@@ -10,6 +10,7 @@ use std::sync::Mutex;
 use chrono::Utc;
 use serde_json::json;
 use tracing_subscriber::{prelude::*, EnvFilter};
+use uuid::Uuid;
 
 static SECURITY_EVENTS_PATH: Mutex<Option<String>> = Mutex::new(None);
 
@@ -112,6 +113,7 @@ fn append_jsonl(path: &str, record: &serde_json::Value) {
     if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(path) {
         if let Ok(line) = serde_json::to_string(record) {
             let _ = writeln!(f, "{}", line);
+            let _ = f.flush(); // 确保每条记录单独落盘，避免流式消费时行粘连
         }
     }
 }
@@ -334,6 +336,20 @@ pub fn security_scan_rejected(skill_id: &str, scan_id: &str, issues_count: usize
 }
 
 // ─── Edit audit events (agent layer) ────────────────────────────────────────
+//
+// 结构约定：
+// - path 提升到顶层，便于查询
+// - edit_id 每条唯一，用于去重与关联
+// - workspace/context 可选，用于多项目过滤
+
+fn edit_audit_context() -> serde_json::Value {
+    crate::config::loader::env_optional(
+        crate::config::env_keys::observability::SKILLLITE_AUDIT_CONTEXT,
+        &[],
+    )
+    .map(serde_json::Value::String)
+    .unwrap_or(serde_json::Value::Null)
+}
 
 /// Audit: edit_applied — agent wrote a file change via search_replace
 pub fn audit_edit_applied(
@@ -341,6 +357,7 @@ pub fn audit_edit_applied(
     occurrences: usize,
     first_changed_line: usize,
     diff_excerpt: &str,
+    workspace: Option<&str>,
 ) {
     if let Some(audit) = get_audit_path() {
         let record = json!({
@@ -348,8 +365,11 @@ pub fn audit_edit_applied(
             "event": "edit_applied",
             "category": "edit",
             "source_layer": "agent",
+            "edit_id": Uuid::new_v4().to_string(),
+            "path": path,
+            "workspace": workspace.unwrap_or(""),
+            "context": edit_audit_context(),
             "details": {
-                "path": path,
                 "occurrences": occurrences,
                 "first_changed_line": first_changed_line,
                 "diff_excerpt": diff_excerpt
@@ -365,6 +385,7 @@ pub fn audit_edit_previewed(
     occurrences: usize,
     first_changed_line: usize,
     diff_excerpt: &str,
+    workspace: Option<&str>,
 ) {
     if let Some(audit) = get_audit_path() {
         let record = json!({
@@ -372,8 +393,11 @@ pub fn audit_edit_previewed(
             "event": "edit_previewed",
             "category": "edit",
             "source_layer": "agent",
+            "edit_id": Uuid::new_v4().to_string(),
+            "path": path,
+            "workspace": workspace.unwrap_or(""),
+            "context": edit_audit_context(),
             "details": {
-                "path": path,
                 "occurrences": occurrences,
                 "first_changed_line": first_changed_line,
                 "diff_excerpt": diff_excerpt
@@ -383,14 +407,48 @@ pub fn audit_edit_previewed(
     }
 }
 
+/// Audit: edit_inserted — agent inserted lines via insert_lines
+pub fn audit_edit_inserted(
+    path: &str,
+    line_num: usize,
+    lines_inserted: usize,
+    diff_excerpt: &str,
+    workspace: Option<&str>,
+) {
+    if let Some(audit) = get_audit_path() {
+        let record = json!({
+            "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "event": "edit_inserted",
+            "category": "edit",
+            "source_layer": "agent",
+            "edit_id": Uuid::new_v4().to_string(),
+            "path": path,
+            "workspace": workspace.unwrap_or(""),
+            "context": edit_audit_context(),
+            "details": {
+                "insert_after_line": line_num,
+                "lines_inserted": lines_inserted,
+                "diff_excerpt": diff_excerpt
+            }
+        });
+        append_jsonl(&audit, &record);
+    }
+}
+
 /// Audit: edit_failed — agent attempted an edit that failed (not found, non-unique, etc.)
-pub fn audit_edit_failed(path: &str, tool_name: &str, reason: &str) {
+pub fn audit_edit_failed(path: &str, tool_name: &str, reason: &str, workspace: Option<&str>) {
     if let Some(audit) = get_audit_path() {
         let record = json!({
             "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             "event": "edit_failed",
             "category": "edit",
             "source_layer": "agent",
+            "edit_id": Uuid::new_v4().to_string(),
+            "path": path,
+            "reason": reason,
+            "tool": tool_name,
+            "workspace": workspace.unwrap_or(""),
+            "context": edit_audit_context(),
             "details": {
                 "path": path,
                 "tool": tool_name,

@@ -219,11 +219,15 @@
 |------|------|--------|------|
 | `SKILLLITE_AUDIT_LOG` | string | `{data_root}/audit` | 审计目录或文件。目录则按天存储 `audit_YYYY-MM-DD.jsonl`；以 `.jsonl` 结尾则单文件 |
 | `SKILLLITE_AUDIT_DISABLED` | bool | `false` | 设为 `1` 时关闭审计（默认开启） |
-| `SKILLLITE_AUDIT_CONTEXT` | string | `cli` | 审计上下文（如 session_id、invoker），用于 skill_invocation 的 context 字段 |
+| `SKILLLITE_AUDIT_CONTEXT` | string | `cli` | 审计上下文（如 session_id、invoker）；写入 `skill_invocation` 与 **Agent 层 edit 事件**（`edit_applied` / `edit_previewed` / `edit_failed` / `edit_inserted`）的 `context` 字段 |
 | `SKILLLITE_SECURITY_EVENTS_LOG` | string | - | 安全事件日志（拦截、scan_high 等） |
 | `SKILLLITE_SUPPLY_CHAIN_BLOCK` | bool | `false` | P0 可观测 vs P1 可阻断：`1` 时 HashChanged/SignatureInvalid/TrustDeny 会阻断执行；`0`（默认）仅展示状态不阻断 |
 | `SKILLLITE_LOG_LEVEL` | string | `info` | Rust 日志级别（**推荐**） |
 | `SKILLLITE_LOG_JSON` | bool | `false` | 是否输出 JSON 格式日志 |
+
+**Edit 审计（Agent 内置工具）**：`search_replace`、`preview_edit`、`insert_lines` 会写入 JSONL，事件类型包括 `edit_applied`、`edit_previewed`、`edit_failed`、`edit_inserted`。每条记录含 `edit_id`（UUID）、顶层 `path`、`workspace`、失败时的 `reason`/`tool` 等；写入后 `flush`，便于流式消费。
+
+**开发与测试**：`skilllite-agent` 的 builtin 单元测试在启动时自动设置 `SKILLLITE_AUDIT_DISABLED=1`，不向默认审计目录写入。其他 crate 或集成测试若需关闭审计，请显式设置 `SKILLLITE_AUDIT_DISABLED=1`。
 
 ---
 

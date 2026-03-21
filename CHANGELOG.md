@@ -8,7 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-- (Changes will be listed here before the next release.)
+### Added
+
+- **Observability — edit audit**: Agent file-edit tools (`search_replace`, `preview_edit`, `insert_lines`) emit structured JSONL events (`edit_applied`, `edit_previewed`, `edit_failed`, `edit_inserted`) with `edit_id`, top-level `path`, `workspace`, and `context` (from `SKILLLITE_AUDIT_CONTEXT`); audit append flushes after each line.
+
+### Changed
+
+- **Tests**: `skilllite-agent` builtin tests disable audit at process start (`ctor` + `SKILLLITE_AUDIT_DISABLED=1`) so `cargo test` does not pollute the default audit directory.
 
 ---
 

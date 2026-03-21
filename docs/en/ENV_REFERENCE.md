@@ -219,11 +219,15 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 |----------|------|---------|-------------|
 | `SKILLLITE_AUDIT_LOG` | string | `{data_root}/audit` | Audit dir or file. Dir → daily `audit_YYYY-MM-DD.jsonl`; `.jsonl` suffix → single file |
 | `SKILLLITE_AUDIT_DISABLED` | bool | `false` | Set to `1` to disable audit (enabled by default) |
-| `SKILLLITE_AUDIT_CONTEXT` | string | `cli` | Audit context (e.g. session_id, invoker) for skill_invocation events |
+| `SKILLLITE_AUDIT_CONTEXT` | string | `cli` | Audit context (e.g. session_id, invoker); also written to **Agent-layer edit events** (`edit_applied` / `edit_previewed` / `edit_failed` / `edit_inserted`) as `context`, same as `skill_invocation` |
 | `SKILLLITE_SECURITY_EVENTS_LOG` | string | - | Security events log (intercepts, scan_high, etc.) |
 | `SKILLLITE_SUPPLY_CHAIN_BLOCK` | bool | `false` | P0 observable vs P1 block: `1` blocks on HashChanged/SignatureInvalid/TrustDeny; `0` (default) only shows status |
 | `SKILLLITE_LOG_LEVEL` | string | `info` | Rust log level (**recommended**) |
 | `SKILLLITE_LOG_JSON` | bool | `false` | Output JSON logs |
+
+**Edit audit (Agent built-in tools)**: `search_replace`, `preview_edit`, and `insert_lines` append JSONL lines with events such as `edit_applied`, `edit_previewed`, `edit_failed`, and `edit_inserted`. Each record includes `edit_id` (UUID), top-level `path`, `workspace`, and on failure `reason` / `tool`; each write is followed by `flush` for streaming consumers.
+
+**Development & tests**: `skilllite-agent` builtin unit tests set `SKILLLITE_AUDIT_DISABLED=1` at process start so tests do not pollute the default audit path. For other crates or integration tests, set `SKILLLITE_AUDIT_DISABLED=1` explicitly if needed.
 
 ---
 
