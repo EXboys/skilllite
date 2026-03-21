@@ -217,8 +217,11 @@
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLLITE_AUDIT_LOG` | string | - | 审计日志路径（确认→执行→命令） |
+| `SKILLLITE_AUDIT_LOG` | string | `{data_root}/audit` | 审计目录或文件。目录则按天存储 `audit_YYYY-MM-DD.jsonl`；以 `.jsonl` 结尾则单文件 |
+| `SKILLLITE_AUDIT_DISABLED` | bool | `false` | 设为 `1` 时关闭审计（默认开启） |
+| `SKILLLITE_AUDIT_CONTEXT` | string | `cli` | 审计上下文（如 session_id、invoker），用于 skill_invocation 的 context 字段 |
 | `SKILLLITE_SECURITY_EVENTS_LOG` | string | - | 安全事件日志（拦截、scan_high 等） |
+| `SKILLLITE_SUPPLY_CHAIN_BLOCK` | bool | `false` | P0 可观测 vs P1 可阻断：`1` 时 HashChanged/SignatureInvalid/TrustDeny 会阻断执行；`0`（默认）仅展示状态不阻断 |
 | `SKILLLITE_LOG_LEVEL` | string | `info` | Rust 日志级别（**推荐**） |
 | `SKILLLITE_LOG_JSON` | bool | `false` | 是否输出 JSON 格式日志 |
 
@@ -280,6 +283,11 @@ SKILLLITE_LOG_LEVEL=debug
 ### 生产环境审计
 
 ```bash
-SKILLLITE_AUDIT_LOG=~/.skilllite/audit/audit.jsonl
+# 默认已开启，审计按天存储于 ~/.skilllite/audit/audit_YYYY-MM-DD.jsonl
+# 自定义目录（同样按天）：
+SKILLLITE_AUDIT_LOG=/var/log/skilllite/audit
+# 或单文件（不按天）：
+SKILLLITE_AUDIT_LOG=/var/log/skilllite/audit.jsonl
+
 SKILLLITE_SECURITY_EVENTS_LOG=~/.skilllite/audit/security.jsonl
 ```

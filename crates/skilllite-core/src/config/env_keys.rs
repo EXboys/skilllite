@@ -63,7 +63,16 @@ pub mod observability {
     pub const SKILLLITE_AUDIT_LOG: &str = "SKILLLITE_AUDIT_LOG";
     pub const AUDIT_LOG_ALIASES: &[&str] = &["SKILLBOX_AUDIT_LOG"];
 
+    /// 设为 1/true 时显式关闭审计（默认开启）
+    pub const SKILLLITE_AUDIT_DISABLED: &str = "SKILLLITE_AUDIT_DISABLED";
+
     pub const SKILLLITE_SECURITY_EVENTS_LOG: &str = "SKILLLITE_SECURITY_EVENTS_LOG";
+
+    /// P0 可观测 vs P1 可阻断：设为 1/true 时，HashChanged/SignatureInvalid/TrustDeny 会阻断执行；不设或 0 时仅展示状态不阻断（P0 模式）
+    pub const SKILLLITE_SUPPLY_CHAIN_BLOCK: &str = "SKILLLITE_SUPPLY_CHAIN_BLOCK";
+
+    /// 审计上下文：谁调用了 Skill（如 session_id、invoker），用于 audit 日志
+    pub const SKILLLITE_AUDIT_CONTEXT: &str = "SKILLLITE_AUDIT_CONTEXT";
 }
 
 /// Memory 向量检索

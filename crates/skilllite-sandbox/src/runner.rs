@@ -368,6 +368,15 @@ pub fn run_in_sandbox_with_limits_and_level(
             start.elapsed().as_millis() as u64,
             result.stdout.len(),
         );
+        observability::audit_skill_invocation(
+            &config.name,
+            &config.entry_point,
+            skill_dir.to_string_lossy().as_ref(),
+            input_json,
+            output,
+            result.exit_code,
+            start.elapsed().as_millis() as u64,
+        );
         return Ok(output.to_string());
     }
 
@@ -400,6 +409,15 @@ pub fn run_in_sandbox_with_limits_and_level(
         result.exit_code,
         start.elapsed().as_millis() as u64,
         result.stdout.len(),
+    );
+    observability::audit_skill_invocation(
+        &config.name,
+        &config.entry_point,
+        skill_dir.to_string_lossy().as_ref(),
+        input_json,
+        output,
+        result.exit_code,
+        start.elapsed().as_millis() as u64,
     );
     Ok(output.to_string())
 }

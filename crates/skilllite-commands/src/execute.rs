@@ -4,6 +4,7 @@
 
 use anyhow::{Context, Result};
 use serde_json::json;
+use skilllite_core::config::supply_chain_block_enabled;
 use skilllite_core::path_validation::validate_skill_path;
 use skilllite_core::skill;
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
@@ -395,42 +396,56 @@ fn enforce_skill_integrity_before_execution(skill_path: &Path) -> Result<()> {
         return Ok(());
     };
     let report = manifest::evaluate_skill_status(skills_dir, skill_path)?;
-    match report.status {
-        SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => {}
-        SkillIntegrityStatus::HashChanged => {
-            anyhow::bail!(
-                "Execution blocked: Skill fingerprint changed since installation. \
-Run `skilllite add <source> --force` to reinstall and update manifest."
-            )
-        }
-        SkillIntegrityStatus::SignatureInvalid => {
-            anyhow::bail!(
-                "Execution blocked: Skill signature is invalid. \
-Please verify the skill source and reinstall."
-            )
-        }
-    }
-    // Trust tier enforcement
-    match report.trust_decision {
-        TrustDecision::Deny => {
-            anyhow::bail!(
-                "Execution blocked: Skill trust tier is Deny. \
-Reinstall from trusted source or verify integrity."
-            )
-        }
-        TrustDecision::RequireConfirm => {
-            let bypass = std::env::var("SKILLLITE_TRUST_BYPASS_CONFIRM")
-                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-            if !bypass {
+
+    let block = supply_chain_block_enabled();
+
+    if block {
+        match report.status {
+            SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => {}
+            SkillIntegrityStatus::HashChanged => {
                 anyhow::bail!(
-                    "Execution blocked: Skill requires confirmation (trust tier: {:?}). \
-Set SKILLLITE_TRUST_BYPASS_CONFIRM=1 to run, or use --confirm in MCP.",
-                    report.trust_tier
+                    "Execution blocked: Skill fingerprint changed since installation. \
+Run `skilllite add <source> --force` to reinstall and update manifest."
+                )
+            }
+            SkillIntegrityStatus::SignatureInvalid => {
+                anyhow::bail!(
+                    "Execution blocked: Skill signature is invalid. \
+Please verify the skill source and reinstall."
                 )
             }
         }
-        TrustDecision::Allow => {}
+        match report.trust_decision {
+            TrustDecision::Deny => {
+                anyhow::bail!(
+                    "Execution blocked: Skill trust tier is Deny. \
+Reinstall from trusted source or verify integrity."
+                )
+            }
+            TrustDecision::RequireConfirm => {
+                let bypass = std::env::var("SKILLLITE_TRUST_BYPASS_CONFIRM")
+                    .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                    .unwrap_or(false);
+                if !bypass {
+                    anyhow::bail!(
+                        "Execution blocked: Skill requires confirmation (trust tier: {:?}). \
+Set SKILLLITE_TRUST_BYPASS_CONFIRM=1 to run, or use --confirm in MCP.",
+                        report.trust_tier
+                    )
+                }
+            }
+            TrustDecision::Allow => {}
+        }
+    } else if matches!(
+        report.status,
+        SkillIntegrityStatus::HashChanged | SkillIntegrityStatus::SignatureInvalid
+    ) {
+        // P0 可观测：仅记录状态，不阻断
+        tracing::warn!(
+            skill = %skill_path.display(),
+            status = ?report.status,
+            "Skill integrity issue (P0 observable mode: execution allowed; set SKILLLITE_SUPPLY_CHAIN_BLOCK=1 to block)"
+        );
     }
     Ok(())
 }

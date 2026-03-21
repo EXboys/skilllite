@@ -178,6 +178,12 @@ pub fn env_bool(primary: &str, aliases: &[&str], default: bool) -> bool {
     }
 }
 
+/// P0 可观测 vs P1 可阻断：返回是否在「可阻断」模式。false（默认）= 仅展示状态不阻断；true = 阻断 HashChanged/SignatureInvalid/TrustDeny
+pub fn supply_chain_block_enabled() -> bool {
+    use crate::config::env_keys::observability;
+    env_bool(observability::SKILLLITE_SUPPLY_CHAIN_BLOCK, &[], false)
+}
+
 /// 检查环境变量是否存在（任意主变量或别名）
 #[allow(dead_code)] // 供后续迁移使用
 pub fn env_is_set(primary: &str, aliases: &[&str]) -> bool {

@@ -264,35 +264,46 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         )));
     }
     let integrity = manifest::evaluate_skill_status(&server.skills_dir, &skill_dir)?;
-    match integrity.status {
-        SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => {}
-        SkillIntegrityStatus::HashChanged => {
-            return Err(Error::msg(
-                "Execution blocked: Skill fingerprint changed since installation. Please reinstall this skill before running.",
-            ));
-        }
-        SkillIntegrityStatus::SignatureInvalid => {
-            return Err(Error::msg(
-                "Execution blocked: Skill signature is invalid. Please verify source and reinstall.",
-            ));
-        }
-    }
-    // Trust tier enforcement
-    match integrity.trust_decision {
-        TrustDecision::Deny => {
-            return Err(Error::msg(
-                "Execution blocked: Skill trust tier is Deny. Reinstall from trusted source or verify integrity.",
-            ));
-        }
-        TrustDecision::RequireConfirm => {
-            if !confirmed {
-                return Err(Error::msg(format!(
-                    "Execution blocked: Skill requires confirmation (trust tier: {:?}). Pass confirmed=true to run.",
-                    integrity.trust_tier
-                )));
+    let block = skilllite_core::config::supply_chain_block_enabled();
+    if block {
+        match integrity.status {
+            SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => {}
+            SkillIntegrityStatus::HashChanged => {
+                return Err(Error::msg(
+                    "Execution blocked: Skill fingerprint changed since installation. Please reinstall this skill before running.",
+                ));
+            }
+            SkillIntegrityStatus::SignatureInvalid => {
+                return Err(Error::msg(
+                    "Execution blocked: Skill signature is invalid. Please verify source and reinstall.",
+                ));
             }
         }
-        TrustDecision::Allow => {}
+        match integrity.trust_decision {
+            TrustDecision::Deny => {
+                return Err(Error::msg(
+                    "Execution blocked: Skill trust tier is Deny. Reinstall from trusted source or verify integrity.",
+                ));
+            }
+            TrustDecision::RequireConfirm => {
+                if !confirmed {
+                    return Err(Error::msg(format!(
+                        "Execution blocked: Skill requires confirmation (trust tier: {:?}). Pass confirmed=true to run.",
+                        integrity.trust_tier
+                    )));
+                }
+            }
+            TrustDecision::Allow => {}
+        }
+    } else if matches!(
+        integrity.status,
+        SkillIntegrityStatus::HashChanged | SkillIntegrityStatus::SignatureInvalid
+    ) {
+        tracing::warn!(
+            skill = %skill_dir.display(),
+            status = ?integrity.status,
+            "Skill integrity issue (P0 observable mode: execution allowed; set SKILLLITE_SUPPLY_CHAIN_BLOCK=1 to block)"
+        );
     }
 
     let meta = metadata::parse_skill_metadata(&skill_dir)?;

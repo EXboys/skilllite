@@ -11,7 +11,6 @@ use chrono::Utc;
 use serde_json::json;
 use tracing_subscriber::{prelude::*, EnvFilter};
 
-static AUDIT_PATH: Mutex<Option<String>> = Mutex::new(None);
 static SECURITY_EVENTS_PATH: Mutex<Option<String>> = Mutex::new(None);
 
 /// Tracing initialization mode.
@@ -64,28 +63,26 @@ pub fn init_tracing(mode: TracingMode) {
     };
 }
 
+/// 解析审计日志实际写入路径。目录则按天存储 audit_YYYY-MM-DD.jsonl；.jsonl 文件则直接写入。
 fn get_audit_path() -> Option<String> {
-    {
-        let guard = AUDIT_PATH.lock().ok()?;
-        if let Some(ref p) = *guard {
-            return Some(p.clone());
-        }
-    }
-    let path = crate::config::ObservabilityConfig::from_env()
+    let base = crate::config::ObservabilityConfig::from_env()
         .audit_log
         .clone()?;
-    if path.is_empty() {
+    if base.is_empty() {
         return None;
     }
-    // Ensure parent dir exists
-    if let Some(parent) = Path::new(&path).parent() {
+    let path = Path::new(&base);
+    let file_path = if base.ends_with(".jsonl") {
+        path.to_path_buf()
+    } else {
+        let today = chrono::Utc::now().format("%Y-%m-%d");
+        path.join(format!("audit_{}.jsonl", today))
+    };
+    let file_path_str = file_path.to_string_lossy().into_owned();
+    if let Some(parent) = file_path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    {
-        let mut guard = AUDIT_PATH.lock().ok()?;
-        *guard = Some(path.clone());
-    }
-    Some(path)
+    Some(file_path_str)
 }
 
 fn get_security_events_path() -> Option<String> {
@@ -198,6 +195,54 @@ pub fn audit_execution_completed(
         });
         append_jsonl(&path, &record);
     }
+}
+
+/// Audit: skill_invocation (P0 可观测 - 记录谁在什么上下文调用了哪个 Skill、输入摘要、输出摘要)
+pub fn audit_skill_invocation(
+    skill_id: &str,
+    entry_point: &str,
+    cwd: &str,
+    input_json: &str,
+    output: &str,
+    exit_code: i32,
+    duration_ms: u64,
+) {
+    if let Some(path) = get_audit_path() {
+        let context = crate::config::loader::env_optional(
+            crate::config::env_keys::observability::SKILLLITE_AUDIT_CONTEXT,
+            &[],
+        )
+        .unwrap_or_else(|| "cli".to_string());
+        let input_summary = input_summary_bytes(input_json);
+        let output_summary = output_summary_bytes(output);
+        let record = json!({
+            "ts": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+            "event": "skill_invocation",
+            "skill_id": skill_id,
+            "entry_point": entry_point,
+            "cwd": cwd,
+            "context": context,
+            "input_summary": input_summary,
+            "output_summary": output_summary,
+            "exit_code": exit_code,
+            "duration_ms": duration_ms,
+            "success": exit_code == 0,
+            "source": "rust"
+        });
+        append_jsonl(&path, &record);
+    }
+}
+
+fn input_summary_bytes(input: &str) -> serde_json::Value {
+    let preview: String = input.chars().take(100).collect();
+    let truncated = input.chars().count() > 100;
+    serde_json::json!({"len": input.len(), "preview": if truncated { format!("{}...", preview) } else { preview } })
+}
+
+fn output_summary_bytes(output: &str) -> serde_json::Value {
+    let preview: String = output.chars().take(100).collect();
+    let truncated = output.chars().count() > 100;
+    serde_json::json!({"len": output.len(), "preview": if truncated { format!("{}...", preview) } else { preview } })
 }
 
 /// Security event: network blocked

@@ -213,8 +213,21 @@ impl ObservabilityConfig {
                 obv_keys::LOG_JSON_ALIASES,
                 false,
             );
-            let audit_log =
-                env_optional(obv_keys::SKILLLITE_AUDIT_LOG, obv_keys::AUDIT_LOG_ALIASES);
+            let audit_disabled = env_bool(obv_keys::SKILLLITE_AUDIT_DISABLED, &[], false);
+            let audit_log = if audit_disabled {
+                None
+            } else {
+                env_optional(obv_keys::SKILLLITE_AUDIT_LOG, obv_keys::AUDIT_LOG_ALIASES).or_else(
+                    || {
+                        Some(
+                            crate::paths::data_root()
+                                .join("audit")
+                                .to_string_lossy()
+                                .into_owned(),
+                        )
+                    },
+                )
+            };
             let security_events_log = env_optional(obv_keys::SKILLLITE_SECURITY_EVENTS_LOG, &[]);
             Self {
                 quiet,
