@@ -15,6 +15,9 @@
 //! | Full        | Complete SKILL.md + references + assets        | First invocation|
 
 use std::path::Path;
+use std::sync::LazyLock;
+
+use regex::Regex;
 
 use super::extensions::ToolAvailabilityView;
 use super::skills::LoadedSkill;
@@ -290,23 +293,25 @@ fn build_workspace_index(workspace: &str) -> Option<String> {
     }
 }
 
+/// Pre-compiled regexes for signature extraction (avoids recompiling per file).
+static RE_SIG_RS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^pub(?:\(crate\))?\s+(fn|struct|enum|trait)\s+(\w+)").unwrap()
+});
+static RE_SIG_PY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?m)^(def|class)\s+(\w+)").unwrap());
+static RE_SIG_TS_JS: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^export\s+(?:default\s+)?(?:async\s+)?(function|class)\s+(\w+)").unwrap()
+});
+static RE_SIG_GO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?m)^(func)\s+(\w+)").unwrap());
+
 /// Extract top-level function/class/struct signatures from key source files.
 fn extract_signatures(workspace: &std::path::Path) -> String {
-    let patterns: &[(&str, &[&str])] = &[
-        (
-            "rs",
-            &[r"(?m)^pub(?:\(crate\))?\s+(fn|struct|enum|trait)\s+(\w+)"],
-        ),
-        ("py", &[r"(?m)^(def|class)\s+(\w+)"]),
-        (
-            "ts",
-            &[r"(?m)^export\s+(?:default\s+)?(?:async\s+)?(function|class)\s+(\w+)"],
-        ),
-        (
-            "js",
-            &[r"(?m)^export\s+(?:default\s+)?(?:async\s+)?(function|class)\s+(\w+)"],
-        ),
-        ("go", &[r"(?m)^(func)\s+(\w+)"]),
+    let patterns: &[(&str, &[&LazyLock<Regex>])] = &[
+        ("rs", &[&RE_SIG_RS]),
+        ("py", &[&RE_SIG_PY]),
+        ("ts", &[&RE_SIG_TS_JS]),
+        ("js", &[&RE_SIG_TS_JS]),
+        ("go", &[&RE_SIG_GO]),
     ];
 
     let mut sigs = Vec::new();
@@ -326,7 +331,7 @@ fn extract_signatures(workspace: &std::path::Path) -> String {
     fn scan_dir(
         dir: &std::path::Path,
         base: &std::path::Path,
-        patterns: &[(&str, &[&str])],
+        patterns: &[(&str, &[&LazyLock<Regex>])],
         sigs: &mut Vec<String>,
         max_sigs: usize,
         skip: &[&str],
@@ -366,16 +371,14 @@ fn extract_signatures(workspace: &std::path::Path) -> String {
                     }
                     if let Ok(content) = skilllite_fs::read_file(&path) {
                         let rel = path.strip_prefix(base).unwrap_or(&path);
-                        for regex_str in *regexes {
-                            if let Ok(re) = regex::Regex::new(regex_str) {
-                                for caps in re.captures_iter(&content) {
-                                    if sigs.len() >= max_sigs {
-                                        return;
-                                    }
-                                    let kind = caps.get(1).map_or("", |m| m.as_str());
-                                    let name = caps.get(2).map_or("", |m| m.as_str());
-                                    sigs.push(format!("  {} {} ({})", kind, name, rel.display()));
+                        for re in *regexes {
+                            for caps in re.captures_iter(&content) {
+                                if sigs.len() >= max_sigs {
+                                    return;
                                 }
+                                let kind = caps.get(1).map_or("", |m| m.as_str());
+                                let name = caps.get(2).map_or("", |m| m.as_str());
+                                sigs.push(format!("  {} {} ({})", kind, name, rel.display()));
                             }
                         }
                     }
