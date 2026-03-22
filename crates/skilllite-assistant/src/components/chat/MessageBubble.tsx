@@ -5,9 +5,10 @@ import type { ChatMessage } from "../../types/chat";
 interface MessageBubbleProps {
   message: ChatMessage;
   onConfirm?: (id: string, approved: boolean) => void;
+  onClarify?: (id: string, action: string, hint?: string) => void;
 }
 
-function MessageBubbleInner({ message, onConfirm }: MessageBubbleProps) {
+function MessageBubbleInner({ message, onConfirm, onClarify }: MessageBubbleProps) {
   if (message.type === "user") {
     return (
       <div className="flex justify-end">
@@ -120,6 +121,50 @@ function MessageBubbleInner({ message, onConfirm }: MessageBubbleProps) {
                   className="px-3 py-1.5 text-sm rounded-md bg-accent text-white font-medium hover:bg-accent-hover"
                 >
                   允许
+                </button>
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (message.type === "clarification") {
+    return (
+      <div className="flex justify-start">
+        <div className="max-w-[85%] rounded-lg px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/50">
+          <div className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-1">
+            需要你的确认
+          </div>
+          <p className="text-sm text-ink dark:text-ink-dark-mute mb-3">
+            {message.message}
+          </p>
+          {message.resolved ? (
+            <div className="text-sm text-ink-mute dark:text-ink-dark-mute">
+              {message.selectedOption === "stop"
+                ? "✗ 已停止"
+                : `✓ ${message.selectedOption ?? "已继续"}`}
+            </div>
+          ) : (
+            onClarify && (
+              <div className="flex flex-wrap gap-2">
+                {message.suggestions.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => onClarify(message.id, "continue", s)}
+                    className="px-3 py-1.5 text-sm rounded-md bg-accent text-white font-medium hover:bg-accent-hover transition-colors"
+                  >
+                    {s}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => onClarify(message.id, "stop")}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                >
+                  停止
                 </button>
               </div>
             )

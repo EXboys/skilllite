@@ -44,10 +44,29 @@ export function useChatEvents({
         ]);
       }
     );
+    const unlistenClarify = listen<{
+      reason: string;
+      message: string;
+      suggestions: string[];
+    }>("skilllite-clarification-request", (ev) => {
+      const { reason, message, suggestions } = ev.payload;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          type: "clarification" as const,
+          reason: reason ?? "",
+          message: message ?? "",
+          suggestions: suggestions ?? [],
+        },
+      ]);
+      setLoading(false);
+    });
     return () => {
       unlistenConfirm.then((fn) => fn());
+      unlistenClarify.then((fn) => fn());
     };
-  }, [setMessages]);
+  }, [setMessages, setLoading]);
 
   useEffect(() => {
     const pendingChunks = { current: "" };

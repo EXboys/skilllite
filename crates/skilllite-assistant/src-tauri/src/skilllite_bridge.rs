@@ -31,6 +31,17 @@ pub struct StreamEvent {
 #[derive(Default, Clone)]
 pub struct ConfirmationState(pub Arc<Mutex<Option<mpsc::Sender<bool>>>>);
 
+/// Response payload for clarification flow.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct ClarifyResponse {
+    pub action: String,
+    pub hint: Option<String>,
+}
+
+/// Shared state for clarification flow: frontend calls skilllite_clarify → sends to this channel.
+#[derive(Default, Clone)]
+pub struct ClarificationState(pub Arc<Mutex<Option<mpsc::Sender<ClarifyResponse>>>>);
+
 /// Shared state for the chat subprocess; skilllite_stop can kill it.
 #[derive(Default, Clone)]
 pub struct ChatProcessState(pub Arc<Mutex<Option<std::process::Child>>>);
@@ -155,7 +166,7 @@ fn make_protocol_recovered_event(
 /// Run agent_chat via skilllite agent-rpc subprocess, emitting events to the window.
 /// Loads .env from workspace (or parent dirs) so OPENAI_API_KEY etc. are available.
 /// Config overrides (api_key, model, etc.) are merged into the request.
-/// For confirmation_request: emits to frontend, waits for skilllite_confirm, writes to stdin.
+/// For confirmation_request / clarification_request: emits to frontend, waits for response, writes to stdin.
 /// Uses bundled skilllite if available (single-file distribution), else PATH.
 pub fn chat_stream(
     window: Window,
@@ -163,6 +174,7 @@ pub fn chat_stream(
     workspace: Option<String>,
     config_overrides: Option<ChatConfigOverrides>,
     confirmation_state: ConfirmationState,
+    clarification_state: ClarificationState,
     process_state: ChatProcessState,
 ) -> Result<(), String> {
     let raw_workspace = workspace
@@ -364,6 +376,61 @@ pub fn chat_stream(
                         json!({ "method": "confirm", "params": { "approved": approved } });
                     if let Err(e) = writeln!(stdin, "{}", confirm_msg) {
                         eprintln!("write confirm error: {}", e);
+                    }
+                    let _ = stdin.flush();
+                    continue;
+                }
+                if ev.event == "clarification_request" {
+                    let reason = ev.data.get("reason").and_then(|v| v.as_str()).unwrap_or("");
+                    let message = ev.data.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                    let suggestions: Vec<String> = ev
+                        .data
+                        .get("suggestions")
+                        .and_then(|v| v.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|s| s.as_str().map(|s| s.to_string()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let (clarify_tx, clarify_rx) = mpsc::channel();
+                    {
+                        let mut guard = clarification_state
+                            .0
+                            .lock()
+                            .map_err(|_| "ClarificationState lock poisoned")?;
+                        *guard = Some(clarify_tx);
+                    }
+                    if let Err(e) = window.emit(
+                        "skilllite-clarification-request",
+                        json!({
+                            "reason": reason,
+                            "message": message,
+                            "suggestions": suggestions,
+                        }),
+                    ) {
+                        eprintln!("emit clarification_request error: {}", e);
+                    }
+                    let response = clarify_rx.recv().unwrap_or(ClarifyResponse {
+                        action: "stop".into(),
+                        hint: None,
+                    });
+                    {
+                        let mut guard = clarification_state
+                            .0
+                            .lock()
+                            .map_err(|_| "ClarificationState lock poisoned")?;
+                        *guard = None;
+                    }
+                    let clarify_msg = json!({
+                        "method": "clarify",
+                        "params": {
+                            "action": response.action,
+                            "hint": response.hint.unwrap_or_default(),
+                        }
+                    });
+                    if let Err(e) = writeln!(stdin, "{}", clarify_msg) {
+                        eprintln!("write clarify error: {}", e);
                     }
                     let _ = stdin.flush();
                     continue;

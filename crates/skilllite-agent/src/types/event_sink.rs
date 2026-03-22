@@ -3,6 +3,23 @@
 use super::string_utils::safe_truncate;
 use super::task::Task;
 
+/// Structured request asking the user for clarification before the agent stops.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ClarificationRequest {
+    pub reason: String,
+    pub message: String,
+    pub suggestions: Vec<String>,
+}
+
+/// User's response to a clarification request.
+#[derive(Debug, Clone)]
+pub enum ClarificationResponse {
+    /// Continue execution; optional hint injected as a user message.
+    Continue(Option<String>),
+    /// Stop the agent loop.
+    Stop,
+}
+
 /// Event sink trait for different output targets (CLI, RPC, SDK).
 pub trait EventSink: Send {
     /// Called at the start of each conversation turn (before any other events).
@@ -45,6 +62,14 @@ pub trait EventSink: Send {
     /// Called when a task's status changes. (Phase 2)
     /// `tasks` contains the full updated task list for progress rendering.
     fn on_task_progress(&mut self, _task_id: u32, _completed: bool, _tasks: &[Task]) {}
+    /// Called when the agent is about to stop and wants user clarification.
+    /// Returns `Continue(hint)` to keep going or `Stop` to terminate.
+    fn on_clarification_request(
+        &mut self,
+        _request: &ClarificationRequest,
+    ) -> ClarificationResponse {
+        ClarificationResponse::Stop
+    }
 }
 
 /// Silent event sink for background operations (e.g. pre-compaction memory flush).
@@ -283,6 +308,41 @@ impl EventSink for TerminalEventSink {
         }
     }
 
+    fn on_clarification_request(
+        &mut self,
+        request: &ClarificationRequest,
+    ) -> ClarificationResponse {
+        use std::io::Write;
+        self.msg(&format!("─── ⚠ 需要确认 ─── {}", SECTION_SEP));
+        self.msg(&format!("原因: {}", request.reason));
+        self.msg(&request.message);
+        self.msg("");
+        for (i, s) in request.suggestions.iter().enumerate() {
+            self.msg(&format!("  [{}] {}", i + 1, s));
+        }
+        self.msg("  [0] 停止");
+        eprint!("请选择 (或直接输入补充信息): ");
+        let _ = std::io::stderr().flush();
+        let mut input = String::new();
+        if std::io::stdin().read_line(&mut input).is_ok() {
+            let trimmed = input.trim();
+            if trimmed == "0" {
+                return ClarificationResponse::Stop;
+            }
+            if let Ok(idx) = trimmed.parse::<usize>() {
+                if idx >= 1 && idx <= request.suggestions.len() {
+                    return ClarificationResponse::Continue(Some(
+                        request.suggestions[idx - 1].clone(),
+                    ));
+                }
+            }
+            if !trimmed.is_empty() {
+                return ClarificationResponse::Continue(Some(trimmed.to_string()));
+            }
+        }
+        ClarificationResponse::Stop
+    }
+
     fn on_task_plan(&mut self, tasks: &[Task]) {
         self.msg(&format!("─── 📋 计划 ─── {}", SECTION_SEP));
         self.msg(&format!("Task plan ({} tasks):", tasks.len()));
@@ -408,6 +468,16 @@ impl EventSink for RunModeEventSink {
         }
         eprintln!("  [run mode: auto-approved]");
         true
+    }
+    fn on_clarification_request(
+        &mut self,
+        request: &ClarificationRequest,
+    ) -> ClarificationResponse {
+        eprintln!(
+            "  [run mode: auto-stop on clarification] reason={} msg={}",
+            request.reason, request.message
+        );
+        ClarificationResponse::Stop
     }
     fn on_task_plan(&mut self, tasks: &[Task]) {
         self.inner.on_task_plan(tasks);

@@ -39,6 +39,9 @@ use planning::{
 };
 use reflection::{reflect_planning, reflect_simple, ReflectionOutcome};
 
+/// Maximum number of clarification round-trips before the agent stops unconditionally.
+const MAX_CLARIFICATIONS: usize = 3;
+
 /// Maximum number of context overflow recovery retries before giving up.
 const MAX_CONTEXT_OVERFLOW_RETRIES: usize = 3;
 
@@ -141,6 +144,7 @@ async fn run_simple_loop(
     let mut no_tool_retries = 0usize;
     let max_no_tool_retries = 3;
     let mut task_completed = true;
+    let mut clarification_count = 0usize;
 
     let tools_ref = if all_tools.is_empty() {
         None
@@ -154,6 +158,30 @@ async fn run_simple_loop(
                 "Agent loop reached max iterations ({})",
                 config.max_iterations
             );
+            if clarification_count < MAX_CLARIFICATIONS {
+                let req = ClarificationRequest {
+                    reason: "max_iterations".into(),
+                    message: format!(
+                        "已达到最大执行轮次 ({})，任务可能尚未完成。",
+                        config.max_iterations
+                    ),
+                    suggestions: vec![
+                        "继续执行更多轮次".into(),
+                        "请指定接下来要做什么".into(),
+                    ],
+                };
+                match event_sink.on_clarification_request(&req) {
+                    ClarificationResponse::Continue(hint) => {
+                        clarification_count += 1;
+                        state.iterations = 0;
+                        if let Some(h) = hint {
+                            messages.push(ChatMessage::user(&h));
+                        }
+                        continue;
+                    }
+                    ClarificationResponse::Stop => {}
+                }
+            }
             task_completed = false;
             break;
         }
@@ -232,7 +260,31 @@ async fn run_simple_loop(
                     messages.push(ChatMessage::user(&msg));
                     continue;
                 }
-                ReflectionOutcome::Break => break,
+                ReflectionOutcome::Break => {
+                    if clarification_count < MAX_CLARIFICATIONS {
+                        let req = ClarificationRequest {
+                            reason: "no_progress".into(),
+                            message: "Agent 多次尝试后无法继续执行任务，可能需要更多信息。"
+                                .into(),
+                            suggestions: vec![
+                                "请补充更多细节或换一种方式描述需求".into(),
+                                "继续尝试，不做更改".into(),
+                            ],
+                        };
+                        match event_sink.on_clarification_request(&req) {
+                            ClarificationResponse::Continue(hint) => {
+                                clarification_count += 1;
+                                no_tool_retries = 0;
+                                if let Some(h) = hint {
+                                    messages.push(ChatMessage::user(&h));
+                                }
+                                continue;
+                            }
+                            ClarificationResponse::Stop => {}
+                        }
+                    }
+                    break;
+                }
                 ReflectionOutcome::Continue => continue,
             }
         }
@@ -269,6 +321,30 @@ async fn run_simple_loop(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
             );
+            if clarification_count < MAX_CLARIFICATIONS {
+                let req = ClarificationRequest {
+                    reason: "too_many_failures".into(),
+                    message: format!(
+                        "工具执行连续失败 {} 次，可能遇到了环境或权限问题。",
+                        state.consecutive_failures
+                    ),
+                    suggestions: vec![
+                        "跳过失败的步骤，继续后续任务".into(),
+                        "请补充信息帮助 Agent 解决问题".into(),
+                    ],
+                };
+                match event_sink.on_clarification_request(&req) {
+                    ClarificationResponse::Continue(hint) => {
+                        clarification_count += 1;
+                        state.consecutive_failures = 0;
+                        if let Some(h) = hint {
+                            messages.push(ChatMessage::user(&h));
+                        }
+                        continue;
+                    }
+                    ClarificationResponse::Stop => {}
+                }
+            }
             task_completed = false;
             break;
         }
@@ -276,6 +352,26 @@ async fn run_simple_loop(
         // Global tool call depth limit
         if state.total_tool_calls >= config.max_iterations * config.max_tool_calls_per_task {
             tracing::warn!("Agent loop reached total tool call limit");
+            if clarification_count < MAX_CLARIFICATIONS {
+                let req = ClarificationRequest {
+                    reason: "tool_call_limit".into(),
+                    message: "已达到工具调用次数上限，任务可能尚未完成。".into(),
+                    suggestions: vec![
+                        "继续执行".into(),
+                        "请指定接下来要做什么".into(),
+                    ],
+                };
+                match event_sink.on_clarification_request(&req) {
+                    ClarificationResponse::Continue(hint) => {
+                        clarification_count += 1;
+                        if let Some(h) = hint {
+                            messages.push(ChatMessage::user(&h));
+                        }
+                        continue;
+                    }
+                    ClarificationResponse::Stop => {}
+                }
+            }
             task_completed = false;
             break;
         }
@@ -367,15 +463,20 @@ async fn run_with_task_planning(
     let mut documented_skills: HashSet<String> = HashSet::new();
     let mut consecutive_no_tool = 0usize;
     let max_no_tool_retries = 3;
+    let mut clarification_count = 0usize;
 
-    // Plan-based budget: min(global, num_tasks × per_task); empty plan => cap at 3 to avoid pointless iterations
+    // Plan-based budget: min(global, num_tasks × per_task).
+    // Empty plan uses global max — the clarification mechanism handles runaway loops.
+    // Non-empty plan uses per-task budget with a floor of max_tool_calls_per_task
+    // to ensure at least one full task's worth of budget.
     let num_tasks = planner.task_list.len();
     let effective_max = if num_tasks == 0 {
-        config.max_iterations.min(3)
+        config.max_iterations
     } else {
-        config
-            .max_iterations
-            .min(num_tasks * config.max_tool_calls_per_task)
+        config.max_iterations.min(
+            (num_tasks * config.max_tool_calls_per_task)
+                .max(config.max_tool_calls_per_task),
+        )
     };
 
     let tools_ref = if all_tools.is_empty() {
@@ -390,6 +491,30 @@ async fn run_with_task_planning(
                 "Agent loop reached effective max iterations ({})",
                 effective_max
             );
+            if clarification_count < MAX_CLARIFICATIONS {
+                let req = ClarificationRequest {
+                    reason: "max_iterations".into(),
+                    message: format!(
+                        "已达到最大执行轮次 ({})，任务可能尚未完成。",
+                        effective_max
+                    ),
+                    suggestions: vec![
+                        "继续执行更多轮次".into(),
+                        "请指定接下来要做什么".into(),
+                    ],
+                };
+                match event_sink.on_clarification_request(&req) {
+                    ClarificationResponse::Continue(hint) => {
+                        clarification_count += 1;
+                        state.iterations = 0;
+                        if let Some(h) = hint {
+                            messages.push(ChatMessage::user(&h));
+                        }
+                        continue;
+                    }
+                    ClarificationResponse::Stop => {}
+                }
+            }
             break;
         }
         state.iterations += 1;
@@ -495,7 +620,31 @@ async fn run_with_task_planning(
                     messages.push(ChatMessage::user(&msg));
                     continue;
                 }
-                ReflectionOutcome::Break => break,
+                ReflectionOutcome::Break => {
+                    if !planner.all_completed() && clarification_count < MAX_CLARIFICATIONS {
+                        let req = ClarificationRequest {
+                            reason: "no_progress".into(),
+                            message: "Agent 多次尝试后无法继续执行任务，可能需要更多信息。"
+                                .into(),
+                            suggestions: vec![
+                                "请补充更多细节或换一种方式描述需求".into(),
+                                "继续尝试，不做更改".into(),
+                            ],
+                        };
+                        match event_sink.on_clarification_request(&req) {
+                            ClarificationResponse::Continue(hint) => {
+                                clarification_count += 1;
+                                consecutive_no_tool = 0;
+                                if let Some(h) = hint {
+                                    messages.push(ChatMessage::user(&h));
+                                }
+                                continue;
+                            }
+                            ClarificationResponse::Stop => {}
+                        }
+                    }
+                    break;
+                }
                 _ => continue,
             }
         }
@@ -534,6 +683,30 @@ async fn run_with_task_planning(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
             );
+            if clarification_count < MAX_CLARIFICATIONS {
+                let req = ClarificationRequest {
+                    reason: "too_many_failures".into(),
+                    message: format!(
+                        "工具执行连续失败 {} 次，可能遇到了环境或权限问题。",
+                        state.consecutive_failures
+                    ),
+                    suggestions: vec![
+                        "跳过失败的步骤，继续后续任务".into(),
+                        "请补充信息帮助 Agent 解决问题".into(),
+                    ],
+                };
+                match event_sink.on_clarification_request(&req) {
+                    ClarificationResponse::Continue(hint) => {
+                        clarification_count += 1;
+                        state.consecutive_failures = 0;
+                        if let Some(h) = hint {
+                            messages.push(ChatMessage::user(&h));
+                        }
+                        continue;
+                    }
+                    ClarificationResponse::Stop => {}
+                }
+            }
             break;
         }
         if suppressed_planning_text && !planner.all_completed() {
@@ -610,6 +783,26 @@ async fn run_with_task_planning(
         // Global tool call depth limit
         if state.total_tool_calls >= effective_max * config.max_tool_calls_per_task {
             tracing::warn!("Agent loop reached total tool call limit");
+            if clarification_count < MAX_CLARIFICATIONS {
+                let req = ClarificationRequest {
+                    reason: "tool_call_limit".into(),
+                    message: "已达到工具调用次数上限，任务可能尚未完成。".into(),
+                    suggestions: vec![
+                        "继续执行".into(),
+                        "请指定接下来要做什么".into(),
+                    ],
+                };
+                match event_sink.on_clarification_request(&req) {
+                    ClarificationResponse::Continue(hint) => {
+                        clarification_count += 1;
+                        if let Some(h) = hint {
+                            messages.push(ChatMessage::user(&h));
+                        }
+                        continue;
+                    }
+                    ClarificationResponse::Stop => {}
+                }
+            }
             break;
         }
     }

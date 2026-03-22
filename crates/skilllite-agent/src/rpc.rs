@@ -43,6 +43,7 @@
 //! {"event": "task_plan", "data": {"tasks": [...]}}
 //! {"event": "task_progress", "data": {"task_id": 1, "completed": true}}
 //! {"event": "confirmation_request", "data": {"prompt": "Execute rm -rf?"}}
+//! {"event": "clarification_request", "data": {"reason": "no_progress", "message": "...", "suggestions": ["...", "..."]}}
 //! {"event": "done", "data": {"task_id": "...", "response": "...", "task_completed": true, "tool_calls": 3, "new_skill": null}}
 //! {"event": "error", "data": {"message": "..."}}
 //! ```
@@ -51,6 +52,12 @@
 //! ```json
 //! {"method": "confirm", "params": {"approved": true}}
 //! ```
+//!
+//! For clarification_request, the caller sends back:
+//! ```json
+//! {"method": "clarify", "params": {"action": "continue", "hint": "optional user input"}}
+//! ```
+//! or `{"method": "clarify", "params": {"action": "stop"}}`
 
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
@@ -180,6 +187,44 @@ impl EventSink for RpcEventSink {
         false
     }
 
+    fn on_clarification_request(
+        &mut self,
+        request: &ClarificationRequest,
+    ) -> ClarificationResponse {
+        self.emit(
+            "clarification_request",
+            json!({
+                "reason": request.reason,
+                "message": request.message,
+                "suggestions": request.suggestions,
+            }),
+        );
+
+        if let Ok(mut reader) = self.confirmation_rx.lock() {
+            let mut line = String::new();
+            if reader.read_line(&mut line).is_ok() {
+                if let Ok(msg) = serde_json::from_str::<Value>(line.trim()) {
+                    if msg.get("method").and_then(|m| m.as_str()) == Some("clarify") {
+                        let params = msg.get("params").cloned().unwrap_or(json!({}));
+                        let action = params
+                            .get("action")
+                            .and_then(|a| a.as_str())
+                            .unwrap_or("stop");
+                        if action == "continue" {
+                            let hint = params
+                                .get("hint")
+                                .and_then(|h| h.as_str())
+                                .filter(|s| !s.is_empty())
+                                .map(|s| s.to_string());
+                            return ClarificationResponse::Continue(hint);
+                        }
+                    }
+                }
+            }
+        }
+        ClarificationResponse::Stop
+    }
+
     fn on_task_plan(&mut self, tasks: &[Task]) {
         self.emit("task_plan", json!({ "tasks": tasks }));
     }
@@ -260,9 +305,9 @@ pub fn serve_agent_rpc() -> Result<()> {
             "ping" => {
                 emit_event(&writer, "pong", json!({}));
             }
-            "confirm" => {
-                // 进程管理端在 confirmation_request 后发送 confirm；若 agent_chat 已结束，
-                // 主循环会读到滞后的 confirm。静默忽略，避免报 Unknown method 错误。
+            "confirm" | "clarify" => {
+                // 进程管理端在 confirmation_request / clarification_request 后发送响应；
+                // 若 agent_chat 已结束，主循环会读到滞后的消息。静默忽略。
             }
             _ => {
                 emit_event(

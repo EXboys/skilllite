@@ -6,9 +6,10 @@ interface MessageListProps {
   messages: ChatMessage[];
   loading: boolean;
   onConfirm: (id: string, approved: boolean) => void;
+  onClarify?: (id: string, action: string, hint?: string) => void;
 }
 
-export function MessageList({ messages, loading, onConfirm }: MessageListProps) {
+export function MessageList({ messages, loading, onConfirm, onClarify }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -25,7 +26,7 @@ export function MessageList({ messages, loading, onConfirm }: MessageListProps) 
     <div className="flex-1 overflow-y-auto p-5 space-y-4">
       {messages.map((m) => (
         <div key={m.id}>
-          <MessageBubble message={m} onConfirm={onConfirm} />
+          <MessageBubble message={m} onConfirm={onConfirm} onClarify={onClarify} />
         </div>
       ))}
       {showLoadingIndicator && (

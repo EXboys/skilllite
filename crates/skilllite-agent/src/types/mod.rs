@@ -30,7 +30,10 @@ pub use env_config::{
     get_output_dir, get_summarize_threshold, get_tail_chunks, get_tool_result_max_chars,
     get_tool_result_recovery_max_chars, get_user_input_max_chars, LongTextStrategy,
 };
-pub use event_sink::{EventSink, RunModeEventSink, SilentEventSink, TerminalEventSink};
+pub use event_sink::{
+    ClarificationRequest, ClarificationResponse, EventSink, RunModeEventSink, SilentEventSink,
+    TerminalEventSink,
+};
 pub use feedback::{
     classify_user_feedback, ExecutionFeedback, FeedbackSignal, SkillAction, ToolExecDetail,
 };

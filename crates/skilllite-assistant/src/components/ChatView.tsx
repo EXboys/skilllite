@@ -93,6 +93,20 @@ export default function ChatView() {
     );
   };
 
+  const handleClarify = async (id: string, action: string, hint?: string) => {
+    await invoke("skilllite_clarify", { action, hint: hint ?? null });
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.type === "clarification" && m.id === id
+          ? { ...m, resolved: true, selectedOption: action === "stop" ? "stop" : hint }
+          : m
+      )
+    );
+    if (action === "continue") {
+      setLoading(true);
+    }
+  };
+
   const handleClear = useCallback(async () => {
     if (loading || isClearing) return;
     setIsClearing(true);
@@ -303,6 +317,7 @@ export default function ChatView() {
         messages={messages}
         loading={loading}
         onConfirm={handleConfirm}
+        onClarify={handleClarify}
       />
 
       {error && (

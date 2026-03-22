@@ -17,6 +17,15 @@ export type ChatMessage =
       prompt: string;
       resolved?: boolean;
       approved?: boolean;
+    }
+  | {
+      id: string;
+      type: "clarification";
+      reason: string;
+      message: string;
+      suggestions: string[];
+      resolved?: boolean;
+      selectedOption?: string;
     };
 
 export interface StreamEventPayload {

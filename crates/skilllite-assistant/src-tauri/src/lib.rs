@@ -15,12 +15,14 @@ async fn skilllite_chat_stream(
     workspace: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
     conf_state: tauri::State<'_, skilllite_bridge::ConfirmationState>,
+    clar_state: tauri::State<'_, skilllite_bridge::ClarificationState>,
     process_state: tauri::State<'_, skilllite_bridge::ChatProcessState>,
 ) -> Result<(), String> {
     let conf = (*conf_state).clone();
+    let clar = (*clar_state).clone();
     let proc = (*process_state).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        skilllite_bridge::chat_stream(window, message, workspace, config, conf, proc)
+        skilllite_bridge::chat_stream(window, message, workspace, config, conf, clar, proc)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -143,6 +145,23 @@ fn skilllite_confirm(app: tauri::AppHandle, approved: bool) -> Result<(), String
 }
 
 #[tauri::command]
+fn skilllite_clarify(
+    app: tauri::AppHandle,
+    action: String,
+    hint: Option<String>,
+) -> Result<(), String> {
+    let state = app.state::<skilllite_bridge::ClarificationState>();
+    let mut guard = state
+        .0
+        .lock()
+        .map_err(|_| "ClarificationState lock poisoned")?;
+    if let Some(tx) = guard.take() {
+        let _ = tx.send(skilllite_bridge::ClarifyResponse { action, hint });
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn skilllite_list_skills(workspace: Option<String>) -> Vec<String> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
     tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_skill_names(&ws))
@@ -254,6 +273,7 @@ pub fn run() {
             skilllite_open_directory,
             skilllite_open_skill_directory,
             skilllite_confirm,
+            skilllite_clarify,
             skilllite_list_skills,
             skilllite_repair_skills,
             skilllite_add_skill,
@@ -264,6 +284,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .manage(skilllite_bridge::ConfirmationState::default())
+        .manage(skilllite_bridge::ClarificationState::default())
         .manage(skilllite_bridge::ChatProcessState::default())
         .setup(|app| {
             // Tray icon with menu

@@ -119,7 +119,11 @@ pub(super) fn reflect_planning(
 
     // ── No-tool nudge path ────────────────────────────────────────────────────
 
-    if planner.all_completed() {
+    // Accept text response when all tasks done OR when the plan is empty
+    // (empty plan = LLM decided no tools needed, e.g. conversational questions).
+    // Without the is_empty check, empty-plan text gets popped from history
+    // and the response is lost on reload ("Agent completed without text response").
+    if planner.all_completed() || planner.is_empty() {
         if let Some(ref content) = assistant_content {
             event_sink.on_text(content);
         }
@@ -294,5 +298,27 @@ mod tests {
             _ => panic!("expected Nudge or Break, got {:?}", out),
         }
         assert_eq!(messages.len(), 0);
+    }
+
+    #[test]
+    fn test_reflect_planning_empty_plan_preserves_response() {
+        let mut planner = planner_with_tasks(vec![]);
+        let mut consecutive_no_tool = 0;
+        let mut messages = vec![ChatMessage::assistant("Here is the answer")];
+        let mut sink = SilentEventSink;
+        let content = Some("Here is the answer".to_string());
+
+        let out = reflect_planning(
+            &content,
+            false,
+            &mut planner,
+            &mut consecutive_no_tool,
+            3,
+            &mut sink,
+            &mut messages,
+        );
+
+        assert!(matches!(out, ReflectionOutcome::Break));
+        assert_eq!(messages.len(), 1, "assistant message must NOT be popped for empty plans");
     }
 }
