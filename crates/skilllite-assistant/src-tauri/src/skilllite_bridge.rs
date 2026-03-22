@@ -17,6 +17,10 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{Emitter, Manager, Window};
 
+const MAX_CONSECUTIVE_INVALID_PROTOCOL_LINES: usize = 8;
+const MAX_TOTAL_INVALID_PROTOCOL_LINES: usize = 20;
+const INVALID_LINE_PREVIEW_CHARS: usize = 120;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct StreamEvent {
     pub event: String,
@@ -87,6 +91,67 @@ fn resolve_skilllite_path(window: &Window) -> (PathBuf, bool) {
     (PathBuf::from("skilllite"), false)
 }
 
+fn preview_line(line: &str, max_chars: usize) -> String {
+    let preview: String = line.chars().take(max_chars).collect();
+    if line.chars().count() > max_chars {
+        format!("{}...", preview)
+    } else {
+        preview
+    }
+}
+
+fn parse_stream_event_line(line: &str) -> Result<StreamEvent, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(line).map_err(|e| format!("JSON parse error: {}", e))?;
+    let event = value
+        .get("event")
+        .and_then(|e| e.as_str())
+        .ok_or_else(|| "Protocol error: missing string field 'event'".to_string())?;
+    let data = value
+        .get("data")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    Ok(StreamEvent {
+        event: event.to_string(),
+        data,
+    })
+}
+
+fn make_protocol_warning_event(
+    consecutive_invalid_lines: usize,
+    total_invalid_lines: usize,
+    line: &str,
+    err: &str,
+) -> StreamEvent {
+    StreamEvent {
+        event: "protocol_warning".to_string(),
+        data: json!({
+            "message": "检测到 agent-rpc 协议流被脏数据污染，正在自动恢复",
+            "consecutive_invalid_lines": consecutive_invalid_lines,
+            "total_invalid_lines": total_invalid_lines,
+            "line_preview": preview_line(line, INVALID_LINE_PREVIEW_CHARS),
+            "last_error": err,
+        }),
+    }
+}
+
+fn make_protocol_recovered_event(
+    recovered_lines: usize,
+    total_invalid_lines: usize,
+) -> StreamEvent {
+    StreamEvent {
+        event: "protocol_recovered".to_string(),
+        data: json!({
+            "message": format!(
+                "agent-rpc 协议流已自动恢复，已跳过 {} 行异常输出",
+                recovered_lines
+            ),
+            "recovered_lines": recovered_lines,
+            "total_invalid_lines": total_invalid_lines,
+        }),
+    }
+}
+
 /// Run agent_chat via skilllite agent-rpc subprocess, emitting events to the window.
 /// Loads .env from workspace (or parent dirs) so OPENAI_API_KEY etc. are available.
 /// Config overrides (api_key, model, etc.) are merged into the request.
@@ -121,6 +186,7 @@ pub fn chat_stream(
     // Critical for "other computer" / distribution builds where env may differ.
     cmd.env("RUST_LOG", "error");
     cmd.env("SKILLLITE_QUIET", "1");
+    cmd.env("SKILLLITE_LOG_JSON", "0");
     if let Some(ref cfg) = config_overrides {
         if let Some(ref key) = cfg.api_key {
             if !key.is_empty() {
@@ -198,6 +264,8 @@ pub fn chat_stream(
     let (tx, rx) = mpsc::channel::<Result<StreamEvent, String>>();
     thread::spawn(move || {
         let reader = BufReader::new(stdout);
+        let mut consecutive_invalid_lines = 0usize;
+        let mut total_invalid_lines = 0usize;
         for line in reader.lines() {
             let line = match line {
                 Ok(l) => l,
@@ -210,27 +278,55 @@ pub fn chat_stream(
             if line.is_empty() {
                 continue;
             }
-            match serde_json::from_str::<serde_json::Value>(line) {
-                Ok(v) => {
-                    let event = v.get("event").and_then(|e| e.as_str()).unwrap_or("");
-                    let data = v.get("data").cloned().unwrap_or(serde_json::Value::Null);
-                    if let Err(_) = tx.send(Ok(StreamEvent {
-                        event: event.to_string(),
-                        data,
-                    })) {
+
+            match parse_stream_event_line(line) {
+                Ok(event) => {
+                    if consecutive_invalid_lines > 0 {
+                        let recovered = make_protocol_recovered_event(
+                            consecutive_invalid_lines,
+                            total_invalid_lines,
+                        );
+                        if tx.send(Ok(recovered)).is_err() {
+                            break;
+                        }
+                    }
+                    consecutive_invalid_lines = 0;
+                    if tx.send(Ok(event)).is_err() {
                         break;
                     }
                 }
-                Err(e) => {
-                    let preview: String = line.chars().take(120).collect();
-                    let suffix = if line.len() > 120 { "..." } else { "" };
+                Err(err) => {
+                    consecutive_invalid_lines += 1;
+                    total_invalid_lines += 1;
+                    if consecutive_invalid_lines == 1 {
+                        let warning = make_protocol_warning_event(
+                            consecutive_invalid_lines,
+                            total_invalid_lines,
+                            line,
+                            &err,
+                        );
+                        if tx.send(Ok(warning)).is_err() {
+                            break;
+                        }
+                    }
                     eprintln!(
-                        "[skilllite-bridge] JSON parse error: {} | raw line: {:?}",
-                        e,
-                        format!("{}{}", preview, suffix)
+                        "[skilllite-bridge] Ignoring invalid agent-rpc line ({}/{} consecutive, {} total): {} | raw line: {:?}",
+                        consecutive_invalid_lines,
+                        MAX_CONSECUTIVE_INVALID_PROTOCOL_LINES,
+                        total_invalid_lines,
+                        err,
+                        preview_line(line, INVALID_LINE_PREVIEW_CHARS)
                     );
-                    let _ = tx.send(Err(format!("JSON parse error: {}", e)));
-                    break;
+
+                    if consecutive_invalid_lines >= MAX_CONSECUTIVE_INVALID_PROTOCOL_LINES
+                        || total_invalid_lines >= MAX_TOTAL_INVALID_PROTOCOL_LINES
+                    {
+                        let _ = tx.send(Err(format!(
+                            "agent-rpc protocol stream corrupted after {} invalid line(s) ({} consecutive). Last error: {}",
+                            total_invalid_lines, consecutive_invalid_lines, err
+                        )));
+                        break;
+                    }
                 }
             }
         }
@@ -304,6 +400,59 @@ pub fn chat_stream(
         let _ = c.wait();
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        make_protocol_recovered_event, make_protocol_warning_event, parse_stream_event_line,
+        preview_line,
+    };
+
+    #[test]
+    fn parse_stream_event_line_accepts_valid_event() {
+        let ev = parse_stream_event_line(r#"{"event":"text","data":{"text":"hello"}}"#)
+            .expect("valid JSON-Lines event should parse");
+        assert_eq!(ev.event, "text");
+        assert_eq!(ev.data["text"], "hello");
+    }
+
+    #[test]
+    fn parse_stream_event_line_rejects_non_json_noise() {
+        let err = parse_stream_event_line("INFO booting agent")
+            .expect_err("non-JSON noise should be rejected");
+        assert!(err.contains("JSON parse error"));
+    }
+
+    #[test]
+    fn parse_stream_event_line_rejects_missing_event_field() {
+        let err = parse_stream_event_line(r#"{"data":{"text":"hello"}}"#)
+            .expect_err("missing event should be rejected");
+        assert!(err.contains("missing string field 'event'"));
+    }
+
+    #[test]
+    fn preview_line_truncates_and_marks_suffix() {
+        let preview = preview_line("abcdefghijklmnopqrstuvwxyz", 10);
+        assert_eq!(preview, "abcdefghij...");
+    }
+
+    #[test]
+    fn protocol_warning_event_contains_diagnostic_details() {
+        let ev = make_protocol_warning_event(1, 3, "INFO booting agent", "JSON parse error");
+        assert_eq!(ev.event, "protocol_warning");
+        assert_eq!(ev.data["consecutive_invalid_lines"], 1);
+        assert_eq!(ev.data["total_invalid_lines"], 3);
+        assert_eq!(ev.data["line_preview"], "INFO booting agent");
+    }
+
+    #[test]
+    fn protocol_recovered_event_reports_recovery_summary() {
+        let ev = make_protocol_recovered_event(2, 5);
+        assert_eq!(ev.event, "protocol_recovered");
+        assert_eq!(ev.data["recovered_lines"], 2);
+        assert_eq!(ev.data["total_invalid_lines"], 5);
+    }
 }
 
 /// Kill the current chat subprocess if running. Called when user clicks "Stop".
@@ -402,7 +551,10 @@ fn collect_md_files(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec
             collect_md_files(&p, base, out);
         } else if p.extension().map_or(false, |e| e == "md") {
             if let Ok(rel) = p.strip_prefix(base) {
-                let mtime = p.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+                let mtime = p
+                    .metadata()
+                    .and_then(|m| m.modified())
+                    .unwrap_or(std::time::UNIX_EPOCH);
                 out.push((rel.to_string_lossy().to_string(), mtime));
             }
         }
@@ -431,7 +583,10 @@ fn collect_output_files_inner(
             let ext_lower = ext.to_string_lossy().to_lowercase();
             if EXTS.contains(&ext_lower.as_str()) {
                 if let Ok(rel) = p.strip_prefix(base) {
-                    let mtime = p.metadata().and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+                    let mtime = p
+                        .metadata()
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::UNIX_EPOCH);
                     out.push((rel.to_string_lossy().to_string(), mtime));
                 }
             }
@@ -827,7 +982,10 @@ pub(crate) fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> std::path::P
     if let Ok(res_dir) = app.path().resource_dir() {
         let bundled = res_dir.join(exe_name);
         if bundled.exists() {
-            eprintln!("[skilllite-bridge] using bundled binary: {}", bundled.display());
+            eprintln!(
+                "[skilllite-bridge] using bundled binary: {}",
+                bundled.display()
+            );
             return bundled;
         }
     }
@@ -836,13 +994,19 @@ pub(crate) fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> std::path::P
     if let Some(home) = dirs::home_dir() {
         let dev_bin = home.join(".skilllite").join("bin").join(exe_name);
         if dev_bin.exists() {
-            eprintln!("[skilllite-bridge] using ~/.skilllite/bin binary: {}", dev_bin.display());
+            eprintln!(
+                "[skilllite-bridge] using ~/.skilllite/bin binary: {}",
+                dev_bin.display()
+            );
             return dev_bin;
         }
     }
 
     // 3. Fallback: rely on PATH
-    eprintln!("[skilllite-bridge] falling back to PATH lookup for '{}'", exe_name);
+    eprintln!(
+        "[skilllite-bridge] falling back to PATH lookup for '{}'",
+        exe_name
+    );
     std::path::PathBuf::from(exe_name)
 }
 
@@ -1051,7 +1215,10 @@ pub fn add_skill(
     }
 
     let mut cmd = std::process::Command::new(skilllite_path);
-    cmd.arg("add").arg(source).arg("--skills-dir").arg(".skills");
+    cmd.arg("add")
+        .arg(source)
+        .arg("--skills-dir")
+        .arg(".skills");
     if force {
         cmd.arg("--force");
     }
@@ -1138,7 +1305,11 @@ pub struct OllamaProbeResult {
 
 /// Probe Ollama at localhost:11434; returns availability, all model names, and embedding support.
 pub fn probe_ollama() -> OllamaProbeResult {
-    let empty = OllamaProbeResult { available: false, models: vec![], has_embedding: false };
+    let empty = OllamaProbeResult {
+        available: false,
+        models: vec![],
+        has_embedding: false,
+    };
     let body = match ollama_get_tags() {
         Ok(b) => b,
         Err(_) => return empty,
@@ -1149,7 +1320,13 @@ pub fn probe_ollama() -> OllamaProbeResult {
     };
     let arr = match json.get("models").and_then(|m| m.as_array()) {
         Some(a) => a,
-        None => return OllamaProbeResult { available: true, models: vec![], has_embedding: false },
+        None => {
+            return OllamaProbeResult {
+                available: true,
+                models: vec![],
+                has_embedding: false,
+            }
+        }
     };
     let models: Vec<String> = arr
         .iter()
@@ -1157,7 +1334,11 @@ pub fn probe_ollama() -> OllamaProbeResult {
         .map(|s| s.to_string())
         .collect();
     let has_embedding = models.iter().any(|n| n.contains("embed"));
-    OllamaProbeResult { available: true, models, has_embedding }
+    OllamaProbeResult {
+        available: true,
+        models,
+        has_embedding,
+    }
 }
 
 fn ollama_get_tags() -> Result<String, ()> {
@@ -1166,10 +1347,13 @@ fn ollama_get_tags() -> Result<String, ()> {
     use std::time::Duration;
 
     let addr: SocketAddr = ([127, 0, 0, 1], 11434).into();
-    let mut stream =
-        TcpStream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|_| ())?;
-    stream.set_read_timeout(Some(Duration::from_secs(3))).map_err(|_| ())?;
-    stream.set_write_timeout(Some(Duration::from_secs(2))).map_err(|_| ())?;
+    let mut stream = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).map_err(|_| ())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .map_err(|_| ())?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(2)))
+        .map_err(|_| ())?;
 
     let req = b"GET /api/tags HTTP/1.1\r\nHost: localhost:11434\r\nConnection: close\r\n\r\n";
     stream.write_all(req).map_err(|_| ())?;
@@ -1177,10 +1361,6 @@ fn ollama_get_tags() -> Result<String, ()> {
     let mut buf = Vec::new();
     stream.read_to_end(&mut buf).map_err(|_| ())?;
     let s = String::from_utf8_lossy(&buf);
-    let body = s
-        .split("\r\n\r\n")
-        .nth(1)
-        .unwrap_or("")
-        .trim();
+    let body = s.split("\r\n\r\n").nth(1).unwrap_or("").trim();
     Ok(body.to_string())
 }

@@ -27,6 +27,7 @@ export interface LogEntry {
     | "swarm_failed"
     | "plan"
     | "progress"
+    | "warning"
     | "error";
   name?: string;
   text: string;

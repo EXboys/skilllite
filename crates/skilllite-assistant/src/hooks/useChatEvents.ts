@@ -169,6 +169,31 @@ export function useChatEvents({
         setLoading(false);
         addLog({ type: "error" as const, text: msg, isError: true });
         onTurnComplete?.();
+      } else if (event === "protocol_warning") {
+        const msg =
+          (data?.message as string) ?? "检测到 agent-rpc 协议流异常，正在自动恢复";
+        const totalInvalid = (data?.total_invalid_lines as number) ?? 0;
+        const preview = (data?.line_preview as string) ?? "";
+        addLog({
+          type: "warning" as const,
+          name: "agent-rpc",
+          text:
+            totalInvalid > 0
+              ? `${msg}（累计异常 ${totalInvalid} 行）${preview ? `；样例：${preview}` : ""}`
+              : msg,
+        });
+      } else if (event === "protocol_recovered") {
+        const msg =
+          (data?.message as string) ?? "agent-rpc 协议流已自动恢复";
+        const recoveredLines = (data?.recovered_lines as number) ?? 0;
+        addLog({
+          type: "warning" as const,
+          name: "agent-rpc",
+          text:
+            recoveredLines > 0
+              ? `${msg}（本轮跳过 ${recoveredLines} 行异常输出）`
+              : msg,
+        });
       } else if (event === "task_plan") {
         const tasks =
           (data?.tasks as Array<{
