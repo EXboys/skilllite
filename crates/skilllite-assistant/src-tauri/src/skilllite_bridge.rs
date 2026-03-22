@@ -1275,6 +1275,153 @@ fn summarise_add_output(output: &str) -> String {
 
 // ─── Onboarding: init workspace, probe Ollama ─────────────────────────────────
 
+/// Requested provider during onboarding health check.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OnboardingProvider {
+    Api,
+    Ollama,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct HealthCheckItem {
+    pub ok: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OnboardingHealthCheckResult {
+    pub binary: HealthCheckItem,
+    pub provider: HealthCheckItem,
+    pub workspace: HealthCheckItem,
+    pub data_dir: HealthCheckItem,
+    pub ok: bool,
+}
+
+pub fn run_onboarding_health_check(
+    skilllite_path: &std::path::Path,
+    workspace: &str,
+    provider: OnboardingProvider,
+    api_key: Option<&str>,
+) -> OnboardingHealthCheckResult {
+    let binary = check_bundled_skilllite(skilllite_path);
+    let provider = check_provider(provider, api_key);
+    let workspace = check_workspace(workspace);
+    let data_dir = check_data_dir();
+    let ok = binary.ok && provider.ok && workspace.ok && data_dir.ok;
+    OnboardingHealthCheckResult {
+        binary,
+        provider,
+        workspace,
+        data_dir,
+        ok,
+    }
+}
+
+fn check_bundled_skilllite(skilllite_path: &std::path::Path) -> HealthCheckItem {
+    if !skilllite_path.exists() {
+        return HealthCheckItem {
+            ok: false,
+            message: format!("未找到 SkillLite 二进制：{}", skilllite_path.display()),
+        };
+    }
+
+    match std::process::Command::new(skilllite_path)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+    {
+        Ok(status) if status.success() => HealthCheckItem {
+            ok: true,
+            message: format!("内置引擎可用：{}", skilllite_path.display()),
+        },
+        Ok(status) => HealthCheckItem {
+            ok: false,
+            message: format!("内置引擎启动失败（状态：{}）", status),
+        },
+        Err(e) => HealthCheckItem {
+            ok: false,
+            message: format!("无法启动内置引擎：{}", e),
+        },
+    }
+}
+
+fn check_provider(provider: OnboardingProvider, api_key: Option<&str>) -> HealthCheckItem {
+    match provider {
+        OnboardingProvider::Api => {
+            let has_key = api_key.map(|k| !k.trim().is_empty()).unwrap_or(false);
+            if has_key {
+                HealthCheckItem {
+                    ok: true,
+                    message: "已填写 API Key，可使用云模型".to_string(),
+                }
+            } else {
+                HealthCheckItem {
+                    ok: false,
+                    message: "尚未填写 API Key".to_string(),
+                }
+            }
+        }
+        OnboardingProvider::Ollama => {
+            let result = probe_ollama();
+            if result.available && result.models.iter().any(|m| !m.contains("embed")) {
+                HealthCheckItem {
+                    ok: true,
+                    message: format!("本机 Ollama 可用，检测到 {} 个模型", result.models.len()),
+                }
+            } else {
+                HealthCheckItem {
+                    ok: false,
+                    message: "未检测到可用的 Ollama 聊天模型".to_string(),
+                }
+            }
+        }
+    }
+}
+
+fn check_workspace(workspace: &str) -> HealthCheckItem {
+    let path = std::path::Path::new(workspace);
+    if !path.exists() {
+        return HealthCheckItem {
+            ok: false,
+            message: format!("工作区不存在：{}", path.display()),
+        };
+    }
+    if !path.is_dir() {
+        return HealthCheckItem {
+            ok: false,
+            message: format!("工作区不是目录：{}", path.display()),
+        };
+    }
+
+    let probe_dir = path.join(".skilllite");
+    match std::fs::create_dir_all(&probe_dir) {
+        Ok(_) => HealthCheckItem {
+            ok: true,
+            message: format!("工作区可用：{}", path.display()),
+        },
+        Err(e) => HealthCheckItem {
+            ok: false,
+            message: format!("工作区不可写：{}", e),
+        },
+    }
+}
+
+fn check_data_dir() -> HealthCheckItem {
+    let path = skilllite_core::paths::data_root();
+    match std::fs::create_dir_all(&path) {
+        Ok(_) => HealthCheckItem {
+            ok: true,
+            message: format!("数据目录可用：{}", path.display()),
+        },
+        Err(e) => HealthCheckItem {
+            ok: false,
+            message: format!("无法创建数据目录：{}", e),
+        },
+    }
+}
+
 /// Run `skilllite init` in the given directory. Creates .skills and example content.
 pub fn init_workspace(dir: &str, skilllite_path: &std::path::Path) -> Result<(), String> {
     let path = std::path::Path::new(dir);

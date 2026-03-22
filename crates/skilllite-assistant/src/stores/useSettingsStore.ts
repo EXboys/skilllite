@@ -11,6 +11,8 @@ export interface Settings {
   apiBase: string;
   /** 是否已完成首次启动引导；仅当明确为 false 时显示 Onboarding（新安装为 false，旧数据无此字段视为已完成） */
   onboardingCompleted?: boolean;
+  /** 首次引导完成后，在聊天页展示入门操作卡片。 */
+  showStarterPrompts?: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -20,6 +22,7 @@ const defaultSettings: Settings = {
   workspace: ".",
   apiBase: "",
   onboardingCompleted: false,
+  showStarterPrompts: false,
 };
 
 export const useSettingsStore = create<{

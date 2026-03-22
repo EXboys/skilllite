@@ -9,6 +9,21 @@ import { MessageList } from "./chat/MessageList";
 import { ChatInput } from "./chat/ChatInput";
 import type { ChatMessage } from "../types/chat";
 
+const STARTER_ACTIONS = [
+  {
+    title: "介绍当前工作区",
+    prompt: "请介绍一下当前工作区适合怎么使用 SkillLite，并给我一个建议的第一步。",
+  },
+  {
+    title: "列出可用技能",
+    prompt: "请列出当前工作区可用的技能，并告诉我最适合新手先试哪个。",
+  },
+  {
+    title: "推荐入门任务",
+    prompt: "请推荐一个最适合新手的入门任务，并直接带我开始。",
+  },
+] as const;
+
 export default function ChatView() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -16,7 +31,7 @@ export default function ChatView() {
   const [isClearing, setIsClearing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { settings } = useSettingsStore();
+  const { settings, setSettings } = useSettingsStore();
   const { refreshRecentData } = useRecentData();
   const statusActions = useStatusStore(
     useShallow((s) => ({
@@ -120,19 +135,20 @@ export default function ChatView() {
     }
   }, [refreshRecentData, statusActions.setLatestOutput]);
 
-  const handleSend = async () => {
-    const text = input.trim();
+  const sendMessage = useCallback(async (rawText: string) => {
+    const text = rawText.trim();
     if (!text || loading || isClearing) return;
 
-    // Slash commands: /new or /reset to clear chat (like OpenClaw)
     if (text === "/new" || text === "/reset") {
       setInput("");
+      setSettings({ showStarterPrompts: false });
       await handleClear();
       return;
     }
 
     setInput("");
     setError(null);
+    setSettings({ showStarterPrompts: false });
     statusActions.clearPlan();
     statusActions.setLatestOutput("");
     setMessages((prev) => [
@@ -170,7 +186,24 @@ export default function ChatView() {
       ]);
       setLoading(false);
     }
+  }, [
+    handleClear,
+    isClearing,
+    loading,
+    setSettings,
+    settings.apiBase,
+    settings.apiKey,
+    settings.model,
+    settings.workspace,
+    statusActions,
+  ]);
+
+  const handleSend = async () => {
+    await sendMessage(input);
   };
+
+  const showStarterPrompts =
+    settings.showStarterPrompts === true && messages.length === 0 && !loading && !isClearing;
 
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark">
@@ -228,6 +261,42 @@ export default function ChatView() {
       {isClearing && (
         <div className="mx-3 mt-2 px-3 py-2 rounded-md border border-accent/30 bg-accent/10 dark:bg-accent/20 text-accent text-xs animate-pulse">
           正在清空会话并整理历史，请稍候...
+        </div>
+      )}
+      {showStarterPrompts && (
+        <div className="mx-3 mt-3 rounded-xl border border-border dark:border-border-dark bg-white dark:bg-paper-dark p-3 shadow-sm">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <div>
+              <p className="text-sm font-medium text-ink dark:text-ink-dark">
+                配置已完成，先试一个入门操作
+              </p>
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute mt-1">
+                这些操作会直接发给 Agent，帮助你快速完成第一次成功体验。
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSettings({ showStarterPrompts: false })}
+              className="text-xs text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
+            >
+              暂不显示
+            </button>
+          </div>
+          <div className="grid gap-2">
+            {STARTER_ACTIONS.map((action) => (
+              <button
+                key={action.title}
+                type="button"
+                onClick={() => void sendMessage(action.prompt)}
+                className="w-full text-left rounded-lg border border-border dark:border-border-dark px-3 py-2 text-sm text-ink dark:text-ink-dark hover:border-accent/40 hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors"
+              >
+                <span className="font-medium block">{action.title}</span>
+                <span className="text-xs text-ink-mute dark:text-ink-dark-mute">
+                  {action.prompt}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       )}
       <MessageList

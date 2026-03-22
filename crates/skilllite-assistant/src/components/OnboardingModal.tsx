@@ -3,8 +3,33 @@ import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../stores/useSettingsStore";
 
-type Step = "mode" | "config" | "workspace";
+type Step = "mode" | "config" | "workspace" | "health" | "success";
 type Mode = "api" | "ollama";
+
+interface OllamaProbeResult {
+  available: boolean;
+  models: string[];
+  has_embedding: boolean;
+}
+
+interface HealthCheckItem {
+  ok: boolean;
+  message: string;
+}
+
+interface OnboardingHealthCheckResult {
+  binary: HealthCheckItem;
+  provider: HealthCheckItem;
+  workspace: HealthCheckItem;
+  data_dir: HealthCheckItem;
+  ok: boolean;
+}
+
+const STARTER_ACTIONS = [
+  "介绍一下当前工作区适合怎么使用 SkillLite",
+  "列出当前工作区里可用的技能，并告诉我先试哪个",
+  "推荐一个最适合新手的入门任务并直接带我开始",
+];
 
 export default function OnboardingModal() {
   const { setSettings } = useSettingsStore();
@@ -19,14 +44,16 @@ export default function OnboardingModal() {
   const [ollamaAutoDetected, setOllamaAutoDetected] = useState(false);
   const [initCreating, setInitCreating] = useState(false);
   const [initError, setInitError] = useState("");
+  const [healthChecking, setHealthChecking] = useState(false);
+  const [healthResult, setHealthResult] = useState<OnboardingHealthCheckResult | null>(null);
+  const [healthError, setHealthError] = useState("");
   const initialProbeDoneRef = useRef(false);
   const userChoseModeRef = useRef(false);
 
-  // 零配置默认：挂载时检测本机 Ollama，可用则预选「使用本地模型」并进入配置步骤（若用户尚未点击任一选项）
   useEffect(() => {
     let cancelled = false;
     setOllamaLoading(true);
-    invoke<{ available: boolean; models: string[]; has_embedding: boolean }>("skilllite_probe_ollama")
+    invoke<OllamaProbeResult>("skilllite_probe_ollama")
       .then((r) => {
         if (cancelled || userChoseModeRef.current) return;
         if (r.available) {
@@ -58,7 +85,7 @@ export default function OnboardingModal() {
         return;
       }
       setOllamaLoading(true);
-      invoke<{ available: boolean; models: string[]; has_embedding: boolean }>("skilllite_probe_ollama")
+      invoke<OllamaProbeResult>("skilllite_probe_ollama")
         .then((r) => {
           if (r.available) {
             const chatModels = r.models.filter((m) => !m.includes("embed"));
@@ -70,7 +97,7 @@ export default function OnboardingModal() {
     }
   }, [mode, step]);
 
-  const handleComplete = () => {
+  const applySettingsAndFinish = () => {
     const ws = workspace.trim() || ".";
     if (mode === "ollama") {
       setSettings({
@@ -80,6 +107,7 @@ export default function OnboardingModal() {
         model: ollamaModel || "llama3.2",
         workspace: ws,
         onboardingCompleted: true,
+        showStarterPrompts: true,
       });
     } else {
       setSettings({
@@ -87,7 +115,9 @@ export default function OnboardingModal() {
         apiKey: apiKey.trim(),
         model: model.trim() || "gpt-4o",
         workspace: ws,
+        apiBase: "",
         onboardingCompleted: true,
+        showStarterPrompts: true,
       });
     }
   };
@@ -121,7 +151,33 @@ export default function OnboardingModal() {
     }
   };
 
-  const canFinishWorkspace = true;
+  const handleRunHealthCheck = async () => {
+    if (!mode) return;
+    const ws = workspace.trim() || ".";
+    setStep("health");
+    setHealthChecking(true);
+    setHealthError("");
+    setHealthResult(null);
+    try {
+      const result = await invoke<OnboardingHealthCheckResult>("skilllite_health_check", {
+        workspace: ws,
+        provider: mode,
+        api_key: mode === "api" ? apiKey.trim() : undefined,
+      });
+      setHealthResult(result);
+      if (result.ok) {
+        setStep("success");
+      }
+    } catch (e) {
+      setHealthError(String(e));
+    } finally {
+      setHealthChecking(false);
+    }
+  };
+
+  const canContinueApi = apiKey.trim().length > 0;
+  const canContinueOllama = ollamaLoading || ollamaModels.length > 0;
+  const workspaceDisplay = workspace.trim() || ".";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-ink/50 dark:bg-black/60 backdrop-blur-sm">
@@ -133,7 +189,7 @@ export default function OnboardingModal() {
           欢迎使用 SkillLite
         </h2>
         <p className="text-sm text-ink-mute dark:text-ink-dark-mute mb-6">
-          按下面步骤完成配置即可开始使用
+          先完成环境检查与工作区配置，再开始第一次聊天
         </p>
         <button
           type="button"
@@ -141,6 +197,7 @@ export default function OnboardingModal() {
             setSettings({
               onboardingCompleted: true,
               workspace: ".",
+              showStarterPrompts: false,
             })
           }
           className="absolute top-4 right-4 text-xs text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
@@ -237,7 +294,8 @@ export default function OnboardingModal() {
               <button
                 type="button"
                 onClick={() => setStep("workspace")}
-                className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium"
+                disabled={!canContinueApi}
+                className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 下一步
               </button>
@@ -263,7 +321,7 @@ export default function OnboardingModal() {
               </p>
             ) : (
               <p className="text-sm text-ink-mute dark:text-ink-dark-mute mb-4">
-                未检测到 Ollama 或未安装模型。请先安装并运行 Ollama，或在上一步选择「配置 API Key」。
+                未检测到 Ollama 或未安装模型。请先安装并运行 Ollama，或返回上一步选择「配置 API Key」。
               </p>
             )}
             {!ollamaLoading && ollamaModels.length > 0 && (
@@ -294,7 +352,8 @@ export default function OnboardingModal() {
               <button
                 type="button"
                 onClick={() => setStep("workspace")}
-                className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium"
+                disabled={!canContinueOllama}
+                className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 下一步
               </button>
@@ -315,7 +374,7 @@ export default function OnboardingModal() {
                 type="text"
                 value={workspace}
                 onChange={(e) => setWorkspace(e.target.value)}
-                placeholder="选择或输入路径"
+                placeholder="选择或输入路径，留空默认使用当前目录"
                 className="flex-1 min-w-0 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-sm"
               />
               <button
@@ -337,6 +396,9 @@ export default function OnboardingModal() {
             {initError && (
               <p className="mt-2 text-xs text-red-600 dark:text-red-400">{initError}</p>
             )}
+            <div className="mt-3 rounded-lg bg-ink/5 dark:bg-white/5 px-3 py-2 text-xs text-ink-mute dark:text-ink-dark-mute">
+              当前将使用：`{workspaceDisplay}`
+            </div>
             <div className="flex justify-end gap-2 mt-4">
               <button
                 type="button"
@@ -347,16 +409,111 @@ export default function OnboardingModal() {
               </button>
               <button
                 type="button"
-                onClick={handleComplete}
-                disabled={!canFinishWorkspace}
-                className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={handleRunHealthCheck}
+                className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium"
               >
-                完成
+                检查并继续
               </button>
             </div>
           </>
         )}
 
+        {step === "health" && (
+          <>
+            <p className="text-sm font-medium text-ink dark:text-ink-dark mb-2">
+              4. 健康检查
+            </p>
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute mb-3">
+              正在检查内置引擎、当前 provider、工作区和数据目录是否可用
+            </p>
+            {healthChecking && (
+              <div className="rounded-lg border border-border dark:border-border-dark px-3 py-3 text-sm text-ink-mute dark:text-ink-dark-mute">
+                正在执行检查，请稍候…
+              </div>
+            )}
+            {healthError && (
+              <div className="rounded-lg border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 px-3 py-3 text-sm text-red-700 dark:text-red-300">
+                {healthError}
+              </div>
+            )}
+            {!healthChecking && healthResult && (
+              <div className="space-y-2">
+                {[
+                  { label: "内置引擎", item: healthResult.binary },
+                  { label: "模型来源", item: healthResult.provider },
+                  { label: "工作区", item: healthResult.workspace },
+                  { label: "数据目录", item: healthResult.data_dir },
+                ].map(({ label, item }) => (
+                  <div
+                    key={label}
+                    className={`rounded-lg border px-3 py-2 text-sm ${
+                      item.ok
+                        ? "border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200"
+                        : "border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300"
+                    }`}
+                  >
+                    <div className="font-medium">{label}</div>
+                    <div className="text-xs mt-1">{item.message}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => setStep("workspace")}
+                className="px-3 py-1.5 text-sm text-ink-mute"
+              >
+                返回修改
+              </button>
+              <button
+                type="button"
+                onClick={handleRunHealthCheck}
+                disabled={healthChecking}
+                className="px-4 py-1.5 text-sm rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark disabled:opacity-50"
+              >
+                重新检查
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "success" && (
+          <>
+            <p className="text-sm font-medium text-ink dark:text-ink-dark mb-2">
+              5. 准备完成
+            </p>
+            <div className="rounded-lg border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/20 px-3 py-3 text-sm text-green-800 dark:text-green-200 mb-3">
+              环境检查已通过，接下来会进入聊天页，并显示几个适合第一次使用的入门操作。
+            </div>
+            <div className="space-y-2 mb-4">
+              {STARTER_ACTIONS.map((action) => (
+                <div
+                  key={action}
+                  className="rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-sm text-ink dark:text-ink-dark"
+                >
+                  {action}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setStep("workspace")}
+                className="px-3 py-1.5 text-sm text-ink-mute"
+              >
+                返回修改
+              </button>
+              <button
+                type="button"
+                onClick={applySettingsAndFinish}
+                className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium"
+              >
+                进入聊天
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

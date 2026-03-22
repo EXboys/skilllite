@@ -200,6 +200,44 @@ async fn skilllite_probe_ollama() -> skilllite_bridge::OllamaProbeResult {
         })
 }
 
+#[tauri::command]
+async fn skilllite_health_check(
+    app: tauri::AppHandle,
+    workspace: String,
+    provider: skilllite_bridge::OnboardingProvider,
+    api_key: Option<String>,
+) -> skilllite_bridge::OnboardingHealthCheckResult {
+    let path = skilllite_bridge::resolve_skilllite_path_app(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::run_onboarding_health_check(
+            &path,
+            &workspace,
+            provider,
+            api_key.as_deref(),
+        )
+    })
+    .await
+    .unwrap_or_else(|e| skilllite_bridge::OnboardingHealthCheckResult {
+        binary: skilllite_bridge::HealthCheckItem {
+            ok: false,
+            message: format!("健康检查任务执行失败：{}", e),
+        },
+        provider: skilllite_bridge::HealthCheckItem {
+            ok: false,
+            message: "未执行 provider 检查".to_string(),
+        },
+        workspace: skilllite_bridge::HealthCheckItem {
+            ok: false,
+            message: "未执行工作区检查".to_string(),
+        },
+        data_dir: skilllite_bridge::HealthCheckItem {
+            ok: false,
+            message: "未执行数据目录检查".to_string(),
+        },
+        ok: false,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let run_result = tauri::Builder::default()
@@ -220,7 +258,8 @@ pub fn run() {
             skilllite_repair_skills,
             skilllite_add_skill,
             skilllite_init_workspace,
-            skilllite_probe_ollama
+            skilllite_probe_ollama,
+            skilllite_health_check
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
