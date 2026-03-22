@@ -319,6 +319,10 @@ mod tests {
         );
 
         assert!(matches!(out, ReflectionOutcome::Break));
-        assert_eq!(messages.len(), 1, "assistant message must NOT be popped for empty plans");
+        assert_eq!(
+            messages.len(),
+            1,
+            "assistant message must NOT be popped for empty plans"
+        );
     }
 }

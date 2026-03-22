@@ -839,11 +839,16 @@ pub fn read_memory_file(relative_path: &str) -> Result<String, String> {
 // ─── Load transcript (chat history) for UI display ───────────────────────────
 
 /// Single message entry for frontend display.
+/// `role` determines the type: "user", "assistant", "tool_call", "tool_result".
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TranscriptMessage {
     pub id: String,
-    pub role: String, // "user" | "assistant"
+    pub role: String,
     pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_error: Option<bool>,
 }
 
 /// List transcript file paths for session, sorted by date (legacy first, then YYYY-MM-DD).
@@ -886,7 +891,7 @@ fn list_transcript_paths(transcripts_dir: &std::path::Path, session_key: &str) -
     paths
 }
 
-/// Raw entry from transcript JSONL (minimal parse for message/compaction).
+/// Raw entry from transcript JSONL (minimal parse for message/compaction/tool_call/tool_result).
 #[derive(Clone)]
 struct TranscriptEntryRaw {
     ty: String,
@@ -894,6 +899,8 @@ struct TranscriptEntryRaw {
     role: String,
     content: String,
     summary: Option<String>,
+    name: Option<String>,
+    is_error: Option<bool>,
 }
 
 /// Load chat transcript messages for display. Returns user/assistant messages in order.
@@ -950,6 +957,60 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         .unwrap_or("")
                         .to_string(),
                     summary: None,
+                    name: None,
+                    is_error: None,
+                });
+            } else if ty == "tool_call" {
+                let name = v
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let arguments = v
+                    .get("arguments")
+                    .and_then(|a| a.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                entries.push(TranscriptEntryRaw {
+                    ty,
+                    id: v
+                        .get("id")
+                        .and_then(|i| i.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    role: "tool_call".to_string(),
+                    content: arguments,
+                    summary: None,
+                    name: Some(name),
+                    is_error: None,
+                });
+            } else if ty == "tool_result" {
+                let name = v
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let result = v
+                    .get("result")
+                    .and_then(|r| r.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let is_error = v
+                    .get("is_error")
+                    .and_then(|e| e.as_bool())
+                    .unwrap_or(false);
+                entries.push(TranscriptEntryRaw {
+                    ty,
+                    id: v
+                        .get("id")
+                        .and_then(|i| i.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    role: "tool_result".to_string(),
+                    content: result,
+                    summary: None,
+                    name: Some(name),
+                    is_error: Some(is_error),
                 });
             } else if ty == "compaction" {
                 entries.push(TranscriptEntryRaw {
@@ -958,6 +1019,8 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     role: String::new(),
                     content: String::new(),
                     summary: v.get("summary").and_then(|s| s.as_str()).map(String::from),
+                    name: None,
+                    is_error: None,
                 });
             }
         }
@@ -976,22 +1039,32 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 id: "compaction".to_string(),
                 role: "assistant".to_string(),
                 content: format!("[此前对话已压缩]\n\n{}", summary),
+                name: None,
+                is_error: None,
             });
         }
     }
     for (i, e) in to_use.iter().enumerate() {
-        if e.ty == "message" && (!e.content.is_empty() || e.role == "user") {
-            let id = if e.id.is_empty() {
-                format!("msg-{}", i)
-            } else {
-                e.id.clone()
-            };
-            messages.push(TranscriptMessage {
-                id,
-                role: e.role.clone(),
-                content: e.content.clone(),
-            });
+        let dominated_by_type =
+            e.ty == "message" || e.ty == "tool_call" || e.ty == "tool_result";
+        if !dominated_by_type {
+            continue;
         }
+        if e.ty == "message" && e.content.is_empty() && e.role != "user" {
+            continue;
+        }
+        let id = if e.id.is_empty() {
+            format!("msg-{}", i)
+        } else {
+            e.id.clone()
+        };
+        messages.push(TranscriptMessage {
+            id,
+            role: e.role.clone(),
+            content: e.content.clone(),
+            name: e.name.clone(),
+            is_error: e.is_error,
+        });
     }
     messages
 }

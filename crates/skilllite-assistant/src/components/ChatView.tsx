@@ -58,16 +58,45 @@ export default function ChatView() {
   });
 
   useEffect(() => {
-    invoke<Array<{ id: string; role: string; content: string }>>("skilllite_load_transcript", {
+    invoke<
+      Array<{
+        id: string;
+        role: string;
+        content: string;
+        name?: string;
+        is_error?: boolean;
+      }>
+    >("skilllite_load_transcript", {
       session_key: "default",
     })
       .then((entries) => {
         if (entries.length > 0) {
-          const msgs: ChatMessage[] = entries.map((e) => ({
-            id: e.id,
-            type: e.role === "user" ? "user" : "assistant",
-            content: e.content,
-          })) as ChatMessage[];
+          const msgs: ChatMessage[] = entries.map((e) => {
+            if (e.role === "tool_call") {
+              return {
+                id: e.id,
+                type: "tool_call" as const,
+                name: e.name ?? "",
+                args: e.content,
+              };
+            }
+            if (e.role === "tool_result") {
+              return {
+                id: e.id,
+                type: "tool_result" as const,
+                name: e.name ?? "",
+                result: e.content,
+                isError: e.is_error ?? false,
+              };
+            }
+            return {
+              id: e.id,
+              type: (e.role === "user" ? "user" : "assistant") as
+                | "user"
+                | "assistant",
+              content: e.content,
+            };
+          });
           setMessages(msgs);
         }
       })

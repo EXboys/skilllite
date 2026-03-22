@@ -294,6 +294,9 @@ impl ChatSession {
             }
         }
 
+        // Append intermediate tool calls & results to transcript so they survive restart
+        self.save_intermediate_events(&result.messages);
+
         // Append assistant response to transcript
         self.append_message("assistant", &result.response)?;
 
@@ -425,6 +428,63 @@ impl ChatSession {
             tool_calls: None,
         };
         transcript::append_entry(&t_path, &entry)
+    }
+
+    /// Save tool calls and results from agent loop messages to transcript.
+    /// Skips system/user/final-assistant messages (those are handled separately).
+    fn save_intermediate_events(&self, messages: &[ChatMessage]) {
+        let transcripts_dir = self.data_root.join("transcripts");
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let ts = chrono::Utc::now().to_rfc3339();
+
+        for msg in messages {
+            if msg.role == "system" || msg.role == "user" {
+                continue;
+            }
+            // Assistant message with tool calls → save each tool call
+            if let Some(ref tool_calls) = msg.tool_calls {
+                for tc in tool_calls {
+                    let entry = transcript::TranscriptEntry::ToolCall {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        parent_id: None,
+                        tool_call_id: tc.id.clone(),
+                        name: tc.function.name.clone(),
+                        arguments: tc.function.arguments.clone(),
+                        timestamp: ts.clone(),
+                    };
+                    if let Err(e) = transcript::append_entry(&t_path, &entry) {
+                        tracing::debug!("Failed to save tool_call entry: {}", e);
+                    }
+                }
+            }
+            // Tool result message → save as ToolResult
+            if msg.role == "tool" {
+                let content = msg.content.as_deref().unwrap_or("");
+                let is_error = content.starts_with("Error:")
+                    || content.starts_with("error:")
+                    || content.starts_with("Command failed");
+                let name = msg.name.as_deref().unwrap_or("").to_string();
+                let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("").to_string();
+                let brief = if content.len() > 2000 {
+                    format!("{}…", &content[..2000])
+                } else {
+                    content.to_string()
+                };
+                let entry = transcript::TranscriptEntry::ToolResult {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    parent_id: None,
+                    tool_call_id,
+                    name,
+                    result: brief,
+                    is_error,
+                    elapsed_ms: None,
+                    timestamp: ts.clone(),
+                };
+                if let Err(e) = transcript::append_entry(&t_path, &entry) {
+                    tracing::debug!("Failed to save tool_result entry: {}", e);
+                }
+            }
+        }
     }
 
     /// Persist the task plan to plans/{session_key}-{date}.jsonl (append).
