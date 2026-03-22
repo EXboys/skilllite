@@ -117,6 +117,10 @@ pub fn chat_stream(
     for (k, v) in load_dotenv_for_child(&raw_workspace) {
         cmd.env(k, v);
     }
+    // Override logging: prevent tracing etc. from polluting stdout (JSON-Lines protocol).
+    // Critical for "other computer" / distribution builds where env may differ.
+    cmd.env("RUST_LOG", "error");
+    cmd.env("SKILLLITE_QUIET", "1");
     if let Some(ref cfg) = config_overrides {
         if let Some(ref key) = cfg.api_key {
             if !key.is_empty() {
@@ -218,6 +222,13 @@ pub fn chat_stream(
                     }
                 }
                 Err(e) => {
+                    let preview: String = line.chars().take(120).collect();
+                    let suffix = if line.len() > 120 { "..." } else { "" };
+                    eprintln!(
+                        "[skilllite-bridge] JSON parse error: {} | raw line: {:?}",
+                        e,
+                        format!("{}{}", preview, suffix)
+                    );
                     let _ = tx.send(Err(format!("JSON parse error: {}", e)));
                     break;
                 }
