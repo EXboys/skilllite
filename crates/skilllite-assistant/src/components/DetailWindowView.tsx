@@ -130,11 +130,11 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
                   <span className="text-ink-mute/80 shrink-0">{expandedFile === f ? "▼" : "▶"}</span>
                 </button>
                 {expandedFile === f && (
-                  <div className="mt-2 p-3 rounded-md bg-surface dark:bg-surface-dark text-sm overflow-y-auto max-h-80 border border-border dark:border-border-dark">
+                  <div className="mt-1.5 mb-2 ml-5 p-3 rounded-lg bg-blue-50/60 dark:bg-zinc-700/25 text-sm text-ink/85 dark:text-zinc-400 overflow-y-auto max-h-80 border border-blue-100 dark:border-zinc-600/40 shadow-sm">
                     {loading ? (
-                      <span className="text-ink-mute">加载中...</span>
+                      <span className="text-ink-mute dark:text-zinc-500">加载中...</span>
                     ) : fileContent ? (
-                      <pre className="whitespace-pre-wrap text-xs font-mono break-words">{fileContent}</pre>
+                      <pre className="whitespace-pre-wrap text-xs font-mono break-words leading-relaxed">{fileContent}</pre>
                     ) : null}
                   </div>
                 )}
@@ -214,11 +214,11 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
                     <span className="text-ink-mute/80 shrink-0">{expandedFile === f ? "▼" : "▶"}</span>
                   </button>
                   {expandedFile === f && (
-                    <div className="mt-2 p-3 rounded-md bg-surface dark:bg-surface-dark text-sm overflow-y-auto max-h-80 border border-border dark:border-border-dark">
+                    <div className="mt-1.5 mb-2 ml-5 p-3 rounded-lg bg-blue-50/60 dark:bg-zinc-700/25 text-sm text-ink/85 dark:text-zinc-400 overflow-y-auto max-h-80 border border-blue-100 dark:border-zinc-600/40 shadow-sm">
                       {loading ? (
-                        <span className="text-ink-mute">加载中...</span>
+                        <span className="text-ink-mute dark:text-zinc-500">加载中...</span>
                       ) : fileContent ? (
-                        <div className="prose prose-sm max-w-none dark:prose-invert [&_pre]:text-xs [&_code]:text-xs">
+                        <div className="prose prose-sm max-w-none dark:prose-invert [&_pre]:text-xs [&_pre]:bg-black/5 [&_pre]:dark:bg-white/5 [&_pre]:rounded-md [&_pre]:p-2 [&_code]:text-xs [&_*]:!text-ink/80 [&_*]:dark:!text-zinc-400 [&_strong]:!text-ink [&_strong]:dark:!text-zinc-300 [&_h1]:!text-ink [&_h1]:dark:!text-zinc-300 [&_h2]:!text-ink [&_h2]:dark:!text-zinc-300 [&_h3]:!text-ink [&_h3]:dark:!text-zinc-300">
                           <MarkdownContent content={fileContent} />
                         </div>
                       ) : null}
