@@ -5,9 +5,11 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 default-run = "skilllite"
-description = "A lightweight Skills secure execution engine"
+description = "Local-first AI agent with secure sandbox, self-evolving skills, and P2P swarm networking"
 repository.workspace = true
-keywords = ["agent", "skills", "sandbox", "security"]
+homepage.workspace = true
+documentation.workspace = true
+keywords = ["agent", "ai", "sandbox", "llm", "skills"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]

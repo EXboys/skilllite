@@ -5,7 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SkillLite FS: centralized file read/write/search_replace"
+homepage.workspace = true
+description = "Safe file operations for AI agents — read, write, search & replace with path validation"
+keywords = ["filesystem", "file-operations", "search-replace", "agent", "tools"]
+categories = ["filesystem", "development-tools"]
 
 [dependencies]
 anyhow = "1.0"

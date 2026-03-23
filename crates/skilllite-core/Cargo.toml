@@ -5,7 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 description = "SkillLite Core: config, skill metadata, path validation, observability"
+keywords = ["ai", "config", "sandbox", "skills", "agent"]
+categories = ["development-tools", "config"]
 
 [dependencies]
 skilllite-fs = { path = "../skilllite-fs", version = "0.1.15" }

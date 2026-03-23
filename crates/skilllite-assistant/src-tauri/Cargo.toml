@@ -1,10 +1,10 @@
 [package]
 name = "skilllite-assistant"
 version = "0.1.15"
-description = "SkillLite Desktop Assistant"
+description = "SkillLite Desktop Assistant — local-first AI agent with secure sandbox and self-evolving skills"
 authors = ["SkillLite Contributors"]
 license = "MIT"
-repository = ""
+repository = "https://github.com/EXboys/skilllite"
 edition = "2021"
 
 [build-dependencies]

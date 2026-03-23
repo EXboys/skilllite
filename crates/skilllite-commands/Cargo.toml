@@ -5,7 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SkillLite CLI command implementations"
+homepage.workspace = true
+description = "CLI commands for SkillLite — skill management, agent chat, security audit, workspace operations"
+keywords = ["cli", "agent", "skills", "sandbox", "ai"]
+categories = ["command-line-utilities", "development-tools"]
 
 [features]
 default = []

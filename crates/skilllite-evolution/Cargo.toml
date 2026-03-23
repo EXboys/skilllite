@@ -5,7 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SkillLite Evolution: self-evolving prompts, skills, and memory"
+homepage.workspace = true
+description = "Self-evolving AI agent engine — auto-improves prompts, skills, and memory from usage patterns"
+keywords = ["ai", "self-evolving", "agent", "memory", "llm"]
+categories = ["development-tools", "algorithms"]
 
 [dependencies]
 skilllite-core = { path = "../skilllite-core", version = "0.1.15" }

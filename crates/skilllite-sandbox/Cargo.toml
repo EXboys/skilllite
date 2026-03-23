@@ -5,7 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SkillLite Sandbox: secure execution engine + environment builder"
+homepage.workspace = true
+description = "OS-native secure sandbox for AI agent skill execution — Seatbelt (macOS), seccomp (Linux), Job Objects (Windows)"
+keywords = ["sandbox", "security", "isolation", "seatbelt", "seccomp"]
+categories = ["os", "development-tools"]
 
 [features]
 default = ["runtime-deps"]

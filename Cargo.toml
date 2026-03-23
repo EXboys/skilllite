@@ -11,6 +11,8 @@ edition = "2021"
 authors = ["EX <boyex345@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/EXboys/skilllite"
+homepage = "https://github.com/EXboys/skilllite"
+documentation = "https://docs.rs/skilllite"
 
 [profile.release]
 lto = true

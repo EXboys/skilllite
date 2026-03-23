@@ -5,7 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SkillLite Agent: LLM-powered tool loop, extensions, chat"
+homepage.workspace = true
+description = "LLM-powered autonomous agent with tool calling, multi-turn chat, planning, and extensible skills"
+keywords = ["agent", "ai", "llm", "tool-calling", "chat"]
+categories = ["development-tools", "asynchronous"]
 
 [features]
 default = []

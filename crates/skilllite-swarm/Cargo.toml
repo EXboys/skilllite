@@ -5,7 +5,10 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "SkillLite P2P swarm: mDNS discovery, peer mesh, task routing"
+homepage.workspace = true
+description = "P2P swarm networking for AI agents — mDNS discovery, capability-based routing, distributed task delegation"
+keywords = ["p2p", "swarm", "distributed", "agent", "mdns"]
+categories = ["network-programming", "concurrency"]
 
 [dependencies]
 skilllite-core = { path = "../skilllite-core", version = "0.1.15" }
