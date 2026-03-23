@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useGlobalShortcut } from "../hooks/useGlobalShortcut";
 import ChatView from "./ChatView";
 import StatusPanel from "./StatusPanel";
@@ -20,11 +19,6 @@ export default function MainLayout() {
     refreshRecentData();
   }, [refreshRecentData]);
 
-  const handleHideToTray = async () => {
-    const win = getCurrentWindow();
-    await win.hide();
-  };
-
   return (
     <div className="flex flex-col h-screen bg-surface dark:bg-surface-dark">
       {/* Top bar */}
@@ -40,15 +34,6 @@ export default function MainLayout() {
             aria-label="Settings"
           >
             设置
-          </button>
-          <button
-            type="button"
-            onClick={handleHideToTray}
-            className="px-2 py-1.5 text-sm text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-            aria-label="Hide to tray"
-            title="隐藏到托盘"
-          >
-            最小化
           </button>
         </div>
       </header>

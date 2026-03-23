@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useStatusStore, type TaskItem, type LogEntry } from "../stores/useStatusStore";
 import { MarkdownContent } from "./shared/MarkdownContent";
 import { groupMemoryFiles } from "../utils/fileUtils";
@@ -387,10 +386,6 @@ export default function DetailWindowView() {
     refreshRecentData();
   }, [refreshRecentData]);
 
-  const handleClose = () => {
-    getCurrentWindow().close();
-  };
-
   if (!module) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface dark:bg-surface-dark">
@@ -412,37 +407,17 @@ export default function DetailWindowView() {
     <div className="flex flex-col min-h-screen bg-paper dark:bg-paper-dark">
       <header className="flex items-center justify-between px-4 py-3 border-b border-border dark:border-border-dark shrink-0">
         <h1 className="text-base font-semibold text-ink dark:text-ink-dark">{TITLES[module]}</h1>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={handleOpenDir}
-            className="p-2 text-ink-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-            aria-label="打开目录"
-            title="在文件管理器中打开"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="p-2 text-ink-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-            aria-label="关闭窗口"
-          >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M18 6L6 18M6 6l12 12" />
+        <button
+          type="button"
+          onClick={handleOpenDir}
+          className="p-2 text-ink-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
+          aria-label="打开目录"
+          title="在文件管理器中打开"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
         </button>
-        </div>
       </header>
       <main className="flex-1 overflow-y-auto p-4">
         {module === "plan" && <TaskList tasks={tasks} />}
