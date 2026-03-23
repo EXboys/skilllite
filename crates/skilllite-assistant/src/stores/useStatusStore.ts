@@ -37,6 +37,7 @@ export interface LogEntry {
 interface StatusState {
   tasks: TaskItem[];
   logEntries: LogEntry[];
+  logFiles: string[];
   memoryHints: string[];
   memoryFiles: string[];
   outputFiles: string[];
@@ -50,6 +51,7 @@ interface StatusState {
   setRecentData: (data: {
     memoryFiles?: string[];
     outputFiles?: string[];
+    logFiles?: string[];
     plan?: { task: string; steps: { id: number; description: string; completed: boolean }[] };
   }) => void;
   clearAll: () => void;
@@ -62,6 +64,7 @@ export const useStatusStore = create<StatusState>()(
     (set) => ({
       tasks: [],
       logEntries: [],
+      logFiles: [],
       memoryHints: [],
       memoryFiles: [],
       outputFiles: [],
@@ -107,6 +110,7 @@ export const useStatusStore = create<StatusState>()(
         set((s) => ({
           memoryFiles: data.memoryFiles ?? s.memoryFiles,
           outputFiles: data.outputFiles ?? s.outputFiles,
+          logFiles: data.logFiles ?? s.logFiles,
           tasks:
             data.plan && data.plan.steps.length > 0
               ? data.plan.steps.map((step) => ({
@@ -118,7 +122,7 @@ export const useStatusStore = create<StatusState>()(
         })),
 
       clearAll: () =>
-        set({ tasks: [], logEntries: [], memoryHints: [], memoryFiles: [], outputFiles: [], latestOutput: "" }),
+        set({ tasks: [], logEntries: [], logFiles: [], memoryHints: [], memoryFiles: [], outputFiles: [], latestOutput: "" }),
     }),
     {
       name: "skilllite-assistant-status",

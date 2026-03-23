@@ -42,6 +42,7 @@ async fn skilllite_load_recent() -> skilllite_bridge::RecentData {
         .unwrap_or_else(|_| skilllite_bridge::RecentData {
             memory_files: vec![],
             output_files: vec![],
+            log_files: vec![],
             plan: None,
         })
 }
@@ -77,6 +78,17 @@ async fn skilllite_clear_transcript(
 async fn skilllite_read_memory_file(relative_path: String) -> Result<String, String> {
     let path = relative_path.clone();
     match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_memory_file(&path))
+        .await
+    {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+async fn skilllite_read_log_file(filename: String) -> Result<String, String> {
+    let name = filename.clone();
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_log_file(&name))
         .await
     {
         Ok(inner) => inner,
@@ -268,6 +280,7 @@ pub fn run() {
             skilllite_load_transcript,
             skilllite_clear_transcript,
             skilllite_read_memory_file,
+            skilllite_read_log_file,
             skilllite_read_output_file,
             skilllite_read_output_file_base64,
             skilllite_open_directory,

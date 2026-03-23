@@ -578,6 +578,7 @@ pub struct RecentPlan {
 pub struct RecentData {
     pub memory_files: Vec<String>,
     pub output_files: Vec<String>,
+    pub log_files: Vec<String>,
     pub plan: Option<RecentPlan>,
 }
 
@@ -699,6 +700,50 @@ fn load_memory_files(chat_root: &std::path::Path) -> Vec<String> {
     sort_newest_first(out)
 }
 
+/// Load transcript log files from chat_root/transcripts/, filtered to the last 3 days.
+fn load_log_files(chat_root: &std::path::Path) -> Vec<String> {
+    let transcripts_dir = chat_root.join("transcripts");
+    if !transcripts_dir.is_dir() {
+        return vec![];
+    }
+    let Ok(entries) = std::fs::read_dir(&transcripts_dir) else {
+        return vec![];
+    };
+    let cutoff = std::time::SystemTime::now()
+        - std::time::Duration::from_secs(3 * 24 * 60 * 60);
+    let mut out: Vec<FileWithMtime> = Vec::new();
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.extension().map_or(true, |e| e != "jsonl") {
+            continue;
+        }
+        let mtime = p
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::UNIX_EPOCH);
+        if mtime < cutoff {
+            continue;
+        }
+        if let Some(name) = p.file_name() {
+            out.push((name.to_string_lossy().to_string(), mtime));
+        }
+    }
+    sort_newest_first(out)
+}
+
+/// Read a single transcript/log file by filename (e.g. "default-2026-03-23.jsonl").
+pub fn read_log_file(filename: &str) -> Result<String, String> {
+    if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
+        return Err("Invalid filename".to_string());
+    }
+    let chat_root = skilllite_chat_root();
+    let full_path = chat_root.join("transcripts").join(filename);
+    if !full_path.starts_with(chat_root) {
+        return Err("Path escape".to_string());
+    }
+    std::fs::read_to_string(&full_path).map_err(|e| e.to_string())
+}
+
 /// Load output files from chat_root (for parallel execution).
 fn load_output_files(chat_root: &std::path::Path) -> Vec<String> {
     let output_dir = chat_root.join("output");
@@ -793,6 +838,7 @@ pub fn load_recent() -> RecentData {
         return RecentData {
             memory_files: vec![],
             output_files: vec![],
+            log_files: vec![],
             plan: None,
         };
     }
@@ -803,15 +849,20 @@ pub fn load_recent() -> RecentData {
     let root = chat_root.clone();
     let out_handle = std::thread::spawn(move || load_output_files(&root));
 
+    let root = chat_root.clone();
+    let log_handle = std::thread::spawn(move || load_log_files(&root));
+
     let plan_handle = std::thread::spawn(move || load_plan_data(&chat_root));
 
     let memory_files = mem_handle.join().unwrap_or_default();
     let output_files = out_handle.join().unwrap_or_default();
+    let log_files = log_handle.join().unwrap_or_default();
     let plan = plan_handle.join().unwrap_or(None);
 
     RecentData {
         memory_files,
         output_files,
+        log_files,
         plan,
     }
 }

@@ -5,6 +5,7 @@ import { useStatusStore } from "../stores/useStatusStore";
 interface RecentDataResponse {
   memory_files: string[];
   output_files: string[];
+  log_files: string[];
   plan: {
     task: string;
     steps: { id: number; description: string; completed: boolean }[];
@@ -15,6 +16,7 @@ function parseRecentData(data: RecentDataResponse) {
   return {
     memoryFiles: data.memory_files ?? [],
     outputFiles: data.output_files ?? [],
+    logFiles: data.log_files ?? [],
     plan: data.plan
       ? {
           task: data.plan.task,

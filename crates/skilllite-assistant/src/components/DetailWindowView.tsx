@@ -78,6 +78,86 @@ function LogList({ entries }: { entries: LogEntry[] }) {
   );
 }
 
+function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry[] }) {
+  const [expandedFile, setExpandedFile] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const hasFiles = files.length > 0;
+  const hasEntries = entries.length > 0;
+
+  if (!hasFiles && !hasEntries) {
+    return (
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无日志</p>
+    );
+  }
+
+  const handleFileClick = async (filename: string) => {
+    if (expandedFile === filename) {
+      setExpandedFile(null);
+      setFileContent(null);
+      return;
+    }
+    setLoading(true);
+    setExpandedFile(filename);
+    try {
+      const content = await invoke<string>("skilllite_read_log_file", { filename });
+      setFileContent(content);
+    } catch {
+      setFileContent("* 无法读取文件内容 *");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {hasFiles && (
+        <div className="space-y-1.5">
+          <div className="text-sm font-medium text-ink-mute dark:text-ink-dark-mute">
+            最近 3 天的日志文件
+          </div>
+          <ul className="space-y-0.5">
+            {files.map((f, i) => (
+              <li key={`file-${i}`}>
+                <button
+                  type="button"
+                  onClick={() => handleFileClick(f)}
+                  className="text-sm text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent w-full text-left flex items-center gap-2 py-1 transition-colors"
+                  title={f}
+                >
+                  <span className="shrink-0">📄</span>
+                  <span className="truncate flex-1">{f}</span>
+                  <span className="text-ink-mute/80 shrink-0">{expandedFile === f ? "▼" : "▶"}</span>
+                </button>
+                {expandedFile === f && (
+                  <div className="mt-2 p-3 rounded-md bg-surface dark:bg-surface-dark text-sm overflow-y-auto max-h-80 border border-border dark:border-border-dark">
+                    {loading ? (
+                      <span className="text-ink-mute">加载中...</span>
+                    ) : fileContent ? (
+                      <pre className="whitespace-pre-wrap text-xs font-mono break-words">{fileContent}</pre>
+                    ) : null}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {hasEntries && (
+        <div className="space-y-1.5">
+          {hasFiles && (
+            <div className="text-sm font-medium text-ink-mute dark:text-ink-dark-mute pt-2 border-t border-border dark:border-border-dark">
+              实时日志
+            </div>
+          )}
+          <LogList entries={entries} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -296,7 +376,7 @@ function OutputFileContent({ files }: { files: string[] }) {
 export default function DetailWindowView() {
   const [module, setModule] = useState<DetailModule | null>(null);
   const { refreshRecentData } = useRecentData();
-  const { tasks, logEntries, memoryHints, memoryFiles, outputFiles } = useStatusStore();
+  const { tasks, logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();
 
   useEffect(() => {
     const m = parseDetailModuleFromHash();
@@ -367,7 +447,7 @@ export default function DetailWindowView() {
       <main className="flex-1 overflow-y-auto p-4">
         {module === "plan" && <TaskList tasks={tasks} />}
         {module === "mem" && <MemoryContent files={memoryFiles} hints={memoryHints} />}
-        {module === "log" && <LogList entries={logEntries} />}
+        {module === "log" && <LogFileContent files={logFiles} entries={logEntries} />}
         {module === "output" && <OutputFileContent files={outputFiles} />}
       </main>
     </div>

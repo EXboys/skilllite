@@ -112,6 +112,39 @@ function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
   );
 }
 
+function LogFilePreview({ files, entries, limit = 3 }: { files: string[]; entries: LogEntry[]; limit?: number }) {
+  const hasFiles = files.length > 0;
+  const hasEntries = entries.length > 0;
+  if (!hasFiles && !hasEntries) {
+    return (
+      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无日志</p>
+    );
+  }
+  const show = limit ? files.slice(0, limit) : files;
+  return (
+    <div className="space-y-1">
+      {hasFiles && (
+        <ul className="space-y-0.5">
+          {show.map((f, i) => (
+            <li key={i} className="text-xs text-ink-mute dark:text-ink-dark-mute truncate flex items-center gap-1">
+              <span className="shrink-0">📄</span>
+              <span className="truncate">{f}</span>
+            </li>
+          ))}
+          {files.length > limit && (
+            <li className="text-xs text-ink-mute dark:text-ink-dark-mute truncate pt-1">
+              + {files.length - limit} 个文件
+            </li>
+          )}
+        </ul>
+      )}
+      {hasEntries && !hasFiles && (
+        <LogList entries={entries} limit={limit} />
+      )}
+    </div>
+  );
+}
+
 function OutputPreview({ files, limit = 3 }: { files: string[]; limit?: number }) {
   if (files.length === 0) {
     return (
@@ -530,11 +563,11 @@ function SkillRepairSection() {
 }
 
 export default function StatusPanel() {
-  const { tasks, logEntries, memoryHints, memoryFiles, outputFiles } = useStatusStore();
+  const { tasks, logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();
 
   const planHasMore = tasks.length > PREVIEW_LIMIT || tasks.length > 0;
   const memHasMore = memoryFiles.length > PREVIEW_LIMIT || memoryHints.length > 0 || memoryFiles.length > 0;
-  const logHasMore = logEntries.length > PREVIEW_LIMIT || logEntries.length > 0;
+  const logHasMore = logFiles.length > 0 || logEntries.length > PREVIEW_LIMIT || logEntries.length > 0;
   const outputHasMore = outputFiles.length > PREVIEW_LIMIT || outputFiles.length > 0;
 
   return (
@@ -561,9 +594,9 @@ export default function StatusPanel() {
         title="执行日志"
         onClickMore={() => openDetailWindow("log")}
         onOpenDir={openDir("log")}
-        hasMore={logHasMore || logEntries.length > 0}
+        hasMore={logHasMore}
       >
-        <LogList entries={logEntries} limit={PREVIEW_LIMIT} />
+        <LogFilePreview files={logFiles} entries={logEntries} limit={PREVIEW_LIMIT} />
       </SummarySection>
 
       <SummarySection
