@@ -4,12 +4,13 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "SkillLite Evolution: self-evolving prompts, skills, and memory"
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core" }
-skilllite-fs = { path = "../skilllite-fs" }
-skilllite-sandbox = { path = "../skilllite-sandbox" }
+skilllite-core = { path = "../skilllite-core", version = "0.1.15" }
+skilllite-fs = { path = "../skilllite-fs", version = "0.1.15" }
+skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.15" }
 
 async-trait = "0.1"
 anyhow = "1.0"

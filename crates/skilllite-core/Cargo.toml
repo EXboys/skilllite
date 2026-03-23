@@ -4,10 +4,11 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "SkillLite Core: config, skill metadata, path validation, observability"
 
 [dependencies]
-skilllite-fs = { path = "../skilllite-fs" }
+skilllite-fs = { path = "../skilllite-fs", version = "0.1.15" }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1.0"

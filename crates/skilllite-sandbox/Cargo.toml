@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "SkillLite Sandbox: secure execution engine + environment builder"
 
 [features]
@@ -13,7 +14,7 @@ audit = ["dep:ureq"]
 runtime-deps = ["dep:ureq"]
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core" }
+skilllite-core = { path = "../skilllite-core", version = "0.1.15" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 anyhow = "1.0"

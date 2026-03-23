@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "SkillLite Executor: session, transcript, memory storage"
 
 [features]
@@ -11,8 +12,8 @@ default = []
 memory_vector = ["dep:sqlite-vec", "dep:zerocopy"]
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core" }
-skilllite-fs = { path = "../skilllite-fs" }
+skilllite-core = { path = "../skilllite-core", version = "0.1.15" }
+skilllite-fs = { path = "../skilllite-fs", version = "0.1.15" }
 anyhow = "1.0"
 thiserror = "1.0"
 serde = { version = "1", features = ["derive"] }

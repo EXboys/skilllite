@@ -4,10 +4,11 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "SkillLite P2P swarm: mDNS discovery, peer mesh, task routing"
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core" }
+skilllite-core = { path = "../skilllite-core", version = "0.1.15" }
 mdns-sd = "0.18"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "net", "rt", "signal"] }
 serde = { version = "1", features = ["derive"] }
