@@ -259,6 +259,8 @@ function SkillRepairSection() {
   const [adding, setAdding] = useState(false);
   const [addResult, setAddResult] = useState<string | null>(null);
   const [addResultIsError, setAddResultIsError] = useState(false);
+  const [initializing, setInitializing] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
 
   const loadSkills = useCallback(async () => {
     setLoadingList(true);
@@ -330,6 +332,19 @@ function SkillRepairSection() {
       setAddResultIsError(true);
     } finally {
       setAdding(false);
+    }
+  };
+
+  const runInitSkills = async () => {
+    setInitializing(true);
+    setInitError(null);
+    try {
+      await invoke("skilllite_init_workspace", { dir: workspace });
+      await loadSkills();
+    } catch (e) {
+      setInitError(String(e));
+    } finally {
+      setInitializing(false);
     }
   };
 
@@ -429,9 +444,19 @@ function SkillRepairSection() {
           </div>
         ) : skillNames.length === 0 ? (
           <div className="p-4 text-xs text-ink-mute dark:text-ink-dark-mute text-center leading-relaxed">
-            未找到技能
-            <br />
-            <span className="text-[11px]">需在工作区有 .skills 或 skills 目录</span>
+            <p>未找到技能</p>
+            <p className="text-[11px] mt-1 mb-2">当前工作区没有 .skills 目录，点击下方按钮下载默认技能包</p>
+            <button
+              type="button"
+              onClick={runInitSkills}
+              disabled={initializing}
+              className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {initializing ? "初始化中…" : "初始化技能"}
+            </button>
+            {initError && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400 break-words text-left">{initError}</p>
+            )}
           </div>
         ) : (
           <ul className="p-1.5 space-y-0.5">
