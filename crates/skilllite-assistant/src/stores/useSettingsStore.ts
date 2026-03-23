@@ -3,6 +3,9 @@ import { persist } from "zustand/middleware";
 
 export type Provider = "api" | "ollama";
 
+/** 沙箱安全等级：1=无沙箱, 2=基础隔离, 3=完全沙箱(默认) */
+export type SandboxLevel = 1 | 2 | 3;
+
 export interface Settings {
   provider: Provider;
   apiKey: string;
@@ -13,6 +16,12 @@ export interface Settings {
   onboardingCompleted?: boolean;
   /** 首次引导完成后，在聊天页展示入门操作卡片。 */
   showStarterPrompts?: boolean;
+  /** 沙箱安全等级 1/2/3，默认 3（完全沙箱） */
+  sandboxLevel: SandboxLevel;
+  /** 是否启用 Swarm P2P 网络 */
+  swarmEnabled: boolean;
+  /** Swarm 节点 URL，启用时生效 */
+  swarmUrl: string;
 }
 
 const defaultSettings: Settings = {
@@ -23,6 +32,9 @@ const defaultSettings: Settings = {
   apiBase: "",
   onboardingCompleted: false,
   showStarterPrompts: false,
+  sandboxLevel: 3,
+  swarmEnabled: false,
+  swarmUrl: "",
 };
 
 export const useSettingsStore = create<{

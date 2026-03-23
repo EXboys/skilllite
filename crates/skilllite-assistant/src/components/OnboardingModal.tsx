@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from "react";
 import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { useSettingsStore } from "../stores/useSettingsStore";
+import { useSettingsStore, type SandboxLevel } from "../stores/useSettingsStore";
 
-type Step = "mode" | "config" | "workspace" | "health" | "success";
+type Step = "mode" | "config" | "workspace" | "sandbox" | "health" | "success";
 type Mode = "api" | "ollama";
 
 interface OllamaProbeResult {
@@ -42,6 +42,7 @@ export default function OnboardingModal() {
   const [ollamaModel, setOllamaModel] = useState<string | null>(null);
   const [ollamaLoading, setOllamaLoading] = useState(false);
   const [ollamaAutoDetected, setOllamaAutoDetected] = useState(false);
+  const [sandboxLevel, setSandboxLevel] = useState<SandboxLevel>(3);
   const [initCreating, setInitCreating] = useState(false);
   const [initError, setInitError] = useState("");
   const [healthChecking, setHealthChecking] = useState(false);
@@ -99,6 +100,11 @@ export default function OnboardingModal() {
 
   const applySettingsAndFinish = () => {
     const ws = workspace.trim() || ".";
+    const shared = {
+      sandboxLevel,
+      onboardingCompleted: true as const,
+      showStarterPrompts: true as const,
+    };
     if (mode === "ollama") {
       setSettings({
         provider: "ollama",
@@ -106,8 +112,7 @@ export default function OnboardingModal() {
         apiBase: "http://localhost:11434/v1",
         model: ollamaModel || "llama3.2",
         workspace: ws,
-        onboardingCompleted: true,
-        showStarterPrompts: true,
+        ...shared,
       });
     } else {
       setSettings({
@@ -116,8 +121,7 @@ export default function OnboardingModal() {
         model: model.trim() || "gpt-4o",
         workspace: ws,
         apiBase: "",
-        onboardingCompleted: true,
-        showStarterPrompts: true,
+        ...shared,
       });
     }
   };
@@ -409,6 +413,56 @@ export default function OnboardingModal() {
               </button>
               <button
                 type="button"
+                onClick={() => setStep("sandbox")}
+                className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium"
+              >
+                下一步
+              </button>
+            </div>
+          </>
+        )}
+
+        {step === "sandbox" && (
+          <>
+            <p className="text-sm font-medium text-ink dark:text-ink-dark mb-2">
+              4. 选择沙箱安全等级
+            </p>
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute mb-3">
+              沙箱决定了技能脚本的执行隔离程度，等级越高越安全，可后续在设置中修改
+            </p>
+            <div className="space-y-2 mb-4">
+              {([
+                { level: 3 as const, title: "L3 · 完全沙箱（推荐）", desc: "严格的文件/网络/进程隔离，推荐用于运行第三方技能" },
+                { level: 2 as const, title: "L2 · 基础隔离", desc: "限制文件访问与网络，适合日常开发使用" },
+                { level: 1 as const, title: "L1 · 无沙箱", desc: "脚本直接在主机执行，仅适合完全信任的本地脚本" },
+              ]).map((opt) => (
+                <button
+                  key={opt.level}
+                  type="button"
+                  onClick={() => setSandboxLevel(opt.level)}
+                  className={`w-full text-left px-4 py-3 rounded-lg border transition-colors ${
+                    sandboxLevel === opt.level
+                      ? "border-accent bg-accent/5 dark:bg-accent/10"
+                      : "border-border dark:border-border-dark hover:bg-gray-50 dark:hover:bg-white/5"
+                  }`}
+                >
+                  <span className={`font-medium block ${sandboxLevel === opt.level ? "text-accent" : "text-ink dark:text-ink-dark"}`}>
+                    {opt.title}
+                  </span>
+                  <span className="text-xs text-ink-mute dark:text-ink-dark-mute">{opt.desc}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setStep("workspace")}
+                className="px-3 py-1.5 text-sm text-ink-mute"
+              >
+                上一步
+              </button>
+              <button
+                type="button"
                 onClick={handleRunHealthCheck}
                 className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium"
               >
@@ -421,7 +475,7 @@ export default function OnboardingModal() {
         {step === "health" && (
           <>
             <p className="text-sm font-medium text-ink dark:text-ink-dark mb-2">
-              4. 健康检查
+              5. 健康检查
             </p>
             <p className="text-xs text-ink-mute dark:text-ink-dark-mute mb-3">
               正在检查内置引擎、当前 provider、工作区和数据目录是否可用
@@ -461,7 +515,7 @@ export default function OnboardingModal() {
             <div className="flex justify-end gap-2 mt-4">
               <button
                 type="button"
-                onClick={() => setStep("workspace")}
+                onClick={() => setStep("sandbox")}
                 className="px-3 py-1.5 text-sm text-ink-mute"
               >
                 返回修改
@@ -481,7 +535,7 @@ export default function OnboardingModal() {
         {step === "success" && (
           <>
             <p className="text-sm font-medium text-ink dark:text-ink-dark mb-2">
-              5. 准备完成
+              6. 准备完成
             </p>
             <div className="rounded-lg border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/20 px-3 py-3 text-sm text-green-800 dark:text-green-200 mb-3">
               环境检查已通过，接下来会进入聊天页，并显示几个适合第一次使用的入门操作。
@@ -499,7 +553,7 @@ export default function OnboardingModal() {
             <div className="flex justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setStep("workspace")}
+                onClick={() => setStep("sandbox")}
                 className="px-3 py-1.5 text-sm text-ink-mute"
               >
                 返回修改

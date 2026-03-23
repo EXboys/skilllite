@@ -78,6 +78,8 @@ pub struct ChatConfigOverrides {
     pub model: Option<String>,
     pub api_base: Option<String>,
     pub workspace: Option<String>,
+    pub sandbox_level: Option<u8>,
+    pub swarm_url: Option<String>,
 }
 
 /// Resolve skilllite binary path: bundled resource first, then ~/.skilllite/bin, else PATH.
@@ -210,6 +212,16 @@ pub fn chat_stream(
                 cmd.env("OPENAI_BASE_URL", base);
             }
         }
+        if let Some(level) = cfg.sandbox_level {
+            if (1..=3).contains(&level) {
+                cmd.env("SKILLLITE_SANDBOX_LEVEL", level.to_string());
+            }
+        }
+        if let Some(ref url) = cfg.swarm_url {
+            if !url.is_empty() {
+                cmd.env("SKILLLITE_SWARM_URL", url);
+            }
+        }
     }
 
     let mut child = cmd.spawn().map_err(|e| {
@@ -257,6 +269,16 @@ pub fn chat_stream(
         if let Some(ref b) = cfg.api_base {
             if !b.is_empty() {
                 config_json.insert("api_base".to_string(), json!(b));
+            }
+        }
+        if let Some(level) = cfg.sandbox_level {
+            if (1..=3).contains(&level) {
+                config_json.insert("sandbox_level".to_string(), json!(level));
+            }
+        }
+        if let Some(ref url) = cfg.swarm_url {
+            if !url.is_empty() {
+                config_json.insert("swarm_url".to_string(), json!(url));
             }
         }
     }

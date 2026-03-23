@@ -200,15 +200,19 @@ export default function ChatView() {
     ]);
     setLoading(true);
 
-    const config =
+    const hasOverrides =
       settings.apiKey || settings.model !== "gpt-4o" || settings.workspace !== "." || settings.apiBase
-        ? {
-            api_key: settings.apiKey || undefined,
-            model: settings.model || undefined,
-            workspace: settings.workspace || undefined,
-            api_base: settings.apiBase || undefined,
-          }
-        : undefined;
+      || settings.sandboxLevel !== 3 || (settings.swarmEnabled && settings.swarmUrl);
+    const config = hasOverrides
+      ? {
+          api_key: settings.apiKey || undefined,
+          model: settings.model || undefined,
+          workspace: settings.workspace || undefined,
+          api_base: settings.apiBase || undefined,
+          sandbox_level: settings.sandboxLevel !== 3 ? settings.sandboxLevel : undefined,
+          swarm_url: settings.swarmEnabled && settings.swarmUrl ? settings.swarmUrl : undefined,
+        }
+      : undefined;
 
     try {
       await invoke("skilllite_chat_stream", {
