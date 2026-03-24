@@ -31,8 +31,8 @@ export function MessageList({ messages, loading, onConfirm, onClarify }: Message
       ))}
       {showLoadingIndicator && (
         <div className="flex justify-start">
-          <div className="rounded-lg px-4 py-2.5 bg-white dark:bg-paper-dark border border-border dark:border-border-dark">
-            <span className="inline-block w-2 h-4 bg-accent/60 animate-pulse rounded-sm" />
+          <div className="max-w-[min(85%,36rem)] mr-4 rounded-2xl px-4 py-2.5 bg-white dark:bg-paper-dark border border-border dark:border-border-dark shadow-sm shadow-ink/[0.06] dark:shadow-none">
+            <span className="inline-block w-2 h-4 bg-accent/60 animate-pulse rounded-sm" aria-hidden />
           </div>
         </div>
       )}

@@ -22,6 +22,8 @@ export interface Settings {
   swarmEnabled: boolean;
   /** Swarm 节点 URL，启用时生效 */
   swarmUrl: string;
+  /** 会话侧边栏是否折叠 */
+  sessionPanelCollapsed?: boolean;
 }
 
 const defaultSettings: Settings = {

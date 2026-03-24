@@ -7,6 +7,13 @@ import { useStatusStore, type TaskItem, type LogEntry } from "../stores/useStatu
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { groupMemoryFiles } from "../utils/fileUtils";
 
+interface MemoryEntryData {
+  path: string;
+  title: string;
+  summary: string;
+  updated_at: string;
+}
+
 export type DetailModule = "plan" | "mem" | "log" | "output" | null;
 
 const MODULE_TITLES: Record<NonNullable<DetailModule>, string> = {
@@ -170,13 +177,57 @@ function OutputPreview({ files, limit = 3 }: { files: string[]; limit?: number }
 }
 
 function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string[]; limit?: number }) {
+  const [summaries, setSummaries] = useState<MemoryEntryData[]>([]);
+
+  useEffect(() => {
+    invoke<MemoryEntryData[]>("skilllite_load_memory_summaries")
+      .then(setSummaries)
+      .catch(() => setSummaries([]));
+  }, [files.length]);
+
+  const hasSummaries = summaries.length > 0;
   const hasFiles = files.length > 0;
   const hasHints = hints.length > 0;
-  if (!hasFiles && !hasHints) {
+
+  if (!hasSummaries && !hasFiles && !hasHints) {
     return (
       <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无记忆</p>
     );
   }
+
+  if (hasSummaries) {
+    const show = limit ? summaries.slice(0, limit) : summaries;
+    return (
+      <div className="space-y-1.5">
+        {show.map((entry) => (
+          <div
+            key={entry.path}
+            className="rounded-md border border-border/50 dark:border-border-dark/50 px-2.5 py-1.5 bg-white/50 dark:bg-white/[0.02]"
+          >
+            <div className="text-xs font-medium text-ink dark:text-ink-dark truncate">
+              {entry.title}
+            </div>
+            {entry.summary && (
+              <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute mt-0.5 line-clamp-2">
+                {entry.summary}
+              </p>
+            )}
+          </div>
+        ))}
+        {summaries.length > (limit ?? summaries.length) && (
+          <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
+            + {summaries.length - (limit ?? summaries.length)} 条更多记忆
+          </p>
+        )}
+        {hasHints && limit && (
+          <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute pt-0.5">
+            + {hints.length} 条最近操作
+          </p>
+        )}
+      </div>
+    );
+  }
+
   const flatFiles = Object.values(groupMemoryFiles(files)).flat();
   const showFiles = limit ? flatFiles.slice(0, limit) : flatFiles;
   return (

@@ -31,4 +31,5 @@ export type ChatMessage =
 export interface StreamEventPayload {
   event: string;
   data: Record<string, unknown>;
+  session_key?: string;
 }

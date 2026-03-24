@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useStatusStore } from "../stores/useStatusStore";
+import { useSessionStore } from "../stores/useSessionStore";
 import { useChatEvents } from "../hooks/useChatEvents";
 import { useRecentData } from "../hooks/useRecentData";
 import { MessageList } from "./chat/MessageList";
@@ -32,6 +33,7 @@ export default function ChatView() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { settings, setSettings } = useSettingsStore();
+  const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
   const { refreshRecentData } = useRecentData();
   const statusActions = useStatusStore(
     useShallow((s) => ({
@@ -45,7 +47,18 @@ export default function ChatView() {
     }))
   );
 
+  // Synchronous clear: if session key changed without remount (HMR), force-clear in render
+  const [activeKey, setActiveKey] = useState(currentSessionKey);
+  if (activeKey !== currentSessionKey) {
+    setActiveKey(currentSessionKey);
+    setMessages([]);
+    setLoading(false);
+    setError(null);
+    setNotice(null);
+  }
+
   useChatEvents({
+    sessionKey: currentSessionKey,
     setMessages,
     setLoading,
     setError,
@@ -58,6 +71,16 @@ export default function ChatView() {
   });
 
   useEffect(() => {
+    let cancelled = false;
+
+    setMessages([]);
+    setLoading(false);
+    setError(null);
+    setNotice(null);
+    statusActions.clearAll();
+
+    invoke("skilllite_stop").catch(() => {});
+
     invoke<
       Array<{
         id: string;
@@ -67,43 +90,49 @@ export default function ChatView() {
         is_error?: boolean;
       }>
     >("skilllite_load_transcript", {
-      session_key: "default",
+      sessionKey: currentSessionKey,
     })
       .then((entries) => {
-        if (entries.length > 0) {
-          const msgs: ChatMessage[] = entries.map((e) => {
-            if (e.role === "tool_call") {
-              return {
-                id: e.id,
-                type: "tool_call" as const,
-                name: e.name ?? "",
-                args: e.content,
-              };
-            }
-            if (e.role === "tool_result") {
-              return {
-                id: e.id,
-                type: "tool_result" as const,
-                name: e.name ?? "",
-                result: e.content,
-                isError: e.is_error ?? false,
-              };
-            }
+        if (cancelled) return;
+        if (!entries || entries.length === 0) return;
+        const msgs: ChatMessage[] = entries.map((e) => {
+          if (e.role === "tool_call") {
             return {
               id: e.id,
-              type: (e.role === "user" ? "user" : "assistant") as
-                | "user"
-                | "assistant",
-              content: e.content,
+              type: "tool_call" as const,
+              name: e.name ?? "",
+              args: e.content,
             };
-          });
-          setMessages(msgs);
-        }
+          }
+          if (e.role === "tool_result") {
+            return {
+              id: e.id,
+              type: "tool_result" as const,
+              name: e.name ?? "",
+              result: e.content,
+              isError: e.is_error ?? false,
+            };
+          }
+          return {
+            id: e.id,
+            type: (e.role === "user" ? "user" : "assistant") as
+              | "user"
+              | "assistant",
+            content: e.content,
+          };
+        });
+        setMessages(msgs);
       })
       .catch((err) => {
+        if (cancelled) return;
         console.error("[skilllite-assistant] skilllite_load_transcript failed:", err);
       });
-  }, []);
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionKey]);
 
   useEffect(() => {
     if (!notice) return;
@@ -142,7 +171,7 @@ export default function ChatView() {
     setNotice("正在清空对话...");
     try {
       await invoke("skilllite_clear_transcript", {
-        session_key: "default",
+        sessionKey: currentSessionKey,
         workspace: settings.workspace || ".",
       });
       setMessages([]);
@@ -157,7 +186,7 @@ export default function ChatView() {
     } finally {
       setIsClearing(false);
     }
-  }, [loading, isClearing, settings.workspace, statusActions.clearAll, refreshRecentData]);
+  }, [loading, isClearing, settings.workspace, currentSessionKey, statusActions, refreshRecentData]);
 
   const handleStop = useCallback(async () => {
     try {
@@ -176,7 +205,7 @@ export default function ChatView() {
     } catch {
       setLoading(false);
     }
-  }, [refreshRecentData, statusActions.setLatestOutput]);
+  }, [refreshRecentData, statusActions]);
 
   const sendMessage = useCallback(async (rawText: string) => {
     const text = rawText.trim();
@@ -218,6 +247,7 @@ export default function ChatView() {
       await invoke("skilllite_chat_stream", {
         message: text,
         workspace: settings.workspace || ".",
+        sessionKey: currentSessionKey,
         config,
       });
     } catch (e) {
@@ -231,6 +261,7 @@ export default function ChatView() {
           content: `Request failed: ${errMsg}`,
         },
       ]);
+    } finally {
       setLoading(false);
     }
   }, [
@@ -242,6 +273,10 @@ export default function ChatView() {
     settings.apiKey,
     settings.model,
     settings.workspace,
+    settings.sandboxLevel,
+    settings.swarmEnabled,
+    settings.swarmUrl,
+    currentSessionKey,
     statusActions,
   ]);
 

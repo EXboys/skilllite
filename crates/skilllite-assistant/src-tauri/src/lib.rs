@@ -13,6 +13,7 @@ async fn skilllite_chat_stream(
     window: tauri::Window,
     message: String,
     workspace: Option<String>,
+    session_key: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
     conf_state: tauri::State<'_, skilllite_bridge::ConfirmationState>,
     clar_state: tauri::State<'_, skilllite_bridge::ClarificationState>,
@@ -22,7 +23,7 @@ async fn skilllite_chat_stream(
     let clar = (*clar_state).clone();
     let proc = (*process_state).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        skilllite_bridge::chat_stream(window, message, workspace, config, conf, clar, proc)
+        skilllite_bridge::chat_stream(window, message, workspace, config, session_key, conf, clar, proc)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -31,8 +32,10 @@ async fn skilllite_chat_stream(
 #[tauri::command]
 fn skilllite_stop(
     process_state: tauri::State<'_, skilllite_bridge::ChatProcessState>,
+    conf_state: tauri::State<'_, skilllite_bridge::ConfirmationState>,
+    clar_state: tauri::State<'_, skilllite_bridge::ClarificationState>,
 ) -> Result<(), String> {
-    skilllite_bridge::stop_chat(&process_state)
+    skilllite_bridge::stop_chat(&process_state, &conf_state, &clar_state)
 }
 
 #[tauri::command]
@@ -221,6 +224,48 @@ async fn skilllite_init_workspace(app: tauri::AppHandle, dir: String) -> Result<
 }
 
 #[tauri::command]
+async fn skilllite_list_sessions() -> Vec<skilllite_bridge::SessionInfo> {
+    tauri::async_runtime::spawn_blocking(skilllite_bridge::list_sessions)
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn skilllite_create_session(
+    display_name: String,
+) -> Result<skilllite_bridge::SessionInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::create_session(&display_name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_rename_session(
+    session_key: String,
+    new_name: String,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::rename_session(&session_key, &new_name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_delete_session(session_key: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::delete_session(&session_key))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_load_memory_summaries() -> Vec<skilllite_bridge::MemoryEntry> {
+    tauri::async_runtime::spawn_blocking(skilllite_bridge::load_memory_summaries)
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
 async fn skilllite_probe_ollama() -> skilllite_bridge::OllamaProbeResult {
     tauri::async_runtime::spawn_blocking(skilllite_bridge::probe_ollama)
         .await
@@ -292,7 +337,12 @@ pub fn run() {
             skilllite_add_skill,
             skilllite_init_workspace,
             skilllite_probe_ollama,
-            skilllite_health_check
+            skilllite_health_check,
+            skilllite_list_sessions,
+            skilllite_create_session,
+            skilllite_rename_session,
+            skilllite_delete_session,
+            skilllite_load_memory_summaries
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())

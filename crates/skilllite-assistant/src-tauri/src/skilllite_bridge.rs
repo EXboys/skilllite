@@ -175,6 +175,7 @@ pub fn chat_stream(
     message: String,
     workspace: Option<String>,
     config_overrides: Option<ChatConfigOverrides>,
+    session_key: Option<String>,
     confirmation_state: ConfirmationState,
     clarification_state: ClarificationState,
     process_state: ChatProcessState,
@@ -283,11 +284,12 @@ pub fn chat_stream(
         }
     }
 
+    let session = session_key.unwrap_or_else(|| "default".to_string());
     let request = json!({
         "method": "agent_chat",
         "params": {
             "message": message,
-            "session_key": "default",
+            "session_key": session.clone(),
             "config": config_json
         }
     });
@@ -366,6 +368,13 @@ pub fn chat_stream(
         }
     });
 
+    #[derive(Serialize)]
+    struct TaggedEvent<'a> {
+        event: &'a str,
+        data: &'a serde_json::Value,
+        session_key: &'a str,
+    }
+
     // Process events on main thread and emit to window
     for msg in rx {
         match msg {
@@ -382,7 +391,7 @@ pub fn chat_stream(
                     }
                     if let Err(e) = window.emit(
                         "skilllite-confirmation-request",
-                        json!({ "prompt": prompt }),
+                        json!({ "prompt": prompt, "session_key": &session }),
                     ) {
                         eprintln!("emit confirmation_request error: {}", e);
                     }
@@ -429,6 +438,7 @@ pub fn chat_stream(
                             "reason": reason,
                             "message": message,
                             "suggestions": suggestions,
+                            "session_key": &session,
                         }),
                     ) {
                         eprintln!("emit clarification_request error: {}", e);
@@ -457,7 +467,14 @@ pub fn chat_stream(
                     let _ = stdin.flush();
                     continue;
                 }
-                if let Err(e) = window.emit("skilllite-event", &ev) {
+                if let Err(e) = window.emit(
+                    "skilllite-event",
+                    &TaggedEvent {
+                        event: &ev.event,
+                        data: &ev.data,
+                        session_key: &session,
+                    },
+                ) {
                     eprintln!("emit error: {}", e);
                 }
                 if ev.event == "done" || ev.event == "error" {
@@ -465,11 +482,13 @@ pub fn chat_stream(
                 }
             }
             Err(e) => {
+                let err_data = json!({ "message": e });
                 let _ = window.emit(
                     "skilllite-event",
-                    StreamEvent {
-                        event: "error".to_string(),
-                        data: json!({ "message": e }),
+                    &TaggedEvent {
+                        event: "error",
+                        data: &err_data,
+                        session_key: &session,
                     },
                 );
                 break;
@@ -545,7 +564,26 @@ mod tests {
 }
 
 /// Kill the current chat subprocess if running. Called when user clicks "Stop".
-pub fn stop_chat(process_state: &ChatProcessState) -> Result<(), String> {
+/// Also clears pending confirmation/clarification channels so blocked recv() calls unblock.
+pub fn stop_chat(
+    process_state: &ChatProcessState,
+    confirmation_state: &ConfirmationState,
+    clarification_state: &ClarificationState,
+) -> Result<(), String> {
+    {
+        let mut guard = confirmation_state
+            .0
+            .lock()
+            .map_err(|_| "ConfirmationState lock poisoned")?;
+        drop(guard.take());
+    }
+    {
+        let mut guard = clarification_state
+            .0
+            .lock()
+            .map_err(|_| "ClarificationState lock poisoned")?;
+        drop(guard.take());
+    }
     let mut guard = process_state
         .0
         .lock()
@@ -1699,6 +1737,324 @@ pub fn probe_ollama() -> OllamaProbeResult {
         models,
         has_embedding,
     }
+}
+
+// ─── Session management ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SessionInfo {
+    pub session_key: String,
+    pub display_name: String,
+    pub updated_at: String,
+    pub message_preview: Option<String>,
+}
+
+fn sessions_json_path() -> PathBuf {
+    skilllite_chat_root().join("sessions.json")
+}
+
+fn get_last_user_message_from_transcripts(
+    transcripts_dir: &std::path::Path,
+    session_key: &str,
+) -> Option<String> {
+    let paths = list_transcript_paths(transcripts_dir, session_key);
+    for path in paths.into_iter().rev() {
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let mut last_msg = None;
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                continue;
+            };
+            if v.get("type").and_then(|t| t.as_str()) == Some("message")
+                && v.get("role").and_then(|r| r.as_str()) == Some("user")
+            {
+                if let Some(c) = v.get("content").and_then(|c| c.as_str()) {
+                    let preview: String = c.chars().take(40).collect();
+                    last_msg = Some(if c.chars().count() > 40 {
+                        format!("{}…", preview)
+                    } else {
+                        preview
+                    });
+                }
+            }
+        }
+        if last_msg.is_some() {
+            return last_msg;
+        }
+    }
+    None
+}
+
+pub fn list_sessions() -> Vec<SessionInfo> {
+    let path = sessions_json_path();
+    let store: serde_json::Value = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(json!({}))
+    } else {
+        json!({})
+    };
+
+    let sessions_map = store
+        .get("sessions")
+        .and_then(|s| s.as_object())
+        .cloned()
+        .unwrap_or_default();
+
+    let chat_root = skilllite_chat_root();
+    let transcripts_dir = chat_root.join("transcripts");
+
+    let mut result: Vec<SessionInfo> = sessions_map
+        .iter()
+        .map(|(key, val)| {
+            let display_name = val
+                .get("display_name")
+                .and_then(|d| d.as_str())
+                .unwrap_or(if key == "default" { "默认会话" } else { key })
+                .to_string();
+            let updated_at = val
+                .get("updated_at")
+                .and_then(|u| u.as_str())
+                .unwrap_or("0")
+                .to_string();
+            let message_preview =
+                get_last_user_message_from_transcripts(&transcripts_dir, key);
+            SessionInfo {
+                session_key: key.clone(),
+                display_name,
+                updated_at,
+                message_preview,
+            }
+        })
+        .collect();
+
+    result.sort_by(|a, b| {
+        let a_ts: u64 = a.updated_at.parse().unwrap_or(0);
+        let b_ts: u64 = b.updated_at.parse().unwrap_or(0);
+        b_ts.cmp(&a_ts)
+    });
+
+    if !result.iter().any(|s| s.session_key == "default") {
+        let preview = get_last_user_message_from_transcripts(&transcripts_dir, "default");
+        result.push(SessionInfo {
+            session_key: "default".to_string(),
+            display_name: "默认会话".to_string(),
+            updated_at: "0".to_string(),
+            message_preview: preview,
+        });
+    }
+
+    result
+}
+
+pub fn create_session(display_name: &str) -> Result<SessionInfo, String> {
+    let path = sessions_json_path();
+    let mut store: serde_json::Value = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(json!({ "sessions": {} }))
+    } else {
+        json!({ "sessions": {} })
+    };
+
+    let sessions = store
+        .get_mut("sessions")
+        .and_then(|s| s.as_object_mut())
+        .ok_or_else(|| "Invalid sessions.json format".to_string())?;
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let session_key = format!("s-{:x}", ts);
+    let now = format!("{}", ts / 1000);
+
+    sessions.insert(
+        session_key.clone(),
+        json!({
+            "session_id": format!("tx-{:x}", ts),
+            "session_key": session_key,
+            "display_name": display_name,
+            "updated_at": now,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "context_tokens": 0,
+            "compaction_count": 0
+        }),
+    );
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let content = serde_json::to_string_pretty(&store).map_err(|e| e.to_string())?;
+    std::fs::write(&path, content).map_err(|e| e.to_string())?;
+
+    Ok(SessionInfo {
+        session_key,
+        display_name: display_name.to_string(),
+        updated_at: now,
+        message_preview: None,
+    })
+}
+
+pub fn rename_session(session_key: &str, new_name: &str) -> Result<(), String> {
+    let path = sessions_json_path();
+    let mut store: serde_json::Value = if path.exists() {
+        std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(json!({ "sessions": {} }))
+    } else {
+        json!({ "sessions": {} })
+    };
+
+    if store.get("sessions").and_then(|s| s.as_object()).is_none() {
+        store["sessions"] = json!({});
+    }
+
+    let sessions = store
+        .get_mut("sessions")
+        .and_then(|s| s.as_object_mut())
+        .ok_or_else(|| "Invalid sessions.json format".to_string())?;
+
+    match sessions.get_mut(session_key) {
+        Some(entry) => {
+            if let Some(obj) = entry.as_object_mut() {
+                obj.insert("display_name".to_string(), json!(new_name));
+            }
+        }
+        None if session_key == "default" => {
+            sessions.insert(
+                session_key.to_string(),
+                json!({
+                    "display_name": new_name,
+                    "updated_at": "0",
+                }),
+            );
+        }
+        None => {
+            return Err(format!("Session '{}' not found", session_key));
+        }
+    }
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let content = serde_json::to_string_pretty(&store).map_err(|e| e.to_string())?;
+    std::fs::write(&path, content).map_err(|e| e.to_string())
+}
+
+pub fn delete_session(session_key: &str) -> Result<(), String> {
+    if session_key == "default" {
+        return Err("不能删除默认会话".to_string());
+    }
+
+    let path = sessions_json_path();
+    if path.exists() {
+        let mut store: serde_json::Value = std::fs::read_to_string(&path)
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or(json!({ "sessions": {} }));
+
+        if let Some(sessions) = store.get_mut("sessions").and_then(|s| s.as_object_mut()) {
+            sessions.remove(session_key);
+        }
+
+        let content = serde_json::to_string_pretty(&store).map_err(|e| e.to_string())?;
+        std::fs::write(&path, content).map_err(|e| e.to_string())?;
+    }
+
+    let chat_root = skilllite_chat_root();
+    let transcripts_dir = chat_root.join("transcripts");
+    if transcripts_dir.is_dir() {
+        for p in list_transcript_paths(&transcripts_dir, session_key) {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+
+    let plans_dir = chat_root.join("plans");
+    if plans_dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&plans_dir) {
+            let prefix = format!("{}-", session_key);
+            let exact = format!("{}.json", session_key);
+            let exact_jsonl = format!("{}.jsonl", session_key);
+            for e in entries.flatten() {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with(&prefix) || name == exact || name == exact_jsonl {
+                    let _ = std::fs::remove_file(e.path());
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ─── Memory summaries ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MemoryEntry {
+    pub path: String,
+    pub title: String,
+    pub summary: String,
+    pub updated_at: String,
+}
+
+pub fn load_memory_summaries() -> Vec<MemoryEntry> {
+    let chat_root = skilllite_chat_root();
+    let memory_dir = chat_root.join("memory");
+    if !memory_dir.exists() {
+        return vec![];
+    }
+
+    let mut files: Vec<FileWithMtime> = Vec::new();
+    collect_md_files(&memory_dir, &memory_dir, &mut files);
+    files.sort_by(|a, b| b.1.cmp(&a.1));
+
+    files
+        .into_iter()
+        .take(30)
+        .map(|(rel_path, mtime)| {
+            let full_path = memory_dir.join(&rel_path);
+            let content = std::fs::read_to_string(&full_path).unwrap_or_default();
+            let title = content
+                .lines()
+                .find(|l| !l.trim().is_empty())
+                .map(|l| l.trim_start_matches('#').trim().to_string())
+                .unwrap_or_else(|| rel_path.clone());
+            let summary: String = content
+                .lines()
+                .filter(|l| !l.trim().is_empty() && !l.starts_with('#'))
+                .take(3)
+                .collect::<Vec<_>>()
+                .join(" ");
+            let summary = if summary.chars().count() > 120 {
+                format!("{}…", summary.chars().take(120).collect::<String>())
+            } else {
+                summary
+            };
+
+            let updated_secs = mtime
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            MemoryEntry {
+                path: rel_path,
+                title,
+                summary,
+                updated_at: format!("{}", updated_secs),
+            }
+        })
+        .collect()
 }
 
 fn ollama_get_tags() -> Result<String, ()> {

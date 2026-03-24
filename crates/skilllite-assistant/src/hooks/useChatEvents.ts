@@ -6,6 +6,7 @@ import type { LogEntry } from "../stores/useStatusStore";
 const STREAM_THROTTLE_MS = 80;
 
 interface UseChatEventsParams {
+  sessionKey: string;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setError: React.Dispatch<React.SetStateAction<string | null>>;
@@ -14,11 +15,11 @@ interface UseChatEventsParams {
   addLog: (entry: Omit<LogEntry, "id" | "time">) => void;
   addMemoryHint: (hint: string) => void;
   setLatestOutput: (text: string) => void;
-  /** 当 Agent 本轮完成时调用，用于刷新 output/memory/plan 等数据 */
   onTurnComplete?: () => void;
 }
 
 export function useChatEvents({
+  sessionKey,
   setMessages,
   setLoading,
   setError,
@@ -30,25 +31,29 @@ export function useChatEvents({
   onTurnComplete,
 }: UseChatEventsParams) {
   useEffect(() => {
-    const unlistenConfirm = listen<{ prompt: string }>(
+    let dead = false;
+
+    const unlistenConfirm = listen<{ prompt: string; session_key?: string }>(
       "skilllite-confirmation-request",
       (ev) => {
+        if (dead) return;
+        if (ev.payload.session_key !== sessionKey) return;
         const prompt = ev.payload.prompt ?? "";
         setMessages((prev) => [
           ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "confirmation",
-            prompt,
-          },
+          { id: crypto.randomUUID(), type: "confirmation", prompt },
         ]);
       }
     );
+
     const unlistenClarify = listen<{
       reason: string;
       message: string;
       suggestions: string[];
+      session_key?: string;
     }>("skilllite-clarification-request", (ev) => {
+      if (dead) return;
+      if (ev.payload.session_key !== sessionKey) return;
       const { reason, message, suggestions } = ev.payload;
       setMessages((prev) => [
         ...prev,
@@ -62,18 +67,14 @@ export function useChatEvents({
       ]);
       setLoading(false);
     });
-    return () => {
-      unlistenConfirm.then((fn) => fn());
-      unlistenClarify.then((fn) => fn());
-    };
-  }, [setMessages, setLoading]);
 
-  useEffect(() => {
     const pendingChunks = { current: "" };
     const lastFlushTime = { current: 0 };
     const flushScheduled = { current: false };
+    let flushTimer: ReturnType<typeof setTimeout> | undefined;
 
     const flushStreaming = (delta: string) => {
+      if (dead) return;
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.type === "assistant" && last?.streaming) {
@@ -101,7 +102,7 @@ export function useChatEvents({
         lastFlushTime.current = now;
         run();
       } else {
-        setTimeout(() => {
+        flushTimer = setTimeout(() => {
           lastFlushTime.current = Date.now();
           run();
         }, STREAM_THROTTLE_MS - elapsed);
@@ -109,6 +110,8 @@ export function useChatEvents({
     };
 
     const unlisten = listen<StreamEventPayload>("skilllite-event", (ev) => {
+      if (dead) return;
+      if (ev.payload.session_key !== sessionKey) return;
       const { event, data } = ev.payload;
       if (event === "text_chunk") {
         const text = (data?.text as string) ?? "";
@@ -178,49 +181,37 @@ export function useChatEvents({
         setLatestOutput(errContent);
         setMessages((prev) => [
           ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "assistant",
-            content: errContent,
-          },
+          { id: crypto.randomUUID(), type: "assistant", content: errContent },
         ]);
         setError(msg);
         setLoading(false);
         addLog({ type: "error" as const, text: msg, isError: true });
         onTurnComplete?.();
       } else if (event === "protocol_warning") {
-        const msg =
-          (data?.message as string) ?? "检测到 agent-rpc 协议流异常，正在自动恢复";
+        const msg = (data?.message as string) ?? "检测到 agent-rpc 协议流异常，正在自动恢复";
         const totalInvalid = (data?.total_invalid_lines as number) ?? 0;
         const preview = (data?.line_preview as string) ?? "";
         addLog({
           type: "warning" as const,
           name: "agent-rpc",
-          text:
-            totalInvalid > 0
-              ? `${msg}（累计异常 ${totalInvalid} 行）${preview ? `；样例：${preview}` : ""}`
-              : msg,
+          text: totalInvalid > 0
+            ? `${msg}（累计异常 ${totalInvalid} 行）${preview ? `；样例：${preview}` : ""}`
+            : msg,
         });
       } else if (event === "protocol_recovered") {
-        const msg =
-          (data?.message as string) ?? "agent-rpc 协议流已自动恢复";
+        const msg = (data?.message as string) ?? "agent-rpc 协议流已自动恢复";
         const recoveredLines = (data?.recovered_lines as number) ?? 0;
         addLog({
           type: "warning" as const,
           name: "agent-rpc",
-          text:
-            recoveredLines > 0
-              ? `${msg}（本轮跳过 ${recoveredLines} 行异常输出）`
-              : msg,
+          text: recoveredLines > 0
+            ? `${msg}（本轮跳过 ${recoveredLines} 行异常输出）`
+            : msg,
         });
       } else if (event === "task_plan") {
-        const tasks =
-          (data?.tasks as Array<{
-            id?: number;
-            description?: string;
-            tool_hint?: string;
-            completed?: boolean;
-          }>) ?? [];
+        const tasks = (data?.tasks as Array<{
+          id?: number; description?: string; tool_hint?: string; completed?: boolean;
+        }>) ?? [];
         const taskItems = tasks.map((t, i) => ({
           id: t.id ?? i + 1,
           description: t.description ?? "",
@@ -241,8 +232,7 @@ export function useChatEvents({
         const name = (data?.name as string) ?? "";
         const args = (data?.arguments as string) ?? "";
         addLog({
-          type: "tool_call" as const,
-          name,
+          type: "tool_call" as const, name,
           text: args.length > 300 ? args.slice(0, 300) + "…" : args,
         });
         if (["memory_write", "memory_search", "memory_list"].includes(name)) {
@@ -250,135 +240,72 @@ export function useChatEvents({
         }
         setMessages((prev) => [
           ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "tool_call",
-            name,
-            args,
-          },
+          { id: crypto.randomUUID(), type: "tool_call", name, args },
         ]);
       } else if (event === "tool_result") {
         const name = (data?.name as string) ?? "";
         const isErr = (data?.is_error as boolean) ?? false;
         const result = (data?.result as string) ?? "";
         addLog({
-          type: "tool_result" as const,
-          name,
+          type: "tool_result" as const, name,
           text: result.length > 1200 ? result.slice(0, 1200) + "…" : result,
           isError: isErr,
         });
         setMessages((prev) => [
           ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "tool_result",
-            name,
-            result,
-            isError: isErr,
-          },
+          { id: crypto.randomUUID(), type: "tool_result", name, result, isError: isErr },
         ]);
       } else if (event === "command_started") {
         const command = (data?.command as string) ?? "";
         if (!command) return;
-        addLog({
-          type: "command_started" as const,
-          name: "run_command",
-          text: command.length > 240 ? command.slice(0, 240) + "…" : command,
-        });
+        addLog({ type: "command_started" as const, name: "run_command", text: command.length > 240 ? command.slice(0, 240) + "…" : command });
       } else if (event === "command_output") {
         const stream = (data?.stream as string) ?? "stdout";
         const chunk = (data?.chunk as string) ?? "";
         if (!chunk) return;
-        addLog({
-          type: "command_output" as const,
-          name: stream,
-          text: chunk.length > 1200 ? chunk.slice(0, 1200) + "…" : chunk,
-          isError: stream === "stderr",
-        });
+        addLog({ type: "command_output" as const, name: stream, text: chunk.length > 1200 ? chunk.slice(0, 1200) + "…" : chunk, isError: stream === "stderr" });
       } else if (event === "command_finished") {
         const success = (data?.success as boolean) ?? false;
         const exitCode = (data?.exit_code as number) ?? -1;
         const durationMs = (data?.duration_ms as number) ?? 0;
-        addLog({
-          type: "command_finished" as const,
-          name: "run_command",
-          text: `exit ${exitCode} in ${durationMs}ms`,
-          isError: !success,
-        });
+        addLog({ type: "command_finished" as const, name: "run_command", text: `exit ${exitCode} in ${durationMs}ms`, isError: !success });
       } else if (event === "preview_started") {
         const path = (data?.path as string) ?? "";
         const port = (data?.port as number) ?? 0;
-        addLog({
-          type: "preview_started" as const,
-          name: "preview_server",
-          text: `${path || "preview"} on port ${port}`,
-        });
+        addLog({ type: "preview_started" as const, name: "preview_server", text: `${path || "preview"} on port ${port}` });
       } else if (event === "preview_ready") {
         const url = (data?.url as string) ?? "";
-        addLog({
-          type: "preview_ready" as const,
-          name: "preview_server",
-          text: url,
-        });
+        addLog({ type: "preview_ready" as const, name: "preview_server", text: url });
       } else if (event === "preview_failed") {
         const message = (data?.message as string) ?? "";
-        addLog({
-          type: "preview_failed" as const,
-          name: "preview_server",
-          text: message,
-          isError: true,
-        });
+        addLog({ type: "preview_failed" as const, name: "preview_server", text: message, isError: true });
       } else if (event === "preview_stopped") {
         const reason = (data?.reason as string) ?? "";
-        addLog({
-          type: "preview_stopped" as const,
-          name: "preview_server",
-          text: reason || "stopped",
-        });
+        addLog({ type: "preview_stopped" as const, name: "preview_server", text: reason || "stopped" });
       } else if (event === "swarm_started") {
         const description = (data?.description as string) ?? "";
-        addLog({
-          type: "swarm_started" as const,
-          name: "delegate_to_swarm",
-          text: description.length > 240 ? description.slice(0, 240) + "…" : description,
-        });
+        addLog({ type: "swarm_started" as const, name: "delegate_to_swarm", text: description.length > 240 ? description.slice(0, 240) + "…" : description });
       } else if (event === "swarm_progress") {
         const status = (data?.status as string) ?? "";
-        addLog({
-          type: "swarm_progress" as const,
-          name: "delegate_to_swarm",
-          text: status,
-        });
+        addLog({ type: "swarm_progress" as const, name: "delegate_to_swarm", text: status });
       } else if (event === "swarm_finished") {
         const summary = (data?.summary as string) ?? "";
-        addLog({
-          type: "swarm_finished" as const,
-          name: "delegate_to_swarm",
-          text: summary.length > 240 ? summary.slice(0, 240) + "…" : summary,
-        });
+        addLog({ type: "swarm_finished" as const, name: "delegate_to_swarm", text: summary.length > 240 ? summary.slice(0, 240) + "…" : summary });
       } else if (event === "swarm_failed") {
         const message = (data?.message as string) ?? "";
-        addLog({
-          type: "swarm_failed" as const,
-          name: "delegate_to_swarm",
-          text: message.length > 240 ? message.slice(0, 240) + "…" : message,
-          isError: true,
-        });
+        addLog({ type: "swarm_failed" as const, name: "delegate_to_swarm", text: message.length > 240 ? message.slice(0, 240) + "…" : message, isError: true });
       }
     });
 
     return () => {
+      dead = true;
+      unlistenConfirm.then((fn) => fn());
+      unlistenClarify.then((fn) => fn());
       unlisten.then((fn) => fn());
+      pendingChunks.current = "";
+      flushScheduled.current = false;
+      if (flushTimer !== undefined) clearTimeout(flushTimer);
     };
-  }, [
-    setMessages,
-    setLoading,
-    setError,
-    addTaskPlan,
-    updateTaskProgress,
-    addLog,
-    addMemoryHint,
-    setLatestOutput,
-    onTurnComplete,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionKey]);
 }
