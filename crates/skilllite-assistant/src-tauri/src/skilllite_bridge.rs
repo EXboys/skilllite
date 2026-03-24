@@ -625,7 +625,7 @@ fn skilllite_chat_root() -> PathBuf {
 }
 
 /// Open a directory in the system file manager.
-/// module: "output" | "memory" | "plan" | "log" (log opens transcripts dir)
+/// module: "output" | "memory" | "plan" | "log" (log opens transcripts dir) | "evolution" (数据目录 ~/.skilllite)
 pub fn open_directory(module: &str) -> Result<(), String> {
     let chat_root = skilllite_chat_root();
     let path = match module {
@@ -633,6 +633,7 @@ pub fn open_directory(module: &str) -> Result<(), String> {
         "memory" => chat_root.join("memory"),
         "plan" => chat_root.join("plans"),
         "log" => chat_root.join("transcripts"), // 执行日志对应 transcript .jsonl 文件
+        "evolution" => chat_root,
         _ => return Err(format!("Unknown module: {}", module)),
     };
     // Ensure directory exists so the file manager opens a valid path
@@ -1522,6 +1523,224 @@ fn summarise_add_output(output: &str) -> String {
         }
     }
     "已添加".to_string()
+}
+
+// ─── Evolution status & pending skill review (desktop) ───────────────────────
+
+fn workspace_env_lookup(workspace: &str, key: &str) -> Option<String> {
+    load_dotenv_for_child(workspace)
+        .iter()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.clone())
+        .or_else(|| std::env::var(key).ok())
+}
+
+fn evolution_mode_from_workspace(workspace: &str) -> skilllite_evolution::EvolutionMode {
+    use skilllite_core::config::env_keys::evolution as evo_env;
+    match workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION).as_deref() {
+        None | Some("1") | Some("true") | Some("") => skilllite_evolution::EvolutionMode::All,
+        Some("0") | Some("false") => skilllite_evolution::EvolutionMode::Disabled,
+        Some("prompts") => skilllite_evolution::EvolutionMode::PromptsOnly,
+        Some("memory") => skilllite_evolution::EvolutionMode::MemoryOnly,
+        Some("skills") => skilllite_evolution::EvolutionMode::SkillsOnly,
+        _ => skilllite_evolution::EvolutionMode::All,
+    }
+}
+
+fn evolution_mode_labels(mode: &skilllite_evolution::EvolutionMode) -> (&'static str, &'static str) {
+    match mode {
+        skilllite_evolution::EvolutionMode::All => ("all", "全部启用"),
+        skilllite_evolution::EvolutionMode::PromptsOnly => ("prompts", "仅 Prompts"),
+        skilllite_evolution::EvolutionMode::MemoryOnly => ("memory", "仅 Memory"),
+        skilllite_evolution::EvolutionMode::SkillsOnly => ("skills", "仅 Skills"),
+        skilllite_evolution::EvolutionMode::Disabled => ("disabled", "已禁用"),
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EvolutionLogEntryDto {
+    pub ts: String,
+    #[serde(rename = "event_type")]
+    pub event_type: String,
+    pub target_id: Option<String>,
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EvolutionStatusPayload {
+    pub mode_key: String,
+    pub mode_label: String,
+    pub interval_secs: u64,
+    pub decision_threshold: i64,
+    pub unprocessed_decisions: i64,
+    pub last_run_ts: Option<String>,
+    pub judgement_label: Option<String>,
+    pub judgement_reason: Option<String>,
+    pub recent_events: Vec<EvolutionLogEntryDto>,
+    pub pending_skill_count: usize,
+    pub db_error: Option<String>,
+}
+
+/// Evolution feedback DB + schedule hints for the assistant UI.
+pub fn load_evolution_status(workspace: &str) -> EvolutionStatusPayload {
+    use skilllite_core::config::env_keys::evolution as evo_env;
+    let mode = evolution_mode_from_workspace(workspace);
+    let (mode_key, mode_label) = evolution_mode_labels(&mode);
+
+    let interval_secs: u64 = workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_INTERVAL_SECS)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1800);
+    let decision_threshold: i64 =
+        workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
+
+    let chat_root = skilllite_core::paths::chat_root();
+    let mut pending_skill_count = 0;
+    let skills_root = find_project_root(workspace).join(".skills");
+    if skills_root.is_dir() {
+        pending_skill_count =
+            skilllite_evolution::skill_synth::list_pending_skills_with_review(&skills_root).len();
+    }
+
+    let mut db_error = None;
+    let mut unprocessed_decisions = 0i64;
+    let mut recent_events = Vec::new();
+    let mut last_run_ts = None;
+    let mut judgement_label = None;
+    let mut judgement_reason = None;
+
+    match skilllite_evolution::feedback::open_evolution_db(&chat_root) {
+        Ok(conn) => {
+            if let Ok(c) = skilllite_evolution::feedback::count_unprocessed_decisions(&conn) {
+                unprocessed_decisions = c;
+            }
+            if let Ok(Some(summary)) = skilllite_evolution::feedback::build_latest_judgement(&conn) {
+                judgement_label = Some(summary.judgement.label_zh().to_string());
+                judgement_reason = Some(summary.reason);
+            }
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT ts FROM evolution_log WHERE type = 'evolution_run' ORDER BY ts DESC LIMIT 1",
+            ) {
+                if let Ok(mut rows) = stmt.query([]) {
+                    if let Ok(Some(row)) = rows.next() {
+                        last_run_ts = row.get(0).ok();
+                    }
+                }
+            }
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT ts, type, target_id, reason FROM evolution_log ORDER BY ts DESC LIMIT 25",
+            ) {
+                if let Ok(rows) = stmt.query_map([], |row| {
+                    Ok(EvolutionLogEntryDto {
+                        ts: row.get(0)?,
+                        event_type: row.get(1)?,
+                        target_id: row.get::<_, Option<String>>(2)?,
+                        reason: row.get::<_, Option<String>>(3)?,
+                    })
+                }) {
+                    recent_events.extend(rows.flatten());
+                }
+            }
+        }
+        Err(e) => {
+            db_error = Some(format!("无法打开进化数据库: {}", e));
+        }
+    }
+
+    EvolutionStatusPayload {
+        mode_key: mode_key.to_string(),
+        mode_label: mode_label.to_string(),
+        interval_secs,
+        decision_threshold,
+        unprocessed_decisions,
+        last_run_ts,
+        judgement_label,
+        judgement_reason,
+        recent_events,
+        pending_skill_count,
+        db_error,
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PendingSkillDto {
+    pub name: String,
+    pub needs_review: bool,
+    pub preview: String,
+}
+
+fn truncate_utf8(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        return s.to_string();
+    }
+    let mut end = max;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &s[..end])
+}
+
+pub fn list_evolution_pending_skills(workspace: &str) -> Vec<PendingSkillDto> {
+    let skills_root = find_project_root(workspace).join(".skills");
+    if !skills_root.is_dir() {
+        return Vec::new();
+    }
+    skilllite_evolution::skill_synth::list_pending_skills_with_review(&skills_root)
+        .into_iter()
+        .map(|(name, needs_review)| {
+            let path = skills_root
+                .join("_evolved")
+                .join("_pending")
+                .join(&name)
+                .join("SKILL.md");
+            let preview = std::fs::read_to_string(&path)
+                .map(|s| truncate_utf8(&s, 4000))
+                .unwrap_or_default();
+            PendingSkillDto {
+                name,
+                needs_review,
+                preview,
+            }
+        })
+        .collect()
+}
+
+pub fn read_evolution_pending_skill_md(workspace: &str, skill_name: &str) -> Result<String, String> {
+    let skills_root = find_project_root(workspace).join(".skills");
+    let path = skills_root
+        .join("_evolved")
+        .join("_pending")
+        .join(skill_name)
+        .join("SKILL.md");
+    if !path.is_file() {
+        return Err(format!("未找到待审核技能: {}", skill_name));
+    }
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+pub fn evolution_confirm_pending_skill(workspace: &str, skill_name: &str) -> Result<(), String> {
+    let skills_root = find_project_root(workspace).join(".skills");
+    skilllite_evolution::skill_synth::confirm_pending_skill(&skills_root, skill_name)
+        .map_err(|e| e.to_string())?;
+    let chat_root = skilllite_core::paths::chat_root();
+    if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&chat_root) {
+        let _ = skilllite_evolution::log_evolution_event(
+            &conn,
+            &chat_root,
+            "skill_confirmed",
+            skill_name,
+            "user confirmed (assistant)",
+            "",
+        );
+    }
+    Ok(())
+}
+
+pub fn evolution_reject_pending_skill(workspace: &str, skill_name: &str) -> Result<(), String> {
+    let skills_root = find_project_root(workspace).join(".skills");
+    skilllite_evolution::skill_synth::reject_pending_skill(&skills_root, skill_name)
+        .map_err(|e| e.to_string())
 }
 
 // ─── Onboarding: init workspace, probe Ollama ─────────────────────────────────

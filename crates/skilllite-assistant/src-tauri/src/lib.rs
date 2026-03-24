@@ -266,6 +266,77 @@ async fn skilllite_load_memory_summaries() -> Vec<skilllite_bridge::MemoryEntry>
 }
 
 #[tauri::command]
+async fn skilllite_load_evolution_status(
+    workspace: Option<String>,
+) -> skilllite_bridge::EvolutionStatusPayload {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::load_evolution_status(&ws))
+        .await
+        .unwrap_or_else(|e| skilllite_bridge::EvolutionStatusPayload {
+            mode_key: "error".into(),
+            mode_label: format!("任务失败: {}", e),
+            interval_secs: 1800,
+            decision_threshold: 10,
+            unprocessed_decisions: 0,
+            last_run_ts: None,
+            judgement_label: None,
+            judgement_reason: None,
+            recent_events: vec![],
+            pending_skill_count: 0,
+            db_error: Some(e.to_string()),
+        })
+}
+
+#[tauri::command]
+async fn skilllite_list_evolution_pending(
+    workspace: Option<String>,
+) -> Vec<skilllite_bridge::PendingSkillDto> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_evolution_pending_skills(&ws))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn skilllite_read_pending_skill_md(
+    workspace: Option<String>,
+    skill_name: String,
+) -> Result<String, String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::read_evolution_pending_skill_md(&ws, &skill_name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_confirm_pending_skill(
+    workspace: Option<String>,
+    skill_name: String,
+) -> Result<(), String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::evolution_confirm_pending_skill(&ws, &skill_name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_reject_pending_skill(
+    workspace: Option<String>,
+    skill_name: String,
+) -> Result<(), String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::evolution_reject_pending_skill(&ws, &skill_name)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn skilllite_probe_ollama() -> skilllite_bridge::OllamaProbeResult {
     tauri::async_runtime::spawn_blocking(skilllite_bridge::probe_ollama)
         .await
@@ -342,7 +413,12 @@ pub fn run() {
             skilllite_create_session,
             skilllite_rename_session,
             skilllite_delete_session,
-            skilllite_load_memory_summaries
+            skilllite_load_memory_summaries,
+            skilllite_load_evolution_status,
+            skilllite_list_evolution_pending,
+            skilllite_read_pending_skill_md,
+            skilllite_confirm_pending_skill,
+            skilllite_reject_pending_skill
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())

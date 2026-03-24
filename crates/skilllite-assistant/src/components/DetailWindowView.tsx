@@ -4,13 +4,14 @@ import { useStatusStore, type TaskItem, type LogEntry } from "../stores/useStatu
 import { MarkdownContent } from "./shared/MarkdownContent";
 import { groupMemoryFiles } from "../utils/fileUtils";
 import { useRecentData } from "../hooks/useRecentData";
+import { EvolutionDetailBody } from "./EvolutionSection";
 
-export type DetailModule = "plan" | "mem" | "log" | "output";
+export type DetailModule = "plan" | "mem" | "log" | "output" | "evolution";
 
 /** 从 hash 解析模块类型，如 #detail/plan -> "plan" */
 export function parseDetailModuleFromHash(): DetailModule | null {
   const hash = window.location.hash;
-  const m = hash.match(/^#?detail\/(plan|mem|log|output)$/);
+  const m = hash.match(/^#?detail\/(plan|mem|log|output|evolution)$/);
   return (m?.[1] as DetailModule) ?? null;
 }
 
@@ -255,6 +256,7 @@ const TITLES: Record<DetailModule, string> = {
   mem: "记忆",
   log: "执行日志",
   output: "输出",
+  evolution: "自进化与审核",
 };
 
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"];
@@ -394,7 +396,14 @@ export default function DetailWindowView() {
     );
   }
 
-  const dirModule = module === "mem" ? "memory" : module === "plan" ? "plan" : module;
+  const dirModule =
+    module === "mem"
+      ? "memory"
+      : module === "plan"
+        ? "plan"
+        : module === "evolution"
+          ? "evolution"
+          : module;
   const handleOpenDir = async () => {
     try {
       await invoke("skilllite_open_directory", { module: dirModule });
@@ -424,6 +433,7 @@ export default function DetailWindowView() {
         {module === "mem" && <MemoryContent files={memoryFiles} hints={memoryHints} />}
         {module === "log" && <LogFileContent files={logFiles} entries={logEntries} />}
         {module === "output" && <OutputFileContent files={outputFiles} />}
+        {module === "evolution" && <EvolutionDetailBody />}
       </main>
     </div>
   );
