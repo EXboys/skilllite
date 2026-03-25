@@ -365,3 +365,60 @@ impl CacheConfig {
         )
     }
 }
+
+#[cfg(test)]
+mod agent_loop_limits_tests {
+    use super::AgentLoopLimitsConfig;
+    use super::al_keys;
+    use super::super::loader::{remove_env_var, set_env_var};
+    use std::env;
+    use std::sync::{Mutex, OnceLock};
+
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env test lock poisoned")
+    }
+
+    #[test]
+    fn from_env_reads_max_iterations_and_max_tool_calls_per_task() {
+        let _g = lock_env();
+        let k_it = al_keys::SKILLLITE_MAX_ITERATIONS;
+        let k_tc = al_keys::SKILLLITE_MAX_TOOL_CALLS_PER_TASK;
+        let prev_it = env::var(k_it).ok();
+        let prev_tc = env::var(k_tc).ok();
+        set_env_var(k_it, "12");
+        set_env_var(k_tc, "4");
+        let cfg = AgentLoopLimitsConfig::from_env();
+        assert_eq!(cfg.max_iterations, 12);
+        assert_eq!(cfg.max_tool_calls_per_task, 4);
+        restore(k_it, prev_it.as_deref());
+        restore(k_tc, prev_tc.as_deref());
+    }
+
+    #[test]
+    fn from_env_invalid_or_zero_falls_back_to_defaults() {
+        let _g = lock_env();
+        let k_it = al_keys::SKILLLITE_MAX_ITERATIONS;
+        let k_tc = al_keys::SKILLLITE_MAX_TOOL_CALLS_PER_TASK;
+        let prev_it = env::var(k_it).ok();
+        let prev_tc = env::var(k_tc).ok();
+        set_env_var(k_it, "0");
+        set_env_var(k_tc, "not_a_number");
+        let cfg = AgentLoopLimitsConfig::from_env();
+        assert_eq!(cfg.max_iterations, 50);
+        assert_eq!(cfg.max_tool_calls_per_task, 15);
+        restore(k_it, prev_it.as_deref());
+        restore(k_tc, prev_tc.as_deref());
+    }
+
+    fn restore(key: &str, value: Option<&str>) {
+        match value {
+            Some(v) => set_env_var(key, v),
+            None => remove_env_var(key),
+        }
+    }
+}
