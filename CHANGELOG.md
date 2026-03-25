@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.1.16] - 2026-03-25
+
 ### Added
 
 - **Observability — edit audit**: Agent file-edit tools (`search_replace`, `preview_edit`, `insert_lines`) emit structured JSONL events (`edit_applied`, `edit_previewed`, `edit_failed`, `edit_inserted`) with `edit_id`, top-level `path`, `workspace`, and `context` (from `SKILLLITE_AUDIT_CONTEXT`); audit append flushes after each line.
@@ -15,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **Tests**: `skilllite-agent` builtin tests disable audit at process start (`ctor` + `SKILLLITE_AUDIT_DISABLED=1`) so `cargo test` does not pollute the default audit directory.
+
+### Desktop (SkillLite Assistant)
+
+- Desktop 与 Rust workspace 统一为 **0.1.16**（`package.json`、`tauri.conf.json`、`src-tauri/Cargo.toml`）。
 
 ---
 
@@ -216,7 +224,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.15...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.16...HEAD
+[0.1.16]: https://github.com/EXboys/skilllite/releases/tag/v0.1.16
 [0.1.15]: https://github.com/EXboys/skilllite/releases/tag/v0.1.15
 [0.1.14]: https://github.com/EXboys/skilllite/releases/tag/v0.1.14
 [0.1.13]: https://github.com/EXboys/skilllite/releases/tag/v0.1.13

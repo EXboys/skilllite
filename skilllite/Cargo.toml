@@ -26,12 +26,12 @@ memory_vector = ["executor", "agent", "skilllite-agent/memory_vector"]
 swarm = ["dep:skilllite-swarm"]
 
 [dependencies]
-skilllite-core = { path = "../crates/skilllite-core", version = "0.1.15" }
-skilllite-sandbox = { path = "../crates/skilllite-sandbox", version = "0.1.15" }
-skilllite-commands = { path = "../crates/skilllite-commands", version = "0.1.15", default-features = false }
-skilllite-executor = { path = "../crates/skilllite-executor", version = "0.1.15", optional = true }
-skilllite-agent = { path = "../crates/skilllite-agent", version = "0.1.15", optional = true }
-skilllite-swarm = { path = "../crates/skilllite-swarm", version = "0.1.15", optional = true }
+skilllite-core = { path = "../crates/skilllite-core", version = "0.1.16" }
+skilllite-sandbox = { path = "../crates/skilllite-sandbox", version = "0.1.16" }
+skilllite-commands = { path = "../crates/skilllite-commands", version = "0.1.16", default-features = false }
+skilllite-executor = { path = "../crates/skilllite-executor", version = "0.1.16", optional = true }
+skilllite-agent = { path = "../crates/skilllite-agent", version = "0.1.16", optional = true }
+skilllite-swarm = { path = "../crates/skilllite-swarm", version = "0.1.16", optional = true }
 
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }

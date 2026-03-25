@@ -41,7 +41,7 @@ fn version_flag_prints_version() {
         text.contains("skilllite"),
         "version output should contain binary name"
     );
-    // Version string should match semver pattern (e.g. "0.1.15")
+    // Version string should match semver pattern (e.g. "0.1.16")
     assert!(
         text.chars().any(|c| c.is_ascii_digit()),
         "version output should contain digits"
