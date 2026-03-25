@@ -95,10 +95,13 @@ impl AgentConfig {
         let llm = skilllite_core::config::LlmConfig::from_env();
         let paths = skilllite_core::config::PathsConfig::from_env();
         let flags = skilllite_core::config::AgentFeatureFlags::from_env();
+        let loop_limits = skilllite_core::config::AgentLoopLimitsConfig::from_env();
         Self {
             api_base: llm.api_base,
             api_key: llm.api_key,
             model: llm.model,
+            max_iterations: loop_limits.max_iterations,
+            max_tool_calls_per_task: loop_limits.max_tool_calls_per_task,
             workspace: paths.workspace,
             enable_memory: flags.enable_memory,
             enable_memory_vector: flags.enable_memory_vector,

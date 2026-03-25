@@ -153,6 +153,14 @@ pub mod high_risk {
     pub const SKILLLITE_HIGH_RISK_CONFIRM: &str = "SKILLLITE_HIGH_RISK_CONFIRM";
 }
 
+/// Agent 主循环：外层迭代上限与单任务工具调用预算
+pub mod agent_loop {
+    /// 全局迭代上限（默认 50）。有任务计划时，实际轮次还会与 `SKILLLITE_MAX_TOOL_CALLS_PER_TASK` 组合 capped。
+    pub const SKILLLITE_MAX_ITERATIONS: &str = "SKILLLITE_MAX_ITERATIONS";
+    /// 单任务内工具调用深度上限，并参与有计划时的有效迭代上限计算（默认 15）。
+    pub const SKILLLITE_MAX_TOOL_CALLS_PER_TASK: &str = "SKILLLITE_MAX_TOOL_CALLS_PER_TASK";
+}
+
 /// 规划与 dependency-audit
 pub mod misc {
     pub const SKILLLITE_COMPACT_PLANNING: &str = "SKILLLITE_COMPACT_PLANNING";

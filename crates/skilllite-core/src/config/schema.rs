@@ -2,7 +2,7 @@
 //!
 //! 从环境变量加载，统一 fallback 逻辑。
 
-use super::env_keys::{llm, observability as obv_keys, sandbox as sb_keys};
+use super::env_keys::{agent_loop as al_keys, llm, observability as obv_keys, sandbox as sb_keys};
 use super::loader::{env_bool, env_optional, env_or};
 use std::path::PathBuf;
 
@@ -117,6 +117,35 @@ impl AgentFeatureFlags {
             enable_memory_vector: env_bool("SKILLLITE_ENABLE_MEMORY_VECTOR", &[], false),
         }
     }
+}
+
+/// Agent 主循环预算：与 `skilllite_agent::types::AgentConfig` 中对应字段一致
+#[derive(Debug, Clone)]
+pub struct AgentLoopLimitsConfig {
+    pub max_iterations: usize,
+    pub max_tool_calls_per_task: usize,
+}
+
+impl AgentLoopLimitsConfig {
+    pub fn from_env() -> Self {
+        super::loader::load_dotenv();
+        Self {
+            max_iterations: parse_positive_usize(
+                super::loader::env_optional(al_keys::SKILLLITE_MAX_ITERATIONS, &[]),
+                50,
+            ),
+            max_tool_calls_per_task: parse_positive_usize(
+                super::loader::env_optional(al_keys::SKILLLITE_MAX_TOOL_CALLS_PER_TASK, &[]),
+                15,
+            ),
+        }
+    }
+}
+
+fn parse_positive_usize(raw: Option<String>, default: usize) -> usize {
+    raw.and_then(|s| s.parse::<usize>().ok())
+        .filter(|&n| n > 0)
+        .unwrap_or(default)
 }
 
 /// Embedding API 配置（用于 memory vector 检索）

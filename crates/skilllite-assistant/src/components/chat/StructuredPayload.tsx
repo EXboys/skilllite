@@ -40,7 +40,7 @@ function parseFlatPrimitiveEntries(raw: string): [string, unknown][] | null {
   const obj = parsed as Record<string, unknown>;
   const keys = Object.keys(obj);
   if (keys.length === 0 || keys.length > 32) return null;
-  const entries = keys.map((k) => [k, obj[k]] as const);
+  const entries = keys.map((k): [string, unknown] => [k, obj[k]]);
   if (!entries.every(([, v]) => isPrimitive(v))) return null;
   return entries;
 }
@@ -85,7 +85,7 @@ export const StructuredPayload = memo(function StructuredPayload({ raw }: { raw:
     const obj = parsed as Record<string, unknown>;
     const keys = Object.keys(obj);
     if (keys.length === 0 || keys.length > 32) return null;
-    const entries = keys.map((k) => [k, obj[k]] as const);
+    const entries = keys.map((k): [string, unknown] => [k, obj[k]]);
     const allPrimitive = entries.every(([, v]) => isPrimitive(v));
     if (!allPrimitive) return null;
     return entries;

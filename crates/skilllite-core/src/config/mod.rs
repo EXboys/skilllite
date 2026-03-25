@@ -23,6 +23,6 @@ pub use loader::{
     parse_dotenv_walking_up,
 };
 pub use schema::{
-    AgentFeatureFlags, CacheConfig, EmbeddingConfig, LlmConfig, ObservabilityConfig, PathsConfig,
-    SandboxEnvConfig,
+    AgentFeatureFlags, AgentLoopLimitsConfig, CacheConfig, EmbeddingConfig, LlmConfig,
+    ObservabilityConfig, PathsConfig, SandboxEnvConfig,
 };
