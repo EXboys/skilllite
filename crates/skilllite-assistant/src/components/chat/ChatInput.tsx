@@ -6,6 +6,8 @@ interface ChatInputProps {
   disabled: boolean;
   loading: boolean;
   placeholder?: string;
+  /** 仅渲染输入行，用于与上方模块同处一个底栏容器 */
+  bare?: boolean;
 }
 
 export function ChatInput({
@@ -16,6 +18,7 @@ export function ChatInput({
   disabled,
   loading,
   placeholder = "输入指令，按 Enter 发送…",
+  bare = false,
 }: ChatInputProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -24,9 +27,8 @@ export function ChatInput({
     }
   };
 
-  return (
-    <div className="p-4 border-t border-border dark:border-border-dark bg-white dark:bg-paper-dark">
-      <div className="flex gap-2">
+  const row = (
+    <div className="flex gap-2">
         <input
           type="text"
           value={value}
@@ -55,6 +57,13 @@ export function ChatInput({
           </button>
         )}
       </div>
+  );
+
+  if (bare) return row;
+
+  return (
+    <div className="p-4 border-t border-border dark:border-border-dark bg-white dark:bg-paper-dark">
+      {row}
     </div>
   );
 }

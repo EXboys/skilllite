@@ -1,8 +1,35 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   useSessionStore,
   type SessionInfo,
 } from "../stores/useSessionStore";
+
+type RuntimeSource = "system" | "cache" | "none";
+
+interface RuntimeUiLine {
+  source: RuntimeSource;
+  label: string;
+  revealPath: string | null;
+}
+
+interface RuntimeUiSnapshot {
+  python: RuntimeUiLine;
+  node: RuntimeUiLine;
+  cacheRoot: string | null;
+  cacheRootAbs: string | null;
+}
+
+function runtimeSourceBadge(source: RuntimeSource): string {
+  switch (source) {
+    case "system":
+      return "系统";
+    case "cache":
+      return "已下载";
+    default:
+      return "未就绪";
+  }
+}
 
 function formatTime(unixStr: string): string {
   const ts = parseInt(unixStr, 10);
@@ -186,10 +213,24 @@ export default function SessionSidebar() {
     deleteSession,
   } = useSessionStore();
   const [isCreating, setIsCreating] = useState(false);
+  const [runtime, setRuntime] = useState<RuntimeUiSnapshot | null>(null);
 
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
+
+  useEffect(() => {
+    invoke<RuntimeUiSnapshot>("skilllite_runtime_status")
+      .then(setRuntime)
+      .catch(() => setRuntime(null));
+  }, []);
+
+  const revealInFileManager = useCallback((path: string | null | undefined) => {
+    if (!path?.trim()) return;
+    invoke("skilllite_reveal_in_file_manager", { path: path.trim() }).catch((err) => {
+      console.error("[skilllite-assistant] reveal_in_file_manager failed:", err);
+    });
+  }, []);
 
   const handleCreate = useCallback(() => {
     if (isCreating) return;
@@ -271,6 +312,80 @@ export default function SessionSidebar() {
           </p>
         )}
       </div>
+
+      {runtime && (
+        <div className="shrink-0 border-t border-border dark:border-border-dark px-3 py-2 space-y-1.5 bg-ink/[0.02] dark:bg-white/[0.02]">
+          <div className="text-[10px] font-medium text-ink-mute dark:text-ink-dark-mute uppercase tracking-wider">
+            技能运行时
+          </div>
+          <div className="space-y-1">
+            {(
+              [
+                { key: "py", title: "Python", line: runtime.python },
+                { key: "node", title: "Node", line: runtime.node },
+              ] as const
+            ).map(({ key, title, line }) => {
+              const canReveal = Boolean(line.revealPath);
+              const rowClass = `flex items-start gap-2 min-w-0 w-full text-[11px] leading-snug rounded-md -mx-1 px-1 py-0.5 transition-colors ${
+                canReveal
+                  ? "text-left cursor-pointer hover:bg-ink/5 dark:hover:bg-white/5 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50"
+                  : ""
+              }`;
+              const badge = (
+                <span
+                  className={`shrink-0 rounded px-1 py-px text-[10px] font-medium ${
+                    line.source === "system"
+                      ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300"
+                      : line.source === "cache"
+                        ? "bg-amber-500/15 text-amber-900 dark:text-amber-200"
+                        : "bg-ink/10 text-ink-mute dark:text-ink-dark-mute"
+                  }`}
+                >
+                  {runtimeSourceBadge(line.source)}
+                </span>
+              );
+              const text = (
+                <div className="min-w-0 flex-1">
+                  <span className="text-ink-mute dark:text-ink-dark-mute">{title}</span>
+                  <span className="text-ink dark:text-ink-dark ml-1">{line.label}</span>
+                </div>
+              );
+              return canReveal ? (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => revealInFileManager(line.revealPath)}
+                  className={rowClass}
+                  title={`${line.label} — 点击在文件管理器中打开`}
+                >
+                  {badge}
+                  {text}
+                </button>
+              ) : (
+                <div key={key} className={rowClass} title={line.label}>
+                  {badge}
+                  {text}
+                </div>
+              );
+            })}
+          </div>
+          {runtime.cacheRoot && (
+            <button
+              type="button"
+              disabled={!runtime.cacheRootAbs}
+              onClick={() => revealInFileManager(runtime.cacheRootAbs)}
+              className="text-[10px] text-ink-mute dark:text-ink-dark-mute font-mono truncate w-full text-left rounded px-1 py-0.5 -mx-1 transition-colors hover:text-accent dark:hover:text-accent hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-mute dark:disabled:hover:text-ink-dark-mute focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50"
+              title={
+                runtime.cacheRootAbs
+                  ? `缓存目录 — 点击在文件管理器中打开`
+                  : "无法打开缓存目录"
+              }
+            >
+              缓存目录 {runtime.cacheRoot}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

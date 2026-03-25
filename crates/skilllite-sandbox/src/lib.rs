@@ -14,7 +14,8 @@ pub mod security;
 pub use env::runtime_deps::RuntimeProgressFn;
 /// 下载前确认回调与请求类型。传 `Some` 时会在下载 Python/Node 前调用，返回 `false` 则中止。
 pub use env::runtime_deps::{
-    cli_confirm_download, RuntimeConfirmDownloadFn, RuntimeDownloadKind, RuntimeDownloadRequest,
+    cli_confirm_download, get_runtime_dir, probe_runtime_for_ui, RuntimeConfirmDownloadFn,
+    RuntimeDownloadKind, RuntimeDownloadRequest, RuntimeUiLine, RuntimeUiSnapshot,
 };
 
 #[cfg(target_os = "linux")]

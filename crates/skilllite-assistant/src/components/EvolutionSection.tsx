@@ -108,7 +108,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
 
   if (loading && !status) {
     return (
-      <section className="mb-4">
+      <section className="mb-4 min-w-0">
         <div className="flex items-center justify-between mb-2">
           <span className="font-medium text-ink dark:text-ink-dark">自进化</span>
         </div>
@@ -119,7 +119,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
 
   if (error && !status) {
     return (
-      <section className="mb-4">
+      <section className="mb-4 min-w-0">
         <div className="flex items-center justify-between mb-2">
           <span className="font-medium text-ink dark:text-ink-dark">自进化</span>
           <button
@@ -130,7 +130,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
             重试
           </button>
         </div>
-        <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+        <p className="break-words text-xs text-red-600 dark:text-red-400">{error}</p>
       </section>
     );
   }
@@ -142,8 +142,8 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
       : `${formatInterval(s.interval_secs)} 检查一次；未处理决策 ≥ ${s.decision_threshold} 条也会触发`;
 
   return (
-    <section className="mb-4">
-      <div className="flex items-center justify-between mb-2 gap-2">
+    <section className="mb-4 min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
         <button
           type="button"
           onClick={onOpenDetail}
@@ -186,48 +186,53 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
       </div>
 
       <div
-        className="rounded-lg border border-border/60 dark:border-border-dark/60 bg-gray-50/50 dark:bg-surface-dark/50 px-2.5 py-2 space-y-1.5 text-xs text-ink dark:text-ink-dark cursor-pointer"
+        className="max-w-full min-w-0 cursor-pointer rounded-lg border border-border/60 dark:border-border-dark/60 bg-gray-50/50 dark:bg-surface-dark/50 px-2.5 py-2 text-xs text-ink dark:text-ink-dark space-y-1.5 break-words"
         onClick={onOpenDetail}
         role="button"
         onKeyDown={(e) => e.key === "Enter" && onOpenDetail()}
         tabIndex={0}
       >
         {s.db_error && (
-          <p className="text-amber-700 dark:text-amber-400">{s.db_error}</p>
+          <p className="break-words text-amber-700 dark:text-amber-400">{s.db_error}</p>
         )}
-        <div className="flex justify-between gap-2">
-          <span className="text-ink-mute dark:text-ink-dark-mute shrink-0">模式</span>
-          <span className="text-right font-medium">{s.mode_label}</span>
+        <div className="flex min-w-0 justify-between gap-2">
+          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">模式</span>
+          <span className="min-w-0 truncate text-right font-medium">{s.mode_label}</span>
         </div>
-        <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-snug">{scheduleHint}</p>
-        <div className="flex justify-between gap-2">
-          <span className="text-ink-mute dark:text-ink-dark-mute">待处理决策</span>
-          <span>{s.unprocessed_decisions}</span>
+        <p className="text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute break-words">{scheduleHint}</p>
+        <div className="flex min-w-0 justify-between gap-2">
+          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">待处理决策</span>
+          <span className="min-w-0 truncate text-right">{s.unprocessed_decisions}</span>
         </div>
-        <div className="flex justify-between gap-2">
-          <span className="text-ink-mute dark:text-ink-dark-mute">上次进化运行</span>
-          <span className="text-right truncate">
+        <div className="flex min-w-0 justify-between gap-2">
+          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">上次进化运行</span>
+          <span className="min-w-0 truncate text-right">
             {s.last_run_ts ? formatTs(s.last_run_ts) : "—"}
           </span>
         </div>
         {s.judgement_label && (
-          <div className="pt-1 border-t border-border/40 dark:border-border-dark/40">
+          <div className="min-w-0 border-t border-border/40 pt-1 dark:border-border-dark/40">
             <span className="text-ink-mute dark:text-ink-dark-mute">审核判断 </span>
-            <span className="font-medium">{s.judgement_label}</span>
+            <span className="break-words font-medium">{s.judgement_label}</span>
             {s.judgement_reason && (
-              <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute mt-0.5 line-clamp-2">
+              <p className="mt-0.5 line-clamp-2 break-words text-[11px] text-ink-mute dark:text-ink-dark-mute">
                 {s.judgement_reason}
               </p>
             )}
           </div>
         )}
-        <div className="flex justify-between gap-2 pt-0.5">
-          <span className="text-ink-mute dark:text-ink-dark-mute">待确认技能</span>
-          <span className={s.pending_skill_count > 0 ? "text-accent font-semibold" : ""}>
+        <div className="flex min-w-0 justify-between gap-2 pt-0.5">
+          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">待确认技能</span>
+          <span
+            className={`min-w-0 shrink-0 text-right ${s.pending_skill_count > 0 ? "font-semibold text-accent" : ""}`}
+          >
             {s.pending_skill_count}
           </span>
         </div>
-        <p className="text-[10px] text-ink-mute/80 dark:text-ink-dark-mute/80 truncate" title={workspace}>
+        <p
+          className="min-w-0 truncate text-[10px] text-ink-mute/80 dark:text-ink-dark-mute/80"
+          title={workspace}
+        >
           工作区: {workspace}
         </p>
       </div>

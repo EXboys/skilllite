@@ -37,6 +37,7 @@
 //! (and checks `SKILLLITE_AUTO_APPROVE_RUNTIME=1` to skip prompt in CI/automation).
 
 use anyhow::{Context, Result};
+use serde::Serialize;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -154,6 +155,256 @@ const FALLBACK_PYTHON_BASE: &str =
 const DEFAULT_NODE_BASE: &str = "https://nodejs.org/dist";
 #[cfg(feature = "runtime-deps")]
 const FALLBACK_NODE_BASE: &str = "https://npmmirror.com/mirrors/node";
+
+/// Single runtime line for desktop UI (Python / Node): system PATH vs downloaded cache vs not yet provisioned.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeUiLine {
+    /// `"system"` | `"cache"` | `"none"`
+    pub source: String,
+    pub label: String,
+    /// 在文件管理器中打开/定位用（绝对路径）；`none` 且可解析缓存根时指向 runtime 根目录（可能尚不存在，由桌面端打开时创建）
+    pub reveal_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeUiSnapshot {
+    pub python: RuntimeUiLine,
+    pub node: RuntimeUiLine,
+    /// e.g. `~/.cache/skilllite/runtime` when known
+    pub cache_root: Option<String>,
+    /// 缓存根目录绝对路径（用于在访达/资源管理器中打开）
+    pub cache_root_abs: Option<String>,
+}
+
+#[derive(Clone)]
+struct PythonProbeCandidate {
+    program: PathBuf,
+    args: Vec<&'static str>,
+}
+
+fn python_probe_candidates() -> Vec<PythonProbeCandidate> {
+    if cfg!(windows) {
+        vec![
+            PythonProbeCandidate {
+                program: PathBuf::from("python"),
+                args: Vec::new(),
+            },
+            PythonProbeCandidate {
+                program: PathBuf::from("py"),
+                args: vec!["-3"],
+            },
+            PythonProbeCandidate {
+                program: PathBuf::from("python3"),
+                args: Vec::new(),
+            },
+            PythonProbeCandidate {
+                program: PathBuf::from("py"),
+                args: Vec::new(),
+            },
+        ]
+    } else {
+        vec![
+            PythonProbeCandidate {
+                program: PathBuf::from("python3"),
+                args: Vec::new(),
+            },
+            PythonProbeCandidate {
+                program: PathBuf::from("python"),
+                args: Vec::new(),
+            },
+        ]
+    }
+}
+
+fn python_cache_binary(runtime_dir: &Path) -> PathBuf {
+    let root = runtime_dir.join("python-3.12");
+    #[cfg(windows)]
+    {
+        root.join("python.exe")
+    }
+    #[cfg(not(windows))]
+    {
+        root.join("bin").join("python")
+    }
+}
+
+fn node_cache_binary(runtime_dir: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        runtime_dir.join("node-20").join("node.exe")
+    }
+    #[cfg(not(windows))]
+    {
+        runtime_dir.join("node-20").join("bin").join("node")
+    }
+}
+
+fn display_path_with_tilde(path: &Path) -> String {
+    if let Some(home) = dirs::home_dir() {
+        if path.starts_with(&home) {
+            let rest = path.strip_prefix(&home).unwrap_or(path);
+            return format!("~{}", rest.to_string_lossy());
+        }
+    }
+    path.to_string_lossy().into_owned()
+}
+
+/// 解析当前候选正在使用的 Python 可执行文件绝对路径（含 Windows `py -3` 场景）。
+fn resolve_system_python_executable(c: &PythonProbeCandidate) -> Option<PathBuf> {
+    let mut cmd = Command::new(&c.program);
+    cmd.args(&c.args)
+        .args(["-c", "import sys; print(sys.executable)"]);
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let line = std::str::from_utf8(&out.stdout)
+        .ok()?
+        .lines()
+        .next()?
+        .trim();
+    if line.is_empty() {
+        return None;
+    }
+    let p = PathBuf::from(line);
+    if p.exists() {
+        Some(p)
+    } else {
+        None
+    }
+}
+
+fn path_to_reveal_string(path: &Path) -> Option<String> {
+    if !path.exists() {
+        return None;
+    }
+    let p = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    Some(p.to_string_lossy().into_owned())
+}
+
+/// Probe where Python / Node will come from (system vs `~/.cache/skilllite/runtime` download), without downloading.
+pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
+    skilllite_core::config::load_dotenv();
+    let runtime_dir = get_runtime_dir(cache_override);
+    let cache_root = runtime_dir.as_ref().map(|p| display_path_with_tilde(p));
+
+    let python = {
+        let mut system_hit: Option<(String, PathBuf)> = None;
+        for c in python_probe_candidates() {
+            let mut cmd = Command::new(&c.program);
+            cmd.args(&c.args).arg("--version");
+            let Ok(out) = cmd.output() else {
+                continue;
+            };
+            if !out.status.success() {
+                continue;
+            }
+            let text = std::str::from_utf8(&out.stdout)
+                .or_else(|_| std::str::from_utf8(&out.stderr))
+                .unwrap_or("");
+            if let Some((maj, min)) = parse_python_version(text) {
+                if python_version_meets_minimum(maj, min) {
+                    let lab = format!("Python {}.{}", maj, min);
+                    let exe = resolve_system_python_executable(&c).unwrap_or_else(|| {
+                        if c.program.is_absolute() {
+                            c.program.clone()
+                        } else {
+                            which::which(&c.program).unwrap_or_else(|_| c.program.clone())
+                        }
+                    });
+                    system_hit = Some((lab, exe));
+                    break;
+                }
+            }
+        }
+        if let Some((lab, exe)) = system_hit {
+            RuntimeUiLine {
+                source: "system".into(),
+                label: lab,
+                reveal_path: path_to_reveal_string(&exe).or_else(|| {
+                    exe.is_absolute()
+                        .then(|| exe.to_string_lossy().into_owned())
+                }),
+            }
+        } else if let Some(ref rd) = runtime_dir {
+            let bundle = rd.join("python-3.12");
+            if python_cache_binary(rd).exists() {
+                RuntimeUiLine {
+                    source: "cache".into(),
+                    label: "Python（SkillLite 已下载）".into(),
+                    reveal_path: path_to_reveal_string(&bundle),
+                }
+            } else {
+                RuntimeUiLine {
+                    source: "none".into(),
+                    label: "首次需要时将自动下载".into(),
+                    reveal_path: Some(rd.to_string_lossy().into_owned()),
+                }
+            }
+        } else {
+            RuntimeUiLine {
+                source: "none".into(),
+                label: "无法解析缓存目录".into(),
+                reveal_path: None,
+            }
+        }
+    };
+
+    let node = {
+        if let Some(path) = which_node() {
+            let ver = Command::new(&path)
+                .arg("--version")
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|| "v18+".into());
+            RuntimeUiLine {
+                source: "system".into(),
+                label: format!("Node {}", ver),
+                reveal_path: path_to_reveal_string(&path).or_else(|| {
+                    path.is_absolute()
+                        .then(|| path.to_string_lossy().into_owned())
+                }),
+            }
+        } else if let Some(ref rd) = runtime_dir {
+            let bundle = rd.join("node-20");
+            if node_cache_binary(rd).exists() {
+                RuntimeUiLine {
+                    source: "cache".into(),
+                    label: "Node（SkillLite 已下载）".into(),
+                    reveal_path: path_to_reveal_string(&bundle),
+                }
+            } else {
+                RuntimeUiLine {
+                    source: "none".into(),
+                    label: "首次需要时将自动下载".into(),
+                    reveal_path: Some(rd.to_string_lossy().into_owned()),
+                }
+            }
+        } else {
+            RuntimeUiLine {
+                source: "none".into(),
+                label: "无法解析缓存目录".into(),
+                reveal_path: None,
+            }
+        }
+    };
+
+    let cache_root_abs = runtime_dir
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned());
+
+    RuntimeUiSnapshot {
+        python,
+        node,
+        cache_root,
+        cache_root_abs,
+    }
+}
 
 /// Returns the runtime root directory (same base as cache, subdir `runtime`).
 /// E.g. cache_dir = ~/.cache/skilllite/envs => runtime = ~/.cache/skilllite/runtime.

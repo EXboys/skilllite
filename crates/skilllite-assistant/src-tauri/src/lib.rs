@@ -134,6 +134,18 @@ async fn skilllite_open_directory(module: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn skilllite_reveal_in_file_manager(path: String) -> Result<(), String> {
+    match tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::reveal_in_file_manager(&path)
+    })
+    .await
+    {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
 async fn skilllite_open_skill_directory(
     workspace: Option<String>,
     skill_name: String,
@@ -348,6 +360,27 @@ async fn skilllite_probe_ollama() -> skilllite_bridge::OllamaProbeResult {
 }
 
 #[tauri::command]
+async fn skilllite_runtime_status() -> skilllite_bridge::RuntimeUiSnapshot {
+    match tauri::async_runtime::spawn_blocking(skilllite_bridge::probe_runtime_status).await {
+        Ok(s) => s,
+        Err(_) => skilllite_bridge::RuntimeUiSnapshot {
+            python: skilllite_bridge::RuntimeUiLine {
+                source: "none".into(),
+                label: "加载失败".into(),
+                reveal_path: None,
+            },
+            node: skilllite_bridge::RuntimeUiLine {
+                source: "none".into(),
+                label: "加载失败".into(),
+                reveal_path: None,
+            },
+            cache_root: None,
+            cache_root_abs: None,
+        },
+    }
+}
+
+#[tauri::command]
 async fn skilllite_health_check(
     app: tauri::AppHandle,
     workspace: String,
@@ -400,6 +433,7 @@ pub fn run() {
             skilllite_read_output_file,
             skilllite_read_output_file_base64,
             skilllite_open_directory,
+            skilllite_reveal_in_file_manager,
             skilllite_open_skill_directory,
             skilllite_confirm,
             skilllite_clarify,
@@ -408,6 +442,7 @@ pub fn run() {
             skilllite_add_skill,
             skilllite_init_workspace,
             skilllite_probe_ollama,
+            skilllite_runtime_status,
             skilllite_health_check,
             skilllite_list_sessions,
             skilllite_create_session,

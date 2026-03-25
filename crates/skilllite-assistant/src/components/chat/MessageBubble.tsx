@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { MarkdownContent } from "../shared/MarkdownContent";
+import { StructuredPayload, getConversationToolResultMarkdown } from "./StructuredPayload";
 import type { ChatMessage } from "../../types/chat";
 
 interface MessageBubbleProps {
@@ -20,6 +21,22 @@ const bubbleAssistant =
 
 const bubbleMuted =
   `${bubbleShell} mr-4 px-4 py-3 bg-ink/[0.03] dark:bg-white/[0.05] border-border dark:border-border-dark text-ink dark:text-ink-dark`;
+
+function ConfirmationBody({ text }: { text: string }) {
+  const blocks = text.split(/\n{2,}/);
+  return (
+    <div className="space-y-3 mb-4 max-h-52 overflow-y-auto pr-1">
+      {blocks.map((block, i) => (
+        <p
+          key={i}
+          className="whitespace-pre-wrap text-sm text-ink dark:text-ink-dark-mute leading-relaxed"
+        >
+          {block.trimEnd()}
+        </p>
+      ))}
+    </div>
+  );
+}
 
 function MessageBubbleInner({ message, onConfirm, onClarify }: MessageBubbleProps) {
   if (message.type === "user") {
@@ -48,20 +65,38 @@ function MessageBubbleInner({ message, onConfirm, onClarify }: MessageBubbleProp
   if (message.type === "plan") {
     return (
       <div className="flex justify-start">
-        <div className={bubbleMuted}>
-          <div className="text-xs font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute mb-2">
-            任务计划
+        <div className={`${bubbleMuted} border-l-[3px] border-l-accent/35 dark:border-l-accent/45 pl-3.5`}>
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-accent dark:text-blue-300/90">
+              任务计划
+            </span>
+            <span className="text-[11px] text-ink-mute dark:text-ink-dark-mute">
+              {message.tasks.filter((t) => t.completed).length}/{message.tasks.length} 已完成
+            </span>
           </div>
-          <ul className="space-y-1.5 text-sm text-ink dark:text-ink-dark-mute">
+          <ul className="space-y-2 text-sm text-ink dark:text-ink-dark">
             {message.tasks.map((t) => (
-              <li key={t.id} className="flex items-start gap-2">
-                <span className="shrink-0 mt-0.5">{t.completed ? "✓" : "○"}</span>
-                <span>{t.description}</span>
-                {t.tool_hint && (
-                  <span className="text-ink-mute dark:text-ink-dark-mute shrink-0 text-xs">
-                    [{t.tool_hint}]
+              <li key={t.id} className="flex items-start gap-2.5">
+                <span
+                  className={`shrink-0 mt-0.5 flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium ${
+                    t.completed
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
+                      : "border border-border dark:border-border-dark text-ink-mute dark:text-ink-dark-mute"
+                  }`}
+                  aria-hidden
+                >
+                  {t.completed ? "✓" : "○"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <span className={t.completed ? "text-ink-mute dark:text-ink-dark-mute line-through decoration-ink-mute/40" : ""}>
+                    {t.description}
                   </span>
-                )}
+                  {t.tool_hint && (
+                    <span className="ml-1.5 align-middle rounded-md bg-ink/6 dark:bg-white/8 px-1.5 py-0.5 text-[11px] font-mono text-ink-mute dark:text-ink-dark-mute">
+                      {t.tool_hint}
+                    </span>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -73,45 +108,69 @@ function MessageBubbleInner({ message, onConfirm, onClarify }: MessageBubbleProp
   if (message.type === "tool_call") {
     return (
       <div className="flex justify-start">
-        <div className={bubbleMuted}>
-          <div className="text-xs font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute mb-1.5">
-            工具调用
+        <div className={`${bubbleMuted} border-l-[3px] border-l-sky-400/50 dark:border-l-sky-500/45`}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-0.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-sky-700/90 dark:text-sky-300/90">
+              工具调用
+            </span>
+            <span className="rounded-md bg-sky-500/10 dark:bg-sky-400/15 px-2 py-0.5 font-mono text-xs font-medium text-ink dark:text-ink-dark">
+              {message.name}
+            </span>
           </div>
-          <div className="text-sm font-mono text-ink-mute dark:text-ink-dark-mute">
-            <span className="font-medium text-ink dark:text-ink-dark">→ {message.name}</span>
-            {message.args && (
-              <pre className="mt-1 text-xs overflow-x-auto whitespace-pre-wrap break-words text-ink-mute dark:text-ink-dark-mute">
-                {message.args.length > 200 ? message.args.slice(0, 200) + "…" : message.args}
-              </pre>
-            )}
-          </div>
+          {message.args ? <StructuredPayload raw={message.args} /> : null}
         </div>
       </div>
     );
   }
 
   if (message.type === "tool_result") {
+    const convMd = getConversationToolResultMarkdown(message.result, message.isError);
+    if (convMd !== null) {
+      return (
+        <div className="flex justify-start">
+          <div className={`${bubbleAssistant} border-l-[3px] border-l-emerald-500/35 dark:border-l-emerald-500/40 pl-3.5`}>
+            <p className="text-[10px] font-medium uppercase tracking-wider text-ink-mute dark:text-ink-dark-mute mb-2">
+              工具回复
+              <span className="ml-1.5 font-mono normal-case tracking-normal text-emerald-700/85 dark:text-emerald-300/90">
+                {message.name}
+              </span>
+            </p>
+            <MarkdownContent content={convMd} />
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex justify-start">
         <div
-          className={`${bubbleShell} mr-4 px-4 py-3 ${
+          className={`${bubbleShell} mr-4 px-4 py-3 border-l-[3px] ${
             message.isError
-              ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50"
-              : "bg-ink/[0.03] dark:bg-white/[0.05] border-border dark:border-border-dark"
+              ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/50 border-l-red-500/55"
+              : "bg-ink/[0.03] dark:bg-white/[0.05] border-border dark:border-border-dark border-l-emerald-500/45"
           }`}
         >
-          <div className="text-xs font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute mb-1.5">
-            工具结果
-          </div>
-          <div className="text-sm font-mono">
-            <span className="font-medium text-ink dark:text-ink-dark">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-0.5">
+            <span
+              className={`text-[10px] font-semibold uppercase tracking-wider ${
+                message.isError
+                  ? "text-red-700 dark:text-red-300"
+                  : "text-emerald-700/90 dark:text-emerald-300/90"
+              }`}
+            >
+              工具结果
+            </span>
+            <span
+              className={`rounded-md px-2 py-0.5 font-mono text-xs font-medium ${
+                message.isError
+                  ? "bg-red-500/12 text-ink dark:text-ink-dark"
+                  : "bg-emerald-500/10 dark:bg-emerald-400/15 text-ink dark:text-ink-dark"
+              }`}
+            >
               {message.isError ? "✗ " : "✓ "}
               {message.name}
             </span>
-            <pre className="mt-1 text-xs overflow-x-auto whitespace-pre-wrap break-words max-h-40 overflow-y-auto text-ink dark:text-ink-dark-mute">
-              {message.result.length > 500 ? message.result.slice(0, 500) + "…" : message.result}
-            </pre>
           </div>
+          <StructuredPayload raw={message.result} />
         </div>
       </div>
     );
@@ -121,14 +180,12 @@ function MessageBubbleInner({ message, onConfirm, onClarify }: MessageBubbleProp
     return (
       <div className="flex justify-start">
         <div
-          className={`${bubbleShell} mr-4 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50`}
+          className={`${bubbleShell} mr-4 px-4 py-3 border-l-[3px] border-l-amber-500/50 bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/50`}
         >
           <div className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200 mb-2">
             执行确认
           </div>
-          <pre className="whitespace-pre-wrap text-sm text-ink dark:text-ink-dark-mute mb-4 max-h-48 overflow-y-auto">
-            {message.prompt}
-          </pre>
+          <ConfirmationBody text={message.prompt} />
           {message.resolved ? (
             <div className="text-sm text-ink-mute dark:text-ink-dark-mute">
               {message.approved ? "✓ 已允许" : "✗ 已拒绝"}

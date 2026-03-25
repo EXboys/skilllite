@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useStatusStore, type TaskItem, type LogEntry } from "../stores/useStatusStore";
+import {
+  useStatusStore,
+  STATUS_STORE_PERSIST_KEY,
+  STATUS_STORE_BROADCAST,
+  type TaskItem,
+  type LogEntry,
+} from "../stores/useStatusStore";
 import { MarkdownContent } from "./shared/MarkdownContent";
 import { groupMemoryFiles } from "../utils/fileUtils";
 import { useRecentData } from "../hooks/useRecentData";
@@ -387,6 +393,34 @@ export default function DetailWindowView() {
   useEffect(() => {
     refreshRecentData();
   }, [refreshRecentData]);
+
+  // 独立 WebView 与主窗口内存不共享：主窗口写入 persist 后，由此拉取最新 tasks（含 clearPlan 后空计划）
+  useEffect(() => {
+    const pull = () => {
+      void useStatusStore.persist.rehydrate();
+    };
+    queueMicrotask(pull);
+    let bc: BroadcastChannel | undefined;
+    try {
+      bc = new BroadcastChannel(STATUS_STORE_BROADCAST);
+      bc.onmessage = () => pull();
+    } catch {
+      /* ignore */
+    }
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STATUS_STORE_PERSIST_KEY) pull();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") pull();
+    };
+    window.addEventListener("storage", onStorage);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      bc?.close();
+      window.removeEventListener("storage", onStorage);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   if (!module) {
     return (

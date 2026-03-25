@@ -1,11 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
-import { useStatusStore, type TaskItem, type LogEntry } from "../stores/useStatusStore";
+import { useStatusStore, type LogEntry } from "../stores/useStatusStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { groupMemoryFiles } from "../utils/fileUtils";
+import { openDetailWindow } from "../utils/detailWindow";
 import { EvolutionStatusSummary } from "./EvolutionSection";
 
 interface MemoryEntryData {
@@ -15,73 +14,7 @@ interface MemoryEntryData {
   updated_at: string;
 }
 
-export type DetailModule = "plan" | "mem" | "log" | "output" | "evolution" | null;
-
-const MODULE_TITLES: Record<NonNullable<DetailModule>, string> = {
-  plan: "任务计划",
-  mem: "记忆",
-  log: "执行日志",
-  output: "输出",
-  evolution: "自进化与审核",
-};
-
-/** 打开全新窗口显示详情，紧贴当前窗口右侧 */
-async function openDetailWindow(module: NonNullable<DetailModule>) {
-  const mainWindow = getCurrentWindow();
-  const [pos, size] = await Promise.all([
-    mainWindow.outerPosition(),
-    mainWindow.outerSize(),
-  ]);
-  const x = pos.x + size.width;
-  const y = pos.y;
-
-  const label = `detail-${module}`;
-  const base = `${window.location.origin}${window.location.pathname || "/"}`.replace(/\/$/, "");
-  const url = `${base}#detail/${module}`;
-  const wide = module === "evolution";
-  new WebviewWindow(label, {
-    url,
-    title: MODULE_TITLES[module],
-    x: Math.round(x),
-    y: Math.round(y),
-    width: wide ? 520 : 420,
-    height: wide ? 640 : 560,
-    resizable: true,
-  });
-}
-
 const PREVIEW_LIMIT = 3;
-
-function TaskList({ tasks, limit }: { tasks: TaskItem[]; limit?: number }) {
-  if (tasks.length === 0) {
-    return (
-      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无任务计划</p>
-    );
-  }
-  const show = limit ? tasks.slice(0, limit) : tasks;
-  return (
-    <ul className="space-y-1">
-      {show.map((t) => (
-        <li
-          key={t.id}
-          className={`flex items-start gap-2 text-xs ${
-            t.completed ? "text-ink-mute dark:text-ink-dark-mute line-through" : "text-ink dark:text-ink-dark-mute"
-          }`}
-        >
-          <span className="shrink-0 mt-0.5 text-accent">
-            {t.completed ? "✓" : "○"}
-          </span>
-          <span>{t.description}</span>
-          {t.tool_hint && (
-            <span className="text-ink-mute dark:text-ink-dark-mute shrink-0">
-              [{t.tool_hint}]
-            </span>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
   if (entries.length === 0) {
@@ -96,7 +29,7 @@ function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
       {show.map((e) => (
         <li
           key={e.id}
-          className={`text-xs font-mono ${
+          className={`min-w-0 max-w-full text-xs font-mono ${
             e.isError ? "text-red-600 dark:text-red-400" : "text-ink-mute dark:text-ink-dark-mute"
           }`}
         >
@@ -115,7 +48,7 @@ function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
           {e.type === "swarm_finished" && "■"}
           {e.type === "swarm_failed" && "✗"}
           {e.name && <span className="font-medium">{e.name}: </span>}
-          <span className="block break-words line-clamp-4 text-left">{e.text}</span>
+          <span className="block min-w-0 break-words text-left line-clamp-4">{e.text}</span>
         </li>
       ))}
     </ul>
@@ -132,13 +65,16 @@ function LogFilePreview({ files, entries, limit = 3 }: { files: string[]; entrie
   }
   const show = limit ? files.slice(0, limit) : files;
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       {hasFiles && (
-        <ul className="space-y-0.5">
+        <ul className="min-w-0 space-y-0.5">
           {show.map((f, i) => (
-            <li key={i} className="text-xs text-ink-mute dark:text-ink-dark-mute truncate flex items-center gap-1">
+            <li
+              key={i}
+              className="flex min-w-0 max-w-full items-center gap-1 truncate text-xs text-ink-mute dark:text-ink-dark-mute"
+            >
               <span className="shrink-0">📄</span>
-              <span className="truncate">{f}</span>
+              <span className="min-w-0 truncate">{f}</span>
             </li>
           ))}
           {files.length > limit && (
@@ -163,11 +99,14 @@ function OutputPreview({ files, limit = 3 }: { files: string[]; limit?: number }
   }
   const show = limit ? files.slice(0, limit) : files;
   return (
-    <ul className="space-y-0.5">
+    <ul className="min-w-0 space-y-0.5">
       {show.map((f, i) => (
-        <li key={i} className="text-xs text-ink-mute dark:text-ink-dark-mute truncate flex items-center gap-1">
+        <li
+          key={i}
+          className="flex min-w-0 max-w-full items-center gap-1 truncate text-xs text-ink-mute dark:text-ink-dark-mute"
+        >
           <span className="shrink-0">📄</span>
-          <span className="truncate">{f.split("/").pop() ?? f}</span>
+          <span className="min-w-0 truncate">{f.split("/").pop() ?? f}</span>
         </li>
       ))}
       {files.length > limit && (
@@ -201,17 +140,17 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
   if (hasSummaries) {
     const show = limit ? summaries.slice(0, limit) : summaries;
     return (
-      <div className="space-y-1.5">
+      <div className="min-w-0 space-y-1.5">
         {show.map((entry) => (
           <div
             key={entry.path}
-            className="rounded-md border border-border/50 dark:border-border-dark/50 px-2.5 py-1.5 bg-white/50 dark:bg-white/[0.02]"
+            className="max-w-full min-w-0 rounded-md border border-border/50 dark:border-border-dark/50 bg-white/50 px-2.5 py-1.5 dark:bg-white/[0.02]"
           >
             <div className="text-xs font-medium text-ink dark:text-ink-dark truncate">
               {entry.title}
             </div>
             {entry.summary && (
-              <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute mt-0.5 line-clamp-2">
+              <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute mt-0.5 line-clamp-2 break-words">
                 {entry.summary}
               </p>
             )}
@@ -234,11 +173,14 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
   const flatFiles = Object.values(groupMemoryFiles(files)).flat();
   const showFiles = limit ? flatFiles.slice(0, limit) : flatFiles;
   return (
-    <ul className="space-y-0.5">
+    <ul className="min-w-0 space-y-0.5">
       {showFiles.map((f, i) => (
-        <li key={i} className="text-xs text-ink-mute dark:text-ink-dark-mute truncate flex items-center gap-1">
+        <li
+          key={i}
+          className="flex min-w-0 max-w-full items-center gap-1 truncate text-xs text-ink-mute dark:text-ink-dark-mute"
+        >
           <span className="shrink-0">📄</span>
-          <span className="truncate">{f.split("/").pop() ?? f}</span>
+          <span className="min-w-0 truncate">{f.split("/").pop() ?? f}</span>
         </li>
       ))}
       {hasHints && limit && (
@@ -265,8 +207,8 @@ function SummarySection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mb-4">
-      <div className="flex items-center justify-between mb-2">
+    <section className="mb-4 min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
         <button
           type="button"
           onClick={onClickMore}
@@ -299,13 +241,15 @@ function SummarySection({
       <div
         onClick={hasMore ? onClickMore : undefined}
         role={hasMore ? "button" : undefined}
-        className={hasMore ? "cursor-pointer" : ""}
+        className={hasMore ? "min-w-0 cursor-pointer" : "min-w-0"}
       >
         {children}
       </div>
     </section>
   );
 }
+
+type StatusPanelTab = "evolution" | "archive";
 
 const openDir = (module: string) => () => {
   invoke("skilllite_open_directory", { module }).catch((err) => {
@@ -436,9 +380,9 @@ function SkillRepairSection() {
   };
 
   return (
-    <section className="mb-4">
+    <section className="mb-4 min-w-0">
       {/* 标题行：技能 + 数量 + 操作 */}
-      <div className="flex items-center justify-between gap-2 mb-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2 min-w-0">
         <span className="font-medium text-ink dark:text-ink-dark shrink-0">技能</span>
         {skillNames.length > 0 && (
           <span className="text-xs text-ink-mute dark:text-ink-dark-mute shrink-0">
@@ -510,7 +454,9 @@ function SkillRepairSection() {
             在 skills.sh 浏览更多技能
           </button>
           {addResult != null && (
-            <span className={`text-xs ${addResultIsError ? "text-red-600 dark:text-red-400" : "text-ink-mute dark:text-ink-dark-mute"}`}>
+            <span
+              className={`min-w-0 max-w-full break-words text-xs ${addResultIsError ? "text-red-600 dark:text-red-400" : "text-ink-mute dark:text-ink-dark-mute"}`}
+            >
               {addResult}
             </span>
           )}
@@ -519,7 +465,7 @@ function SkillRepairSection() {
 
       {/* 技能列表：卡片式 */}
       <div
-        className="rounded-lg border border-border dark:border-border-dark bg-gray-50/50 dark:bg-surface-dark/50 overflow-y-auto mb-3"
+        className="min-w-0 max-w-full rounded-lg border border-border dark:border-border-dark bg-gray-50/50 dark:bg-surface-dark/50 overflow-x-hidden overflow-y-auto mb-3"
         style={{ maxHeight: SKILL_LIST_MAX_HEIGHT }}
       >
         {loadingList ? (
@@ -603,7 +549,7 @@ function SkillRepairSection() {
       {/* 修复结果 */}
       {repairResult !== null && (
         <div
-          className={`mt-2 p-2.5 rounded-lg text-xs whitespace-pre-wrap max-h-28 overflow-auto ${
+          className={`mt-2 max-w-full min-w-0 break-words p-2.5 rounded-lg text-xs whitespace-pre-wrap max-h-28 overflow-y-auto overflow-x-hidden ${
             resultIsError
               ? "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/50"
               : "bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200 border border-green-200 dark:border-green-800/50"
@@ -617,54 +563,100 @@ function SkillRepairSection() {
 }
 
 export default function StatusPanel() {
-  const { tasks, logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();
+  const [tab, setTab] = useState<StatusPanelTab>("evolution");
+  const { logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();
 
-  const planHasMore = tasks.length > PREVIEW_LIMIT || tasks.length > 0;
   const memHasMore = memoryFiles.length > PREVIEW_LIMIT || memoryHints.length > 0 || memoryFiles.length > 0;
   const logHasMore = logFiles.length > 0 || logEntries.length > PREVIEW_LIMIT || logEntries.length > 0;
   const outputHasMore = outputFiles.length > PREVIEW_LIMIT || outputFiles.length > 0;
 
+  const tabBtnClass = (active: boolean) =>
+    `flex-1 min-w-0 py-2 px-1 text-xs font-medium rounded-t-md border-b-2 transition-colors ${
+      active
+        ? "border-accent text-ink dark:text-ink-dark"
+        : "border-transparent text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
+    }`;
+
   return (
-    <div className="p-4 text-sm">
-      <SummarySection
-        title="任务计划"
-        onClickMore={() => openDetailWindow("plan")}
-        onOpenDir={openDir("plan")}
-        hasMore={planHasMore || tasks.length > 0}
+    <div className="box-border w-full min-w-0 max-w-full p-4 text-sm break-words">
+      <div
+        role="tablist"
+        aria-label="信息栏分类"
+        className="flex gap-0 mb-1 border-b border-border/80 dark:border-border-dark/80"
       >
-        <TaskList tasks={tasks} limit={PREVIEW_LIMIT} />
-      </SummarySection>
+        <button
+          type="button"
+          role="tab"
+          id="status-tab-trigger-evolution"
+          aria-controls="status-tab-panel-evolution"
+          aria-selected={tab === "evolution"}
+          tabIndex={0}
+          onClick={() => setTab("evolution")}
+          className={tabBtnClass(tab === "evolution")}
+        >
+          进化与能力
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="status-tab-trigger-archive"
+          aria-controls="status-tab-panel-archive"
+          aria-selected={tab === "archive"}
+          tabIndex={0}
+          onClick={() => setTab("archive")}
+          className={tabBtnClass(tab === "archive")}
+        >
+          运行档案
+        </button>
+      </div>
 
-      <SummarySection
-        title="记忆"
-        onClickMore={() => openDetailWindow("mem")}
-        onOpenDir={openDir("memory")}
-        hasMore={memHasMore || memoryFiles.length > 0}
-      >
-        <MemoryPreview files={memoryFiles} hints={memoryHints} limit={PREVIEW_LIMIT} />
-      </SummarySection>
+      {tab === "evolution" && (
+        <div
+          role="tabpanel"
+          id="status-tab-panel-evolution"
+          aria-labelledby="status-tab-trigger-evolution"
+          className="min-w-0 pt-3"
+        >
+          <EvolutionStatusSummary onOpenDetail={() => openDetailWindow("evolution")} />
+          <SkillRepairSection />
+        </div>
+      )}
 
-      <SummarySection
-        title="执行日志"
-        onClickMore={() => openDetailWindow("log")}
-        onOpenDir={openDir("log")}
-        hasMore={logHasMore}
-      >
-        <LogFilePreview files={logFiles} entries={logEntries} limit={PREVIEW_LIMIT} />
-      </SummarySection>
+      {tab === "archive" && (
+        <div
+          role="tabpanel"
+          id="status-tab-panel-archive"
+          aria-labelledby="status-tab-trigger-archive"
+          className="min-w-0 pt-3"
+        >
+          <SummarySection
+            title="记忆"
+            onClickMore={() => openDetailWindow("mem")}
+            onOpenDir={openDir("memory")}
+            hasMore={memHasMore || memoryFiles.length > 0}
+          >
+            <MemoryPreview files={memoryFiles} hints={memoryHints} limit={PREVIEW_LIMIT} />
+          </SummarySection>
 
-      <SummarySection
-        title="输出"
-        onClickMore={() => openDetailWindow("output")}
-        onOpenDir={openDir("output")}
-        hasMore={outputHasMore}
-      >
-        <OutputPreview files={outputFiles} limit={PREVIEW_LIMIT} />
-      </SummarySection>
+          <SummarySection
+            title="执行日志"
+            onClickMore={() => openDetailWindow("log")}
+            onOpenDir={openDir("log")}
+            hasMore={logHasMore}
+          >
+            <LogFilePreview files={logFiles} entries={logEntries} limit={PREVIEW_LIMIT} />
+          </SummarySection>
 
-      <EvolutionStatusSummary onOpenDetail={() => openDetailWindow("evolution")} />
-
-      <SkillRepairSection />
+          <SummarySection
+            title="输出"
+            onClickMore={() => openDetailWindow("output")}
+            onOpenDir={openDir("output")}
+            hasMore={outputHasMore}
+          >
+            <OutputPreview files={outputFiles} limit={PREVIEW_LIMIT} />
+          </SummarySection>
+        </div>
+      )}
     </div>
   );
 }

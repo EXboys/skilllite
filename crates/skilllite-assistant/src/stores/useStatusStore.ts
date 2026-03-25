@@ -48,16 +48,22 @@ interface StatusState {
   updateTaskProgress: (taskId: number, completed: boolean) => void;
   addLog: (entry: Omit<LogEntry, "id" | "time">) => void;
   addMemoryHint: (hint: string) => void;
+  /** 仅同步文件列表；计划条只来自当前轮次的流式事件，不从磁盘 / persist 恢复 */
   setRecentData: (data: {
     memoryFiles?: string[];
     outputFiles?: string[];
     logFiles?: string[];
-    plan?: { task: string; steps: { id: number; description: string; completed: boolean }[] };
   }) => void;
   clearAll: () => void;
 }
 
 const now = () => new Date().toLocaleTimeString("en-US", { hour12: false });
+
+/** 与 persist.name 一致，供详情窗等监听 localStorage 同步 */
+export const STATUS_STORE_PERSIST_KEY = "skilllite-assistant-status";
+
+/** 主窗口 tasks 变更时通知其它 WebView（详情窗）从 localStorage 重新 hydrate */
+export const STATUS_STORE_BROADCAST = "skilllite-assistant-status-broadcast";
 
 export const useStatusStore = create<StatusState>()(
   persist(
@@ -83,11 +89,14 @@ export const useStatusStore = create<StatusState>()(
         })),
 
       updateTaskProgress: (taskId, completed) =>
-        set((s) => ({
-          tasks: s.tasks.map((t) =>
+        set((s) => {
+          const tasks = s.tasks.map((t) =>
             t.id === taskId ? { ...t, completed } : t
-          ),
-        })),
+          );
+          const allDone =
+            tasks.length > 0 && tasks.every((t) => t.completed);
+          return { tasks: allDone ? [] : tasks };
+        }),
 
       addLog: (entry) =>
         set((s) => ({
@@ -111,26 +120,40 @@ export const useStatusStore = create<StatusState>()(
           memoryFiles: data.memoryFiles ?? s.memoryFiles,
           outputFiles: data.outputFiles ?? s.outputFiles,
           logFiles: data.logFiles ?? s.logFiles,
-          tasks:
-            data.plan && data.plan.steps.length > 0
-              ? data.plan.steps.map((step) => ({
-                  id: step.id,
-                  description: step.description,
-                  completed: step.completed,
-                }))
-              : s.tasks,
         })),
 
       clearAll: () =>
         set({ tasks: [], logEntries: [], logFiles: [], memoryHints: [], memoryFiles: [], outputFiles: [], latestOutput: "" }),
     }),
     {
-      name: "skilllite-assistant-status",
+      name: STATUS_STORE_PERSIST_KEY,
       partialize: (s) => ({
-        tasks: s.tasks,
         logEntries: s.logEntries,
         memoryHints: s.memoryHints,
+      }),
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState as Partial<StatusState>),
+        tasks: [],
       }),
     }
   )
 );
+
+function broadcastTasksChanged() {
+  if (typeof window === "undefined") return;
+  try {
+    const c = new BroadcastChannel(STATUS_STORE_BROADCAST);
+    c.postMessage(null);
+    c.close();
+  } catch {
+    /* ignore */
+  }
+}
+
+let prevTasksRef = useStatusStore.getState().tasks;
+useStatusStore.subscribe((s) => {
+  if (s.tasks === prevTasksRef) return;
+  prevTasksRef = s.tasks;
+  broadcastTasksChanged();
+});

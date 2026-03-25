@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { ChatMessage, StreamEventPayload } from "../types/chat";
 import type { LogEntry } from "../stores/useStatusStore";
+import { isChatHiddenToolName } from "../utils/chatNoise";
 
 const STREAM_THROTTLE_MS = 80;
 
@@ -15,6 +16,8 @@ interface UseChatEventsParams {
   addLog: (entry: Omit<LogEntry, "id" | "time">) => void;
   addMemoryHint: (hint: string) => void;
   setLatestOutput: (text: string) => void;
+  /** 一轮 assistant 输出结束或出错时清空顶部「任务计划」条（历史里的 plan 消息仍保留） */
+  clearPlan?: () => void;
   onTurnComplete?: () => void;
 }
 
@@ -28,6 +31,7 @@ export function useChatEvents({
   addLog,
   addMemoryHint,
   setLatestOutput,
+  clearPlan,
   onTurnComplete,
 }: UseChatEventsParams) {
   useEffect(() => {
@@ -174,6 +178,7 @@ export function useChatEvents({
           return prev;
         });
         setLoading(false);
+        clearPlan?.();
         onTurnComplete?.();
       } else if (event === "error") {
         const msg = (data?.message as string) ?? "Unknown error";
@@ -186,6 +191,7 @@ export function useChatEvents({
         setError(msg);
         setLoading(false);
         addLog({ type: "error" as const, text: msg, isError: true });
+        clearPlan?.();
         onTurnComplete?.();
       } else if (event === "protocol_warning") {
         const msg = (data?.message as string) ?? "检测到 agent-rpc 协议流异常，正在自动恢复";
@@ -238,10 +244,12 @@ export function useChatEvents({
         if (["memory_write", "memory_search", "memory_list"].includes(name)) {
           addMemoryHint(`${name}: ${args.slice(0, 40)}…`);
         }
-        setMessages((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), type: "tool_call", name, args },
-        ]);
+        if (!isChatHiddenToolName(name)) {
+          setMessages((prev) => [
+            ...prev,
+            { id: crypto.randomUUID(), type: "tool_call", name, args },
+          ]);
+        }
       } else if (event === "tool_result") {
         const name = (data?.name as string) ?? "";
         const isErr = (data?.is_error as boolean) ?? false;
@@ -251,10 +259,12 @@ export function useChatEvents({
           text: result.length > 1200 ? result.slice(0, 1200) + "…" : result,
           isError: isErr,
         });
-        setMessages((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), type: "tool_result", name, result, isError: isErr },
-        ]);
+        if (!isChatHiddenToolName(name)) {
+          setMessages((prev) => [
+            ...prev,
+            { id: crypto.randomUUID(), type: "tool_result", name, result, isError: isErr },
+          ]);
+        }
       } else if (event === "command_started") {
         const command = (data?.command as string) ?? "";
         if (!command) return;

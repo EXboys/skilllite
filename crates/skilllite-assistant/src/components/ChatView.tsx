@@ -8,7 +8,9 @@ import { useChatEvents } from "../hooks/useChatEvents";
 import { useRecentData } from "../hooks/useRecentData";
 import { MessageList } from "./chat/MessageList";
 import { ChatInput } from "./chat/ChatInput";
+import { InputPlanStrip } from "./chat/InputPlanStrip";
 import type { ChatMessage } from "../types/chat";
+import { isChatHiddenToolName } from "../utils/chatNoise";
 
 const STARTER_ACTIONS = [
   {
@@ -34,6 +36,7 @@ export default function ChatView() {
   const [error, setError] = useState<string | null>(null);
   const { settings, setSettings } = useSettingsStore();
   const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
+  const planTasks = useStatusStore((s) => s.tasks);
   const { refreshRecentData } = useRecentData();
   const statusActions = useStatusStore(
     useShallow((s) => ({
@@ -67,6 +70,7 @@ export default function ChatView() {
     addLog: statusActions.addLog,
     addMemoryHint: statusActions.addMemoryHint,
     setLatestOutput: statusActions.setLatestOutput,
+    clearPlan: statusActions.clearPlan,
     onTurnComplete: refreshRecentData,
   });
 
@@ -95,32 +99,37 @@ export default function ChatView() {
       .then((entries) => {
         if (cancelled) return;
         if (!entries || entries.length === 0) return;
-        const msgs: ChatMessage[] = entries.map((e) => {
+        const msgs: ChatMessage[] = [];
+        for (const e of entries) {
           if (e.role === "tool_call") {
-            return {
+            const name = e.name ?? "";
+            if (isChatHiddenToolName(name)) continue;
+            msgs.push({
               id: e.id,
               type: "tool_call" as const,
-              name: e.name ?? "",
+              name,
               args: e.content,
-            };
+            });
+            continue;
           }
           if (e.role === "tool_result") {
-            return {
+            const name = e.name ?? "";
+            if (isChatHiddenToolName(name)) continue;
+            msgs.push({
               id: e.id,
               type: "tool_result" as const,
-              name: e.name ?? "",
+              name,
               result: e.content,
               isError: e.is_error ?? false,
-            };
+            });
+            continue;
           }
-          return {
+          msgs.push({
             id: e.id,
-            type: (e.role === "user" ? "user" : "assistant") as
-              | "user"
-              | "assistant",
+            type: (e.role === "user" ? "user" : "assistant") as "user" | "assistant",
             content: e.content,
-          };
-        });
+          });
+        }
         setMessages(msgs);
       })
       .catch((err) => {
@@ -201,6 +210,7 @@ export default function ChatView() {
         }
         return prev;
       });
+      statusActions.clearPlan();
       refreshRecentData();
     } catch {
       setLoading(false);
@@ -286,6 +296,15 @@ export default function ChatView() {
 
   const showStarterPrompts =
     settings.showStarterPrompts === true && messages.length === 0 && !loading && !isClearing;
+
+  const chatInputProps = {
+    value: input,
+    onChange: setInput,
+    onSend: handleSend,
+    onStop: handleStop,
+    disabled: loading || isClearing,
+    loading,
+  };
 
   return (
     <div className="flex flex-col h-full bg-surface dark:bg-surface-dark">
@@ -399,14 +418,16 @@ export default function ChatView() {
         </div>
       )}
 
-      <ChatInput
-        value={input}
-        onChange={setInput}
-        onSend={handleSend}
-        onStop={handleStop}
-        disabled={loading || isClearing}
-        loading={loading}
-      />
+      {planTasks.length > 0 ? (
+        <div className="shrink-0 flex flex-col gap-0 border-t border-border dark:border-border-dark bg-white dark:bg-paper-dark pb-4 pt-0">
+          <InputPlanStrip tasks={planTasks} className="w-full min-w-0 shrink-0 m-0" />
+          <div className="px-4">
+            <ChatInput {...chatInputProps} bare />
+          </div>
+        </div>
+      ) : (
+        <ChatInput {...chatInputProps} />
+      )}
     </div>
   );
 }

@@ -17,20 +17,10 @@ function parseRecentData(data: RecentDataResponse) {
     memoryFiles: data.memory_files ?? [],
     outputFiles: data.output_files ?? [],
     logFiles: data.log_files ?? [],
-    plan: data.plan
-      ? {
-          task: data.plan.task,
-          steps: data.plan.steps.map((s) => ({
-            id: s.id,
-            description: s.description,
-            completed: s.completed,
-          })),
-        }
-      : undefined,
   };
 }
 
-/** Hook to load and refresh recent data (memory files, output files, plan) from skilllite. */
+/** Hook to load and refresh recent file lists from skilllite（不再把磁盘上的 plan 写进 store，避免启动即出现旧计划条）. */
 export function useRecentData() {
   const setRecentData = useStatusStore((s) => s.setRecentData);
 

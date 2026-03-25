@@ -139,38 +139,44 @@ export default function MainLayout() {
           <ChatView key={currentSessionKey} />
         </main>
 
-        {/* Right: StatusPanel */}
+        {/* Right: StatusPanel — 分隔线上的按钮展开/收起 */}
         <aside
-          className={`flex flex-col border-l border-border dark:border-border-dark bg-white dark:bg-paper-dark transition-all duration-200 ${
-            rightPanelCollapsed ? "w-10 shrink-0" : "w-[280px] min-w-[200px] shrink-0"
+          className={`relative flex flex-col bg-white dark:bg-paper-dark transition-[width] duration-200 shrink-0 ${
+            rightPanelCollapsed ? "w-10 min-w-10" : "w-[280px] min-w-[200px]"
           }`}
         >
-          <div className="flex items-center h-10 px-2 border-b border-border dark:border-border-dark shrink-0">
-            <button
-              type="button"
-              onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-              className="ml-auto p-2 text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-              aria-label={rightPanelCollapsed ? "Expand panel" : "Collapse panel"}
-              title={rightPanelCollapsed ? "展开" : "收起"}
+          <div
+            className="pointer-events-none absolute inset-y-0 left-0 w-px bg-border dark:bg-border-dark"
+            aria-hidden
+          />
+          <button
+            type="button"
+            onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+            className="absolute left-0 top-1/2 z-10 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border dark:border-border-dark bg-white dark:bg-paper-dark text-ink-mute dark:text-ink-dark-mute shadow-sm hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark transition-colors"
+            aria-label={rightPanelCollapsed ? "展开信息栏" : "收起信息栏"}
+            title={rightPanelCollapsed ? "展开信息栏" : "收起信息栏"}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={rightPanelCollapsed ? "rotate-180" : ""}
-              >
+              {rightPanelCollapsed ? (
                 <path d="M15 18l-6-6 6-6" />
-              </svg>
-            </button>
-          </div>
+              ) : (
+                <path d="M9 18l6-6-6-6" />
+              )}
+            </svg>
+          </button>
           {!rightPanelCollapsed && (
-            <div className="flex-1 overflow-auto">
+            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-5 pr-3 pb-3 pt-3">
               <StatusPanel />
             </div>
           )}

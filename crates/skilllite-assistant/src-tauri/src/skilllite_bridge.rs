@@ -664,6 +664,87 @@ pub fn open_directory(module: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// 在系统文件管理器中打开目录，或对文件执行「在文件夹中显示」。
+pub fn reveal_in_file_manager(path_str: &str) -> Result<(), String> {
+    let raw = std::path::PathBuf::from(path_str.trim());
+    if !raw.is_absolute() {
+        return Err("需要绝对路径".to_string());
+    }
+    let path = raw.clone();
+    if !path.exists() {
+        let rt = skilllite_sandbox::get_runtime_dir(None)
+            .ok_or_else(|| "无法解析 SkillLite 运行时目录".to_string())?;
+        if raw == rt {
+            std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
+        } else {
+            return Err("路径不存在".to_string());
+        }
+    }
+    let path = path.canonicalize().map_err(|e| e.to_string())?;
+    reveal_path_in_os(&path)
+}
+
+fn reveal_path_in_os(path: &std::path::Path) -> Result<(), String> {
+    if path.is_dir() {
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open")
+                .arg(path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+        #[cfg(target_os = "windows")]
+        {
+            std::process::Command::new("explorer")
+                .arg(path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            std::process::Command::new("xdg-open")
+                .arg(path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+        return Ok(());
+    }
+    if path.is_file() {
+        #[cfg(target_os = "macos")]
+        {
+            std::process::Command::new("open")
+                .arg("-R")
+                .arg(path)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            use std::ffi::OsString;
+            let mut arg = OsString::from("/select,");
+            arg.push(path.as_os_str());
+            std::process::Command::new("explorer")
+                .arg(arg)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let parent = path
+                .parent()
+                .ok_or_else(|| "无法解析文件所在目录".to_string())?;
+            std::process::Command::new("xdg-open")
+                .arg(parent)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    }
+    Err("不是有效的文件或目录".to_string())
+}
+
 /// (path, modified_time) pair for sorting by modification time.
 type FileWithMtime = (String, std::time::SystemTime);
 
@@ -1908,6 +1989,13 @@ pub fn init_workspace(dir: &str, skilllite_path: &std::path::Path) -> Result<(),
         return Err(err.trim().to_string());
     }
     Ok(())
+}
+
+pub use skilllite_sandbox::{RuntimeUiLine, RuntimeUiSnapshot};
+
+/// Python/Node 来源探测（系统 PATH vs SkillLite 缓存下载），供左侧栏等 UI 展示。
+pub fn probe_runtime_status() -> RuntimeUiSnapshot {
+    skilllite_sandbox::probe_runtime_for_ui(None)
 }
 
 /// Result of probing local Ollama (localhost:11434).

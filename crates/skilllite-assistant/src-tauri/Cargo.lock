@@ -3645,6 +3645,7 @@ dependencies = [
  "serde_json",
  "skilllite-core",
  "skilllite-evolution",
+ "skilllite-sandbox",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
