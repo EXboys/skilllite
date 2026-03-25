@@ -80,6 +80,8 @@ pub struct ChatConfigOverrides {
     pub workspace: Option<String>,
     pub sandbox_level: Option<u8>,
     pub swarm_url: Option<String>,
+    pub max_iterations: Option<u32>,
+    pub max_tool_calls_per_task: Option<u32>,
 }
 
 /// Resolve skilllite binary path: bundled resource first, then ~/.skilllite/bin, else PATH.
@@ -223,6 +225,12 @@ pub fn chat_stream(
                 cmd.env("SKILLLITE_SWARM_URL", url);
             }
         }
+        if let Some(n) = cfg.max_iterations.filter(|&n| n > 0) {
+            cmd.env("SKILLLITE_MAX_ITERATIONS", n.to_string());
+        }
+        if let Some(n) = cfg.max_tool_calls_per_task.filter(|&n| n > 0) {
+            cmd.env("SKILLLITE_MAX_TOOL_CALLS_PER_TASK", n.to_string());
+        }
     }
 
     let mut child = cmd.spawn().map_err(|e| {
@@ -281,6 +289,15 @@ pub fn chat_stream(
             if !url.is_empty() {
                 config_json.insert("swarm_url".to_string(), json!(url));
             }
+        }
+        if let Some(n) = cfg.max_iterations.filter(|&n| n > 0) {
+            config_json.insert("max_iterations".to_string(), json!(n));
+        }
+        if let Some(n) = cfg.max_tool_calls_per_task.filter(|&n| n > 0) {
+            config_json.insert(
+                "max_tool_calls_per_task".to_string(),
+                json!(n),
+            );
         }
     }
 

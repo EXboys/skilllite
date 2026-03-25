@@ -241,7 +241,9 @@ export default function ChatView() {
 
     const hasOverrides =
       settings.apiKey || settings.model !== "gpt-4o" || settings.workspace !== "." || settings.apiBase
-      || settings.sandboxLevel !== 3 || (settings.swarmEnabled && settings.swarmUrl);
+      || settings.sandboxLevel !== 3 || (settings.swarmEnabled && settings.swarmUrl)
+      || (settings.maxIterations != null && settings.maxIterations > 0)
+      || (settings.maxToolCallsPerTask != null && settings.maxToolCallsPerTask > 0);
     const config = hasOverrides
       ? {
           api_key: settings.apiKey || undefined,
@@ -250,6 +252,14 @@ export default function ChatView() {
           api_base: settings.apiBase || undefined,
           sandbox_level: settings.sandboxLevel !== 3 ? settings.sandboxLevel : undefined,
           swarm_url: settings.swarmEnabled && settings.swarmUrl ? settings.swarmUrl : undefined,
+          max_iterations:
+            settings.maxIterations != null && settings.maxIterations > 0
+              ? settings.maxIterations
+              : undefined,
+          max_tool_calls_per_task:
+            settings.maxToolCallsPerTask != null && settings.maxToolCallsPerTask > 0
+              ? settings.maxToolCallsPerTask
+              : undefined,
         }
       : undefined;
 
@@ -286,6 +296,8 @@ export default function ChatView() {
     settings.sandboxLevel,
     settings.swarmEnabled,
     settings.swarmUrl,
+    settings.maxIterations,
+    settings.maxToolCallsPerTask,
     currentSessionKey,
     statusActions,
   ]);

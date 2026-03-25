@@ -170,6 +170,8 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [sandboxLevel, setSandboxLevel] = useState<SandboxLevel>(settings.sandboxLevel ?? 3);
   const [swarmEnabled, setSwarmEnabled] = useState(settings.swarmEnabled ?? false);
   const [swarmUrl, setSwarmUrl] = useState(settings.swarmUrl ?? "");
+  const [maxIterationsStr, setMaxIterationsStr] = useState("");
+  const [maxToolCallsPerTaskStr, setMaxToolCallsPerTaskStr] = useState("");
 
   const [ollamaProbe, setOllamaProbe] = useState<OllamaProbeResult | null>(null);
   const [ollamaLoading, setOllamaLoading] = useState(false);
@@ -199,6 +201,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       setSandboxLevel(settings.sandboxLevel ?? 3);
       setSwarmEnabled(settings.swarmEnabled ?? false);
       setSwarmUrl(settings.swarmUrl ?? "");
+      setMaxIterationsStr(
+        settings.maxIterations != null ? String(settings.maxIterations) : ""
+      );
+      setMaxToolCallsPerTaskStr(
+        settings.maxToolCallsPerTask != null ? String(settings.maxToolCallsPerTask) : ""
+      );
       setOllamaProbe(null);
     }
   }, [open, settings]);
@@ -209,11 +217,21 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     }
   }, [open, provider, probeOllama]);
 
+  const parsePositiveIntField = (s: string): number | undefined => {
+    const t = s.trim();
+    if (!t) return undefined;
+    const n = Number(t);
+    if (!Number.isInteger(n) || n < 1) return undefined;
+    return n;
+  };
+
   const handleSave = () => {
     const shared = {
       sandboxLevel,
       swarmEnabled,
       swarmUrl: swarmUrl.trim(),
+      maxIterations: parsePositiveIntField(maxIterationsStr),
+      maxToolCallsPerTask: parsePositiveIntField(maxToolCallsPerTaskStr),
     };
     if (provider === "ollama") {
       setSettings({
@@ -505,6 +523,44 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 </p>
               </div>
             )}
+          </div>
+
+          {/* ── Agent loop limits（对齐 SKILLLITE_MAX_*） ── */}
+          <div className="border-t border-border dark:border-border-dark pt-4">
+            <p className="text-xs font-medium text-ink dark:text-ink-dark-mute mb-2">
+              Agent 循环预算
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>最大迭代轮次</label>
+                <input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  value={maxIterationsStr}
+                  onChange={(e) => setMaxIterationsStr(e.target.value)}
+                  placeholder="默认 50"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>每任务工具上限</label>
+                <input
+                  type="number"
+                  min={1}
+                  inputMode="numeric"
+                  value={maxToolCallsPerTaskStr}
+                  onChange={(e) => setMaxToolCallsPerTaskStr(e.target.value)}
+                  placeholder="默认 15"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+            <p className="mt-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+              留空则使用工作区 <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">.env</code>{" "}
+              或内置默认值（<code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">SKILLLITE_MAX_ITERATIONS</code>、
+              <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">SKILLLITE_MAX_TOOL_CALLS_PER_TASK</code>）。
+            </p>
           </div>
         </div>
 

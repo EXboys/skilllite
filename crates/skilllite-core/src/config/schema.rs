@@ -368,9 +368,9 @@ impl CacheConfig {
 
 #[cfg(test)]
 mod agent_loop_limits_tests {
-    use super::AgentLoopLimitsConfig;
-    use super::al_keys;
     use super::super::loader::{remove_env_var, set_env_var};
+    use super::al_keys;
+    use super::AgentLoopLimitsConfig;
     use std::env;
     use std::sync::{Mutex, OnceLock};
 

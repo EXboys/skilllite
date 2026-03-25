@@ -361,6 +361,12 @@ async fn handle_agent_chat(
         if let Some(max) = overrides.get("max_iterations").and_then(|v| v.as_u64()) {
             config.max_iterations = max as usize;
         }
+        if let Some(n) = overrides
+            .get("max_tool_calls_per_task")
+            .and_then(|v| v.as_u64())
+        {
+            config.max_tool_calls_per_task = n as usize;
+        }
         if let Some(plan) = overrides
             .get("enable_task_planning")
             .and_then(|v| v.as_bool())

@@ -22,6 +22,14 @@ export interface Settings {
   swarmEnabled: boolean;
   /** Swarm 节点 URL，启用时生效 */
   swarmUrl: string;
+  /**
+   * 覆盖 SKILLLITE_MAX_ITERATIONS（Agent 外层循环上限）。未设置时沿用环境变量 / 默认 50。
+   */
+  maxIterations?: number;
+  /**
+   * 覆盖 SKILLLITE_MAX_TOOL_CALLS_PER_TASK（单任务内工具调用深度等）。未设置时沿用环境变量 / 默认 15。
+   */
+  maxToolCallsPerTask?: number;
   /** 会话侧边栏是否折叠 */
   sessionPanelCollapsed?: boolean;
 }
