@@ -490,7 +490,7 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
                     skilllite_evolution::feedback::count_decisions_with_task_desc(&conn)
                 {
                     if total > 0 && with_desc == 0 {
-                        hint.push_str("\n\n提示: 进化需要 task_description。当前待处理决策均无 task_description。");
+                        hint.push_str("\n\n提示: 进化需要 task_description。当前未进化决策均无 task_description。");
                         hint.push_str("\n请使用最新构建: cargo build && ./target/debug/skilllite run --goal \"...\"");
                     } else if total == 0 {
                         let all_count: i64 = conn
@@ -498,7 +498,7 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
                             .unwrap_or(0);
                         if all_count > 0 {
                             hint.push_str(
-                                "\n\n提示: 待处理决策队列为空。已有决策均已进化完毕（已进化）。",
+                                "\n\n提示: 未进化决策队列为空。已有决策均已标记为已进化。",
                             );
                             hint.push_str("\n请执行新任务积累新决策后再触发进化。");
                         } else {

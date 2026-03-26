@@ -139,7 +139,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
   const scheduleHint =
     s.mode_key === "disabled"
       ? "已禁用，后台不会自动进化"
-      : `${formatInterval(s.interval_secs)} 检查一次；未处理决策 ≥ ${s.decision_threshold} 条也会触发`;
+      : `${formatInterval(s.interval_secs)} 检查一次；未进化决策 ≥ ${s.decision_threshold} 条也会触发`;
 
   return (
     <section className="mb-4 min-w-0">
@@ -201,7 +201,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
         </div>
         <p className="text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute break-words">{scheduleHint}</p>
         <div className="flex min-w-0 justify-between gap-2">
-          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">待处理决策</span>
+          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">未进化决策</span>
           <span className="min-w-0 truncate text-right">{s.unprocessed_decisions}</span>
         </div>
         <div className="flex min-w-0 justify-between gap-2">
@@ -429,7 +429,7 @@ export function EvolutionDetailBody() {
             </li>
             <li>
               <span className="text-ink-mute dark:text-ink-dark-mute">决策数触发阈值：</span>
-              {s.decision_threshold}（当前未处理 {s.unprocessed_decisions}）
+              {s.decision_threshold}（当前未进化 {s.unprocessed_decisions}）
             </li>
             <li>
               <span className="text-ink-mute dark:text-ink-dark-mute">上次 evolution_run：</span>
