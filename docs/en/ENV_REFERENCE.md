@@ -78,6 +78,16 @@ When the same variable is set in multiple places, resolution order is (highest â
 
 ---
 
+## Scheduled runs `schedule tick` <small>[Optional]</small>
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_SCHEDULE_ENABLED` | bool | **Treated as `false` when unset** | **Required `1`/`true` for `skilllite schedule tick` when it would call the LLM**; if unset, due jobs are skipped with a hint. **`--dry-run` does not require this variable**. |
+
+**Usage**: When `.skilllite/schedule.json` exists and cron invokes `tick`, set `SKILLLITE_SCHEDULE_ENABLED=1` in the crontab environment or `.env` so scheduled runs are explicitly opt-in.
+
+---
+
 ## Network Configuration <small>[Common]</small>
 
 | Variable | Type | Default | Description |

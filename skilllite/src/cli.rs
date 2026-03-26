@@ -667,6 +667,16 @@ pub enum Commands {
         #[command(subcommand)]
         action: EvolutionAction,
     },
+
+    /// Scheduled agent runs (`.skilllite/schedule.json`)
+    ///
+    /// MVP: `tick` runs due jobs (`interval_seconds`) and injects each `message` as one chat turn
+    /// (full agent loop). Use with cron, e.g. `skilllite schedule tick --workspace /path/to/project`.
+    #[cfg(feature = "agent")]
+    Schedule {
+        #[command(subcommand)]
+        action: ScheduleAction,
+    },
 }
 
 /// Evolution subcommands (EVO-5).
@@ -727,5 +737,20 @@ pub enum EvolutionAction {
         /// 对「下载的技能」失败时自动从源头更新，不交互询问（供桌面/CI 等非 TTY 环境）
         #[arg(long)]
         from_source: bool,
+    },
+}
+
+/// Schedule subcommands (MVP: `.skilllite/schedule.json`).
+#[cfg(feature = "agent")]
+#[derive(Subcommand, Debug)]
+pub enum ScheduleAction {
+    /// Run due jobs from schedule.json (one agent turn per job)
+    Tick {
+        /// Workspace directory (default: current directory)
+        #[arg(long, short)]
+        workspace: Option<String>,
+        /// List due jobs and exit without calling the LLM
+        #[arg(long)]
+        dry_run: bool,
     },
 }

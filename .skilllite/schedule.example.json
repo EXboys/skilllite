@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "enabled": true,
+  "limits": {
+    "max_runs_per_day": 8,
+    "min_interval_seconds_between_runs": 300
+  },
+  "jobs": [
+    {
+      "id": "daily-brief",
+      "enabled": true,
+      "interval_seconds": 86400,
+      "session_key": "schedule-daily-brief",
+      "message": "【定时任务】在仅使用 RSS、配置允许的白名单 URL 与免 API Key 的公开接口的前提下，整理与当前工作区相关的行业要点，并对照已有记忆给出可执行的优化建议；不要访问白名单外的地址。"
+    }
+  ]
+}

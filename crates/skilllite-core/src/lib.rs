@@ -7,6 +7,7 @@ pub mod paths;
 pub mod planning;
 pub mod protocol;
 pub mod scan_cache;
+pub mod schedule;
 pub mod skill;
 
 pub use env_spec::EnvSpec;

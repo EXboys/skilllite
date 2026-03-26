@@ -22,7 +22,25 @@ pub fn register_all(reg: &mut CommandRegistry) {
     {
         register_quickstart(reg);
         register_agent(reg);
+        register_schedule(reg);
     }
+}
+
+#[cfg(feature = "agent")]
+fn register_schedule(reg: &mut CommandRegistry) {
+    reg.register(|cmd| {
+        if let Commands::Schedule { action } = cmd {
+            use crate::cli::ScheduleAction;
+            match action {
+                ScheduleAction::Tick { workspace, dry_run } => Some(
+                    skilllite_commands::schedule::cmd_tick(workspace.as_deref(), *dry_run)
+                        .map_err(Into::into),
+                ),
+            }
+        } else {
+            None
+        }
+    });
 }
 
 fn register_ide(reg: &mut CommandRegistry) {

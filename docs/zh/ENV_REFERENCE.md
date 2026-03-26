@@ -78,6 +78,16 @@
 
 ---
 
+## 定时任务 `schedule tick` <small>[可选]</small>
+
+| 变量 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `SKILLLITE_SCHEDULE_ENABLED` | bool | **视为 `false`（未设置时）** | **`skilllite schedule tick` 在会调用 LLM 时必须为 `1`/`true`**；未设置则跳过执行并打印提示。**`--dry-run` 不需要此变量**。 |
+
+**使用场景**：工作区存在 `.skilllite/schedule.json` 且由 cron 调用 `tick` 时，在 crontab 或 `.env` 中设置 `SKILLLITE_SCHEDULE_ENABLED=1`，避免误配 cron 即自动消耗 API。
+
+---
+
 ## 网络配置 <small>[常用]</small>
 
 | 变量 | 类型 | 默认值 | 说明 |

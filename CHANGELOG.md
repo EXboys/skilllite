@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Scheduled agent runs (MVP)**: `skilllite schedule tick` reads `.skilllite/schedule.json`, runs **due** jobs (`interval_seconds` per job, optional global `min_interval_seconds_between_runs` and `max_runs_per_day`), and injects each job’s `message` as **one full `chat` turn** (same agent loop as interactive chat). State is stored in `.skilllite/schedule-state.json`. Example config: `.skilllite/schedule.example.json`. Parsing and due logic live in `skilllite-core::schedule`.
+- **Schedule opt-in**: Non–dry-run `schedule tick` requires **`SKILLLITE_SCHEDULE_ENABLED=1`** (or `true`); if unset, due jobs are skipped with a stderr hint so cron cannot accidentally call the API. `--dry-run` is unaffected.
+
 ---
 
 ## [0.1.16] - 2026-03-25

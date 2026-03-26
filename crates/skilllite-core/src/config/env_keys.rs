@@ -43,6 +43,11 @@ pub mod paths {
     pub const SKILLBOX_SKILLS_ROOT: &str = "SKILLBOX_SKILLS_ROOT";
 }
 
+/// `skilllite schedule tick`：非 dry-run 时是否允许调用 LLM（默认视为关闭，需显式开启）
+pub mod schedule {
+    pub const SKILLLITE_SCHEDULE_ENABLED: &str = "SKILLLITE_SCHEDULE_ENABLED";
+}
+
 /// 缓存目录
 pub mod cache {
     pub const SKILLLITE_CACHE_DIR: &str = "SKILLLITE_CACHE_DIR";
