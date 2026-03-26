@@ -10,8 +10,11 @@
       "id": "daily-brief",
       "enabled": true,
       "interval_seconds": 86400,
+      "daily_at": "9:00",
       "session_key": "schedule-daily-brief",
-      "message": "【定时任务】在仅使用 RSS、配置允许的白名单 URL 与免 API Key 的公开接口的前提下，整理与当前工作区相关的行业要点，并对照已有记忆给出可执行的优化建议；不要访问白名单外的地址。"
+      "goal": "整理与当前工作区相关的行业要点，并对照已有记忆给出可执行的优化建议。",
+      "steps_prompt": "1. 仅使用 RSS、工作区配置允许的白名单 URL、免 API Key 的公开接口。\n2. 不要访问白名单外的地址。\n3. 输出简洁、可执行。",
+      "message": "【定时任务】以系统消息约束为准执行。"
     }
   ]
 }

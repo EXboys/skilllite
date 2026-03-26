@@ -2,6 +2,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore, type Provider, type SandboxLevel } from "../stores/useSettingsStore";
+import ScheduleEditor from "./ScheduleEditor";
+import {
+  type ScheduleForm,
+  emptyScheduleForm,
+  parseScheduleJson,
+  scheduleFormToJson,
+  validateScheduleForm,
+} from "../utils/scheduleForm";
 
 interface OllamaProbeResult {
   available: boolean;
@@ -13,6 +21,15 @@ interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
 }
+
+type SettingsTabId = "llm" | "workspace" | "agent" | "schedule";
+
+const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
+  { id: "llm", label: "模型与 API" },
+  { id: "workspace", label: "工作区与沙箱" },
+  { id: "agent", label: "Agent 预算" },
+  { id: "schedule", label: "定时任务" },
+];
 
 interface ModelPreset {
   value: string;
@@ -173,6 +190,10 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [maxIterationsStr, setMaxIterationsStr] = useState("");
   const [maxToolCallsPerTaskStr, setMaxToolCallsPerTaskStr] = useState("");
 
+  const [activeTab, setActiveTab] = useState<SettingsTabId>("llm");
+  const [scheduleData, setScheduleData] = useState<ScheduleForm | null>(null);
+  const [scheduleLoadError, setScheduleLoadError] = useState<string | null>(null);
+
   const [ollamaProbe, setOllamaProbe] = useState<OllamaProbeResult | null>(null);
   const [ollamaLoading, setOllamaLoading] = useState(false);
 
@@ -208,8 +229,45 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
         settings.maxToolCallsPerTask != null ? String(settings.maxToolCallsPerTask) : ""
       );
       setOllamaProbe(null);
+      setActiveTab("llm");
+      setScheduleLoadError(null);
+      setScheduleData(null);
     }
   }, [open, settings]);
+
+  useEffect(() => {
+    if (!open) return;
+    const ws = workspace.trim() || ".";
+    const syncWs = settings.workspace?.trim() || ".";
+    const delay = ws === syncWs ? 0 : 450;
+    let cancelled = false;
+    const id = window.setTimeout(() => {
+      (async () => {
+        try {
+          const j = await invoke<string>("skilllite_read_schedule", { workspace: ws });
+          if (!cancelled) {
+            const parsed = parseScheduleJson(j);
+            if (parsed.ok) {
+              setScheduleData(parsed.data);
+              setScheduleLoadError(null);
+            } else {
+              setScheduleData(emptyScheduleForm());
+              setScheduleLoadError(parsed.error);
+            }
+          }
+        } catch (e) {
+          if (!cancelled) {
+            setScheduleLoadError(String(e));
+            setScheduleData(emptyScheduleForm());
+          }
+        }
+      })();
+    }, delay);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [open, workspace, settings.workspace]);
 
   useEffect(() => {
     if (open && provider === "ollama") {
@@ -225,7 +283,31 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     return n;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!scheduleData) {
+      setScheduleLoadError("定时配置尚未加载完成");
+      setActiveTab("schedule");
+      return;
+    }
+    const invalid = validateScheduleForm(scheduleData);
+    if (invalid) {
+      setScheduleLoadError(invalid);
+      setActiveTab("schedule");
+      return;
+    }
+    const jsonStr = scheduleFormToJson(scheduleData);
+    try {
+      await invoke("skilllite_write_schedule", {
+        workspace: workspace.trim() || ".",
+        json: jsonStr,
+      });
+    } catch (e) {
+      setScheduleLoadError(String(e));
+      setActiveTab("schedule");
+      return;
+    }
+    setScheduleLoadError(null);
+
     const shared = {
       sandboxLevel,
       swarmEnabled,
@@ -288,19 +370,37 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       onKeyDown={(e) => e.key === "Escape" && onClose()}
     >
       <div
-        className="w-full max-w-md rounded-xl bg-white dark:bg-paper-dark shadow-xl border border-border dark:border-border-dark flex flex-col max-h-[min(90vh,640px)]"
+        className="w-full max-w-xl rounded-xl bg-white dark:bg-paper-dark shadow-xl border border-border dark:border-border-dark flex flex-col max-h-[min(90vh,720px)]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Fixed header */}
-        <div className="px-5 pt-5 pb-3 border-b border-border dark:border-border-dark shrink-0">
-          <h2 className="text-base font-semibold text-ink dark:text-ink-dark">
+        {/* Fixed header + tabs */}
+        <div className="px-5 pt-5 pb-0 border-b border-border dark:border-border-dark shrink-0">
+          <h2 className="text-base font-semibold text-ink dark:text-ink-dark pb-3">
             设置
           </h2>
+          <div className="flex gap-1 overflow-x-auto pb-0 -mx-1 px-1">
+            {SETTINGS_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`shrink-0 px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? "border-accent text-accent bg-accent/5"
+                    : "border-transparent text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
 
+          {activeTab === "llm" && (
+          <div className="space-y-4">
           {/* ── Provider ── */}
           <div>
             <label className={labelCls}>使用方式</label>
@@ -440,7 +540,11 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               )}
             </>
           )}
+          </div>
+          )}
 
+          {activeTab === "workspace" && (
+          <div className="space-y-4">
           {/* ── Workspace ── */}
           <div>
             <label className={labelCls}>工作区路径</label>
@@ -460,10 +564,11 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 浏览
               </button>
             </div>
+            <p className="mt-1 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+              修改路径后，「定时任务」页会按新路径加载{" "}
+              <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">.skilllite/schedule.json</code>。
+            </p>
           </div>
-
-          {/* ── Divider ── */}
-          <div className="border-t border-border dark:border-border-dark" />
 
           {/* ── Sandbox Level ── */}
           <div>
@@ -524,9 +629,13 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               </div>
             )}
           </div>
+          </div>
+          )}
 
+          {activeTab === "agent" && (
+          <div className="space-y-4">
           {/* ── Agent loop limits（对齐 SKILLLITE_MAX_*） ── */}
-          <div className="border-t border-border dark:border-border-dark pt-4">
+          <div>
             <p className="text-xs font-medium text-ink dark:text-ink-dark-mute mb-2">
               Agent 循环预算
             </p>
@@ -562,6 +671,58 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">SKILLLITE_MAX_TOOL_CALLS_PER_TASK</code>）。
             </p>
           </div>
+          </div>
+          )}
+
+          {activeTab === "schedule" && (
+          <div className="space-y-3">
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+              与 CLI <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded text-[11px]">skilllite schedule tick</code>{" "}
+              共用 <code className="font-mono text-[11px] bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">.skilllite/schedule.json</code>。
+              触发支持：按间隔 / 每天固定本地时刻 / 仅一次本地时刻。「目标」「执行步骤」与可选「补充说明」会合并为一条用户消息。
+              非 dry-run 需在环境中设置{" "}
+              <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded text-[11px]">SKILLLITE_SCHEDULE_ENABLED=1</code>。
+            </p>
+            {scheduleData === null ? (
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute py-4">
+                {scheduleLoadError ? scheduleLoadError : "正在加载定时配置…"}
+              </p>
+            ) : (
+              <ScheduleEditor
+                data={scheduleData}
+                onChange={setScheduleData}
+                error={scheduleLoadError}
+                onClearError={() => setScheduleLoadError(null)}
+                onError={setScheduleLoadError}
+                inputCls={inputCls}
+                labelCls={labelCls}
+              />
+            )}
+            <button
+              type="button"
+              onClick={async () => {
+                const ws = workspace.trim() || ".";
+                try {
+                  const j = await invoke<string>("skilllite_read_schedule", { workspace: ws });
+                  const parsed = parseScheduleJson(j);
+                  if (parsed.ok) {
+                    setScheduleData(parsed.data);
+                    setScheduleLoadError(null);
+                  } else {
+                    setScheduleData(emptyScheduleForm());
+                    setScheduleLoadError(parsed.error);
+                  }
+                } catch (e) {
+                  setScheduleLoadError(String(e));
+                  setScheduleData(emptyScheduleForm());
+                }
+              }}
+              className="text-xs text-accent hover:underline"
+            >
+              从磁盘重新加载
+            </button>
+          </div>
+          )}
         </div>
 
         {/* Fixed footer */}

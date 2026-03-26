@@ -2404,3 +2404,19 @@ fn ollama_get_tags() -> Result<String, ()> {
     let body = s.split("\r\n\r\n").nth(1).unwrap_or("").trim();
     Ok(body.to_string())
 }
+
+/// Read `.skilllite/schedule.json` as pretty JSON; missing file → default `ScheduleFile`.
+pub fn read_schedule_json(workspace: &str) -> Result<String, String> {
+    use std::path::Path;
+    let ws = Path::new(workspace);
+    let sched = skilllite_core::schedule::load_schedule(ws)?;
+    let file = sched.unwrap_or_default();
+    serde_json::to_string_pretty(&file).map_err(|e| e.to_string())
+}
+
+pub fn write_schedule_json(workspace: &str, json: &str) -> Result<(), String> {
+    use std::path::Path;
+    let file: skilllite_core::schedule::ScheduleFile =
+        serde_json::from_str(json).map_err(|e| format!("schedule.json: {}", e))?;
+    skilllite_core::schedule::save_schedule(Path::new(workspace), &file)
+}

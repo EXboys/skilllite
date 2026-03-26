@@ -102,11 +102,20 @@ pub fn cmd_tick(workspace: Option<&str>, dry_run: bool) -> Result<()> {
             .clone()
             .unwrap_or_else(|| format!("schedule-{}", job.id));
         eprintln!("schedule: job `{}` → session `{}`", job.id, session);
-        skilllite_agent::chat::run_chat(config.clone(), session, Some(job.message.clone()))
-            .with_context(|| format!("schedule job `{}`", job.id))?;
-        skilllite_core::schedule::record_job_run(&mut state, &job.id, now);
-        skilllite_core::schedule::save_state(&workspace_path, &state)
-            .map_err(|e| anyhow::anyhow!(e))?;
+        match skilllite_agent::chat::run_chat(config.clone(), session, Some(job.injected_message()))
+        {
+            Ok(()) => {
+                skilllite_core::schedule::record_job_run(&mut state, &job.id, now);
+                skilllite_core::schedule::save_state(&workspace_path, &state)
+                    .map_err(|e| anyhow::anyhow!(e))?;
+            }
+            Err(e) => {
+                eprintln!(
+                    "schedule: job `{}` failed (state unchanged; will retry if still due): {:#}",
+                    job.id, e
+                );
+            }
+        }
     }
 
     Ok(())

@@ -381,6 +381,28 @@ async fn skilllite_runtime_status() -> skilllite_bridge::RuntimeUiSnapshot {
 }
 
 #[tauri::command]
+async fn skilllite_read_schedule(workspace: String) -> Result<String, String> {
+    let ws = workspace.trim().to_string();
+    if ws.is_empty() {
+        return Err("工作区路径无效".to_string());
+    }
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_schedule_json(&ws))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_write_schedule(workspace: String, json: String) -> Result<(), String> {
+    let ws = workspace.trim().to_string();
+    if ws.is_empty() {
+        return Err("工作区路径无效".to_string());
+    }
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::write_schedule_json(&ws, &json))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn skilllite_health_check(
     app: tauri::AppHandle,
     workspace: String,
@@ -444,6 +466,8 @@ pub fn run() {
             skilllite_probe_ollama,
             skilllite_runtime_status,
             skilllite_health_check,
+            skilllite_read_schedule,
+            skilllite_write_schedule,
             skilllite_list_sessions,
             skilllite_create_session,
             skilllite_rename_session,
