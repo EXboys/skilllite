@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use rusqlite::{params, Connection};
+use std::fs;
 use std::path::Path;
 
 // ─── Decision input (agent converts ExecutionFeedback to this) ─────────────────
@@ -93,6 +94,8 @@ impl FeedbackSignal {
 }
 
 pub fn open_evolution_db(chat_root: &Path) -> Result<Connection> {
+    // SQLite does not create parent directories; ensure chat_root exists (first DMG / CLI run).
+    fs::create_dir_all(chat_root)?;
     let db_path = chat_root.join("feedback.sqlite");
     let conn = Connection::open(&db_path)?;
     conn.execute_batch("PRAGMA foreign_keys=ON;")?;

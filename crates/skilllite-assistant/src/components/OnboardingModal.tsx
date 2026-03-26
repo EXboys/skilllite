@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore, type SandboxLevel } from "../stores/useSettingsStore";
+import ModelComboBox from "./ModelComboBox";
+import { API_MODEL_PRESETS } from "../utils/modelPresets";
 
 type Step = "mode" | "config" | "workspace" | "sandbox" | "health" | "success";
 type Mode = "api" | "ollama";
@@ -31,12 +33,16 @@ const STARTER_ACTIONS = [
   "推荐一个最适合新手的入门任务并直接带我开始",
 ];
 
+const inputClsOnboarding =
+  "w-full rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-ink dark:text-ink-dark placeholder-ink-mute text-sm focus:ring-2 focus:ring-accent/40 focus:border-accent outline-none";
+
 export default function OnboardingModal() {
-  const { setSettings } = useSettingsStore();
+  const { settings, setSettings } = useSettingsStore();
   const [step, setStep] = useState<Step>("mode");
   const [mode, setMode] = useState<Mode | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("gpt-4o");
+  const [apiBase, setApiBase] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaModel, setOllamaModel] = useState<string | null>(null);
@@ -50,6 +56,13 @@ export default function OnboardingModal() {
   const [healthError, setHealthError] = useState("");
   const initialProbeDoneRef = useRef(false);
   const userChoseModeRef = useRef(false);
+
+  useEffect(() => {
+    if (step !== "config" || mode !== "api") return;
+    if (settings.apiKey) setApiKey(settings.apiKey);
+    if (settings.model) setModel(settings.model);
+    setApiBase(settings.apiBase ?? "");
+  }, [step, mode, settings.apiKey, settings.model, settings.apiBase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,10 +133,53 @@ export default function OnboardingModal() {
         apiKey: apiKey.trim(),
         model: model.trim() || "gpt-4o",
         workspace: ws,
-        apiBase: "",
+        apiBase: apiBase.trim(),
         ...shared,
       });
     }
+  };
+
+  /** 健康检查通过后写入工作区/沙箱/模型等，但不标记引导完成（仍显示成功页与「进入聊天」） */
+  const persistAllButNotCompleted = () => {
+    const ws = workspace.trim() || ".";
+    const shared = { sandboxLevel, workspace: ws };
+    if (mode === "ollama") {
+      setSettings({
+        provider: "ollama",
+        apiKey: "ollama",
+        apiBase: "http://localhost:11434/v1",
+        model: ollamaModel || "llama3.2",
+        ...shared,
+      });
+    } else if (mode === "api") {
+      setSettings({
+        provider: "api",
+        apiKey: apiKey.trim(),
+        model: model.trim() || "gpt-4o",
+        apiBase: apiBase.trim(),
+        ...shared,
+      });
+    }
+  };
+
+  /** 离开「API / Ollama 配置」时立即写入本地存储，避免仅走完健康检查才保存导致 Key 丢失 */
+  const persistLlmAndGoToWorkspace = () => {
+    if (mode === "api") {
+      setSettings({
+        provider: "api",
+        apiKey: apiKey.trim(),
+        model: model.trim() || "gpt-4o",
+        apiBase: apiBase.trim(),
+      });
+    } else if (mode === "ollama") {
+      setSettings({
+        provider: "ollama",
+        apiKey: "ollama",
+        apiBase: "http://localhost:11434/v1",
+        model: ollamaModel || "llama3.2",
+      });
+    }
+    setStep("workspace");
   };
 
   const handleBrowseWorkspace = async () => {
@@ -170,6 +226,7 @@ export default function OnboardingModal() {
       });
       setHealthResult(result);
       if (result.ok) {
+        persistAllButNotCompleted();
         setStep("success");
       }
     } catch (e) {
@@ -270,21 +327,43 @@ export default function OnboardingModal() {
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-..."
-                  className="w-full rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-sm"
+                  placeholder="sk-...（与设置中一致，会保存到本应用）"
+                  className={inputClsOnboarding}
                 />
               </div>
               <div>
                 <label className="block text-xs text-ink-mute dark:text-ink-dark-mute mb-1">
-                  模型（可选）
+                  模型
+                </label>
+                <ModelComboBox
+                  value={model}
+                  onChange={setModel}
+                  onPresetSelect={(preset) => {
+                    if (preset.apiBase) setApiBase(preset.apiBase);
+                  }}
+                  presets={API_MODEL_PRESETS}
+                  placeholder="选择模型"
+                  inputCls={inputClsOnboarding}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-ink-mute dark:text-ink-dark-mute mb-1">
+                  API Base URL（可选）
                 </label>
                 <input
                   type="text"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="gpt-4o"
-                  className="w-full rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-sm"
+                  value={apiBase}
+                  onChange={(e) => setApiBase(e.target.value)}
+                  placeholder="https://api.openai.com/v1"
+                  className={inputClsOnboarding}
                 />
+                {apiBase.trim() !== "" && (
+                  <p className="mt-1 text-xs text-ink-mute dark:text-ink-dark-mute">
+                    {API_MODEL_PRESETS.find((p) => p.value === model)?.apiBase === apiBase.trim()
+                      ? "已按所选模型自动填入，可改为第三方代理地址"
+                      : "自定义地址"}
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex justify-end gap-2">
@@ -297,7 +376,7 @@ export default function OnboardingModal() {
               </button>
               <button
                 type="button"
-                onClick={() => setStep("workspace")}
+                onClick={persistLlmAndGoToWorkspace}
                 disabled={!canContinueApi}
                 className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -355,7 +434,7 @@ export default function OnboardingModal() {
               </button>
               <button
                 type="button"
-                onClick={() => setStep("workspace")}
+                onClick={persistLlmAndGoToWorkspace}
                 disabled={!canContinueOllama}
                 className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -413,7 +492,11 @@ export default function OnboardingModal() {
               </button>
               <button
                 type="button"
-                onClick={() => setStep("sandbox")}
+                onClick={() => {
+                  const ws = workspace.trim() || ".";
+                  setSettings({ workspace: ws });
+                  setStep("sandbox");
+                }}
                 className="px-4 py-1.5 text-sm rounded-lg bg-accent text-white font-medium"
               >
                 下一步

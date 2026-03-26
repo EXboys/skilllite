@@ -491,8 +491,10 @@ mod tests {
                 once_at: Some("2020-01-01T00:00".into()),
             }],
         };
-        let mut state = ScheduleState::default();
-        state.last_any_run_unix = 1_700_000_000;
+        let state = ScheduleState {
+            last_any_run_unix: 1_700_000_000,
+            ..Default::default()
+        };
         let now = state.last_any_run_unix + 30;
         let due = list_due_job_indices(&schedule, &state, now);
         assert_eq!(due, vec![0]);

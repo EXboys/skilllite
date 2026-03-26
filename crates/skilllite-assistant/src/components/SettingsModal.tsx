@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore, type Provider, type SandboxLevel } from "../stores/useSettingsStore";
 import ScheduleEditor from "./ScheduleEditor";
+import ModelComboBox from "./ModelComboBox";
+import { API_MODEL_PRESETS } from "../utils/modelPresets";
 import {
   type ScheduleForm,
   emptyScheduleForm,
@@ -31,150 +33,11 @@ const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
   { id: "schedule", label: "定时任务" },
 ];
 
-interface ModelPreset {
-  value: string;
-  label: string;
-  apiBase?: string;
-}
-
-const API_MODEL_PRESETS: ModelPreset[] = [
-  // OpenAI
-  { value: "gpt-5.4", label: "GPT-5.4", apiBase: "https://api.openai.com/v1" },
-  { value: "gpt-5.4-pro", label: "GPT-5.4 Pro", apiBase: "https://api.openai.com/v1" },
-  { value: "gpt-4o", label: "GPT-4o", apiBase: "https://api.openai.com/v1" },
-  { value: "gpt-4o-mini", label: "GPT-4o Mini", apiBase: "https://api.openai.com/v1" },
-  // Anthropic Claude
-  { value: "claude-opus-4-6", label: "Claude Opus 4.6", apiBase: "https://api.anthropic.com/v1" },
-  { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", apiBase: "https://api.anthropic.com/v1" },
-  { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5", apiBase: "https://api.anthropic.com/v1" },
-  // Google Gemini
-  { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", apiBase: "https://generativelanguage.googleapis.com/v1beta/openai/" },
-  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", apiBase: "https://generativelanguage.googleapis.com/v1beta/openai/" },
-  { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash-Lite", apiBase: "https://generativelanguage.googleapis.com/v1beta/openai/" },
-  // DeepSeek
-  { value: "deepseek-chat", label: "DeepSeek Chat", apiBase: "https://api.deepseek.com/v1" },
-  { value: "deepseek-reasoner", label: "DeepSeek Reasoner", apiBase: "https://api.deepseek.com/v1" },
-  // Qwen
-  { value: "qwen-plus", label: "Qwen Plus", apiBase: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
-  { value: "qwen-max", label: "Qwen Max", apiBase: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
-  // MiniMax
-  { value: "MiniMax-M2.5", label: "MiniMax M2.5", apiBase: "https://api.minimax.chat/v1" },
-  { value: "MiniMax-M2.7", label: "MiniMax M2.7", apiBase: "https://api.minimax.chat/v1" },
-];
-
 const SANDBOX_INFO: Record<SandboxLevel, { short: string; desc: string }> = {
   1: { short: "无沙箱", desc: "脚本直接在主机执行，无隔离。仅适合完全信任的本地脚本。" },
   2: { short: "基础隔离", desc: "限制文件访问与网络，适合日常开发。" },
   3: { short: "完全沙箱", desc: "严格隔离（Seatbelt / seccomp），推荐第三方技能。" },
 };
-
-function ModelComboBox({
-  value,
-  onChange,
-  onPresetSelect,
-  presets,
-  placeholder,
-  inputCls,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onPresetSelect?: (preset: ModelPreset) => void;
-  presets: ModelPreset[];
-  placeholder: string;
-  inputCls: string;
-}) {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [customMode, setCustomMode] = useState(() => !presets.some((p) => p.value === value) && value !== "");
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [dropdownOpen]);
-
-  const matched = presets.find((p) => p.value === value);
-
-  if (customMode) {
-    return (
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className={`flex-1 min-w-0 ${inputCls}`}
-        />
-        <button
-          type="button"
-          onClick={() => {
-            setCustomMode(false);
-            const first = presets[0];
-            if (first && !presets.some((p) => p.value === value)) {
-              onChange(first.value);
-              onPresetSelect?.(first);
-            }
-          }}
-          className="shrink-0 px-2.5 py-2 rounded-lg border border-border dark:border-border-dark text-ink-mute dark:text-ink-dark-mute hover:bg-gray-100 dark:hover:bg-white/5 text-xs font-medium transition-colors"
-        >
-          预设
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div ref={containerRef} className="relative">
-      <button
-        type="button"
-        onClick={() => setDropdownOpen(!dropdownOpen)}
-        className={`${inputCls} text-left flex items-center justify-between gap-2 cursor-pointer`}
-      >
-        <span className={matched ? "text-ink dark:text-ink-dark" : "text-ink-mute"}>
-          {matched ? matched.label : placeholder}
-        </span>
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-ink-mute">
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      </button>
-      {dropdownOpen && (
-        <div className="absolute z-10 mt-1 w-full rounded-lg border border-border dark:border-border-dark bg-white dark:bg-paper-dark shadow-lg max-h-48 overflow-y-auto">
-          {presets.map((p) => (
-            <button
-              key={p.value}
-              type="button"
-              onClick={() => {
-                onChange(p.value);
-                onPresetSelect?.(p);
-                setDropdownOpen(false);
-              }}
-              className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-                value === p.value
-                  ? "bg-accent/10 text-accent font-medium"
-                  : "text-ink dark:text-ink-dark hover:bg-gray-50 dark:hover:bg-white/5"
-              }`}
-            >
-              <span>{p.label}</span>
-              <span className="text-xs text-ink-mute dark:text-ink-dark-mute ml-2">{p.value}</span>
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => { setCustomMode(true); setDropdownOpen(false); }}
-            className="w-full text-left px-3 py-2 text-sm text-accent hover:bg-gray-50 dark:hover:bg-white/5 border-t border-border dark:border-border-dark"
-          >
-            自定义输入…
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const { settings, setSettings } = useSettingsStore();
