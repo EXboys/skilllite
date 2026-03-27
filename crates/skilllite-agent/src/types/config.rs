@@ -106,6 +106,7 @@ impl AgentConfig {
             enable_memory: flags.enable_memory,
             enable_memory_vector: flags.enable_memory_vector,
             enable_task_planning: flags.enable_task_planning,
+            max_consecutive_failures: Some(5),
             ..Default::default()
         }
     }

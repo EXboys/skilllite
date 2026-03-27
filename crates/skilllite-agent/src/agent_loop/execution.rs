@@ -102,7 +102,13 @@ pub(super) struct ExecutionState {
     pub context_overflow_retries: usize,
     pub iterations: usize,
     pub rules_used: Vec<String>,
+    /// Tracks repeated failures: (tool_name, error_prefix) -> consecutive count.
+    /// Reset when a different tool/error combination occurs or a tool succeeds.
+    last_failure_sig: Option<(String, String)>,
+    pub repeated_failure_count: usize,
 }
+
+const REPEATED_FAILURE_THRESHOLD: usize = 2;
 
 impl ExecutionState {
     pub fn new() -> Self {
@@ -116,7 +122,27 @@ impl ExecutionState {
             context_overflow_retries: 0,
             iterations: 0,
             rules_used: Vec::new(),
+            last_failure_sig: None,
+            repeated_failure_count: 0,
         }
+    }
+
+    /// Record a tool failure and return the repeat count for this specific signature.
+    pub fn record_failure(&mut self, tool_name: &str, error_content: &str) -> usize {
+        let prefix: String = error_content.chars().take(80).collect();
+        let sig = (tool_name.to_string(), prefix);
+        if self.last_failure_sig.as_ref() == Some(&sig) {
+            self.repeated_failure_count += 1;
+        } else {
+            self.last_failure_sig = Some(sig);
+            self.repeated_failure_count = 1;
+        }
+        self.repeated_failure_count
+    }
+
+    pub fn reset_failure_sig(&mut self) {
+        self.last_failure_sig = None;
+        self.repeated_failure_count = 0;
     }
 }
 
@@ -277,7 +303,18 @@ pub(super) async fn execute_tool_batch_planning(
         if result.counts_as_failure {
             planning_executor.state.failed_tool_calls += 1;
             planning_executor.state.consecutive_failures += 1;
-            if tool_name.as_str() != "complete_task" {
+            let repeat_count = planning_executor
+                .state
+                .record_failure(tool_name, &result.content);
+            if repeat_count >= REPEATED_FAILURE_THRESHOLD {
+                result.content.push_str(&format!(
+                    "\n\n⚠️ LOOP DETECTED: Tool '{}' has failed {} times in a row with the same error. \
+                     You are stuck in a retry loop. STOP retrying this exact call. \
+                     Instead: (1) re-read the error message carefully, (2) change the argument format, \
+                     or (3) skip this step and proceed to the next task.",
+                    tool_name, repeat_count
+                ));
+            } else if tool_name.as_str() != "complete_task" {
                 result.content.push_str(
                     "\n\nTip: If this approach is wrong or the plan is no longer valid, \
                      call update_task_plan with a revised task list, then continue with the new plan."
@@ -285,6 +322,7 @@ pub(super) async fn execute_tool_batch_planning(
             }
         } else if !result.is_error {
             planning_executor.state.consecutive_failures = 0;
+            planning_executor.state.reset_failure_sig();
         }
         // Detect task transition (via complete_task) and set cutoff flag.
         let task_after = planning_executor.planner.current_task().map(|t| t.id);
@@ -373,8 +411,19 @@ pub(super) async fn execute_tool_batch_simple(
         if result.counts_as_failure {
             state.failed_tool_calls += 1;
             state.consecutive_failures += 1;
+            let repeat_count = state.record_failure(tool_name, &result.content);
+            if repeat_count >= REPEATED_FAILURE_THRESHOLD {
+                result.content.push_str(&format!(
+                    "\n\n⚠️ LOOP DETECTED: Tool '{}' has failed {} times in a row with the same error. \
+                     You are stuck in a retry loop. STOP retrying this exact call. \
+                     Instead: (1) re-read the error message carefully, (2) change the argument format, \
+                     or (3) try a completely different approach.",
+                    tool_name, repeat_count
+                ));
+            }
         } else if !result.is_error {
             state.consecutive_failures = 0;
+            state.reset_failure_sig();
         }
         state.tools_detail.push(ToolExecDetail {
             tool: tool_name.clone(),
@@ -557,5 +606,139 @@ mod tests {
         assert!(!planner.task_list[0].completed);
         assert_eq!(planner.current_task().map(|t| t.id), Some(1));
         assert_eq!(state.failed_tool_calls, 0);
+    }
+
+    // ── Long-task regression: type coercion + loop detection ──────────────
+
+    #[tokio::test]
+    async fn test_complete_task_with_string_task_id_succeeds() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let registry = ExtensionRegistry::new(false, false, &[]);
+        let client = LlmClient::new("", "").expect("test client");
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Analyze data".to_string(),
+            tool_hint: None,
+            completed: false,
+        }]);
+        let tool_calls = vec![ToolCall {
+            id: "call_ct".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "complete_task".to_string(),
+                arguments: r#"{"task_id": "1", "summary": "done"}"#.to_string(),
+            },
+        }];
+        let mut sink = SilentEventSink;
+        let mut messages = Vec::new();
+        let mut documented_skills = HashSet::new();
+        let mut state = ExecutionState::new();
+
+        execute_tool_batch_planning(
+            &tool_calls,
+            &registry,
+            workspace,
+            &mut sink,
+            None,
+            &client,
+            "test-model",
+            &mut planner,
+            &[],
+            &mut messages,
+            &mut documented_skills,
+            &mut state,
+            8,
+            Some(3),
+            None,
+        )
+        .await;
+
+        assert!(
+            planner.task_list[0].completed,
+            "task_id as string \"1\" should complete the task"
+        );
+        assert_eq!(state.failed_tool_calls, 0);
+    }
+
+    #[tokio::test]
+    async fn test_update_task_plan_with_stringified_tasks_array_succeeds() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let registry = ExtensionRegistry::new(false, false, &[]);
+        let client = LlmClient::new("", "").expect("test client");
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Old task".to_string(),
+            tool_hint: None,
+            completed: false,
+        }]);
+        let stringified_tasks =
+            r#"{"tasks": "[{\"id\": 1, \"description\": \"New task\"}]", "reason": "replan"}"#;
+        let tool_calls = vec![ToolCall {
+            id: "call_utp".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "update_task_plan".to_string(),
+                arguments: stringified_tasks.to_string(),
+            },
+        }];
+        let mut sink = SilentEventSink;
+        let mut messages = Vec::new();
+        let mut documented_skills = HashSet::new();
+        let mut state = ExecutionState::new();
+
+        execute_tool_batch_planning(
+            &tool_calls,
+            &registry,
+            workspace,
+            &mut sink,
+            None,
+            &client,
+            "test-model",
+            &mut planner,
+            &[],
+            &mut messages,
+            &mut documented_skills,
+            &mut state,
+            8,
+            Some(3),
+            None,
+        )
+        .await;
+
+        assert_eq!(
+            state.failed_tool_calls, 0,
+            "stringified tasks should be accepted"
+        );
+        assert!(
+            planner
+                .task_list
+                .iter()
+                .any(|t| t.description.contains("New task")),
+            "new task should be in the plan"
+        );
+    }
+
+    #[test]
+    fn test_repeated_failure_detection() {
+        let mut state = ExecutionState::new();
+
+        let c1 = state.record_failure("complete_task", "Missing required field: task_id");
+        assert_eq!(c1, 1);
+
+        let c2 = state.record_failure("complete_task", "Missing required field: task_id");
+        assert_eq!(c2, 2);
+        assert!(c2 >= REPEATED_FAILURE_THRESHOLD);
+
+        let c3 = state.record_failure("complete_task", "Missing required field: task_id");
+        assert_eq!(c3, 3);
+
+        state.reset_failure_sig();
+        let c4 = state.record_failure("complete_task", "Missing required field: task_id");
+        assert_eq!(c4, 1, "reset should restart the count");
+
+        let c5 = state.record_failure("update_task_plan", "Missing or invalid 'tasks' array");
+        assert_eq!(c5, 1, "different tool should restart the count");
     }
 }

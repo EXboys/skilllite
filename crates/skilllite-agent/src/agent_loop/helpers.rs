@@ -37,13 +37,48 @@ pub(super) fn handle_update_task_plan(
             };
         }
     };
-    let tasks_arr = match args.get("tasks").and_then(|t| t.as_array()) {
-        Some(a) => a.clone(),
+    let tasks_arr = match args.get("tasks") {
+        Some(v) => {
+            if let Some(a) = v.as_array() {
+                a.clone()
+            } else if let Some(s) = v.as_str() {
+                match serde_json::from_str::<Vec<Value>>(s) {
+                    Ok(a) => a,
+                    Err(_) => {
+                        return super::super::types::ToolResult {
+                            tool_call_id: String::new(),
+                            tool_name: "update_task_plan".to_string(),
+                            content: format!(
+                                "'tasks' must be a JSON array, got a string that is not valid JSON array. \
+                                 Pass tasks as a real array: {{\"tasks\": [{{...}}]}} not {{\"tasks\": \"[...]\"}}. \
+                                 Received string preview: {:?}",
+                                &s[..s.len().min(120)]
+                            ),
+                            is_error: true,
+                            counts_as_failure: true,
+                        };
+                    }
+                }
+            } else {
+                return super::super::types::ToolResult {
+                    tool_call_id: String::new(),
+                    tool_name: "update_task_plan".to_string(),
+                    content: format!(
+                        "'tasks' must be a JSON array, got unexpected type: {}. \
+                         Pass tasks as: {{\"tasks\": [{{\"id\": 1, \"description\": \"...\"}}]}}.",
+                        v
+                    ),
+                    is_error: true,
+                    counts_as_failure: true,
+                };
+            }
+        }
         None => {
             return super::super::types::ToolResult {
                 tool_call_id: String::new(),
                 tool_name: "update_task_plan".to_string(),
-                content: "Missing or invalid 'tasks' array".to_string(),
+                content: "Missing required field: 'tasks'. Pass an array of task objects."
+                    .to_string(),
                 is_error: true,
                 counts_as_failure: true,
             };
@@ -143,13 +178,48 @@ pub(super) fn handle_complete_task(
         }
     };
 
-    let task_id = match args.get("task_id").and_then(|v| v.as_u64()) {
-        Some(id) => id as u32,
+    let task_id = match args.get("task_id") {
+        Some(v) => {
+            if let Some(n) = v.as_u64() {
+                n as u32
+            } else if let Some(s) = v.as_str() {
+                match s.parse::<u64>() {
+                    Ok(n) => n as u32,
+                    Err(_) => {
+                        return super::super::types::ToolResult {
+                            tool_call_id: String::new(),
+                            tool_name: "complete_task".to_string(),
+                            content: format!(
+                                "task_id must be an integer, got string {:?} which is not a valid number. \
+                                 Pass task_id as a bare number, e.g. {{\"task_id\": 1}} not {{\"task_id\": \"abc\"}}.",
+                                s
+                            ),
+                            is_error: true,
+                            counts_as_failure: true,
+                        };
+                    }
+                }
+            } else {
+                return super::super::types::ToolResult {
+                    tool_call_id: String::new(),
+                    tool_name: "complete_task".to_string(),
+                    content: format!(
+                        "task_id must be an integer, got unexpected type: {}. \
+                         Pass task_id as a bare number, e.g. {{\"task_id\": 1}}.",
+                        v
+                    ),
+                    is_error: true,
+                    counts_as_failure: true,
+                };
+            }
+        }
         None => {
             return super::super::types::ToolResult {
                 tool_call_id: String::new(),
                 tool_name: "complete_task".to_string(),
-                content: "Missing required field: task_id".to_string(),
+                content:
+                    "Missing required field: task_id. Pass the integer id of the completed task."
+                        .to_string(),
                 is_error: true,
                 counts_as_failure: true,
             };
@@ -536,6 +606,109 @@ mod tests {
         assert!(!r.is_error);
         assert!(planner.task_list[0].completed);
         assert!(r.content.contains("\"task_id\": 3"));
+    }
+
+    // ── Long-task regression tests: LLM sends wrong JSON types ──────────────
+
+    #[test]
+    fn complete_task_accepts_task_id_as_string() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 1,
+            description: "a".into(),
+            tool_hint: None,
+            completed: false,
+        }];
+        let mut sink = SilentEventSink;
+        let r = handle_complete_task(
+            r#"{"task_id": "1", "summary": "done"}"#,
+            &mut planner,
+            &mut sink,
+        );
+        assert!(
+            !r.is_error,
+            "task_id as string \"1\" should be accepted: {}",
+            r.content
+        );
+        assert!(planner.task_list[0].completed);
+    }
+
+    #[test]
+    fn complete_task_rejects_non_numeric_string_task_id() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 1,
+            description: "a".into(),
+            tool_hint: None,
+            completed: false,
+        }];
+        let mut sink = SilentEventSink;
+        let r = handle_complete_task(r#"{"task_id": "abc"}"#, &mut planner, &mut sink);
+        assert!(r.is_error);
+        assert!(
+            r.content.contains("not a valid number"),
+            "error should explain: {}",
+            r.content
+        );
+    }
+
+    #[test]
+    fn complete_task_rejects_missing_task_id() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 1,
+            description: "a".into(),
+            tool_hint: None,
+            completed: false,
+        }];
+        let mut sink = SilentEventSink;
+        let r = handle_complete_task(r#"{"summary": "done"}"#, &mut planner, &mut sink);
+        assert!(r.is_error);
+        assert!(
+            r.content.contains("Missing required field"),
+            "{}",
+            r.content
+        );
+    }
+
+    #[test]
+    fn update_task_plan_accepts_tasks_as_stringified_json_array() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        let mut sink = SilentEventSink;
+        let args =
+            r#"{"tasks": "[{\"id\": 1, \"description\": \"new task\"}]", "reason": "retry"}"#;
+        let r = handle_update_task_plan(args, &mut planner, &[], &mut sink);
+        assert!(
+            !r.is_error,
+            "stringified tasks array should be accepted: {}",
+            r.content
+        );
+        assert!(!planner.task_list.is_empty());
+        assert!(r.content.contains("Reason: retry"));
+    }
+
+    #[test]
+    fn update_task_plan_rejects_non_array_string() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        let mut sink = SilentEventSink;
+        let args = r#"{"tasks": "not an array at all"}"#;
+        let r = handle_update_task_plan(args, &mut planner, &[], &mut sink);
+        assert!(r.is_error);
+        assert!(r.content.contains("must be a JSON array"), "{}", r.content);
+    }
+
+    #[test]
+    fn update_task_plan_rejects_missing_tasks_field() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        let mut sink = SilentEventSink;
+        let args = r#"{"reason": "just a reason"}"#;
+        let r = handle_update_task_plan(args, &mut planner, &[], &mut sink);
+        assert!(r.is_error);
+        assert!(
+            r.content.contains("Missing required field"),
+            "{}",
+            r.content
+        );
     }
 
     #[test]

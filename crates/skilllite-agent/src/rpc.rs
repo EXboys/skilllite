@@ -382,6 +382,12 @@ async fn handle_agent_chat(
         {
             config.skip_history_for_planning = skip;
         }
+        if let Some(n) = overrides
+            .get("max_consecutive_failures")
+            .and_then(|v| v.as_u64())
+        {
+            config.max_consecutive_failures = if n == 0 { None } else { Some(n as usize) };
+        }
     }
     // params.context.append — was documented but not parsed
     if let Some(ctx) = params
