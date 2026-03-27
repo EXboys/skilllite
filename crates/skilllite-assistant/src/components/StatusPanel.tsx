@@ -6,6 +6,7 @@ import { useSettingsStore } from "../stores/useSettingsStore";
 import { groupMemoryFiles } from "../utils/fileUtils";
 import { openDetailWindow } from "../utils/detailWindow";
 import { EvolutionStatusSummary } from "./EvolutionSection";
+import { useLifePulse, type LifePulseActivity } from "../hooks/useLifePulse";
 
 interface MemoryEntryData {
   path: string;
@@ -559,6 +560,79 @@ function SkillRepairSection() {
         </div>
       )}
     </section>
+  );
+}
+
+function formatPulseTime(ts: number): string {
+  if (!ts) return "";
+  const d = new Date(ts * 1000);
+  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+}
+
+/** Compact pulse dot + label for the top header bar. */
+export function LifePulseBadge() {
+  const { status, activities, chatting, toggle } = useLifePulse();
+  const { settings } = useSettingsStore();
+
+  useEffect(() => {
+    const ws = settings.workspace?.trim() || ".";
+    invoke("skilllite_life_pulse_set_workspace", { workspace: ws }).catch(() => {});
+  }, [settings.workspace]);
+
+  if (!status) return null;
+
+  const isGrowing = status.growth_running;
+  const isRunning = status.rhythm_running;
+  const isActive = status.enabled && status.alive;
+  const isBusy = chatting || isGrowing || isRunning;
+
+  let dotColor = "bg-gray-400 dark:bg-gray-600";
+  let label = "沉睡中";
+  if (!status.enabled) {
+    dotColor = "bg-gray-400 dark:bg-gray-600";
+    label = "沉睡中";
+  } else if (chatting) {
+    dotColor = "bg-violet-500";
+    label = "跟你聊着呢";
+  } else if (isGrowing) {
+    dotColor = "bg-emerald-500";
+    label = "偷偷变强中";
+  } else if (isRunning) {
+    dotColor = "bg-amber-500";
+    label = "干活呢别催";
+  } else if (isActive) {
+    dotColor = "bg-sky-500";
+    label = "闲着蛋疼中";
+  }
+
+  const latest: LifePulseActivity | undefined = activities[0];
+
+  return (
+    <div className="flex items-center gap-2">
+      {/* Dot + label + latest activity */}
+      <button
+        type="button"
+        onClick={() => toggle(!status.enabled)}
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
+        title={status.enabled ? "点击让它休息" : "点击唤醒它"}
+      >
+        <span className="relative flex h-2 w-2 shrink-0">
+          {isActive && isBusy && (
+            <span
+              className={`absolute inset-0 rounded-full ${dotColor} opacity-75 animate-ping`}
+            />
+          )}
+          <span className={`relative inline-flex h-2 w-2 rounded-full ${dotColor}`} />
+        </span>
+        <span className="text-[11px] font-medium">{label}</span>
+      </button>
+      {latest && (
+        <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-ink-mute/70 dark:text-ink-dark-mute/70 max-w-[180px] truncate">
+          <span className="tabular-nums">{formatPulseTime(latest.ts)}</span>
+          <span className="truncate">{latest.label}</span>
+        </span>
+      )}
+    </div>
   );
 }
 

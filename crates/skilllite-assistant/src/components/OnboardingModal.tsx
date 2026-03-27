@@ -67,25 +67,32 @@ export default function OnboardingModal() {
   useEffect(() => {
     let cancelled = false;
     setOllamaLoading(true);
-    invoke<OllamaProbeResult>("skilllite_probe_ollama")
-      .then((r) => {
-        if (cancelled || userChoseModeRef.current) return;
-        if (r.available) {
-          const chatModels = r.models.filter((m) => !m.includes("embed"));
-          if (chatModels.length > 0) {
-            initialProbeDoneRef.current = true;
-            setOllamaModels(chatModels);
-            setOllamaModel(chatModels[0]);
-            setMode("ollama");
-            setStep("config");
-            setOllamaAutoDetected(true);
+    const tryProbe = () => {
+      if (!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__) {
+        setTimeout(tryProbe, 200);
+        return;
+      }
+      invoke<OllamaProbeResult>("skilllite_probe_ollama")
+        .then((r) => {
+          if (cancelled || userChoseModeRef.current) return;
+          if (r.available) {
+            const chatModels = r.models.filter((m) => !m.includes("embed"));
+            if (chatModels.length > 0) {
+              initialProbeDoneRef.current = true;
+              setOllamaModels(chatModels);
+              setOllamaModel(chatModels[0]);
+              setMode("ollama");
+              setStep("config");
+              setOllamaAutoDetected(true);
+            }
           }
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setOllamaLoading(false);
-      });
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setOllamaLoading(false);
+        });
+    };
+    tryProbe();
     return () => {
       cancelled = true;
     };
@@ -213,6 +220,10 @@ export default function OnboardingModal() {
 
   const handleRunHealthCheck = async () => {
     if (!mode) return;
+    if (!(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__) {
+      setHealthError("应用环境尚未就绪，请稍后重试");
+      return;
+    }
     const ws = workspace.trim() || ".";
     setStep("health");
     setHealthChecking(true);

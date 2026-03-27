@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod life_pulse;
 mod skilllite_bridge;
 
 use tauri::{
@@ -440,6 +441,31 @@ async fn skilllite_health_check(
     })
 }
 
+#[tauri::command]
+fn skilllite_life_pulse_status(
+    state: tauri::State<'_, life_pulse::LifePulseState>,
+) -> life_pulse::LifePulseStatus {
+    state.status()
+}
+
+#[tauri::command]
+fn skilllite_life_pulse_toggle(
+    state: tauri::State<'_, life_pulse::LifePulseState>,
+    enabled: bool,
+) -> Result<(), String> {
+    state.set_enabled(enabled);
+    Ok(())
+}
+
+#[tauri::command]
+fn skilllite_life_pulse_set_workspace(
+    state: tauri::State<'_, life_pulse::LifePulseState>,
+    workspace: String,
+) -> Result<(), String> {
+    state.set_workspace(&workspace);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let run_result = tauri::Builder::default()
@@ -477,14 +503,23 @@ pub fn run() {
             skilllite_list_evolution_pending,
             skilllite_read_pending_skill_md,
             skilllite_confirm_pending_skill,
-            skilllite_reject_pending_skill
+            skilllite_reject_pending_skill,
+            skilllite_life_pulse_status,
+            skilllite_life_pulse_toggle,
+            skilllite_life_pulse_set_workspace
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .manage(skilllite_bridge::ConfirmationState::default())
         .manage(skilllite_bridge::ClarificationState::default())
         .manage(skilllite_bridge::ChatProcessState::default())
+        .manage(life_pulse::LifePulseState::default())
         .setup(|app| {
+            // ── Life Pulse: start heartbeat thread ──
+            let pulse_state = app.state::<life_pulse::LifePulseState>().inner().clone();
+            let skilllite_path = skilllite_bridge::resolve_skilllite_path_app(app.handle());
+            life_pulse::start(pulse_state, skilllite_path, app.handle().clone());
+
             // Tray icon with menu
             let show_i = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
@@ -517,6 +552,9 @@ pub fn run() {
                             }
                         }
                         "quit" => {
+                            if let Some(ps) = app.try_state::<life_pulse::LifePulseState>() {
+                                life_pulse::stop(&ps);
+                            }
                             app.exit(0);
                         }
                         _ => {}

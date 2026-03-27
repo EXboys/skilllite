@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useGlobalShortcut } from "../hooks/useGlobalShortcut";
 import ChatView from "./ChatView";
-import StatusPanel from "./StatusPanel";
+import StatusPanel, { LifePulseBadge } from "./StatusPanel";
 import SessionSidebar from "./SessionSidebar";
 import SettingsModal from "./SettingsModal";
 import OnboardingModal from "./OnboardingModal";
@@ -114,6 +114,7 @@ export default function MainLayout() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <LifePulseBadge />
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}

@@ -321,9 +321,9 @@ export default function ScheduleEditor({
                 ))}
               </div>
               <p className="mt-1 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-                「每天定时」= 每个时刻在每个自然日最多成功一次；可添加多个时刻。需外部周期执行{" "}
-                <code className="bg-gray-100 dark:bg-surface-dark px-0.5 rounded">schedule tick</code>
-                。                「仅一次」= 到达该本地时间后执行；仅成功时写入状态，失败会在下次 tick 重试。墙钟任务（每天 / 仅一次）不受全局「两次运行最小间隔」阻挡，便于失败重试。
+                「每天定时」= 每个时刻在每个自然日最多成功一次；可添加多个时刻。
+                「仅一次」= 到达该本地时间后执行；仅成功时写入状态，失败会自动重试。
+                应用运行期间自动检测并执行到期任务。
               </p>
             </div>
 

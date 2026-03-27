@@ -67,7 +67,7 @@ fn find_project_root(start: &str) -> std::path::PathBuf {
 
 /// Load .env from workspace and parents for subprocess env.
 /// Reuses skilllite_core::config::parse_dotenv_walking_up (single source of truth).
-fn load_dotenv_for_child(workspace: &str) -> Vec<(String, String)> {
+pub(crate) fn load_dotenv_for_child(workspace: &str) -> Vec<(String, String)> {
     skilllite_core::config::parse_dotenv_walking_up(std::path::Path::new(workspace), 5)
 }
 
@@ -84,25 +84,42 @@ pub struct ChatConfigOverrides {
     pub max_tool_calls_per_task: Option<u32>,
 }
 
-/// Resolve skilllite binary path: bundled resource first, then ~/.skilllite/bin, else PATH.
+/// Resolve skilllite binary path.
+///
+/// In dev builds, prefer `~/.skilllite/bin/skilllite` (installed by prebuild)
+/// over the bundled copy inside `target/debug/` — running binaries from within
+/// the Tauri build-output directory can hang on macOS due to the dev file-watcher.
+/// In release builds, prefer the bundled resource (ships with the .app).
 fn resolve_skilllite_path(window: &Window) -> (PathBuf, bool) {
     let exe_name = if cfg!(target_os = "windows") {
         "skilllite.exe"
     } else {
         "skilllite"
     };
-    if let Ok(res_dir) = window.app_handle().path().resource_dir() {
-        let bundled = res_dir.join(exe_name);
-        if bundled.exists() {
-            return (bundled, true);
-        }
-    }
+
+    #[cfg(debug_assertions)]
     if let Some(home) = dirs::home_dir() {
         let dev_bin = home.join(".skilllite").join("bin").join(exe_name);
         if dev_bin.exists() {
             return (dev_bin, true);
         }
     }
+
+    if let Ok(res_dir) = window.app_handle().path().resource_dir() {
+        let bundled = res_dir.join(exe_name);
+        if bundled.exists() {
+            return (bundled, true);
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    if let Some(home) = dirs::home_dir() {
+        let dev_bin = home.join(".skilllite").join("bin").join(exe_name);
+        if dev_bin.exists() {
+            return (dev_bin, true);
+        }
+    }
+
     (PathBuf::from("skilllite"), false)
 }
 
@@ -1328,19 +1345,8 @@ pub(crate) fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> std::path::P
         "skilllite"
     };
 
-    // 1. Tauri resource_dir (works in production bundles)
-    if let Ok(res_dir) = app.path().resource_dir() {
-        let bundled = res_dir.join(exe_name);
-        if bundled.exists() {
-            eprintln!(
-                "[skilllite-bridge] using bundled binary: {}",
-                bundled.display()
-            );
-            return bundled;
-        }
-    }
-
-    // 2. ~/.skilllite/bin (where prebuild installs for dev mode)
+    // Dev builds: prefer ~/.skilllite/bin (avoids target/debug path issues on macOS)
+    #[cfg(debug_assertions)]
     if let Some(home) = dirs::home_dir() {
         let dev_bin = home.join(".skilllite").join("bin").join(exe_name);
         if dev_bin.exists() {
@@ -1352,7 +1358,31 @@ pub(crate) fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> std::path::P
         }
     }
 
-    // 3. Fallback: rely on PATH
+    // Release builds (or dev fallback): Tauri resource_dir
+    if let Ok(res_dir) = app.path().resource_dir() {
+        let bundled = res_dir.join(exe_name);
+        if bundled.exists() {
+            eprintln!(
+                "[skilllite-bridge] using bundled binary: {}",
+                bundled.display()
+            );
+            return bundled;
+        }
+    }
+
+    // Release fallback: ~/.skilllite/bin
+    #[cfg(not(debug_assertions))]
+    if let Some(home) = dirs::home_dir() {
+        let dev_bin = home.join(".skilllite").join("bin").join(exe_name);
+        if dev_bin.exists() {
+            eprintln!(
+                "[skilllite-bridge] using ~/.skilllite/bin binary: {}",
+                dev_bin.display()
+            );
+            return dev_bin;
+        }
+    }
+
     eprintln!(
         "[skilllite-bridge] falling back to PATH lookup for '{}'",
         exe_name

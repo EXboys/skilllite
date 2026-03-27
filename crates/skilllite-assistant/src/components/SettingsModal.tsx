@@ -540,10 +540,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           {activeTab === "schedule" && (
           <div className="space-y-3">
             <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-              与 CLI <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded text-[11px]">skilllite schedule tick</code>{" "}
-              共用 <code className="font-mono text-[11px] bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">.skilllite/schedule.json</code>。
-              触发支持：按间隔 / 每天固定本地时刻 / 仅一次本地时刻。「目标」「执行步骤」与可选「补充说明」会合并为一条用户消息。
-              非 dry-run 需在环境中设置{" "}
+              应用运行期间会自动检查并执行到期的定时任务（Life Pulse 心跳驱动，约 30 秒一次）。
+              配置保存在{" "}
+              <code className="font-mono text-[11px] bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">.skilllite/schedule.json</code>，
+              与 CLI{" "}
+              <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded text-[11px]">skilllite schedule tick</code>{" "}
+              共用。执行需在环境中设置{" "}
               <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded text-[11px]">SKILLLITE_SCHEDULE_ENABLED=1</code>。
             </p>
             {scheduleData === null ? (

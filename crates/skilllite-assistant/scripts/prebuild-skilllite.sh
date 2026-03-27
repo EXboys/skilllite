@@ -1,23 +1,28 @@
 #!/usr/bin/env bash
-# 构建前：1) 编译 skilllite 并打包到 resources（单文件免安装）
-#        2) 同时安装到 ~/.skilllite/bin（供 tauri dev 使用）
+# 构建前：1) 编译 skilllite 并安装到 ~/.skilllite/bin
+#        2) 从安装目录复制到 resources（单文件免安装，供生产打包）
+# NOTE: 使用 cargo install 产出的二进制作为唯一来源，避免 workspace release
+#       profile (lto/strip/opt-level=z) 导致的兼容性问题。
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ASSISTANT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT="$(cd "$ASSISTANT_DIR/../.." && pwd)"
 cd "$ROOT"
 
-# 编译 skilllite（含 memory_vector）
-cargo build -p skilllite --release --features memory_vector
+# 安装到 ~/.skilllite/bin（同时作为 resources 的来源）
+mkdir -p ~/.skilllite/bin
+rm -f ~/.skilllite/bin/skilllite ~/.skilllite/bin/skilllite.exe
+cargo install --path skilllite --features memory_vector --root ~/.skilllite --force
+echo "skilllite installed: ~/.skilllite/bin/skilllite"
 
 # 打包到 assistant resources，供生产构建使用
 RESOURCES="$ASSISTANT_DIR/src-tauri/resources"
 mkdir -p "$RESOURCES"
 if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-  cp -f target/release/skilllite.exe "$RESOURCES/"
+  cp -f ~/.skilllite/bin/skilllite.exe "$RESOURCES/"
   echo "Bundled: $RESOURCES/skilllite.exe"
 else
-  cp -f target/release/skilllite "$RESOURCES/"
+  cp -f ~/.skilllite/bin/skilllite "$RESOURCES/"
   echo "Bundled: $RESOURCES/skilllite"
 
   # macOS: sign the resource binary so Apple notarization succeeds
@@ -29,9 +34,3 @@ else
     echo "Signed resource binary: $RESOURCES/skilllite"
   fi
 fi
-
-# 安装到 ~/.skilllite/bin（供 tauri dev 使用）
-mkdir -p ~/.skilllite/bin
-rm -f ~/.skilllite/bin/skilllite ~/.skilllite/bin/skilllite.exe
-cargo install --path skilllite --features memory_vector --root ~/.skilllite --force
-echo "skilllite installed: ~/.skilllite/bin/skilllite"
