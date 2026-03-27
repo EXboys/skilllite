@@ -27,7 +27,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
+          - os: macos-14
             platform: darwin-arm64
           - os: windows-latest
             platform: windows-x64
@@ -70,6 +70,10 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      - name: Install create-dmg (macOS DMG bundling)
+        if: runner.os == 'macOS'
+        run: brew install create-dmg
+
       - name: Install npm dependencies
         working-directory: crates/skilllite-assistant
         run: npm ci
@@ -77,7 +81,7 @@ jobs:
       # macOS：导入 Developer ID 证书以便 Tauri 构建时签名（配置 Secrets 后生效，未配置则跳过即不签名）
       # 注意：if 条件中不能使用 secrets，故在脚本内判断是否跳过
       - name: Import Apple Developer certificate (macOS)
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -99,7 +103,7 @@ jobs:
       # macOS：用 App Store Connect API 密钥做公证时，把 .p8 内容写回为临时文件（不填 APPLE_ID/APPLE_PASSWORD 时用）
       # 注意：if 条件中不能使用 secrets，故在脚本内判断是否跳过
       - name: Prepare Apple API key for notarization (macOS)
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         working-directory: crates/skilllite-assistant
         env:
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
@@ -112,13 +116,16 @@ jobs:
         working-directory: crates/skilllite-assistant
         shell: bash
         run: |
-          # Unset empty Apple env vars so Tauri won't pick the wrong notarization method
           [ -z "$APPLE_ID" ] && unset APPLE_ID
           [ -z "$APPLE_PASSWORD" ] && unset APPLE_PASSWORD
           [ -z "$APPLE_API_KEY" ] && unset APPLE_API_KEY
           [ -z "$APPLE_API_ISSUER" ] && unset APPLE_API_ISSUER
           [ -z "$APPLE_API_KEY_PATH" ] && unset APPLE_API_KEY_PATH
-          npm run tauri:build
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            npm run tauri:build -- --bundles app
+          else
+            npm run tauri:build
+          fi
         env:
           CI: true
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
@@ -129,15 +136,48 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
 
+      - name: Verify .app bundle exists (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          APP_DIR="crates/skilllite-assistant/src-tauri/target/release/bundle/macos"
+          echo "--- Contents of bundle/macos/ ---"
+          ls -la "$APP_DIR" || echo "WARNING: $APP_DIR does not exist"
+          echo "--- Checking .app structure ---"
+          ls -la "$APP_DIR/SkillLite Assistant.app/Contents/" 2>/dev/null || echo "WARNING: .app not found at expected path"
+
+      - name: Create DMG with create-dmg (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          APP_VERSION=$(python3 -c "import json; print(json.load(open('crates/skilllite-assistant/src-tauri/tauri.conf.json'))['version'])")
+          APP_PATH="crates/skilllite-assistant/src-tauri/target/release/bundle/macos/SkillLite Assistant.app"
+          DMG_DIR="crates/skilllite-assistant/src-tauri/target/release/bundle/dmg"
+          mkdir -p "$DMG_DIR"
+          set +e
+          create-dmg \
+            --volname "SkillLite Assistant" \
+            --window-pos 200 120 \
+            --window-size 600 400 \
+            --icon-size 100 \
+            --icon "SkillLite Assistant.app" 175 190 \
+            --app-drop-link 425 190 \
+            "$DMG_DIR/SkillLite Assistant_${APP_VERSION}_aarch64.dmg" \
+            "$APP_PATH"
+          EXIT_CODE=$?
+          set -e
+          if [ $EXIT_CODE -ne 0 ] && [ $EXIT_CODE -ne 2 ]; then
+            echo "create-dmg failed with exit code $EXIT_CODE"
+            exit 1
+          fi
+
       - name: Upload macOS artifact (dmg)
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: skilllite-assistant-darwin-arm64
           path: crates/skilllite-assistant/src-tauri/target/release/bundle/dmg/*.dmg
 
       - name: Remove Apple API key file (macOS, reduce exposure)
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         working-directory: crates/skilllite-assistant
         run: rm -f authkey.p8
 
