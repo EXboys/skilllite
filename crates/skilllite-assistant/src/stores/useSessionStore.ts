@@ -13,7 +13,7 @@ interface SessionState {
   currentSessionKey: string;
   sessions: SessionInfo[];
   loadSessions: () => Promise<void>;
-  createSession: (name: string) => string;
+  createSession: (name: string) => Promise<string>;
   switchSession: (key: string) => void;
   renameSession: (key: string, newName: string) => Promise<void>;
   deleteSession: (key: string) => Promise<void>;
@@ -56,27 +56,34 @@ export const useSessionStore = create<SessionState>()(
         }
       },
 
-      createSession: (name: string) => {
-        const sessionKey = `s-${Date.now().toString(16)}`;
-        const now = Math.floor(Date.now() / 1000).toString();
-        const session: SessionInfo = {
-          session_key: sessionKey,
-          display_name: name,
-          updated_at: now,
-          message_preview: null,
-        };
-
+      createSession: async (name: string) => {
         invoke("skilllite_stop").catch(() => {});
-        set((s) => ({
-          sessions: [session, ...s.sessions],
-          currentSessionKey: sessionKey,
-        }));
 
-        invoke("skilllite_create_session", { displayName: name }).catch(
-          () => {}
-        );
-
-        return sessionKey;
+        try {
+          const session = await invoke<SessionInfo>(
+            "skilllite_create_session",
+            { displayName: name }
+          );
+          set((s) => ({
+            sessions: [session, ...s.sessions],
+            currentSessionKey: session.session_key,
+          }));
+          return session.session_key;
+        } catch {
+          const fallbackKey = `s-${Date.now().toString(16)}`;
+          const now = Math.floor(Date.now() / 1000).toString();
+          const session: SessionInfo = {
+            session_key: fallbackKey,
+            display_name: name,
+            updated_at: now,
+            message_preview: null,
+          };
+          set((s) => ({
+            sessions: [session, ...s.sessions],
+            currentSessionKey: fallbackKey,
+          }));
+          return fallbackKey;
+        }
       },
 
       switchSession: (key: string) => {

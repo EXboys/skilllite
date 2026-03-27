@@ -232,19 +232,22 @@ export default function SessionSidebar() {
     });
   }, []);
 
-  const handleCreate = useCallback(() => {
+  const handleCreate = useCallback(async () => {
     if (isCreating) return;
     setIsCreating(true);
-    const prefix = "新会话";
-    const usedNumbers = sessions
-      .map((s) => s.display_name)
-      .filter((n) => n === prefix || n.startsWith(`${prefix} `))
-      .map((n) => (n === prefix ? 1 : parseInt(n.slice(prefix.length + 1), 10)))
-      .filter((n) => !isNaN(n));
-    const next = usedNumbers.length === 0 ? 1 : Math.max(...usedNumbers) + 1;
-    const name = next === 1 ? prefix : `${prefix} ${next}`;
-    createSession(name);
-    setIsCreating(false);
+    try {
+      const prefix = "新会话";
+      const usedNumbers = sessions
+        .map((s) => s.display_name)
+        .filter((n) => n === prefix || n.startsWith(`${prefix} `))
+        .map((n) => (n === prefix ? 1 : parseInt(n.slice(prefix.length + 1), 10)))
+        .filter((n) => !isNaN(n));
+      const next = usedNumbers.length === 0 ? 1 : Math.max(...usedNumbers) + 1;
+      const name = next === 1 ? prefix : `${prefix} ${next}`;
+      await createSession(name);
+    } finally {
+      setIsCreating(false);
+    }
   }, [isCreating, sessions, createSession]);
 
   const handleRename = useCallback(
