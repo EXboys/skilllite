@@ -1,6 +1,6 @@
 [package]
 name = "skilllite-assistant"
-version = "0.1.16"
+version = "0.1.17"
 description = "SkillLite Desktop Assistant — local-first AI agent with secure sandbox and self-evolving skills"
 authors = ["SkillLite Contributors"]
 license = "MIT"
