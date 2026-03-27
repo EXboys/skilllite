@@ -41,8 +41,20 @@ function formatInterval(secs: number): string {
 }
 
 function formatTs(ts: string): string {
-  if (ts.length >= 16) return ts.slice(0, 16).replace("T", " ");
-  return ts;
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) {
+      return ts.length >= 16 ? ts.slice(0, 16).replace("T", " ") : ts;
+    }
+    const y = d.getFullYear();
+    const mo = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    const h = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    return `${y}-${mo}-${da} ${h}:${mi}`;
+  } catch {
+    return ts.length >= 16 ? ts.slice(0, 16).replace("T", " ") : ts;
+  }
 }
 
 function eventIcon(eventType: string): string {
