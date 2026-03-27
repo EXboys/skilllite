@@ -1871,6 +1871,111 @@ pub fn evolution_reject_pending_skill(workspace: &str, skill_name: &str) -> Resu
         .map_err(|e| e.to_string())
 }
 
+// ─── Evolution diffs (prompt snapshot diff for UI) ────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EvolutionFileDiffDto {
+    pub filename: String,
+    pub evolved: bool,
+    pub content: String,
+    pub original_content: Option<String>,
+}
+
+fn evolved_prompt_files_from_changelog(chat_root: &std::path::Path) -> std::collections::HashSet<String> {
+    let changelog = chat_root.join("prompts").join("_versions").join("changelog.jsonl");
+    let mut evolved = std::collections::HashSet::new();
+    if !changelog.exists() {
+        return evolved;
+    }
+    let text = match std::fs::read_to_string(&changelog) {
+        Ok(t) => t,
+        Err(_) => return evolved,
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
+            if let Some(files) = val.get("files").and_then(|f| f.as_array()) {
+                for f in files {
+                    if let Some(s) = f.as_str() {
+                        evolved.insert(s.to_string());
+                    }
+                }
+            }
+        }
+    }
+    evolved
+}
+
+fn get_earliest_snapshot_content(chat_root: &std::path::Path, filename: &str) -> Option<String> {
+    let versions_dir = chat_root.join("prompts").join("_versions");
+    if !versions_dir.exists() {
+        return None;
+    }
+    let mut txn_dirs: Vec<_> = std::fs::read_dir(&versions_dir)
+        .ok()?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .collect();
+    txn_dirs.sort_by_key(|e| e.file_name());
+    for txn_dir in txn_dirs {
+        let file_path = txn_dir.path().join(filename);
+        if file_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&file_path) {
+                return Some(content);
+            }
+        }
+    }
+    None
+}
+
+pub fn load_evolution_diffs(_workspace: &str) -> Vec<EvolutionFileDiffDto> {
+    let chat_root = skilllite_core::paths::chat_root();
+    let prompts_dir = chat_root.join("prompts");
+    if !prompts_dir.exists() {
+        return Vec::new();
+    }
+    let evolved_files = evolved_prompt_files_from_changelog(&chat_root);
+    let prompt_files = [
+        ("planning.md", "planning.md"),
+        ("execution.md", "execution.md"),
+        ("system.md", "system.md"),
+        ("examples.md", "examples.md"),
+        ("rules.json", "rules.json"),
+        ("examples.json", "examples.json"),
+    ];
+    let mut result = Vec::new();
+    for (_name, filename) in &prompt_files {
+        let path = prompts_dir.join(filename);
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        if content.is_empty() && !evolved_files.contains(*filename) {
+            continue;
+        }
+        let is_evolved = evolved_files.contains(*filename);
+        let mut original_content: Option<String> = None;
+        if is_evolved {
+            original_content = get_earliest_snapshot_content(&chat_root, filename);
+            if let Some(ref orig) = original_content {
+                if orig == &content {
+                    continue;
+                }
+            }
+        }
+        if !is_evolved {
+            continue;
+        }
+        result.push(EvolutionFileDiffDto {
+            filename: filename.to_string(),
+            evolved: is_evolved,
+            content,
+            original_content,
+        });
+    }
+    result
+}
+
 // ─── Onboarding: init workspace, probe Ollama ─────────────────────────────────
 
 /// Requested provider during onboarding health check.

@@ -350,6 +350,16 @@ async fn skilllite_reject_pending_skill(
 }
 
 #[tauri::command]
+async fn skilllite_load_evolution_diffs(
+    workspace: Option<String>,
+) -> Vec<skilllite_bridge::EvolutionFileDiffDto> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::load_evolution_diffs(&ws))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
 async fn skilllite_probe_ollama() -> skilllite_bridge::OllamaProbeResult {
     tauri::async_runtime::spawn_blocking(skilllite_bridge::probe_ollama)
         .await
@@ -504,6 +514,7 @@ pub fn run() {
             skilllite_read_pending_skill_md,
             skilllite_confirm_pending_skill,
             skilllite_reject_pending_skill,
+            skilllite_load_evolution_diffs,
             skilllite_life_pulse_status,
             skilllite_life_pulse_toggle,
             skilllite_life_pulse_set_workspace

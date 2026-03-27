@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MarkdownContent } from "./shared/MarkdownContent";
+import { PromptDiffView } from "./PromptDiffView";
 import { useSettingsStore } from "../stores/useSettingsStore";
 
 export interface EvolutionLogEntryDto {
@@ -28,6 +29,13 @@ export interface PendingSkillDto {
   name: string;
   needs_review: boolean;
   preview: string;
+}
+
+export interface EvolutionFileDiffDto {
+  filename: string;
+  evolved: boolean;
+  content: string;
+  original_content: string | null;
 }
 
 function formatInterval(secs: number): string {
@@ -370,11 +378,14 @@ function PendingSkillReviewCard({
   );
 }
 
-/** 独立详情窗口：时间线 + 待审核列表 */
+/** 独立详情窗口：时间线 + 待审核列表 + 进化变更对比 */
 export function EvolutionDetailBody() {
   const { status, loading, error, refresh, workspace } = useEvolutionStatus();
   const [pending, setPending] = useState<PendingSkillDto[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
+  const [diffs, setDiffs] = useState<EvolutionFileDiffDto[]>([]);
+  const [diffsLoading, setDiffsLoading] = useState(true);
+  const [showDiff, setShowDiff] = useState<Record<string, boolean>>({});
 
   const loadPending = useCallback(async () => {
     setPendingLoading(true);
@@ -388,9 +399,22 @@ export function EvolutionDetailBody() {
     }
   }, [workspace]);
 
+  const loadDiffs = useCallback(async () => {
+    setDiffsLoading(true);
+    try {
+      const list = await invoke<EvolutionFileDiffDto[]>("skilllite_load_evolution_diffs", { workspace });
+      setDiffs(list);
+    } catch {
+      setDiffs([]);
+    } finally {
+      setDiffsLoading(false);
+    }
+  }, [workspace]);
+
   useEffect(() => {
     void loadPending();
-  }, [loadPending]);
+    void loadDiffs();
+  }, [loadPending, loadDiffs]);
 
   const onSkillChanged = useCallback(() => {
     void loadPending();
@@ -496,6 +520,78 @@ export function EvolutionDetailBody() {
                 onChanged={onSkillChanged}
               />
             ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">进化变更对比</h2>
+          <button
+            type="button"
+            onClick={() => void loadDiffs()}
+            className="text-xs text-accent hover:underline"
+          >
+            刷新
+          </button>
+        </div>
+        {diffsLoading ? (
+          <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
+        ) : diffs.length === 0 ? (
+          <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
+            暂无进化变更。进化运行修改 prompts 后，可在此查看新旧版本对比。
+          </p>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
+              <span className="text-green-600 dark:text-green-400">+绿色</span> = 进化新增，
+              <span className="text-red-500 dark:text-red-400/70 line-through">−红色</span> = 原有已移除
+            </p>
+            {diffs.map((d) => {
+              const canDiff = d.evolved && !!d.original_content;
+              const isDiffMode = canDiff && (showDiff[d.filename] ?? true);
+              return (
+                <div
+                  key={d.filename}
+                  className={`rounded-lg border text-xs overflow-hidden ${
+                    d.evolved
+                      ? "bg-green-50/50 dark:bg-green-900/10 border-green-300/60 dark:border-green-700/40"
+                      : "bg-gray-50/50 dark:bg-surface-dark/40 border-border/50 dark:border-border-dark/50"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/30 dark:border-border-dark/30 bg-gray-100/50 dark:bg-surface-dark/30">
+                    <span className="font-mono font-medium text-ink dark:text-ink-dark">
+                      {d.filename}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {d.evolved && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-300/50 dark:border-green-600/50">
+                          ✨ 进化
+                        </span>
+                      )}
+                      {canDiff && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowDiff((prev) => ({ ...prev, [d.filename]: !isDiffMode }))
+                          }
+                          className="px-1.5 py-0.5 rounded text-[10px] bg-gray-200/80 dark:bg-surface-dark/60 text-ink-mute dark:text-ink-dark-mute border border-border/40 dark:border-border-dark/40 hover:bg-gray-300/80 dark:hover:bg-surface-dark/80 hover:text-ink dark:hover:text-ink-dark transition-colors"
+                        >
+                          {isDiffMode ? "原文" : "对比"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {isDiffMode && d.original_content != null ? (
+                    <PromptDiffView original={d.original_content} current={d.content} />
+                  ) : (
+                    <pre className="p-3 text-ink-mute dark:text-ink-dark-mute whitespace-pre-wrap break-words font-mono text-[11px] max-h-48 overflow-y-auto">
+                      {d.content || "（空）"}
+                    </pre>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
