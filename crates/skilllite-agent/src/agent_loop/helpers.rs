@@ -17,6 +17,24 @@ use super::super::skills::{self, LoadedSkill};
 use super::super::task_planner::TaskPlanner;
 use super::super::types::*;
 
+/// Unwrap double-encoded JSON: some models (especially DeepSeek in long contexts)
+/// wrap arguments in extra quotes, producing `Value::String` instead of `Value::Object`.
+/// This helper detects that case and re-parses the inner string.
+fn unwrap_double_encoded_json(v: Value) -> Value {
+    if let Some(s) = v.as_str() {
+        if let Ok(inner) = serde_json::from_str::<Value>(s) {
+            if inner.is_object() || inner.is_array() {
+                tracing::warn!(
+                    "Unwrapped double-encoded JSON arguments (outer was a string containing {})",
+                    if inner.is_object() { "object" } else { "array" }
+                );
+                return inner;
+            }
+        }
+    }
+    v
+}
+
 /// Handle update_task_plan: parse new tasks, sanitize & enhance (same as initial planning),
 /// replace planner.task_list, notify event_sink.
 pub(super) fn handle_update_task_plan(
@@ -26,7 +44,7 @@ pub(super) fn handle_update_task_plan(
     event_sink: &mut dyn EventSink,
 ) -> super::super::types::ToolResult {
     let args: Value = match serde_json::from_str(arguments) {
-        Ok(v) => v,
+        Ok(v) => unwrap_double_encoded_json(v),
         Err(e) => {
             return super::super::types::ToolResult {
                 tool_call_id: String::new(),
@@ -166,7 +184,7 @@ pub(super) fn handle_complete_task(
     event_sink: &mut dyn EventSink,
 ) -> super::super::types::ToolResult {
     let args: Value = match serde_json::from_str(arguments) {
-        Ok(v) => v,
+        Ok(v) => unwrap_double_encoded_json(v),
         Err(e) => {
             return super::super::types::ToolResult {
                 tool_call_id: String::new(),
@@ -709,6 +727,43 @@ mod tests {
             "{}",
             r.content
         );
+    }
+
+    // ── Double-encoded JSON unwrap tests ──────────────────────────────────
+
+    #[test]
+    fn complete_task_handles_double_encoded_json() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 1,
+            description: "a".into(),
+            tool_hint: None,
+            completed: false,
+        }];
+        let mut sink = SilentEventSink;
+        let double_encoded = r#""{\"task_id\": 1, \"summary\": \"done\"}""#;
+        let r = handle_complete_task(double_encoded, &mut planner, &mut sink);
+        assert!(
+            !r.is_error,
+            "double-encoded JSON should be unwrapped: {}",
+            r.content
+        );
+        assert!(planner.task_list[0].completed);
+    }
+
+    #[test]
+    fn update_task_plan_handles_double_encoded_json() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        let mut sink = SilentEventSink;
+        let double_encoded =
+            r#""{\"tasks\": [{\"id\": 1, \"description\": \"new task\"}], \"reason\": \"retry\"}""#;
+        let r = handle_update_task_plan(double_encoded, &mut planner, &[], &mut sink);
+        assert!(
+            !r.is_error,
+            "double-encoded JSON should be unwrapped: {}",
+            r.content
+        );
+        assert!(!planner.task_list.is_empty());
     }
 
     #[test]

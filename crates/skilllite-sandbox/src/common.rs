@@ -42,8 +42,23 @@ pub const DEFAULT_TIMEOUT_SECS: u64 = 30;
 /// Default file size limit in MB
 pub const DEFAULT_FILE_SIZE_LIMIT_MB: u64 = 10;
 
-/// Maximum number of processes (fork bomb protection)
+/// Maximum number of processes (fork bomb protection).
+/// On macOS, RLIMIT_NPROC is per-UID (counts ALL user processes), so the
+/// default must be high enough to accommodate existing processes + skill children.
+/// Override via SKILLLITE_MAX_PROCESSES env var.
+#[cfg(target_os = "macos")]
+pub const DEFAULT_MAX_PROCESSES: u64 = 512;
+
+#[cfg(not(target_os = "macos"))]
 pub const DEFAULT_MAX_PROCESSES: u64 = 50;
+
+/// Read the effective max-processes limit, honoring env override.
+pub fn effective_max_processes() -> u64 {
+    std::env::var("SKILLLITE_MAX_PROCESSES")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_MAX_PROCESSES)
+}
 
 /// Memory check interval in milliseconds
 pub const MEMORY_CHECK_INTERVAL_MS: u64 = 100;
@@ -442,7 +457,7 @@ pub unsafe fn set_rlimits_pre_exec(cmd: &mut Command, limits: &ResourceLimits) {
     let memory_limit_mb = limits.max_memory_mb;
     let cpu_limit_secs = limits.timeout_secs;
     let file_size_limit_mb = DEFAULT_FILE_SIZE_LIMIT_MB;
-    let max_processes = DEFAULT_MAX_PROCESSES;
+    let max_processes = effective_max_processes();
 
     cmd.pre_exec(move || {
         apply_rlimits(

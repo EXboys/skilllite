@@ -111,3 +111,5 @@ OPENCLAW_DEEP_ANALYSIS.md
 todo/
 docs/SECURITY_ASSESSMENT.md
 docs/articles/
+.skills/multi-step-test/SKILL.md
+.skills/multi-step-test/scripts/run.sh

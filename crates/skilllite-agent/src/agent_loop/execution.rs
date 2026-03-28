@@ -110,6 +110,10 @@ pub(super) struct ExecutionState {
 
 const REPEATED_FAILURE_THRESHOLD: usize = 2;
 
+/// After this many repeated complete_task failures, auto-complete the task
+/// (only if the agent has executed at least one real tool, proving work was done).
+const PLANNING_CONTROL_AUTO_RECOVER_THRESHOLD: usize = 3;
+
 impl ExecutionState {
     pub fn new() -> Self {
         Self {
@@ -306,7 +310,39 @@ pub(super) async fn execute_tool_batch_planning(
             let repeat_count = planning_executor
                 .state
                 .record_failure(tool_name, &result.content);
-            if repeat_count >= REPEATED_FAILURE_THRESHOLD {
+
+            if tool_name.as_str() == "complete_task"
+                && repeat_count >= PLANNING_CONTROL_AUTO_RECOVER_THRESHOLD
+                && planning_executor.state.total_tool_calls > 0
+            {
+                // Auto-complete only when the agent HAS executed real tools for this task
+                // (i.e., actual work was done, just the completion signal is malformed).
+                if let Some(current) = planning_executor.planner.current_task() {
+                    let auto_id = current.id;
+                    tracing::warn!(
+                        "Auto-completing task {} after {} repeated complete_task failures \
+                         (agent had {} successful tool calls)",
+                        auto_id,
+                        repeat_count,
+                        planning_executor.state.total_tool_calls
+                    );
+                    planning_executor.planner.mark_completed(auto_id);
+                    event_sink.on_task_progress(
+                        auto_id,
+                        true,
+                        &planning_executor.planner.task_list,
+                    );
+                    result.is_error = false;
+                    result.counts_as_failure = false;
+                    result.content = format!(
+                        "{{\"success\": true, \"task_id\": {}, \"message\": \"Task {} auto-completed \
+                         (format issues after {} attempts)\"}}",
+                        auto_id, auto_id, repeat_count
+                    );
+                    planning_executor.state.consecutive_failures = 0;
+                    planning_executor.state.reset_failure_sig();
+                }
+            } else if repeat_count >= REPEATED_FAILURE_THRESHOLD {
                 result.content.push_str(&format!(
                     "\n\n⚠️ LOOP DETECTED: Tool '{}' has failed {} times in a row with the same error. \
                      You are stuck in a retry loop. STOP retrying this exact call. \
@@ -733,6 +769,7 @@ mod tests {
 
         let c3 = state.record_failure("complete_task", "Missing required field: task_id");
         assert_eq!(c3, 3);
+        assert!(c3 >= PLANNING_CONTROL_AUTO_RECOVER_THRESHOLD);
 
         state.reset_failure_sig();
         let c4 = state.record_failure("complete_task", "Missing required field: task_id");
@@ -740,5 +777,73 @@ mod tests {
 
         let c5 = state.record_failure("update_task_plan", "Missing or invalid 'tasks' array");
         assert_eq!(c5, 1, "different tool should restart the count");
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_auto_recovery_after_repeated_failures() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let registry = ExtensionRegistry::new(false, false, &[]);
+        let client = LlmClient::new("", "").expect("test client");
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Analyze data".to_string(),
+            tool_hint: None,
+            completed: false,
+        }]);
+        let mut sink = SilentEventSink;
+        let mut messages = Vec::new();
+        let mut documented_skills = HashSet::new();
+        let mut state = ExecutionState::new();
+
+        // The actual error from handle_complete_task when task_id is missing
+        let actual_error =
+            "Missing required field: task_id. Pass the integer id of the completed task.";
+
+        // Pre-load 2 failures with the SAME error prefix the handler produces.
+        state.record_failure("complete_task", actual_error);
+        state.record_failure("complete_task", actual_error);
+        assert_eq!(state.repeated_failure_count, 2);
+
+        // Auto-recovery requires at least 1 real tool call (proves work was done)
+        state.total_tool_calls = 3;
+
+        // 3rd call triggers auto-recovery
+        let tool_calls = vec![ToolCall {
+            id: "call_auto".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "complete_task".to_string(),
+                arguments: r#"{"summary": "done"}"#.to_string(),
+            },
+        }];
+
+        execute_tool_batch_planning(
+            &tool_calls,
+            &registry,
+            workspace,
+            &mut sink,
+            None,
+            &client,
+            "test-model",
+            &mut planner,
+            &[],
+            &mut messages,
+            &mut documented_skills,
+            &mut state,
+            8,
+            Some(10),
+            None,
+        )
+        .await;
+
+        assert!(
+            planner.task_list[0].completed,
+            "task should be auto-completed after 3 repeated failures"
+        );
+        assert_eq!(
+            state.consecutive_failures, 0,
+            "consecutive failures should reset after auto-recovery"
+        );
     }
 }

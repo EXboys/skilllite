@@ -457,6 +457,11 @@ async fn run_with_task_planning(
     let mut consecutive_no_tool = 0usize;
     let max_no_tool_retries = 3;
     let mut clarification_count = 0usize;
+    // Combined counter: increments on BOTH tool failures and text-rejection nudges.
+    // Prevents the alternating tool-fail/text-reject pattern from evading both
+    // independent thresholds (`consecutive_failures` and `consecutive_no_tool`).
+    let mut total_stuck_iterations = 0usize;
+    const MAX_TOTAL_STUCK: usize = 8;
 
     // Plan-based budget: min(global, num_tasks × per_task).
     // Empty plan uses global max — the clarification mechanism handles runaway loops.
@@ -603,6 +608,15 @@ async fn run_with_task_planning(
                 &mut messages,
             ) {
                 ReflectionOutcome::Nudge(msg) => {
+                    total_stuck_iterations += 1;
+                    if total_stuck_iterations >= MAX_TOTAL_STUCK {
+                        tracing::warn!(
+                            "Combined stuck threshold reached ({} stuck iterations), \
+                             breaking out of tool-fail/text-reject loop",
+                            total_stuck_iterations
+                        );
+                        break;
+                    }
                     messages.push(ChatMessage::user(&msg));
                     continue;
                 }
@@ -620,6 +634,7 @@ async fn run_with_task_planning(
                             ClarificationResponse::Continue(hint) => {
                                 clarification_count += 1;
                                 consecutive_no_tool = 0;
+                                total_stuck_iterations = 0;
                                 if let Some(h) = hint {
                                     messages.push(ChatMessage::user(&h));
                                 }
@@ -641,6 +656,8 @@ async fn run_with_task_planning(
             _ => continue,
         };
 
+        let tools_before = state.total_tool_calls;
+        let failures_before = state.failed_tool_calls;
         let outcome = execute_tool_batch_planning(
             &tool_calls,
             &registry,
@@ -659,6 +676,23 @@ async fn run_with_task_planning(
             session_key,
         )
         .await;
+
+        let new_calls = state.total_tool_calls - tools_before;
+        let new_failures = state.failed_tool_calls - failures_before;
+        if new_calls > 0 && new_calls == new_failures {
+            // Every tool in this batch failed — no forward progress
+            total_stuck_iterations += 1;
+        } else {
+            total_stuck_iterations = 0;
+        }
+
+        if total_stuck_iterations >= MAX_TOTAL_STUCK {
+            tracing::warn!(
+                "Combined stuck threshold reached ({} iterations), stopping loop",
+                total_stuck_iterations
+            );
+            break;
+        }
 
         if outcome.disclosure_injected {
             continue;

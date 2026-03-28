@@ -384,7 +384,7 @@ fn execute_with_bwrap(
     let memory_limit_mb = limits.max_memory_mb;
     let cpu_limit_secs = limits.timeout_secs;
     let file_size_limit_mb = crate::common::DEFAULT_FILE_SIZE_LIMIT_MB;
-    let max_processes = crate::common::DEFAULT_MAX_PROCESSES;
+    let max_processes = crate::common::effective_max_processes();
 
     unsafe {
         cmd.pre_exec(move || {
