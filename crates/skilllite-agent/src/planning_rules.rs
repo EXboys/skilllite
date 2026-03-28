@@ -107,11 +107,7 @@ pub fn compact_examples_section(user_message: &str) -> String {
             "panic",
             "编码refactor: file_read→file_edit→command.",
         ),
-        (
-            "整理",
-            "项目",
-            "模糊请求: file_list探索→analysis总结/确认.",
-        ),
+        ("整理", "项目", "模糊请求: file_list探索→analysis总结/确认."),
     ];
     let mut added = 0;
     for (k1, k2, text) in candidates {

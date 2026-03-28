@@ -216,9 +216,18 @@ fn test_is_context_overflow_error() {
 fn test_format_api_error_401_with_json_body() {
     let body = r#"{"type":"error","error":{"type":"authorized_error","message":"invalid api key (2049)","http_code":"401"},"request_id":"abc123"}"#;
     let result = format_api_error(reqwest::StatusCode::UNAUTHORIZED, body, "LLM");
-    assert!(result.contains("API Key 无效或已过期"), "should have friendly hint: {result}");
-    assert!(result.contains("invalid api key (2049)"), "should preserve detail: {result}");
-    assert!(!result.contains("request_id"), "should extract message, not dump raw JSON: {result}");
+    assert!(
+        result.contains("API Key 无效或已过期"),
+        "should have friendly hint: {result}"
+    );
+    assert!(
+        result.contains("invalid api key (2049)"),
+        "should preserve detail: {result}"
+    );
+    assert!(
+        !result.contains("request_id"),
+        "should extract message, not dump raw JSON: {result}"
+    );
 }
 
 #[test]
@@ -232,11 +241,7 @@ fn test_format_api_error_429_rate_limit() {
 #[test]
 fn test_format_api_error_402_insufficient_balance() {
     let body = r#"{"message":"Insufficient balance"}"#;
-    let result = format_api_error(
-        reqwest::StatusCode::PAYMENT_REQUIRED,
-        body,
-        "LLM",
-    );
+    let result = format_api_error(reqwest::StatusCode::PAYMENT_REQUIRED, body, "LLM");
     assert!(result.contains("账户余额不足"), "{result}");
     assert!(result.contains("Insufficient balance"), "{result}");
 }
@@ -251,11 +256,7 @@ fn test_format_api_error_404_not_found() {
 #[test]
 fn test_format_api_error_500_server_error() {
     let body = "Internal Server Error";
-    let result = format_api_error(
-        reqwest::StatusCode::INTERNAL_SERVER_ERROR,
-        body,
-        "Claude",
-    );
+    let result = format_api_error(reqwest::StatusCode::INTERNAL_SERVER_ERROR, body, "Claude");
     assert!(result.contains("服务端错误"), "{result}");
     assert!(result.starts_with("Claude"), "{result}");
 }
@@ -265,7 +266,10 @@ fn test_format_api_error_unknown_status() {
     let body = r#"{"error":{"message":"something weird"}}"#;
     let result = format_api_error(reqwest::StatusCode::IM_A_TEAPOT, body, "LLM");
     assert!(result.contains("something weird"), "{result}");
-    assert!(!result.contains("API Key"), "no hint for unknown status: {result}");
+    assert!(
+        !result.contains("API Key"),
+        "no hint for unknown status: {result}"
+    );
 }
 
 #[test]
@@ -273,13 +277,20 @@ fn test_format_api_error_non_json_body() {
     let body = "plain text error message from proxy";
     let result = format_api_error(reqwest::StatusCode::BAD_GATEWAY, body, "LLM");
     assert!(result.contains("服务端错误"), "{result}");
-    assert!(result.contains("plain text error message from proxy"), "{result}");
+    assert!(
+        result.contains("plain text error message from proxy"),
+        "{result}"
+    );
 }
 
 #[test]
 fn test_format_api_error_truncates_long_body() {
     let body = "x".repeat(500);
     let result = format_api_error(reqwest::StatusCode::BAD_REQUEST, &body, "LLM");
-    assert!(result.len() < 350, "should truncate long body: len={}", result.len());
+    assert!(
+        result.len() < 350,
+        "should truncate long body: len={}",
+        result.len()
+    );
     assert!(result.contains('…'), "should have ellipsis: {result}");
 }

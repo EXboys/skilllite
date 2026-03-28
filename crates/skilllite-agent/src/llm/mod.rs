@@ -247,11 +247,7 @@ pub struct Usage {
 /// Extracts a concise error detail from the response body (tries JSON `error.message`
 /// or `message` fields first, falls back to truncated raw text), then prepends a
 /// human-readable hint based on the HTTP status code.
-pub(crate) fn format_api_error(
-    status: reqwest::StatusCode,
-    body: &str,
-    provider: &str,
-) -> String {
+pub(crate) fn format_api_error(status: reqwest::StatusCode, body: &str, provider: &str) -> String {
     let detail = extract_error_detail(body);
 
     let hint = match status.as_u16() {
