@@ -80,41 +80,20 @@ pub fn load_full_examples(chat_root: Option<&Path>) -> String {
 }
 
 /// Compact examples section: core examples + up to 3 matched by user message keywords.
-/// Runtime logic preserved (cannot be fully externalized as it depends on user input).
+/// Only references builtin tools — skill-specific examples come from evolution.
 pub fn compact_examples_section(user_message: &str) -> String {
     let msg_lower = user_message.to_lowercase();
     let mut lines = vec![
-        "Example 1 - Simple (no tools): \"Write a poem\", \"Translate X\", \"Explain this code\" → []".to_string(),
-        "Example 2 - Tools: \"Calculate 123*456\" → [{\"id\":1,\"description\":\"Use calculator\",\"tool_hint\":\"calculator\",\"completed\":false}]".to_string(),
+        "Example 1 - Simple (no tools): \"Write a poem\", \"Translate X\", \"Explain this code\" → []"
+            .to_string(),
+        "Example 2 - File output: \"写一篇文章，保存到output\" → [{\"id\":1,\"description\":\"Generate content and save with write_output\",\"tool_hint\":\"file_write\",\"completed\":false}]"
+            .to_string(),
     ];
-    let is_city_or_place = user_message.contains("城市")
-        || user_message.contains("地方")
-        || user_message.contains("对比")
-        || user_message.contains("优劣势")
-        || user_message.contains("全方位")
-        || user_message.contains("两地")
-        || msg_lower.contains("city")
-        || msg_lower.contains("place");
     let candidates: Vec<(&str, &str, &str)> = vec![
-        (
-            "介绍",
-            "景点",
-            "介绍+地点/景点/路线: agent-browser or http-request for fresh info. NOT [].",
-        ),
-        (
-            "城市",
-            "全方位",
-            "城市/地方/全方位分析: http-request for fresh data. NOT chat_history.",
-        ),
-        (
-            "对比",
-            "优劣势",
-            "对比/优劣势: http-request for fresh data. NOT chat_history.",
-        ),
         (
             "分析",
             "稳定性",
-            "分析稳定性/项目: chat_history (ONLY when analyzing chat/project, NOT places)",
+            "分析稳定性/项目: chat_history (ONLY when analyzing chat/project)",
         ),
         ("历史", "记录", "历史记录: chat_history + analysis."),
         (
@@ -122,19 +101,17 @@ pub fn compact_examples_section(user_message: &str) -> String {
             "保存到",
             "输出到output: write_output, file_write.",
         ),
-        (
-            "继续",
-            "",
-            "继续: use context to infer task, often http-request.",
-        ),
-        ("天气", "气象", "天气: weather skill."),
         ("官网", "网站", "官网/网站: file_write + preview, 2 tasks."),
         (
             "refactor",
             "panic",
-            "编码refactor: file_read定位→file_edit修改→command测试.",
+            "编码refactor: file_read→file_edit→command.",
         ),
-        ("整理", "项目", "模糊请求: file_list探索→analysis总结/确认."),
+        (
+            "整理",
+            "项目",
+            "模糊请求: file_list探索→analysis总结/确认.",
+        ),
     ];
     let mut added = 0;
     for (k1, k2, text) in candidates {
@@ -145,8 +122,7 @@ pub fn compact_examples_section(user_message: &str) -> String {
             || msg_lower.contains(&k1.to_lowercase())
             || (!k2.is_empty()
                 && (user_message.contains(k2) || msg_lower.contains(&k2.to_lowercase())));
-        let skip = matches && k1 == "分析" && is_city_or_place;
-        if matches && !skip {
+        if matches {
             lines.push(format!("Example - {}: {}", k1, text));
             added += 1;
         }

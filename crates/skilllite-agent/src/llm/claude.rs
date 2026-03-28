@@ -1,6 +1,6 @@
 //! Anthropic Claude API implementation.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 
@@ -10,6 +10,10 @@ use crate::types::{
 };
 
 use super::{ChatCompletionResponse, Choice, ChoiceMessage, LlmClient, Usage};
+
+fn claude_send_err(url: &str, e: reqwest::Error) -> anyhow::Error {
+    anyhow!("Claude API request failed (POST {}): {}", url, e)
+}
 
 impl LlmClient {
     pub(super) fn convert_messages_for_claude(
@@ -144,12 +148,12 @@ impl LlmClient {
             .json(&body)
             .send()
             .await
-            .context("Claude API request failed")?;
+            .map_err(|e| claude_send_err(&url, e))?;
 
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Claude API error ({}): {}", status, body_text);
+            anyhow::bail!("{}", super::format_api_error(status, &body_text, "Claude"));
         }
 
         let response: Value = resp
@@ -200,12 +204,12 @@ impl LlmClient {
             .json(&body)
             .send()
             .await
-            .context("Claude API request failed")?;
+            .map_err(|e| claude_send_err(&url, e))?;
 
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Claude API error ({}): {}", status, body_text);
+            anyhow::bail!("{}", super::format_api_error(status, &body_text, "Claude"));
         }
 
         self.accumulate_claude_stream(resp, model, event_sink).await

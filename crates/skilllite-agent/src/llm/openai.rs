@@ -1,6 +1,6 @@
 //! OpenAI-compatible API implementation.
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 
@@ -51,6 +51,10 @@ fn is_minimax(api_base: &str) -> bool {
     api_base.to_lowercase().contains("minimax")
 }
 
+fn openai_send_err(url: &str, e: reqwest::Error) -> anyhow::Error {
+    anyhow!("LLM API request failed (POST {}): {}", url, e)
+}
+
 impl LlmClient {
     pub(super) async fn openai_chat_completion(
         &self,
@@ -93,12 +97,12 @@ impl LlmClient {
             .json(&body)
             .send()
             .await
-            .context("LLM API request failed")?;
+            .map_err(|e| openai_send_err(&url, e))?;
 
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("LLM API error ({}): {}", status, body_text);
+            anyhow::bail!("{}", super::format_api_error(status, &body_text, "LLM"));
         }
 
         let response: ChatCompletionResponse = resp
@@ -152,12 +156,12 @@ impl LlmClient {
             .json(&body)
             .send()
             .await
-            .context("LLM API request failed")?;
+            .map_err(|e| openai_send_err(&url, e))?;
 
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("LLM API error ({}): {}", status, body_text);
+            anyhow::bail!("{}", super::format_api_error(status, &body_text, "LLM"));
         }
 
         self.accumulate_openai_stream(resp, event_sink).await

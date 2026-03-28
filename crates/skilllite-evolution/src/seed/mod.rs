@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use skilllite_core::planning::{PlanningRule, SourceRegistry};
 
-const SEED_VERSION: u32 = 1;
+const SEED_VERSION: u32 = 2;
 
 const SEED_RULES: &str = include_str!("rules.seed.json");
 const SEED_SOURCES: &str = include_str!("sources.seed.json");
@@ -106,7 +106,8 @@ fn merge_seed_rules(dir: &Path) {
 
     let seed: Vec<PlanningRule> = serde_json::from_str(SEED_RULES).unwrap_or_default();
 
-    let mut merged = existing.clone();
+    let mut merged = existing;
+
     for seed_rule in &seed {
         let exists = merged.iter().any(|r| r.id == seed_rule.id);
         if !exists {

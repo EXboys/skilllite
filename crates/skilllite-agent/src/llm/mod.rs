@@ -42,9 +42,14 @@ pub struct LlmClient {
     api_key: String,
 }
 
+/// TCP 连接阶段超时。`api.minimax.io` 等域名常解析出多个 A 记录，其中个别 IP
+/// 可能长期不可达；过短的超时便于在第一次握手卡住后尽快尝试下一个地址（与 curl 行为接近）。
+const HTTP_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 impl LlmClient {
     pub fn new(api_base: &str, api_key: &str) -> Result<Self> {
         let http = reqwest::Client::builder()
+            .connect_timeout(HTTP_CONNECT_TIMEOUT)
             .timeout(std::time::Duration::from_secs(300))
             .build()
             .context("build HTTP client for LLM")?;
@@ -141,7 +146,7 @@ impl LlmClient {
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("Embedding API error ({}): {}", status, body_text);
+            anyhow::bail!("{}", format_api_error(status, &body_text, "Embedding"));
         }
         let json: Value = resp
             .json()
@@ -236,6 +241,56 @@ pub struct Usage {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/// Format a user-friendly error from an LLM API HTTP failure.
+///
+/// Extracts a concise error detail from the response body (tries JSON `error.message`
+/// or `message` fields first, falls back to truncated raw text), then prepends a
+/// human-readable hint based on the HTTP status code.
+pub(crate) fn format_api_error(
+    status: reqwest::StatusCode,
+    body: &str,
+    provider: &str,
+) -> String {
+    let detail = extract_error_detail(body);
+
+    let hint = match status.as_u16() {
+        401 => "API Key 无效或已过期，请在设置中检查 Key 是否正确",
+        402 => "账户余额不足或付费套餐已过期",
+        403 => "API Key 权限不足，请确认 Key 有权访问所选模型",
+        404 => "API 端点不存在，请检查 API Base URL 和模型名称是否正确",
+        429 => "请求频率超限 (Rate Limit)，请稍后重试",
+        500..=599 => "模型服务端错误，请稍后重试",
+        _ => "",
+    };
+
+    if hint.is_empty() {
+        format!("{} API 错误 ({}): {}", provider, status, detail)
+    } else {
+        format!("{} API 错误 ({}): {} — {}", provider, status, hint, detail)
+    }
+}
+
+/// Try to extract a concise error message from a JSON response body.
+fn extract_error_detail(body: &str) -> String {
+    if let Ok(json) = serde_json::from_str::<Value>(body) {
+        if let Some(msg) = json
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(|m| m.as_str())
+        {
+            return msg.to_string();
+        }
+        if let Some(msg) = json.get("message").and_then(|m| m.as_str()) {
+            return msg.to_string();
+        }
+    }
+    if body.len() > 200 {
+        format!("{}…", &body[..200])
+    } else {
+        body.to_string()
+    }
+}
 
 /// Check if an error is a context overflow (token limit exceeded).
 /// Ported from Python `_is_context_overflow_error`.

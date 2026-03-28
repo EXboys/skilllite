@@ -39,6 +39,6 @@ export const API_MODEL_PRESETS: ModelPreset[] = [
     label: "Qwen Max",
     apiBase: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   },
-  { value: "MiniMax-M2.5", label: "MiniMax M2.5", apiBase: "https://api.minimax.chat/v1" },
-  { value: "MiniMax-M2.7", label: "MiniMax M2.7", apiBase: "https://api.minimax.chat/v1" },
+  { value: "MiniMax-M2.5", label: "MiniMax M2.5", apiBase: "https://api.minimax.io/v1" },
+  { value: "MiniMax-M2.7", label: "MiniMax M2.7", apiBase: "https://api.minimax.io/v1" },
 ];

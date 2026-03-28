@@ -6,6 +6,29 @@ import { isChatHiddenToolName } from "../utils/chatNoise";
 
 const STREAM_THROTTLE_MS = 80;
 
+function humanizeApiError(msg: string): string {
+  if (
+    /certificate|TLS|ssl|rustls|UnknownIssuer|Connection refused|timed out|dns error|proxy/i.test(
+      msg,
+    )
+  ) {
+    return `${msg}\n\n若使用系统/公司代理或 HTTPS 扫描，可尝试：1) 为应用配置 HTTPS_PROXY；2) 在本机终端用 curl 测试同一 URL；3) 查阅发行说明（当前 LLM 客户端使用 Rustls，部分自定义根证书环境可能需额外配置）。`;
+  }
+  if (/API Key 无效|API Key 权限|账户余额|请求频率超限|API 端点不存在|服务端错误/.test(msg)) {
+    return msg;
+  }
+  if (/401|[Uu]nauthorized|invalid.api.key/i.test(msg)) {
+    return `API Key 无效或已过期，请在设置中检查 Key 是否正确。\n原始信息: ${msg}`;
+  }
+  if (/429|[Rr]ate.limit/i.test(msg)) {
+    return `请求频率超限，请稍后重试。\n原始信息: ${msg}`;
+  }
+  if (/402|[Ii]nsufficient|balance|quota/i.test(msg)) {
+    return `账户余额不足或套餐已过期。\n原始信息: ${msg}`;
+  }
+  return msg;
+}
+
 interface UseChatEventsParams {
   sessionKey: string;
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
@@ -181,16 +204,16 @@ export function useChatEvents({
         clearPlan?.();
         onTurnComplete?.();
       } else if (event === "error") {
-        const msg = (data?.message as string) ?? "Unknown error";
-        const errContent = `Error: ${msg}`;
-        setLatestOutput(errContent);
+        const raw = (data?.message as string) ?? "Unknown error";
+        const friendly = humanizeApiError(raw);
+        setLatestOutput(friendly);
         setMessages((prev) => [
           ...prev,
-          { id: crypto.randomUUID(), type: "assistant", content: errContent },
+          { id: crypto.randomUUID(), type: "assistant", content: friendly },
         ]);
-        setError(msg);
+        setError(friendly);
         setLoading(false);
-        addLog({ type: "error" as const, text: msg, isError: true });
+        addLog({ type: "error" as const, text: raw, isError: true });
         clearPlan?.();
         onTurnComplete?.();
       } else if (event === "protocol_warning") {

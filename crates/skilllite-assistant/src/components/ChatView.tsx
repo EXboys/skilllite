@@ -278,7 +278,7 @@ export default function ChatView() {
         {
           id: crypto.randomUUID(),
           type: "assistant",
-          content: `Request failed: ${errMsg}`,
+          content: `请求失败: ${errMsg}`,
         },
       ]);
     } finally {

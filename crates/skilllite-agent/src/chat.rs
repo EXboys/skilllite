@@ -232,26 +232,12 @@ pub fn run_agent_run(config: AgentConfig, goal: String, resume: bool) -> Result<
 }
 
 /// Format agent/API errors for user-friendly display in chat UI.
+/// The LLM layer already produces friendly Chinese messages via `format_api_error`;
+/// this function just truncates overly long errors for terminal display.
 fn format_chat_error(e: &anyhow::Error) -> String {
     let s = e.to_string();
-    if let Some(json_start) = s.find('{') {
-        let json_part = &s[json_start..];
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_part) {
-            if let Some(msg) = v
-                .get("error")
-                .and_then(|e| e.get("message"))
-                .and_then(|m| m.as_str())
-            {
-                let status = s
-                    .strip_prefix("LLM API error (")
-                    .and_then(|rest| rest.split(')').next())
-                    .unwrap_or("API");
-                return format!("{} 错误: {}", status, msg);
-            }
-        }
-    }
-    if s.len() > 200 {
-        format!("{}…", &s[..200])
+    if s.len() > 300 {
+        format!("{}…", &s[..300])
     } else {
         s
     }
