@@ -498,6 +498,12 @@ npm run tauri build
 
 ---
 
+## 🤝 上游贡献
+
+SkillLite 的沙箱加固经验与方案已贡献至 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)（[issue #4812](https://github.com/zeroclaw-labs/zeroclaw/issues/4812)），并被采纳合并（[PR #4821](https://github.com/zeroclaw-labs/zeroclaw/pull/4821)），提升了其原生沙箱的安全性（seccomp、权限收敛、后端不可用时的失败关闭策略）。
+
+---
+
 ## 📄 License
 
 MIT — 第三方依赖详见 [THIRD_PARTY_LICENSES.md](../../THIRD_PARTY_LICENSES.md)。
