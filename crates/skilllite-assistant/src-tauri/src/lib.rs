@@ -469,10 +469,14 @@ fn skilllite_life_pulse_toggle(
 
 #[tauri::command]
 fn skilllite_life_pulse_set_workspace(
+    app: tauri::AppHandle,
     state: tauri::State<'_, life_pulse::LifePulseState>,
     workspace: String,
 ) -> Result<(), String> {
     state.set_workspace(&workspace);
+    if let Err(e) = skilllite_bridge::sync_bundled_skills_from_resources(&app, &workspace) {
+        eprintln!("[skilllite-assistant] bundled skills sync failed: {}", e);
+    }
     Ok(())
 }
 

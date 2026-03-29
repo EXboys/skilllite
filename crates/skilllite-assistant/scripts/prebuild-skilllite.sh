@@ -34,3 +34,23 @@ else
     echo "Signed resource binary: $RESOURCES/skilllite"
   fi
 fi
+
+# 内置技能：同步到 resources，供首次打开 workspace 时落地到 .skills/
+BUNDLED_SKILLS="$ASSISTANT_DIR/src-tauri/resources/bundled-skills/.skills"
+mkdir -p "$BUNDLED_SKILLS"
+BUNDLED_SKILL_NAMES=(
+  http-request
+  find-skills
+  skill-creator
+  calculator
+  text-processor
+)
+for name in "${BUNDLED_SKILL_NAMES[@]}"; do
+  if [[ -d "$ROOT/.skills/$name" ]]; then
+    rm -rf "$BUNDLED_SKILLS/$name"
+    cp -R "$ROOT/.skills/$name" "$BUNDLED_SKILLS/"
+    echo "Bundled skill: $BUNDLED_SKILLS/$name"
+  else
+    echo "WARN: missing $ROOT/.skills/$name (skip)" >&2
+  fi
+done

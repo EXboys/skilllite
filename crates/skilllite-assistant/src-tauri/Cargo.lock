@@ -3641,6 +3641,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dirs 5.0.1",
+ "semver",
  "serde",
  "serde_json",
  "skilllite-core",
