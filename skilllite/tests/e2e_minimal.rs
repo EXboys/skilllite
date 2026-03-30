@@ -41,6 +41,8 @@ fn run_skilllite_in_dir(args: &[&str], dir: &Path) -> std::process::Output {
     cmd.args(args)
         .current_dir(dir)
         .env("NO_COLOR", "1")
+        // CI runners often lack bubblewrap/firejail; namespace fallback can fail too.
+        .env("SKILLLITE_NO_SANDBOX", "1")
         .env("SKILLLITE_AUTO_APPROVE", "1")
         .env("SKILLLITE_AUDIT_DISABLED", "1");
     cmd.output().expect("failed to spawn skilllite")
