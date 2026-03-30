@@ -76,20 +76,13 @@ fn e2e_add_scan_run_minimal_skill() {
     // 2) Scan
     let sp = installed.to_str().unwrap();
     let out = run_skilllite_in_dir(&["scan", sp], root);
-    assert!(
-        out.status.success(),
-        "scan failed: {}",
-        stderr_str(&out)
-    );
+    assert!(out.status.success(), "scan failed: {}", stderr_str(&out));
     let scan: serde_json::Value =
         serde_json::from_str(stdout_str(&out).trim()).expect("scan should return JSON");
     assert_eq!(scan["has_skill_md"], true);
 
     // 3) Run
-    let out = run_skilllite_in_dir(
-        &["run", sp, r#"{"message":"hello-e2e"}"#],
-        root,
-    );
+    let out = run_skilllite_in_dir(&["run", sp, r#"{"message":"hello-e2e"}"#], root);
     assert!(
         out.status.success(),
         "run failed: stdout={}\nstderr={}",
