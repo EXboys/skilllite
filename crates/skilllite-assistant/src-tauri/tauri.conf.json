@@ -41,7 +41,7 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
     },
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "shortDescription": "SkillLite AI Assistant",
     "longDescription": "A lightweight desktop companion for the SkillLite AI Agent engine.",
     "category": "DeveloperTool",

@@ -601,6 +601,7 @@ pub fn run() {
                             "skilllite-chrome-bootstrap",
                             serde_json::json!({
                                 "kind": "tray",
+                                "severity": "error",
                                 "message": format!("系统托盘不可用：{}", e)
                             }),
                         );
@@ -612,6 +613,7 @@ pub fn run() {
                         "skilllite-chrome-bootstrap",
                         serde_json::json!({
                             "kind": "tray",
+                            "severity": "info",
                             "message": "未找到应用图标，已跳过系统托盘"
                         }),
                     );

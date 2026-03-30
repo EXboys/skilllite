@@ -95,10 +95,18 @@ export const enMessages: Record<string, string> = {
   "chat.requestFailed": "Request failed: {msg}",
   "chat.clearingNotice": "Clearing chat…",
   "chat.clearedNotice": "Chat cleared",
+  "chat.apiError.tlsSuffix":
+    "If you use a corporate proxy or HTTPS inspection, try: 1) set HTTPS_PROXY for the app; 2) curl the same URL in a terminal; 3) check release notes (the LLM client uses Rustls; custom roots may need extra setup).",
+  "chat.apiError.unauthorized":
+    "Invalid or expired API key. Check Settings.\nDetails: {msg}",
+  "chat.apiError.rateLimit": "Rate limited. Try again shortly.\nDetails: {msg}",
+  "chat.apiError.quota": "Insufficient balance or expired plan.\nDetails: {msg}",
 
   "toast.shortcutFailed": "Global shortcut ({shortcut}) failed to register: {err}",
   "toast.stopPrevFailed": "Failed to stop previous session task: {err}",
   "toast.stopFailed": "Stop failed: {err}",
+  "toast.confirmFailed": "Could not send confirmation: {err}",
+  "toast.clarifyFailed": "Could not send clarification: {err}",
   "toast.lifePulseToggleFailed": "Life Pulse toggle failed: {err}",
   "toast.lifePulseWsFailed": "Failed to sync Life Pulse workspace: {err}",
   "toast.openDirFailed": "Failed to open folder: {err}",

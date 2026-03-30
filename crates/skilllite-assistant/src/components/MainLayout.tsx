@@ -18,13 +18,17 @@ export default function MainLayout() {
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
-    listen<{ message?: string }>("skilllite-chrome-bootstrap", (ev) => {
+    listen<{
+      message?: string;
+      kind?: string;
+      /** 后端显式分级；缺省时按错误处理 */
+      severity?: "info" | "error";
+    }>("skilllite-chrome-bootstrap", (ev) => {
       const msg = ev.payload?.message;
       if (!msg) return;
-      const info =
-        msg.includes("跳过") ||
-        /skipped|tray skipped|no .*icon/i.test(msg);
-      useUiToastStore.getState().show(msg, info ? "info" : "error");
+      const variant =
+        ev.payload.severity === "info" ? "info" : "error";
+      useUiToastStore.getState().show(msg, variant);
     }).then((fn) => {
       unlisten = fn;
     });

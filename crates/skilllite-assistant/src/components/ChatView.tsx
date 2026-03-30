@@ -170,27 +170,41 @@ export default function ChatView() {
   }, [notice]);
 
   const handleConfirm = async (id: string, approved: boolean) => {
-    await invoke("skilllite_confirm", { approved });
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.type === "confirmation" && m.id === id
-          ? { ...m, resolved: true, approved }
-          : m
-      )
-    );
+    try {
+      await invoke("skilllite_confirm", { approved });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.type === "confirmation" && m.id === id
+            ? { ...m, resolved: true, approved }
+            : m
+        )
+      );
+    } catch (e) {
+      const msg = formatInvokeError(e);
+      useUiToastStore
+        .getState()
+        .show(t("toast.confirmFailed", { err: msg }), "error");
+    }
   };
 
   const handleClarify = async (id: string, action: string, hint?: string) => {
-    await invoke("skilllite_clarify", { action, hint: hint ?? null });
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.type === "clarification" && m.id === id
-          ? { ...m, resolved: true, selectedOption: action === "stop" ? "stop" : hint }
-          : m
-      )
-    );
-    if (action === "continue") {
-      setLoading(true);
+    try {
+      await invoke("skilllite_clarify", { action, hint: hint ?? null });
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.type === "clarification" && m.id === id
+            ? { ...m, resolved: true, selectedOption: action === "stop" ? "stop" : hint }
+            : m
+        )
+      );
+      if (action === "continue") {
+        setLoading(true);
+      }
+    } catch (e) {
+      const msg = formatInvokeError(e);
+      useUiToastStore
+        .getState()
+        .show(t("toast.clarifyFailed", { err: msg }), "error");
     }
   };
 

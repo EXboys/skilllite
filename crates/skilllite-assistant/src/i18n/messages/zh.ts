@@ -94,10 +94,18 @@ export const zhMessages: Record<string, string> = {
   "chat.requestFailed": "请求失败: {msg}",
   "chat.clearingNotice": "正在清空对话…",
   "chat.clearedNotice": "已清空对话",
+  "chat.apiError.tlsSuffix":
+    "若使用系统/公司代理或 HTTPS 扫描，可尝试：1) 为应用配置 HTTPS_PROXY；2) 在本机终端用 curl 测试同一 URL；3) 查阅发行说明（当前 LLM 客户端使用 Rustls，部分自定义根证书环境可能需额外配置）。",
+  "chat.apiError.unauthorized":
+    "API Key 无效或已过期，请在设置中检查 Key 是否正确。\n原始信息: {msg}",
+  "chat.apiError.rateLimit": "请求频率超限，请稍后重试。\n原始信息: {msg}",
+  "chat.apiError.quota": "账户余额不足或套餐已过期。\n原始信息: {msg}",
 
   "toast.shortcutFailed": "全局快捷键（{shortcut}）注册失败：{err}",
   "toast.stopPrevFailed": "停止上一会话任务失败：{err}",
   "toast.stopFailed": "停止失败：{err}",
+  "toast.confirmFailed": "确认操作未能送达：{err}",
+  "toast.clarifyFailed": "澄清选择未能送达：{err}",
   "toast.lifePulseToggleFailed": "生命脉冲开关失败：{err}",
   "toast.lifePulseWsFailed": "同步生命脉冲工作区失败：{err}",
   "toast.openDirFailed": "打开目录失败：{err}",
