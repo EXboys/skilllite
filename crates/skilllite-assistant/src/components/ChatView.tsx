@@ -11,6 +11,7 @@ import { ChatInput } from "./chat/ChatInput";
 import { InputPlanStrip } from "./chat/InputPlanStrip";
 import type { ChatMessage } from "../types/chat";
 import { isChatHiddenToolName } from "../utils/chatNoise";
+import { notifyRuntimeStatusMayHaveChanged } from "../utils/runtimeStatusRefresh";
 
 const STARTER_ACTIONS = [
   {
@@ -71,7 +72,10 @@ export default function ChatView() {
     addMemoryHint: statusActions.addMemoryHint,
     setLatestOutput: statusActions.setLatestOutput,
     clearPlan: statusActions.clearPlan,
-    onTurnComplete: refreshRecentData,
+    onTurnComplete: () => {
+      refreshRecentData();
+      notifyRuntimeStatusMayHaveChanged();
+    },
   });
 
   useEffect(() => {

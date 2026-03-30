@@ -4,6 +4,7 @@ import {
   useSessionStore,
   type SessionInfo,
 } from "../stores/useSessionStore";
+import { RUNTIME_STATUS_REFRESH_EVENT } from "../utils/runtimeStatusRefresh";
 
 type RuntimeSource = "system" | "cache" | "none";
 
@@ -11,6 +12,8 @@ interface RuntimeUiLine {
   source: RuntimeSource;
   label: string;
   revealPath: string | null;
+  /** 后端可选：系统优先时说明缓存内是否仍有 SkillLite 下载包 */
+  detail?: string | null;
 }
 
 interface RuntimeUiSnapshot {
@@ -18,6 +21,17 @@ interface RuntimeUiSnapshot {
   node: RuntimeUiLine;
   cacheRoot: string | null;
   cacheRootAbs: string | null;
+}
+
+interface ProvisionRuntimeItem {
+  requested: boolean;
+  ok: boolean;
+  message: string;
+}
+
+interface ProvisionRuntimesResult {
+  python: ProvisionRuntimeItem;
+  node: ProvisionRuntimeItem;
 }
 
 function runtimeSourceBadge(source: RuntimeSource): string {
@@ -214,16 +228,36 @@ export default function SessionSidebar() {
   } = useSessionStore();
   const [isCreating, setIsCreating] = useState(false);
   const [runtime, setRuntime] = useState<RuntimeUiSnapshot | null>(null);
+  const [provisionBusy, setProvisionBusy] = useState(false);
+  const [provisionNote, setProvisionNote] = useState<string | null>(null);
+  const provisioningRef = useRef(false);
+
+  const loadRuntime = useCallback(() => {
+    invoke<RuntimeUiSnapshot>("skilllite_runtime_status")
+      .then(setRuntime)
+      .catch(() => setRuntime(null));
+  }, []);
 
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
 
   useEffect(() => {
-    invoke<RuntimeUiSnapshot>("skilllite_runtime_status")
-      .then(setRuntime)
-      .catch(() => setRuntime(null));
-  }, []);
+    loadRuntime();
+  }, [loadRuntime]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") loadRuntime();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [loadRuntime]);
+
+  useEffect(() => {
+    window.addEventListener(RUNTIME_STATUS_REFRESH_EVENT, loadRuntime);
+    return () => window.removeEventListener(RUNTIME_STATUS_REFRESH_EVENT, loadRuntime);
+  }, [loadRuntime]);
 
   const revealInFileManager = useCallback((path: string | null | undefined) => {
     if (!path?.trim()) return;
@@ -231,6 +265,43 @@ export default function SessionSidebar() {
       console.error("[skilllite-assistant] reveal_in_file_manager failed:", err);
     });
   }, []);
+
+  const runProvision = useCallback(
+    async (force: boolean) => {
+      if (provisioningRef.current) return;
+      provisioningRef.current = true;
+      setProvisionBusy(true);
+      setProvisionNote(
+        force
+          ? "正在强制重新下载，请稍候…"
+          : "正在下载内置运行时，请稍候…（体积较大，可能需要数分钟）"
+      );
+      try {
+        const r = await invoke<ProvisionRuntimesResult>("skilllite_provision_runtimes", {
+          python: true,
+          node: true,
+          force,
+        });
+        const parts: string[] = [];
+        if (r.python.requested) {
+          parts.push(
+            `${r.python.ok ? "Python" : "Python（失败）"}：${r.python.message}`
+          );
+        }
+        if (r.node.requested) {
+          parts.push(`${r.node.ok ? "Node" : "Node（失败）"}：${r.node.message}`);
+        }
+        setProvisionNote(parts.join(" · ") || "完成");
+        loadRuntime();
+      } catch (e) {
+        setProvisionNote(e instanceof Error ? e.message : String(e));
+      } finally {
+        provisioningRef.current = false;
+        setProvisionBusy(false);
+      }
+    },
+    [loadRuntime]
+  );
 
   const handleCreate = useCallback(async () => {
     if (isCreating) return;
@@ -349,8 +420,15 @@ export default function SessionSidebar() {
               );
               const text = (
                 <div className="min-w-0 flex-1">
-                  <span className="text-ink-mute dark:text-ink-dark-mute">{title}</span>
-                  <span className="text-ink dark:text-ink-dark ml-1">{line.label}</span>
+                  <div>
+                    <span className="text-ink-mute dark:text-ink-dark-mute">{title}</span>
+                    <span className="text-ink dark:text-ink-dark ml-1">{line.label}</span>
+                  </div>
+                  {line.detail ? (
+                    <p className="text-[10px] text-ink-mute dark:text-ink-dark-mute mt-0.5 leading-snug">
+                      {line.detail}
+                    </p>
+                  ) : null}
                 </div>
               );
               return canReveal ? (
@@ -372,6 +450,38 @@ export default function SessionSidebar() {
               );
             })}
           </div>
+          <div className="flex flex-col gap-1 pt-1 border-t border-border/60 dark:border-border-dark/60">
+            <button
+              type="button"
+              disabled={provisionBusy}
+              onClick={() => void runProvision(false)}
+              className="w-full rounded-md px-2 py-1.5 text-[11px] font-medium bg-accent/10 text-accent hover:bg-accent/15 dark:text-accent border border-accent/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {provisionBusy ? "下载中…" : "预下载内置运行时（Python + Node）"}
+            </button>
+            <button
+              type="button"
+              disabled={provisionBusy}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "将删除本地已缓存的内置 Python / Node 并重新下载，是否继续？"
+                  )
+                ) {
+                  return;
+                }
+                void runProvision(true);
+              }}
+              className="w-full text-left text-[10px] text-ink-mute dark:text-ink-dark-mute hover:text-amber-700 dark:hover:text-amber-300 disabled:opacity-50 px-1 py-0.5"
+            >
+              强制重新下载（修复损坏缓存）
+            </button>
+            {provisionNote ? (
+              <p className="text-[10px] text-ink-mute dark:text-ink-dark-mute leading-snug px-0.5">
+                {provisionNote}
+              </p>
+            ) : null}
+          </div>
           {runtime.cacheRoot && (
             <button
               type="button"
@@ -380,11 +490,11 @@ export default function SessionSidebar() {
               className="text-[10px] text-ink-mute dark:text-ink-dark-mute font-mono truncate w-full text-left rounded px-1 py-0.5 -mx-1 transition-colors hover:text-accent dark:hover:text-accent hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-mute dark:disabled:hover:text-ink-dark-mute focus:outline-none focus-visible:ring-1 focus-visible:ring-accent/50"
               title={
                 runtime.cacheRootAbs
-                  ? `缓存目录 — 点击在文件管理器中打开`
+                  ? `SkillLite 内置 Python/Node 的下载位置（无合适系统版本时使用）— 点击打开`
                   : "无法打开缓存目录"
               }
             >
-              缓存目录 {runtime.cacheRoot}
+              运行时目录 {runtime.cacheRoot}
             </button>
           )}
         </div>

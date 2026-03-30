@@ -379,16 +379,29 @@ async fn skilllite_runtime_status() -> skilllite_bridge::RuntimeUiSnapshot {
                 source: "none".into(),
                 label: "加载失败".into(),
                 reveal_path: None,
+                detail: None,
             },
             node: skilllite_bridge::RuntimeUiLine {
                 source: "none".into(),
                 label: "加载失败".into(),
                 reveal_path: None,
+                detail: None,
             },
             cache_root: None,
             cache_root_abs: None,
         },
     }
+}
+
+#[tauri::command]
+async fn skilllite_provision_runtimes(
+    python: bool,
+    node: bool,
+    force: bool,
+) -> Result<skilllite_bridge::ProvisionRuntimesResult, String> {
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::provision_runtimes(python, node, force))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -505,6 +518,7 @@ pub fn run() {
             skilllite_init_workspace,
             skilllite_probe_ollama,
             skilllite_runtime_status,
+            skilllite_provision_runtimes,
             skilllite_health_check,
             skilllite_read_schedule,
             skilllite_write_schedule,

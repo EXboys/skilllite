@@ -2153,11 +2153,16 @@ pub fn init_workspace(dir: &str, skilllite_path: &std::path::Path) -> Result<(),
     Ok(())
 }
 
-pub use skilllite_sandbox::{RuntimeUiLine, RuntimeUiSnapshot};
+pub use skilllite_sandbox::{ProvisionRuntimesResult, RuntimeUiLine, RuntimeUiSnapshot};
 
 /// Python/Node 来源探测（系统 PATH vs SkillLite 缓存下载），供左侧栏等 UI 展示。
 pub fn probe_runtime_status() -> RuntimeUiSnapshot {
     skilllite_sandbox::probe_runtime_for_ui(None)
+}
+
+/// 预下载内置 Python/Node 运行时到缓存目录（`force` 时先删再下）。
+pub fn provision_runtimes(python: bool, node: bool, force: bool) -> ProvisionRuntimesResult {
+    skilllite_sandbox::provision_runtimes_to_cache(None, python, node, force, None)
 }
 
 /// Result of probing local Ollama (localhost:11434).

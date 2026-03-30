@@ -165,6 +165,9 @@ pub struct RuntimeUiLine {
     pub label: String,
     /// 在文件管理器中打开/定位用（绝对路径）；`none` 且可解析缓存根时指向 runtime 根目录（可能尚不存在，由桌面端打开时创建）
     pub reveal_path: Option<String>,
+    /// 补充说明：例如已用系统解释器但缓存内仍有 SkillLite 下载包时，避免用户误以为「没下载」
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -176,6 +179,23 @@ pub struct RuntimeUiSnapshot {
     pub cache_root: Option<String>,
     /// 缓存根目录绝对路径（用于在访达/资源管理器中打开）
     pub cache_root_abs: Option<String>,
+}
+
+/// 桌面端「预下载内置运行时」单条结果
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionRuntimeItem {
+    pub requested: bool,
+    pub ok: bool,
+    pub message: String,
+}
+
+/// 一次预下载 Python / Node 的汇总（可只选其一）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProvisionRuntimesResult {
+    pub python: ProvisionRuntimeItem,
+    pub node: ProvisionRuntimeItem,
 }
 
 #[derive(Clone)]
@@ -320,6 +340,9 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
             }
         }
         if let Some((lab, exe)) = system_hit {
+            let skilllite_py_in_cache = runtime_dir
+                .as_ref()
+                .is_some_and(|rd| python_cache_binary(rd).exists());
             RuntimeUiLine {
                 source: "system".into(),
                 label: lab,
@@ -327,6 +350,8 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
                     exe.is_absolute()
                         .then(|| exe.to_string_lossy().into_owned())
                 }),
+                detail: skilllite_py_in_cache
+                    .then(|| "缓存中已有 SkillLite Python，执行时优先使用系统".into()),
             }
         } else if let Some(ref rd) = runtime_dir {
             let bundle = rd.join("python-3.12");
@@ -335,12 +360,14 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
                     source: "cache".into(),
                     label: "Python（SkillLite 已下载）".into(),
                     reveal_path: path_to_reveal_string(&bundle),
+                    detail: None,
                 }
             } else {
                 RuntimeUiLine {
                     source: "none".into(),
                     label: "首次需要时将自动下载".into(),
                     reveal_path: Some(rd.to_string_lossy().into_owned()),
+                    detail: None,
                 }
             }
         } else {
@@ -348,6 +375,7 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
                 source: "none".into(),
                 label: "无法解析缓存目录".into(),
                 reveal_path: None,
+                detail: None,
             }
         }
     };
@@ -362,6 +390,9 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
                 .and_then(|o| String::from_utf8(o.stdout).ok())
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|| "v18+".into());
+            let skilllite_node_in_cache = runtime_dir
+                .as_ref()
+                .is_some_and(|rd| node_cache_binary(rd).exists());
             RuntimeUiLine {
                 source: "system".into(),
                 label: format!("Node {}", ver),
@@ -369,6 +400,8 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
                     path.is_absolute()
                         .then(|| path.to_string_lossy().into_owned())
                 }),
+                detail: skilllite_node_in_cache
+                    .then(|| "缓存中已有 SkillLite Node，执行时优先使用系统".into()),
             }
         } else if let Some(ref rd) = runtime_dir {
             let bundle = rd.join("node-20");
@@ -377,12 +410,14 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
                     source: "cache".into(),
                     label: "Node（SkillLite 已下载）".into(),
                     reveal_path: path_to_reveal_string(&bundle),
+                    detail: None,
                 }
             } else {
                 RuntimeUiLine {
                     source: "none".into(),
                     label: "首次需要时将自动下载".into(),
                     reveal_path: Some(rd.to_string_lossy().into_owned()),
+                    detail: None,
                 }
             }
         } else {
@@ -390,6 +425,7 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
                 source: "none".into(),
                 label: "无法解析缓存目录".into(),
                 reveal_path: None,
+                detail: None,
             }
         }
     };
@@ -404,6 +440,165 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
         cache_root,
         cache_root_abs,
     }
+}
+
+/// 将 SkillLite 内置 Python / Node 下载到运行时缓存（与 `ensure_*_runtime` 相同包体）。
+///
+/// - 不依赖系统是否已安装解释器；适合无 Python/Node 的机器提前下载。
+/// - `force == true` 时先删除已有 `python-3.12` / `node-20` 再下载，用于修复损坏缓存。
+pub fn provision_runtimes_to_cache(
+    cache_override: Option<&str>,
+    download_python: bool,
+    download_node: bool,
+    force: bool,
+    _progress: RuntimeProgressFn,
+) -> ProvisionRuntimesResult {
+    skilllite_core::config::load_dotenv();
+    let Some(runtime_dir) = get_runtime_dir(cache_override) else {
+        let fail = ProvisionRuntimeItem {
+            requested: true,
+            ok: false,
+            message: "无法解析运行时缓存目录".into(),
+        };
+        return ProvisionRuntimesResult {
+            python: if download_python {
+                fail.clone()
+            } else {
+                ProvisionRuntimeItem {
+                    requested: false,
+                    ok: true,
+                    message: "未选择下载 Python".into(),
+                }
+            },
+            node: if download_node {
+                fail
+            } else {
+                ProvisionRuntimeItem {
+                    requested: false,
+                    ok: true,
+                    message: "未选择下载 Node".into(),
+                }
+            },
+        };
+    };
+
+    let python = if !download_python {
+        ProvisionRuntimeItem {
+            requested: false,
+            ok: true,
+            message: "未选择下载 Python".into(),
+        }
+    } else {
+        #[cfg(feature = "runtime-deps")]
+        {
+            let bin = python_cache_binary(&runtime_dir);
+            let dir = runtime_dir.join("python-3.12");
+            if bin.exists() && !force {
+                ProvisionRuntimeItem {
+                    requested: true,
+                    ok: true,
+                    message: "Python 已在缓存中".into(),
+                }
+            } else {
+                let run_ensure = || -> ProvisionRuntimeItem {
+                    match ensure_python_runtime(&runtime_dir, None) {
+                        Ok(_) => ProvisionRuntimeItem {
+                            requested: true,
+                            ok: true,
+                            message: if force {
+                                "已重新下载 Python 运行时".into()
+                            } else {
+                                "已下载 Python 运行时".into()
+                            },
+                        },
+                        Err(e) => ProvisionRuntimeItem {
+                            requested: true,
+                            ok: false,
+                            message: format!("{}", e),
+                        },
+                    }
+                };
+                if force && dir.exists() {
+                    if let Err(e) = std::fs::remove_dir_all(&dir) {
+                        ProvisionRuntimeItem {
+                            requested: true,
+                            ok: false,
+                            message: format!("无法删除旧 Python 缓存：{}", e),
+                        }
+                    } else {
+                        run_ensure()
+                    }
+                } else {
+                    run_ensure()
+                }
+            }
+        }
+        #[cfg(not(feature = "runtime-deps"))]
+        {
+            ProvisionRuntimeItem {
+                requested: true,
+                ok: false,
+                message: "当前构建未启用内置运行时下载（runtime-deps）".into(),
+            }
+        }
+    };
+
+    let node = if !download_node {
+        ProvisionRuntimeItem {
+            requested: false,
+            ok: true,
+            message: "未选择下载 Node".into(),
+        }
+    } else {
+        #[cfg(feature = "runtime-deps")]
+        {
+            let bin = node_cache_binary(&runtime_dir);
+            let dir = runtime_dir.join("node-20");
+            if bin.exists() && !force {
+                ProvisionRuntimeItem {
+                    requested: true,
+                    ok: true,
+                    message: "Node 已在缓存中".into(),
+                }
+            } else {
+                let node_result = if force && dir.exists() {
+                    if let Err(e) = std::fs::remove_dir_all(&dir) {
+                        Err(anyhow::anyhow!("无法删除旧 Node 缓存：{}", e))
+                    } else {
+                        ensure_node_runtime(&runtime_dir, None).map(|_| ())
+                    }
+                } else {
+                    ensure_node_runtime(&runtime_dir, None).map(|_| ())
+                };
+                match node_result {
+                    Ok(()) => ProvisionRuntimeItem {
+                        requested: true,
+                        ok: true,
+                        message: if force {
+                            "已重新下载 Node 运行时".into()
+                        } else {
+                            "已下载 Node 运行时".into()
+                        },
+                    },
+                    Err(e) => ProvisionRuntimeItem {
+                        requested: true,
+                        ok: false,
+                        message: format!("{}", e),
+                    },
+                }
+            }
+        }
+        #[cfg(not(feature = "runtime-deps"))]
+        {
+            ProvisionRuntimeItem {
+                requested: true,
+                ok: false,
+                message: "当前构建未启用内置运行时下载（runtime-deps）".into(),
+            }
+        }
+    };
+
+    ProvisionRuntimesResult { python, node }
 }
 
 /// Returns the runtime root directory (same base as cache, subdir `runtime`).
