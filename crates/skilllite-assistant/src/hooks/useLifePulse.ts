@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { formatInvokeError } from "../utils/formatInvokeError";
+import { useUiToastStore } from "../stores/useUiToastStore";
+import { useSessionStore } from "../stores/useSessionStore";
+import { translate } from "../i18n";
 
 export interface LifePulseStatus {
   enabled: boolean;
@@ -23,15 +27,15 @@ export interface LifePulseActivity {
   label: string;
 }
 
-const EVENT_LABELS: Record<string, string> = {
-  "growth-started": "正在进化…",
-  "growth-done": "学到了新东西",
-  "growth-error": "进化受阻",
-  "growth-skipped": "暂无新领悟",
-  "rhythm-started": "开始行动…",
-  "rhythm-done": "任务完成",
-  "rhythm-error": "任务遇到阻碍",
-  "rhythm-skipped": "暂无待办",
+const PULSE_I18N_KEYS: Record<string, string> = {
+  "growth-started": "lifePulse.growthStarted",
+  "growth-done": "lifePulse.growthDone",
+  "growth-error": "lifePulse.growthError",
+  "growth-skipped": "lifePulse.growthSkipped",
+  "rhythm-started": "lifePulse.rhythmStarted",
+  "rhythm-done": "lifePulse.rhythmDone",
+  "rhythm-error": "lifePulse.rhythmError",
+  "rhythm-skipped": "lifePulse.rhythmSkipped",
   heartbeat: "",
 };
 
@@ -69,7 +73,13 @@ export function useLifePulse() {
         return;
       }
 
-      const label = EVENT_LABELS[e.type] ?? e.type;
+      const i18nKey = PULSE_I18N_KEYS[e.type];
+      const label =
+        e.type === "heartbeat"
+          ? ""
+          : i18nKey
+            ? translate(i18nKey)
+            : e.type;
       if (!label) return;
 
       setActivities((prev) => {
@@ -88,6 +98,9 @@ export function useLifePulse() {
     });
 
     const unlistenChat = listen<StreamEventPayload>("skilllite-event", (ev) => {
+      const sk = ev.payload.session_key;
+      const current = useSessionStore.getState().currentSessionKey;
+      if (sk == null || sk !== current) return;
       const { event } = ev.payload;
       if (event === "text_chunk" || event === "text") {
         setChatting(true);
@@ -107,8 +120,13 @@ export function useLifePulse() {
       try {
         await invoke("skilllite_life_pulse_toggle", { enabled });
         await refresh();
-      } catch {
-        /* ignore */
+      } catch (e) {
+        useUiToastStore
+          .getState()
+          .show(
+            translate("toast.lifePulseToggleFailed", { err: formatInvokeError(e) }),
+            "error"
+          );
       }
     },
     [refresh],
@@ -119,8 +137,13 @@ export function useLifePulse() {
       try {
         await invoke("skilllite_life_pulse_set_workspace", { workspace: ws });
         await refresh();
-      } catch {
-        /* ignore */
+      } catch (e) {
+        useUiToastStore
+          .getState()
+          .show(
+            translate("toast.lifePulseWsFailed", { err: formatInvokeError(e) }),
+            "error"
+          );
       }
     },
     [refresh],

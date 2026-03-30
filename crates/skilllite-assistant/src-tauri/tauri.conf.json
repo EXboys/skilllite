@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: tauri: https://asset.localhost; font-src 'self' data:; connect-src ipc: http://ipc.localhost https://ipc.localhost tauri: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*;"
     }
   },
   "bundle": {
@@ -41,7 +41,7 @@
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
     },
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "shortDescription": "SkillLite AI Assistant",
     "longDescription": "A lightweight desktop companion for the SkillLite AI Agent engine.",
     "category": "DeveloperTool",

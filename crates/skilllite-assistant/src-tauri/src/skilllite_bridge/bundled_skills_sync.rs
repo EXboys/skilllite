@@ -147,7 +147,7 @@ pub fn sync_bundled_skills_from_resources(app: &AppHandle, workspace_raw: &str) 
         return Ok(());
     }
 
-    let skills_target = super::find_project_root(workspace_raw).join(".skills");
+    let skills_target = super::paths::find_project_root(workspace_raw).join(".skills");
     fs::create_dir_all(&skills_target).map_err(|e| format!("create .skills: {}", e))?;
 
     let empty_or_missing = !skills_dir_has_any_skill(&skills_target);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore, type Provider, type SandboxLevel } from "../stores/useSettingsStore";
@@ -12,6 +12,7 @@ import {
   scheduleFormToJson,
   validateScheduleForm,
 } from "../utils/scheduleForm";
+import { useI18n } from "../i18n";
 
 interface OllamaProbeResult {
   available: boolean;
@@ -26,20 +27,18 @@ interface SettingsModalProps {
 
 type SettingsTabId = "llm" | "workspace" | "agent" | "schedule";
 
-const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
-  { id: "llm", label: "模型与 API" },
-  { id: "workspace", label: "工作区与沙箱" },
-  { id: "agent", label: "Agent 预算" },
-  { id: "schedule", label: "定时任务" },
-];
-
-const SANDBOX_INFO: Record<SandboxLevel, { short: string; desc: string }> = {
-  1: { short: "无沙箱", desc: "脚本直接在主机执行，无隔离。仅适合完全信任的本地脚本。" },
-  2: { short: "基础隔离", desc: "限制文件访问与网络，适合日常开发。" },
-  3: { short: "完全沙箱", desc: "严格隔离（Seatbelt / seccomp），推荐第三方技能。" },
-};
-
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
+  const { t, locale, setLocale } = useI18n();
+  const settingsTabs = useMemo(
+    () =>
+      [
+        { id: "llm" as const, label: t("settings.tab.llm") },
+        { id: "workspace" as const, label: t("settings.tab.workspace") },
+        { id: "agent" as const, label: t("settings.tab.agent") },
+        { id: "schedule" as const, label: t("settings.tab.schedule") },
+      ] as const,
+    [t]
+  );
   const { settings, setSettings } = useSettingsStore();
   const [provider, setProvider] = useState<Provider>(settings.provider || "api");
   const [apiKey, setApiKey] = useState(settings.apiKey);
@@ -139,16 +138,16 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   }, [open, provider, probeOllama]);
 
   const parsePositiveIntField = (s: string): number | undefined => {
-    const t = s.trim();
-    if (!t) return undefined;
-    const n = Number(t);
+    const trimmed = s.trim();
+    if (!trimmed) return undefined;
+    const n = Number(trimmed);
     if (!Number.isInteger(n) || n < 1) return undefined;
     return n;
   };
 
   const handleSave = async () => {
     if (!scheduleData) {
-      setScheduleLoadError("定时配置尚未加载完成");
+      setScheduleLoadError(t("settings.scheduleNotReady"));
       setActiveTab("schedule");
       return;
     }
@@ -204,13 +203,15 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     const selected = await openDirectoryDialog({
       directory: true,
       multiple: false,
-      title: "选择工作区目录",
+      title: t("settings.pickWorkspace"),
       defaultPath: workspace && workspace !== "." ? workspace : undefined,
     });
     if (selected) {
       setWorkspace(selected);
     }
   };
+
+  const sbKey = `l${sandboxLevel}` as "l1" | "l2" | "l3";
 
   if (!open) return null;
 
@@ -239,10 +240,10 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
         {/* Fixed header + tabs */}
         <div className="px-5 pt-5 pb-0 border-b border-border dark:border-border-dark shrink-0">
           <h2 className="text-base font-semibold text-ink dark:text-ink-dark pb-3">
-            设置
+            {t("settings.title")}
           </h2>
           <div className="flex gap-1 overflow-x-auto pb-0 -mx-1 px-1">
-            {SETTINGS_TABS.map((tab) => (
+            {settingsTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
@@ -264,9 +265,36 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
           {activeTab === "llm" && (
           <div className="space-y-4">
+          <div>
+            <label className={labelCls}>{t("locale.label")}</label>
+            <div className="flex rounded-lg border border-border dark:border-border-dark overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setLocale("zh")}
+                className={`flex-1 py-1.5 text-sm font-medium transition-colors ${
+                  locale === "zh"
+                    ? "bg-accent text-white"
+                    : "bg-gray-50 dark:bg-surface-dark text-ink-mute dark:text-ink-dark-mute hover:bg-gray-100 dark:hover:bg-white/5"
+                }`}
+              >
+                {t("locale.zh")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocale("en")}
+                className={`flex-1 py-1.5 text-sm font-medium transition-colors ${
+                  locale === "en"
+                    ? "bg-accent text-white"
+                    : "bg-gray-50 dark:bg-surface-dark text-ink-mute dark:text-ink-dark-mute hover:bg-gray-100 dark:hover:bg-white/5"
+                }`}
+              >
+                {t("locale.en")}
+              </button>
+            </div>
+          </div>
           {/* ── Provider ── */}
           <div>
-            <label className={labelCls}>使用方式</label>
+            <label className={labelCls}>{t("settings.providerMode")}</label>
             <div className="flex rounded-lg border border-border dark:border-border-dark overflow-hidden">
               <button
                 type="button"
@@ -277,7 +305,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                     : "bg-gray-50 dark:bg-surface-dark text-ink-mute dark:text-ink-dark-mute hover:bg-gray-100 dark:hover:bg-white/5"
                 }`}
               >
-                API Key
+                {t("settings.providerApi")}
               </button>
               <button
                 type="button"
@@ -288,7 +316,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                     : "bg-gray-50 dark:bg-surface-dark text-ink-mute dark:text-ink-dark-mute hover:bg-gray-100 dark:hover:bg-white/5"
                 }`}
               >
-                本地 Ollama
+                {t("settings.providerOllama")}
               </button>
             </div>
           </div>
@@ -297,17 +325,17 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           {provider === "api" && (
             <>
               <div>
-                <label className={labelCls}>API Key</label>
+                <label className={labelCls}>{t("settings.apiKey")}</label>
                 <input
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-...（留空则使用 .env 中的 OPENAI_API_KEY）"
+                  placeholder={t("settings.apiKeyHint")}
                   className={inputCls}
                 />
               </div>
               <div>
-                <label className={labelCls}>模型</label>
+                <label className={labelCls}>{t("settings.model")}</label>
                 <ModelComboBox
                   value={model}
                   onChange={setModel}
@@ -317,24 +345,24 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                     }
                   }}
                   presets={API_MODEL_PRESETS}
-                  placeholder="选择模型"
+                  placeholder={t("settings.modelPlaceholder")}
                   inputCls={inputCls}
                 />
               </div>
               <div>
-                <label className={labelCls}>API Base URL（可选）</label>
+                <label className={labelCls}>{t("settings.apiBase")}</label>
                 <input
                   type="text"
                   value={apiBase}
                   onChange={(e) => setApiBase(e.target.value)}
-                  placeholder="https://api.openai.com/v1"
+                  placeholder={t("settings.apiBasePlaceholder")}
                   className={inputCls}
                 />
                 {apiBase && (
                   <p className="mt-1 text-xs text-ink-mute dark:text-ink-dark-mute">
                     {API_MODEL_PRESETS.find((p) => p.value === model)?.apiBase === apiBase
-                      ? "已自动匹配，可手动修改"
-                      : "自定义地址"}
+                      ? t("settings.apiBaseMatched")
+                      : t("settings.apiBaseCustom")}
                   </p>
                 )}
               </div>
@@ -346,24 +374,24 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             <>
               {ollamaLoading ? (
                 <p className="text-sm text-ink-mute dark:text-ink-dark-mute py-1">
-                  正在检测 Ollama…
+                  {t("settings.ollamaProbing")}
                 </p>
               ) : ollamaProbe?.available ? (
                 <>
                   {ollamaModelPresets.length > 0 ? (
                     <div>
-                      <label className={labelCls}>模型</label>
+                      <label className={labelCls}>{t("settings.model")}</label>
                       <ModelComboBox
                         value={model}
                         onChange={setModel}
                         presets={ollamaModelPresets}
-                        placeholder="选择模型"
+                        placeholder={t("settings.modelPlaceholder")}
                         inputCls={inputCls}
                       />
                     </div>
                   ) : (
                     <p className="text-sm text-amber-600 dark:text-amber-400 py-1">
-                      Ollama 已运行，但未安装模型。请先运行{" "}
+                      {t("settings.ollamaNoModels")}{" "}
                       <code className="bg-gray-100 dark:bg-surface-dark px-1.5 py-0.5 rounded text-xs">
                         ollama pull llama3.2
                       </code>
@@ -376,28 +404,28 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       }`}
                     />
                     {ollamaProbe.has_embedding
-                      ? "已检测到 Embedding 模型，记忆向量检索可用"
-                      : "未检测到 Embedding 模型，记忆将使用文本检索"}
+                      ? t("settings.ollamaEmbedYes")
+                      : t("settings.ollamaEmbedNo")}
                   </div>
                 </>
               ) : (
                 <div className="py-1">
                   <p className="text-sm text-red-600 dark:text-red-400 mb-1">
-                    未检测到 Ollama 服务
+                    {t("settings.ollamaMissing")}
                   </p>
                   <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
-                    请确保已安装并运行 Ollama（
+                    {t("settings.ollamaHint")}
                     <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">
                       ollama serve
                     </code>
-                    ）
+                    {t("settings.ollamaHintEnd")}
                   </p>
                   <button
                     type="button"
                     onClick={probeOllama}
                     className="mt-1.5 text-sm text-accent hover:underline"
                   >
-                    重新检测
+                    {t("settings.ollamaRetry")}
                   </button>
                 </div>
               )}
@@ -410,7 +438,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           <div className="space-y-4">
           {/* ── Workspace ── */}
           <div>
-            <label className={labelCls}>工作区路径</label>
+            <label className={labelCls}>{t("settings.workspacePath")}</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -424,18 +452,21 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 onClick={handleBrowseWorkspace}
                 className="shrink-0 px-2.5 py-2 rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark-mute hover:bg-gray-100 dark:hover:bg-white/5 text-sm font-medium transition-colors"
               >
-                浏览
+                {t("common.browse")}
               </button>
             </div>
             <p className="mt-1 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-              修改路径后，「定时任务」页会按新路径加载{" "}
-              <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">.skilllite/schedule.json</code>。
+              {t("settings.workspaceHintPrefix")}
+              <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">
+                .skilllite/schedule.json
+              </code>
+              {t("settings.workspaceHintSuffix")}
             </p>
           </div>
 
           {/* ── Sandbox Level ── */}
           <div>
-            <label className={labelCls}>沙箱安全等级</label>
+            <label className={labelCls}>{t("settings.sandboxLevel")}</label>
             <div className="flex rounded-lg border border-border dark:border-border-dark overflow-hidden">
               {([1, 2, 3] as const).map((level) => (
                 <button
@@ -453,14 +484,14 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               ))}
             </div>
             <p className="mt-1 text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-              {SANDBOX_INFO[sandboxLevel].short} — {SANDBOX_INFO[sandboxLevel].desc}
+              {t(`settings.sandbox.${sbKey}.short`)} — {t(`settings.sandbox.${sbKey}.desc`)}
             </p>
           </div>
 
           {/* ── Swarm Network ── */}
           <div>
             <div className="flex items-center justify-between">
-              <label className={`${labelCls} mb-0`}>Swarm P2P 网络</label>
+              <label className={`${labelCls} mb-0`}>{t("settings.swarm")}</label>
               <button
                 type="button"
                 role="switch"
@@ -487,7 +518,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                   className={inputCls}
                 />
                 <p className="mt-1 text-xs text-ink-mute dark:text-ink-dark-mute">
-                  Agent 可将子任务委派给局域网内其他节点协作完成
+                  {t("settings.swarmHint")}
                 </p>
               </div>
             )}
@@ -500,38 +531,36 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           {/* ── Agent loop limits（对齐 SKILLLITE_MAX_*） ── */}
           <div>
             <p className="text-xs font-medium text-ink dark:text-ink-dark-mute mb-2">
-              Agent 循环预算
+              {t("settings.agentBudget")}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>最大迭代轮次</label>
+                <label className={labelCls}>{t("settings.maxIterations")}</label>
                 <input
                   type="number"
                   min={1}
                   inputMode="numeric"
                   value={maxIterationsStr}
                   onChange={(e) => setMaxIterationsStr(e.target.value)}
-                  placeholder="默认 50"
+                  placeholder={t("settings.defaultPlaceholder50")}
                   className={inputCls}
                 />
               </div>
               <div>
-                <label className={labelCls}>每任务工具上限</label>
+                <label className={labelCls}>{t("settings.maxToolCalls")}</label>
                 <input
                   type="number"
                   min={1}
                   inputMode="numeric"
                   value={maxToolCallsPerTaskStr}
                   onChange={(e) => setMaxToolCallsPerTaskStr(e.target.value)}
-                  placeholder="默认 15"
+                  placeholder={t("settings.defaultPlaceholder15")}
                   className={inputCls}
                 />
               </div>
             </div>
             <p className="mt-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-              留空则使用工作区 <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">.env</code>{" "}
-              或内置默认值（<code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">SKILLLITE_MAX_ITERATIONS</code>、
-              <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">SKILLLITE_MAX_TOOL_CALLS_PER_TASK</code>）。
+              {t("settings.agentBudgetHint")}
             </p>
           </div>
           </div>
@@ -540,17 +569,11 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           {activeTab === "schedule" && (
           <div className="space-y-3">
             <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-              应用运行期间会自动检查并执行到期的定时任务（Life Pulse 心跳驱动，约 30 秒一次）。
-              配置保存在{" "}
-              <code className="font-mono text-[11px] bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded">.skilllite/schedule.json</code>，
-              与 CLI{" "}
-              <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded text-[11px]">skilllite schedule tick</code>{" "}
-              共用。执行需在环境中设置{" "}
-              <code className="bg-gray-100 dark:bg-surface-dark px-1 py-0.5 rounded text-[11px]">SKILLLITE_SCHEDULE_ENABLED=1</code>。
+              {t("settings.scheduleIntro")}
             </p>
             {scheduleData === null ? (
               <p className="text-xs text-ink-mute dark:text-ink-dark-mute py-4">
-                {scheduleLoadError ? scheduleLoadError : "正在加载定时配置…"}
+                {scheduleLoadError ? scheduleLoadError : t("settings.scheduleLoading")}
               </p>
             ) : (
               <ScheduleEditor
@@ -584,7 +607,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               }}
               className="text-xs text-accent hover:underline"
             >
-              从磁盘重新加载
+              {t("settings.scheduleReload")}
             </button>
           </div>
           )}
@@ -597,14 +620,14 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             onClick={onClose}
             className="px-4 py-1.5 text-sm text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark transition-colors"
           >
-            取消
+            {t("common.cancel")}
           </button>
           <button
             type="button"
             onClick={handleSave}
             className="px-4 py-1.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
           >
-            保存
+            {t("common.save")}
           </button>
         </div>
       </div>

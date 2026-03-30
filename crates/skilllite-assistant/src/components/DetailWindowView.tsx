@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { formatInvokeError } from "../utils/formatInvokeError";
+import { useUiToastStore } from "../stores/useUiToastStore";
 import {
   useStatusStore,
   STATUS_STORE_PERSIST_KEY,
@@ -11,6 +13,10 @@ import { MarkdownContent } from "./shared/MarkdownContent";
 import { groupMemoryFiles } from "../utils/fileUtils";
 import { useRecentData } from "../hooks/useRecentData";
 import { EvolutionDetailBody } from "./EvolutionSection";
+import { translate, useI18n } from "../i18n";
+
+/** 读取失败时在 state 中使用的哨兵，避免把某语言文案写死进比较逻辑 */
+const DETAIL_READ_FAILED = "__DETAIL_READ_FAILED__";
 
 export type DetailModule = "plan" | "mem" | "log" | "output" | "evolution";
 
@@ -22,24 +28,27 @@ export function parseDetailModuleFromHash(): DetailModule | null {
 }
 
 function TaskList({ tasks }: { tasks: TaskItem[] }) {
+  const { t } = useI18n();
   if (tasks.length === 0) {
     return (
-      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无任务计划</p>
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">{t("detail.noPlan")}</p>
     );
   }
   return (
     <ul className="space-y-1.5">
-      {tasks.map((t) => (
+      {tasks.map((task) => (
         <li
-          key={t.id}
+          key={task.id}
           className={`flex items-start gap-2 text-sm ${
-            t.completed ? "text-ink-mute dark:text-ink-dark-mute line-through" : "text-ink dark:text-ink-dark-mute"
+            task.completed
+              ? "text-ink-mute dark:text-ink-dark-mute line-through"
+              : "text-ink dark:text-ink-dark-mute"
           }`}
         >
-          <span className="shrink-0 mt-0.5 text-accent">{t.completed ? "✓" : "○"}</span>
-          <span>{t.description}</span>
-          {t.tool_hint && (
-            <span className="text-ink-mute dark:text-ink-dark-mute shrink-0">[{t.tool_hint}]</span>
+          <span className="shrink-0 mt-0.5 text-accent">{task.completed ? "✓" : "○"}</span>
+          <span>{task.description}</span>
+          {task.tool_hint && (
+            <span className="text-ink-mute dark:text-ink-dark-mute shrink-0">[{task.tool_hint}]</span>
           )}
         </li>
       ))}
@@ -48,9 +57,10 @@ function TaskList({ tasks }: { tasks: TaskItem[] }) {
 }
 
 function LogList({ entries }: { entries: LogEntry[] }) {
+  const { t } = useI18n();
   if (entries.length === 0) {
     return (
-      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无日志</p>
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">{t("detail.noLog")}</p>
     );
   }
   return (
@@ -85,6 +95,7 @@ function LogList({ entries }: { entries: LogEntry[] }) {
 }
 
 function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry[] }) {
+  const { t } = useI18n();
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -94,7 +105,7 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
 
   if (!hasFiles && !hasEntries) {
     return (
-      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无日志</p>
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">{t("detail.noLog")}</p>
     );
   }
 
@@ -110,7 +121,7 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
       const content = await invoke<string>("skilllite_read_log_file", { filename });
       setFileContent(content);
     } catch {
-      setFileContent("* 无法读取文件内容 *");
+      setFileContent(DETAIL_READ_FAILED);
     } finally {
       setLoading(false);
     }
@@ -121,7 +132,7 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
       {hasFiles && (
         <div className="space-y-1.5">
           <div className="text-sm font-medium text-ink-mute dark:text-ink-dark-mute">
-            最近 3 天的日志文件
+            {t("detail.logRecent")}
           </div>
           <ul className="space-y-0.5">
             {files.map((f, i) => (
@@ -139,9 +150,15 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
                 {expandedFile === f && (
                   <div className="mt-1.5 mb-2 ml-5 p-3 rounded-lg bg-blue-50/60 dark:bg-zinc-700/25 text-sm text-ink/85 dark:text-zinc-400 overflow-y-auto max-h-80 border border-blue-100 dark:border-zinc-600/40 shadow-sm">
                     {loading ? (
-                      <span className="text-ink-mute dark:text-zinc-500">加载中...</span>
+                      <span className="text-ink-mute dark:text-zinc-500">{t("detail.loading")}</span>
                     ) : fileContent ? (
-                      <pre className="whitespace-pre-wrap text-xs font-mono break-words leading-relaxed">{fileContent}</pre>
+                      fileContent === DETAIL_READ_FAILED ? (
+                        <span className="text-red-500 text-sm">{t("detail.readFailed")}</span>
+                      ) : (
+                        <pre className="whitespace-pre-wrap text-xs font-mono break-words leading-relaxed">
+                          {fileContent}
+                        </pre>
+                      )
                     ) : null}
                   </div>
                 )}
@@ -154,7 +171,7 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
         <div className="space-y-1.5">
           {hasFiles && (
             <div className="text-sm font-medium text-ink-mute dark:text-ink-dark-mute pt-2 border-t border-border dark:border-border-dark">
-              实时日志
+              {t("detail.liveLog")}
             </div>
           )}
           <LogList entries={entries} />
@@ -165,6 +182,7 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
 }
 
 function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
+  const { t } = useI18n();
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -173,7 +191,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
   const hasHints = hints.length > 0;
   if (!hasFiles && !hasHints) {
     return (
-      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无记忆</p>
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">{t("detail.noMemory")}</p>
     );
   }
 
@@ -193,7 +211,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
       });
       setFileContent(content);
     } catch {
-      setFileContent("* 无法读取文件内容 *");
+      setFileContent(DETAIL_READ_FAILED);
     } finally {
       setLoading(false);
     }
@@ -223,11 +241,15 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
                   {expandedFile === f && (
                     <div className="mt-1.5 mb-2 ml-5 p-3 rounded-lg bg-blue-50/60 dark:bg-zinc-700/25 text-sm text-ink/85 dark:text-zinc-400 overflow-y-auto max-h-80 border border-blue-100 dark:border-zinc-600/40 shadow-sm">
                       {loading ? (
-                        <span className="text-ink-mute dark:text-zinc-500">加载中...</span>
+                        <span className="text-ink-mute dark:text-zinc-500">{t("detail.loading")}</span>
                       ) : fileContent ? (
-                        <div className="prose prose-sm max-w-none dark:prose-invert [&_pre]:text-xs [&_pre]:bg-black/5 [&_pre]:dark:bg-white/5 [&_pre]:rounded-md [&_pre]:p-2 [&_code]:text-xs [&_*]:!text-ink/80 [&_*]:dark:!text-zinc-400 [&_strong]:!text-ink [&_strong]:dark:!text-zinc-300 [&_h1]:!text-ink [&_h1]:dark:!text-zinc-300 [&_h2]:!text-ink [&_h2]:dark:!text-zinc-300 [&_h3]:!text-ink [&_h3]:dark:!text-zinc-300">
-                          <MarkdownContent content={fileContent} />
-                        </div>
+                        fileContent === DETAIL_READ_FAILED ? (
+                          <span className="text-red-500 text-sm">{t("detail.readFailed")}</span>
+                        ) : (
+                          <div className="prose prose-sm max-w-none dark:prose-invert [&_pre]:text-xs [&_pre]:bg-black/5 [&_pre]:dark:bg-white/5 [&_pre]:rounded-md [&_pre]:p-2 [&_code]:text-xs [&_*]:!text-ink/80 [&_*]:dark:!text-zinc-400 [&_strong]:!text-ink [&_strong]:dark:!text-zinc-300 [&_h1]:!text-ink [&_h1]:dark:!text-zinc-300 [&_h2]:!text-ink [&_h2]:dark:!text-zinc-300 [&_h3]:!text-ink [&_h3]:dark:!text-zinc-300">
+                            <MarkdownContent content={fileContent} />
+                          </div>
+                        )
                       ) : null}
                     </div>
                   )}
@@ -241,7 +263,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
         <>
           {hasFiles && (
             <div className="text-sm font-medium text-ink-mute dark:text-ink-dark-mute pt-2 border-t border-border dark:border-border-dark">
-              最近操作
+              {t("detail.recentOps")}
             </div>
           )}
           <ul className="space-y-0.5">
@@ -257,14 +279,6 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
   );
 }
 
-const TITLES: Record<DetailModule, string> = {
-  plan: "任务计划",
-  mem: "记忆",
-  log: "执行日志",
-  output: "输出",
-  evolution: "自进化与审核",
-};
-
 const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"];
 const getImageMime = (path: string): string | null => {
   const lower = path.toLowerCase();
@@ -278,13 +292,14 @@ const getImageMime = (path: string): string | null => {
 const isImageFile = (path: string) => IMAGE_EXTENSIONS.some((ext) => path.toLowerCase().endsWith(ext));
 
 function OutputFileContent({ files }: { files: string[] }) {
+  const { t } = useI18n();
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   if (files.length === 0) {
     return (
-      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">暂无输出文件</p>
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">{t("detail.noOutput")}</p>
     );
   }
 
@@ -313,7 +328,7 @@ function OutputFileContent({ files }: { files: string[] }) {
         setFileContent(content);
       }
     } catch {
-      setFileContent("* 无法读取文件内容 *");
+      setFileContent(DETAIL_READ_FAILED);
     } finally {
       setLoading(false);
     }
@@ -343,10 +358,10 @@ function OutputFileContent({ files }: { files: string[] }) {
                   {expandedFile === f && (
                     <div className="mt-2 p-3 rounded-lg bg-gray-100 dark:bg-gray-700/50 text-sm overflow-y-auto max-h-80 border border-gray-200 dark:border-gray-600">
                       {loading ? (
-                        <span className="text-gray-500">加载中...</span>
+                        <span className="text-gray-500">{t("detail.loading")}</span>
                       ) : fileContent ? (
-                        fileContent === "* 无法读取文件内容 *" ? (
-                          <span className="text-red-500 text-sm">{fileContent}</span>
+                        fileContent === DETAIL_READ_FAILED ? (
+                          <span className="text-red-500 text-sm">{t("detail.readFailed")}</span>
                         ) : fileContent.startsWith("data:image/") ? (
                           <img
                             src={fileContent}
@@ -381,9 +396,22 @@ function OutputFileContent({ files }: { files: string[] }) {
 }
 
 export default function DetailWindowView() {
+  const { t } = useI18n();
   const [module, setModule] = useState<DetailModule | null>(null);
   const { refreshRecentData } = useRecentData();
   const { tasks, logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();
+
+  const titles = useMemo(
+    () =>
+      ({
+        plan: t("detail.title.plan"),
+        mem: t("detail.title.mem"),
+        log: t("detail.title.log"),
+        output: t("detail.title.output"),
+        evolution: t("detail.title.evolution"),
+      }) satisfies Record<DetailModule, string>,
+    [t]
+  );
 
   useEffect(() => {
     const m = parseDetailModuleFromHash();
@@ -425,7 +453,7 @@ export default function DetailWindowView() {
   if (!module) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface dark:bg-surface-dark">
-        <p className="text-ink-mute">无效的详情视图</p>
+        <p className="text-ink-mute">{t("detail.invalid")}</p>
       </div>
     );
   }
@@ -443,19 +471,22 @@ export default function DetailWindowView() {
       await invoke("skilllite_open_directory", { module: dirModule });
     } catch (err) {
       console.error("[skilllite-assistant] skilllite_open_directory failed:", err);
+      useUiToastStore
+        .getState()
+        .show(translate("toast.openDirFailed", { err: formatInvokeError(err) }), "error");
     }
   };
 
   return (
     <div className="flex flex-col min-h-screen bg-paper dark:bg-paper-dark">
       <header className="flex items-center justify-between px-4 py-3 border-b border-border dark:border-border-dark shrink-0">
-        <h1 className="text-base font-semibold text-ink dark:text-ink-dark">{TITLES[module]}</h1>
+        <h1 className="text-base font-semibold text-ink dark:text-ink-dark">{titles[module]}</h1>
         <button
           type="button"
           onClick={handleOpenDir}
           className="p-2 text-ink-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-          aria-label="打开目录"
-          title="在文件管理器中打开"
+          aria-label={t("detail.openDir")}
+          title={t("detail.openInFm")}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />

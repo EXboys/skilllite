@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "../i18n";
 import {
   type ScheduleForm,
   type ScheduleJobForm,
@@ -61,6 +62,7 @@ export default function ScheduleEditor({
   inputCls,
   labelCls,
 }: ScheduleEditorProps) {
+  const { t } = useI18n();
   const [jsonMode, setJsonMode] = useState(false);
   const [jsonText, setJsonText] = useState("");
 
@@ -108,7 +110,7 @@ export default function ScheduleEditor({
             }}
             className="text-xs px-2.5 py-1.5 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover"
           >
-            应用 JSON
+            {t("schedule.applyJson")}
           </button>
           <button
             type="button"
@@ -119,7 +121,7 @@ export default function ScheduleEditor({
             }}
             className="text-xs text-ink-mute dark:text-ink-dark-mute hover:underline"
           >
-            取消
+            {t("common.cancel")}
           </button>
         </div>
       </div>
@@ -141,13 +143,13 @@ export default function ScheduleEditor({
             }}
             className="rounded border-border dark:border-border-dark"
           />
-          启用定时任务（总开关）
+          {t("schedule.enableGlobal")}
         </label>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>每日最多执行次数</label>
+          <label className={labelCls}>{t("schedule.maxRunsDay")}</label>
           <input
             type="number"
             min={1}
@@ -168,7 +170,7 @@ export default function ScheduleEditor({
           />
         </div>
         <div>
-          <label className={labelCls}>两次运行最小间隔（秒）</label>
+          <label className={labelCls}>{t("schedule.minInterval")}</label>
           <input
             type="number"
             min={0}
@@ -192,7 +194,7 @@ export default function ScheduleEditor({
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-ink dark:text-ink-dark-mute">任务列表</p>
+        <p className="text-xs font-medium text-ink dark:text-ink-dark-mute">{t("schedule.jobList")}</p>
         <div className="flex gap-2">
           <button
             type="button"
@@ -204,7 +206,7 @@ export default function ScheduleEditor({
             }}
             className="text-xs text-accent hover:underline"
           >
-            编辑原始 JSON
+            {t("schedule.editRawJson")}
           </button>
           <button
             type="button"
@@ -213,14 +215,14 @@ export default function ScheduleEditor({
             }}
             className="text-xs px-2 py-1 rounded-md border border-border dark:border-border-dark hover:bg-gray-100 dark:hover:bg-white/5"
           >
-            添加任务
+            {t("schedule.addJob")}
           </button>
         </div>
       </div>
 
       {data.jobs.length === 0 && (
         <p className="text-xs text-ink-mute dark:text-ink-dark-mute py-2">
-          暂无任务，点击「添加任务」开始配置。
+          {t("schedule.noJobs")}
         </p>
       )}
 
@@ -231,7 +233,9 @@ export default function ScheduleEditor({
             className="rounded-lg border border-border dark:border-border-dark p-3 space-y-3 bg-gray-50/80 dark:bg-surface-dark/40"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-medium text-ink dark:text-ink-dark">任务 {index + 1}</span>
+              <span className="text-xs font-medium text-ink dark:text-ink-dark">
+                {t("schedule.jobN", { n: index + 1 })}
+              </span>
               <div className="flex items-center gap-2">
                 <label className="flex items-center gap-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute cursor-pointer">
                   <input
@@ -240,49 +244,49 @@ export default function ScheduleEditor({
                     onChange={(e) => updateJob(index, { enabled: e.target.checked })}
                     className="rounded border-border dark:border-border-dark"
                   />
-                  启用
+                  {t("schedule.enable")}
                 </label>
                 <button
                   type="button"
                   onClick={() => setJobs(data.jobs.filter((_, i) => i !== index))}
                   className="text-[11px] text-red-600 dark:text-red-400 hover:underline"
                 >
-                  删除
+                  {t("schedule.remove")}
                 </button>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className={labelCls}>任务 ID</label>
+                <label className={labelCls}>{t("schedule.jobId")}</label>
                 <input
                   type="text"
                   value={job.id}
                   onChange={(e) => updateJob(index, { id: e.target.value })}
-                  placeholder="例如 daily-brief"
+                  placeholder={t("schedule.jobIdPh")}
                   className={inputCls}
                 />
               </div>
               <div>
-                <label className={labelCls}>会话 Key（可选）</label>
+                <label className={labelCls}>{t("schedule.sessionKey")}</label>
                 <input
                   type="text"
                   value={job.session_key}
                   onChange={(e) => updateJob(index, { session_key: e.target.value })}
-                  placeholder="留空则使用 schedule-任务ID"
+                  placeholder={t("schedule.sessionKeyPh")}
                   className={inputCls}
                 />
               </div>
             </div>
 
             <div>
-              <label className={labelCls}>触发方式（系统本地时区）</label>
+              <label className={labelCls}>{t("schedule.trigger")}</label>
               <div className="flex rounded-lg border border-border dark:border-border-dark overflow-hidden flex-wrap">
                 {(
                   [
-                    ["interval", "按间隔"] as const,
-                    ["daily", "每天定时"] as const,
-                    ["once", "仅一次"] as const,
+                    ["interval", t("schedule.mode.interval")] as const,
+                    ["daily", t("schedule.mode.daily")] as const,
+                    ["once", t("schedule.mode.once")] as const,
                   ] satisfies readonly [ScheduleTriggerMode, string][]
                 ).map(([mode, label]) => (
                   <button
@@ -321,15 +325,13 @@ export default function ScheduleEditor({
                 ))}
               </div>
               <p className="mt-1 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-                「每天定时」= 每个时刻在每个自然日最多成功一次；可添加多个时刻。
-                「仅一次」= 到达该本地时间后执行；仅成功时写入状态，失败会自动重试。
-                应用运行期间自动检测并执行到期任务。
+                {t("schedule.triggerHelp")}
               </p>
             </div>
 
             {job.trigger_mode === "interval" && (
             <div>
-              <label className={labelCls}>运行间隔（秒）</label>
+              <label className={labelCls}>{t("schedule.intervalSec")}</label>
               <div className="flex flex-wrap gap-2 mb-2">
                 {INTERVAL_PRESETS.map((p) => (
                   <button
@@ -342,7 +344,7 @@ export default function ScheduleEditor({
                         : "border-border dark:border-border-dark text-ink-mute dark:text-ink-dark-mute hover:bg-gray-100 dark:hover:bg-white/5"
                     }`}
                   >
-                    {p.label}
+                    {t(`schedule.preset.${p.seconds}`)}
                   </button>
                 ))}
               </div>
@@ -366,12 +368,12 @@ export default function ScheduleEditor({
 
             {job.trigger_mode === "daily" && (
             <div className="space-y-2">
-              <label className={labelCls}>每天执行时刻（本地，可多个）</label>
-              {job.daily_times.map((t, ti) => (
+              <label className={labelCls}>{t("schedule.dailyTimes")}</label>
+              {job.daily_times.map((hhmm, ti) => (
                 <div key={ti} className="flex gap-2 items-center">
                   <input
                     type="time"
-                    value={timeInputValue(t)}
+                    value={timeInputValue(hhmm)}
                     onChange={(e) => {
                       const next = [...job.daily_times];
                       next[ti] = normalizeDailyTime(e.target.value);
@@ -389,7 +391,7 @@ export default function ScheduleEditor({
                     }
                     className="shrink-0 text-[11px] text-red-600 dark:text-red-400 hover:underline disabled:opacity-30 disabled:pointer-events-none"
                   >
-                    移除
+                    {t("schedule.removeTime")}
                   </button>
                 </div>
               ))}
@@ -402,14 +404,14 @@ export default function ScheduleEditor({
                 }
                 className="text-[11px] px-2 py-1 rounded-md border border-border dark:border-border-dark hover:bg-gray-100 dark:hover:bg-white/5"
               >
-                添加时刻
+                {t("schedule.addTime")}
               </button>
             </div>
             )}
 
             {job.trigger_mode === "once" && (
             <div>
-              <label className={labelCls}>执行时间（本地，仅一次）</label>
+              <label className={labelCls}>{t("schedule.onceAt")}</label>
               <input
                 type="datetime-local"
                 step={60}
@@ -421,33 +423,33 @@ export default function ScheduleEditor({
             )}
 
             <div>
-              <label className={labelCls}>目标内容</label>
+              <label className={labelCls}>{t("schedule.goal")}</label>
               <textarea
                 value={job.goal}
                 onChange={(e) => updateJob(index, { goal: e.target.value })}
-                placeholder="这次定时运行要达成什么结果？"
+                placeholder={t("schedule.goalPh")}
                 rows={2}
                 className={`${inputCls} resize-y min-h-[2.5rem]`}
               />
             </div>
 
             <div>
-              <label className={labelCls}>执行步骤（Prompt）</label>
+              <label className={labelCls}>{t("schedule.steps")}</label>
               <textarea
                 value={job.steps_prompt}
                 onChange={(e) => updateJob(index, { steps_prompt: e.target.value })}
-                placeholder="分步说明 Agent 应如何执行（可写约束、工具使用顺序等）"
+                placeholder={t("schedule.stepsPh")}
                 rows={4}
                 className={`${inputCls} resize-y min-h-[5rem]`}
               />
             </div>
 
             <div>
-              <label className={labelCls}>补充说明（可选）</label>
+              <label className={labelCls}>{t("schedule.extra")}</label>
               <textarea
                 value={job.message}
                 onChange={(e) => updateJob(index, { message: e.target.value })}
-                placeholder="附加在「目标 / 步骤」之后的说明；若仅填此项，则与旧版单字段 message 行为一致"
+                placeholder={t("schedule.extraPh")}
                 rows={2}
                 className={`${inputCls} resize-y min-h-[2.5rem]`}
               />

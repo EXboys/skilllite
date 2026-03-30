@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+/** 界面语言：中文默认，可切换英文 */
+export type UiLocale = "zh" | "en";
+
 export type Provider = "api" | "ollama";
 
 /** 沙箱安全等级：1=无沙箱, 2=基础隔离, 3=完全沙箱(默认) */
@@ -32,6 +35,8 @@ export interface Settings {
   maxToolCallsPerTask?: number;
   /** 会话侧边栏是否折叠 */
   sessionPanelCollapsed?: boolean;
+  /** 界面语言 */
+  locale?: UiLocale;
 }
 
 const defaultSettings: Settings = {
@@ -40,6 +45,7 @@ const defaultSettings: Settings = {
   model: "gpt-4o",
   workspace: ".",
   apiBase: "",
+  locale: "zh",
   onboardingCompleted: false,
   showStarterPrompts: false,
   sandboxLevel: 3,

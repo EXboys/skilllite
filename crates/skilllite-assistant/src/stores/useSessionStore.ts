@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
+import { formatInvokeError } from "../utils/formatInvokeError";
+import { useUiToastStore } from "./useUiToastStore";
 
 export interface SessionInfo {
   session_key: string;
@@ -12,9 +14,12 @@ export interface SessionInfo {
 interface SessionState {
   currentSessionKey: string;
   sessions: SessionInfo[];
+  /** 最近一次从磁盘拉取会话列表失败时的说明（不入 persist） */
+  sessionsLoadError: string | null;
   loadSessions: () => Promise<void>;
+  clearSessionsLoadError: () => void;
   createSession: (name: string) => Promise<string>;
-  switchSession: (key: string) => void;
+  switchSession: (key: string) => Promise<void>;
   renameSession: (key: string, newName: string) => Promise<void>;
   deleteSession: (key: string) => Promise<void>;
 }
@@ -24,6 +29,9 @@ export const useSessionStore = create<SessionState>()(
     (set, get) => ({
       currentSessionKey: "default",
       sessions: [],
+      sessionsLoadError: null,
+
+      clearSessionsLoadError: () => set({ sessionsLoadError: null }),
 
       loadSessions: async () => {
         try {
@@ -39,8 +47,10 @@ export const useSessionStore = create<SessionState>()(
             const tb = parseInt(b.updated_at, 10) || 0;
             return tb - ta;
           });
-          set({ sessions: merged });
-        } catch {
+          set({ sessions: merged, sessionsLoadError: null });
+        } catch (e) {
+          const msg = formatInvokeError(e);
+          set({ sessionsLoadError: msg });
           if (get().sessions.length === 0) {
             set({
               sessions: [
@@ -57,7 +67,13 @@ export const useSessionStore = create<SessionState>()(
       },
 
       createSession: async (name: string) => {
-        invoke("skilllite_stop").catch(() => {});
+        try {
+          await invoke("skilllite_stop");
+        } catch (e) {
+          useUiToastStore
+            .getState()
+            .show(`停止当前任务失败：${formatInvokeError(e)}`, "error");
+        }
 
         try {
           const session = await invoke<SessionInfo>(
@@ -69,7 +85,14 @@ export const useSessionStore = create<SessionState>()(
             currentSessionKey: session.session_key,
           }));
           return session.session_key;
-        } catch {
+        } catch (e) {
+          const reason = formatInvokeError(e);
+          useUiToastStore
+            .getState()
+            .show(
+              `无法在磁盘创建会话（${reason}）。已使用仅本地的临时会话，重启后可能丢失。`,
+              "error"
+            );
           const fallbackKey = `s-${Date.now().toString(16)}`;
           const now = Math.floor(Date.now() / 1000).toString();
           const session: SessionInfo = {
@@ -86,14 +109,20 @@ export const useSessionStore = create<SessionState>()(
         }
       },
 
-      switchSession: (key: string) => {
-        if (get().currentSessionKey !== key) {
-          invoke("skilllite_stop").catch(() => {});
-          set({ currentSessionKey: key });
+      switchSession: async (key: string) => {
+        if (get().currentSessionKey === key) return;
+        try {
+          await invoke("skilllite_stop");
+        } catch (e) {
+          useUiToastStore
+            .getState()
+            .show(`停止当前任务失败：${formatInvokeError(e)}`, "error");
         }
+        set({ currentSessionKey: key });
       },
 
       renameSession: async (key: string, newName: string) => {
+        const prevSessions = get().sessions;
         set((s) => ({
           sessions: s.sessions.map((session) =>
             session.session_key === key
@@ -101,13 +130,22 @@ export const useSessionStore = create<SessionState>()(
               : session
           ),
         }));
-        invoke("skilllite_rename_session", {
-          sessionKey: key,
-          newName: newName,
-        }).catch(() => {});
+        try {
+          await invoke("skilllite_rename_session", {
+            sessionKey: key,
+            newName: newName,
+          });
+        } catch (e) {
+          set({ sessions: prevSessions });
+          useUiToastStore
+            .getState()
+            .show(`重命名会话失败：${formatInvokeError(e)}`, "error");
+        }
       },
 
       deleteSession: async (key: string) => {
+        const prevSessions = get().sessions;
+        const prevKey = get().currentSessionKey;
         set((s) => {
           const newSessions = s.sessions.filter(
             (session) => session.session_key !== key
@@ -118,9 +156,17 @@ export const useSessionStore = create<SessionState>()(
               s.currentSessionKey === key ? "default" : s.currentSessionKey,
           };
         });
-        invoke("skilllite_delete_session", { sessionKey: key }).catch(
-          () => {}
-        );
+        try {
+          await invoke("skilllite_delete_session", { sessionKey: key });
+        } catch (e) {
+          set({
+            sessions: prevSessions,
+            currentSessionKey: prevKey,
+          });
+          useUiToastStore
+            .getState()
+            .show(`删除会话失败：${formatInvokeError(e)}`, "error");
+        }
       },
     }),
     {

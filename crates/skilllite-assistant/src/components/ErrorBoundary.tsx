@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { translate } from "../i18n";
 
 interface Props {
   children: ReactNode;
@@ -8,24 +9,42 @@ interface Props {
 interface State {
   hasError: boolean;
   error: Error | null;
+  errorInfo: ErrorInfo | null;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("ErrorBoundary caught:", error, errorInfo);
+    this.setState({ errorInfo });
   }
 
   handleRetry = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState({ hasError: false, error: null, errorInfo: null });
+  };
+
+  handleCopyDetails = async () => {
+    const { error, errorInfo } = this.state;
+    if (!error) return;
+    const parts = [
+      error.name + ": " + error.message,
+      error.stack ?? "",
+      errorInfo?.componentStack ?? "",
+    ];
+    const text = parts.filter(Boolean).join("\n\n---\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* ignore */
+    }
   };
 
   render() {
@@ -38,18 +57,30 @@ export class ErrorBoundary extends Component<Props, State> {
           <div className="max-w-md w-full text-center space-y-4">
             <div className="text-4xl">⚠️</div>
             <h1 className="text-lg font-semibold text-ink dark:text-ink-dark">
-              出现错误
+              {translate("error.title")}
             </h1>
-            <p className="text-sm text-ink-mute dark:text-ink-dark-mute break-words">
+            <p className="text-sm text-ink-mute dark:text-ink-dark-mute break-words text-left">
               {this.state.error.message}
             </p>
-            <button
-              type="button"
-              onClick={this.handleRetry}
-              className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
-            >
-              重试
+            <div className="flex flex-wrap gap-2 justify-center">
+              <button
+                type="button"
+                onClick={this.handleRetry}
+                className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+              >
+              {translate("common.retry")}
             </button>
+              <button
+                type="button"
+                onClick={() => void this.handleCopyDetails()}
+                className="px-4 py-2 rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark text-sm font-medium hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
+              >
+                {translate("error.copyDetails")}
+              </button>
+            </div>
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
+              {translate("error.copyHint")}
+            </p>
           </div>
         </div>
       );

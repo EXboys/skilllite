@@ -451,7 +451,10 @@ pub fn provision_runtimes_to_cache(
     download_python: bool,
     download_node: bool,
     force: bool,
-    _progress: RuntimeProgressFn,
+    #[cfg_attr(not(feature = "runtime-deps"), allow(unused_variables))]
+    python_progress: RuntimeProgressFn,
+    #[cfg_attr(not(feature = "runtime-deps"), allow(unused_variables))]
+    node_progress: RuntimeProgressFn,
 ) -> ProvisionRuntimesResult {
     skilllite_core::config::load_dotenv();
     let Some(runtime_dir) = get_runtime_dir(cache_override) else {
@@ -483,6 +486,7 @@ pub fn provision_runtimes_to_cache(
     };
 
     let python = if !download_python {
+        drop(python_progress);
         ProvisionRuntimeItem {
             requested: false,
             ok: true,
@@ -494,47 +498,47 @@ pub fn provision_runtimes_to_cache(
             let bin = python_cache_binary(&runtime_dir);
             let dir = runtime_dir.join("python-3.12");
             if bin.exists() && !force {
+                drop(python_progress);
                 ProvisionRuntimeItem {
                     requested: true,
                     ok: true,
                     message: "Python 已在缓存中".into(),
                 }
             } else {
-                let run_ensure = || -> ProvisionRuntimeItem {
-                    match ensure_python_runtime(&runtime_dir, None) {
-                        Ok(_) => ProvisionRuntimeItem {
-                            requested: true,
-                            ok: true,
-                            message: if force {
-                                "已重新下载 Python 运行时".into()
-                            } else {
-                                "已下载 Python 运行时".into()
-                            },
-                        },
-                        Err(e) => ProvisionRuntimeItem {
-                            requested: true,
-                            ok: false,
-                            message: format!("{}", e),
-                        },
-                    }
-                };
-                if force && dir.exists() {
-                    if let Err(e) = std::fs::remove_dir_all(&dir) {
-                        ProvisionRuntimeItem {
-                            requested: true,
-                            ok: false,
-                            message: format!("无法删除旧 Python 缓存：{}", e),
-                        }
-                    } else {
-                        run_ensure()
-                    }
+                let py_result: Result<(), String> = if force && dir.exists() {
+                    std::fs::remove_dir_all(&dir)
+                        .map_err(|e| format!("无法删除旧 Python 缓存：{}", e))
+                        .and_then(|_| {
+                            ensure_python_runtime(&runtime_dir, python_progress)
+                                .map(|_| ())
+                                .map_err(|e| e.to_string())
+                        })
                 } else {
-                    run_ensure()
+                    ensure_python_runtime(&runtime_dir, python_progress)
+                        .map(|_| ())
+                        .map_err(|e| e.to_string())
+                };
+                match py_result {
+                    Ok(()) => ProvisionRuntimeItem {
+                        requested: true,
+                        ok: true,
+                        message: if force {
+                            "已重新下载 Python 运行时".into()
+                        } else {
+                            "已下载 Python 运行时".into()
+                        },
+                    },
+                    Err(msg) => ProvisionRuntimeItem {
+                        requested: true,
+                        ok: false,
+                        message: msg,
+                    },
                 }
             }
         }
         #[cfg(not(feature = "runtime-deps"))]
         {
+            drop(python_progress);
             ProvisionRuntimeItem {
                 requested: true,
                 ok: false,
@@ -544,6 +548,7 @@ pub fn provision_runtimes_to_cache(
     };
 
     let node = if !download_node {
+        drop(node_progress);
         ProvisionRuntimeItem {
             requested: false,
             ok: true,
@@ -555,6 +560,7 @@ pub fn provision_runtimes_to_cache(
             let bin = node_cache_binary(&runtime_dir);
             let dir = runtime_dir.join("node-20");
             if bin.exists() && !force {
+                drop(node_progress);
                 ProvisionRuntimeItem {
                     requested: true,
                     ok: true,
@@ -565,10 +571,10 @@ pub fn provision_runtimes_to_cache(
                     if let Err(e) = std::fs::remove_dir_all(&dir) {
                         Err(anyhow::anyhow!("无法删除旧 Node 缓存：{}", e))
                     } else {
-                        ensure_node_runtime(&runtime_dir, None).map(|_| ())
+                        ensure_node_runtime(&runtime_dir, node_progress).map(|_| ())
                     }
                 } else {
-                    ensure_node_runtime(&runtime_dir, None).map(|_| ())
+                    ensure_node_runtime(&runtime_dir, node_progress).map(|_| ())
                 };
                 match node_result {
                     Ok(()) => ProvisionRuntimeItem {
@@ -590,6 +596,7 @@ pub fn provision_runtimes_to_cache(
         }
         #[cfg(not(feature = "runtime-deps"))]
         {
+            drop(node_progress);
             ProvisionRuntimeItem {
                 requested: true,
                 ok: false,
@@ -958,6 +965,9 @@ fn download_with_progress(url: &str, path: &Path, progress: &RuntimeProgressFn) 
     let mut reader = resp.into_reader();
     let mut buf = [0u8; 8192];
     let mut total: usize = 0;
+    let mut last_report_total: usize = 0;
+    // 每约 512KiB 或结束时汇报一次，避免 UI 卡顿又保留可读进度
+    const REPORT_STRIDE: usize = 512 * 1024;
     loop {
         let n = std::io::Read::read(&mut reader, &mut buf).context("Read download body")?;
         if n == 0 {
@@ -965,14 +975,24 @@ fn download_with_progress(url: &str, path: &Path, progress: &RuntimeProgressFn) 
         }
         std::io::Write::write_all(&mut file, &buf[..n])?;
         total += n;
-        if len > 0 && total % (1024 * 1024) < 8192 {
-            let pct = (total as f64 / len as f64 * 100.0) as u32;
+        if len > 0 && total.saturating_sub(last_report_total) >= REPORT_STRIDE {
+            last_report_total = total;
+            let pct = (total as f64 / len as f64 * 100.0).min(100.0) as u32;
             let msg = format!("Downloading... {}%", pct);
             if let Some(ref f) = progress {
                 f(&msg);
             } else {
                 eprintln!("[runtime] {}", msg);
             }
+        }
+    }
+    if len > 0 && total > last_report_total {
+        let pct = (total as f64 / len as f64 * 100.0).min(100.0) as u32;
+        let msg = format!("Downloading... {}%", pct);
+        if let Some(ref f) = progress {
+            f(&msg);
+        } else {
+            eprintln!("[runtime] {}", msg);
         }
     }
     Ok(())

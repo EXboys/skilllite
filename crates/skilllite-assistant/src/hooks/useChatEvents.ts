@@ -64,7 +64,8 @@ export function useChatEvents({
       "skilllite-confirmation-request",
       (ev) => {
         if (dead) return;
-        if (ev.payload.session_key !== sessionKey) return;
+        const sk = ev.payload.session_key;
+        if (sk == null || sk !== sessionKey) return;
         const prompt = ev.payload.prompt ?? "";
         setMessages((prev) => [
           ...prev,
@@ -80,7 +81,8 @@ export function useChatEvents({
       session_key?: string;
     }>("skilllite-clarification-request", (ev) => {
       if (dead) return;
-      if (ev.payload.session_key !== sessionKey) return;
+      const sk = ev.payload.session_key;
+      if (sk == null || sk !== sessionKey) return;
       const { reason, message, suggestions } = ev.payload;
       setMessages((prev) => [
         ...prev,
@@ -138,7 +140,8 @@ export function useChatEvents({
 
     const unlisten = listen<StreamEventPayload>("skilllite-event", (ev) => {
       if (dead) return;
-      if (ev.payload.session_key !== sessionKey) return;
+      const sk = ev.payload.session_key;
+      if (sk == null || sk !== sessionKey) return;
       const { event, data } = ev.payload;
       if (event === "text_chunk") {
         const text = (data?.text as string) ?? "";

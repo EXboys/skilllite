@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { useGlobalShortcut } from "../hooks/useGlobalShortcut";
 import ChatView from "./ChatView";
 import StatusPanel, { LifePulseBadge } from "./StatusPanel";
@@ -8,9 +9,29 @@ import OnboardingModal from "./OnboardingModal";
 import { useRecentData } from "../hooks/useRecentData";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useSessionStore } from "../stores/useSessionStore";
+import { useUiToastStore } from "../stores/useUiToastStore";
+import { useI18n } from "../i18n";
 
 export default function MainLayout() {
+  const { t } = useI18n();
   useGlobalShortcut();
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    listen<{ message?: string }>("skilllite-chrome-bootstrap", (ev) => {
+      const msg = ev.payload?.message;
+      if (!msg) return;
+      const info =
+        msg.includes("跳过") ||
+        /skipped|tray skipped|no .*icon/i.test(msg);
+      useUiToastStore.getState().show(msg, info ? "info" : "error");
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
   const { settings, setSettings } = useSettingsStore();
   const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
   const sessions = useSessionStore((s) => s.sessions);
@@ -25,7 +46,9 @@ export default function MainLayout() {
   const currentSession = sessions.find(
     (s) => s.session_key === currentSessionKey
   );
-  const currentSessionName = currentSession?.display_name ?? (currentSessionKey === "default" ? "默认会话" : currentSessionKey);
+  const currentSessionName =
+    currentSession?.display_name ??
+    (currentSessionKey === "default" ? t("session.defaultDisplayName") : currentSessionKey);
 
   const [titleEditing, setTitleEditing] = useState(false);
   const [titleDraft, setTitleDraft] = useState(currentSessionName);
@@ -63,8 +86,12 @@ export default function MainLayout() {
             type="button"
             onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
             className="p-1.5 text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-            aria-label={leftPanelCollapsed ? "展开会话列表" : "收起会话列表"}
-            title={leftPanelCollapsed ? "展开会话列表" : "收起会话列表"}
+            aria-label={
+              leftPanelCollapsed ? t("main.expandSessions") : t("main.collapseSessions")
+            }
+            title={
+              leftPanelCollapsed ? t("main.expandSessions") : t("main.collapseSessions")
+            }
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -100,14 +127,14 @@ export default function MainLayout() {
                 }
               }}
               className="text-sm text-ink dark:text-ink-dark min-w-[8rem] max-w-[min(280px,40vw)] px-1 py-0.5 rounded border border-accent/40 bg-white dark:bg-paper-dark outline-none focus:ring-1 focus:ring-accent"
-              aria-label="会话标题"
+              aria-label={t("main.sessionTitleAria")}
             />
           ) : (
             <button
               type="button"
               onClick={() => setTitleEditing(true)}
               className="text-sm text-ink-mute dark:text-ink-dark-mute truncate text-left max-w-[min(280px,40vw)] hover:text-ink dark:hover:text-ink-dark rounded px-1 -mx-1 py-0.5 hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-              title="点击修改会话标题"
+              title={t("main.editSessionTitle")}
             >
               — {currentSessionName}
             </button>
@@ -119,9 +146,9 @@ export default function MainLayout() {
             type="button"
             onClick={() => setSettingsOpen(true)}
             className="px-2 py-1.5 text-sm text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-            aria-label="Settings"
+            aria-label={t("main.settings")}
           >
-            设置
+            {t("main.settings")}
           </button>
         </div>
       </header>
@@ -154,8 +181,12 @@ export default function MainLayout() {
             type="button"
             onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
             className="absolute left-0 top-1/2 z-10 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border dark:border-border-dark bg-white dark:bg-paper-dark text-ink-mute dark:text-ink-dark-mute shadow-sm hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark transition-colors"
-            aria-label={rightPanelCollapsed ? "展开信息栏" : "收起信息栏"}
-            title={rightPanelCollapsed ? "展开信息栏" : "收起信息栏"}
+            aria-label={
+              rightPanelCollapsed ? t("main.expandPanel") : t("main.collapsePanel")
+            }
+            title={
+              rightPanelCollapsed ? t("main.expandPanel") : t("main.collapsePanel")
+            }
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"

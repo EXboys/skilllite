@@ -6,7 +6,7 @@ mod skilllite_bridge;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, WindowEvent,
+    Emitter, Manager, WindowEvent,
 };
 
 #[tauri::command]
@@ -395,13 +395,17 @@ async fn skilllite_runtime_status() -> skilllite_bridge::RuntimeUiSnapshot {
 
 #[tauri::command]
 async fn skilllite_provision_runtimes(
+    app: tauri::AppHandle,
     python: bool,
     node: bool,
     force: bool,
 ) -> Result<skilllite_bridge::ProvisionRuntimesResult, String> {
-    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::provision_runtimes(python, node, force))
-        .await
-        .map_err(|e| e.to_string())
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::provision_runtimes_with_emit(&app, python, node, force)
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -549,49 +553,69 @@ pub fn run() {
             let skilllite_path = skilllite_bridge::resolve_skilllite_path_app(app.handle());
             life_pulse::start(pulse_state, skilllite_path, app.handle().clone());
 
-            // Tray icon with menu
-            let show_i = MenuItem::with_id(app, "show", "Show Window", true, None::<&str>)?;
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            // Tray icon with menu（中文；失败时通知前端 Toast）
+            let show_i = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
+            let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_i, &quit_i])?;
 
-            let _tray = app.default_window_icon().map(|icon| {
-                TrayIconBuilder::new()
-                    .icon(icon.clone())
-                    .menu(&menu)
-                    .show_menu_on_left_click(false)
-                    .tooltip("SkillLite Assistant")
-                    .on_tray_icon_event(|tray, event| {
-                        if let TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        } = event
-                        {
-                            let _ = tray.app_handle().get_webview_window("main").map(|w| {
-                                let _ = w.show();
-                                let _ = w.set_focus();
-                            });
-                        }
-                    })
-                    .on_menu_event(|app, event| match event.id.as_ref() {
-                        "show" => {
-                            if let Some(w) = app.get_webview_window("main") {
-                                let _ = w.show();
-                                let _ = w.set_focus();
+            let app_handle = app.handle().clone();
+            match app.default_window_icon() {
+                Some(icon) => {
+                    if let Err(e) = TrayIconBuilder::new()
+                        .icon(icon.clone())
+                        .menu(&menu)
+                        .show_menu_on_left_click(false)
+                        .tooltip("SkillLite 技能助手")
+                        .on_tray_icon_event(|tray, event| {
+                            if let TrayIconEvent::Click {
+                                button: MouseButton::Left,
+                                button_state: MouseButtonState::Up,
+                                ..
+                            } = event
+                            {
+                                let _ = tray.app_handle().get_webview_window("main").map(|w| {
+                                    let _ = w.show();
+                                    let _ = w.set_focus();
+                                });
                             }
-                        }
-                        "quit" => {
-                            if let Some(ps) = app.try_state::<life_pulse::LifePulseState>() {
-                                life_pulse::stop(&ps);
+                        })
+                        .on_menu_event(|app, event| match event.id.as_ref() {
+                            "show" => {
+                                if let Some(w) = app.get_webview_window("main") {
+                                    let _ = w.show();
+                                    let _ = w.set_focus();
+                                }
                             }
-                            app.exit(0);
-                        }
-                        _ => {}
-                    })
-                    .build(app)
-            });
-            if let Some(res) = _tray {
-                res?;
+                            "quit" => {
+                                if let Some(ps) = app.try_state::<life_pulse::LifePulseState>() {
+                                    life_pulse::stop(&ps);
+                                }
+                                app.exit(0);
+                            }
+                            _ => {}
+                        })
+                        .build(app)
+                    {
+                        eprintln!("[skilllite-assistant] tray build failed: {}", e);
+                        let _ = app_handle.emit(
+                            "skilllite-chrome-bootstrap",
+                            serde_json::json!({
+                                "kind": "tray",
+                                "message": format!("系统托盘不可用：{}", e)
+                            }),
+                        );
+                    }
+                }
+                None => {
+                    eprintln!("[skilllite-assistant] no default window icon; tray skipped");
+                    let _ = app_handle.emit(
+                        "skilllite-chrome-bootstrap",
+                        serde_json::json!({
+                            "kind": "tray",
+                            "message": "未找到应用图标，已跳过系统托盘"
+                        }),
+                    );
+                }
             }
 
             Ok(())

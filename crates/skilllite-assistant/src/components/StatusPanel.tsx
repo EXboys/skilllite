@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { formatInvokeError } from "../utils/formatInvokeError";
+import { useUiToastStore } from "../stores/useUiToastStore";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useStatusStore, type LogEntry } from "../stores/useStatusStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
@@ -7,6 +9,7 @@ import { groupMemoryFiles } from "../utils/fileUtils";
 import { openDetailWindow } from "../utils/detailWindow";
 import { EvolutionStatusSummary } from "./EvolutionSection";
 import { useLifePulse, type LifePulseActivity } from "../hooks/useLifePulse";
+import { getLocale, translate, useI18n } from "../i18n";
 
 interface MemoryEntryData {
   path: string;
@@ -18,9 +21,10 @@ interface MemoryEntryData {
 const PREVIEW_LIMIT = 3;
 
 function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
+  const { t } = useI18n();
   if (entries.length === 0) {
     return (
-      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无日志</p>
+      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">{t("status.noLogs")}</p>
     );
   }
   const reversed = entries.slice().reverse();
@@ -57,11 +61,12 @@ function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
 }
 
 function LogFilePreview({ files, entries, limit = 3 }: { files: string[]; entries: LogEntry[]; limit?: number }) {
+  const { t } = useI18n();
   const hasFiles = files.length > 0;
   const hasEntries = entries.length > 0;
   if (!hasFiles && !hasEntries) {
     return (
-      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无日志</p>
+      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">{t("status.noLogs")}</p>
     );
   }
   const show = limit ? files.slice(0, limit) : files;
@@ -80,7 +85,7 @@ function LogFilePreview({ files, entries, limit = 3 }: { files: string[]; entrie
           ))}
           {files.length > limit && (
             <li className="text-xs text-ink-mute dark:text-ink-dark-mute truncate pt-1">
-              + {files.length - limit} 个文件
+              {t("status.moreFiles", { n: files.length - limit })}
             </li>
           )}
         </ul>
@@ -93,9 +98,10 @@ function LogFilePreview({ files, entries, limit = 3 }: { files: string[]; entrie
 }
 
 function OutputPreview({ files, limit = 3 }: { files: string[]; limit?: number }) {
+  const { t } = useI18n();
   if (files.length === 0) {
     return (
-      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无输出文件</p>
+      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">{t("status.noOutput")}</p>
     );
   }
   const show = limit ? files.slice(0, limit) : files;
@@ -112,7 +118,7 @@ function OutputPreview({ files, limit = 3 }: { files: string[]; limit?: number }
       ))}
       {files.length > limit && (
         <li className="text-xs text-ink-mute dark:text-ink-dark-mute truncate pt-1">
-          + {files.length - limit} 个文件
+          {t("status.moreFiles", { n: files.length - limit })}
         </li>
       )}
     </ul>
@@ -120,6 +126,7 @@ function OutputPreview({ files, limit = 3 }: { files: string[]; limit?: number }
 }
 
 function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string[]; limit?: number }) {
+  const { t } = useI18n();
   const [summaries, setSummaries] = useState<MemoryEntryData[]>([]);
 
   useEffect(() => {
@@ -134,7 +141,7 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
 
   if (!hasSummaries && !hasFiles && !hasHints) {
     return (
-      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无记忆</p>
+      <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">{t("status.noMemory")}</p>
     );
   }
 
@@ -159,12 +166,14 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
         ))}
         {summaries.length > (limit ?? summaries.length) && (
           <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
-            + {summaries.length - (limit ?? summaries.length)} 条更多记忆
+            {t("status.memoryMoreEntries", {
+              n: summaries.length - (limit ?? summaries.length),
+            })}
           </p>
         )}
         {hasHints && limit && (
           <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute pt-0.5">
-            + {hints.length} 条最近操作
+            {t("status.recentHintsCount", { n: hints.length })}
           </p>
         )}
       </div>
@@ -186,7 +195,7 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
       ))}
       {hasHints && limit && (
         <li className="text-xs text-ink-mute dark:text-ink-dark-mute truncate pt-1">
-          + {hints.length} 条最近操作
+          {t("status.recentHintsCount", { n: hints.length })}
         </li>
       )}
     </ul>
@@ -207,6 +216,7 @@ function SummarySection({
   hasMore: boolean;
   children: React.ReactNode;
 }) {
+  const { t } = useI18n();
   return (
     <section className="mb-4 min-w-0">
       <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
@@ -218,7 +228,7 @@ function SummarySection({
           <span>{title}</span>
           {hasMore && (
             <span className="text-xs font-normal text-ink-mute group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent inline-flex items-center gap-0.5 ml-0.5 transition-colors">
-              更多
+              {t("status.more")}
               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M9 18l6-6-6-6" />
               </svg>
@@ -230,8 +240,8 @@ function SummarySection({
             type="button"
             onClick={(e) => { e.stopPropagation(); onOpenDir(); }}
             className="p-1.5 shrink-0 text-ink-mute hover:text-ink dark:hover:text-ink-dark rounded hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-            aria-label="打开目录"
-            title="在文件管理器中打开"
+            aria-label={t("status.openFolderAria")}
+            title={t("status.openInFmTitle")}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -255,13 +265,23 @@ type StatusPanelTab = "evolution" | "archive";
 const openDir = (module: string) => () => {
   invoke("skilllite_open_directory", { module }).catch((err) => {
     console.error("[skilllite-assistant] skilllite_open_directory failed:", err);
+    useUiToastStore
+      .getState()
+      .show(
+        translate("status.openDirFailed", {
+          module,
+          err: formatInvokeError(err),
+        }),
+        "error"
+      );
   });
 };
 
 const SKILL_LIST_MAX_HEIGHT = 200;
 
-/** 将 skill 名称转为短标签（如 xiaohongshu-writer → 小红书） */
-function skillDisplayName(name: string): string {
+/** 将 skill 名称转为短标签（如 xiaohongshu-writer → 小红书）；英文界面保留原名 */
+function skillDisplayName(name: string, locale: "zh" | "en"): string {
+  if (locale === "en") return name;
   const map: Record<string, string> = {
     "xiaohongshu-writer": "小红书",
     "check-weather-forecast": "天气预报",
@@ -279,6 +299,8 @@ function skillDisplayName(name: string): string {
 const SKILLS_SH_URL = "https://skills.sh/";
 
 function SkillRepairSection() {
+  const { t } = useI18n();
+  const locale = getLocale();
   const { settings } = useSettingsStore();
   const workspace = settings.workspace || ".";
   const [skillNames, setSkillNames] = useState<string[]>([]);
@@ -335,7 +357,7 @@ function SkillRepairSection() {
         workspace,
         skillNames: toRepair,
       });
-      setRepairResult(out || "修复完成");
+      setRepairResult(out || t("status.repairComplete"));
     } catch (e) {
       setRepairResult(String(e));
       setResultIsError(true);
@@ -356,7 +378,7 @@ function SkillRepairSection() {
         source,
         force: false,
       });
-      setAddResult(out || "已添加");
+      setAddResult(out || t("status.skillAdded"));
       setAddSource("");
       loadSkills();
     } catch (e) {
@@ -384,10 +406,10 @@ function SkillRepairSection() {
     <section className="mb-4 min-w-0">
       {/* 标题行：技能 + 数量 + 操作 */}
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2 min-w-0">
-        <span className="font-medium text-ink dark:text-ink-dark shrink-0">技能</span>
+        <span className="font-medium text-ink dark:text-ink-dark shrink-0">{t("status.skills")}</span>
         {skillNames.length > 0 && (
           <span className="text-xs text-ink-mute dark:text-ink-dark-mute shrink-0">
-            {skillNames.length} 个
+            {t("status.countSkills", { n: skillNames.length })}
           </span>
         )}
         <div className="flex items-center gap-0.5 min-w-0">
@@ -396,8 +418,8 @@ function SkillRepairSection() {
             onClick={loadSkills}
             disabled={loadingList}
             className="p-1.5 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
-            title="刷新列表"
-            aria-label="刷新"
+            title={t("status.refresh")}
+            aria-label={t("status.refresh")}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={loadingList ? "animate-spin" : ""}>
               <path d="M21 2v6h-6" />
@@ -411,17 +433,17 @@ function SkillRepairSection() {
             onClick={selectAll}
             disabled={skillNames.length === 0}
             className="text-xs px-1.5 py-1 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
-            title="全选"
+            title={t("status.selectAll")}
           >
-            全选
+            {t("status.selectAll")}
           </button>
           <button
             type="button"
             onClick={selectNone}
             className="text-xs px-1.5 py-1 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-            title="取消选择"
+            title={t("status.selectNoneTitle")}
           >
-            取消
+            {t("status.deselect")}
           </button>
         </div>
       </div>
@@ -434,7 +456,7 @@ function SkillRepairSection() {
             value={addSource}
             onChange={(e) => setAddSource(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runAdd()}
-            placeholder="owner/repo 或 owner/repo@skill-name"
+            placeholder={t("status.skillPlaceholder")}
             className="flex-1 min-w-0 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-2.5 py-1.5 text-xs placeholder:text-ink-mute dark:placeholder:text-ink-dark-mute"
           />
           <button
@@ -443,7 +465,7 @@ function SkillRepairSection() {
             disabled={adding || !addSource.trim()}
             className="shrink-0 px-2.5 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {adding ? "添加中…" : "添加"}
+            {adding ? t("status.addingSkill") : t("status.addSkill")}
           </button>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -452,7 +474,7 @@ function SkillRepairSection() {
             onClick={() => openUrl(SKILLS_SH_URL)}
             className="text-xs text-ink-mute dark:text-ink-dark-mute hover:text-accent hover:underline text-left"
           >
-            在 skills.sh 浏览更多技能
+            {t("status.browseSkillsSh")}
           </button>
           {addResult != null && (
             <span
@@ -474,19 +496,19 @@ function SkillRepairSection() {
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin shrink-0">
               <path d="M21 12a9 9 0 1 1-6.219-8.56" />
             </svg>
-            加载中…
+            {t("common.loading")}
           </div>
         ) : skillNames.length === 0 ? (
           <div className="p-4 text-xs text-ink-mute dark:text-ink-dark-mute text-center leading-relaxed">
-            <p>未找到技能</p>
-            <p className="text-[11px] mt-1 mb-2">当前工作区没有 .skills 目录，点击下方按钮下载默认技能包</p>
+            <p>{t("status.noSkillsFound")}</p>
+            <p className="text-[11px] mt-1 mb-2">{t("status.noSkillsHint")}</p>
             <button
               type="button"
               onClick={runInitSkills}
               disabled={initializing}
               className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {initializing ? "初始化中…" : "初始化技能"}
+              {initializing ? t("status.initializing") : t("status.initSkills")}
             </button>
             {initError && (
               <p className="mt-2 text-xs text-red-600 dark:text-red-400 break-words text-left">{initError}</p>
@@ -510,7 +532,9 @@ function SkillRepairSection() {
                     onChange={() => toggleOne(name)}
                     className="rounded border-border dark:border-border-dark text-accent focus:ring-accent/40 shrink-0"
                   />
-                  <span className="truncate text-xs font-medium flex-1 min-w-0">{skillDisplayName(name)}</span>
+                  <span className="truncate text-xs font-medium flex-1 min-w-0">
+                    {skillDisplayName(name, locale)}
+                  </span>
                   <button
                     type="button"
                     onClick={(e) => {
@@ -518,13 +542,17 @@ function SkillRepairSection() {
                       e.stopPropagation();
                       invoke("skilllite_open_skill_directory", { workspace, skillName: name }).catch((err) => {
                         console.error("[skilllite-assistant] open_skill_directory failed:", err);
-                        setRepairResult(`打开目录失败: ${err}`);
+                        const msg = formatInvokeError(err);
+                        setRepairResult(translate("status.openSkillDirResult", { err: msg }));
                         setResultIsError(true);
+                        useUiToastStore
+                          .getState()
+                          .show(translate("status.openSkillDirFailed", { err: msg }), "error");
                       });
                     }}
                     className="p-1 rounded text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 shrink-0"
-                    title="打开技能目录"
-                    aria-label="打开目录"
+                    title={t("status.openFolder")}
+                    aria-label={t("status.openFolderAria")}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -544,7 +572,11 @@ function SkillRepairSection() {
         disabled={repairing || skillNames.length === 0}
         className="w-full text-sm px-3 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
-        {repairing ? "修复中…" : selected.size > 0 ? `修复选中 (${selected.size})` : "修复全部失败技能"}
+        {repairing
+          ? t("status.repairing")
+          : selected.size > 0
+            ? t("status.repairSelected", { n: selected.size })
+            : t("status.repairAll")}
       </button>
 
       {/* 修复结果 */}
@@ -571,13 +603,14 @@ function formatPulseTime(ts: number): string {
 
 /** Compact pulse dot + label for the top header bar. */
 export function LifePulseBadge() {
-  const { status, activities, chatting, toggle } = useLifePulse();
+  const { t } = useI18n();
+  const { status, activities, chatting, toggle, setWorkspace } = useLifePulse();
   const { settings } = useSettingsStore();
 
   useEffect(() => {
     const ws = settings.workspace?.trim() || ".";
-    invoke("skilllite_life_pulse_set_workspace", { workspace: ws }).catch(() => {});
-  }, [settings.workspace]);
+    void setWorkspace(ws);
+  }, [settings.workspace, setWorkspace]);
 
   if (!status) return null;
 
@@ -587,22 +620,22 @@ export function LifePulseBadge() {
   const isBusy = chatting || isGrowing || isRunning;
 
   let dotColor = "bg-gray-400 dark:bg-gray-600";
-  let label = "沉睡中";
+  let label = t("lifePulse.sleeping");
   if (!status.enabled) {
     dotColor = "bg-gray-400 dark:bg-gray-600";
-    label = "沉睡中";
+    label = t("lifePulse.sleeping");
   } else if (chatting) {
     dotColor = "bg-violet-500";
-    label = "跟你聊着呢";
+    label = t("lifePulse.chatting");
   } else if (isGrowing) {
     dotColor = "bg-emerald-500";
-    label = "偷偷变强中";
+    label = t("lifePulse.growing");
   } else if (isRunning) {
     dotColor = "bg-amber-500";
-    label = "干活呢别催";
+    label = t("lifePulse.working");
   } else if (isActive) {
     dotColor = "bg-sky-500";
-    label = "闲着蛋疼中";
+    label = t("lifePulse.idle");
   }
 
   const latest: LifePulseActivity | undefined = activities[0];
@@ -614,7 +647,7 @@ export function LifePulseBadge() {
         type="button"
         onClick={() => toggle(!status.enabled)}
         className="flex items-center gap-1.5 px-2 py-1 rounded-md text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-        title={status.enabled ? "点击让它休息" : "点击唤醒它"}
+        title={status.enabled ? t("lifePulse.toggleRest") : t("lifePulse.toggleWake")}
       >
         <span className="relative flex h-2 w-2 shrink-0">
           {isActive && isBusy && (
@@ -637,6 +670,7 @@ export function LifePulseBadge() {
 }
 
 export default function StatusPanel() {
+  const { t } = useI18n();
   const [tab, setTab] = useState<StatusPanelTab>("evolution");
   const { logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();
 
@@ -655,7 +689,7 @@ export default function StatusPanel() {
     <div className="box-border w-full min-w-0 max-w-full p-4 text-sm break-words">
       <div
         role="tablist"
-        aria-label="信息栏分类"
+        aria-label={t("status.panelAria")}
         className="flex gap-0 mb-1 border-b border-border/80 dark:border-border-dark/80"
       >
         <button
@@ -668,7 +702,7 @@ export default function StatusPanel() {
           onClick={() => setTab("evolution")}
           className={tabBtnClass(tab === "evolution")}
         >
-          进化与能力
+          {t("status.tabEvolution")}
         </button>
         <button
           type="button"
@@ -680,7 +714,7 @@ export default function StatusPanel() {
           onClick={() => setTab("archive")}
           className={tabBtnClass(tab === "archive")}
         >
-          运行档案
+          {t("status.tabArchive")}
         </button>
       </div>
 
@@ -704,7 +738,7 @@ export default function StatusPanel() {
           className="min-w-0 pt-3"
         >
           <SummarySection
-            title="记忆"
+            title={t("status.memory")}
             onClickMore={() => openDetailWindow("mem")}
             onOpenDir={openDir("memory")}
             hasMore={memHasMore || memoryFiles.length > 0}
@@ -713,7 +747,7 @@ export default function StatusPanel() {
           </SummarySection>
 
           <SummarySection
-            title="执行日志"
+            title={t("status.log")}
             onClickMore={() => openDetailWindow("log")}
             onOpenDir={openDir("log")}
             hasMore={logHasMore}
@@ -722,7 +756,7 @@ export default function StatusPanel() {
           </SummarySection>
 
           <SummarySection
-            title="输出"
+            title={t("status.output")}
             onClickMore={() => openDetailWindow("output")}
             onOpenDir={openDir("output")}
             hasMore={outputHasMore}

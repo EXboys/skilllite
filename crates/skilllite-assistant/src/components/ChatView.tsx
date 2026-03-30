@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../stores/useSettingsStore";
@@ -12,29 +12,27 @@ import { InputPlanStrip } from "./chat/InputPlanStrip";
 import type { ChatMessage } from "../types/chat";
 import { isChatHiddenToolName } from "../utils/chatNoise";
 import { notifyRuntimeStatusMayHaveChanged } from "../utils/runtimeStatusRefresh";
-
-const STARTER_ACTIONS = [
-  {
-    title: "介绍当前工作区",
-    prompt: "请介绍一下当前工作区适合怎么使用 SkillLite，并给我一个建议的第一步。",
-  },
-  {
-    title: "列出可用技能",
-    prompt: "请列出当前工作区可用的技能，并告诉我最适合新手先试哪个。",
-  },
-  {
-    title: "推荐入门任务",
-    prompt: "请推荐一个最适合新手的入门任务，并直接带我开始。",
-  },
-] as const;
+import { formatInvokeError } from "../utils/formatInvokeError";
+import { useUiToastStore } from "../stores/useUiToastStore";
+import { useI18n, translate } from "../i18n";
 
 export default function ChatView() {
+  const { t } = useI18n();
+  const starterActions = useMemo(
+    () => [
+      { title: t("chat.starter1"), prompt: t("chat.starter1Prompt") },
+      { title: t("chat.starter2"), prompt: t("chat.starter2Prompt") },
+      { title: t("chat.starter3"), prompt: t("chat.starter3Prompt") },
+    ],
+    [t]
+  );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [transcriptError, setTranscriptError] = useState<string | null>(null);
   const { settings, setSettings } = useSettingsStore();
   const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
   const planTasks = useStatusStore((s) => s.tasks);
@@ -59,6 +57,7 @@ export default function ChatView() {
     setLoading(false);
     setError(null);
     setNotice(null);
+    setTranscriptError(null);
   }
 
   useChatEvents({
@@ -81,26 +80,39 @@ export default function ChatView() {
   useEffect(() => {
     let cancelled = false;
 
-    setMessages([]);
-    setLoading(false);
-    setError(null);
-    setNotice(null);
-    statusActions.clearAll();
+    const run = async () => {
+      setMessages([]);
+      setLoading(false);
+      setError(null);
+      setNotice(null);
+      setTranscriptError(null);
+      statusActions.clearAll();
 
-    invoke("skilllite_stop").catch(() => {});
+      try {
+        await invoke("skilllite_stop");
+      } catch (e) {
+        if (!cancelled) {
+          const msg = formatInvokeError(e);
+          useUiToastStore
+            .getState()
+            .show(translate("toast.stopPrevFailed", { err: msg }), "error");
+        }
+      }
 
-    invoke<
-      Array<{
-        id: string;
-        role: string;
-        content: string;
-        name?: string;
-        is_error?: boolean;
-      }>
-    >("skilllite_load_transcript", {
-      sessionKey: currentSessionKey,
-    })
-      .then((entries) => {
+      if (cancelled) return;
+
+      try {
+        const entries = await invoke<
+          Array<{
+            id: string;
+            role: string;
+            content: string;
+            name?: string;
+            is_error?: boolean;
+          }>
+        >("skilllite_load_transcript", {
+          sessionKey: currentSessionKey,
+        });
         if (cancelled) return;
         if (!entries || entries.length === 0) return;
         const msgs: ChatMessage[] = [];
@@ -135,11 +147,15 @@ export default function ChatView() {
           });
         }
         setMessages(msgs);
-      })
-      .catch((err) => {
+      } catch (err) {
         if (cancelled) return;
+        const msg = formatInvokeError(err);
+        setTranscriptError(msg);
         console.error("[skilllite-assistant] skilllite_load_transcript failed:", err);
-      });
+      }
+    };
+
+    void run();
 
     return () => {
       cancelled = true;
@@ -181,7 +197,7 @@ export default function ChatView() {
   const handleClear = useCallback(async () => {
     if (loading || isClearing) return;
     setIsClearing(true);
-    setNotice("正在清空对话...");
+    setNotice(t("chat.clearingNotice"));
     try {
       await invoke("skilllite_clear_transcript", {
         sessionKey: currentSessionKey,
@@ -191,7 +207,7 @@ export default function ChatView() {
       setError(null);
       statusActions.clearAll();
       refreshRecentData();
-      setNotice("已清空对话");
+      setNotice(t("chat.clearedNotice"));
     } catch (err) {
       console.error("[skilllite-assistant] skilllite_clear_transcript failed:", err);
       setError(err instanceof Error ? err.message : String(err));
@@ -199,7 +215,15 @@ export default function ChatView() {
     } finally {
       setIsClearing(false);
     }
-  }, [loading, isClearing, settings.workspace, currentSessionKey, statusActions, refreshRecentData]);
+  }, [
+    loading,
+    isClearing,
+    settings.workspace,
+    currentSessionKey,
+    statusActions,
+    refreshRecentData,
+    t,
+  ]);
 
   const handleStop = useCallback(async () => {
     try {
@@ -208,7 +232,10 @@ export default function ChatView() {
       setMessages((prev) => {
         const last = prev[prev.length - 1];
         if (last?.type === "assistant" && last?.streaming) {
-          const content = last.content ? `${last.content}\n\n[已中止]` : "[已中止]";
+          const abortMark = t("chat.aborted");
+          const content = last.content
+            ? `${last.content}\n\n${abortMark}`
+            : abortMark;
           statusActions.setLatestOutput(content);
           return [...prev.slice(0, -1), { ...last, content, streaming: false }];
         }
@@ -216,10 +243,15 @@ export default function ChatView() {
       });
       statusActions.clearPlan();
       refreshRecentData();
-    } catch {
+    } catch (e) {
       setLoading(false);
+      const msg = formatInvokeError(e);
+      setError(`${translate("toast.stopFailed", { err: msg })}`);
+      useUiToastStore
+        .getState()
+        .show(translate("toast.stopFailed", { err: msg }), "error");
     }
-  }, [refreshRecentData, statusActions]);
+  }, [refreshRecentData, statusActions, t]);
 
   const sendMessage = useCallback(async (rawText: string) => {
     const text = rawText.trim();
@@ -282,7 +314,7 @@ export default function ChatView() {
         {
           id: crypto.randomUUID(),
           type: "assistant",
-          content: `请求失败: ${errMsg}`,
+          content: t("chat.requestFailed", { msg: errMsg }),
         },
       ]);
     } finally {
@@ -304,6 +336,7 @@ export default function ChatView() {
     settings.maxToolCallsPerTask,
     currentSessionKey,
     statusActions,
+    t,
   ]);
 
   const handleSend = async () => {
@@ -330,10 +363,10 @@ export default function ChatView() {
             type="button"
             onClick={handleStop}
             className="text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors font-medium"
-            aria-label="Stop"
-            title="停止当前任务"
+            aria-label={t("chat.stop")}
+            title={t("chat.stopTask")}
           >
-            停止
+            {t("chat.stop")}
           </button>
         )}
         <button
@@ -345,8 +378,8 @@ export default function ChatView() {
               ? "text-accent bg-accent/10 dark:bg-accent/20"
               : "text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent hover:bg-ink/5 dark:hover:bg-white/5"
           } disabled:opacity-50`}
-          aria-label="Clear chat"
-          title={isClearing ? "正在清空对话" : "清空对话"}
+          aria-label={t("chat.clear")}
+          title={isClearing ? t("chat.clearingNotice") : t("chat.clear")}
         >
           {isClearing && (
             <svg
@@ -372,12 +405,18 @@ export default function ChatView() {
               />
             </svg>
           )}
-          {isClearing ? "正在清空" : "清空对话"}
+          {isClearing ? t("chat.clearing") : t("chat.clear")}
         </button>
       </div>
+      {transcriptError && (
+        <div className="mx-3 mt-2 px-3 py-2 rounded-md border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 text-amber-900 dark:text-amber-100 text-xs">
+          <span className="font-medium">{t("chat.transcriptErrorTitle")}</span>
+          <span className="block mt-1 break-words opacity-90">{transcriptError}</span>
+        </div>
+      )}
       {isClearing && (
         <div className="mx-3 mt-2 px-3 py-2 rounded-md border border-accent/30 bg-accent/10 dark:bg-accent/20 text-accent text-xs animate-pulse">
-          正在清空会话并整理历史，请稍候...
+          {t("chat.clearingHint")}
         </div>
       )}
       {showStarterPrompts && (
@@ -385,10 +424,10 @@ export default function ChatView() {
           <div className="flex items-start justify-between gap-3 mb-3">
             <div>
               <p className="text-sm font-medium text-ink dark:text-ink-dark">
-                配置已完成，先试一个入门操作
+                {t("chat.starterTitle")}
               </p>
               <p className="text-xs text-ink-mute dark:text-ink-dark-mute mt-1">
-                这些操作会直接发给 Agent，帮助你快速完成第一次成功体验。
+                {t("chat.starterDesc")}
               </p>
             </div>
             <button
@@ -396,11 +435,11 @@ export default function ChatView() {
               onClick={() => setSettings({ showStarterPrompts: false })}
               className="text-xs text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
             >
-              暂不显示
+              {t("chat.starterHide")}
             </button>
           </div>
           <div className="grid gap-2">
-            {STARTER_ACTIONS.map((action) => (
+            {starterActions.map((action) => (
               <button
                 key={action.title}
                 type="button"
