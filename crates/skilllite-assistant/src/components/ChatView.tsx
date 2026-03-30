@@ -289,29 +289,22 @@ export default function ChatView() {
     ]);
     setLoading(true);
 
-    const hasOverrides =
-      settings.apiKey || settings.model !== "gpt-4o" || settings.workspace !== "." || settings.apiBase
-      || settings.sandboxLevel !== 3 || (settings.swarmEnabled && settings.swarmUrl)
-      || (settings.maxIterations != null && settings.maxIterations > 0)
-      || (settings.maxToolCallsPerTask != null && settings.maxToolCallsPerTask > 0);
-    const config = hasOverrides
-      ? {
-          api_key: settings.apiKey || undefined,
-          model: settings.model || undefined,
-          workspace: settings.workspace || undefined,
-          api_base: settings.apiBase || undefined,
-          sandbox_level: settings.sandboxLevel !== 3 ? settings.sandboxLevel : undefined,
-          swarm_url: settings.swarmEnabled && settings.swarmUrl ? settings.swarmUrl : undefined,
-          max_iterations:
-            settings.maxIterations != null && settings.maxIterations > 0
-              ? settings.maxIterations
-              : undefined,
-          max_tool_calls_per_task:
-            settings.maxToolCallsPerTask != null && settings.maxToolCallsPerTask > 0
-              ? settings.maxToolCallsPerTask
-              : undefined,
-        }
-      : undefined;
+    // Always pass `config` (may be `{}`) so the bridge can clear SKILLLITE_SWARM_URL when Swarm
+    // is off in settings; otherwise .env would still enable delegation.
+    const swarmUrlTrimmed = settings.swarmUrl?.trim() ?? "";
+    const config: Record<string, unknown> = {};
+    if (settings.apiKey) config.api_key = settings.apiKey;
+    if (settings.model && settings.model !== "gpt-4o") config.model = settings.model;
+    if (settings.workspace && settings.workspace !== ".") config.workspace = settings.workspace;
+    if (settings.apiBase) config.api_base = settings.apiBase;
+    if (settings.sandboxLevel !== 3) config.sandbox_level = settings.sandboxLevel;
+    if (settings.swarmEnabled && swarmUrlTrimmed) config.swarm_url = swarmUrlTrimmed;
+    if (settings.maxIterations != null && settings.maxIterations > 0) {
+      config.max_iterations = settings.maxIterations;
+    }
+    if (settings.maxToolCallsPerTask != null && settings.maxToolCallsPerTask > 0) {
+      config.max_tool_calls_per_task = settings.maxToolCallsPerTask;
+    }
 
     try {
       await invoke("skilllite_chat_stream", {

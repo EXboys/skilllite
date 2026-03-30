@@ -1256,7 +1256,7 @@ fn test_preview_server_emits_started_and_ready_events() {
 }
 
 #[tokio::test]
-async fn test_delegate_to_swarm_emits_started_and_failed_when_unconfigured() {
+async fn test_delegate_to_swarm_emits_failed_only_when_unconfigured() {
     use super::delegate_swarm;
     use crate::types::EventSink;
 
@@ -1301,10 +1301,7 @@ async fn test_delegate_to_swarm_emits_started_and_failed_when_unconfigured() {
         .unwrap();
 
     assert!(result.contains("Swarm not configured"));
-    assert_eq!(
-        sink.swarm_started,
-        vec!["delegate quick summary".to_string()]
-    );
+    assert!(sink.swarm_started.is_empty());
     assert!(sink.swarm_progress.is_empty());
     assert_eq!(sink.swarm_failed.len(), 1);
 }

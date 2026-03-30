@@ -55,7 +55,6 @@ pub(super) async fn execute_delegate_to_swarm(
         .and_then(|v| v.as_str())
         .ok_or_else(|| anyhow::anyhow!("description required"))?
         .to_string();
-    event_sink.on_swarm_started(&description);
 
     let url = match std::env::var(SWARM_URL_ENV) {
         Ok(u) if !u.is_empty() => u,
@@ -65,6 +64,7 @@ pub(super) async fn execute_delegate_to_swarm(
             return Ok(msg.to_string());
         }
     };
+    event_sink.on_swarm_started(&description);
 
     let workspace_str = args
         .get("workspace")

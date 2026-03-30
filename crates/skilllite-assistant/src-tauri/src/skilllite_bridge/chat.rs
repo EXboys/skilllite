@@ -117,6 +117,19 @@ pub fn chat_stream(
     for (k, v) in load_dotenv_for_child(&raw_workspace) {
         cmd.env(k, v);
     }
+    // Assistant passes `config` on every chat: Swarm is UI-controlled. If there is no non-empty
+    // `swarm_url` override, do not inherit SKILLLITE_SWARM_URL from .env (otherwise "Swarm off"
+    // in settings still delegates).
+    if let Some(ref cfg) = config_overrides {
+        let swarm_from_ui = cfg
+            .swarm_url
+            .as_ref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        if !swarm_from_ui {
+            cmd.env_remove("SKILLLITE_SWARM_URL");
+        }
+    }
     cmd.env("RUST_LOG", "error");
     cmd.env("SKILLLITE_QUIET", "1");
     cmd.env("SKILLLITE_LOG_JSON", "0");
