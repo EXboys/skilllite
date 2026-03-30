@@ -146,30 +146,6 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   };
 
   const handleSave = async () => {
-    if (!scheduleData) {
-      setScheduleLoadError(t("settings.scheduleNotReady"));
-      setActiveTab("schedule");
-      return;
-    }
-    const invalid = validateScheduleForm(scheduleData);
-    if (invalid) {
-      setScheduleLoadError(invalid);
-      setActiveTab("schedule");
-      return;
-    }
-    const jsonStr = scheduleFormToJson(scheduleData);
-    try {
-      await invoke("skilllite_write_schedule", {
-        workspace: workspace.trim() || ".",
-        json: jsonStr,
-      });
-    } catch (e) {
-      setScheduleLoadError(String(e));
-      setActiveTab("schedule");
-      return;
-    }
-    setScheduleLoadError(null);
-
     const shared = {
       sandboxLevel,
       swarmEnabled,
@@ -196,6 +172,30 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
         ...shared,
       });
     }
+
+    // 定时配置异步加载（工作区变更时还有 debounce）；勿阻塞 LLM/工作区等设置的保存。
+    if (!scheduleData) {
+      onClose();
+      return;
+    }
+    const invalid = validateScheduleForm(scheduleData);
+    if (invalid) {
+      setScheduleLoadError(invalid);
+      setActiveTab("schedule");
+      return;
+    }
+    const jsonStr = scheduleFormToJson(scheduleData);
+    try {
+      await invoke("skilllite_write_schedule", {
+        workspace: workspace.trim() || ".",
+        json: jsonStr,
+      });
+    } catch (e) {
+      setScheduleLoadError(String(e));
+      setActiveTab("schedule");
+      return;
+    }
+    setScheduleLoadError(null);
     onClose();
   };
 
