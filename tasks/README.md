@@ -8,6 +8,14 @@ This directory turns long-form TODO documents into executable task units with li
 - Attach decisions, risks, validation, and regression scope to each task.
 - Enable parallel work and interruption recovery across subsystems.
 
+## Contribution Policy
+
+- External/community contributors: lightweight mode is allowed.
+  - `Task ID: N/A` is valid for small docs/fix PRs.
+  - Creating `tasks/TASK-.../` is optional unless the change is non-trivial.
+- Core maintainers: strict mode is recommended.
+  - Non-trivial changes should use full task artifacts and board tracking.
+
 ## Directory Structure
 
 ```text

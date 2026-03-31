@@ -7,6 +7,15 @@ alwaysApply: true
 
 For non-trivial work, use `tasks/` as the source of execution truth.
 
+## Contribution Modes
+
+- External/community contribution (lightweight mode):
+  - Task folder is optional.
+  - `Task ID: N/A` is allowed for small fixes/docs/issues.
+  - Keep PR summary, validation evidence, and regression notes clear.
+- Core/maintainer contribution (strict mode):
+  - Use full task-centered workflow for non-trivial changes.
+
 ## Required Behavior
 
 1. If work spans multiple files/subsystems or requires review traceability:

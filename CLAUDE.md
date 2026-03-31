@@ -14,6 +14,15 @@ Use the same rule semantics as Cursor, but follow Claude's file conventions.
 
 Do not duplicate rule content in this file. Follow the referenced files directly.
 
+## Contribution Modes
+
+- External/community contribution (lightweight):
+  - `Task ID: N/A` is acceptable for small fixes/docs/issues.
+  - Creating `tasks/TASK-.../` is optional.
+  - Validation evidence and regression notes are still required in PR.
+- Core/maintainer contribution (strict):
+  - Use full `tasks/TASK-.../` lifecycle for non-trivial work.
+
 ## Required Workflow
 
 1. Determine task type and inject specs using `spec/README.md`.

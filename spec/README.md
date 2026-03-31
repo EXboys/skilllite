@@ -61,3 +61,8 @@ Before marking a task done:
 - Confirm all relevant checklists were completed.
 - Confirm verification commands were executed for the affected scope.
 - Confirm task artifacts in `tasks/TASK-.../` are updated (`TASK.md`, `STATUS.md`, `REVIEW.md`) and `tasks/board.md` is in sync.
+
+Lightweight exception:
+
+- For external/community small PRs, `Task ID: N/A` is allowed and `tasks/TASK-.../` can be skipped.
+- Even in lightweight mode, injected specs, validation evidence, and regression scope should still be explicit.

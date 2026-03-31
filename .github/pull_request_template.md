@@ -5,8 +5,8 @@
 
 ## Task Linkage
 
-- Task ID: `TASK-YYYY-NNN` (or `N/A` for tiny docs-only changes)
-- Task folder: `tasks/TASK-YYYY-NNN-.../`
+- Task ID: `TASK-YYYY-NNN` (or `N/A` for lightweight external/community PRs)
+- Task folder: `tasks/TASK-YYYY-NNN-.../` (optional in lightweight mode)
 
 ## Injected Specs
 
