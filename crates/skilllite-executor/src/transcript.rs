@@ -8,9 +8,13 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::env;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -92,6 +96,105 @@ impl TranscriptEntry {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FlushMode {
+    Always,
+    Batch,
+    Never,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FlushPolicy {
+    mode: FlushMode,
+    every: u64,
+    interval: Duration,
+}
+
+impl Default for FlushPolicy {
+    fn default() -> Self {
+        Self {
+            // Balanced default: reduce fsync amplification while keeping durability bounded.
+            mode: FlushMode::Batch,
+            every: 8,
+            interval: Duration::from_millis(250),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct FlushState {
+    pending_writes: u64,
+    last_sync: Instant,
+}
+
+fn parse_flush_mode(value: Option<&str>) -> FlushMode {
+    match value
+        .unwrap_or("batch")
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "always" | "sync" | "strict" => FlushMode::Always,
+        "never" | "off" | "none" => FlushMode::Never,
+        _ => FlushMode::Batch,
+    }
+}
+
+fn parse_u64_env(name: &str, default: u64, min: u64) -> u64 {
+    env::var(name)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|v| v.max(min))
+        .unwrap_or(default.max(min))
+}
+
+fn transcript_flush_policy() -> FlushPolicy {
+    let default = FlushPolicy::default();
+    let mode = parse_flush_mode(env::var("SKILLLITE_TRANSCRIPT_FLUSH_MODE").ok().as_deref());
+    let every = parse_u64_env("SKILLLITE_TRANSCRIPT_FLUSH_EVERY", default.every, 1);
+    let interval_ms = parse_u64_env(
+        "SKILLLITE_TRANSCRIPT_FLUSH_INTERVAL_MS",
+        default.interval.as_millis() as u64,
+        0,
+    );
+    FlushPolicy {
+        mode,
+        every,
+        interval: Duration::from_millis(interval_ms),
+    }
+}
+
+fn flush_states() -> &'static Mutex<HashMap<PathBuf, FlushState>> {
+    static STATES: OnceLock<Mutex<HashMap<PathBuf, FlushState>>> = OnceLock::new();
+    STATES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn should_sync_after_append(transcript_path: &Path, policy: FlushPolicy) -> bool {
+    match policy.mode {
+        FlushMode::Always => true,
+        FlushMode::Never => false,
+        FlushMode::Batch => {
+            let mut map = flush_states().lock().unwrap_or_else(|e| e.into_inner());
+            let state = map
+                .entry(transcript_path.to_path_buf())
+                .or_insert_with(|| FlushState {
+                    pending_writes: 0,
+                    last_sync: Instant::now(),
+                });
+            state.pending_writes += 1;
+            let due_by_count = state.pending_writes >= policy.every;
+            let due_by_time = state.last_sync.elapsed() >= policy.interval;
+            if due_by_count || due_by_time {
+                state.pending_writes = 0;
+                state.last_sync = Instant::now();
+                true
+            } else {
+                false
+            }
+        }
+    }
+}
+
 /// Append an entry to transcript file. Creates file and parent dir if needed.
 pub fn append_entry(transcript_path: &Path, entry: &TranscriptEntry) -> Result<()> {
     if let Some(parent) = transcript_path.parent() {
@@ -104,7 +207,10 @@ pub fn append_entry(transcript_path: &Path, entry: &TranscriptEntry) -> Result<(
         .with_context(|| format!("Failed to open transcript: {}", transcript_path.display()))?;
     let line = serde_json::to_string(entry)?;
     writeln!(file, "{}", line)?;
-    file.sync_all().context("transcript flush")?;
+    let policy = transcript_flush_policy();
+    if should_sync_after_append(transcript_path, policy) {
+        file.sync_data().context("transcript flush")?;
+    }
     Ok(())
 }
 
@@ -245,4 +351,48 @@ pub fn read_entries_for_session(
         all.extend(entries);
     }
     Ok(all)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_test_path(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "skilllite-transcript-{name}-{}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    #[test]
+    fn parse_flush_mode_defaults_to_batch() {
+        assert_eq!(parse_flush_mode(None), FlushMode::Batch);
+        assert_eq!(parse_flush_mode(Some("unknown")), FlushMode::Batch);
+        assert_eq!(parse_flush_mode(Some("always")), FlushMode::Always);
+        assert_eq!(parse_flush_mode(Some("off")), FlushMode::Never);
+    }
+
+    #[test]
+    fn batch_mode_syncs_on_count_threshold() {
+        let path = unique_test_path("count-threshold");
+        let policy = FlushPolicy {
+            mode: FlushMode::Batch,
+            every: 2,
+            interval: Duration::from_secs(3600),
+        };
+        assert!(!should_sync_after_append(&path, policy));
+        assert!(should_sync_after_append(&path, policy));
+        assert!(!should_sync_after_append(&path, policy));
+    }
+
+    #[test]
+    fn batch_mode_can_sync_by_interval() {
+        let path = unique_test_path("interval-threshold");
+        let policy = FlushPolicy {
+            mode: FlushMode::Batch,
+            every: 10_000,
+            interval: Duration::ZERO,
+        };
+        assert!(should_sync_after_append(&path, policy));
+    }
 }
