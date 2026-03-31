@@ -4,7 +4,10 @@
 //! (same process, no IPC). Handles transcript persistence, auto-compaction,
 //! and memory integration.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use skilllite_executor::{memory as executor_memory, session, transcript};
@@ -37,6 +40,18 @@ pub struct ChatSession {
     skills: Vec<LoadedSkill>,
     /// A9: handle for periodic evolution (every N minutes, does not reset on turn).
     periodic_evolution_handle: Option<tokio::task::JoinHandle<()>>,
+    transcript_cache: TranscriptCache,
+}
+
+#[derive(Default)]
+struct TranscriptCache {
+    files: HashMap<PathBuf, CachedTranscriptFile>,
+}
+
+#[derive(Default)]
+struct CachedTranscriptFile {
+    offset: u64,
+    entries: Vec<transcript::TranscriptEntry>,
 }
 
 impl ChatSession {
@@ -62,6 +77,7 @@ impl ChatSession {
             data_root,
             skills,
             periodic_evolution_handle: None,
+            transcript_cache: TranscriptCache::default(),
         }
     }
 
@@ -92,10 +108,8 @@ impl ChatSession {
     }
 
     /// Read transcript entries and convert to ChatMessages.
-    fn read_history(&self) -> Result<Vec<ChatMessage>> {
-        let transcripts_dir = self.data_root.join("transcripts");
-        let entries = transcript::read_entries_for_session(&transcripts_dir, &self.session_key)?;
-
+    fn read_history(&mut self) -> Result<Vec<ChatMessage>> {
+        let entries = self.read_history_entries_incremental()?;
         let mut messages = Vec::new();
         let mut use_from_compaction = false;
         let mut compaction_summary: Option<String> = None;
@@ -141,6 +155,50 @@ impl ChatSession {
         }
 
         Ok(messages)
+    }
+
+    fn read_history_entries_incremental(&mut self) -> Result<Vec<&transcript::TranscriptEntry>> {
+        let transcripts_dir = self.data_root.join("transcripts");
+        let paths = transcript::list_transcript_files(&transcripts_dir, &self.session_key)?;
+        self.transcript_cache
+            .files
+            .retain(|path, _| paths.contains(path));
+
+        for path in &paths {
+            let len = std::fs::metadata(path)
+                .with_context(|| format!("Failed to stat transcript: {}", path.display()))?
+                .len();
+
+            let cache = self.transcript_cache.files.entry(path.clone()).or_default();
+
+            // File rotation/truncation: reset offset and replay from start.
+            if len < cache.offset {
+                cache.offset = 0;
+                cache.entries.clear();
+            }
+
+            if len > cache.offset {
+                let (new_entries, next_offset) = read_entries_from_offset(path, cache.offset)?;
+                cache
+                    .entries
+                    .extend(new_entries.into_iter().filter(is_history_relevant_entry));
+                cache.offset = next_offset;
+            }
+        }
+        prune_cache_before_last_compaction(&mut self.transcript_cache, &paths);
+        apply_message_window_to_cache(
+            &mut self.transcript_cache,
+            &paths,
+            history_window_messages_limit(),
+        );
+
+        let mut entries = Vec::new();
+        for path in &paths {
+            if let Some(cache) = self.transcript_cache.files.get(path) {
+                entries.extend(cache.entries.iter());
+            }
+        }
+        Ok(entries)
     }
 
     /// Run one conversation turn.
@@ -711,10 +769,11 @@ impl ChatSession {
         self.archive_transcript()?;
         self.reset_session_counts()?;
         self.session_id = None;
+        self.transcript_cache = TranscriptCache::default();
         Ok(())
     }
 
-    fn archive_transcript(&self) -> Result<()> {
+    fn archive_transcript(&mut self) -> Result<()> {
         let transcripts_dir = self.data_root.join("transcripts");
         let paths = transcript::list_transcript_files(&transcripts_dir, &self.session_key)?;
         let timestamp = std::time::SystemTime::now()
@@ -749,6 +808,7 @@ impl ChatSession {
             }
         }
         self.session_id = None;
+        self.transcript_cache = TranscriptCache::default();
         Ok(())
     }
 
@@ -858,6 +918,154 @@ impl ChatSession {
 
         Ok(())
     }
+}
+
+fn read_entries_from_offset(
+    transcript_path: &Path,
+    offset: u64,
+) -> Result<(Vec<transcript::TranscriptEntry>, u64)> {
+    let file = File::open(transcript_path)
+        .with_context(|| format!("Failed to open transcript: {}", transcript_path.display()))?;
+    let mut reader = BufReader::new(file);
+    reader
+        .seek(SeekFrom::Start(offset))
+        .with_context(|| format!("Failed to seek transcript: {}", transcript_path.display()))?;
+
+    let mut entries = Vec::new();
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let read = reader
+            .read_line(&mut line)
+            .with_context(|| format!("Failed to read transcript: {}", transcript_path.display()))?;
+        if read == 0 {
+            break;
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let entry: transcript::TranscriptEntry =
+            serde_json::from_str(trimmed).with_context(|| {
+                format!(
+                    "Failed to parse transcript line: {}",
+                    transcript_path.display()
+                )
+            })?;
+        entries.push(entry);
+    }
+    let next_offset = reader.stream_position().with_context(|| {
+        format!(
+            "Failed to read stream position: {}",
+            transcript_path.display()
+        )
+    })?;
+    Ok((entries, next_offset))
+}
+
+fn is_history_relevant_entry(entry: &transcript::TranscriptEntry) -> bool {
+    matches!(
+        entry,
+        transcript::TranscriptEntry::Message { .. }
+            | transcript::TranscriptEntry::Compaction { .. }
+    )
+}
+
+fn history_window_messages_limit() -> usize {
+    std::env::var("SKILLLITE_HISTORY_WINDOW_MESSAGES")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .unwrap_or(200)
+}
+
+fn prune_cache_before_last_compaction(cache: &mut TranscriptCache, paths: &[PathBuf]) {
+    let mut compaction_position: Option<(usize, usize)> = None;
+    for (path_idx, path) in paths.iter().enumerate() {
+        if let Some(file) = cache.files.get(path) {
+            if let Some(entry_idx) = file
+                .entries
+                .iter()
+                .rposition(|e| matches!(e, transcript::TranscriptEntry::Compaction { .. }))
+            {
+                compaction_position = Some((path_idx, entry_idx));
+            }
+        }
+    }
+
+    let Some((compaction_file_idx, compaction_entry_idx)) = compaction_position else {
+        return;
+    };
+
+    for old_path in &paths[..compaction_file_idx] {
+        if let Some(file) = cache.files.get_mut(old_path) {
+            file.entries.clear();
+        }
+    }
+
+    if let Some(file) = cache.files.get_mut(&paths[compaction_file_idx]) {
+        if compaction_entry_idx > 0 {
+            file.entries.drain(0..compaction_entry_idx);
+        }
+    }
+}
+
+fn apply_message_window_to_cache(cache: &mut TranscriptCache, paths: &[PathBuf], limit: usize) {
+    if limit == 0 {
+        return;
+    }
+
+    let mut total_messages = paths
+        .iter()
+        .filter_map(|path| cache.files.get(path))
+        .flat_map(|file| file.entries.iter())
+        .filter(|entry| matches!(entry, transcript::TranscriptEntry::Message { .. }))
+        .count();
+
+    if total_messages <= limit {
+        return;
+    }
+
+    let mut remaining_to_drop = total_messages - limit;
+    for path in paths {
+        if remaining_to_drop == 0 {
+            break;
+        }
+        let Some(file) = cache.files.get_mut(path) else {
+            continue;
+        };
+
+        let has_head_compaction = matches!(
+            file.entries.first(),
+            Some(transcript::TranscriptEntry::Compaction { .. })
+        );
+        let mut at_head = true;
+        file.entries.retain(|entry| {
+            if remaining_to_drop == 0 {
+                at_head = false;
+                return true;
+            }
+            // Keep a compaction marker at file head so read_history semantics stay intact.
+            if at_head && has_head_compaction {
+                at_head = false;
+                return true;
+            }
+            at_head = false;
+            if matches!(entry, transcript::TranscriptEntry::Message { .. }) && remaining_to_drop > 0
+            {
+                remaining_to_drop -= 1;
+                false
+            } else {
+                true
+            }
+        });
+    }
+    total_messages = paths
+        .iter()
+        .filter_map(|path| cache.files.get(path))
+        .flat_map(|file| file.entries.iter())
+        .filter(|entry| matches!(entry, transcript::TranscriptEntry::Message { .. }))
+        .count();
+    debug_assert!(total_messages <= limit || remaining_to_drop == 0);
 }
 
 // ─── A9: Evolution triggers (periodic + decision-count) ─────────────────────
@@ -1004,5 +1212,92 @@ fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<Ch
             .as_ref()
             .map(|s| ChatMessage::system(&format!("[Previous conversation summary]\n{}", s))),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod history_window_tests {
+    use super::*;
+
+    fn msg(content: &str) -> transcript::TranscriptEntry {
+        transcript::TranscriptEntry::Message {
+            id: uuid::Uuid::new_v4().to_string(),
+            parent_id: None,
+            role: "user".to_string(),
+            content: Some(content.to_string()),
+            tool_calls: None,
+        }
+    }
+
+    fn compaction() -> transcript::TranscriptEntry {
+        transcript::TranscriptEntry::Compaction {
+            id: uuid::Uuid::new_v4().to_string(),
+            parent_id: None,
+            first_kept_entry_id: String::new(),
+            tokens_before: 0,
+            summary: Some("summary".to_string()),
+        }
+    }
+
+    #[test]
+    fn prune_before_last_compaction_removes_old_files() {
+        let p1 = PathBuf::from("day1");
+        let p2 = PathBuf::from("day2");
+        let p3 = PathBuf::from("day3");
+        let mut cache = TranscriptCache::default();
+        cache.files.insert(
+            p1.clone(),
+            CachedTranscriptFile {
+                offset: 0,
+                entries: vec![msg("a"), msg("b")],
+            },
+        );
+        cache.files.insert(
+            p2.clone(),
+            CachedTranscriptFile {
+                offset: 0,
+                entries: vec![msg("c"), compaction(), msg("d")],
+            },
+        );
+        cache.files.insert(
+            p3.clone(),
+            CachedTranscriptFile {
+                offset: 0,
+                entries: vec![msg("e")],
+            },
+        );
+
+        prune_cache_before_last_compaction(&mut cache, &[p1.clone(), p2.clone(), p3.clone()]);
+
+        assert!(cache.files.get(&p1).unwrap().entries.is_empty());
+        assert!(matches!(
+            cache.files.get(&p2).unwrap().entries.first(),
+            Some(transcript::TranscriptEntry::Compaction { .. })
+        ));
+    }
+
+    #[test]
+    fn apply_window_keeps_recent_messages() {
+        let p = PathBuf::from("day");
+        let mut cache = TranscriptCache::default();
+        cache.files.insert(
+            p.clone(),
+            CachedTranscriptFile {
+                offset: 0,
+                entries: vec![compaction(), msg("1"), msg("2"), msg("3"), msg("4")],
+            },
+        );
+
+        apply_message_window_to_cache(&mut cache, std::slice::from_ref(&p), 2);
+        let entries = &cache.files.get(&p).unwrap().entries;
+        let kept_messages = entries
+            .iter()
+            .filter(|e| matches!(e, transcript::TranscriptEntry::Message { .. }))
+            .count();
+        assert_eq!(kept_messages, 2);
+        assert!(matches!(
+            entries.first(),
+            Some(transcript::TranscriptEntry::Compaction { .. })
+        ));
     }
 }
