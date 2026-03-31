@@ -285,6 +285,8 @@ pub struct SandboxEnvConfig {
     pub auto_approve: bool,
     /// 是否禁用沙箱（等同于 level 1）
     pub no_sandbox: bool,
+    /// Linux：bwrap/firejail 不可用或失败时，是否允许弱命名空间降级（默认 false，与 Windows fail-closed 对齐）
+    pub allow_linux_namespace_fallback: bool,
     /// 是否允许 Playwright（放宽沙箱）
     pub allow_playwright: bool,
     /// 透传给脚本的额外参数（SKILLLITE_SCRIPT_ARGS / SKILLBOX_SCRIPT_ARGS）
@@ -332,6 +334,11 @@ impl SandboxEnvConfig {
             sb_keys::NO_SANDBOX_ALIASES,
             false,
         );
+        let allow_linux_namespace_fallback = env_bool(
+            sb_keys::SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK,
+            sb_keys::ALLOW_LINUX_NAMESPACE_FALLBACK_ALIASES,
+            false,
+        );
         let allow_playwright = env_bool(
             sb_keys::SKILLLITE_ALLOW_PLAYWRIGHT,
             sb_keys::ALLOW_PLAYWRIGHT_ALIASES,
@@ -346,6 +353,7 @@ impl SandboxEnvConfig {
             timeout_secs,
             auto_approve,
             no_sandbox,
+            allow_linux_namespace_fallback,
             allow_playwright,
             script_args,
         }

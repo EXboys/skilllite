@@ -108,6 +108,7 @@
 |------|------|--------|------|
 | `SKILLLITE_SANDBOX_LEVEL` | int | `3` | **推荐**。沙箱级别（1/2/3） |
 | `SKILLLITE_NO_SANDBOX` | bool | `false` | 禁用沙箱（不推荐） |
+| `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK` | bool | `false` | **仅 Linux**。bwrap/firejail 缺失或执行失败时，允许退回到仅 PID/UTS/网络命名空间的弱隔离（**无** bwrap 级文件系统沙箱）；默认 `false` 为拒绝执行，与 Windows fail-closed 对齐。兼容 `SKILLBOX_ALLOW_LINUX_NAMESPACE_FALLBACK` |
 | `SKILLLITE_ALLOW_PLAYWRIGHT` | bool | `false` | 为使用 Playwright 的 Skill 放宽沙箱 |
 | `ENABLE_SANDBOX` | bool | `true` | 是否启用沙箱 |
 | `SKILLLITE_AUTO_APPROVE` | bool | `false` | **推荐**。自动批准 L3 安全提示（不推荐） |
@@ -124,7 +125,8 @@
 | 3 | 扫描 + 确认，确认后等同 L2（默认） |
 
 **使用场景**：
-- 沙箱不可用时：`SKILLLITE_SANDBOX_LEVEL=1`
+- 沙箱不可用时：`SKILLLITE_SANDBOX_LEVEL=1` 或 `SKILLLITE_NO_SANDBOX=1`（完全无隔离）
+- Linux 无 bubblewrap 且仍需**有限**隔离时：可设 `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1`（弱隔离，慎用）
 - Skill 卡住时：`SKILLLITE_LOG_LEVEL=debug` 查看进度
 
 ---
@@ -194,6 +196,7 @@
 | `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | 每日进化次数上限 |
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** 周期性触发间隔（秒）。每 30 分钟触发一次进化，即使用户活跃也会在后台进化 |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** 决策数触发阈值。当未处理决策数 ≥ 此值时触发进化 |
+| `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | 每次进化后备份目录 `chat/prompts/_versions/<txn>/` 最多保留几个（按目录名排序删最旧）。设为 **`0` 表示不删除**，可长期本地溯源 prompt 版本，无需 Git；磁盘占用会随进化次数增长 |
 | `SKILLLITE_EVO_PROFILE` | string | （不设） | 进化触发场景：`demo` 更频繁（演示/内测）、`default` 或不设与原有默认一致、`conservative` 更少（生产/省成本）。**不设或 `default` 时行为与之前完全一致。** |
 | `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill 同轮去重：`0` 关闭描述相似度检查；非 `0` 时，若新 skill 的 description 与已有 pending 高度相似则跳过 |
 

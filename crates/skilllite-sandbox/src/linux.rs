@@ -52,19 +52,29 @@ pub fn execute_with_limits(
     match execute_with_seccomp(skill_dir, runtime, config, input_json, limits) {
         Ok(result) => Ok(result),
         Err(e) => {
-            tracing::info!(
-                "Seccomp sandbox failed ({}), trying namespace isolation...",
-                e
-            );
-            match execute_with_namespaces(skill_dir, runtime, config, input_json, limits) {
-                Ok(result) => Ok(result),
-                Err(e2) => {
-                    Err(anyhow::anyhow!(
-                        "All sandbox methods failed. Seccomp: {}. Namespace: {}. Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended).",
-                        e, e2
-                    ))
-                }
+            let allow_fallback =
+                skilllite_core::config::SandboxEnvConfig::from_env().allow_linux_namespace_fallback;
+            if !allow_fallback {
+                return Err(e.context(
+                    "Linux strong sandbox failed (bubblewrap/firejail missing or execution error). \
+                     Install bubblewrap (e.g. apt install bubblewrap) or set \
+                     SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1 to allow a weak PID/UTS/net namespace fallback without bwrap filesystem containment (not recommended). \
+                     For execution with no sandbox at all, set SKILLLITE_NO_SANDBOX=1 (not recommended).",
+                ));
             }
+            tracing::warn!(
+                skill = %config.name,
+                "SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1: using weak Linux namespace isolation (no bubblewrap/firejail filesystem sandbox)"
+            );
+            skilllite_core::observability::security_sandbox_fallback(
+                &config.name,
+                "linux_namespace_fallback",
+            );
+            execute_with_namespaces(skill_dir, runtime, config, input_json, limits).map_err(|e2| {
+                anyhow::Error::from(e2).context(format!(
+                    "Weak namespace fallback failed after strong sandbox error: {e:#}"
+                ))
+            })
         }
     }
 }
@@ -678,7 +688,8 @@ fn execute_with_firejail(
     })
 }
 
-/// Execute with namespace isolation (requires root)
+/// Weak fallback: PID/UTS/network namespaces only — **no** mount namespace or seccomp.
+/// Only used when `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1` after bwrap/firejail path fails.
 fn execute_with_namespaces(
     skill_dir: &Path,
     runtime: &RuntimePaths,

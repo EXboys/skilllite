@@ -311,7 +311,7 @@ pub struct ResourceLimits {
 
 #### 2.6 Linux 沙箱实现 (`skilllite-sandbox/linux.rs`)
 
-**沙箱工具优先级**：bubblewrap (bwrap) → firejail → 报错
+**沙箱工具优先级**：bubblewrap (bwrap) → firejail。若二者不可用或执行失败，**默认拒绝执行**（与 Windows 在隔离不足时失败对齐）。仅当设置 `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1` 时，才允许退回到 **弱隔离**（PID/UTS/网络命名空间，无 bwrap 级文件系统隔离），并写入安全事件日志（`security_sandbox_fallback` / `linux_namespace_fallback`）。
 
 **Bubblewrap 隔离**：
 - `--unshare-all`：取消共享所有命名空间

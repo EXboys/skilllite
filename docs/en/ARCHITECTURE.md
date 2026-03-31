@@ -313,7 +313,7 @@ pub struct ResourceLimits {
 
 #### 2.6 Linux Sandbox (`skilllite-sandbox/linux.rs`)
 
-**Sandbox Tool Priority**: bubblewrap (bwrap) → firejail → error
+**Sandbox Tool Priority**: bubblewrap (bwrap) → firejail. If both are unavailable or execution fails, **execution is refused by default** (fail-closed, aligned with Windows). Only with `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1` is a **weak** fallback allowed (PID/UTS/network namespaces only, no bwrap filesystem sandbox), recorded as a security event (`security_sandbox_fallback` / `linux_namespace_fallback`).
 
 **Bubblewrap Isolation:**
 - `--unshare-all`: Unshare all namespaces

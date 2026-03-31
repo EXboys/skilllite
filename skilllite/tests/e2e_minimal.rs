@@ -41,7 +41,8 @@ fn run_skilllite_in_dir(args: &[&str], dir: &Path) -> std::process::Output {
     cmd.args(args)
         .current_dir(dir)
         .env("NO_COLOR", "1")
-        // CI runners often lack bubblewrap/firejail; namespace fallback can fail too.
+        // CI may lack bubblewrap; default Linux policy refuses without bwrap unless
+        // SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1 — use full opt-out for stable E2E.
         .env("SKILLLITE_NO_SANDBOX", "1")
         .env("SKILLLITE_AUTO_APPROVE", "1")
         .env("SKILLLITE_AUDIT_DISABLED", "1");

@@ -117,6 +117,9 @@ pub mod evolution {
     /// A9: Decision count threshold. When unprocessed decisions >= this, trigger evolution. Default 10.
     pub const SKILLLITE_EVOLUTION_DECISION_THRESHOLD: &str =
         "SKILLLITE_EVOLUTION_DECISION_THRESHOLD";
+    /// Prompt snapshot dirs under `chat/prompts/_versions/` to keep after each evolution (oldest pruned first).
+    /// Default `10`. Set to `0` to never delete snapshots (full local history, no Git required; disk usage grows).
+    pub const SKILLLITE_EVOLUTION_SNAPSHOT_KEEP: &str = "SKILLLITE_EVOLUTION_SNAPSHOT_KEEP";
     /// 进化触发场景：demo（更频繁）/ default（与不设一致）/ conservative（更少、省成本）。不设或 default 时行为与原有默认完全一致。
     pub const SKILLLITE_EVO_PROFILE: &str = "SKILLLITE_EVO_PROFILE";
 
@@ -190,6 +193,12 @@ pub mod sandbox {
 
     pub const SKILLLITE_NO_SANDBOX: &str = "SKILLLITE_NO_SANDBOX";
     pub const NO_SANDBOX_ALIASES: &[&str] = &["SKILLBOX_NO_SANDBOX"];
+
+    /// When bwrap/firejail fail or are missing, allow weak PID/UTS/net namespace fallback (Linux only).
+    pub const SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK: &str =
+        "SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK";
+    pub const ALLOW_LINUX_NAMESPACE_FALLBACK_ALIASES: &[&str] =
+        &["SKILLBOX_ALLOW_LINUX_NAMESPACE_FALLBACK"];
 
     pub const SKILLLITE_ALLOW_PLAYWRIGHT: &str = "SKILLLITE_ALLOW_PLAYWRIGHT";
     pub const ALLOW_PLAYWRIGHT_ALIASES: &[&str] = &["SKILLBOX_ALLOW_PLAYWRIGHT"];

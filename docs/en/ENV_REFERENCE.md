@@ -108,6 +108,7 @@ Sandbox-related variables are read through the **config layer** (`SandboxEnvConf
 |----------|------|---------|-------------|
 | `SKILLLITE_SANDBOX_LEVEL` | int | `3` | **Recommended**. Sandbox level (1/2/3) |
 | `SKILLLITE_NO_SANDBOX` | bool | `false` | Disable sandbox (not recommended) |
+| `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK` | bool | `false` | **Linux only**. If bubblewrap/firejail are missing or fail, allow a weak fallback using PID/UTS/network namespaces only (**no** bwrap-style filesystem sandbox). Default `false` refuses execution (fail-closed, aligned with Windows). Legacy: `SKILLBOX_ALLOW_LINUX_NAMESPACE_FALLBACK` |
 | `SKILLLITE_ALLOW_PLAYWRIGHT` | bool | `false` | Relax sandbox for Playwright Skills |
 | `SKILLLITE_AUTO_APPROVE` | bool | `false` | **Recommended**. Auto-approve L3 prompts (not recommended) |
 | `SKILLLITE_SCRIPT_ARGS` | string | - | Extra args passed to scripts |
@@ -124,7 +125,8 @@ Sandbox-related variables are read through the **config layer** (`SandboxEnvConf
 | 3 | Scan + confirm, after confirmation same as L2 (default) |
 
 **Usage**:
-- When sandbox is unavailable: `SKILLLITE_SANDBOX_LEVEL=1`
+- When sandbox is unavailable: `SKILLLITE_SANDBOX_LEVEL=1` or `SKILLLITE_NO_SANDBOX=1` (no isolation)
+- On Linux without bubblewrap but you still want **limited** isolation: `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1` (weak; use with care)
 - When Skill is stuck: `SKILLLITE_LOG_LEVEL=debug` to view progress
 
 ---
@@ -194,6 +196,7 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | Daily evolution cap |
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** Periodic trigger interval (seconds). Evolution runs every 30 min in background, even when user is active |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** Decision-count trigger. When unprocessed decisions ≥ this value, evolution is triggered |
+| `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | Max number of evolution txn snapshot dirs under `chat/prompts/_versions/` (oldest removed first by directory name). **`0` = never prune** — keeps full local prompt history without Git; disk use grows with runs |
 | `SKILLLITE_EVO_PROFILE` | string | (unset) | Evolution trigger profile: `demo` = more frequent (demos/testing), `default` or unset = same as original defaults, `conservative` = less frequent (production/cost-saving). **Unset or `default` keeps behavior unchanged.** |
 | `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill same-round dedup: `0` disables description similarity check; otherwise skips if new skill's description is highly similar to existing pending |
 

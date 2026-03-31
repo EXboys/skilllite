@@ -473,7 +473,8 @@ export function EvolutionDetailBody() {
             </li>
             <li className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
               说明：周期与阈值可在工作区 .env 中设置 SKILLLITE_EVOLUTION_INTERVAL_SECS、
-              SKILLLITE_EVOLUTION_DECISION_THRESHOLD；SKILLLITE_EVOLUTION=0 可关闭进化。
+              SKILLLITE_EVOLUTION_DECISION_THRESHOLD；SKILLLITE_EVOLUTION_SNAPSHOT_KEEP=0 可保留全部 prompt
+              快照以便溯源（不占 Git）；SKILLLITE_EVOLUTION=0 可关闭进化。
             </li>
           </ul>
         </section>

@@ -616,6 +616,18 @@ fn versions_dir(chat_root: &Path) -> std::path::PathBuf {
     chat_root.join("prompts").join("_versions")
 }
 
+/// How many evolution txn snapshot directories to keep under `prompts/_versions/`.
+/// `0` = keep all (no pruning). Default `10`. Invalid env falls back to default.
+fn evolution_snapshot_keep_count() -> usize {
+    match std::env::var(evo_keys::SKILLLITE_EVOLUTION_SNAPSHOT_KEEP)
+        .ok()
+        .as_deref()
+    {
+        Some(s) if !s.is_empty() => s.parse::<usize>().unwrap_or(10),
+        _ => 10,
+    }
+}
+
 pub fn create_snapshot(chat_root: &Path, txn_id: &str, files: &[&str]) -> Result<Vec<String>> {
     let snap_dir = versions_dir(chat_root).join(txn_id);
     std::fs::create_dir_all(&snap_dir)?;
@@ -629,7 +641,7 @@ pub fn create_snapshot(chat_root: &Path, txn_id: &str, files: &[&str]) -> Result
             backed_up.push(name.to_string());
         }
     }
-    prune_snapshots(chat_root, 10);
+    prune_snapshots(chat_root, evolution_snapshot_keep_count());
     Ok(backed_up)
 }
 
@@ -649,6 +661,9 @@ pub fn restore_snapshot(chat_root: &Path, txn_id: &str) -> Result<()> {
 }
 
 fn prune_snapshots(chat_root: &Path, keep: usize) {
+    if keep == 0 {
+        return;
+    }
     let vdir = versions_dir(chat_root);
     if !vdir.exists() {
         return;

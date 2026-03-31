@@ -8,8 +8,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Linux sandbox (fail-closed)**: If bubblewrap/firejail are missing or the strong sandbox path fails, execution is **refused by default** (aligned with Windows). Opt-in weak fallback (PID/UTS/net namespaces only) requires **`SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1`** (legacy `SKILLBOX_ALLOW_LINUX_NAMESPACE_FALLBACK`); the event is logged via `security_sandbox_fallback` with reason `linux_namespace_fallback`.
+
 ### Added
 
+- **Evolution — prompt snapshot retention**: `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` (default `10`) controls how many `chat/prompts/_versions/<txn>/` dirs are kept; set to **`0` to disable pruning** for local, Git-free traceability (disk grows with runs).
 - **Scheduled agent runs (MVP)**: `skilllite schedule tick` reads `.skilllite/schedule.json`, runs **due** jobs (`interval_seconds` per job, optional global `min_interval_seconds_between_runs` and `max_runs_per_day`), and injects each job’s `message` as **one full `chat` turn** (same agent loop as interactive chat). State is stored in `.skilllite/schedule-state.json`. Example config: `.skilllite/schedule.example.json`. Parsing and due logic live in `skilllite-core::schedule`.
 - **Schedule — wall clock & payload**: Jobs may use **system-local** `daily_at` and/or **`daily_times`** (multiple `HH:MM` per day), or **`once_at`** (`YYYY-MM-DDTHH:MM`). Optional `goal` / `steps_prompt` merge with `message` for the injected user turn. **Wall-clock jobs bypass** global `min_interval_seconds_between_runs` so a failed once/daily run can retry on the next tick; **interval-only** jobs still respect it. **`schedule tick` continues** after a single job’s `run_chat` error (logs, does not update state for that job).
 - **Schedule opt-in**: Non–dry-run `schedule tick` requires **`SKILLLITE_SCHEDULE_ENABLED=1`** (or `true`); if unset, due jobs are skipped with a stderr hint so cron cannot accidentally call the API. `--dry-run` is unaffected.
