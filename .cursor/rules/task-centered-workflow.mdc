@@ -1,0 +1,28 @@
+---
+description: Execute substantial work through task-centered workflow
+alwaysApply: true
+---
+
+# Task-Centered Execution Rule
+
+For non-trivial work, use `tasks/` as the source of execution truth.
+
+## Required Behavior
+
+1. If work spans multiple files/subsystems or requires review traceability:
+   - create or reuse a `tasks/TASK-.../` folder.
+2. Keep these files updated during execution:
+   - `TASK.md` (scope, acceptance, risks, validation, regression scope)
+   - `STATUS.md` (progress and blockers)
+   - `REVIEW.md` (findings and merge readiness)
+3. Update `tasks/board.md` whenever status changes.
+4. Keep strategic discussion in `todo/*.md`, execution details in `tasks/`.
+
+## Completion Gate
+
+Before declaring work complete:
+
+- acceptance criteria in `TASK.md` are checked or explicitly deferred,
+- validation evidence is recorded,
+- regression scope is reviewed,
+- task board status is updated.

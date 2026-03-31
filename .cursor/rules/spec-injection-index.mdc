@@ -1,0 +1,35 @@
+---
+description: Auto-select and inject project specs by task type
+alwaysApply: true
+---
+
+# Spec Injection Router
+
+Before implementation, load `spec/README.md` and choose injected specs using its mapping and deterministic rules.
+
+## Required Workflow
+
+1. Determine task type:
+   - `architecture`, `security`, `sandbox`, `agent`, `commands`, `mcp`, `python-sdk`, `docs-only`, or `mixed`.
+2. Build `[Injected Specs]` from `spec/README.md`.
+3. Follow all MUST / MUST NOT / CHECKLIST items in each injected spec.
+4. If multiple mappings match, inject all matched specs.
+5. For any code change, always include `spec/testing-policy.md`.
+6. If user-visible behavior, env vars, commands, architecture docs, or release matrix change, include `spec/docs-sync.md`.
+
+## Output Convention
+
+At task start, explicitly declare:
+
+```text
+[Injected Specs]
+- spec/<file-a>.md
+- spec/<file-b>.md
+...
+```
+
+At task end, confirm:
+
+- which specs were injected,
+- which checklists were completed,
+- which verification commands were run.
