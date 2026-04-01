@@ -148,11 +148,31 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
             egl REAL DEFAULT 0.0
         );
 
+        CREATE TABLE IF NOT EXISTS evolution_backlog (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id TEXT NOT NULL UNIQUE,
+            source TEXT NOT NULL,
+            dedupe_key TEXT NOT NULL UNIQUE,
+            scope_json TEXT NOT NULL,
+            risk_level TEXT NOT NULL,
+            roi_score REAL NOT NULL DEFAULT 0.0,
+            expected_gain REAL NOT NULL DEFAULT 0.0,
+            effort REAL NOT NULL DEFAULT 1.0,
+            acceptance_criteria TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL,
+            acceptance_status TEXT NOT NULL DEFAULT 'pending',
+            note TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
         CREATE INDEX IF NOT EXISTS idx_decisions_evolved ON decisions(evolved);
         CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions(ts);
         CREATE INDEX IF NOT EXISTS idx_dr_rule ON decision_rules(rule_id);
         CREATE INDEX IF NOT EXISTS idx_dr_decision ON decision_rules(decision_id);
         CREATE INDEX IF NOT EXISTS idx_evo_log_ts ON evolution_log(ts);
+        CREATE INDEX IF NOT EXISTS idx_evo_backlog_status_roi ON evolution_backlog(status, roi_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_evo_backlog_created_at ON evolution_backlog(created_at);
         "#,
     )?;
     // Backward-compatible migration: add column for existing DBs (ignored if column exists).

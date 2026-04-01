@@ -164,7 +164,7 @@ impl EvolutionMode {
 // ─── SkillAction (used by should_evolve) ──────────────────────────────────────
 
 /// Action type for skill evolution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum SkillAction {
     #[default]
     None,
@@ -363,7 +363,7 @@ impl EvolutionThresholds {
 
 // ─── Evolution scope ──────────────────────────────────────────────────────────
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct EvolutionScope {
     pub skills: bool,
     pub skill_action: SkillAction,
@@ -390,6 +390,375 @@ impl EvolutionScope {
         }
         parts.join("、")
     }
+}
+
+fn scope_has_work(scope: &EvolutionScope) -> bool {
+    scope.prompts || scope.memory || scope.skills
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ProposalSource {
+    Active,
+    Passive,
+}
+
+impl ProposalSource {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Passive => "passive",
+        }
+    }
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+pub enum ProposalRiskLevel {
+    Low,
+    Medium,
+    High,
+    Critical,
+}
+
+impl ProposalRiskLevel {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Critical => "critical",
+        }
+    }
+
+    fn discount_factor(&self) -> f32 {
+        match self {
+            Self::Low => 1.0,
+            Self::Medium => 0.8,
+            Self::High => 0.55,
+            Self::Critical => 0.3,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EvolutionProposal {
+    pub proposal_id: String,
+    pub source: ProposalSource,
+    pub scope: EvolutionScope,
+    pub risk_level: ProposalRiskLevel,
+    pub expected_gain: f32,
+    pub effort: f32,
+    pub roi_score: f32,
+    pub dedupe_key: String,
+    pub acceptance_criteria: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EvolutionCoordinatorConfig {
+    shadow_mode: bool,
+    auto_execute_low_risk: bool,
+}
+
+impl EvolutionCoordinatorConfig {
+    fn from_env() -> Self {
+        Self {
+            shadow_mode: env_bool(evo_keys::SKILLLITE_EVO_SHADOW_MODE, true),
+            auto_execute_low_risk: env_bool(evo_keys::SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK, false),
+        }
+    }
+}
+
+enum CoordinatorDecision {
+    NoCandidate,
+    Shadow(EvolutionProposal),
+    Queued(EvolutionProposal),
+    Execute(EvolutionProposal),
+}
+
+static EVOLUTION_COORDINATOR_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+fn try_start_coordinator() -> bool {
+    EVOLUTION_COORDINATOR_IN_PROGRESS
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+}
+
+fn finish_coordinator() {
+    EVOLUTION_COORDINATOR_IN_PROGRESS.store(false, Ordering::SeqCst);
+}
+
+fn env_bool(key: &str, default: bool) -> bool {
+    match std::env::var(key).ok().as_deref().map(str::trim) {
+        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("on") => true,
+        Some("0") | Some("false") | Some("FALSE") | Some("no") | Some("off") => false,
+        Some(_) => default,
+        None => default,
+    }
+}
+
+fn compute_roi_score(expected_gain: f32, effort: f32, risk: ProposalRiskLevel) -> f32 {
+    let safe_effort = effort.max(0.1);
+    (expected_gain / safe_effort) * risk.discount_factor()
+}
+
+fn build_dedupe_key(source: ProposalSource, scope: &EvolutionScope) -> String {
+    format!(
+        "{}:{}:{}:{}:{:?}",
+        source.as_str(),
+        u8::from(scope.prompts),
+        u8::from(scope.memory),
+        u8::from(scope.skills),
+        scope.skill_action
+    )
+}
+
+fn build_proposal(
+    source: ProposalSource,
+    scope: EvolutionScope,
+    risk_level: ProposalRiskLevel,
+    expected_gain: f32,
+    effort: f32,
+    acceptance_criteria: Vec<String>,
+) -> EvolutionProposal {
+    let roi_score = compute_roi_score(expected_gain, effort, risk_level);
+    let proposal_id = format!(
+        "proposal_{}",
+        chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f")
+    );
+    let dedupe_key = build_dedupe_key(source, &scope);
+    EvolutionProposal {
+        proposal_id,
+        source,
+        scope,
+        risk_level,
+        expected_gain,
+        effort,
+        roi_score,
+        dedupe_key,
+        acceptance_criteria,
+    }
+}
+
+fn collect_active_scope(conn: &Connection, mode: EvolutionMode) -> Result<EvolutionScope> {
+    if mode.is_disabled() {
+        return Ok(EvolutionScope::default());
+    }
+    let threshold: i64 = std::env::var(evo_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10);
+    let stable_successes: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM decisions
+             WHERE evolved = 0 AND task_completed = 1 AND failed_tools = 0 AND total_tools >= 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    if stable_successes < threshold {
+        return Ok(EvolutionScope::default());
+    }
+    let mut stmt = conn.prepare(
+        "SELECT id FROM decisions
+         WHERE evolved = 0 AND task_completed = 1 AND failed_tools = 0
+         ORDER BY ts DESC LIMIT 100",
+    )?;
+    let decision_ids: Vec<i64> = stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    let mut scope = EvolutionScope {
+        decision_ids,
+        ..Default::default()
+    };
+    if mode.memory_enabled() {
+        scope.memory = true;
+    } else if mode.prompts_enabled() {
+        scope.prompts = true;
+    } else if mode.skills_enabled() {
+        scope.skills = true;
+        scope.skill_action = SkillAction::Refine;
+    }
+    Ok(scope)
+}
+
+fn build_evolution_proposals(
+    conn: &Connection,
+    mode: EvolutionMode,
+    force: bool,
+) -> Result<Vec<EvolutionProposal>> {
+    let mut proposals = Vec::new();
+
+    let passive_scope = should_evolve_impl(conn, mode.clone(), force)?;
+    if scope_has_work(&passive_scope) {
+        proposals.push(build_proposal(
+            ProposalSource::Passive,
+            passive_scope,
+            ProposalRiskLevel::Medium,
+            0.85,
+            2.0,
+            vec![
+                "No regression in first_success_rate over next 3 daily windows.".to_string(),
+                "No rise in user_correction_rate over next 3 daily windows.".to_string(),
+            ],
+        ));
+    }
+
+    let active_scope = collect_active_scope(conn, mode)?;
+    if scope_has_work(&active_scope) {
+        proposals.push(build_proposal(
+            ProposalSource::Active,
+            active_scope,
+            ProposalRiskLevel::Low,
+            0.45,
+            1.0,
+            vec![
+                "At least one measurable signal improves after execution.".to_string(),
+                "No security or quality gate regressions introduced.".to_string(),
+            ],
+        ));
+    }
+
+    Ok(proposals)
+}
+
+fn upsert_backlog_proposal(
+    conn: &Connection,
+    proposal: &EvolutionProposal,
+    status: &str,
+    note: &str,
+) -> Result<()> {
+    let scope_json = serde_json::to_string(&proposal.scope)?;
+    let acceptance_criteria = serde_json::to_string(&proposal.acceptance_criteria)?;
+    conn.execute(
+        "INSERT OR IGNORE INTO evolution_backlog
+         (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria, status, note)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            proposal.proposal_id,
+            proposal.source.as_str(),
+            proposal.dedupe_key,
+            scope_json,
+            proposal.risk_level.as_str(),
+            proposal.roi_score as f64,
+            proposal.expected_gain as f64,
+            proposal.effort as f64,
+            acceptance_criteria,
+            status,
+            note,
+        ],
+    )?;
+    conn.execute(
+        "UPDATE evolution_backlog
+         SET roi_score = ?1,
+             expected_gain = ?2,
+             effort = ?3,
+             updated_at = datetime('now'),
+             note = ?4
+         WHERE dedupe_key = ?5 AND status != 'executed'",
+        params![
+            proposal.roi_score as f64,
+            proposal.expected_gain as f64,
+            proposal.effort as f64,
+            note,
+            proposal.dedupe_key,
+        ],
+    )?;
+    Ok(())
+}
+
+fn set_backlog_status(
+    conn: &Connection,
+    proposal_id: &str,
+    status: &str,
+    acceptance_status: &str,
+    note: &str,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE evolution_backlog
+         SET status = ?1, acceptance_status = ?2, note = ?3, updated_at = datetime('now')
+         WHERE proposal_id = ?4",
+        params![status, acceptance_status, note, proposal_id],
+    )?;
+    Ok(())
+}
+
+fn coordinate_proposals(
+    conn: &Connection,
+    proposals: Vec<EvolutionProposal>,
+    force: bool,
+) -> Result<CoordinatorDecision> {
+    coordinate_proposals_with_config(
+        conn,
+        proposals,
+        force,
+        EvolutionCoordinatorConfig::from_env(),
+    )
+}
+
+fn coordinate_proposals_with_config(
+    conn: &Connection,
+    mut proposals: Vec<EvolutionProposal>,
+    force: bool,
+    config: EvolutionCoordinatorConfig,
+) -> Result<CoordinatorDecision> {
+    if proposals.is_empty() {
+        return Ok(CoordinatorDecision::NoCandidate);
+    }
+    if !try_start_coordinator() {
+        tracing::warn!("Evolution coordinator busy; skipping this round");
+        return Ok(CoordinatorDecision::NoCandidate);
+    }
+    let result = (|| -> Result<CoordinatorDecision> {
+        for proposal in &proposals {
+            upsert_backlog_proposal(conn, proposal, "queued", "Proposal collected")?;
+        }
+        proposals.sort_by(|a, b| b.roi_score.total_cmp(&a.roi_score));
+        let Some(selected) = proposals.into_iter().next() else {
+            return Ok(CoordinatorDecision::NoCandidate);
+        };
+        if force {
+            set_backlog_status(
+                conn,
+                &selected.proposal_id,
+                "executing",
+                "pending",
+                "Forced run bypassed coordinator execution gate",
+            )?;
+            return Ok(CoordinatorDecision::Execute(selected));
+        }
+        if config.shadow_mode {
+            set_backlog_status(
+                conn,
+                &selected.proposal_id,
+                "shadow_approved",
+                "pending",
+                "Shadow mode enabled: proposal queued only",
+            )?;
+            return Ok(CoordinatorDecision::Shadow(selected));
+        }
+        if config.auto_execute_low_risk && selected.risk_level == ProposalRiskLevel::Low {
+            set_backlog_status(
+                conn,
+                &selected.proposal_id,
+                "executing",
+                "pending",
+                "Auto execution allowed for low-risk proposal",
+            )?;
+            return Ok(CoordinatorDecision::Execute(selected));
+        }
+        set_backlog_status(
+            conn,
+            &selected.proposal_id,
+            "queued",
+            "pending",
+            "Waiting for manual or policy-based execution",
+        )?;
+        Ok(CoordinatorDecision::Queued(selected))
+    })();
+    finish_coordinator();
+    result
 }
 
 pub fn should_evolve(conn: &Connection) -> Result<EvolutionScope> {
@@ -840,14 +1209,51 @@ async fn run_evolution_inner<L: EvolutionLlm>(
     force: bool,
 ) -> Result<EvolutionRunResult> {
     let conn = feedback::open_evolution_db(chat_root)?;
-    let scope = should_evolve_impl(&conn, EvolutionMode::from_env(), force)?;
-    if !scope.prompts && !scope.memory && !scope.skills {
-        return Ok(EvolutionRunResult::NoScope);
-    }
+    let proposals = build_evolution_proposals(&conn, EvolutionMode::from_env(), force)?;
+    let decision = coordinate_proposals(&conn, proposals, force)?;
+    let (scope, proposal) = match decision {
+        CoordinatorDecision::NoCandidate => return Ok(EvolutionRunResult::NoScope),
+        CoordinatorDecision::Shadow(p) => {
+            let reason = format!(
+                "Proposal {} ({}) accepted in shadow mode; execution deferred",
+                p.proposal_id,
+                p.source.as_str()
+            );
+            let _ = log_evolution_event(
+                &conn,
+                chat_root,
+                "evolution_proposal",
+                &p.proposal_id,
+                &reason,
+                "",
+            );
+            return Ok(EvolutionRunResult::Completed(None));
+        }
+        CoordinatorDecision::Queued(p) => {
+            let reason = format!(
+                "Proposal {} ({}) queued; waiting execution gate",
+                p.proposal_id,
+                p.source.as_str()
+            );
+            let _ = log_evolution_event(
+                &conn,
+                chat_root,
+                "evolution_proposal",
+                &p.proposal_id,
+                &reason,
+                "",
+            );
+            return Ok(EvolutionRunResult::Completed(None));
+        }
+        CoordinatorDecision::Execute(p) => (p.scope.clone(), p),
+    };
+
     let txn_id = format!("evo_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
     tracing::info!(
-        "Starting evolution txn={} (prompts={}, memory={}, skills={})",
+        "Starting evolution txn={} proposal={} source={} (prompts={}, memory={}, skills={})",
         txn_id,
+        proposal.proposal_id,
+        proposal.source.as_str(),
         scope.prompts,
         scope.memory,
         scope.skills
@@ -1023,6 +1429,13 @@ async fn run_evolution_inner<L: EvolutionLlm>(
                 format!("方向: {}；进化运行完成，无新规则/技能产出", dir)
             };
             let _ = log_evolution_event(&conn, chat_root, "evolution_run", "run", &reason, &txn_id);
+            let _ = set_backlog_status(
+                &conn,
+                &proposal.proposal_id,
+                "executed",
+                "not_met",
+                "Executed with no material changes",
+            );
             return Ok(EvolutionRunResult::Completed(None));
         }
 
@@ -1071,6 +1484,13 @@ async fn run_evolution_inner<L: EvolutionLlm>(
 
         let _decisions_path = chat_root.join("DECISIONS.md");
         // let _ = feedback::export_decisions_md(&conn, &decisions_path); // Removed for refactor
+        let _ = set_backlog_status(
+            &conn,
+            &proposal.proposal_id,
+            "executed",
+            "pending_validation",
+            "Execution completed; awaiting acceptance metrics window",
+        );
 
         tracing::info!("Evolution txn={} complete: {}", txn_id, reason);
     }
@@ -1316,5 +1736,76 @@ mod lib_tests {
         let t = EvolutionThresholds::default();
         assert!(t.cooldown_hours > 0.0);
         assert!(t.recent_days > 0);
+    }
+
+    #[test]
+    fn roi_score_penalizes_risk() {
+        let low = compute_roi_score(1.0, 1.0, ProposalRiskLevel::Low);
+        let high = compute_roi_score(1.0, 1.0, ProposalRiskLevel::High);
+        assert!(low > high);
+    }
+
+    #[test]
+    fn coordinator_shadow_mode_queues_without_execution() {
+        let _g = EVO_LOCK.lock().expect("evo lock");
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let scope = EvolutionScope {
+            memory: true,
+            ..Default::default()
+        };
+        let proposal = build_proposal(
+            ProposalSource::Active,
+            scope,
+            ProposalRiskLevel::Low,
+            0.5,
+            1.0,
+            vec!["metric should improve".to_string()],
+        );
+        let decision = coordinate_proposals_with_config(
+            &conn,
+            vec![proposal],
+            false,
+            EvolutionCoordinatorConfig {
+                shadow_mode: true,
+                auto_execute_low_risk: true,
+            },
+        )
+        .expect("coordinate");
+        assert!(matches!(decision, CoordinatorDecision::Shadow(_)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn coordinator_auto_executes_low_risk_when_enabled() {
+        let _g = EVO_LOCK.lock().expect("evo lock");
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let scope = EvolutionScope {
+            memory: true,
+            ..Default::default()
+        };
+        let proposal = build_proposal(
+            ProposalSource::Active,
+            scope,
+            ProposalRiskLevel::Low,
+            0.5,
+            1.0,
+            vec!["metric should improve".to_string()],
+        );
+        let decision = coordinate_proposals_with_config(
+            &conn,
+            vec![proposal],
+            false,
+            EvolutionCoordinatorConfig {
+                shadow_mode: false,
+                auto_execute_low_risk: true,
+            },
+        )
+        .expect("coordinate");
+        assert!(matches!(decision, CoordinatorDecision::Execute(_)));
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

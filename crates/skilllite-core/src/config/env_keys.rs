@@ -120,6 +120,12 @@ pub mod evolution {
     /// Prompt snapshot dirs under `chat/prompts/_versions/` to keep after each evolution (oldest pruned first).
     /// Default `10`. Set to `0` to never delete snapshots (full local history, no Git required; disk usage grows).
     pub const SKILLLITE_EVOLUTION_SNAPSHOT_KEEP: &str = "SKILLLITE_EVOLUTION_SNAPSHOT_KEEP";
+    /// Governance shadow mode for proposal coordinator.
+    /// Default enabled (`1`/`true`): proposals are queued/scored but not auto-executed.
+    pub const SKILLLITE_EVO_SHADOW_MODE: &str = "SKILLLITE_EVO_SHADOW_MODE";
+    /// Allow coordinator to auto-execute low-risk proposals.
+    /// Default disabled (`0`/`false`).
+    pub const SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK: &str = "SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK";
     /// 进化触发场景：demo（更频繁）/ default（与不设一致）/ conservative（更少、省成本）。不设或 default 时行为与原有默认完全一致。
     pub const SKILLLITE_EVO_PROFILE: &str = "SKILLLITE_EVO_PROFILE";
 
