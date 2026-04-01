@@ -6,6 +6,29 @@ import { isChatHiddenToolName } from "../utils/chatNoise";
 import { humanizeApiError } from "../utils/humanizeApiError";
 
 const STREAM_THROTTLE_MS = 80;
+const EVOLUTION_OPTIONS = [
+  "重试当前方案",
+  "切换数据源/参数",
+  "稍后由定时任务处理",
+  "【授权进化能力】",
+];
+
+function parseToolOutcome(
+  result: string,
+  isError: boolean
+): "failure" | "partial_success" | null {
+  if (isError) return "failure";
+  const text = result.trim();
+  if (!text || (text[0] !== "{" && text[0] !== "[")) return null;
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    if (parsed.success === false) return "failure";
+    if (parsed.partial_success === true) return "partial_success";
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 interface UseChatEventsParams {
   sessionKey: string;
@@ -258,6 +281,7 @@ export function useChatEvents({
         const name = (data?.name as string) ?? "";
         const isErr = (data?.is_error as boolean) ?? false;
         const result = (data?.result as string) ?? "";
+        const outcome = parseToolOutcome(result, isErr);
         addLog({
           type: "tool_result" as const, name,
           text: result.length > 1200 ? result.slice(0, 1200) + "…" : result,
@@ -268,6 +292,33 @@ export function useChatEvents({
             ...prev,
             { id: crypto.randomUUID(), type: "tool_result", name, result, isError: isErr },
           ]);
+          if (outcome !== null) {
+            setMessages((prev) => {
+              const exists = prev.some(
+                (m) =>
+                  m.type === "evolution_options" &&
+                  !m.resolved &&
+                  m.toolName === name &&
+                  m.outcome === outcome
+              );
+              if (exists) return prev;
+              const message =
+                outcome === "failure"
+                  ? `工具「${name}」执行失败。你可以选择下一步处理方式，或直接授权补齐能力。`
+                  : `工具「${name}」只部分满足了需求（partial_success）。你可以选择下一步处理方式，或直接授权补齐能力。`;
+              return [
+                ...prev,
+                {
+                  id: crypto.randomUUID(),
+                  type: "evolution_options",
+                  toolName: name,
+                  outcome,
+                  message,
+                  options: EVOLUTION_OPTIONS,
+                },
+              ];
+            });
+          }
         }
       } else if (event === "command_started") {
         const command = (data?.command as string) ?? "";

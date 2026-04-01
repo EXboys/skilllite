@@ -9,6 +9,7 @@ interface SystemTimelineGroupProps {
   defaultExpanded: boolean;
   onConfirm: (id: string, approved: boolean) => void;
   onClarify?: (id: string, action: string, hint?: string) => void;
+  onEvolutionAction?: (id: string, option: string) => void;
 }
 
 export function SystemTimelineGroup({
@@ -16,6 +17,7 @@ export function SystemTimelineGroup({
   defaultExpanded,
   onConfirm,
   onClarify,
+  onEvolutionAction,
 }: SystemTimelineGroupProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
@@ -50,7 +52,12 @@ export function SystemTimelineGroup({
           <div className="px-3 pb-3 pt-0 space-y-3 border-t border-border/60 dark:border-border-dark/60">
             {messages.map((m) => (
               <div key={m.id} className="first:pt-3">
-                <MessageBubble message={m} onConfirm={onConfirm} onClarify={onClarify} />
+                <MessageBubble
+                  message={m}
+                  onConfirm={onConfirm}
+                  onClarify={onClarify}
+                  onEvolutionAction={onEvolutionAction}
+                />
               </div>
             ))}
           </div>

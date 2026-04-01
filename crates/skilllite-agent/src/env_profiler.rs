@@ -7,7 +7,7 @@
 
 use std::process::Command;
 
-const TOOL_ALLOWLIST: [&str; 5] = ["git", "python", "node", "npm", "cargo"];
+const TOOL_ALLOWLIST: [&str; 6] = ["git", "python", "node", "npm", "pip", "cargo"];
 
 #[derive(Debug, Clone)]
 pub struct ToolProbe {
@@ -133,7 +133,7 @@ mod tests {
     fn collect_profile_contains_allowlist_tools() {
         let profile = collect_safe_env_profile();
         let names: Vec<&str> = profile.tools.iter().map(|t| t.name.as_str()).collect();
-        assert_eq!(names, vec!["git", "python", "node", "npm", "cargo"]);
+        assert_eq!(names, vec!["git", "python", "node", "npm", "pip", "cargo"]);
         assert!(!profile.os.is_empty());
         assert!(!profile.arch.is_empty());
     }

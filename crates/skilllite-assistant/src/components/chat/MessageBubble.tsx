@@ -7,6 +7,7 @@ interface MessageBubbleProps {
   message: ChatMessage;
   onConfirm?: (id: string, approved: boolean) => void;
   onClarify?: (id: string, action: string, hint?: string) => void;
+  onEvolutionAction?: (id: string, option: string) => void;
 }
 
 /** Shared chat bubble chrome: width cap, radius, border, shadow, type scale */
@@ -38,7 +39,7 @@ function ConfirmationBody({ text }: { text: string }) {
   );
 }
 
-function MessageBubbleInner({ message, onConfirm, onClarify }: MessageBubbleProps) {
+function MessageBubbleInner({ message, onConfirm, onClarify, onEvolutionAction }: MessageBubbleProps) {
   if (message.type === "user") {
     return (
       <div className="flex justify-end">
@@ -253,6 +254,45 @@ function MessageBubbleInner({ message, onConfirm, onClarify }: MessageBubbleProp
                 >
                   停止
                 </button>
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (message.type === "evolution_options") {
+    return (
+      <div className="flex justify-start">
+        <div
+          className={`${bubbleShell} mr-4 px-4 py-3 bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800/50`}
+        >
+          <div className="text-xs font-semibold uppercase tracking-wide text-purple-800 dark:text-purple-200 mb-1.5">
+            能力缺口处理
+          </div>
+          <p className="text-sm text-ink dark:text-ink-dark-mute mb-2">{message.message}</p>
+          {message.resolved ? (
+            <div className="text-sm text-ink-mute dark:text-ink-dark-mute">
+              ✓ {message.selectedOption ?? "已处理"}
+            </div>
+          ) : (
+            onEvolutionAction && (
+              <div className="flex flex-wrap gap-2">
+                {message.options.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => onEvolutionAction(message.id, option)}
+                    className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                      option === "【授权进化能力】"
+                        ? "bg-purple-600 text-white font-medium hover:bg-purple-700"
+                        : "border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-gray-100 dark:hover:bg-white/5"
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
               </div>
             )
           )}

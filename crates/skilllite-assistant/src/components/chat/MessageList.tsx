@@ -23,9 +23,16 @@ interface MessageListProps {
   loading: boolean;
   onConfirm: (id: string, approved: boolean) => void;
   onClarify?: (id: string, action: string, hint?: string) => void;
+  onEvolutionAction?: (id: string, option: string) => void;
 }
 
-export function MessageList({ messages, loading, onConfirm, onClarify }: MessageListProps) {
+export function MessageList({
+  messages,
+  loading,
+  onConfirm,
+  onClarify,
+  onEvolutionAction,
+}: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const segments = useMemo(() => partitionChatMessages(messages), [messages]);
@@ -66,7 +73,12 @@ export function MessageList({ messages, loading, onConfirm, onClarify }: Message
     if (seg.kind === "single") {
       return (
         <div className="pb-4">
-          <MessageBubble message={seg.message} onConfirm={onConfirm} onClarify={onClarify} />
+          <MessageBubble
+            message={seg.message}
+            onConfirm={onConfirm}
+            onClarify={onClarify}
+            onEvolutionAction={onEvolutionAction}
+          />
         </div>
       );
     }
@@ -78,6 +90,7 @@ export function MessageList({ messages, loading, onConfirm, onClarify }: Message
           defaultExpanded={timelineDefaultExpanded(messages, seg.messages, loading)}
           onConfirm={onConfirm}
           onClarify={onClarify}
+          onEvolutionAction={onEvolutionAction}
         />
       </div>
     );
@@ -89,7 +102,12 @@ export function MessageList({ messages, loading, onConfirm, onClarify }: Message
         {segments.map((seg) =>
           seg.kind === "single" ? (
             <div key={seg.message.id}>
-              <MessageBubble message={seg.message} onConfirm={onConfirm} onClarify={onClarify} />
+              <MessageBubble
+                message={seg.message}
+                onConfirm={onConfirm}
+                onClarify={onClarify}
+                onEvolutionAction={onEvolutionAction}
+              />
             </div>
           ) : (
             <SystemTimelineGroup
@@ -98,6 +116,7 @@ export function MessageList({ messages, loading, onConfirm, onClarify }: Message
               defaultExpanded={timelineDefaultExpanded(messages, seg.messages, loading)}
               onConfirm={onConfirm}
               onClarify={onClarify}
+              onEvolutionAction={onEvolutionAction}
             />
           )
         )}

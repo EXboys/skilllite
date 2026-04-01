@@ -350,6 +350,21 @@ async fn skilllite_reject_pending_skill(
 }
 
 #[tauri::command]
+async fn skilllite_authorize_capability_evolution(
+    workspace: Option<String>,
+    tool_name: String,
+    outcome: String,
+    summary: String,
+) -> Result<String, String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::authorize_capability_evolution(&ws, &tool_name, &outcome, &summary)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn skilllite_load_evolution_diffs(
     workspace: Option<String>,
 ) -> Vec<skilllite_bridge::EvolutionFileDiffDto> {
@@ -536,6 +551,7 @@ pub fn run() {
             skilllite_read_pending_skill_md,
             skilllite_confirm_pending_skill,
             skilllite_reject_pending_skill,
+            skilllite_authorize_capability_evolution,
             skilllite_load_evolution_diffs,
             skilllite_life_pulse_status,
             skilllite_life_pulse_toggle,

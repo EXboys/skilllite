@@ -26,6 +26,16 @@ export type ChatMessage =
       suggestions: string[];
       resolved?: boolean;
       selectedOption?: string;
+    }
+  | {
+      id: string;
+      type: "evolution_options";
+      toolName: string;
+      outcome: "partial_success" | "failure";
+      message: string;
+      options: string[];
+      resolved?: boolean;
+      selectedOption?: string;
     };
 
 export interface StreamEventPayload {

@@ -208,6 +208,34 @@ export default function ChatView() {
     }
   };
 
+  const handleEvolutionAction = async (id: string, option: string) => {
+    try {
+      const target = messages.find(
+        (m) => m.type === "evolution_options" && m.id === id
+      );
+      if (option === "【授权进化能力】" && target?.type === "evolution_options") {
+        await invoke("skilllite_authorize_capability_evolution", {
+          workspace: settings.workspace || ".",
+          toolName: target.toolName,
+          outcome: target.outcome,
+          summary: target.message,
+        });
+      }
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.type === "evolution_options" && m.id === id
+            ? { ...m, resolved: true, selectedOption: option }
+            : m
+        )
+      );
+    } catch (e) {
+      const msg = formatInvokeError(e);
+      useUiToastStore
+        .getState()
+        .show(t("toast.confirmFailed", { err: msg }), "error");
+    }
+  };
+
   const handleClear = useCallback(async () => {
     if (loading || isClearing) return;
     setIsClearing(true);
@@ -467,6 +495,7 @@ export default function ChatView() {
         loading={loading}
         onConfirm={handleConfirm}
         onClarify={handleClarify}
+        onEvolutionAction={handleEvolutionAction}
       />
 
       {error && (

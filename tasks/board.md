@@ -16,6 +16,7 @@ Last updated: 2026-04-01
 
 ## Done
 
+- `TASK-2026-017-partial-failure-evolution-authorization` - Status: `done` - Owner: `exboys`
 - `TASK-2026-016-evolution-p0-thresholds-and-rollback-boundary` - Status: `done` - Owner: `exboys`
 - `TASK-2026-015-evolution-acceptance-auto-link` - Status: `done` - Owner: `exboys`
 - `TASK-2026-014-evolution-backlog-query-command` - Status: `done` - Owner: `exboys`

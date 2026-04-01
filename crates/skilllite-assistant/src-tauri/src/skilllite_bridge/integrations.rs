@@ -487,6 +487,29 @@ pub fn evolution_reject_pending_skill(workspace: &str, skill_name: &str) -> Resu
         .map_err(|e| e.to_string())
 }
 
+pub fn authorize_capability_evolution(
+    workspace: &str,
+    tool_name: &str,
+    outcome: &str,
+    summary: &str,
+) -> Result<String, String> {
+    let chat_root = skilllite_core::paths::chat_root();
+    let conn =
+        skilllite_evolution::feedback::open_evolution_db(&chat_root).map_err(|e| e.to_string())?;
+    let proposal_id =
+        skilllite_evolution::enqueue_user_capability_evolution(&conn, tool_name, outcome, summary)
+            .map_err(|e| e.to_string())?;
+    let _ = skilllite_evolution::log_evolution_event(
+        &conn,
+        &chat_root,
+        "capability_evolution_authorized",
+        tool_name,
+        &format!("outcome={}, proposal_id={}", outcome, proposal_id),
+        workspace,
+    );
+    Ok(proposal_id)
+}
+
 // ─── Evolution diffs (prompt snapshot diff for UI) ────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]

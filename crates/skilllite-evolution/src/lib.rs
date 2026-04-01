@@ -826,6 +826,87 @@ fn upsert_backlog_proposal(
     Ok(())
 }
 
+/// Enqueue a user-authorized capability evolution proposal into backlog.
+///
+/// This is intentionally bounded to backlog insertion only. It does not bypass
+/// coordinator policy runtime or force immediate execution.
+pub fn enqueue_user_capability_evolution(
+    conn: &Connection,
+    tool_name: &str,
+    outcome: &str,
+    summary: &str,
+) -> Result<String> {
+    let outcome_norm = outcome.trim().to_ascii_lowercase();
+    let risk_level = match outcome_norm.as_str() {
+        "failure" => ProposalRiskLevel::Medium,
+        "partial_success" => ProposalRiskLevel::Low,
+        other => bail!(
+            "unsupported capability outcome '{}'; expected partial_success or failure",
+            other
+        ),
+    };
+    let clean_tool = tool_name.trim();
+    if clean_tool.is_empty() {
+        bail!("tool_name cannot be empty for capability evolution authorization");
+    }
+    let clean_summary = summary.trim();
+    let summary_preview: String = clean_summary.chars().take(160).collect();
+    let proposal = EvolutionProposal {
+        proposal_id: format!(
+            "proposal_{}",
+            chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f")
+        ),
+        source: ProposalSource::Passive,
+        scope: EvolutionScope {
+            skills: true,
+            skill_action: SkillAction::Generate,
+            ..Default::default()
+        },
+        risk_level,
+        expected_gain: if outcome_norm == "failure" {
+            0.75
+        } else {
+            0.55
+        },
+        effort: if outcome_norm == "failure" { 1.8 } else { 1.2 },
+        roi_score: compute_roi_score(
+            if outcome_norm == "failure" {
+                0.75
+            } else {
+                0.55
+            },
+            if outcome_norm == "failure" { 1.8 } else { 1.2 },
+            risk_level,
+        ),
+        dedupe_key: format!(
+            "user_capability:{}:{}",
+            clean_tool.to_ascii_lowercase(),
+            outcome_norm
+        ),
+        acceptance_criteria: vec![
+            format!(
+                "Capability gap for tool '{}' ({}) is reduced in follow-up runs.",
+                clean_tool, outcome_norm
+            ),
+            "No regressions in safety gates and acceptance metrics over the next 3 daily windows."
+                .to_string(),
+        ],
+    };
+    let note = if summary_preview.is_empty() {
+        format!(
+            "User authorized capability evolution (tool={}, outcome={})",
+            clean_tool, outcome_norm
+        )
+    } else {
+        format!(
+            "User authorized capability evolution (tool={}, outcome={}): {}",
+            clean_tool, outcome_norm, summary_preview
+        )
+    };
+    upsert_backlog_proposal(conn, &proposal, "queued", &note)?;
+    Ok(proposal.proposal_id)
+}
+
 fn set_backlog_status(
     conn: &Connection,
     proposal_id: &str,
@@ -2367,6 +2448,31 @@ mod lib_tests {
         )
         .expect("coordinate");
         assert!(matches!(decision, CoordinatorDecision::Denied(_)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn enqueue_user_capability_evolution_inserts_backlog_row() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let proposal_id = enqueue_user_capability_evolution(
+            &conn,
+            "weather",
+            "failure",
+            "Tool cannot provide tomorrow forecast",
+        )
+        .expect("enqueue");
+        let (status, risk, dedupe): (String, String, String) = conn
+            .query_row(
+                "SELECT status, risk_level, dedupe_key FROM evolution_backlog WHERE proposal_id = ?1",
+                rusqlite::params![proposal_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read row");
+        assert_eq!(status, "queued");
+        assert_eq!(risk, "medium");
+        assert_eq!(dedupe, "user_capability:weather:failure");
         let _ = std::fs::remove_dir_all(&root);
     }
 
