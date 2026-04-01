@@ -15,6 +15,6 @@ pub use builtin::{process_tool_result_content, process_tool_result_content_fallb
 pub use memory::{build_memory_context, index_evolution_knowledge};
 pub use registry::{
     CapabilityPolicy, ExtensionRegistry, ExtensionRegistryBuilder, MemoryVectorContext,
-    PlanningControlExecutor, RegisteredTool, ToolAvailabilityView, ToolCapability, ToolHandler,
-    ToolScope,
+    PlanningControlExecutor, RegisteredTool, ToolAvailabilityView, ToolCapability,
+    ToolExecutionProfile, ToolHandler, ToolScope,
 };

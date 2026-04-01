@@ -1,6 +1,7 @@
 //! JSON-RPC handlers for executor feature (session, transcript, memory, plan).
 
-use anyhow::{Context, Result};
+use crate::error::{bail, Result};
+use anyhow::Context;
 use serde_json::{json, Value};
 use std::fs;
 use std::io::Write;
@@ -150,8 +151,7 @@ pub fn handle_transcript_read(params: &Value) -> Result<Value> {
     let entries = read_entries_for_session(&transcripts_dir, session_key)?;
     let arr: Vec<Value> = entries
         .into_iter()
-        .map(serde_json::to_value)
-        .filter_map(Result::ok)
+        .filter_map(|e| serde_json::to_value(e).ok())
         .collect();
     Ok(json!(arr))
 }
@@ -318,7 +318,7 @@ pub fn handle_memory_write(params: &Value) -> Result<Value> {
     let full_path = root.join("memory").join(rel_path);
 
     if rel_path.is_empty() || rel_path.contains("..") || rel_path.starts_with('/') {
-        anyhow::bail!("Invalid rel_path: must be relative, without ..");
+        bail!("Invalid rel_path: must be relative, without ..");
     }
 
     if let Some(parent) = full_path.parent() {

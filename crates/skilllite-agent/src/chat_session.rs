@@ -4,7 +4,8 @@
 //! (same process, no IPC). Handles transcript persistence, auto-compaction,
 //! and memory integration.
 
-use anyhow::{Context, Result};
+use crate::Result;
+use anyhow::Context;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
@@ -485,7 +486,7 @@ impl ChatSession {
             content: Some(content.to_string()),
             tool_calls: None,
         };
-        transcript::append_entry(&t_path, &entry)
+        Ok(transcript::append_entry(&t_path, &entry)?)
     }
 
     /// Save tool calls and results from agent loop messages to transcript.

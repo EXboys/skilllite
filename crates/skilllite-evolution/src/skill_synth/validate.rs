@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use crate::Result;
 
 use crate::EvolutionLlm;
 use crate::EvolutionMessage;
@@ -201,6 +201,14 @@ pub struct SkillValidation {
 
 /// 从 error trace 提取可读摘要（优先 stderr 首行）
 fn brief_error(trace: &str) -> String {
+    fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
+        if s.chars().count() > max_chars {
+            format!("{}…", s.chars().take(max_chars.saturating_sub(3)).collect::<String>())
+        } else {
+            s.to_string()
+        }
+    }
+
     if trace.is_empty() {
         return String::new();
     }
@@ -212,20 +220,12 @@ fn brief_error(trace: &str) -> String {
                 .map(|l| l.trim())
                 .unwrap_or("");
             if !first.is_empty() {
-                return if first.len() > 80 {
-                    format!("{}…", first.chars().take(77).collect::<String>())
-                } else {
-                    first.to_string()
-                };
+                return truncate_with_ellipsis(first, 80);
             }
         }
     }
     let first = trace.lines().next().unwrap_or("");
-    if first.len() > 80 {
-        format!("{}…", &first[..77])
-    } else {
-        first.to_string()
-    }
+    truncate_with_ellipsis(first, 80)
 }
 
 // ─── validate_skills ─────────────────────────────────────────────────────────
@@ -343,4 +343,17 @@ pub async fn validate_skills<L: EvolutionLlm>(
         }
     }
     Ok(results)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::brief_error;
+
+    #[test]
+    fn brief_error_handles_multibyte_without_panic() {
+        let input = "SKILL.md 文档不完整，缺少: 缺少该AgentSkill（skill-creator）的完整使用案例（含具体输入参数值和预期输出），以及其所有输入参数的名称、类型和用途说明。文档中提供的示例和参数说明是针对辅助脚本的，不满足主流程。";
+        let out = brief_error(input);
+        assert!(!out.is_empty());
+        assert!(out.chars().count() <= 81);
+    }
 }

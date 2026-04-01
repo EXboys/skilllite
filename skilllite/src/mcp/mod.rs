@@ -126,7 +126,13 @@ fn skip_until_newline(reader: &mut impl BufRead) {
 ///
 /// This is the entry point for `skilllite mcp-serve`.
 pub fn serve_mcp_stdio(skills_dir: &str) -> Result<()> {
-    let skills_path = PathBuf::from(skills_dir);
+    let mut skills_path = PathBuf::from(skills_dir);
+    if skills_dir == "skills" && !skills_path.exists() {
+        let legacy = PathBuf::from(".skills");
+        if legacy.is_dir() {
+            skills_path = legacy;
+        }
+    }
     let mut server = McpServer::new(skills_path);
 
     let stdin = io::stdin();

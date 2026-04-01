@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use crate::Result;
 
 use super::super::extensions::ToolAvailabilityView;
 use super::super::goal_boundaries;

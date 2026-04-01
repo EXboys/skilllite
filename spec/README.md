@@ -4,34 +4,39 @@ This directory defines short, enforceable rules that should be injected by task 
 
 ## Specs
 
+- `verification-integrity.md`: **highest-priority** — anti-hallucination and anti-false-positive rules. Injected for ALL task types unconditionally.
 - `architecture-boundaries.md`: crate dependency direction and layering rules.
 - `security-nonnegotiables.md`: security invariants for sandbox, policy, and gating changes.
+- `rust-conventions.md`: Rust coding conventions — no unwrap in production, crate-level Error/Result, Clippy zero warnings, no raw anyhow in crates.
 - `testing-policy.md`: minimum required test set by change type.
 - `docs-sync.md`: EN/ZH documentation sync requirements.
 
 ## Injection Strategy (Task Type -> Specs)
 
+**Universal (all task types):** `verification-integrity.md` is always injected first.
+
 - `architecture` task:
-  - Inject: `architecture-boundaries.md`, `testing-policy.md`, `docs-sync.md`
+  - Inject: `verification-integrity.md`, `architecture-boundaries.md`, `rust-conventions.md`, `testing-policy.md`, `docs-sync.md`
 - `sandbox` or `security` task:
-  - Inject: `security-nonnegotiables.md`, `testing-policy.md`, `docs-sync.md`
+  - Inject: `verification-integrity.md`, `security-nonnegotiables.md`, `rust-conventions.md`, `testing-policy.md`, `docs-sync.md`
 - `agent` / `commands` / `mcp` behavior task:
-  - Inject: `architecture-boundaries.md`, `testing-policy.md`, `docs-sync.md`
+  - Inject: `verification-integrity.md`, `architecture-boundaries.md`, `rust-conventions.md`, `testing-policy.md`, `docs-sync.md`
 - `python-sdk` task:
-  - Inject: `testing-policy.md`, `docs-sync.md`
+  - Inject: `verification-integrity.md`, `testing-policy.md`, `docs-sync.md`
 - `docs-only` task:
-  - Inject: `docs-sync.md`
+  - Inject: `verification-integrity.md`, `docs-sync.md`
 - `mixed/refactor` task:
-  - Inject all four specs
+  - Inject all six specs
 
 ## Deterministic Selection Rules
 
+0. **Always** include `verification-integrity.md` — this is the highest-priority spec and applies unconditionally to every task type.
 1. If files under `crates/skilllite-sandbox/` or security policy code are touched:
    always include `security-nonnegotiables.md`.
 2. If workspace/crate boundaries, dependency direction, or extension wiring change:
    include `architecture-boundaries.md`.
-3. For any code change:
-   include `testing-policy.md`.
+3. For any Rust code change:
+   include `rust-conventions.md` and `testing-policy.md`.
 4. If user-facing behavior, commands, env vars, architecture docs, or release matrix changes:
    include `docs-sync.md`.
 5. If two or more rules match, inject all matched specs (do not down-select to one).

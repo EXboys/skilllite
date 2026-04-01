@@ -1,16 +1,19 @@
 //! Planning rules generation: use LLM to generate planning rules from skill docs.
 //!
-//! During `skilllite init --use-llm`, scans `.skills/*/SKILL.md`, collects name/description/body,
+//! During `skilllite init --use-llm`, scans `skills/*/SKILL.md` (compatible with `.skills/*`), collects name/description/body,
 //! calls LLM to generate PlanningRule JSON, merges with builtin rules, writes to `.skilllite/planning_rules.json`.
 
 #[cfg(feature = "agent")]
-use anyhow::{Context, Result};
+use anyhow::Context;
 #[cfg(feature = "agent")]
 use std::fs;
 #[cfg(feature = "agent")]
 use std::path::{Path, PathBuf};
 #[cfg(feature = "agent")]
 use std::sync::LazyLock;
+
+#[cfg(feature = "agent")]
+use crate::Result;
 
 #[cfg(feature = "agent")]
 use skilllite_agent::llm::LlmClient;
@@ -91,17 +94,19 @@ pub fn generate_planning_rules(
     use_llm: bool,
 ) -> Result<std::path::PathBuf> {
     if !use_llm || skill_names.is_empty() {
-        return Err(anyhow::anyhow!("skipped"));
+        return Err(crate::Error::validation("skipped"));
     }
 
     let config = AgentConfig::from_env();
     if config.api_key.is_empty() {
-        return Err(anyhow::anyhow!("No API key, set BASE_URL and API_KEY"));
+        return Err(crate::Error::validation(
+            "No API key, set BASE_URL and API_KEY",
+        ));
     }
 
     let docs = collect_skill_docs(skills_path, skill_names);
     if docs.is_empty() {
-        return Err(anyhow::anyhow!("No skill docs to process"));
+        return Err(crate::Error::validation("No skill docs to process"));
     }
 
     let system_prompt = r#"You are a task planning rule generator. Given skill documentation (name, description, body), output a JSON array of planning rules for the task planner.

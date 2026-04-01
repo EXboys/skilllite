@@ -11,7 +11,8 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use crate::error::bail;
+use crate::Result;
 
 use super::extensions::ToolAvailabilityView;
 use super::goal_boundaries::GoalBoundaries;
@@ -345,7 +346,7 @@ impl TaskPlanner {
         let cleaned = cleaned.trim().to_string();
 
         if cleaned.is_empty() {
-            anyhow::bail!("LLM returned empty content (after stripping think blocks)");
+            bail!("LLM returned empty content (after stripping think blocks)");
         }
 
         // Strip markdown code fences
@@ -367,7 +368,7 @@ impl TaskPlanner {
             "parse_task_list raw (first 500 chars): {}",
             &raw[..raw.len().min(500)]
         );
-        anyhow::bail!("No valid JSON task array found in LLM response")
+        bail!("No valid JSON task array found in LLM response")
     }
 
     /// Strip markdown code fences (```` ```json ... ``` ````) from content.

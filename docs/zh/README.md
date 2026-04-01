@@ -213,7 +213,7 @@ python benchmark_runner.py --cold-start --cold-iterations 20 --compare-levels --
 
 ```bash
 pip install skilllite
-skilllite init        # 沙箱二进制 + .skills/ + 下载 skills
+skilllite init        # 沙箱二进制 + skills/ + 下载 skills
 skilllite list        # 验证安装
 ```
 
@@ -228,7 +228,7 @@ skilllite quickstart
 ```python
 from skilllite import chat
 
-result = chat("帮我计算 15 乘以 27", skills_dir=".skills")
+result = chat("帮我计算 15 乘以 27", skills_dir="skills")
 print(result)
 ```
 
@@ -273,7 +273,7 @@ cp .env.example .env   # 编辑: BASE_URL, API_KEY, MODEL
 ```python
 from skilllite import run_skill
 
-result = run_skill("./.skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
+result = run_skill("./skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
 print(result["text"])
 ```
 
@@ -416,7 +416,7 @@ skilllite/                         依赖流向
 
 | 命令 | 说明 |
 |------|------|
-| `skilllite init` | 初始化项目（.skills/ + 下载 skills + 依赖 + 审计） |
+| `skilllite init` | 初始化项目（skills/ + 下载 skills + 依赖 + 审计） |
 | `skilllite quickstart` | 零配置：检测 LLM、配置 skills、启动对话 |
 | `skilllite chat` | 交互式 Agent 对话（或 `--message` 单次对话） |
 | `skilllite add owner/repo` | 从 GitHub 添加 skills |
@@ -491,6 +491,8 @@ npm install
 npm run tauri dev    # 开发模式（HMR）
 npm run tauri build
 ```
+
+聊天输入行为：`Enter` 仅换行，发送需点击 `发送` 按钮。
 
 详见 [crates/skilllite-assistant/README.md](../../crates/skilllite-assistant/README.md)。
 

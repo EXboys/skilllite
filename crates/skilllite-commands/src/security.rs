@@ -1,7 +1,8 @@
 //! Security commands: security scan, dependency audit.
 
-use anyhow::Result;
 use skilllite_core::path_validation::validate_path_under_root;
+
+use crate::Result;
 use skilllite_sandbox::security::{
     format_scan_result_compact, format_scan_result_json, ScriptScanner,
 };

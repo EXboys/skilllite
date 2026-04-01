@@ -2246,6 +2246,7 @@ dependencies = [
  "skilllite-fs",
  "skilllite-sandbox",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "ureq",
@@ -2295,6 +2296,7 @@ dependencies = [
  "skilllite-fs",
  "skilllite-sandbox",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "uuid",
@@ -2326,6 +2328,7 @@ dependencies = [
  "anyhow",
  "regex",
  "tempfile",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -2370,6 +2373,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skilllite-core",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "urlencoding",

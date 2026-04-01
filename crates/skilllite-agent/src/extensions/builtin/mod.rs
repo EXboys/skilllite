@@ -133,14 +133,14 @@ pub fn execute_builtin_tool(
         "chat_history" => chat_data::execute_chat_history(&args),
         "chat_plan" => chat_data::execute_chat_plan(&args),
         "list_output" => output::execute_list_output(&args),
-        "update_task_plan" | "complete_task" => Err(anyhow::anyhow!(
+        "update_task_plan" | "complete_task" => Err(crate::Error::validation(format!(
             "{} is a planning control tool; it must be dispatched via registry.execute with planning_ctx",
             tool_name
+        ))),
+        "delegate_to_swarm" => Err(crate::Error::validation(
+            "delegate_to_swarm is async; it must be handled by the agent loop".to_string()
         )),
-        "delegate_to_swarm" => Err(anyhow::anyhow!(
-            "delegate_to_swarm is async; it must be handled by the agent loop"
-        )),
-        _ => Err(anyhow::anyhow!("Unknown built-in tool: {}", tool_name)),
+        _ => Err(crate::Error::validation(format!("Unknown built-in tool: {}", tool_name))),
     };
 
     match result {
@@ -217,10 +217,10 @@ pub async fn execute_async_builtin_tool(
         "delegate_to_swarm" => {
             delegate_swarm::execute_delegate_to_swarm(&args, workspace, event_sink).await
         }
-        _ => Err(anyhow::anyhow!(
+        _ => Err(crate::Error::validation(format!(
             "Unknown async built-in tool: {}",
             tool_name
-        )),
+        ))),
     };
 
     match result {

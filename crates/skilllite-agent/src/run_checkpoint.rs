@@ -2,7 +2,7 @@
 //!
 //! Enables `skilllite run --resume` to continue from where a previous run left off.
 
-use anyhow::Result;
+use crate::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 

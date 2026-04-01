@@ -1,6 +1,8 @@
 //! OpenAI-compatible API implementation.
 
-use anyhow::{anyhow, Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::{anyhow, Context};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 
@@ -102,7 +104,7 @@ impl LlmClient {
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("{}", super::format_api_error(status, &body_text, "LLM"));
+            bail!("{}", super::format_api_error(status, &body_text, "LLM"));
         }
 
         let response: ChatCompletionResponse = resp
@@ -161,7 +163,7 @@ impl LlmClient {
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("{}", super::format_api_error(status, &body_text, "LLM"));
+            bail!("{}", super::format_api_error(status, &body_text, "LLM"));
         }
 
         self.accumulate_openai_stream(resp, event_sink).await

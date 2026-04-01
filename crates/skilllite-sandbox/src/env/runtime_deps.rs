@@ -36,7 +36,10 @@
 //! proceeds without confirmation. For CLI/desktop: pass a callback that prompts the user
 //! (and checks `SKILLLITE_AUTO_APPROVE_RUNTIME=1` to skip prompt in CI/automation).
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::error::bail;
+use crate::Result;
 use serde::Serialize;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -505,7 +508,7 @@ pub fn provision_runtimes_to_cache(
                     message: "Python 已在缓存中".into(),
                 }
             } else {
-                let py_result: Result<(), String> = if force && dir.exists() {
+                let py_result: std::result::Result<(), String> = if force && dir.exists() {
                     std::fs::remove_dir_all(&dir)
                         .map_err(|e| format!("无法删除旧 Python 缓存：{}", e))
                         .and_then(|_| {
@@ -569,7 +572,10 @@ pub fn provision_runtimes_to_cache(
             } else {
                 let node_result = if force && dir.exists() {
                     if let Err(e) = std::fs::remove_dir_all(&dir) {
-                        Err(anyhow::anyhow!("无法删除旧 Node 缓存：{}", e))
+                        Err(crate::Error::validation(format!(
+                            "无法删除旧 Node 缓存：{}",
+                            e
+                        )))
                     } else {
                         ensure_node_runtime(&runtime_dir, node_progress).map(|_| ())
                     }
@@ -748,7 +754,7 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
         verify_sha256(&archive_path, expected)?;
     } else {
         let _ = std::fs::remove_file(&archive_path);
-        anyhow::bail!(
+        bail!(
             "Integrity check not configured for Python asset '{}'. Refusing to run unverified runtime.",
             archive_name
         );
@@ -782,7 +788,7 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
     {
         extracted_root.join("install")
     } else {
-        anyhow::bail!(
+        bail!(
             "Python binary not found under {} (expected bin/python or install/bin/python)",
             extracted_root.display()
         );
@@ -799,7 +805,7 @@ pub fn ensure_python_runtime(runtime_dir: &Path, progress: RuntimeProgressFn) ->
     if python_bin.exists() {
         Ok(python_bin)
     } else {
-        anyhow::bail!("Python runtime not found at {}", python_bin.display())
+        bail!("Python runtime not found at {}", python_bin.display())
     }
 }
 
@@ -871,7 +877,7 @@ fn target_triple() -> Result<(String, String)> {
         ("linux", "x86_64") => "x86_64-unknown-linux-gnu",
         ("linux", "aarch64") => "aarch64-unknown-linux-gnu",
         ("linux", "arm") => "armv7-unknown-linux-gnueabihf",
-        _ => anyhow::bail!("Unsupported platform for bundled Python: {}-{}", os, arch),
+        _ => bail!("Unsupported platform for bundled Python: {}-{}", os, arch),
     };
     let node_suffix = match (os, arch) {
         ("macos", "aarch64") => "darwin-arm64",
@@ -879,7 +885,7 @@ fn target_triple() -> Result<(String, String)> {
         ("linux", "x86_64") => "linux-x64",
         ("linux", "aarch64") => "linux-arm64",
         ("linux", "arm") => "linux-armv7l",
-        _ => anyhow::bail!("Unsupported platform for bundled Node: {}-{}", os, arch),
+        _ => bail!("Unsupported platform for bundled Node: {}-{}", os, arch),
     };
     Ok((triple.to_string(), node_suffix.to_string()))
 }
@@ -902,7 +908,7 @@ fn verify_sha256(archive_path: &Path, expected_hex: &str) -> Result<()> {
     let expected = expected_hex.trim().to_lowercase();
     if got != expected {
         let _ = std::fs::remove_file(archive_path);
-        anyhow::bail!(
+        bail!(
             "Runtime archive integrity check failed: expected sha256 {} got {}. \
             If using a mirror, try another or set SKILLLITE_RUNTIME_PYTHON_BASE_URL / SKILLLITE_RUNTIME_NODE_BASE_URL.",
             expected_hex,
@@ -944,7 +950,7 @@ fn fetch_node_sha256(sums_url: &str, archive_name: &str) -> Result<String> {
             return Ok(hash.to_lowercase());
         }
     }
-    anyhow::bail!(
+    bail!(
         "Archive '{}' not found in SHASUMS256.txt from {}",
         archive_name,
         sums_url
@@ -1098,7 +1104,7 @@ pub fn ensure_node_runtime(
 
 #[cfg(not(feature = "runtime-deps"))]
 pub fn ensure_python_runtime(_runtime_dir: &Path, _progress: RuntimeProgressFn) -> Result<PathBuf> {
-    anyhow::bail!(
+    bail!(
         "Python not found or version < {}.{}. Install Python {}.{}+ or enable runtime-deps feature.",
         MIN_PYTHON_VERSION.0,
         MIN_PYTHON_VERSION.1,
@@ -1112,7 +1118,7 @@ pub fn ensure_node_runtime(
     _runtime_dir: &Path,
     _progress: RuntimeProgressFn,
 ) -> Result<(PathBuf, PathBuf)> {
-    anyhow::bail!(
+    bail!(
         "Node.js not found or version < {}. Install Node {}+ or enable runtime-deps feature.",
         MIN_NODE_MAJOR,
         MIN_NODE_MAJOR

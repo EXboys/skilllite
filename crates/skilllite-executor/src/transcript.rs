@@ -6,7 +6,8 @@
 //! `{session_key}-YYYY-MM-DD.jsonl` so each day gets a new file. Legacy
 //! `{session_key}.jsonl` without date is still supported for backward compat.
 
-use anyhow::{Context, Result};
+use crate::error::Result;
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::env;

@@ -25,9 +25,9 @@
 
 ## Acceptance Criteria
 
-- [ ] Main loop file becomes smaller and clearer.
-- [ ] New modules have focused tests for key branches.
-- [ ] Existing agent integration behavior remains unchanged.
+- [x] Main loop file becomes smaller and clearer (846 → 716 lines).
+- [x] New modules have focused tests for key branches.
+- [x] Existing agent integration behavior remains unchanged (163/163 tests pass).
 
 ## Risks
 

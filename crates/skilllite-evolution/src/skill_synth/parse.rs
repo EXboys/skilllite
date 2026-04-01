@@ -1,6 +1,6 @@
 //! LLM 响应解析：技能生成、精炼 JSON
 
-use anyhow::Result;
+use crate::Result;
 use regex::Regex;
 
 use crate::prompt_learner;
@@ -135,7 +135,10 @@ pub(super) async fn parse_skill_generation_with_retry<L: EvolutionLlm>(
                     ok @ Ok(_) => return ok,
                     Err(e2) => {
                         if attempt == MAX_PARSE_RETRIES - 1 {
-                            return Err(anyhow::anyhow!("Parse retry failed: {}", e2));
+                            return Err(crate::Error::validation(format!(
+                                "Parse retry failed: {}",
+                                e2
+                            )));
                         }
                     }
                 }
@@ -156,22 +159,22 @@ pub(super) fn parse_skill_generation_response(content: &str) -> Result<Option<Ge
             if err_str.contains("EOF") || err_str.contains("unexpected end of file") {
                 if let Some(repaired) = try_repair_truncated_skill_json(&json_str) {
                     serde_json::from_str(&repaired).map_err(|e2| {
-                        anyhow::anyhow!(
+                        crate::Error::validation(format!(
                             "Failed to parse skill generation JSON (after repair): {}",
                             e2
-                        )
+                        ))
                     })?
                 } else {
-                    return Err(anyhow::anyhow!(
+                    return Err(crate::Error::validation(format!(
                         "Failed to parse skill generation JSON: {}",
                         e
-                    ));
+                    )));
                 }
             } else {
-                return Err(anyhow::anyhow!(
+                return Err(crate::Error::validation(format!(
                     "Failed to parse skill generation JSON: {}",
                     e
-                ));
+                )));
             }
         }
     };
@@ -185,7 +188,7 @@ pub(super) fn parse_skill_generation_response(content: &str) -> Result<Option<Ge
 
     let skill = parsed
         .get("skill")
-        .ok_or_else(|| anyhow::anyhow!("No 'skill' field in response"))?;
+        .ok_or_else(|| crate::Error::validation("No 'skill' field in response"))?;
 
     let name = skill
         .get("name")
@@ -260,10 +263,16 @@ pub(super) fn parse_refinement_response(content: &str) -> Result<Option<RefinedS
                     let from_str = from_brace.to_string();
                     if let Some(repaired2) = try_repair_unquoted_keys(&from_str) {
                         serde_json::from_str(&repaired2).map_err(|e2| {
-                            anyhow::anyhow!("Failed to parse refinement JSON: {}", e2)
+                            crate::Error::validation(format!(
+                                "Failed to parse refinement JSON: {}",
+                                e2
+                            ))
                         })?
                     } else {
-                        return Err(anyhow::anyhow!("Failed to parse refinement JSON: {}", e));
+                        return Err(crate::Error::validation(format!(
+                            "Failed to parse refinement JSON: {}",
+                            e
+                        )));
                     }
                 }
             } else {
@@ -279,7 +288,9 @@ pub(super) fn parse_refinement_response(content: &str) -> Result<Option<RefinedS
                             .and_then(|r| serde_json::from_str(&r).ok())
                             .ok_or(e)
                     })
-                    .map_err(|e2| anyhow::anyhow!("Failed to parse refinement JSON: {}", e2))?
+                    .map_err(|e2| {
+                        crate::Error::validation(format!("Failed to parse refinement JSON: {}", e2))
+                    })?
             }
         }
     };

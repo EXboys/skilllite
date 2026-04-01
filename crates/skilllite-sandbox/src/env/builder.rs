@@ -5,7 +5,10 @@
 //! P0: Prefer system Python/Node; if missing or version too low, provision via runtime_deps with
 //! transparent progress reporting.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::error::bail;
+use crate::Result;
 use skilllite_core::config;
 use skilllite_core::EnvSpec;
 use std::path::{Path, PathBuf};
@@ -176,7 +179,7 @@ fn ensure_python_env(
         cmd.current_dir(skill_dir);
         let out = cmd.output().context("Create venv")?;
         if !out.status.success() {
-            anyhow::bail!("venv failed: {}", String::from_utf8_lossy(&out.stderr));
+            bail!("venv failed: {}", String::from_utf8_lossy(&out.stderr));
         }
 
         if !packages.is_empty() {
@@ -193,7 +196,7 @@ fn ensure_python_env(
             cmd.args(&packages).current_dir(skill_dir);
             let out = cmd.output().context("pip install")?;
             if !out.status.success() {
-                anyhow::bail!(
+                bail!(
                     "pip install failed: {}",
                     String::from_utf8_lossy(&out.stderr)
                 );
@@ -265,7 +268,7 @@ fn ensure_node_env(
                 .output()
                 .context("npm install")?;
             if !out.status.success() {
-                anyhow::bail!(
+                bail!(
                     "npm install failed: {}",
                     String::from_utf8_lossy(&out.stderr)
                 );
@@ -361,7 +364,7 @@ fn requests_playwright_browsers(packages: &[String]) -> bool {
 fn install_playwright_browsers_for_python(skill_dir: &Path, env_path: &Path) -> Result<()> {
     let python = python_path_in_env(env_path);
     if !python.exists() {
-        anyhow::bail!("playwright browser install skipped: python env missing");
+        bail!("playwright browser install skipped: python env missing");
     }
 
     let out = Command::new(&python)
@@ -370,7 +373,7 @@ fn install_playwright_browsers_for_python(skill_dir: &Path, env_path: &Path) -> 
         .output()
         .context("playwright install chromium")?;
     if !out.status.success() {
-        anyhow::bail!(
+        bail!(
             "playwright install chromium failed: {}",
             String::from_utf8_lossy(&out.stderr)
         );
@@ -408,7 +411,7 @@ fn install_playwright_browsers_for_node(env_path: &Path) -> Result<()> {
         .output()
         .context("playwright install chromium")?;
     if !out.status.success() {
-        anyhow::bail!(
+        bail!(
             "playwright install chromium failed: {}",
             String::from_utf8_lossy(&out.stderr)
         );
@@ -446,7 +449,7 @@ fn which_python() -> Result<PythonCommand> {
             }
         }
     }
-    anyhow::bail!("no usable Python launcher found in PATH")
+    bail!("no usable Python launcher found in PATH")
 }
 
 /// Prefer system Python (if version >= MIN_PYTHON_VERSION); otherwise provision to ~/.skilllite/runtime/.
@@ -481,7 +484,7 @@ fn resolve_python(
         if let Some(ref confirm) = confirm_download {
             let req = runtime_deps::RuntimeDownloadRequest::python();
             if !confirm(&req) {
-                anyhow::bail!(
+                bail!(
                     "Runtime download declined. To allow automatic download, set SKILLLITE_AUTO_APPROVE_RUNTIME=1."
                 );
             }
@@ -512,7 +515,7 @@ fn resolve_node(
         if let Some(ref confirm) = confirm_download {
             let req = runtime_deps::RuntimeDownloadRequest::node();
             if !confirm(&req) {
-                anyhow::bail!(
+                bail!(
                     "Runtime download declined. To allow automatic download, set SKILLLITE_AUTO_APPROVE_RUNTIME=1."
                 );
             }

@@ -3,7 +3,9 @@
 use std::path::Path;
 use std::time::SystemTime;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::{Error, Result};
 
 /// 路径类型
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,32 +31,33 @@ pub fn read_dir(path: &Path) -> Result<Vec<(std::path::PathBuf, bool)>> {
 
 /// 确保目录存在
 pub fn create_dir_all(path: &Path) -> Result<()> {
-    std::fs::create_dir_all(path)
-        .with_context(|| format!("Failed to create dir: {}", path.display()))
+    Ok(std::fs::create_dir_all(path)
+        .with_context(|| format!("Failed to create dir: {}", path.display()))?)
 }
 
 /// 复制文件
 pub fn copy(from: &Path, to: &Path) -> Result<u64> {
-    std::fs::copy(from, to)
-        .with_context(|| format!("Failed to copy {} -> {}", from.display(), to.display()))
+    Ok(std::fs::copy(from, to)
+        .with_context(|| format!("Failed to copy {} -> {}", from.display(), to.display()))?)
 }
 
 /// 重命名/移动
 pub fn rename(from: &Path, to: &Path) -> Result<()> {
-    std::fs::rename(from, to)
-        .with_context(|| format!("Failed to rename {} -> {}", from.display(), to.display()))
+    Ok(std::fs::rename(from, to)
+        .with_context(|| format!("Failed to rename {} -> {}", from.display(), to.display()))?)
 }
 
 /// 删除文件
 pub fn remove_file(path: &Path) -> Result<()> {
-    std::fs::remove_file(path).with_context(|| format!("Failed to remove file: {}", path.display()))
+    Ok(std::fs::remove_file(path)
+        .with_context(|| format!("Failed to remove file: {}", path.display()))?)
 }
 
 /// 获取修改时间
 pub fn modified_time(path: &Path) -> Result<SystemTime> {
-    std::fs::metadata(path)
+    Ok(std::fs::metadata(path)
         .and_then(|m| m.modified())
-        .with_context(|| format!("Failed to get modified time: {}", path.display()))
+        .with_context(|| format!("Failed to get modified time: {}", path.display()))?)
 }
 
 /// 检查路径是否存在及类型
@@ -87,10 +90,16 @@ fn format_size(bytes: u64) -> String {
 /// 列出目录内容，返回排序后的条目
 pub fn list_directory(path: &Path, recursive: bool) -> Result<Vec<String>> {
     if !path.exists() {
-        anyhow::bail!("Directory not found: {}", path.display());
+        return Err(Error::validation(format!(
+            "Directory not found: {}",
+            path.display()
+        )));
     }
     if !path.is_dir() {
-        anyhow::bail!("Path is not a directory: {}", path.display());
+        return Err(Error::validation(format!(
+            "Path is not a directory: {}",
+            path.display()
+        )));
     }
     let mut entries = Vec::new();
     list_dir_impl(path, path, recursive, &mut entries, 0)?;

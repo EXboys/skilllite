@@ -384,7 +384,7 @@ pub(super) async fn execute_tool_batch_planning(
             Some(elapsed_ms),
         );
 
-        event_sink.on_tool_result(tool_name, &result.content, result.is_error);
+        registry.render_tool_result(tool_name, &result, event_sink);
         messages.push(ChatMessage::tool_result(
             &result.tool_call_id,
             &result.content,
@@ -478,7 +478,7 @@ pub(super) async fn execute_tool_batch_simple(
             Some(elapsed_ms),
         );
 
-        event_sink.on_tool_result(tool_name, &result.content, result.is_error);
+        registry.render_tool_result(tool_name, &result, event_sink);
         messages.push(ChatMessage::tool_result(
             &result.tool_call_id,
             &result.content,
@@ -797,8 +797,7 @@ mod tests {
         let mut state = ExecutionState::new();
 
         // The actual error from handle_complete_task when task_id is missing
-        let actual_error =
-            "Missing required field: task_id. Pass the integer id of the completed task.";
+        let actual_error = "Missing required field(s): task_id";
 
         // Pre-load 2 failures with the SAME error prefix the handler produces.
         state.record_failure("complete_task", actual_error);

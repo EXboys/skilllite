@@ -1,6 +1,6 @@
 //! `skilllite remove` — Remove an installed skill.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use std::fs;
 
 use skilllite_core::skill::manifest;
@@ -8,12 +8,15 @@ use skilllite_core::skill::metadata;
 
 use super::common;
 
+use crate::error::bail;
+use crate::Result;
+
 /// `skilllite remove <name>`
 pub fn cmd_remove(skill_name: &str, skills_dir: &str, force: bool) -> Result<()> {
     let skills_path = common::resolve_skills_dir(skills_dir);
 
     if !skills_path.exists() {
-        anyhow::bail!("No skills directory found. Nothing to remove.");
+        bail!("No skills directory found. Nothing to remove.");
     }
 
     let mut skill_path = skills_path.join(skill_name);
@@ -36,7 +39,7 @@ pub fn cmd_remove(skill_name: &str, skills_dir: &str, force: bool) -> Result<()>
             }
         }
         if !found {
-            anyhow::bail!(
+            bail!(
                 "Skill '{}' not found in {}",
                 skill_name,
                 skills_path.display()

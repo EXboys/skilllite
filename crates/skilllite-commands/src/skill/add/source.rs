@@ -1,11 +1,14 @@
 //! Source parsing: URL detection, ClawHub download, git clone.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use regex::Regex;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::LazyLock;
+
+use crate::error::bail;
+use crate::Result;
 
 // ─── Static regexes (compiled once at first use) ──────────────────────────────
 
@@ -175,7 +178,7 @@ pub(super) fn fetch_from_clawhub(slug: &str) -> Result<PathBuf> {
     let status = resp.status();
     if status != 200 {
         let body = resp.into_string().unwrap_or_default();
-        anyhow::bail!(
+        bail!(
             "ClawHub returned {} for slug '{}'. {}",
             status,
             slug,
@@ -221,7 +224,7 @@ pub(super) fn fetch_from_clawhub(slug: &str) -> Result<PathBuf> {
 
 #[cfg(not(feature = "audit"))]
 pub(super) fn fetch_from_clawhub(_slug: &str) -> Result<PathBuf> {
-    anyhow::bail!("ClawHub download requires the 'audit' feature (ureq).")
+    bail!("ClawHub download requires the 'audit' feature (ureq).")
 }
 
 // ─── Git Clone ──────────────────────────────────────────────────────────────
@@ -246,12 +249,12 @@ pub(super) fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<PathBuf> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let _ = fs::remove_dir_all(&temp_path);
         if stderr.contains("Authentication failed") || stderr.contains("Permission denied") {
-            anyhow::bail!(
+            bail!(
                 "Authentication failed for {}.\n  For private repos, ensure you have access.\n  For SSH: ssh -T git@github.com\n  For HTTPS: gh auth login",
                 url
             );
         }
-        anyhow::bail!("Failed to clone {}: {}", url, stderr.trim());
+        bail!("Failed to clone {}: {}", url, stderr.trim());
     }
 
     Ok(temp_path)

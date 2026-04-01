@@ -1,4 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::Result;
 use regex::Regex;
 use serde::Deserialize;
 use std::fs;
@@ -265,6 +267,38 @@ fn parse_compatibility_for_language(compatibility: Option<&str>) -> Option<Strin
     }
 }
 
+fn is_executable_script_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    if !matches!(ext, "py" | "js" | "ts" | "sh") {
+        return false;
+    }
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    !(name.starts_with("test_")
+        || name.ends_with("_test.py")
+        || name == "__init__.py"
+        || name.starts_with('.'))
+}
+
+/// Returns true if the skill has at least one executable script under `scripts/`.
+pub fn has_executable_scripts(skill_dir: &Path) -> bool {
+    let scripts_dir = skill_dir.join("scripts");
+    if !scripts_dir.is_dir() {
+        return false;
+    }
+    let Ok(entries) = fs::read_dir(scripts_dir) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .map(|e| e.path())
+        .any(|p| is_executable_script_file(&p))
+}
+
 /// Auto-detect entry point from skill directory.
 /// Looks for main.{py,js,ts,sh} in scripts/ directory.
 fn detect_entry_point(skill_dir: &Path) -> Option<String> {
@@ -294,19 +328,9 @@ fn detect_entry_point(skill_dir: &Path) -> Option<String> {
     if let Ok(entries) = fs::read_dir(&scripts_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if let Some(ext) = path.extension() {
-                let ext_str = ext.to_string_lossy();
-                if ["py", "js", "ts", "sh"].contains(&ext_str.as_ref()) {
-                    // Skip test files and __init__.py
-                    let name = path.file_name().unwrap_or_default().to_string_lossy();
-                    if !name.starts_with("test_")
-                        && !name.ends_with("_test.py")
-                        && name != "__init__.py"
-                        && !name.starts_with('.')
-                    {
-                        script_files.push(format!("scripts/{}", name));
-                    }
-                }
+            if is_executable_script_file(&path) {
+                let name = path.file_name().unwrap_or_default().to_string_lossy();
+                script_files.push(format!("scripts/{}", name));
             }
         }
     }
@@ -336,7 +360,10 @@ pub fn parse_skill_metadata(skill_dir: &Path) -> Result<SkillMetadata> {
     let skill_md_path = skill_dir.join("SKILL.md");
 
     if !skill_md_path.exists() {
-        anyhow::bail!("SKILL.md not found in directory: {}", skill_dir.display());
+        return Err(crate::Error::validation(format!(
+            "SKILL.md not found in directory: {}",
+            skill_dir.display()
+        )));
     }
 
     let content = fs::read_to_string(&skill_md_path)
@@ -455,11 +482,11 @@ fn extract_yaml_front_matter_impl(
     // Match YAML front matter between --- delimiters
     let captures = YAML_FRONT_MATTER_RE
         .captures(content)
-        .ok_or_else(|| anyhow::anyhow!("No YAML front matter found in SKILL.md"))?;
+        .ok_or_else(|| crate::Error::validation("No YAML front matter found in SKILL.md"))?;
 
     let yaml_content = captures
         .get(1)
-        .ok_or_else(|| anyhow::anyhow!("Failed to extract YAML content"))?
+        .ok_or_else(|| crate::Error::validation("Failed to extract YAML content"))?
         .as_str();
 
     // Normalize continuation lines: "   : text" (indent + colon + space + text) is a common
@@ -551,7 +578,9 @@ fn extract_yaml_front_matter_impl(
 
     // Validate required fields
     if metadata.name.is_empty() {
-        anyhow::bail!("Skill name is required in SKILL.md");
+        return Err(crate::Error::validation(
+            "Skill name is required in SKILL.md",
+        ));
     }
 
     Ok(metadata)
@@ -924,5 +953,26 @@ name: my-skill
         std::fs::write(skill_dir.join("SKILL.md"), content).expect("write SKILL.md");
         let meta = parse_skill_metadata(skill_dir).expect("parse skill metadata");
         assert_eq!(meta.entry_point, "scripts/main.py");
+    }
+
+    #[test]
+    fn test_has_executable_scripts_true_for_supported_script() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let skill_dir = dir.path();
+        std::fs::create_dir_all(skill_dir.join("scripts")).expect("create scripts");
+        std::fs::write(skill_dir.join("scripts/task.js"), "console.log('ok');")
+            .expect("write task.js");
+        assert!(has_executable_scripts(skill_dir));
+    }
+
+    #[test]
+    fn test_has_executable_scripts_false_for_test_only_files() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let skill_dir = dir.path();
+        std::fs::create_dir_all(skill_dir.join("scripts")).expect("create scripts");
+        std::fs::write(skill_dir.join("scripts/test_helper.py"), "print('x')")
+            .expect("write test_helper.py");
+        std::fs::write(skill_dir.join("scripts/__init__.py"), "").expect("write __init__.py");
+        assert!(!has_executable_scripts(skill_dir));
     }
 }

@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 use std::path::Path;
 
-use anyhow::Result;
+use crate::Result;
 
 use super::super::malicious_packages::{check_malicious_packages, MaliciousPackageHit};
 use super::backends::{query_osv_batch, query_pypi};

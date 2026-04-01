@@ -13,6 +13,7 @@ categories = ["filesystem", "development-tools"]
 [dependencies]
 anyhow = "1.0"
 regex = "1.10"
+thiserror = "2.0.18"
 
 [dev-dependencies]
 tempfile = "3.10"

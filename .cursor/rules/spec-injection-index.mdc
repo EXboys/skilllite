@@ -9,13 +9,14 @@ Before implementation, load `spec/README.md` and choose injected specs using its
 
 ## Required Workflow
 
-1. Determine task type:
+1. **Always** inject `spec/verification-integrity.md` first — this is the highest-priority spec and applies unconditionally.
+2. Determine task type:
    - `architecture`, `security`, `sandbox`, `agent`, `commands`, `mcp`, `python-sdk`, `docs-only`, or `mixed`.
-2. Build `[Injected Specs]` from `spec/README.md`.
-3. Follow all MUST / MUST NOT / CHECKLIST items in each injected spec.
-4. If multiple mappings match, inject all matched specs.
-5. For any code change, always include `spec/testing-policy.md`.
-6. If user-visible behavior, env vars, commands, architecture docs, or release matrix change, include `spec/docs-sync.md`.
+3. Build `[Injected Specs]` from `spec/README.md`.
+4. Follow all MUST / MUST NOT / CHECKLIST items in each injected spec.
+5. If multiple mappings match, inject all matched specs.
+6. For any Rust code change, always include `spec/rust-conventions.md` and `spec/testing-policy.md`.
+7. If user-visible behavior, env vars, commands, architecture docs, or release matrix change, include `spec/docs-sync.md`.
 
 ## Output Convention
 
@@ -30,6 +31,7 @@ At task start, explicitly declare:
 
 At task end, confirm:
 
+- `spec/verification-integrity.md` checklist was completed (anti-hallucination, anti-false-positive),
 - which specs were injected,
 - which checklists were completed,
-- which verification commands were run.
+- which verification commands were run (with actual output, not model assertions).

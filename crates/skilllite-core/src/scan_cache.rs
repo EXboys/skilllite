@@ -12,7 +12,7 @@
 //! the last rename wins (last-writer-wins), which is acceptable for a cache —
 //! the losing entry will simply be recomputed on the next miss.
 
-use anyhow::Result;
+use crate::{Error, Result};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -48,7 +48,8 @@ pub fn get_cached(content_hash: &str) -> Result<Option<(String, String)>> {
     if !path.exists() {
         return Ok(None);
     }
-    let content = fs::read_to_string(&path).map_err(|e| anyhow::anyhow!("read cache: {}", e))?;
+    let content =
+        fs::read_to_string(&path).map_err(|e| Error::validation(format!("read cache: {}", e)))?;
     let map: HashMap<String, CachedEntry> = serde_json::from_str(&content).unwrap_or_default();
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -98,11 +99,13 @@ pub fn put_cached(content_hash: &str, risk: &str, reason: &str) -> Result<()> {
     // rename(2) is atomic on POSIX — readers never see a partial write.
     let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
     fs::write(&tmp_path, content.as_bytes())
-        .map_err(|e| anyhow::anyhow!("write scan-cache tmp: {}", e))?;
+        .map_err(|e| Error::validation(format!("write scan-cache tmp: {}", e)))?;
     if let Err(e) = fs::rename(&tmp_path, &path) {
-        // Best-effort cleanup of the temp file; ignore the secondary error.
         let _ = fs::remove_file(&tmp_path);
-        return Err(anyhow::anyhow!("atomic rename scan-cache: {}", e));
+        return Err(Error::validation(format!(
+            "atomic rename scan-cache: {}",
+            e
+        )));
     }
     Ok(())
 }

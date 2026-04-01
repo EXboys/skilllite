@@ -1,11 +1,13 @@
 //! `skilllite verify` — Verify skill integrity (fingerprint/signature).
 
-use anyhow::Result;
 use std::path::PathBuf;
 
 use skilllite_core::skill::manifest::{self, SignatureStatus, SkillIntegrityStatus};
 
 use super::common;
+
+use crate::error::bail;
+use crate::Result;
 
 /// `skilllite verify <name-or-path>`
 pub fn cmd_verify(target: &str, skills_dir: &str, json_output: bool, strict: bool) -> Result<()> {
@@ -79,7 +81,7 @@ pub fn cmd_verify(target: &str, skills_dir: &str, json_output: bool, strict: boo
         match report.status {
             SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => {}
             SkillIntegrityStatus::HashChanged | SkillIntegrityStatus::SignatureInvalid => {
-                anyhow::bail!("Strict verify failed: {}", status);
+                bail!("Strict verify failed: {}", status);
             }
         }
     }

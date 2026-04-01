@@ -10,10 +10,13 @@
 //!   2. Ensure skills are available
 //!   3. Start interactive chat
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+
+use crate::error::bail;
+use crate::Result;
 
 /// Provider options for LLM selection.
 #[derive(Debug, Clone)]
@@ -53,7 +56,7 @@ const PROVIDERS: &[LlmProvider] = &[
 
 /// `skilllite quickstart`
 pub fn cmd_quickstart(skills_dir: &str) -> Result<()> {
-    let skills_path = resolve_path(skills_dir);
+    let skills_path = crate::init::resolve_path_with_legacy_fallback(skills_dir);
 
     eprintln!("🚀 SkillLite Quickstart");
     eprintln!("   Zero-config setup — let's get you chatting with AI skills!");
@@ -75,17 +78,6 @@ pub fn cmd_quickstart(skills_dir: &str) -> Result<()> {
     eprintln!();
 
     launch_chat(&api_base, &api_key, &model, &skills_path)
-}
-
-fn resolve_path(dir: &str) -> PathBuf {
-    let p = PathBuf::from(dir);
-    if p.is_absolute() {
-        p
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(p)
-    }
 }
 
 /// Step 1: Detect or interactively set up LLM configuration.
@@ -267,7 +259,7 @@ fn prompt_api_key(env_var_name: &str) -> Result<String> {
     std::io::stdin().read_line(&mut key)?;
     let key = key.trim().to_string();
     if key.is_empty() {
-        anyhow::bail!("API key is required for this provider");
+        bail!("API key is required for this provider");
     }
     Ok(key)
 }
@@ -382,7 +374,7 @@ async fn run_interactive_quickstart(
     let mut sink = TerminalEventSink::new(true);
 
     let mut rl = rustyline::DefaultEditor::new()
-        .map_err(|e| anyhow::anyhow!("Failed to create line editor: {}", e))?;
+        .map_err(|e| crate::Error::validation(format!("Failed to create line editor: {}", e)))?;
 
     loop {
         let readline = rl.readline("You> ");
@@ -447,7 +439,7 @@ async fn run_interactive_quickstart(
 
 #[cfg(not(feature = "agent"))]
 fn launch_chat(_api_base: &str, _api_key: &str, _model: &str, _skills_path: &Path) -> Result<()> {
-    anyhow::bail!(
+    bail!(
         "The `agent` feature is required for quickstart chat.\n\
          Rebuild with: cargo build --features agent"
     )

@@ -5,8 +5,11 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
+
+use crate::error::bail;
+use crate::Result;
 
 use crate::replay_quality::{self, ReplayFailureKind};
 
@@ -102,7 +105,7 @@ pub fn load_replay_cases(dataset_path: &Path) -> Result<Vec<ReplayCase>> {
     }
 
     if cases.is_empty() {
-        anyhow::bail!("Replay dataset is empty: {}", dataset_path.display());
+        bail!("Replay dataset is empty: {}", dataset_path.display());
     }
     Ok(cases)
 }
@@ -115,7 +118,7 @@ pub fn cmd_replay(
     json_output: bool,
 ) -> Result<()> {
     if config.api_key.is_empty() {
-        anyhow::bail!("API key required. Set OPENAI_API_KEY env var or use --api-key.");
+        bail!("API key required. Set OPENAI_API_KEY env var or use --api-key.");
     }
 
     let dataset_path = PathBuf::from(&dataset);
@@ -127,7 +130,7 @@ pub fn cmd_replay(
     let effective_skill_dirs = if config.skill_dirs.is_empty() {
         skilllite_core::skill::discovery::discover_skill_dirs_for_loading(
             Path::new(&config.workspace),
-            Some(&[".skills", "skills"]),
+            Some(&["skills", ".skills"]),
         )
     } else {
         config.skill_dirs.clone()

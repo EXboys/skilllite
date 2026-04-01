@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use crate::Result;
 use rusqlite::Connection;
 use tokio::task::block_in_place;
 
@@ -334,7 +334,8 @@ struct RelationEntry {
 fn parse_knowledge_response(content: &str) -> Result<KnowledgeResponse> {
     let cleaned = crate::strip_think_blocks(content.trim());
     let json_str = crate::prompt_learner::extract_json_block(cleaned);
-    let parsed: KnowledgeResponse = serde_json::from_str(&json_str)
-        .map_err(|e| anyhow::anyhow!("memory knowledge JSON parse error: {}", e))?;
+    let parsed: KnowledgeResponse = serde_json::from_str(&json_str).map_err(|e| {
+        crate::Error::validation(format!("memory knowledge JSON parse error: {}", e))
+    })?;
     Ok(parsed)
 }

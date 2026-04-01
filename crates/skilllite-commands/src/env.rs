@@ -3,9 +3,10 @@
 //! Cached environments live in `~/.cache/skilllite/envs/` (or `$SKILLLITE_CACHE_DIR`).
 //! Each subdirectory is a hash-keyed environment created by `ensure_environment()`.
 
-use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
+
+use crate::Result;
 
 /// Get the cache directory for skill environments.
 /// Uses `env::builder::get_cache_dir` for consistency.

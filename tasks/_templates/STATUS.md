@@ -9,8 +9,8 @@
 
 ## Checkpoints
 
-- [ ] PRD approved
-- [ ] Context reviewed
+- [ ] PRD drafted before implementation (or `N/A` recorded)
+- [ ] Context drafted before implementation (or `N/A` recorded)
 - [ ] Implementation complete
 - [ ] Tests passed
 - [ ] Review complete

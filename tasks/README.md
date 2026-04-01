@@ -49,10 +49,14 @@ Rules:
 
 1. Copy templates into a new `TASK-.../` directory.
 2. Fill `TASK.md` first (scope, owner, acceptance criteria).
-3. Add design and constraints in `PRD.md` and `CONTEXT.md`.
+3. Before implementation, draft `PRD.md` and `CONTEXT.md` (or mark `N/A` with reason).
 4. Implement and log checkpoints in `STATUS.md`.
 5. Record findings and release decision in `REVIEW.md`.
 6. Update `tasks/board.md`.
+
+Completion note:
+
+- Do not close a task if `PRD.md` / `CONTEXT.md` are stale versus final implementation.
 
 ## Mapping from Existing TODO
 

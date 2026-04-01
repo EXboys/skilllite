@@ -5,7 +5,9 @@
 //! With `memory_vector` feature: semantic search via sqlite-vec.
 //! Ported from Python `extensions/memory.py`.
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use rusqlite::Connection;
 use serde_json::json;
 use std::path::Path;
@@ -141,7 +143,10 @@ pub async fn execute_memory_tool(
             execute_memory_write(&args, &mem_root, agent_id, enable_vector, embed_ctx).await
         }
         "memory_list" => execute_memory_list(&mem_root),
-        _ => Err(anyhow::anyhow!("Unknown memory tool: {}", tool_name)),
+        _ => Err(crate::Error::validation(format!(
+            "Unknown memory tool: {}",
+            tool_name
+        ))),
     };
 
     match result {
@@ -263,7 +268,7 @@ async fn execute_memory_write(
     // Security: ensure path stays within memory directory
     let normalized = normalize_memory_path(&file_path);
     if !normalized.starts_with(&memory_dir) {
-        anyhow::bail!("Path escapes memory directory: {}", rel_path);
+        bail!("Path escapes memory directory: {}", rel_path);
     }
 
     // Create parent directories

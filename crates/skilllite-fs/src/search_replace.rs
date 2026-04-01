@@ -1,6 +1,6 @@
 //! search_replace 与 insert_lines：精确/模糊替换、行插入
 
-use anyhow::Result;
+use crate::{Error, Result};
 
 /// 纯内存：精确 search_replace
 pub fn apply_search_replace(
@@ -10,11 +10,11 @@ pub fn apply_search_replace(
     replace_all: bool,
 ) -> Result<(String, usize)> {
     if old_string.is_empty() {
-        anyhow::bail!("old_string cannot be empty");
+        return Err(Error::validation("old_string cannot be empty"));
     }
     let count = content.matches(old_string).count();
     if count == 0 {
-        anyhow::bail!("old_string not found in content");
+        return Err(Error::validation("old_string not found in content"));
     }
     let new_content = if replace_all {
         content.replace(old_string, new_string)
@@ -44,15 +44,15 @@ pub fn apply_replace_fuzzy(
     replace_all: bool,
 ) -> Result<FuzzyReplaceResult> {
     if old_string.is_empty() {
-        anyhow::bail!("old_string cannot be empty");
+        return Err(Error::validation("old_string cannot be empty"));
     }
     let exact_count = content.matches(old_string).count();
     if exact_count > 0 {
         if !replace_all && exact_count > 1 {
-            anyhow::bail!(
+            return Err(Error::validation(format!(
                 "Found {} occurrences of old_string. search_replace requires a unique match by default; add more context or set replace_all=true.",
                 exact_count
-            );
+            )));
         }
         let first_start = content.find(old_string).unwrap_or(0);
         let new_content = if replace_all {
@@ -70,7 +70,7 @@ pub fn apply_replace_fuzzy(
         });
     }
     if replace_all {
-        anyhow::bail!("old_string not found in content");
+        return Err(Error::validation("old_string not found in content"));
     }
     match fuzzy_find(content, old_string) {
         Some(fm) => {
@@ -91,10 +91,10 @@ pub fn apply_replace_fuzzy(
         }
         None => {
             let hint = build_failure_hint(content, old_string);
-            anyhow::bail!(
+            Err(Error::validation(format!(
                 "old_string not found in file (tried exact + fuzzy matching).\n\n{}\n\nTip: Copy the exact text from above into old_string, or use insert_lines with line number.",
                 hint
-            )
+            )))
         }
     }
 }
@@ -108,17 +108,20 @@ pub fn apply_replace_normalize_whitespace(
 ) -> Result<FuzzyReplaceResult> {
     let escaped = regex::escape(old_string);
     let pattern = format!(r"({})([ \t]*)(\r?\n|$)", escaped);
-    let re = regex::Regex::new(&pattern).map_err(|e| anyhow::anyhow!("Invalid regex: {}", e))?;
+    let re = regex::Regex::new(&pattern)
+        .map_err(|e| Error::validation(format!("Invalid regex: {}", e)))?;
     let matches: Vec<_> = re.find_iter(content).collect();
     let count = matches.len();
     if count == 0 {
-        anyhow::bail!("old_string not found (with normalize_whitespace)");
+        return Err(Error::validation(
+            "old_string not found (with normalize_whitespace)",
+        ));
     }
     if !replace_all && count > 1 {
-        anyhow::bail!(
+        return Err(Error::validation(format!(
             "Found {} occurrences. Add more context or set replace_all=true.",
             count
-        );
+        )));
     }
     let first = matches[0];
     let new_content = if replace_all {
@@ -149,7 +152,10 @@ pub fn insert_lines_at(content: &str, line_num: usize, insert_content: &str) -> 
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len();
     if line_num > total {
-        anyhow::bail!("Line {} is beyond end of file ({} lines)", line_num, total);
+        return Err(Error::validation(format!(
+            "Line {} is beyond end of file ({} lines)",
+            line_num, total
+        )));
     }
     let offsets = line_byte_offsets(content);
     let insert_at = if line_num == 0 {

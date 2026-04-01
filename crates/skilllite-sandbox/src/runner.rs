@@ -1,5 +1,6 @@
+use crate::error::bail;
 use crate::security::{format_scan_result_compact, ScriptScanner, SecuritySeverity};
-use anyhow::Result;
+use crate::Result;
 use skilllite_core::observability;
 use std::io::{self, IsTerminal, Write};
 use std::path::Path;
@@ -318,7 +319,7 @@ pub fn run_in_sandbox_with_limits_and_level(
                 };
 
                 if !approved {
-                    anyhow::bail!(
+                    bail!(
                         "Script execution blocked: User denied authorization for {} severity issues",
                         severity_str
                     );
@@ -350,7 +351,7 @@ pub fn run_in_sandbox_with_limits_and_level(
             execute_simple_without_sandbox(skill_dir, runtime, config, input_json, limits)?;
 
         if result.exit_code != 0 {
-            anyhow::bail!(
+            bail!(
                 "Skill execution failed with exit code {}: {}",
                 result.exit_code,
                 result.stderr
@@ -359,7 +360,10 @@ pub fn run_in_sandbox_with_limits_and_level(
 
         let output = result.stdout.trim();
         let _: serde_json::Value = serde_json::from_str(output).map_err(|e| {
-            anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output)
+            crate::Error::validation(format!(
+                "Skill output is not valid JSON: {} - Output: {}",
+                e, output
+            ))
         })?;
 
         observability::audit_execution_completed(
@@ -392,7 +396,7 @@ pub fn run_in_sandbox_with_limits_and_level(
         execute_platform_sandbox_with_limits(skill_dir, runtime, config, input_json, limits)?;
 
     if result.exit_code != 0 {
-        anyhow::bail!(
+        bail!(
             "Skill execution failed with exit code {}: {}",
             result.exit_code,
             result.stderr
@@ -401,7 +405,10 @@ pub fn run_in_sandbox_with_limits_and_level(
 
     let output = result.stdout.trim();
     let _: serde_json::Value = serde_json::from_str(output).map_err(|e| {
-        anyhow::anyhow!("Skill output is not valid JSON: {} - Output: {}", e, output)
+        crate::Error::validation(format!(
+            "Skill output is not valid JSON: {} - Output: {}",
+            e, output
+        ))
     })?;
 
     observability::audit_execution_completed(
@@ -420,23 +427,6 @@ pub fn run_in_sandbox_with_limits_and_level(
         start.elapsed().as_millis() as u64,
     );
     Ok(output.to_string())
-}
-
-/// Platform-specific sandbox execution
-#[cfg(target_os = "linux")]
-fn execute_platform_sandbox(
-    skill_dir: &Path,
-    runtime: &RuntimePaths,
-    config: &SandboxConfig,
-    input_json: &str,
-) -> Result<ExecutionResult> {
-    execute_platform_sandbox_with_limits(
-        skill_dir,
-        runtime,
-        config,
-        input_json,
-        ResourceLimits::default(),
-    )
 }
 
 #[cfg(target_os = "linux")]
@@ -462,22 +452,6 @@ fn execute_platform_sandbox_with_limits(
 }
 
 #[cfg(target_os = "windows")]
-fn execute_platform_sandbox(
-    skill_dir: &Path,
-    runtime: &RuntimePaths,
-    config: &SandboxConfig,
-    input_json: &str,
-) -> Result<ExecutionResult> {
-    execute_platform_sandbox_with_limits(
-        skill_dir,
-        runtime,
-        config,
-        input_json,
-        ResourceLimits::default(),
-    )
-}
-
-#[cfg(target_os = "windows")]
 fn execute_platform_sandbox_with_limits(
     skill_dir: &Path,
     runtime: &RuntimePaths,
@@ -489,16 +463,6 @@ fn execute_platform_sandbox_with_limits(
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-fn execute_platform_sandbox(
-    _skill_dir: &Path,
-    _runtime: &RuntimePaths,
-    _config: &SandboxConfig,
-    _input_json: &str,
-) -> Result<ExecutionResult> {
-    anyhow::bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
-}
-
-#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn execute_platform_sandbox_with_limits(
     _skill_dir: &Path,
     _runtime: &RuntimePaths,
@@ -506,7 +470,7 @@ fn execute_platform_sandbox_with_limits(
     _input_json: &str,
     _limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    anyhow::bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
+    bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
 }
 
 /// Execute without any sandbox (Level 1)
@@ -523,7 +487,9 @@ fn execute_simple_without_sandbox(
     );
 
     #[cfg(target_os = "linux")]
-    return super::linux::execute_with_limits(skill_dir, runtime, config, input_json, limits);
+    return super::linux::execute_simple_with_limits(
+        skill_dir, runtime, config, input_json, limits,
+    );
 
     #[cfg(target_os = "windows")]
     return super::windows::execute_simple_with_limits(
@@ -531,7 +497,7 @@ fn execute_simple_without_sandbox(
     );
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    anyhow::bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
+    bail!("Unsupported platform. Only Linux, macOS, and Windows are supported.")
 }
 
 #[cfg(test)]

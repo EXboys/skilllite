@@ -20,18 +20,25 @@ For non-trivial work, use `tasks/` as the source of execution truth.
 
 1. If work spans multiple files/subsystems or requires review traceability:
    - create or reuse a `tasks/TASK-.../` folder.
-2. Keep these files updated during execution:
+2. Before implementation starts, ensure design baseline exists:
+   - `TASK.md` has scope + acceptance criteria.
+   - `PRD.md` is drafted (or explicitly marked `N/A` with reason).
+   - `CONTEXT.md` is drafted (or explicitly marked `N/A` with reason).
+3. Keep these files updated during execution:
    - `TASK.md` (scope, acceptance, risks, validation, regression scope)
+   - `PRD.md` (what/why decisions and requirement changes)
+   - `CONTEXT.md` (technical boundaries, constraints, compatibility notes)
    - `STATUS.md` (progress and blockers)
    - `REVIEW.md` (findings and merge readiness)
-3. Update `tasks/board.md` whenever status changes.
-4. Keep strategic discussion in `todo/*.md`, execution details in `tasks/`.
+4. Update `tasks/board.md` whenever status changes.
+5. Keep strategic discussion in `todo/*.md`, execution details in `tasks/`.
 
 ## Completion Gate
 
 Before declaring work complete:
 
 - acceptance criteria in `TASK.md` are checked or explicitly deferred,
+- `PRD.md` and `CONTEXT.md` reflect the implemented reality (or are explicitly `N/A`),
 - validation evidence is recorded,
 - regression scope is reviewed,
-- task board status is updated.
+- `tasks/board.md` is updated AND re-read to confirm the status change landed.

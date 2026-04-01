@@ -2,13 +2,15 @@
 //!
 //! Migrated from Python `python-sdk/skilllite/cli/integrations/`.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use skilllite_core::skill::metadata;
+
+use crate::Result;
 
 // ─── Shared Helpers ─────────────────────────────────────────────────────────
 
@@ -38,6 +40,18 @@ fn get_available_skills(skills_dir: &Path) -> Vec<(String, String)> {
     }
     skills.sort_by(|a, b| a.0.cmp(&b.0));
     skills
+}
+
+fn resolve_skills_dir_with_legacy_fallback(project: &Path, skills_dir: &str) -> String {
+    let sd_clean = skills_dir.strip_prefix("./").unwrap_or(skills_dir);
+    let resolved = project.join(sd_clean);
+    if (skills_dir == "skills" || skills_dir == "./skills") && !resolved.exists() {
+        let legacy = project.join(".skills");
+        if legacy.is_dir() {
+            return "./.skills".to_string();
+        }
+    }
+    skills_dir.to_string()
 }
 
 /// Detect the best command to start the MCP server.
@@ -269,13 +283,17 @@ pub fn cmd_cursor(
     eprintln!("✓ MCP command: {}", command_desc);
     eprintln!("   → {}", command.join(" "));
 
+    let effective_skills_dir = resolve_skills_dir_with_legacy_fallback(&project, skills_dir);
+
     // Determine config paths
     let (cursor_dir, mcp_config_path, skills_dir_for_config) = if global {
         let global_dir = dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(".cursor");
         let config_path = global_dir.join("mcp.json");
-        let sd_clean = skills_dir.strip_prefix("./").unwrap_or(skills_dir);
+        let sd_clean = effective_skills_dir
+            .strip_prefix("./")
+            .unwrap_or(effective_skills_dir.as_str());
         let abs_skills = project.join(sd_clean);
         (
             global_dir,
@@ -285,7 +303,7 @@ pub fn cmd_cursor(
     } else {
         let cursor = project.join(".cursor");
         let config_path = cursor.join("mcp.json");
-        (cursor, config_path, skills_dir.to_string())
+        (cursor, config_path, effective_skills_dir.to_string())
     };
 
     fs::create_dir_all(&cursor_dir).context("Failed to create .cursor directory")?;
@@ -331,10 +349,12 @@ pub fn cmd_cursor(
         .context("Failed to write mcp.json")?;
 
     // Get available skills
-    let sd_clean = skills_dir.strip_prefix("./").unwrap_or(skills_dir);
+    let sd_clean = effective_skills_dir
+        .strip_prefix("./")
+        .unwrap_or(effective_skills_dir.as_str());
     let full_skills_dir = project.join(sd_clean);
     let skills = get_available_skills(&full_skills_dir);
-    eprintln!("✓ Found {} skills in {}", skills.len(), skills_dir);
+    eprintln!("✓ Found {} skills in {}", skills.len(), effective_skills_dir);
 
     let mut created_files = vec![mcp_config_path.to_string_lossy().to_string()];
 
@@ -384,6 +404,7 @@ pub fn cmd_opencode(project_dir: Option<&str>, skills_dir: &str, force: bool) ->
     let project = project_dir
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let effective_skills_dir = resolve_skills_dir_with_legacy_fallback(&project, skills_dir);
 
     eprintln!("🚀 Initializing SkillLite integration for OpenCode...");
     eprintln!("   Project directory: {}", project.display());
@@ -402,7 +423,7 @@ pub fn cmd_opencode(project_dir: Option<&str>, skills_dir: &str, force: bool) ->
         "command": command,
         "environment": {
             "SKILLLITE_SANDBOX_LEVEL": "3",
-            "SKILLLITE_SKILLS_DIR": skills_dir
+            "SKILLLITE_SKILLS_DIR": effective_skills_dir
         },
         "enabled": true
     });

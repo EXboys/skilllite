@@ -1,6 +1,6 @@
 //! Security scanning and lock file management for skills.
 
-use anyhow::Result;
+use crate::Result;
 use std::path::Path;
 
 use skilllite_core::skill::metadata::SkillMetadata;

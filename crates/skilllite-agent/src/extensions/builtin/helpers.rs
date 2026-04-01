@@ -2,7 +2,8 @@
 //!
 //! Security validation, path resolution, directory listing, and truncated JSON recovery.
 
-use anyhow::Result;
+use crate::error::bail;
+use crate::Result;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -190,7 +191,7 @@ pub(super) fn resolve_within_workspace(path: &str, workspace: &Path) -> Result<P
         let is_output_path =
             types::get_output_dir().is_some_and(|od| normalized.starts_with(Path::new(&od)));
         if is_output_path {
-            anyhow::bail!(
+            bail!(
                 "Path escapes workspace: {} (workspace: {}). \
                  Hint: this path is in the output directory — use **write_output** \
                  (with file_path relative to the output dir) instead of write_file.",
@@ -198,7 +199,7 @@ pub(super) fn resolve_within_workspace(path: &str, workspace: &Path) -> Result<P
                 workspace.display()
             );
         } else {
-            anyhow::bail!(
+            bail!(
                 "Path escapes workspace: {} (workspace: {})",
                 path,
                 workspace.display()
@@ -228,7 +229,7 @@ pub(super) fn resolve_within_workspace_or_output(path: &str, workspace: &Path) -
         }
     }
 
-    anyhow::bail!(
+    bail!(
         "Path escapes workspace: {} (workspace: {})",
         path,
         workspace.display()

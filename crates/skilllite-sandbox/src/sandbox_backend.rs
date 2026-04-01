@@ -4,7 +4,7 @@
 //! The default backend is selected by platform: Seatbelt (macOS), bwrap/seccomp (Linux),
 //! WSL2/Job Object (Windows).
 
-use anyhow::Result;
+use crate::Result;
 use std::path::Path;
 
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
@@ -63,6 +63,9 @@ impl SandboxBackend for NativeSandboxBackend {
         #[cfg(target_os = "windows")]
         return crate::windows::execute_with_limits(skill_dir, runtime, config, input_json, limits);
         #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        anyhow::bail!("Unsupported platform")
+        {
+            use crate::error::bail;
+            bail!("Unsupported platform")
+        }
     }
 }

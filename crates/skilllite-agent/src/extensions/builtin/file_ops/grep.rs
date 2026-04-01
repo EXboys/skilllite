@@ -1,6 +1,8 @@
 //! grep_files: 薄封装，调用 skilllite_fs::grep_directory
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use serde_json::Value;
 use std::path::Path;
 
@@ -14,12 +16,12 @@ pub(super) fn execute_grep_files(args: &Value, workspace: &Path) -> Result<Strin
     let path_str = args.get("path").and_then(|v| v.as_str()).unwrap_or(".");
     let include = args.get("include").and_then(|v| v.as_str());
 
-    let re =
-        regex::Regex::new(pattern).map_err(|e| anyhow::anyhow!("Invalid regex pattern: {}", e))?;
+    let re = regex::Regex::new(pattern)
+        .map_err(|e| crate::Error::validation(format!("Invalid regex pattern: {}", e)))?;
 
     let resolved = resolve_within_workspace_or_output(path_str, workspace)?;
     if !resolved.exists() {
-        anyhow::bail!("Path not found: {}", path_str);
+        bail!("Path not found: {}", path_str);
     }
 
     const MAX_MATCHES: usize = 50;

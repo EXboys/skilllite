@@ -1,0 +1,30 @@
+//! Crate-level error type for `skilllite-swarm`.
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+
+    #[error("{0}")]
+    Validation(String),
+
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl Error {
+    pub fn validation(msg: impl Into<String>) -> Self {
+        Error::Validation(msg.into())
+    }
+}
+
+macro_rules! bail {
+    ($($arg:tt)*) => {
+        return ::core::result::Result::Err($crate::error::Error::validation(format!($($arg)*)))
+    };
+}
+pub(crate) use bail;

@@ -201,9 +201,9 @@ fn skip_until_newline(reader: &mut impl BufRead) {
     }
 }
 
-/// Map executor-layer `anyhow::Result` into this crate's [`Error`].
+/// Map executor-layer result into this crate's [`Error`].
 #[cfg(feature = "executor")]
-fn map_executor<T>(r: anyhow::Result<T>) -> Result<T> {
+fn map_executor<T>(r: skilllite_executor::Result<T>) -> Result<T> {
     r.map_err(Into::into)
 }
 

@@ -3,7 +3,9 @@
 //! Phase 3 routing:
 //! - POST /task: receive NodeTask, match capabilities, execute locally or forward to peer.
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use axum::{
     body::Body,
     extract::{Query, State},
@@ -29,7 +31,7 @@ fn parse_listen_addr(addr: &str) -> Result<(String, u16)> {
     let (host, port_str) = match parts.as_slice() {
         [h, p] => (*h, *p),
         [p] if p.parse::<u16>().is_ok() => ("0.0.0.0", *p),
-        _ => anyhow::bail!(
+        _ => bail!(
             "Invalid listen address: expected host:port or :port, got {}",
             addr
         ),
@@ -240,7 +242,7 @@ async fn handle_task(
                 let task_id = task_id.clone();
                 let current_task = state.current_task.clone();
                 let s1 = stream::iter([
-                    Ok::<_, anyhow::Error>(Bytes::from(format!(
+                    Ok::<_, crate::Error>(Bytes::from(format!(
                         "{{\"event\":\"received\",\"task_id\":\"{}\"}}\n",
                         task_id
                     ))),
@@ -249,14 +251,15 @@ async fn handle_task(
                 let s2 = stream::once(async move {
                     let result = tokio::task::spawn_blocking(move || exec.execute(task))
                         .await
-                        .map_err(|e| anyhow::anyhow!("{:?}", e))?
-                        .map_err(|e| anyhow::anyhow!("{}", e));
+                        .map_err(|e| crate::Error::validation(format!("{:?}", e)))?
+                        .map_err(|e| crate::Error::validation(format!("{}", e)));
                     if let Ok(mut cur) = current_task.lock() {
                         *cur = None;
                     }
                     match result {
                         Ok(res) => {
-                            let json = serde_json::to_string(&res).map_err(anyhow::Error::msg)?;
+                            let json = serde_json::to_string(&res)
+                                .map_err(|e| crate::Error::validation(e.to_string()))?;
                             Ok(Bytes::from(format!(
                                 "{{\"event\":\"done\",\"result\":{}}}\n",
                                 json
@@ -295,8 +298,8 @@ async fn handle_task(
                 *cur = None;
             }
             let result = result
-                .map_err(|e| anyhow::anyhow!("{:?}", e))
-                .and_then(|r| r.map_err(|e| anyhow::anyhow!("{}", e)));
+                .map_err(|e| crate::Error::validation(format!("{:?}", e)))
+                .and_then(|r| r.map_err(|e| crate::Error::validation(format!("{}", e))));
             match result {
                 Ok(res) => {
                     tracing::info!(task_id = %task_id, elapsed_ms = start.elapsed().as_millis(), "Task completed");
@@ -527,7 +530,7 @@ pub fn serve_swarm(
             std::net::TcpListener::bind(listen_addr).context("Failed to bind TCP listener")?;
         let listener = tokio::net::TcpListener::from_std(std_listener)?;
         axum::serve(listener, app).await?;
-        Ok::<(), anyhow::Error>(())
+        Ok::<(), crate::Error>(())
     })?;
 
     let _ = discovery.shutdown();

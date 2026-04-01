@@ -2,19 +2,21 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::Result;
 
 use crate::dir;
 
 /// 读取文件为 UTF-8 字符串
 pub fn read_file(path: &Path) -> Result<String> {
-    std::fs::read_to_string(path)
-        .with_context(|| format!("Failed to read file: {}", path.display()))
+    Ok(std::fs::read_to_string(path)
+        .with_context(|| format!("Failed to read file: {}", path.display()))?)
 }
 
 /// 读取文件为原始字节
 pub fn read_bytes(path: &Path) -> Result<Vec<u8>> {
-    std::fs::read(path).with_context(|| format!("Failed to read file: {}", path.display()))
+    Ok(std::fs::read(path).with_context(|| format!("Failed to read file: {}", path.display()))?)
 }
 
 /// 读取文件前 `limit` 字节（用于二进制检测等）
@@ -33,8 +35,8 @@ pub fn write_file(path: &Path, content: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         dir::create_dir_all(parent)?;
     }
-    std::fs::write(path, content)
-        .with_context(|| format!("Failed to write file: {}", path.display()))
+    Ok(std::fs::write(path, content)
+        .with_context(|| format!("Failed to write file: {}", path.display()))?)
 }
 
 /// 追加写入文件

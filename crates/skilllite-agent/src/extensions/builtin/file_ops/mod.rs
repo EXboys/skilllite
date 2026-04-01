@@ -7,7 +7,9 @@
 mod grep;
 mod search_replace;
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -197,20 +199,20 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
 
 pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String> {
     let path_str = get_path_arg(args, false)
-        .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
+        .ok_or_else(|| crate::Error::validation("'path' or 'file_path' is required"))?;
 
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
 
     if !resolved.exists() {
-        anyhow::bail!("File not found: {}", path_str);
+        bail!("File not found: {}", path_str);
     }
     if resolved.is_dir() {
-        anyhow::bail!("Path is a directory, not a file: {}", path_str);
+        bail!("Path is a directory, not a file: {}", path_str);
     }
 
     // A11: .env、.key、.git/config 等配置和密码文件直接拒绝
     if is_sensitive_read_path(&path_str) {
-        anyhow::bail!(
+        bail!(
             "Blocked: reading sensitive file '{}' (.env, .key, .git/config, etc.) is not allowed",
             path_str
         );
@@ -268,10 +270,14 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
             Ok(output)
         }
         Err(e) => {
-            if e.downcast_ref::<std::io::Error>()
-                .map(|ie| ie.kind() == std::io::ErrorKind::InvalidData)
-                == Some(true)
-            {
+            let is_binary = match &e {
+                skilllite_fs::Error::Io(io_err) => io_err.kind() == std::io::ErrorKind::InvalidData,
+                skilllite_fs::Error::Other(anyhow_err) => anyhow_err
+                    .downcast_ref::<std::io::Error>()
+                    .is_some_and(|ie| ie.kind() == std::io::ErrorKind::InvalidData),
+                _ => false,
+            };
+            if is_binary {
                 let size = match skilllite_fs::file_exists(&resolved)? {
                     skilllite_fs::PathKind::File(len) => len,
                     _ => 0,
@@ -281,7 +287,7 @@ pub(super) fn execute_read_file(args: &Value, workspace: &Path) -> Result<String
                     size
                 ))
             } else {
-                Err(e)
+                Err(e.into())
             }
         }
     }
@@ -293,7 +299,7 @@ pub(super) fn execute_write_file(
     event_sink: Option<&mut dyn EventSink>,
 ) -> Result<String> {
     let path_str = get_path_arg(args, false)
-        .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
+        .ok_or_else(|| crate::Error::validation("'path' or 'file_path' is required"))?;
     let content = args
         .get("content")
         .and_then(|v| v.as_str())
@@ -304,7 +310,7 @@ pub(super) fn execute_write_file(
         .unwrap_or(false);
 
     if is_sensitive_write_path(&path_str) {
-        anyhow::bail!(
+        bail!(
             "Blocked: writing to sensitive file '{}' is not allowed",
             path_str
         );
@@ -381,7 +387,7 @@ pub(super) fn execute_list_directory(args: &Value, workspace: &Path) -> Result<S
 
 pub(super) fn execute_file_exists(args: &Value, workspace: &Path) -> Result<String> {
     let path_str = get_path_arg(args, false)
-        .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
+        .ok_or_else(|| crate::Error::validation("'path' or 'file_path' is required"))?;
 
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
     match skilllite_fs::file_exists(&resolved)? {

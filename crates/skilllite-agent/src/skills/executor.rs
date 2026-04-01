@@ -1,6 +1,8 @@
 //! Skill execution: dispatches tool calls to sandbox runner.
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::Path;
@@ -76,7 +78,7 @@ fn execute_skill_inner(
     let skill_dir = &skill.skill_dir;
     let mut metadata = skill.metadata.clone();
     if let Some(msg) = skilllite_core::skill::denylist::deny_reason_for_skill_name(&metadata.name) {
-        anyhow::bail!(msg);
+        bail!("{}", msg);
     }
     if metadata.entry_point.is_empty() {
         if let Some(ep) = entry_point_override {
@@ -189,7 +191,7 @@ fn execute_skill_inner(
                 })
                 .collect();
         skilllite_sandbox::bash_validator::validate_bash_command(command, &validator_patterns)
-            .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
+            .map_err(|e| crate::Error::validation(format!("Command validation failed: {}", e)))?;
 
         // Execute bash command (same logic as main.rs bash_command).
         // Resolve the effective cwd: prefer SKILLLITE_OUTPUT_DIR so file outputs
@@ -212,7 +214,7 @@ fn execute_skill_inner(
 
         // Validate input JSON
         let _: Value = serde_json::from_str(&input_json)
-            .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
+            .map_err(|e| crate::Error::validation(format!("Invalid input JSON: {}", e)))?;
 
         let effective_metadata = if let Some(ref entry) = multi_script_entry {
             let mut m = metadata.clone();

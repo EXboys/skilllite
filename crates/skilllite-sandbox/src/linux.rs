@@ -4,11 +4,14 @@ use crate::common::{
     self, apply_standard_execution_env, pipe_stdio, resolve_command_path, resolve_which,
     spawn_write_and_wait, start_network_proxy,
 };
+use crate::error::bail;
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::{ResolvedRuntime, RuntimeResolver};
 use crate::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
 use crate::security::policy::{self as security_policy};
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::Result;
 use nix::mount::{mount, MsFlags};
 use nix::sched::{unshare, CloneFlags};
 use std::collections::BTreeSet;
@@ -18,23 +21,6 @@ use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tempfile::TempDir;
-
-/// Execute a skill in a Linux sandbox
-/// Sandbox is enabled by default. Set SKILLLITE_NO_SANDBOX=1 to disable.
-pub fn execute(
-    skill_dir: &Path,
-    runtime: &RuntimePaths,
-    config: &SandboxConfig,
-    input_json: &str,
-) -> Result<ExecutionResult> {
-    execute_with_limits(
-        skill_dir,
-        runtime,
-        config,
-        input_json,
-        crate::runner::ResourceLimits::default(),
-    )
-}
 
 /// Execute a skill in a Linux sandbox with custom resource limits
 pub fn execute_with_limits(
@@ -55,12 +41,12 @@ pub fn execute_with_limits(
             let allow_fallback =
                 skilllite_core::config::SandboxEnvConfig::from_env().allow_linux_namespace_fallback;
             if !allow_fallback {
-                return Err(e.context(
+                return Err(crate::Error::Other(anyhow::Error::from(e).context(
                     "Linux strong sandbox failed (bubblewrap/firejail missing or execution error). \
                      Install bubblewrap (e.g. apt install bubblewrap) or set \
                      SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1 to allow a weak PID/UTS/net namespace fallback without bwrap filesystem containment (not recommended). \
                      For execution with no sandbox at all, set SKILLLITE_NO_SANDBOX=1 (not recommended).",
-                ));
+                )));
             }
             tracing::warn!(
                 skill = %config.name,
@@ -70,69 +56,30 @@ pub fn execute_with_limits(
                 &config.name,
                 "linux_namespace_fallback",
             );
-            execute_with_namespaces(skill_dir, runtime, config, input_json, limits).map_err(|e2| {
-                anyhow::Error::from(e2).context(format!(
-                    "Weak namespace fallback failed after strong sandbox error: {e:#}"
-                ))
-            })
+            execute_with_namespaces(skill_dir, runtime, config, input_json, limits).map_err(
+                |e2| -> crate::Error {
+                    anyhow::Error::from(e2)
+                        .context(format!(
+                            "Weak namespace fallback failed after strong sandbox error: {e:#}"
+                        ))
+                        .into()
+                },
+            )
         }
     }
 }
 
-/// Simple execution without sandbox (fallback when all sandbox methods fail)
-fn execute_simple(
-    skill_dir: &Path,
-    runtime: &RuntimePaths,
-    config: &SandboxConfig,
-    input_json: &str,
-) -> Result<ExecutionResult> {
-    execute_simple_with_limits(
-        skill_dir,
-        runtime,
-        config,
-        input_json,
-        crate::runner::ResourceLimits::default(),
-    )
-}
-
-/// Simple execution without sandbox with custom resource limits
-fn execute_simple_with_limits(
+/// Simple execution without sandbox with custom resource limits.
+///
+/// Delegates to the shared Unix implementation in `common::execute_unsandboxed`.
+pub(crate) fn execute_simple_with_limits(
     skill_dir: &Path,
     runtime: &RuntimePaths,
     config: &SandboxConfig,
     input_json: &str,
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
-    let entry_point = skill_dir.join(&config.entry_point);
-
-    let resolved = runtime
-        .resolve(&config.language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", config.language))?;
-
-    let temp_dir = TempDir::new()?;
-    let work_dir = temp_dir.path();
-
-    let mut cmd = Command::new(&resolved.interpreter);
-    cmd.arg(&entry_point);
-    for (k, v) in &resolved.extra_env {
-        cmd.env(k, v);
-    }
-
-    cmd.current_dir(skill_dir);
-    pipe_stdio(&mut cmd);
-
-    apply_standard_execution_env(&mut cmd, false, work_dir, config.network_enabled, false);
-
-    unsafe { common::set_rlimits_pre_exec(&mut cmd, &limits) };
-
-    let (result, _, _) = spawn_write_and_wait(
-        &mut cmd,
-        input_json,
-        &limits,
-        true,
-        "Failed to spawn skill process",
-    )?;
-    Ok(result)
+    common::execute_unsandboxed(skill_dir, runtime, config, input_json, limits)
 }
 
 /// Execute with seccomp-based sandbox (works without root privileges)
@@ -149,7 +96,7 @@ fn execute_with_seccomp(
 
     let resolved = runtime
         .resolve(language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", language))?;
+        .ok_or_else(|| crate::Error::validation(format!("Unsupported language: {}", language)))?;
     let _program = &resolved.interpreter;
     let _args = vec![entry_point.to_string_lossy().to_string()];
 
@@ -187,8 +134,7 @@ fn execute_with_seccomp(
         );
     }
 
-    // No sandbox tool available
-    anyhow::bail!(
+    bail!(
         "No sandbox tool available (bwrap or firejail). Install bubblewrap: apt install bubblewrap"
     )
 }
@@ -688,9 +634,9 @@ fn execute_with_namespaces(
 ) -> Result<ExecutionResult> {
     let entry_point = skill_dir.join(&config.entry_point);
 
-    let resolved = runtime
-        .resolve(&config.language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", config.language))?;
+    let resolved = runtime.resolve(&config.language).ok_or_else(|| {
+        crate::Error::validation(format!("Unsupported language: {}", config.language))
+    })?;
 
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();

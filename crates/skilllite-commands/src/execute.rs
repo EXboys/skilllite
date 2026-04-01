@@ -2,7 +2,7 @@
 //!
 //! Implements run_skill, exec_script, bash_command, validate_skill, show_skill_info.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use serde_json::json;
 use skilllite_core::config::supply_chain_block_enabled;
 use skilllite_core::path_validation::validate_skill_path;
@@ -12,6 +12,9 @@ use skilllite_core::skill::trust::TrustDecision;
 use skilllite_sandbox::runner::SandboxConfig;
 use std::path::Path;
 use std::sync::Mutex;
+
+use crate::error::bail;
+use crate::Result;
 
 /// Mutex for exec_script: it uses process-global SKILLLITE_SCRIPT_ARGS env var,
 /// so concurrent exec calls must be serialized. run and bash do not need this.
@@ -41,13 +44,18 @@ pub fn run_skill(
     }
 
     if metadata.entry_point.is_empty() {
-        anyhow::bail!(
-            "This skill has no entry point and cannot be executed. It is a prompt-only skill."
+        if skill::metadata::has_executable_scripts(&skill_path) {
+            bail!(
+                "This skill has executable scripts but no default entry point. \
+Use `skilllite exec <skill-dir> <scripts/...>` or set `entry_point` in SKILL.md."
+            );
+        }
+        bail!(
+            "This skill has no entry point and no executable scripts. It is a prompt-only skill."
         );
     }
 
-    let _input: serde_json::Value = serde_json::from_str(input_json)
-        .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
+    let _input: serde_json::Value = serde_json::from_str(input_json)?;
 
     skilllite_sandbox::info_log!("[INFO] ensure_environment start...");
     let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &metadata);
@@ -95,20 +103,19 @@ pub fn exec_script(
     let full_script_path = skill_path.join(script_path);
 
     if !full_script_path.exists() {
-        anyhow::bail!("Script not found: {}", full_script_path.display());
+        bail!("Script not found: {}", full_script_path.display());
     }
 
-    let full_canonical = full_script_path
-        .canonicalize()
-        .map_err(|_| anyhow::anyhow!("Script path does not exist: {}", script_path))?;
+    let full_canonical = full_script_path.canonicalize().map_err(|_| {
+        crate::Error::validation(format!("Script path does not exist: {}", script_path))
+    })?;
     if !full_canonical.starts_with(&skill_path) {
-        anyhow::bail!("Script path escapes skill directory: {}", script_path);
+        bail!("Script path escapes skill directory: {}", script_path);
     }
 
     let language = detect_script_language(&full_script_path)?;
 
-    let _input: serde_json::Value = serde_json::from_str(input_json)
-        .map_err(|e| anyhow::anyhow!("Invalid input JSON: {}", e))?;
+    let _input: serde_json::Value = serde_json::from_str(input_json)?;
 
     let (metadata, env_path) = if skill_path.join("SKILL.md").exists() {
         let mut meta = skill::metadata::parse_skill_metadata(&skill_path)?;
@@ -166,7 +173,7 @@ pub fn exec_script(
 
     let _guard = EXEC_ENV_MUTEX
         .lock()
-        .map_err(|e| anyhow::anyhow!("Mutex poisoned: {}", e))?;
+        .map_err(|e| crate::Error::validation(format!("Mutex poisoned: {}", e)))?;
     let _args_guard = if let Some(args_str) = args {
         skilllite_core::config::set_env_var("SKILLLITE_SCRIPT_ARGS", args_str);
         Some(ScopedEnvGuard("SKILLLITE_SCRIPT_ARGS"))
@@ -203,7 +210,7 @@ pub fn bash_command(
     enforce_skill_integrity_before_execution(&skill_path)?;
 
     if !metadata.is_bash_tool_skill() {
-        anyhow::bail!(
+        bail!(
             "Skill '{}' is not a bash-tool skill (missing allowed-tools or has entry_point)",
             metadata.name
         );
@@ -211,7 +218,7 @@ pub fn bash_command(
 
     let skill_patterns = metadata.get_bash_patterns();
     if skill_patterns.is_empty() {
-        anyhow::bail!(
+        bail!(
             "Skill '{}' has allowed-tools but no Bash(...) patterns found",
             metadata.name
         );
@@ -225,8 +232,7 @@ pub fn bash_command(
                 raw_pattern: p.raw_pattern,
             })
             .collect();
-    skilllite_sandbox::bash_validator::validate_bash_command(command, &validator_patterns)
-        .map_err(|e| anyhow::anyhow!("Command validation failed: {}", e))?;
+    skilllite_sandbox::bash_validator::validate_bash_command(command, &validator_patterns)?;
 
     skilllite_sandbox::info_log!("[INFO] bash: ensure_environment start...");
     let env_spec = skilllite_core::EnvSpec::from_metadata(&skill_path, &metadata);
@@ -307,7 +313,7 @@ pub fn validate_skill(skill_dir: &str) -> Result<()> {
     if !metadata.entry_point.is_empty() {
         let entry_path = skill_path.join(&metadata.entry_point);
         if !entry_path.exists() {
-            anyhow::bail!("Entry point not found: {}", metadata.entry_point);
+            bail!("Entry point not found: {}", metadata.entry_point);
         }
         skill::deps::validate_dependencies(&skill_path, &metadata)?;
     }
@@ -323,7 +329,11 @@ pub fn show_skill_info(skill_dir: &str) -> Result<()> {
     println!("Skill Information:");
     println!("  Name: {}", metadata.name);
     if metadata.entry_point.is_empty() {
-        println!("  Entry Point: (none - prompt-only skill)");
+        if skill::metadata::has_executable_scripts(&skill_path) {
+            println!("  Entry Point: (none - script skill without default entry point)");
+        } else {
+            println!("  Entry Point: (none - prompt-only skill)");
+        }
     } else {
         println!("  Entry Point: {}", metadata.entry_point);
     }
@@ -383,18 +393,18 @@ fn detect_script_language(script_path: &Path) -> Result<String> {
                     }
                 }
             }
-            anyhow::bail!(
+            bail!(
                 "Cannot detect language for script: {}",
                 script_path.display()
             )
         }
-        _ => anyhow::bail!("Unsupported script extension: .{}", extension),
+        _ => bail!("Unsupported script extension: .{}", extension),
     }
 }
 
 fn enforce_skill_denylist(skill_name: &str) -> Result<()> {
     if let Some(msg) = skilllite_core::skill::denylist::deny_reason_for_skill_name(skill_name) {
-        anyhow::bail!("{}", msg);
+        bail!("{}", msg);
     }
     Ok(())
 }
@@ -411,13 +421,13 @@ fn enforce_skill_integrity_before_execution(skill_path: &Path) -> Result<()> {
         match report.status {
             SkillIntegrityStatus::Ok | SkillIntegrityStatus::Unsigned => {}
             SkillIntegrityStatus::HashChanged => {
-                anyhow::bail!(
+                bail!(
                     "Execution blocked: Skill fingerprint changed since installation. \
 Run `skilllite add <source> --force` to reinstall and update manifest."
                 )
             }
             SkillIntegrityStatus::SignatureInvalid => {
-                anyhow::bail!(
+                bail!(
                     "Execution blocked: Skill signature is invalid. \
 Please verify the skill source and reinstall."
                 )
@@ -425,7 +435,7 @@ Please verify the skill source and reinstall."
         }
         match report.trust_decision {
             TrustDecision::Deny => {
-                anyhow::bail!(
+                bail!(
                     "Execution blocked: Skill trust tier is Deny. \
 Reinstall from trusted source or verify integrity."
                 )
@@ -435,7 +445,7 @@ Reinstall from trusted source or verify integrity."
                     .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                     .unwrap_or(false);
                 if !bypass {
-                    anyhow::bail!(
+                    bail!(
                         "Execution blocked: Skill requires confirmation (trust tier: {:?}). \
 Set SKILLLITE_TRUST_BYPASS_CONFIRM=1 to run, or use --confirm in MCP.",
                         report.trust_tier

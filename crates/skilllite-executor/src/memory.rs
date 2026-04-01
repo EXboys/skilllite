@@ -1,7 +1,9 @@
 //! Memory store: MEMORY.md, memory/*.md + SQLite FTS5 (BM25).
 //! With `memory_vector` feature: sqlite-vec for semantic search.
 
-use anyhow::Result;
+#[cfg(feature = "memory_vector")]
+use crate::error::bail;
+use crate::error::Result;
 use rusqlite::Connection;
 use std::path::Path;
 
@@ -194,7 +196,7 @@ pub fn index_file_vec(
 ) -> Result<()> {
     use zerocopy::AsBytes;
     if chunks.len() != embeddings.len() {
-        anyhow::bail!(
+        bail!(
             "Chunks and embeddings length mismatch: {} vs {}",
             chunks.len(),
             embeddings.len()

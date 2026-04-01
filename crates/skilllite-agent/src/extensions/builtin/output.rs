@@ -1,6 +1,8 @@
 //! Output tools: write_output (deliverable files), list_output.
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -87,7 +89,7 @@ pub(super) fn execute_write_output(args: &Value, workspace: &Path) -> Result<Str
 
     let normalized = normalize_path(&resolved);
     if !normalized.starts_with(&output_root) {
-        anyhow::bail!(
+        bail!(
             "Path escapes output directory: {} (output_root: {})",
             file_path,
             output_root.display()
@@ -117,9 +119,9 @@ pub(super) fn execute_list_output(args: &Value) -> Result<String> {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let output_root = types::get_output_dir()
-        .map(PathBuf::from)
-        .ok_or_else(|| anyhow::anyhow!("Output directory not configured (SKILLLITE_OUTPUT_DIR)"))?;
+    let output_root = types::get_output_dir().map(PathBuf::from).ok_or_else(|| {
+        crate::Error::validation("Output directory not configured (SKILLLITE_OUTPUT_DIR)")
+    })?;
 
     let entries = match skilllite_fs::list_directory(&output_root, recursive) {
         Ok(e) => e,

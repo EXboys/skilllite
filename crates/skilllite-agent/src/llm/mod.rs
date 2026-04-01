@@ -8,7 +8,9 @@
 //!
 //! Ported from Python `AgenticLoop._call_openai` / `_call_claude`.
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -146,7 +148,7 @@ impl LlmClient {
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("{}", format_api_error(status, &body_text, "Embedding"));
+            bail!("{}", format_api_error(status, &body_text, "Embedding"));
         }
         let json: Value = resp
             .json()
@@ -171,7 +173,7 @@ impl LlmClient {
         // Log the unexpected response shape for debugging
         let preview = serde_json::to_string(&json).unwrap_or_default();
         let preview = &preview[..preview.len().min(500)];
-        anyhow::bail!(
+        bail!(
             "Unexpected embedding response format (no 'data' or 'output.embeddings'): {}",
             preview
         )

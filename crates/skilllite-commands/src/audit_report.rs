@@ -1,7 +1,10 @@
 //! Analyze `audit_*.jsonl` for supply-chain observability (P1): counts, failure rates, edit paths; optional alerts.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use chrono::{DateTime, Duration, Utc};
+
+use crate::error::bail;
+use crate::Result;
 use serde::Serialize;
 use serde_json::Value;
 use skilllite_core::config::env_keys::observability;
@@ -246,14 +249,14 @@ fn post_webhook(url: &str, payload: &Value) -> Result<()> {
     ureq::post(url)
         .set("Content-Type", "application/json; charset=utf-8")
         .send_string(&body)
-        .map_err(|e| anyhow::anyhow!("webhook POST failed: {}", e))?;
+        .map_err(|e| crate::Error::validation(format!("webhook POST failed: {}", e)))?;
     Ok(())
 }
 
 #[cfg(not(feature = "audit"))]
 fn post_webhook(url: &str, payload: &Value) -> Result<()> {
     let _ = (url, payload);
-    anyhow::bail!("webhook requires skilllite-commands built with feature \"audit\" (ureq)");
+    bail!("webhook requires skilllite-commands built with feature \"audit\" (ureq)");
 }
 
 /// Summarize audit JSONL under `audit_dir` for the last `hours` hours.
@@ -266,7 +269,7 @@ pub fn cmd_audit_report(
 ) -> Result<()> {
     let dir = resolve_audit_dir(audit_dir);
     if !dir.is_dir() {
-        anyhow::bail!(
+        bail!(
             "Audit directory not found: {}. Set --dir or SKILLLITE_AUDIT_LOG.",
             dir.display()
         );
@@ -274,7 +277,7 @@ pub fn cmd_audit_report(
 
     let paths = audit_jsonl_paths(&dir)?;
     if paths.is_empty() {
-        anyhow::bail!("No audit_*.jsonl files under {}.", dir.display());
+        bail!("No audit_*.jsonl files under {}.", dir.display());
     }
 
     let end = Utc::now();

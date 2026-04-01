@@ -11,3 +11,4 @@ pub mod schedule;
 pub mod skill;
 
 pub use env_spec::EnvSpec;
+pub use error::{Error, Result};

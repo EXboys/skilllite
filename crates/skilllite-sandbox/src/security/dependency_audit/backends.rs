@@ -1,6 +1,8 @@
 //! OSV and PyPI audit backends.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::Result;
 use serde::Deserialize;
 
 use super::types::{Dependency, PackageAuditEntry, VulnRef};
@@ -53,11 +55,12 @@ pub(super) fn query_osv_batch(
             .send_json(&body)
             .map_err(|e| match &e {
                 ureq::Error::Status(code, _) => {
-                    anyhow::anyhow!("Audit API returned HTTP {} — {}", code, e)
+                    crate::Error::validation(format!("Audit API returned HTTP {} — {}", code, e))
                 }
-                ureq::Error::Transport(_) => {
-                    anyhow::anyhow!("Cannot reach audit API at {} : {}", api_base, e)
-                }
+                ureq::Error::Transport(_) => crate::Error::validation(format!(
+                    "Cannot reach audit API at {} : {}",
+                    api_base, e
+                )),
             })?;
 
         let batch: OsvBatchResponse = response

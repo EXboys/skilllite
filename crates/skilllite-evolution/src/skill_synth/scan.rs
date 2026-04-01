@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use crate::Result;
 
 use skilllite_sandbox::security::scanner::ScriptScanner;
 

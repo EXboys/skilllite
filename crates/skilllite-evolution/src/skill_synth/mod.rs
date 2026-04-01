@@ -28,7 +28,8 @@ mod validate;
 use std::collections::HashSet;
 use std::path::Path;
 
-use anyhow::Result;
+use crate::error::bail;
+use crate::Result;
 use tokio::task::block_in_place;
 
 use crate::EvolutionLlm;
@@ -220,10 +221,10 @@ pub fn confirm_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()>
     let dst = evolved_dir.join(skill_name);
 
     if !src.exists() {
-        anyhow::bail!("待确认 Skill '{}' 不存在", skill_name);
+        bail!("待确认 Skill '{}' 不存在", skill_name);
     }
     if dst.exists() {
-        anyhow::bail!("Skill '{}' 已存在，请先删除或重命名", skill_name);
+        bail!("Skill '{}' 已存在，请先删除或重命名", skill_name);
     }
 
     std::fs::rename(&src, &dst)?;
@@ -236,7 +237,7 @@ pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> 
     let src = pending_dir.join(skill_name);
 
     if !src.exists() {
-        anyhow::bail!("待确认 Skill '{}' 不存在", skill_name);
+        bail!("待确认 Skill '{}' 不存在", skill_name);
     }
 
     std::fs::remove_dir_all(&src)?;

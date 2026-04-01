@@ -2,12 +2,13 @@ use crate::common::{
     self, apply_standard_execution_env, get_script_args_from_env, pipe_stdio, resolve_which,
     spawn_write_and_wait, start_network_proxy,
 };
+use crate::error::bail;
 use crate::move_protection::{generate_log_tag, generate_move_blocking_rules, get_session_suffix};
 use crate::runner::{ExecutionResult, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::RuntimeResolver;
 use crate::seatbelt::generate_seatbelt_mandatory_deny_patterns;
 use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
-use anyhow::Result;
+use crate::Result;
 use std::fs;
 use std::net::ToSocketAddrs;
 use std::path::Path;
@@ -44,15 +45,17 @@ pub fn execute_with_limits(
                 &config.name,
                 "seatbelt_exec_failed",
             );
-            Err(e.context(
+            Err(crate::Error::Other(anyhow::Error::from(e).context(
                 "Sandbox execution failed. Refusing to fall back to unsandboxed execution. \
                  Set SKILLLITE_NO_SANDBOX=1 to explicitly run without sandbox (not recommended).",
-            ))
+            )))
         }
     }
 }
 
-/// Simple execution without sandbox (fallback for when sandbox-exec is unavailable)
+/// Simple execution without sandbox (fallback for when sandbox-exec is unavailable).
+///
+/// Delegates to the shared Unix implementation in `common::execute_unsandboxed`.
 pub fn execute_simple_with_limits(
     skill_dir: &Path,
     runtime: &RuntimePaths,
@@ -61,39 +64,7 @@ pub fn execute_simple_with_limits(
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     crate::info_log!("[INFO] simple: executing {}...", config.entry_point);
-
-    let resolved = runtime
-        .resolve(&config.language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", config.language))?;
-
-    let temp_dir = TempDir::new()?;
-    let work_dir = temp_dir.path();
-
-    let mut cmd = Command::new(&resolved.interpreter);
-    cmd.arg(&config.entry_point);
-    for (k, v) in resolved.extra_env {
-        cmd.env(k, v);
-    }
-    for arg in get_script_args_from_env() {
-        cmd.arg(arg);
-    }
-
-    cmd.current_dir(skill_dir);
-    pipe_stdio(&mut cmd);
-
-    apply_standard_execution_env(&mut cmd, false, work_dir, config.network_enabled, false);
-
-    unsafe { common::set_rlimits_pre_exec(&mut cmd, &limits) };
-
-    crate::info_log!("[INFO] simple: spawning skill process...");
-    let (result, _, _) = spawn_write_and_wait(
-        &mut cmd,
-        input_json,
-        &limits,
-        true,
-        "Failed to spawn skill process",
-    )?;
-    Ok(result)
+    common::execute_unsandboxed(skill_dir, runtime, config, input_json, limits)
 }
 
 /// Execute with macOS sandbox-exec with resource limits and network proxy (pure Rust, no script injection)
@@ -112,9 +83,9 @@ fn execute_with_sandbox(
 
     let proxy_manager = start_network_proxy(&network_policy);
 
-    let resolved = runtime
-        .resolve(&config.language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language: {}", config.language))?;
+    let resolved = runtime.resolve(&config.language).ok_or_else(|| {
+        crate::Error::validation(format!("Unsupported language: {}", config.language))
+    })?;
 
     // Generate sandbox profile with proxy ports if available
     let profile_path = work_dir.join("sandbox.sb");
@@ -165,7 +136,7 @@ fn execute_with_sandbox(
 
     if result.exit_code == 1 && result.stderr.is_empty() && result.stdout.is_empty() && !was_killed
     {
-        anyhow::bail!("sandbox-exec failed to execute");
+        bail!("sandbox-exec failed to execute");
     }
     if was_killed {
         if let Some(reason) = &kill_reason {

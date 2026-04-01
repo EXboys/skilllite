@@ -269,9 +269,9 @@
         "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-03-10T12:31:29.004923Z",
-      "installed_at": "2026-03-10T12:31:29.004923Z",
-      "admission_risk": "safe"
+      "tier_updated_at": "2026-04-01T08:16:03.674349Z",
+      "installed_at": "2026-04-01T08:16:03.674349Z",
+      "admission_risk": null
     },
     "subagent-driven-development": {
       "name": "subagent-driven-development",

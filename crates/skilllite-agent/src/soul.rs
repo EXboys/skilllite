@@ -24,7 +24,7 @@
 use std::io::{self, BufRead, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use crate::Result;
 
 /// Minimal SOUL template for optional first-run bootstrap (no preset role).
 /// Used by `offer_bootstrap_soul_if_missing` and by tests.
@@ -230,8 +230,13 @@ impl Soul {
 
     /// Load a SOUL.md file from disk.
     pub fn load(path: &Path) -> Result<Self> {
-        let content = skilllite_fs::read_file(path)
-            .map_err(|e| anyhow::anyhow!("Failed to read SOUL.md at {}: {}", path.display(), e))?;
+        let content = skilllite_fs::read_file(path).map_err(|e| {
+            crate::Error::validation(format!(
+                "Failed to read SOUL.md at {}: {}",
+                path.display(),
+                e
+            ))
+        })?;
         Ok(Self::parse(&content, &path.to_string_lossy()))
     }
 

@@ -2,7 +2,8 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use crate::error::bail;
+use crate::Result;
 use rusqlite::{params, Connection};
 use tokio::task::block_in_place;
 
@@ -185,7 +186,7 @@ async fn extract_rules_from_data<L: EvolutionLlm>(
     if !changes.is_empty() {
         let path = chat_root.join("prompts").join("rules.json");
         if !gatekeeper_l1_path(chat_root, &path, None) {
-            anyhow::bail!("Gatekeeper L1: rules.json path outside allowed directories");
+            bail!("Gatekeeper L1: rules.json path outside allowed directories");
         }
         let json = serde_json::to_string_pretty(&all_rules)?;
         atomic_write(&path, &json)?;
@@ -198,13 +199,14 @@ async fn extract_rules_from_data<L: EvolutionLlm>(
 fn parse_rule_extraction_response(content: &str) -> Result<Vec<PlanningRule>> {
     let json_str = extract_json_block(content);
 
-    let parsed: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| anyhow::anyhow!("Failed to parse rule extraction JSON: {}", e))?;
+    let parsed: serde_json::Value = serde_json::from_str(&json_str).map_err(|e| {
+        crate::Error::validation(format!("Failed to parse rule extraction JSON: {}", e))
+    })?;
 
     let rules_array = parsed
         .get("rules")
         .and_then(|v| v.as_array())
-        .ok_or_else(|| anyhow::anyhow!("No 'rules' array in response"))?;
+        .ok_or_else(|| crate::Error::validation("No 'rules' array in response"))?;
 
     let mut rules = Vec::new();
     for rule_val in rules_array {
@@ -358,7 +360,7 @@ async fn generate_examples_from_data<L: EvolutionLlm>(
     }
 
     if !gatekeeper_l1_path(chat_root, &examples_path, None) {
-        anyhow::bail!("Gatekeeper L1: examples.json path outside allowed directories");
+        bail!("Gatekeeper L1: examples.json path outside allowed directories");
     }
 
     let mut all_examples = existing_examples;
@@ -380,7 +382,7 @@ fn parse_example_response(content: &str) -> Result<Option<PlanningExample>> {
     let json_str = extract_json_block(content);
 
     let parsed: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| anyhow::anyhow!("Failed to parse example JSON: {}", e))?;
+        .map_err(|e| crate::Error::validation(format!("Failed to parse example JSON: {}", e)))?;
 
     if let Some(skip) = parsed.get("skip_reason").and_then(|v| v.as_str()) {
         if !skip.is_empty() && skip != "null" {
@@ -390,7 +392,7 @@ fn parse_example_response(content: &str) -> Result<Option<PlanningExample>> {
 
     let example_val = parsed
         .get("example")
-        .ok_or_else(|| anyhow::anyhow!("No 'example' field in response"))?;
+        .ok_or_else(|| crate::Error::validation("No 'example' field in response"))?;
 
     let id = example_val
         .get("id")
@@ -439,7 +441,7 @@ fn retire_low_effectiveness_rules_with_conn(
         return Ok(Vec::new());
     }
     if !gatekeeper_l1_path(chat_root, &rules_path, None) {
-        anyhow::bail!("Gatekeeper L1: rules.json path outside allowed directories");
+        bail!("Gatekeeper L1: rules.json path outside allowed directories");
     }
     let content = skilllite_fs::read_file(&rules_path)?;
     let rules: Vec<PlanningRule> = serde_json::from_str(&content)?;

@@ -1,24 +1,37 @@
 //! Shared helpers for skill management commands.
 
-use anyhow::Result;
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::metadata;
 use std::path::{Path, PathBuf};
 
+use crate::error::bail;
+use crate::Result;
+
 pub fn resolve_skills_dir(skills_dir: &str) -> PathBuf {
     let p = PathBuf::from(skills_dir);
-    if p.is_absolute() {
+    let resolved = if p.is_absolute() {
         p
     } else {
         std::env::current_dir()
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(p)
+    };
+
+    if skills_dir == "skills" && !resolved.exists() {
+        if let Some(parent) = resolved.parent() {
+            let legacy = parent.join(".skills");
+            if legacy.is_dir() {
+                return legacy;
+            }
+        }
     }
+
+    resolved
 }
 
 pub fn find_skill(skills_path: &Path, skill_name: &str) -> Result<PathBuf> {
     if !skills_path.exists() {
-        anyhow::bail!("Skills directory not found: {}", skills_path.display());
+        bail!("Skills directory not found: {}", skills_path.display());
     }
 
     let direct = skills_path.join(skill_name);
@@ -39,7 +52,7 @@ pub fn find_skill(skills_path: &Path, skill_name: &str) -> Result<PathBuf> {
         }
     }
 
-    anyhow::bail!(
+    bail!(
         "Skill '{}' not found in {}",
         skill_name,
         skills_path.display()

@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use anyhow::Result;
+use crate::Result;
 
 use super::super::extensions::{self};
 use super::super::goal_boundaries::{self, GoalBoundaries};
@@ -467,8 +467,9 @@ Use null for any field you cannot infer. Output only valid JSON, no markdown, no
         raw
     };
 
-    let v: Value = serde_json::from_str(json_str)
-        .map_err(|e| anyhow::anyhow!("Goal boundaries JSON parse error: {}", e))?;
+    let v: Value = serde_json::from_str(json_str).map_err(|e| {
+        crate::Error::validation(format!("Goal boundaries JSON parse error: {}", e))
+    })?;
 
     let scope = v
         .get("scope")

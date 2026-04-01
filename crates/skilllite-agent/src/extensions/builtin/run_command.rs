@@ -1,6 +1,8 @@
 //! run_command: shell command execution with confirmation + timeout.
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use serde_json::{json, Value};
 use std::path::Path;
 use std::process::ExitStatus;
@@ -114,12 +116,12 @@ pub(super) async fn execute_run_command(
         .context("'command' is required")?;
 
     if cmd.trim().is_empty() {
-        anyhow::bail!("command must not be empty");
+        bail!("command must not be empty");
     }
 
     // A11: 禁止通过 run_command 绕过敏感文件读取（cat .env 等直接 block）
     if let Some(reason) = check_sensitive_file_read(cmd) {
-        anyhow::bail!(
+        bail!(
             "Blocked: command attempts to read sensitive file ({}). \
              .env, .key, .git/config, .pem cannot be read via run_command.",
             reason
@@ -231,7 +233,7 @@ pub(super) async fn execute_run_command(
         status.context("command finished without exit status")
     }).await {
         Ok(Ok(status)) => status,
-        Ok(Err(e)) => return Err(e),
+        Ok(Err(e)) => return Err(e.into()),
         Err(_) => {
             let _ = child.kill().await;
             event_sink.on_command_finished(false, -1, start_time.elapsed().as_millis() as u64);

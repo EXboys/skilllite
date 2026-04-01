@@ -6,10 +6,12 @@
 //! - **HTTP /task**: Receive NodeTask, execute locally or forward to peer
 
 mod discovery;
+pub mod error;
 mod handler;
 mod llm_routing;
 mod routing;
 
 pub use discovery::{Discovery, PeerInfo};
+pub use error::{Error, Result};
 pub use handler::serve_swarm;
 pub use routing::{capabilities_match, route_task, RouteTarget, TaskExecutor};

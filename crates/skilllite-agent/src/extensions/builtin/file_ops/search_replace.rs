@@ -1,6 +1,8 @@
 //! search_replace / preview_edit / insert_lines: 薄封装，调用 skilllite_fs
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -28,11 +30,11 @@ pub(super) fn execute_insert_lines(
     event_sink: Option<&mut dyn EventSink>,
 ) -> Result<String> {
     let path_str =
-        get_path_arg(args, false).ok_or_else(|| anyhow::anyhow!("'path' is required"))?;
+        get_path_arg(args, false).ok_or_else(|| crate::Error::validation("'path' is required"))?;
     let line_num = args
         .get("line")
         .and_then(|v| v.as_u64())
-        .ok_or_else(|| anyhow::anyhow!("'line' is required (0 = beginning of file)"))?
+        .ok_or_else(|| crate::Error::validation("'line' is required (0 = beginning of file)"))?
         as usize;
     let insert_content = args
         .get("content")
@@ -47,7 +49,7 @@ pub(super) fn execute_insert_lines(
             "sensitive_path_blocked",
             Some(workspace_str.as_ref()),
         );
-        anyhow::bail!(
+        bail!(
             "Blocked: editing sensitive file '{}' is not allowed",
             path_str
         );
@@ -73,7 +75,7 @@ pub(super) fn execute_insert_lines(
             "file_not_found",
             Some(workspace_str.as_ref()),
         );
-        anyhow::bail!("File not found: {}", path_str);
+        bail!("File not found: {}", path_str);
     }
 
     let content = skilllite_fs::read_file(&resolved)
@@ -136,7 +138,7 @@ fn execute_replace_like(
     };
 
     let path_str = get_path_arg(args, false)
-        .ok_or_else(|| anyhow::anyhow!("'path' or 'file_path' is required"))?;
+        .ok_or_else(|| crate::Error::validation("'path' or 'file_path' is required"))?;
     let old_string = args
         .get("old_string")
         .and_then(|v| v.as_str())
@@ -162,7 +164,7 @@ fn execute_replace_like(
             "sensitive_path_blocked",
             Some(&workspace_str),
         );
-        anyhow::bail!(
+        bail!(
             "Blocked: editing sensitive file '{}' is not allowed",
             path_str
         );
@@ -189,7 +191,7 @@ fn execute_replace_like(
             "file_not_found",
             Some(&workspace_str),
         );
-        anyhow::bail!("File not found: {}", path_str);
+        bail!("File not found: {}", path_str);
     }
     if resolved.is_dir() {
         skilllite_core::observability::audit_edit_failed(
@@ -198,7 +200,7 @@ fn execute_replace_like(
             "path_is_directory",
             Some(&workspace_str),
         );
-        anyhow::bail!("Path is a directory, not a file: {}", path_str);
+        bail!("Path is a directory, not a file: {}", path_str);
     }
 
     let content = skilllite_fs::read_file(&resolved)
@@ -230,7 +232,7 @@ fn execute_replace_like(
             "no_change_produced",
             Some(&workspace_str),
         );
-        anyhow::bail!("No changes were made: replacement produced identical content");
+        bail!("No changes were made: replacement produced identical content");
     }
 
     let first_changed_line = content[..result.first_match_start]

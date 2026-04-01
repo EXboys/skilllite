@@ -17,26 +17,18 @@ export function ChatInput({
   onStop,
   disabled,
   loading,
-  placeholder = "输入指令，按 Enter 发送…",
+  placeholder = "输入指令（Enter 换行，点击发送）…",
   bare = false,
 }: ChatInputProps) {
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      onSend();
-    }
-  };
-
   const row = (
     <div className="flex gap-2">
-        <input
-          type="text"
+        <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}
-          className="flex-1 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-4 py-2.5 text-ink dark:text-ink-dark placeholder-ink-mute dark:placeholder-ink-dark-mute focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none disabled:opacity-50"
+          rows={3}
+          className="flex-1 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-4 py-2.5 text-ink dark:text-ink-dark placeholder-ink-mute dark:placeholder-ink-dark-mute focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none disabled:opacity-50 resize-y min-h-[44px] max-h-52"
         />
         {loading && onStop ? (
           <button

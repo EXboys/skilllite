@@ -2,7 +2,10 @@
 
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::error::bail;
+use crate::Result;
 
 /// Process due scheduled jobs: each runs one full agent `chat` turn with `job.message`.
 pub fn cmd_tick(workspace: Option<&str>, dry_run: bool) -> Result<()> {
@@ -14,7 +17,7 @@ pub fn cmd_tick(workspace: Option<&str>, dry_run: bool) -> Result<()> {
     skilllite_core::config::load_dotenv_from_dir(&workspace_path);
 
     let schedule = match skilllite_core::schedule::load_schedule(&workspace_path)
-        .map_err(|e| anyhow::anyhow!(e))?
+        .map_err(crate::Error::validation)?
     {
         None => {
             eprintln!(
@@ -27,7 +30,7 @@ pub fn cmd_tick(workspace: Option<&str>, dry_run: bool) -> Result<()> {
     };
 
     if schedule.version != 1 {
-        anyhow::bail!(
+        bail!(
             "Unsupported schedule.json version {} (only 1 supported)",
             schedule.version
         );
@@ -83,7 +86,7 @@ pub fn cmd_tick(workspace: Option<&str>, dry_run: bool) -> Result<()> {
     let mut config = skilllite_agent::types::AgentConfig::from_env();
     config.workspace = workspace_path.to_string_lossy().to_string();
     if config.api_key.is_empty() {
-        anyhow::bail!("API key required for schedule tick. Set OPENAI_API_KEY.");
+        bail!("API key required for schedule tick. Set OPENAI_API_KEY.");
     }
 
     skilllite_core::config::ensure_default_output_dir();
@@ -107,7 +110,7 @@ pub fn cmd_tick(workspace: Option<&str>, dry_run: bool) -> Result<()> {
             Ok(()) => {
                 skilllite_core::schedule::record_job_run(&mut state, &job.id, now);
                 skilllite_core::schedule::save_state(&workspace_path, &state)
-                    .map_err(|e| anyhow::anyhow!(e))?;
+                    .map_err(crate::Error::validation)?;
             }
             Err(e) => {
                 eprintln!(

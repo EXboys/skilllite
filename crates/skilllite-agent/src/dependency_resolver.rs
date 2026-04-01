@@ -39,8 +39,8 @@ mod llm_resolver {
         llm_client: Option<&LlmClient>,
         model: Option<&str>,
         allow_unknown: bool,
-    ) -> anyhow::Result<skilllite_core::skill::dependency_resolver::ResolvedDependencies> {
-        core_resolve_packages(
+    ) -> crate::Result<skilllite_core::skill::dependency_resolver::ResolvedDependencies> {
+        Ok(core_resolve_packages(
             skill_dir,
             compatibility,
             language,
@@ -48,7 +48,7 @@ mod llm_resolver {
             model,
             allow_unknown,
         )
-        .await
+        .await?)
     }
 }
 
@@ -64,8 +64,8 @@ mod llm_resolver {
         _llm_client: Option<&LlmClient>,
         _model: Option<&str>,
         _allow_unknown: bool,
-    ) -> anyhow::Result<skilllite_core::skill::dependency_resolver::ResolvedDependencies> {
-        anyhow::bail!("async-resolve feature not enabled")
+    ) -> crate::Result<skilllite_core::skill::dependency_resolver::ResolvedDependencies> {
+        crate::error::bail!("async-resolve feature not enabled")
     }
 }
 

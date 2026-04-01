@@ -15,7 +15,7 @@
 //! Three-layer resolution for skill dependencies. Used by `skilllite init` when
 //! .skilllite.lock is missing or stale.
 
-use anyhow::Result;
+use crate::Result;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 

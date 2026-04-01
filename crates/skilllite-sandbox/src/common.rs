@@ -3,7 +3,9 @@
 //! This module provides shared functionality used by both macOS and Linux
 //! sandbox implementations, including process monitoring and resource limits.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::Result;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -254,7 +256,10 @@ pub fn wait_with_timeout(
             Err(e) => {
                 let _ = stdout_handle.map(|h| h.join());
                 let _ = stderr_handle.map(|h| h.join());
-                return Err(anyhow::anyhow!("Failed to wait for process: {}", e));
+                return Err(crate::Error::validation(format!(
+                    "Failed to wait for process: {}",
+                    e
+                )));
             }
         }
 
@@ -573,6 +578,58 @@ pub fn get_script_args_from_env() -> Vec<String> {
         }
     }
     Vec::new()
+}
+
+// ============================================================
+// Shared unsandboxed execution (Unix)
+// ============================================================
+
+/// Execute a skill without sandbox isolation on Unix (macOS / Linux).
+///
+/// This is the shared implementation for the "no sandbox" path. Both macOS and
+/// Linux delegate here to avoid duplicating runtime resolution, env setup,
+/// resource limits, and process spawning logic.
+#[cfg(unix)]
+pub fn execute_unsandboxed(
+    skill_dir: &Path,
+    runtime: &crate::runner::RuntimePaths,
+    config: &crate::runner::SandboxConfig,
+    input_json: &str,
+    limits: ResourceLimits,
+) -> Result<ExecutionResult> {
+    use crate::runtime_resolver::RuntimeResolver;
+
+    let resolved = runtime.resolve(&config.language).ok_or_else(|| {
+        crate::Error::validation(format!("Unsupported language: {}", config.language))
+    })?;
+
+    let temp_dir = tempfile::TempDir::new()?;
+    let work_dir = temp_dir.path();
+
+    let mut cmd = Command::new(&resolved.interpreter);
+    cmd.arg(&config.entry_point);
+    for (k, v) in &resolved.extra_env {
+        cmd.env(k, v);
+    }
+    for arg in get_script_args_from_env() {
+        cmd.arg(arg);
+    }
+
+    cmd.current_dir(skill_dir);
+    pipe_stdio(&mut cmd);
+
+    apply_standard_execution_env(&mut cmd, false, work_dir, config.network_enabled, false);
+
+    unsafe { set_rlimits_pre_exec(&mut cmd, &limits) };
+
+    let (result, _, _) = spawn_write_and_wait(
+        &mut cmd,
+        input_json,
+        &limits,
+        true,
+        "Failed to spawn skill process",
+    )?;
+    Ok(result)
 }
 
 // ============================================================

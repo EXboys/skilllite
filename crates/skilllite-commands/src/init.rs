@@ -4,16 +4,18 @@
 //!
 //! Flow:
 //!   1. Verify skilllite binary is available (self — always true)
-//!   2. Create .skills/ directory + download skills from SKILLLITE_SKILLS_REPO (if empty)
+//!   2. Create skills/ directory + download skills from SKILLLITE_SKILLS_REPO (if empty)
 //!   3. Scan all skills → resolve dependencies → install to isolated environments
 //!   4. Run security audit (pip-audit / npm audit via dependency_audit)
 //!   5. Output summary
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::error::bail;
 use crate::skill;
+use crate::Result;
 use skilllite_core::skill::dependency_resolver;
 use skilllite_core::skill::metadata;
 
@@ -26,7 +28,7 @@ pub fn cmd_init(
     force: bool,
     use_llm: bool,
 ) -> Result<()> {
-    let skills_path = resolve_path(skills_dir);
+    let skills_path = resolve_path_with_legacy_fallback(skills_dir);
 
     eprintln!("🚀 Initializing SkillLite project...");
     eprintln!();
@@ -35,15 +37,18 @@ pub fn cmd_init(
     let version = env!("CARGO_PKG_VERSION");
     eprintln!("✅ Step 1/6: skilllite binary v{} ready", version);
 
-    // Step 2: Create .skills/ directory + download skills (if empty)
+    // Step 2: Create skills/ directory + download skills (if empty)
     eprintln!();
     let downloaded = ensure_skills_dir(&skills_path, force)?;
     if downloaded {
-        eprintln!("✅ Step 2/6: Downloaded skills into {}", skills_dir);
+        eprintln!(
+            "✅ Step 2/6: Downloaded skills into {}",
+            skills_path.display()
+        );
     } else {
         eprintln!(
             "✅ Step 2/6: Skills directory already exists at {}",
-            skills_dir
+            skills_path.display()
         );
     }
 
@@ -81,7 +86,7 @@ pub fn cmd_init(
                 eprintln!("{}", msg);
             }
             if has_vulns && strict {
-                anyhow::bail!(
+                bail!(
                     "Security audit failed in strict mode. Fix vulnerabilities before proceeding.\n\
                      Run `skilllite dependency-audit <skill_dir>` for details."
                 );
@@ -125,7 +130,7 @@ pub fn cmd_init(
     Ok(())
 }
 
-fn resolve_path(dir: &str) -> PathBuf {
+pub(crate) fn resolve_path(dir: &str) -> PathBuf {
     let p = PathBuf::from(dir);
     if p.is_absolute() {
         p
@@ -136,7 +141,21 @@ fn resolve_path(dir: &str) -> PathBuf {
     }
 }
 
-/// Ensure .skills/ directory exists and has skills. When empty, download from
+pub(crate) fn resolve_path_with_legacy_fallback(dir: &str) -> PathBuf {
+    let resolved = resolve_path(dir);
+    // Compatibility: when default "skills" is absent, reuse legacy ".skills".
+    if dir == "skills" && !resolved.exists() {
+        if let Some(parent) = resolved.parent() {
+            let legacy = parent.join(".skills");
+            if legacy.is_dir() {
+                return legacy;
+            }
+        }
+    }
+    resolved
+}
+
+/// Ensure skills directory exists and has skills. When empty, download from
 /// SKILLLITE_SKILLS_REPO (default: EXboys/skilllite). Returns true if skills were downloaded.
 ///
 /// Shared by `init` and `quickstart` commands.
@@ -242,7 +261,10 @@ fn install_all_deps(
 
         match metadata::parse_skill_metadata(&skill_path) {
             Ok(mut meta) => {
-                if meta.entry_point.is_empty() && !meta.is_bash_tool_skill() {
+                if meta.entry_point.is_empty()
+                    && !meta.is_bash_tool_skill()
+                    && !metadata::has_executable_scripts(&skill_path)
+                {
                     messages.push(format!(
                         "   ✓ {} (prompt-only): no dependencies needed",
                         name
@@ -261,16 +283,18 @@ fn install_all_deps(
                         let model_opt = model.as_deref();
                         if let (Some(client), Some(m)) = (client_opt, model_opt) {
                             match tokio::runtime::Runtime::new() {
-                                Ok(rt) => rt.block_on(
-                                    skilllite_agent::dependency_resolver::resolve_packages(
-                                        &skill_path,
-                                        meta.compatibility.as_deref(),
-                                        &lang,
-                                        Some(client),
-                                        Some(m),
-                                        true,
-                                    ),
-                                ),
+                                Ok(rt) => rt
+                                    .block_on(
+                                        skilllite_agent::dependency_resolver::resolve_packages(
+                                            &skill_path,
+                                            meta.compatibility.as_deref(),
+                                            &lang,
+                                            Some(client),
+                                            Some(m),
+                                            true,
+                                        ),
+                                    )
+                                    .map_err(anyhow::Error::from),
                                 Err(e) => {
                                     tracing::warn!(skill = %name, err = %e, "tokio runtime failed, skipping LLM dependency resolution");
                                     dependency_resolver::resolve_packages_sync(
@@ -279,6 +303,7 @@ fn install_all_deps(
                                         &lang,
                                         true,
                                     )
+                                    .map_err(anyhow::Error::from)
                                 }
                             }
                         } else {
@@ -288,6 +313,7 @@ fn install_all_deps(
                                 &lang,
                                 true,
                             )
+                            .map_err(anyhow::Error::from)
                         }
                     };
 

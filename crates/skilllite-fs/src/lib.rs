@@ -8,12 +8,16 @@
 //! - backup: backup_file, prune_oldest_files
 //! - util: is_likely_binary, matches_glob
 
+pub mod error;
+
 mod backup;
 mod dir;
 mod grep;
 mod read_write;
 mod search_replace;
 mod util;
+
+pub use error::{Error, Result};
 
 // Re-export public API
 pub use backup::{backup_file, prune_oldest_files};

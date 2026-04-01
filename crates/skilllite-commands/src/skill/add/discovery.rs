@@ -1,8 +1,10 @@
 //! Skill discovery, directory copying, and dependency installation.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use crate::Result;
 
 use skilllite_core::skill::discovery::SKILL_SEARCH_DIRS;
 use skilllite_core::skill::metadata;

@@ -1,6 +1,8 @@
 //! Anthropic Claude API implementation.
 
-use anyhow::{anyhow, Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::{anyhow, Context};
 use futures_util::StreamExt;
 use serde_json::{json, Value};
 
@@ -153,7 +155,7 @@ impl LlmClient {
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("{}", super::format_api_error(status, &body_text, "Claude"));
+            bail!("{}", super::format_api_error(status, &body_text, "Claude"));
         }
 
         let response: Value = resp
@@ -209,7 +211,7 @@ impl LlmClient {
         let status = resp.status();
         if !status.is_success() {
             let body_text = resp.text().await.unwrap_or_default();
-            anyhow::bail!("{}", super::format_api_error(status, &body_text, "Claude"));
+            bail!("{}", super::format_api_error(status, &body_text, "Claude"));
         }
 
         self.accumulate_claude_stream(resp, model, event_sink).await

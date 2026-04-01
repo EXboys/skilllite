@@ -1,8 +1,9 @@
 //! `skilllite list` — List all installed skills.
 
-use anyhow::Result;
 use std::fs;
 use std::path::PathBuf;
+
+use crate::Result;
 
 use skilllite_core::skill::{manifest, metadata};
 

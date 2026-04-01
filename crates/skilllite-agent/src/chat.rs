@@ -2,7 +2,9 @@
 //!
 //! Extracted from `main.rs` so that `main` only does argument dispatch.
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use std::path::Path;
 
 use super::chat_session::ChatSession;
@@ -26,7 +28,7 @@ pub async fn run_single_task(
     config.enable_memory = true;
 
     if config.api_key.is_empty() {
-        anyhow::bail!("API key required for swarm task execution. Set OPENAI_API_KEY.");
+        bail!("API key required for swarm task execution. Set OPENAI_API_KEY.");
     }
 
     skilllite_core::config::ensure_default_output_dir();
@@ -89,7 +91,7 @@ pub fn run_chat(
     skilllite_core::config::ensure_default_output_dir();
 
     if config.api_key.is_empty() {
-        anyhow::bail!("API key required. Set OPENAI_API_KEY env var or use --api-key flag.");
+        bail!("API key required. Set OPENAI_API_KEY env var or use --api-key flag.");
     }
 
     // Auto-discover skill directories if none specified
@@ -148,7 +150,7 @@ pub fn run_chat(
 /// max_consecutive_failures set, soul_path, skill_dirs, etc.).
 pub fn run_agent_run(config: AgentConfig, goal: String, resume: bool) -> Result<()> {
     if config.api_key.is_empty() {
-        anyhow::bail!("API key required. Set OPENAI_API_KEY env var or use --api-key flag.");
+        bail!("API key required. Set OPENAI_API_KEY env var or use --api-key flag.");
     }
 
     skilllite_core::config::ensure_default_output_dir();
@@ -165,7 +167,7 @@ pub fn run_agent_run(config: AgentConfig, goal: String, resume: bool) -> Result<
                 (resume_msg, cp.workspace, Some(history))
             }
             None => {
-                anyhow::bail!("无可用断点。请先运行 `skilllite run --goal \"...\"` 以创建断点。");
+                bail!("无可用断点。请先运行 `skilllite run --goal \"...\"` 以创建断点。");
             }
         }
     } else {
@@ -234,7 +236,7 @@ pub fn run_agent_run(config: AgentConfig, goal: String, resume: bool) -> Result<
 /// Format agent/API errors for user-friendly display in chat UI.
 /// The LLM layer already produces friendly Chinese messages via `format_api_error`;
 /// this function just truncates overly long errors for terminal display.
-fn format_chat_error(e: &anyhow::Error) -> String {
+fn format_chat_error(e: &crate::Error) -> String {
     let s = e.to_string();
     if s.len() > 300 {
         format!("{}…", &s[..300])
@@ -258,7 +260,7 @@ async fn run_interactive_chat(
     let mut sink = TerminalEventSink::new(verbose);
 
     let mut rl = rustyline::DefaultEditor::new()
-        .map_err(|e| anyhow::anyhow!("Failed to create line editor: {}", e))?;
+        .map_err(|e| crate::Error::validation(format!("Failed to create line editor: {}", e)))?;
 
     loop {
         let readline = rl.readline("You> ");

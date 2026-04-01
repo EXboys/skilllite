@@ -7,43 +7,150 @@
 //! that works for both CLI and RPC via the `EventSink` trait.
 //!
 //! Sub-modules:
-//!   - `planning`   — pre-loop setup, LLM task-list generation, checkpoint saving
-//!   - `execution`  — tool-call batch processing, progressive disclosure, depth limits
-//!   - `reflection` — no-tool response handling, hallucination guard, auto-nudge
-//!   - `helpers`    — shared low-level utilities (tool execution, result processing, …)
+//!   - `planning`       — pre-loop setup, LLM task-list generation, checkpoint saving
+//!   - `execution`      — tool-call batch processing, progressive disclosure, depth limits
+//!   - `reflection`     — no-tool response handling, hallucination guard, auto-nudge
+//!   - `helpers`        — shared low-level utilities (tool execution, result processing, …)
+//!   - `clarification`  — reusable clarification-request pattern
+//!   - `llm_call`       — LLM call dispatch with context-overflow recovery
 
+mod clarification;
 mod execution;
 mod helpers;
+mod llm_call;
 mod planning;
 mod reflection;
 
-use anyhow::Result;
+use crate::Result;
 use std::collections::HashSet;
 use std::path::Path;
 
 use super::extensions::{self, MemoryVectorContext};
-use super::llm::{self, LlmClient};
+use super::llm::LlmClient;
 use super::prompt;
 use super::skills::LoadedSkill;
 use super::soul::Soul;
 use super::types::*;
 use skilllite_core::config::EmbeddingConfig;
 
+use clarification::{try_clarify, ClarifyAction};
 use execution::{
     execute_tool_batch_planning, execute_tool_batch_simple,
     should_suppress_planning_assistant_text, ExecutionState,
 };
 use helpers::build_agent_result;
+use llm_call::{call_llm_with_recovery, LlmCallOutcome};
 use planning::{
     build_task_focus_message, maybe_save_checkpoint, run_planning_phase, PlanningResult,
 };
 use reflection::{reflect_planning, reflect_simple, ReflectionOutcome};
 
-/// Maximum number of clarification round-trips before the agent stops unconditionally.
-const MAX_CLARIFICATIONS: usize = 3;
+fn strip_ansi_sequences(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    enum State {
+        Normal,
+        Esc,
+        Csi,
+    }
+    let mut state = State::Normal;
+    for ch in s.chars() {
+        match state {
+            State::Normal => {
+                if ch == '\u{1b}' {
+                    state = State::Esc;
+                } else {
+                    out.push(ch);
+                }
+            }
+            State::Esc => {
+                if ch == '[' {
+                    state = State::Csi;
+                } else {
+                    state = State::Normal;
+                }
+            }
+            State::Csi => {
+                if ('@'..='~').contains(&ch) {
+                    state = State::Normal;
+                }
+            }
+        }
+    }
+    out
+}
 
-/// Maximum number of context overflow recovery retries before giving up.
-const MAX_CONTEXT_OVERFLOW_RETRIES: usize = 3;
+fn collect_tool_result_excerpts(messages: &[ChatMessage], max_items: usize) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut excerpts = Vec::new();
+    for msg in messages.iter().rev() {
+        if msg.role != "tool" {
+            continue;
+        }
+        let raw = msg.content.as_deref().unwrap_or("").trim();
+        if raw.is_empty() {
+            continue;
+        }
+        let cleaned = strip_ansi_sequences(raw);
+        let first_line = cleaned.lines().map(str::trim).find(|l| !l.is_empty());
+        let Some(line) = first_line else {
+            continue;
+        };
+        let one_line = line.split_whitespace().collect::<Vec<_>>().join(" ");
+        let excerpt = if one_line.len() > 140 {
+            format!("{}…", safe_truncate(&one_line, 140))
+        } else {
+            one_line
+        };
+        if seen.insert(excerpt.clone()) {
+            excerpts.push(excerpt);
+            if excerpts.len() >= max_items {
+                break;
+            }
+        }
+    }
+    excerpts
+}
+
+fn build_final_summary_fallback(
+    task_plan: &[Task],
+    messages: &[ChatMessage],
+    user_message: &str,
+) -> String {
+    let total = task_plan.len();
+    let completed = task_plan.iter().filter(|t| t.completed).count();
+    let user_goal = if user_message.len() > 80 {
+        format!("{}…", safe_truncate(user_message, 80))
+    } else {
+        user_message.to_string()
+    };
+    let mut lines = vec![
+        format!("已完成你刚才的请求：{}", user_goal),
+        format!("任务执行已结束，完成进度：{}/{}。", completed, total),
+    ];
+
+    let tool_excerpts = collect_tool_result_excerpts(messages, 3);
+    if !tool_excerpts.is_empty() {
+        lines.push("基于工具返回的关键信息：".to_string());
+        for item in tool_excerpts {
+            lines.push(format!("- {}", item));
+        }
+    } else {
+        let completed_items: Vec<String> = task_plan
+            .iter()
+            .filter(|t| t.completed)
+            .take(3)
+            .map(|t| format!("{}: {}", t.id, t.description))
+            .collect();
+        if !completed_items.is_empty() {
+            lines.push(format!(
+                "已完成步骤（最多展示 3 条）：{}",
+                completed_items.join("；")
+            ));
+        }
+    }
+    lines.push("如果你希望我继续，请补充下一步目标或细化要求。".to_string());
+    lines.join("\n")
+}
 
 /// Run the agent loop.
 ///
@@ -120,7 +227,6 @@ async fn run_simple_loop(
     };
     let all_tools = registry.all_tool_definitions();
 
-    // Build system prompt and initial message list
     let chat_root = skilllite_executor::chat_root();
     let soul = Soul::auto_load(config.soul_path.as_deref(), &config.workspace);
     let system_prompt = prompt::build_system_prompt(
@@ -158,26 +264,19 @@ async fn run_simple_loop(
                 "Agent loop reached max iterations ({})",
                 config.max_iterations
             );
-            if clarification_count < MAX_CLARIFICATIONS {
-                let req = ClarificationRequest {
-                    reason: "max_iterations".into(),
-                    message: format!(
-                        "已达到最大执行轮次 ({})，任务可能尚未完成。",
-                        config.max_iterations
-                    ),
-                    suggestions: vec!["继续执行更多轮次".into(), "请指定接下来要做什么".into()],
-                };
-                match event_sink.on_clarification_request(&req) {
-                    ClarificationResponse::Continue(hint) => {
-                        clarification_count += 1;
-                        state.iterations = 0;
-                        if let Some(h) = hint {
-                            messages.push(ChatMessage::user(&h));
-                        }
-                        continue;
-                    }
-                    ClarificationResponse::Stop => {}
-                }
+            if let ClarifyAction::Continue = try_clarify(
+                "max_iterations",
+                &format!(
+                    "已达到最大执行轮次 ({})，任务可能尚未完成。",
+                    config.max_iterations
+                ),
+                &["继续执行更多轮次", "请指定接下来要做什么"],
+                &mut clarification_count,
+                event_sink,
+                &mut messages,
+            ) {
+                state.iterations = 0;
+                continue;
             }
             task_completed = false;
             break;
@@ -185,54 +284,31 @@ async fn run_simple_loop(
         state.iterations += 1;
 
         // ── LLM call (with context-overflow recovery) ─────────────────────
-        let response = match client
-            .chat_completion_stream(
-                &config.model,
-                &messages,
-                tools_ref,
-                config.temperature,
-                event_sink,
-            )
-            .await
+        let response = match call_llm_with_recovery(
+            &client,
+            &config.model,
+            &mut messages,
+            tools_ref,
+            config.temperature,
+            true,
+            event_sink,
+            &mut state.context_overflow_retries,
+        )
+        .await?
         {
-            Ok(resp) => {
-                state.context_overflow_retries = 0;
-                resp
-            }
-            Err(e) => {
-                if llm::is_context_overflow_error(&e.to_string()) {
-                    state.context_overflow_retries += 1;
-                    if state.context_overflow_retries >= MAX_CONTEXT_OVERFLOW_RETRIES {
-                        tracing::error!(
-                            "Context overflow persists after {} retries, giving up",
-                            MAX_CONTEXT_OVERFLOW_RETRIES
-                        );
-                        return Err(e);
-                    }
-                    let rc = get_tool_result_recovery_max_chars();
-                    tracing::warn!(
-                        "Context overflow (attempt {}/{}), truncating to {} chars",
-                        state.context_overflow_retries,
-                        MAX_CONTEXT_OVERFLOW_RETRIES,
-                        rc
-                    );
-                    llm::truncate_tool_messages(&mut messages, rc);
-                    continue;
-                }
-                return Err(e);
-            }
+            LlmCallOutcome::Response(resp) => resp,
+            LlmCallOutcome::Truncated => continue,
         };
 
         let choice = response
             .choices
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow::anyhow!("No choices in LLM response"))?;
+            .ok_or_else(|| crate::Error::validation("No choices in LLM response"))?;
         let assistant_content = choice.message.content;
         let tool_calls = choice.message.tool_calls;
         let has_tool_calls = tool_calls.as_ref().is_some_and(|tc| !tc.is_empty());
 
-        // Add assistant message to history (move tool_calls into message, avoid clone)
         if let Some(tcs) = tool_calls {
             messages.push(ChatMessage::assistant_with_tool_calls(
                 assistant_content.as_deref(),
@@ -258,26 +334,16 @@ async fn run_simple_loop(
                     continue;
                 }
                 ReflectionOutcome::Break => {
-                    if clarification_count < MAX_CLARIFICATIONS {
-                        let req = ClarificationRequest {
-                            reason: "no_progress".into(),
-                            message: "Agent 多次尝试后无法继续执行任务，可能需要更多信息。".into(),
-                            suggestions: vec![
-                                "请补充更多细节或换一种方式描述需求".into(),
-                                "继续尝试，不做更改".into(),
-                            ],
-                        };
-                        match event_sink.on_clarification_request(&req) {
-                            ClarificationResponse::Continue(hint) => {
-                                clarification_count += 1;
-                                no_tool_retries = 0;
-                                if let Some(h) = hint {
-                                    messages.push(ChatMessage::user(&h));
-                                }
-                                continue;
-                            }
-                            ClarificationResponse::Stop => {}
-                        }
+                    if let ClarifyAction::Continue = try_clarify(
+                        "no_progress",
+                        "Agent 多次尝试后无法继续执行任务，可能需要更多信息。",
+                        &["请补充更多细节或换一种方式描述需求", "继续尝试，不做更改"],
+                        &mut clarification_count,
+                        event_sink,
+                        &mut messages,
+                    ) {
+                        no_tool_retries = 0;
+                        continue;
                     }
                     break;
                 }
@@ -317,29 +383,22 @@ async fn run_simple_loop(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
             );
-            if clarification_count < MAX_CLARIFICATIONS {
-                let req = ClarificationRequest {
-                    reason: "too_many_failures".into(),
-                    message: format!(
-                        "工具执行连续失败 {} 次，可能遇到了环境或权限问题。",
-                        state.consecutive_failures
-                    ),
-                    suggestions: vec![
-                        "跳过失败的步骤，继续后续任务".into(),
-                        "请补充信息帮助 Agent 解决问题".into(),
-                    ],
-                };
-                match event_sink.on_clarification_request(&req) {
-                    ClarificationResponse::Continue(hint) => {
-                        clarification_count += 1;
-                        state.consecutive_failures = 0;
-                        if let Some(h) = hint {
-                            messages.push(ChatMessage::user(&h));
-                        }
-                        continue;
-                    }
-                    ClarificationResponse::Stop => {}
-                }
+            if let ClarifyAction::Continue = try_clarify(
+                "too_many_failures",
+                &format!(
+                    "工具执行连续失败 {} 次，可能遇到了环境或权限问题。",
+                    state.consecutive_failures
+                ),
+                &[
+                    "跳过失败的步骤，继续后续任务",
+                    "请补充信息帮助 Agent 解决问题",
+                ],
+                &mut clarification_count,
+                event_sink,
+                &mut messages,
+            ) {
+                state.consecutive_failures = 0;
+                continue;
             }
             task_completed = false;
             break;
@@ -348,22 +407,15 @@ async fn run_simple_loop(
         // Global tool call depth limit
         if state.total_tool_calls >= config.max_iterations * config.max_tool_calls_per_task {
             tracing::warn!("Agent loop reached total tool call limit");
-            if clarification_count < MAX_CLARIFICATIONS {
-                let req = ClarificationRequest {
-                    reason: "tool_call_limit".into(),
-                    message: "已达到工具调用次数上限，任务可能尚未完成。".into(),
-                    suggestions: vec!["继续执行".into(), "请指定接下来要做什么".into()],
-                };
-                match event_sink.on_clarification_request(&req) {
-                    ClarificationResponse::Continue(hint) => {
-                        clarification_count += 1;
-                        if let Some(h) = hint {
-                            messages.push(ChatMessage::user(&h));
-                        }
-                        continue;
-                    }
-                    ClarificationResponse::Stop => {}
-                }
+            if let ClarifyAction::Continue = try_clarify(
+                "tool_call_limit",
+                "已达到工具调用次数上限，任务可能尚未完成。",
+                &["继续执行", "请指定接下来要做什么"],
+                &mut clarification_count,
+                event_sink,
+                &mut messages,
+            ) {
+                continue;
             }
             task_completed = false;
             break;
@@ -457,16 +509,9 @@ async fn run_with_task_planning(
     let mut consecutive_no_tool = 0usize;
     let max_no_tool_retries = 3;
     let mut clarification_count = 0usize;
-    // Combined counter: increments on BOTH tool failures and text-rejection nudges.
-    // Prevents the alternating tool-fail/text-reject pattern from evading both
-    // independent thresholds (`consecutive_failures` and `consecutive_no_tool`).
     let mut total_stuck_iterations = 0usize;
     const MAX_TOTAL_STUCK: usize = 8;
 
-    // Plan-based budget: min(global, num_tasks × per_task).
-    // Empty plan uses global max — the clarification mechanism handles runaway loops.
-    // Non-empty plan uses per-task budget with a floor of max_tool_calls_per_task
-    // to ensure at least one full task's worth of budget.
     let num_tasks = planner.task_list.len();
     let effective_max = if num_tasks == 0 {
         config.max_iterations
@@ -488,85 +533,46 @@ async fn run_with_task_planning(
                 "Agent loop reached effective max iterations ({})",
                 effective_max
             );
-            if clarification_count < MAX_CLARIFICATIONS {
-                let req = ClarificationRequest {
-                    reason: "max_iterations".into(),
-                    message: format!("已达到最大执行轮次 ({})，任务可能尚未完成。", effective_max),
-                    suggestions: vec!["继续执行更多轮次".into(), "请指定接下来要做什么".into()],
-                };
-                match event_sink.on_clarification_request(&req) {
-                    ClarificationResponse::Continue(hint) => {
-                        clarification_count += 1;
-                        state.iterations = 0;
-                        if let Some(h) = hint {
-                            messages.push(ChatMessage::user(&h));
-                        }
-                        continue;
-                    }
-                    ClarificationResponse::Stop => {}
-                }
+            if let ClarifyAction::Continue = try_clarify(
+                "max_iterations",
+                &format!("已达到最大执行轮次 ({})，任务可能尚未完成。", effective_max),
+                &["继续执行更多轮次", "请指定接下来要做什么"],
+                &mut clarification_count,
+                event_sink,
+                &mut messages,
+            ) {
+                state.iterations = 0;
+                continue;
             }
             break;
         }
         state.iterations += 1;
 
-        // ── Suppress streaming while tasks are pending ──────────────────────────
-        // Prevents premature summary text from leaking to the user via streaming
-        // before we can inspect and filter it. Tool results and the final summary
-        // (after all_completed) still reach the user through dedicated event_sink calls.
+        // Prevents premature summary text from leaking via streaming
         let suppress_stream = !planner.all_completed() && planner.current_task().is_some();
 
-        // ── LLM call (with context-overflow recovery) ─────────────────────────
-        let llm_result = if suppress_stream {
-            client
-                .chat_completion(&config.model, &messages, tools_ref, config.temperature)
-                .await
-        } else {
-            client
-                .chat_completion_stream(
-                    &config.model,
-                    &messages,
-                    tools_ref,
-                    config.temperature,
-                    event_sink,
-                )
-                .await
-        };
-
-        let response = match llm_result {
-            Ok(resp) => {
-                state.context_overflow_retries = 0;
-                resp
-            }
-            Err(e) => {
-                if llm::is_context_overflow_error(&e.to_string()) {
-                    state.context_overflow_retries += 1;
-                    if state.context_overflow_retries >= MAX_CONTEXT_OVERFLOW_RETRIES {
-                        tracing::error!(
-                            "Context overflow persists after {} retries, giving up",
-                            MAX_CONTEXT_OVERFLOW_RETRIES
-                        );
-                        return Err(e);
-                    }
-                    let rc = get_tool_result_recovery_max_chars();
-                    tracing::warn!(
-                        "Context overflow (attempt {}/{}), truncating to {} chars",
-                        state.context_overflow_retries,
-                        MAX_CONTEXT_OVERFLOW_RETRIES,
-                        rc
-                    );
-                    llm::truncate_tool_messages(&mut messages, rc);
-                    continue;
-                }
-                return Err(e);
-            }
+        // ── LLM call (with context-overflow recovery) ─────────────────────
+        let response = match call_llm_with_recovery(
+            &client,
+            &config.model,
+            &mut messages,
+            tools_ref,
+            config.temperature,
+            !suppress_stream,
+            event_sink,
+            &mut state.context_overflow_retries,
+        )
+        .await?
+        {
+            LlmCallOutcome::Response(resp) => resp,
+            LlmCallOutcome::Truncated => continue,
         };
 
         let choice = response
             .choices
             .into_iter()
             .next()
-            .ok_or_else(|| anyhow::anyhow!("No choices in LLM response"))?;
+            .ok_or_else(|| crate::Error::validation("No choices in LLM response"))?;
         let mut assistant_content = choice.message.content;
         let tool_calls = choice.message.tool_calls;
         let has_tool_calls = tool_calls.as_ref().is_some_and(|tc| !tc.is_empty());
@@ -589,7 +595,6 @@ async fn run_with_task_planning(
             messages.push(ChatMessage::assistant(content));
         }
 
-        // Emit suppressed text when LLM did return real tool calls (not a hallucination)
         if suppress_stream && has_tool_calls {
             if let Some(ref content) = assistant_content {
                 event_sink.on_text(content);
@@ -621,26 +626,18 @@ async fn run_with_task_planning(
                     continue;
                 }
                 ReflectionOutcome::Break => {
-                    if !planner.all_completed() && clarification_count < MAX_CLARIFICATIONS {
-                        let req = ClarificationRequest {
-                            reason: "no_progress".into(),
-                            message: "Agent 多次尝试后无法继续执行任务，可能需要更多信息。".into(),
-                            suggestions: vec![
-                                "请补充更多细节或换一种方式描述需求".into(),
-                                "继续尝试，不做更改".into(),
-                            ],
-                        };
-                        match event_sink.on_clarification_request(&req) {
-                            ClarificationResponse::Continue(hint) => {
-                                clarification_count += 1;
-                                consecutive_no_tool = 0;
-                                total_stuck_iterations = 0;
-                                if let Some(h) = hint {
-                                    messages.push(ChatMessage::user(&h));
-                                }
-                                continue;
-                            }
-                            ClarificationResponse::Stop => {}
+                    if !planner.all_completed() {
+                        if let ClarifyAction::Continue = try_clarify(
+                            "no_progress",
+                            "Agent 多次尝试后无法继续执行任务，可能需要更多信息。",
+                            &["请补充更多细节或换一种方式描述需求", "继续尝试，不做更改"],
+                            &mut clarification_count,
+                            event_sink,
+                            &mut messages,
+                        ) {
+                            consecutive_no_tool = 0;
+                            total_stuck_iterations = 0;
+                            continue;
                         }
                     }
                     break;
@@ -680,7 +677,6 @@ async fn run_with_task_planning(
         let new_calls = state.total_tool_calls - tools_before;
         let new_failures = state.failed_tool_calls - failures_before;
         if new_calls > 0 && new_calls == new_failures {
-            // Every tool in this batch failed — no forward progress
             total_stuck_iterations += 1;
         } else {
             total_stuck_iterations = 0;
@@ -702,29 +698,22 @@ async fn run_with_task_planning(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
             );
-            if clarification_count < MAX_CLARIFICATIONS {
-                let req = ClarificationRequest {
-                    reason: "too_many_failures".into(),
-                    message: format!(
-                        "工具执行连续失败 {} 次，可能遇到了环境或权限问题。",
-                        state.consecutive_failures
-                    ),
-                    suggestions: vec![
-                        "跳过失败的步骤，继续后续任务".into(),
-                        "请补充信息帮助 Agent 解决问题".into(),
-                    ],
-                };
-                match event_sink.on_clarification_request(&req) {
-                    ClarificationResponse::Continue(hint) => {
-                        clarification_count += 1;
-                        state.consecutive_failures = 0;
-                        if let Some(h) = hint {
-                            messages.push(ChatMessage::user(&h));
-                        }
-                        continue;
-                    }
-                    ClarificationResponse::Stop => {}
-                }
+            if let ClarifyAction::Continue = try_clarify(
+                "too_many_failures",
+                &format!(
+                    "工具执行连续失败 {} 次，可能遇到了环境或权限问题。",
+                    state.consecutive_failures
+                ),
+                &[
+                    "跳过失败的步骤，继续后续任务",
+                    "请补充信息帮助 Agent 解决问题",
+                ],
+                &mut clarification_count,
+                event_sink,
+                &mut messages,
+            ) {
+                state.consecutive_failures = 0;
+                continue;
             }
             break;
         }
@@ -740,20 +729,18 @@ async fn run_with_task_planning(
         if outcome.depth_limit_reached {
             let depth_msg = planner.build_depth_limit_message(config.max_tool_calls_per_task);
             messages.push(ChatMessage::user(&depth_msg));
-            state.tool_calls_current_task = 0; // reset so next task gets its full quota
+            state.tool_calls_current_task = 0;
         }
 
         // ── Post-tool completion check ─────────────────────────────────────────
-        // Task completion is now handled structurally: either via complete_task tool call
-        // (intercepted in execute_tool_batch_planning) or try_auto_mark_task_on_success.
-        // No text-based detection needed here.
         if planner.all_completed() {
             tracing::info!("All tasks completed, ending iteration");
             let has_substantial = assistant_content
                 .as_ref()
                 .is_some_and(|c| c.trim().len() > 50);
             if !has_substantial {
-                if let Ok(resp) = client
+                let mut emitted_final_summary = false;
+                match client
                     .chat_completion_stream(
                         &config.model,
                         &messages,
@@ -763,18 +750,32 @@ async fn run_with_task_planning(
                     )
                     .await
                 {
-                    if let Some(ch) = resp.choices.into_iter().next() {
-                        if let Some(ref content) = ch.message.content {
-                            event_sink.on_text(content);
-                            messages.push(ChatMessage::assistant(content));
+                    Ok(resp) => {
+                        if let Some(ch) = resp.choices.into_iter().next() {
+                            if let Some(ref content) = ch.message.content {
+                                if !content.trim().is_empty() {
+                                    event_sink.on_text(content);
+                                    messages.push(ChatMessage::assistant(content));
+                                    emitted_final_summary = true;
+                                }
+                            }
                         }
                     }
+                    Err(e) => {
+                        tracing::warn!("Final summary generation failed after completion: {}", e);
+                    }
+                }
+
+                if !emitted_final_summary {
+                    let fallback =
+                        build_final_summary_fallback(&planner.task_list, &messages, user_message);
+                    event_sink.on_text(&fallback);
+                    messages.push(ChatMessage::assistant(&fallback));
                 }
             }
             break;
         }
 
-        // A13: Per-iteration checkpoint (run mode) for --resume
         maybe_save_checkpoint(
             session_key,
             user_message,
@@ -784,7 +785,6 @@ async fn run_with_task_planning(
             &chat_root,
         );
 
-        // Task focus: inject progress update with already-called tools
         let tools_called: Vec<String> = {
             let mut seen = HashSet::new();
             let mut result = Vec::new();
@@ -802,22 +802,15 @@ async fn run_with_task_planning(
         // Global tool call depth limit
         if state.total_tool_calls >= effective_max * config.max_tool_calls_per_task {
             tracing::warn!("Agent loop reached total tool call limit");
-            if clarification_count < MAX_CLARIFICATIONS {
-                let req = ClarificationRequest {
-                    reason: "tool_call_limit".into(),
-                    message: "已达到工具调用次数上限，任务可能尚未完成。".into(),
-                    suggestions: vec!["继续执行".into(), "请指定接下来要做什么".into()],
-                };
-                match event_sink.on_clarification_request(&req) {
-                    ClarificationResponse::Continue(hint) => {
-                        clarification_count += 1;
-                        if let Some(h) = hint {
-                            messages.push(ChatMessage::user(&h));
-                        }
-                        continue;
-                    }
-                    ClarificationResponse::Stop => {}
-                }
+            if let ClarifyAction::Continue = try_clarify(
+                "tool_call_limit",
+                "已达到工具调用次数上限，任务可能尚未完成。",
+                &["继续执行", "请指定接下来要做什么"],
+                &mut clarification_count,
+                event_sink,
+                &mut messages,
+            ) {
+                continue;
             }
             break;
         }
@@ -843,4 +836,50 @@ async fn run_with_task_planning(
         planner.task_list,
         feedback,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_final_summary_fallback;
+    use crate::types::{ChatMessage, Task};
+
+    #[test]
+    fn fallback_summary_includes_progress_and_completed_tasks() {
+        let plan = vec![
+            Task {
+                id: 1,
+                description: "打开 YouTube".to_string(),
+                tool_hint: Some("agent_browser".to_string()),
+                completed: true,
+            },
+            Task {
+                id: 2,
+                description: "搜索 AI 相关内容".to_string(),
+                tool_hint: Some("agent_browser".to_string()),
+                completed: true,
+            },
+        ];
+
+        let text = build_final_summary_fallback(&plan, &[], "访问 YouTube 并搜索 AI");
+        assert!(text.contains("2/2"));
+        assert!(text.contains("打开 YouTube"));
+        assert!(text.contains("搜索 AI 相关内容"));
+    }
+
+    #[test]
+    fn fallback_summary_prefers_tool_result_excerpt_and_strips_ansi() {
+        let plan = vec![Task {
+            id: 1,
+            description: "在 YouTube 搜索".to_string(),
+            tool_hint: Some("agent_browser".to_string()),
+            completed: true,
+        }];
+        let messages = vec![ChatMessage::tool_result(
+            "call_1",
+            "\u{1b}[32m✓\u{1b}[0m YouTube https://www.youtube.com/",
+        )];
+        let text = build_final_summary_fallback(&plan, &messages, "去 YouTube 搜索 AI");
+        assert!(text.contains("YouTube https://www.youtube.com/"));
+        assert!(!text.contains('\u{1b}'));
+    }
 }

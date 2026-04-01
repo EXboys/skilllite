@@ -3,11 +3,14 @@
 //! Provides `skilllite evolution {status,reset,disable,explain,run}` subcommands
 //! for inspecting, controlling, and debugging the self-evolution engine.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use skilllite_agent::types::AgentConfig;
+
+use crate::error::bail;
+use crate::Result;
 use skilllite_core::config::env_keys::paths as env_paths;
 use skilllite_core::paths;
 use skilllite_core::protocol::{NewSkill, NodeResult};
@@ -67,23 +70,27 @@ pub fn cmd_status() -> Result<()> {
         "──────────", "────────", "────────", "────────"
     );
 
-    let mut stmt = conn.prepare(
-        "SELECT date, first_success_rate, avg_replans, user_correction_rate
+    let mut stmt = conn
+        .prepare(
+            "SELECT date, first_success_rate, avg_replans, user_correction_rate
          FROM evolution_metrics
          WHERE date > date('now', '-7 days') ORDER BY date DESC",
-    )?;
-    let metrics = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, f64>(1)?,
-            row.get::<_, f64>(2)?,
-            row.get::<_, f64>(3)?,
-        ))
-    })?;
+        )
+        .map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
+    let metrics = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, f64>(1)?,
+                row.get::<_, f64>(2)?,
+                row.get::<_, f64>(3)?,
+            ))
+        })
+        .map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
 
     let mut has_metrics = false;
     for m in metrics {
-        let (date, fsr, avg_r, ucr) = m?;
+        let (date, fsr, avg_r, ucr) = m.map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
         println!(
             "  {:10} {:>7.0}% {:>8.1} {:>7.0}%",
             date,
@@ -108,22 +115,27 @@ pub fn cmd_status() -> Result<()> {
 
     // Recent evolution events
     println!("📜 最近进化事件");
-    let mut stmt = conn.prepare(
-        "SELECT ts, type, target_id, reason FROM evolution_log
+    let mut stmt = conn
+        .prepare(
+            "SELECT ts, type, target_id, reason FROM evolution_log
          ORDER BY ts DESC LIMIT 10",
-    )?;
-    let events = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, Option<String>>(2)?,
-            row.get::<_, Option<String>>(3)?,
-        ))
-    })?;
+        )
+        .map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
+    let events = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
 
     let mut has_events = false;
     for e in events {
-        let (ts, etype, target, reason) = e?;
+        let (ts, etype, target, reason) =
+            e.map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
         let date = &ts[..std::cmp::min(16, ts.len())];
         let target = target.unwrap_or_default();
         let reason = reason.unwrap_or_default();
@@ -190,7 +202,8 @@ pub fn cmd_reset(force: bool) -> Result<()> {
 
     // Clear evolution log entries (but keep decisions for future re-evolution)
     if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&root) {
-        conn.execute("DELETE FROM evolution_log", [])?;
+        conn.execute("DELETE FROM evolution_log", [])
+            .map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
         println!("✅ 已清空进化日志");
     }
 
@@ -218,7 +231,7 @@ pub fn cmd_disable(rule_id: &str) -> Result<()> {
     let rules_path = root.join("prompts").join("rules.json");
 
     if !rules_path.exists() {
-        anyhow::bail!("规则文件不存在: {}", rules_path.display());
+        bail!("规则文件不存在: {}", rules_path.display());
     }
 
     let content = std::fs::read_to_string(&rules_path)?;
@@ -235,7 +248,7 @@ pub fn cmd_disable(rule_id: &str) -> Result<()> {
                 .and_then(|v| v.as_bool())
                 .unwrap_or(true);
             if !is_mutable {
-                anyhow::bail!("规则 '{}' 是种子规则（不可变），无法禁用", rule_id);
+                bail!("规则 '{}' 是种子规则（不可变），无法禁用", rule_id);
             }
             rules[idx]
                 .as_object_mut()
@@ -255,7 +268,7 @@ pub fn cmd_disable(rule_id: &str) -> Result<()> {
             println!("   (可手动编辑 {} 恢复)", rules_path.display());
         }
         None => {
-            anyhow::bail!("未找到规则: '{}'", rule_id);
+            bail!("未找到规则: '{}'", rule_id);
         }
     }
 
@@ -269,7 +282,7 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
     // Load rule details
     let rules_path = root.join("prompts").join("rules.json");
     if !rules_path.exists() {
-        anyhow::bail!("规则文件不存在: {}", rules_path.display());
+        bail!("规则文件不存在: {}", rules_path.display());
     }
 
     let content = std::fs::read_to_string(&rules_path)?;
@@ -371,7 +384,7 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
             }
         }
         None => {
-            anyhow::bail!(
+            bail!(
                 "未找到规则: '{}'\n提示: 使用 `skilllite evolution status` 查看所有规则",
                 rule_id
             );
@@ -386,7 +399,7 @@ pub fn cmd_explain(rule_id: &str) -> Result<()> {
 /// Logs skill_confirmed to evolution.log for EvoTown reward (human-approved = effective).
 pub fn cmd_confirm(skill_name: &str) -> Result<()> {
     let skills_root = resolve_skills_root(None).ok_or_else(|| {
-        anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。")
+        crate::Error::validation("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。")
     })?;
     skilllite_evolution::skill_synth::confirm_pending_skill(&skills_root, skill_name)?;
     let root = paths::chat_root();
@@ -407,7 +420,7 @@ pub fn cmd_confirm(skill_name: &str) -> Result<()> {
 /// `skilllite evolution reject <skill_name>` — remove pending skill without adding (A10).
 pub fn cmd_reject(skill_name: &str) -> Result<()> {
     let skills_root = resolve_skills_root(None).ok_or_else(|| {
-        anyhow::anyhow!("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。")
+        crate::Error::validation("无法解析工作区。请在项目目录运行或设置 SKILLLITE_WORKSPACE。")
     })?;
     skilllite_evolution::skill_synth::reject_pending_skill(&skills_root, skill_name)?;
     println!("✅ Skill '{}' 已拒绝", skill_name);
@@ -423,7 +436,7 @@ pub fn cmd_run(json_output: bool) -> Result<()> {
 
     let config = AgentConfig::from_env();
     if config.api_key.is_empty() {
-        anyhow::bail!("API key required. Set OPENAI_API_KEY env var.");
+        bail!("API key required. Set OPENAI_API_KEY env var.");
     }
 
     let llm = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key)?;
@@ -600,12 +613,12 @@ fn is_fetchable_source(source: &str) -> bool {
 /// `from_source`: 对下载的技能失败时自动从源头更新，不交互询问（桌面/CI 等非 TTY 时传 true）。
 pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>, from_source: bool) -> Result<()> {
     let skills_root = resolve_skills_root(None).ok_or_else(|| {
-        anyhow::anyhow!("无法解析工作区。请设置 SKILLLITE_WORKSPACE 或在项目目录运行。")
+        crate::Error::validation("无法解析工作区。请设置 SKILLLITE_WORKSPACE 或在项目目录运行。")
     })?;
 
     let config = AgentConfig::from_env();
     if config.api_key.is_empty() {
-        anyhow::bail!("API key required. Set OPENAI_API_KEY or SKILLLITE_API_KEY env var.");
+        bail!("API key required. Set OPENAI_API_KEY or SKILLLITE_API_KEY env var.");
     }
 
     let llm = skilllite_agent::llm::LlmClient::new(&config.api_base, &config.api_key)?;

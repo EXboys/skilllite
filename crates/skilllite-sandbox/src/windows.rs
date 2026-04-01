@@ -12,10 +12,13 @@
 
 #![cfg(target_os = "windows")]
 
+use crate::error::bail;
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::RuntimeResolver;
 use crate::{common::apply_standard_execution_env, common::pipe_stdio};
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::Result;
 use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -44,10 +47,10 @@ pub fn execute_with_limits(
                         &config.name,
                         "wsl2_exec_failed",
                     );
-                    return Err(e.context(
+                    return Err(crate::Error::Other(anyhow::Error::from(e).context(
                         "WSL2 sandbox execution failed. \
                          Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended).",
-                    ));
+                    )));
                 }
             }
         }
@@ -72,10 +75,10 @@ pub fn execute_with_limits(
                 &config.name,
                 "windows_native_isolation_failed",
             );
-            Err(e.context(
+            Err(crate::Error::Other(anyhow::Error::from(e).context(
                 "Windows sandbox execution failed. No adequate isolation available. \
                  Set SKILLLITE_NO_SANDBOX=1 to run without sandbox (not recommended).",
-            ))
+            )))
         }
     }
 }
@@ -126,7 +129,7 @@ fn windows_to_wsl_path(path: &Path) -> Result<String> {
     let path_str = path.to_string_lossy();
 
     if path_str.starts_with("\\\\") {
-        anyhow::bail!("UNC paths are not supported in WSL: {}", path_str);
+        bail!("UNC paths are not supported in WSL: {}", path_str);
     }
 
     let chars: Vec<char> = path_str.chars().collect();
@@ -201,14 +204,19 @@ fn execute_via_wsl2(
             Ok(None) => {
                 if start.elapsed() > timeout {
                     let _ = child.kill();
-                    anyhow::bail!(
+                    bail!(
                         "WSL execution timed out after {} seconds",
                         limits.timeout_secs
                     );
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
-            Err(e) => return Err(anyhow::anyhow!("Failed to wait for WSL process: {}", e)),
+            Err(e) => {
+                return Err(crate::Error::validation(format!(
+                    "Failed to wait for WSL process: {}",
+                    e
+                )))
+            }
         }
     }
 }
@@ -245,9 +253,9 @@ fn execute_with_native_isolation(
     );
 
     let language = &config.language;
-    let resolved = runtime
-        .resolve(language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language on Windows: {}", language))?;
+    let resolved = runtime.resolve(language).ok_or_else(|| {
+        crate::Error::validation(format!("Unsupported language on Windows: {}", language))
+    })?;
 
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
@@ -316,7 +324,12 @@ fn execute_with_native_isolation(
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
-            Err(e) => return Err(anyhow::anyhow!("Failed to wait for process: {}", e)),
+            Err(e) => {
+                return Err(crate::Error::validation(format!(
+                    "Failed to wait for process: {}",
+                    e
+                )))
+            }
         }
     }
 }
@@ -355,7 +368,7 @@ fn attach_job_object(child: &std::process::Child, limits: &ResourceLimits) -> Re
     unsafe {
         let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
         if job.is_null() {
-            anyhow::bail!("CreateJobObjectW failed");
+            bail!("CreateJobObjectW failed");
         }
 
         let mut info: JobObjectExtendedLimitInfo = std::mem::zeroed();
@@ -373,14 +386,14 @@ fn attach_job_object(child: &std::process::Child, limits: &ResourceLimits) -> Re
         );
         if set_ok == 0 {
             CloseHandle(job);
-            anyhow::bail!("SetInformationJobObject failed");
+            bail!("SetInformationJobObject failed");
         }
 
         let process_handle = child.as_raw_handle() as HANDLE;
         let assign_ok = AssignProcessToJobObject(job, process_handle);
         if assign_ok == 0 {
             CloseHandle(job);
-            anyhow::bail!("AssignProcessToJobObject failed");
+            bail!("AssignProcessToJobObject failed");
         }
 
         // Job handle is intentionally leaked — it stays alive as long as the
@@ -414,9 +427,9 @@ pub fn execute_simple_with_limits(
         }
     }
 
-    let resolved = runtime
-        .resolve(language)
-        .ok_or_else(|| anyhow::anyhow!("Unsupported language on Windows: {}", language))?;
+    let resolved = runtime.resolve(language).ok_or_else(|| {
+        crate::Error::validation(format!("Unsupported language on Windows: {}", language))
+    })?;
 
     let temp_dir = TempDir::new()?;
     let input_file = temp_dir.path().join("input.json");
@@ -487,7 +500,12 @@ pub fn execute_simple_with_limits(
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
-            Err(e) => return Err(anyhow::anyhow!("Failed to wait for process: {}", e)),
+            Err(e) => {
+                return Err(crate::Error::validation(format!(
+                    "Failed to wait for process: {}",
+                    e
+                )))
+            }
         }
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! §3.4: Only attempts when SKILLLITE_SWARM_URL is set; 5s timeout; graceful fallback on failure.
 
-use anyhow::Result;
+use crate::Result;
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -53,7 +53,7 @@ pub(super) async fn execute_delegate_to_swarm(
     let description = args
         .get("description")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| anyhow::anyhow!("description required"))?
+        .ok_or_else(|| crate::Error::validation("description required"))?
         .to_string();
 
     let url = match std::env::var(SWARM_URL_ENV) {

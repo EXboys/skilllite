@@ -8,7 +8,9 @@
 use super::default_rules::get_default_rules;
 use super::rules::{RulesConfig, SecurityRule};
 use super::types::{ScanResult, SecurityIssue, SecurityIssueType, SecuritySeverity};
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::Result;
 use regex::Regex;
 use std::fs;
 use std::path::Path;

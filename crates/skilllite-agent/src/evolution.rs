@@ -3,8 +3,6 @@
 //! Re-exports skilllite-evolution and provides the adapter to use the agent's
 //! LLM client for evolution operations.
 
-use anyhow::Result;
-
 use skilllite_evolution::feedback::{DecisionInput, FeedbackSignal as EvolutionFeedbackSignal};
 use skilllite_evolution::{strip_think_blocks, EvolutionLlm, EvolutionMessage};
 
@@ -23,7 +21,7 @@ impl EvolutionLlm for EvolutionLlmAdapter<'_> {
         messages: &[EvolutionMessage],
         model: &str,
         temperature: f64,
-    ) -> Result<String> {
+    ) -> skilllite_evolution::Result<String> {
         let chat_messages: Vec<ChatMessage> = messages
             .iter()
             .map(|m| ChatMessage {
@@ -38,7 +36,8 @@ impl EvolutionLlm for EvolutionLlmAdapter<'_> {
         let response = self
             .llm
             .chat_completion(model, &chat_messages, None, Some(temperature))
-            .await?;
+            .await
+            .map_err(anyhow::Error::from)?;
 
         let msg = response.choices.first().map(|c| &c.message);
         let content = msg.and_then(|m| m.content.as_deref()).unwrap_or("").trim();

@@ -22,6 +22,30 @@ pub enum Error {
     #[error(transparent)]
     PathValidation(#[from] skilllite_core::error::PathValidationError),
 
+    /// Errors from `skilllite-core`.
+    #[error(transparent)]
+    Core(#[from] skilllite_core::Error),
+
+    /// Errors from `skilllite-sandbox`.
+    #[error(transparent)]
+    Sandbox(#[from] skilllite_sandbox::Error),
+
+    /// Errors from `skilllite-executor`.
+    #[error(transparent)]
+    Executor(#[from] skilllite_executor::Error),
+
+    /// Errors from `skilllite-swarm`.
+    #[error(transparent)]
+    Swarm(#[from] skilllite_swarm::Error),
+
+    /// Errors from `skilllite-agent`.
+    #[error(transparent)]
+    Agent(#[from] skilllite_agent::Error),
+
+    /// Errors from `skilllite-commands`.
+    #[error(transparent)]
+    Commands(#[from] skilllite_commands::Error),
+
     /// Additional context wrapping an inner [`Error`].
     #[error("{context}: {source}")]
     Context {

@@ -4,7 +4,8 @@ use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use anyhow::Result;
+use crate::error::bail;
+use crate::Result;
 
 use skilllite_sandbox::env::builder;
 
@@ -241,7 +242,7 @@ pub(super) async fn infer_skill_execution<L: EvolutionLlm>(
     let skill_md = skilllite_fs::read_file(&skill_md_path).unwrap_or_else(|_| "".to_string());
     let scripts = list_scripts(skill_dir);
     if scripts.is_empty() {
-        anyhow::bail!("无 scripts 或可执行脚本，跳过（如 agent-browser 等 CLI 文档型 skill）");
+        bail!("无 scripts 或可执行脚本，跳过（如 agent-browser 等 CLI 文档型 skill）");
     }
     let scripts_list = scripts.join(", ");
 
@@ -316,7 +317,7 @@ pub(super) async fn infer_skill_execution<L: EvolutionLlm>(
             if full.exists() {
                 return Ok((fallback, "{}".to_string()));
             }
-            anyhow::bail!(
+            bail!(
                 "LLM inference parse failed (raw: {}...). No valid scripts for fallback.",
                 trimmed.chars().take(100).collect::<String>()
             );
@@ -332,7 +333,7 @@ pub(super) async fn infer_skill_execution<L: EvolutionLlm>(
         );
         entry = scripts.first().cloned().unwrap_or_default();
         if entry.is_empty() {
-            anyhow::bail!("无有效脚本");
+            bail!("无有效脚本");
         }
     }
     let test_json = if parsed.test_input.is_object() {
@@ -343,7 +344,7 @@ pub(super) async fn infer_skill_execution<L: EvolutionLlm>(
 
     let full_path = skill_dir.join(&entry);
     if !full_path.exists() {
-        anyhow::bail!("LLM inferred entry_point '{}' does not exist", entry);
+        bail!("LLM inferred entry_point '{}' does not exist", entry);
     }
 
     Ok((entry, test_json))
@@ -396,14 +397,14 @@ pub(super) fn test_skill_invoke(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| anyhow::anyhow!("run failed: {}", e))?;
+        .map_err(|e| crate::Error::validation(format!("run failed: {}", e)))?;
 
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(test_input.as_bytes());
     }
     let output = child
         .wait_with_output()
-        .map_err(|e| anyhow::anyhow!("wait failed: {}", e))?;
+        .map_err(|e| crate::Error::validation(format!("wait failed: {}", e)))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -415,6 +416,46 @@ pub(super) fn test_skill_invoke(
             stdout,
             stderr
         );
+        // CLI/argparse scripts often require positional args; stdin JSON probing is not suitable.
+        // Retry once with `--help` and treat a successful help response as a validation pass.
+        let lower_trace = trace.to_lowercase();
+        let looks_like_cli_usage = lower_trace.contains("usage:")
+            || lower_trace.contains("the following arguments are required");
+        if looks_like_cli_usage {
+            let mut help_cmd = if entry_point.ends_with(".py") {
+                let interpreter = runtime
+                    .as_ref()
+                    .map(|r| r.python.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "python3".to_string());
+                Command::new(&interpreter)
+            } else if entry_point.ends_with(".js") {
+                let node = runtime
+                    .as_ref()
+                    .map(|r| r.node.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "node".to_string());
+                let mut c = Command::new(&node);
+                if let Some(ref r) = runtime {
+                    if let Some(ref nm) = r.node_modules {
+                        c.env("NODE_PATH", nm);
+                    }
+                }
+                c
+            } else {
+                return Ok((false, trace));
+            };
+            let help_output = help_cmd
+                .arg(&script_arg)
+                .arg("--help")
+                .current_dir(skill_dir)
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .output()
+                .map_err(|e| crate::Error::validation(format!("help probe failed: {}", e)))?;
+            if help_output.status.success() {
+                return Ok((true, String::new()));
+            }
+        }
         return Ok((false, trace));
     }
 

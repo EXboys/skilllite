@@ -1,6 +1,6 @@
 //! `skilllite add` — Add skills from remote repo, ClawHub, or local path.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use std::fs;
 use std::path::PathBuf;
 
@@ -8,6 +8,9 @@ use skilllite_core::skill::manifest;
 use skilllite_core::skill::metadata;
 
 use super::common;
+
+use crate::error::bail;
+use crate::Result;
 
 mod admission;
 mod discovery;
@@ -48,7 +51,7 @@ pub fn cmd_add(
         let repo_dir = if parsed.source_type == "local" {
             let p = PathBuf::from(&parsed.url);
             if !p.is_dir() {
-                anyhow::bail!("Local path does not exist: {}", parsed.url);
+                bail!("Local path does not exist: {}", parsed.url);
             }
             eprintln!("📁 Using local path: {}", parsed.url);
             p
@@ -76,7 +79,7 @@ pub fn cmd_add(
 
         if skills.is_empty() {
             eprintln!("   No skills found (no SKILL.md files detected)");
-            anyhow::bail!("No skills found");
+            bail!("No skills found");
         }
 
         eprintln!("   Found {} skill(s):", skills.len());
@@ -242,7 +245,7 @@ pub fn update_skill_from_source(
     let repo_dir = if parsed.source_type == "local" {
         let p = PathBuf::from(&parsed.url);
         if !p.is_dir() {
-            anyhow::bail!("Local path does not exist: {}", parsed.url);
+            bail!("Local path does not exist: {}", parsed.url);
         }
         p
     } else if parsed.source_type == "clawhub" {
@@ -264,7 +267,7 @@ pub fn update_skill_from_source(
                 .map(|n| n.to_string_lossy() == skill_name)
                 .unwrap_or(false)
         })
-        .ok_or_else(|| anyhow::anyhow!("源头中未找到技能: {}", skill_name))?;
+        .ok_or_else(|| crate::Error::validation(format!("源头中未找到技能: {}", skill_name)))?;
 
     let dest = skills_path.join(skill_name);
     copy_skill(&skill_path, &dest)?;

@@ -1,11 +1,12 @@
 //! Skill scan command: scan directory and analyze executable scripts.
 
-use anyhow::Result;
 use rayon::prelude::*;
 use skilllite_core::path_validation::validate_skill_path;
 use skilllite_core::skill;
 use std::fs;
 use walkdir::WalkDir;
+
+use crate::Result;
 
 /// Scan skill directory and return JSON with all executable scripts.
 pub fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
@@ -73,8 +74,7 @@ pub fn scan_skill(skill_dir: &str, preview_lines: usize) -> Result<String> {
     result["scripts"] = serde_json::json!(scripts);
     result["llm_prompt_hint"] = serde_json::json!(build_llm_prompt_hint(&result));
 
-    serde_json::to_string_pretty(&result)
-        .map_err(|e| anyhow::anyhow!("Failed to serialize scan result: {}", e))
+    Ok(serde_json::to_string_pretty(&result)?)
 }
 
 fn build_llm_prompt_hint(result: &serde_json::Value) -> String {

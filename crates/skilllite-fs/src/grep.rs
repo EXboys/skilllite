@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use crate::Result;
 use regex::Regex;
 
 use crate::read_write;

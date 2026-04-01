@@ -1,4 +1,6 @@
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -253,7 +255,9 @@ fn skill_key(skill_dir: &Path) -> Result<String> {
         .file_name()
         .and_then(|n| n.to_str())
         .map(|s| s.to_string())
-        .ok_or_else(|| anyhow::anyhow!("Invalid skill directory: {}", skill_dir.display()))
+        .ok_or_else(|| {
+            crate::Error::validation(format!("Invalid skill directory: {}", skill_dir.display()))
+        })
 }
 
 fn read_signature_status(skill_dir: &Path, hash: &str) -> Result<SignatureStatus> {

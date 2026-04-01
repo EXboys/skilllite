@@ -3,7 +3,8 @@
 //! Uses `_skilllite-swarm._udp.local.` service type for SkillLite P2P nodes.
 //! TXT record `capabilities` = JSON array of capability tags.
 
-use anyhow::{Context, Result};
+use crate::Result;
+use anyhow::Context;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -87,9 +88,10 @@ impl Discovery {
 
     /// Browse for peer nodes. Returns a receiver for `ServiceEvent`s.
     pub fn browse(&self) -> Result<mdns_sd::Receiver<ServiceEvent>> {
-        self.daemon
+        Ok(self
+            .daemon
             .browse(SERVICE_TYPE)
-            .context("Failed to browse for swarm peers")
+            .context("Failed to browse for swarm peers")?)
     }
 
     /// Shutdown the daemon.

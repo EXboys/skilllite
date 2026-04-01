@@ -12,6 +12,7 @@ use crate::llm::LlmClient;
 use crate::prompt;
 use crate::skills::{self, LoadedSkill};
 use crate::types::{EventSink, ToolDefinition, ToolResult};
+use serde_json::Value;
 
 /// Executor for planning control tools (complete_task, update_task_plan).
 /// Implemented by the agent loop; passed to `registry.execute()` when available.
@@ -135,7 +136,8 @@ impl CapabilityPolicy {
 
 #[cfg(test)]
 mod tests {
-    use super::{CapabilityPolicy, ExtensionRegistry};
+    use super::{CapabilityPolicy, ExtensionRegistry, ToolExecutionProfile};
+    use crate::types::SilentEventSink;
 
     #[test]
     fn read_only_policy_filters_mutating_tools() {
@@ -186,6 +188,97 @@ mod tests {
         assert!(!registry.owns_tool("update_task_plan"));
         assert!(registry.owns_tool("read_file"));
     }
+
+    #[test]
+    fn tool_profile_exposes_readonly_destructive_and_concurrency_flags() {
+        let registry = ExtensionRegistry::new(true, false, &[]);
+        let read_file = registry
+            .tool_profile("read_file")
+            .expect("read_file profile");
+        assert_eq!(read_file, ToolExecutionProfile::new(true, false, true));
+
+        let write_file = registry
+            .tool_profile("write_file")
+            .expect("write_file profile");
+        assert_eq!(write_file, ToolExecutionProfile::new(false, true, false));
+
+        let run_command = registry
+            .tool_profile("run_command")
+            .expect("run_command profile");
+        assert_eq!(run_command, ToolExecutionProfile::new(false, true, false));
+    }
+
+    #[tokio::test]
+    async fn execute_runs_validate_input_before_dispatch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sink = SilentEventSink;
+        let registry = ExtensionRegistry::new(true, false, &[]);
+        let result = registry
+            .execute(
+                "read_file",
+                "{not valid json",
+                tmp.path(),
+                &mut sink,
+                None,
+                None,
+            )
+            .await;
+        assert!(result.is_error);
+        assert!(result.content.contains("Invalid arguments JSON"));
+    }
+
+    #[tokio::test]
+    async fn execute_runs_schema_required_check_before_dispatch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sink = SilentEventSink;
+        let registry = ExtensionRegistry::new(true, false, &[]);
+        let result = registry
+            .execute("read_file", "{}", tmp.path(), &mut sink, None, None)
+            .await;
+        assert!(result.is_error);
+        assert!(result.content.contains("Missing required field(s)"));
+        assert!(result.content.contains("path"));
+    }
+
+    #[tokio::test]
+    async fn execute_runs_schema_type_check_before_dispatch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sink = SilentEventSink;
+        let registry = ExtensionRegistry::new(true, false, &[]);
+        let result = registry
+            .execute(
+                "run_command",
+                r#"{"command":123}"#,
+                tmp.path(),
+                &mut sink,
+                None,
+                None,
+            )
+            .await;
+        assert!(result.is_error);
+        assert!(result.content.contains("Field 'command'"));
+        assert!(result.content.contains("string"));
+    }
+
+    #[tokio::test]
+    async fn execute_runs_schema_range_check_before_dispatch() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut sink = SilentEventSink;
+        let registry = ExtensionRegistry::new(true, false, &[]);
+        let result = registry
+            .execute(
+                "preview_server",
+                r#"{"path":"./","port":70000}"#,
+                tmp.path(),
+                &mut sink,
+                None,
+                None,
+            )
+            .await;
+        assert!(result.is_error);
+        assert!(result.content.contains("Field 'port'"));
+        assert!(result.content.contains("maximum"));
+    }
 }
 
 /// Scope that controls when a tool is available.
@@ -217,6 +310,7 @@ pub struct RegisteredTool {
     pub capabilities: Vec<ToolCapability>,
     pub handler: ToolHandler,
     pub scope: ToolScope,
+    profile: ToolExecutionProfile,
 }
 
 impl RegisteredTool {
@@ -225,11 +319,13 @@ impl RegisteredTool {
         capabilities: Vec<ToolCapability>,
         handler: ToolHandler,
     ) -> Self {
+        let profile = ToolExecutionProfile::from_capabilities(&capabilities);
         Self {
             definition,
             capabilities,
             handler,
             scope: ToolScope::AllModes,
+            profile,
         }
     }
 
@@ -239,8 +335,225 @@ impl RegisteredTool {
         self
     }
 
+    #[must_use]
+    pub fn with_execution_profile(mut self, profile: ToolExecutionProfile) -> Self {
+        self.profile = profile;
+        self
+    }
+
     pub fn name(&self) -> &str {
         &self.definition.function.name
+    }
+
+    pub fn validate_input(&self, arguments: &str) -> Result<(), String> {
+        if self.definition.function.name == "write_file"
+            || self.definition.function.name == "write_output"
+        {
+            // Keep tolerant recovery path for potentially truncated JSON in file/content transfer tools.
+            return Ok(());
+        }
+        let parsed = serde_json::from_str::<Value>(arguments)
+            .map_err(|e| format!("Invalid arguments JSON: {}", e))?;
+        self.validate_required_fields(&parsed)?;
+        self.validate_schema_constraints(&parsed)
+    }
+
+    pub fn check_permissions(&self, policy: &CapabilityPolicy) -> Result<(), String> {
+        if policy.allows(&self.capabilities) {
+            Ok(())
+        } else {
+            Err(format!(
+                "Tool '{}' is unavailable in the current execution mode",
+                self.name()
+            ))
+        }
+    }
+
+    pub fn render_use_result(&self, event_sink: &mut dyn EventSink, result: &ToolResult) {
+        event_sink.on_tool_result(self.name(), &result.content, result.is_error);
+    }
+
+    pub fn execution_profile(&self) -> ToolExecutionProfile {
+        self.profile
+    }
+
+    pub fn is_read_only(&self) -> bool {
+        self.profile.is_read_only
+    }
+
+    pub fn is_destructive(&self) -> bool {
+        self.profile.is_destructive
+    }
+
+    pub fn is_concurrency_safe(&self) -> bool {
+        self.profile.is_concurrency_safe
+    }
+
+    fn validate_required_fields(&self, parsed: &Value) -> Result<(), String> {
+        let required = self
+            .definition
+            .function
+            .parameters
+            .get("required")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        if required.is_empty() {
+            return Ok(());
+        }
+        let obj = parsed.as_object().ok_or_else(|| {
+            format!(
+                "Invalid arguments JSON: expected object for tool '{}'",
+                self.name()
+            )
+        })?;
+        let missing: Vec<String> = required
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|key| !obj.contains_key(*key))
+            .map(ToString::to_string)
+            .collect();
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(format!("Missing required field(s): {}", missing.join(", ")))
+        }
+    }
+
+    fn validate_schema_constraints(&self, parsed: &Value) -> Result<(), String> {
+        let params = &self.definition.function.parameters;
+        if let Some(schema_type) = params.get("type").and_then(Value::as_str) {
+            self.ensure_type(schema_type, parsed, "arguments")?;
+        }
+
+        let Some(obj) = parsed.as_object() else {
+            return Ok(());
+        };
+        let Some(properties) = params.get("properties").and_then(Value::as_object) else {
+            return Ok(());
+        };
+        for (name, value) in obj {
+            if let Some(schema) = properties.get(name) {
+                self.validate_field_against_schema(name, value, schema)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_field_against_schema(
+        &self,
+        field_name: &str,
+        value: &Value,
+        schema: &Value,
+    ) -> Result<(), String> {
+        if self.accepts_legacy_field_shape(field_name, value) {
+            return Ok(());
+        }
+        if let Some(expected_type) = schema.get("type").and_then(Value::as_str) {
+            self.ensure_type(expected_type, value, field_name)?;
+        }
+        if let Some(enum_values) = schema.get("enum").and_then(Value::as_array) {
+            if !enum_values.iter().any(|allowed| allowed == value) {
+                return Err(format!(
+                    "Field '{}' must be one of {}",
+                    field_name,
+                    serde_json::to_string(enum_values).unwrap_or_else(|_| "[]".to_string())
+                ));
+            }
+        }
+        if value.is_number() {
+            let as_f64 = value.as_f64().unwrap_or(0.0);
+            if let Some(min) = schema.get("minimum").and_then(Value::as_f64) {
+                if as_f64 < min {
+                    return Err(format!("Field '{}' must be >= minimum {}", field_name, min));
+                }
+            }
+            if let Some(max) = schema.get("maximum").and_then(Value::as_f64) {
+                if as_f64 > max {
+                    return Err(format!("Field '{}' must be <= maximum {}", field_name, max));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn accepts_legacy_field_shape(&self, field_name: &str, value: &Value) -> bool {
+        match self.name() {
+            // Legacy compatibility: planner control parsers coerce numeric string task_id.
+            "complete_task" if field_name == "task_id" => value.as_str().is_some(),
+            // Legacy compatibility: planner parser accepts stringified JSON array for tasks.
+            "update_task_plan" if field_name == "tasks" => value.as_str().is_some(),
+            _ => false,
+        }
+    }
+
+    fn ensure_type(
+        &self,
+        expected_type: &str,
+        value: &Value,
+        field_name: &str,
+    ) -> Result<(), String> {
+        let valid = match expected_type {
+            "string" => value.is_string(),
+            "boolean" => value.is_boolean(),
+            "number" => value.is_number(),
+            "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
+            "object" => value.is_object(),
+            "array" => value.is_array(),
+            "null" => value.is_null(),
+            _ => true,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(format!(
+                "Field '{}' must be of type {}",
+                field_name, expected_type
+            ))
+        }
+    }
+}
+
+/// Unified lifecycle metadata used by audit/test/policy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolExecutionProfile {
+    pub is_read_only: bool,
+    pub is_destructive: bool,
+    pub is_concurrency_safe: bool,
+}
+
+impl ToolExecutionProfile {
+    pub const fn new(is_read_only: bool, is_destructive: bool, is_concurrency_safe: bool) -> Self {
+        Self {
+            is_read_only,
+            is_destructive,
+            is_concurrency_safe,
+        }
+    }
+
+    fn from_capabilities(capabilities: &[ToolCapability]) -> Self {
+        let writes_or_exec = capabilities.iter().any(|cap| {
+            matches!(
+                cap,
+                ToolCapability::FilesystemWrite
+                    | ToolCapability::MemoryWrite
+                    | ToolCapability::ProcessExec
+                    | ToolCapability::Preview
+                    | ToolCapability::Delegation
+                    | ToolCapability::SkillExecution
+            )
+        });
+        let non_parallel = capabilities.iter().any(|cap| {
+            matches!(
+                cap,
+                ToolCapability::FilesystemWrite
+                    | ToolCapability::MemoryWrite
+                    | ToolCapability::ProcessExec
+                    | ToolCapability::Preview
+                    | ToolCapability::Delegation
+            )
+        });
+        Self::new(!writes_or_exec, writes_or_exec, !non_parallel)
     }
 }
 
@@ -507,6 +820,25 @@ impl<'a> ExtensionRegistry<'a> {
         self.tools_by_name.contains_key(name)
     }
 
+    /// Returns unified lifecycle profile for a callable tool.
+    pub fn tool_profile(&self, name: &str) -> Option<ToolExecutionProfile> {
+        self.tools_by_name.get(name).map(|t| t.execution_profile())
+    }
+
+    /// Render/use tool result via the tool's unified lifecycle hook.
+    pub fn render_tool_result(
+        &self,
+        tool_name: &str,
+        result: &ToolResult,
+        event_sink: &mut dyn EventSink,
+    ) {
+        if let Some(registered) = self.tools_by_name.get(tool_name) {
+            registered.render_use_result(event_sink, result);
+        } else {
+            event_sink.on_tool_result(tool_name, &result.content, result.is_error);
+        }
+    }
+
     /// Execute a tool by name. Dispatches to the appropriate extension.
     /// `embed_ctx` is required for memory vector search when enable_memory_vector is true.
     /// `planning_ctx` is required for PlanningControl tools (complete_task, update_task_plan).
@@ -532,14 +864,21 @@ impl<'a> ExtensionRegistry<'a> {
             };
         };
 
-        if !self.policy.allows(&registered.capabilities) {
+        if let Err(message) = registered.validate_input(arguments) {
             return ToolResult {
                 tool_call_id: String::new(),
                 tool_name: tool_name.to_string(),
-                content: format!(
-                    "Tool '{}' is unavailable in the current execution mode",
-                    tool_name
-                ),
+                content: message,
+                is_error: true,
+                counts_as_failure: true,
+            };
+        }
+
+        if let Err(message) = registered.check_permissions(&self.policy) {
+            return ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content: message,
                 is_error: true,
                 counts_as_failure: true,
             };

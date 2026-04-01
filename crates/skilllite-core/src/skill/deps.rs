@@ -1,5 +1,5 @@
 use crate::skill::metadata::SkillMetadata;
-use anyhow::Result;
+use crate::Result;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 

@@ -1,12 +1,16 @@
 //! Admission scanning: static analysis + LLM-based risk assessment.
 
-use anyhow::{Context, Result};
+#[cfg(feature = "agent")]
+use anyhow::Context;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use skilllite_core::skill::metadata;
 use skilllite_sandbox::security::types::SecuritySeverity;
 use skilllite_sandbox::security::ScriptScanner;
+
+use crate::error::bail;
+use crate::Result;
 
 #[cfg(feature = "agent")]
 use skilllite_agent::llm::LlmClient;
@@ -125,7 +129,7 @@ fn llm_admission_assess(
 ) -> Result<(AdmissionRisk, String)> {
     let config = AgentConfig::from_env();
     if config.api_key.trim().is_empty() {
-        anyhow::bail!("LLM scan skipped: API key not configured");
+        bail!("LLM scan skipped: API key not configured");
     }
 
     // A3: Check scan cache to avoid redundant LLM calls for same content
@@ -155,12 +159,13 @@ Rules:
     let client = LlmClient::new(&config.api_base, &config.api_key)?;
     let rt = tokio::runtime::Runtime::new().context("tokio runtime init failed")?;
     let resp = rt.block_on(async {
-        tokio::time::timeout(
+        let inner = tokio::time::timeout(
             std::time::Duration::from_secs(15),
             client.chat_completion(&config.model, &messages, None, Some(0.1)),
         )
         .await
-        .map_err(|_| anyhow::anyhow!("LLM request timed out (15s)"))?
+        .map_err(|_| crate::Error::validation("LLM request timed out (15s)"))?;
+        inner.map_err(crate::Error::from)
     })?;
     let raw = resp
         .choices
@@ -206,7 +211,7 @@ fn llm_admission_assess(
     _skill_md: &str,
     _script_samples: &str,
 ) -> Result<(AdmissionRisk, String)> {
-    anyhow::bail!("LLM scan unavailable: binary built without `agent` feature")
+    bail!("LLM scan unavailable: binary built without `agent` feature")
 }
 
 pub(super) fn scan_candidate_skills(

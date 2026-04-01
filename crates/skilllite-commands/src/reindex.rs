@@ -2,22 +2,17 @@
 //!
 //! Validates all SKILL.md files, checks dependencies, and reports status.
 
-use anyhow::{Context, Result};
+use anyhow::Context;
 use std::fs;
-use std::path::PathBuf;
 
 use skilllite_core::skill::manifest;
 use skilllite_core::skill::metadata;
 
+use crate::Result;
+
 /// `skilllite reindex`
 pub fn cmd_reindex(skills_dir: &str, verbose: bool, rebuild_manifest: bool) -> Result<()> {
-    let skills_path = if PathBuf::from(skills_dir).is_absolute() {
-        PathBuf::from(skills_dir)
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(skills_dir)
-    };
+    let skills_path = crate::init::resolve_path_with_legacy_fallback(skills_dir);
 
     if !skills_path.exists() {
         eprintln!("Skills directory not found: {}", skills_path.display());
@@ -65,6 +60,8 @@ pub fn cmd_reindex(skills_dir: &str, verbose: bool, rebuild_manifest: bool) -> R
                 let lang = metadata::detect_language(&p, &meta);
                 let skill_type = if meta.is_bash_tool_skill() {
                     "bash-tool"
+                } else if meta.entry_point.is_empty() && metadata::has_executable_scripts(&p) {
+                    "script-no-default-entry"
                 } else if meta.entry_point.is_empty() {
                     "prompt-only"
                 } else {

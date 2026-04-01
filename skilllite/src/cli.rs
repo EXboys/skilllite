@@ -57,7 +57,7 @@ pub enum Commands {
         #[arg(long, short)]
         workspace: Option<String>,
 
-        /// [Agent run] Skills directories (default: auto-discover .skills, skills)
+        /// [Agent run] Skills directories (default: auto-discover skills, .skills)
         #[arg(long, short = 's')]
         skill_dirs: Vec<String>,
 
@@ -271,8 +271,8 @@ pub enum Commands {
         #[arg(value_name = "SOURCE")]
         source: String,
 
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
 
         /// Force overwrite existing skills
@@ -294,8 +294,8 @@ pub enum Commands {
         #[arg(value_name = "SKILL_NAME")]
         skill_name: String,
 
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
 
         /// Skip confirmation prompt
@@ -306,8 +306,8 @@ pub enum Commands {
     /// List all installed skills
     #[command(name = "list", alias = "ls")]
     List {
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
 
         /// Output as JSON
@@ -323,8 +323,8 @@ pub enum Commands {
     #[cfg(feature = "agent")]
     #[command(name = "list-tools")]
     ListTools {
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
 
         /// Output format: openai (default) or claude
@@ -338,8 +338,8 @@ pub enum Commands {
         #[arg(value_name = "SKILL_NAME")]
         skill_name: String,
 
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
 
         /// Output as JSON
@@ -353,8 +353,8 @@ pub enum Commands {
         #[arg(value_name = "TARGET")]
         target: String,
 
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
 
         /// Output as JSON
@@ -373,8 +373,8 @@ pub enum Commands {
         #[arg(long, short = 'p')]
         project_dir: Option<String>,
 
-        /// Skills directory path (default: ./.skills)
-        #[arg(long, short = 's', default_value = "./.skills")]
+        /// Skills directory path (default: ./skills)
+        #[arg(long, short = 's', default_value = "./skills")]
         skills_dir: String,
 
         /// Install globally to ~/.cursor/mcp.json
@@ -393,8 +393,8 @@ pub enum Commands {
         #[arg(long, short = 'p')]
         project_dir: Option<String>,
 
-        /// Skills directory path (default: ./.skills)
-        #[arg(long, short = 's', default_value = "./.skills")]
+        /// Skills directory path (default: ./skills)
+        #[arg(long, short = 's', default_value = "./skills")]
         skills_dir: String,
 
         /// Force overwrite existing config
@@ -467,8 +467,8 @@ pub enum Commands {
 
     /// Reindex skills — rescan skills directory and rebuild metadata cache
     Reindex {
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
 
         /// Verbose output
@@ -480,7 +480,7 @@ pub enum Commands {
         rebuild_manifest: bool,
     },
 
-    /// Initialize a SkillLite project — create .skills/, install deps, run audit
+    /// Initialize a SkillLite project — create skills/, install deps, run audit
     ///
     /// Sets up the project structure, creates an example skill if needed,
     /// resolves and installs dependencies, and runs security audits.
@@ -491,8 +491,8 @@ pub enum Commands {
     ///   skilllite init --strict
     ///   skilllite init --force
     Init {
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
 
         /// Skip dependency installation
@@ -531,8 +531,8 @@ pub enum Commands {
     #[cfg(feature = "agent")]
     #[command(name = "quickstart")]
     Quickstart {
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
     },
 
@@ -585,7 +585,7 @@ pub enum Commands {
         #[arg(long, short)]
         workspace: Option<String>,
 
-        /// Skills directories to load (default: auto-discover .skills, skills)
+        /// Skills directories to load (default: auto-discover skills, .skills)
         #[arg(long, short = 's')]
         skill_dir: Vec<String>,
 
@@ -622,14 +622,14 @@ pub enum Commands {
     ///
     /// Examples:
     ///   skilllite swarm --listen 0.0.0.0:7700
-    ///   skilllite swarm --listen 0.0.0.0:7700 --skills-dir .skills
+    ///   skilllite swarm --listen 0.0.0.0:7700 --skills-dir skills
     #[command(name = "swarm")]
     Swarm {
         /// Listen address (e.g. 0.0.0.0:7700)
         #[arg(long, short = 'l', default_value = "0.0.0.0:7700")]
         listen: String,
 
-        /// Skills directory for capability aggregation (default: .skills, skills)
+        /// Skills directory for capability aggregation (default: skills, .skills)
         #[arg(long, short = 's')]
         skills_dir: Option<Vec<String>>,
     },
@@ -646,8 +646,8 @@ pub enum Commands {
     ///   skilllite mcp --skills-dir ./my-skills
     #[command(name = "mcp")]
     Mcp {
-        /// Skills directory path (default: .skills)
-        #[arg(long, short = 's', default_value = ".skills")]
+        /// Skills directory path (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
         skills_dir: String,
     },
 

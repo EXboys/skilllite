@@ -3,7 +3,8 @@
 //! Each plan is appended as a JSON line. Supports reading latest plan.
 //! Backward compatible: can still read legacy single .json files.
 
-use anyhow::{Context, Result};
+use crate::error::Result;
+use anyhow::Context;
 use serde_json::Value;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
@@ -80,7 +81,8 @@ pub fn read_latest_plan(
     // Fallback: legacy single .json file
     let legacy_path = plan_path_legacy(plans_dir, session_key, date);
     if legacy_path.exists() {
-        let content = skilllite_fs::read_file(&legacy_path)?;
+        let content = skilllite_fs::read_file(&legacy_path)
+            .map_err(|e| crate::error::Error::Other(e.into()))?;
         let plan: Value = serde_json::from_str(&content)?;
         return Ok(Some(plan));
     }

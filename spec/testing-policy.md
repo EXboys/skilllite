@@ -27,6 +27,8 @@ Scope: all code changes. Principle: required tests are selected by change type; 
 - Bug fixes must include either a failing test first or a regression test in the same PR.
 - New features must include at least 1 happy-path and 1 failure-path test (unit or integration).
 - Test names must describe behavior (avoid generic names like `test_fix_xxx`).
+- For string formatting/truncation/error-summary logic, add at least one non-ASCII test case (e.g. Chinese or emoji) to guard UTF-8 boundary safety.
+- If code has explicit fallback/retry/error branches, include at least one test that exercises that non-happy-path behavior.
 
 ## Merge Gate
 

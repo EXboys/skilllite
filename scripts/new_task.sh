@@ -65,6 +65,14 @@ TASK_DIR_NAME="${TASK_ID}-${SLUG}"
 TASK_DIR="${TASKS_DIR}/${TASK_DIR_NAME}"
 TODAY="$(date +%Y-%m-%d)"
 
+# Check for slug uniqueness across all existing tasks (different ID, same slug)
+EXISTING="$(find "${TASKS_DIR}" -maxdepth 1 -type d -name "TASK-*-${SLUG}" ! -name "${TASK_DIR_NAME}" 2>/dev/null || true)"
+if [[ -n "${EXISTING}" ]]; then
+  echo "ERROR: slug '${SLUG}' is already used by: $(basename "${EXISTING}")"
+  echo "Choose a different slug to avoid confusion."
+  exit 1
+fi
+
 if [[ -e "${TASK_DIR}" ]]; then
   echo "Task directory already exists: ${TASK_DIR}"
   exit 1

@@ -1,6 +1,6 @@
 //! DB 查询：decisions 表中模式、执行记录等
 
-use anyhow::Result;
+use crate::Result;
 use rusqlite::{params, Connection};
 
 /// Returns the SQL condition for recent decisions: last 100 records within 7 days

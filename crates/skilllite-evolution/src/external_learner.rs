@@ -10,7 +10,8 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use crate::error::bail;
+use crate::Result;
 use rusqlite::Connection;
 
 use crate::feedback::open_evolution_db;
@@ -154,7 +155,7 @@ async fn fetch_source(source: &SourceEntry) -> Result<String> {
     };
 
     if !response.status().is_success() {
-        anyhow::bail!("HTTP {} from {}", response.status(), source.url);
+        bail!("HTTP {} from {}", response.status(), source.url);
     }
 
     Ok(response.text().await?)
@@ -369,11 +370,10 @@ fn parse_external_rule_response(content: &str) -> Result<Vec<PlanningRule>> {
     let json_str = extract_json_array(content);
 
     let arr: Vec<serde_json::Value> = serde_json::from_str(&json_str).map_err(|e| {
-        anyhow::anyhow!(
+        crate::Error::validation(format!(
             "Failed to parse external rule JSON: {}: raw={:.200}",
-            e,
-            content
-        )
+            e, content
+        ))
     })?;
 
     let mut rules = Vec::new();

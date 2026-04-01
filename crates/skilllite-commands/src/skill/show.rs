@@ -1,10 +1,10 @@
 //! `skilllite show` — Show detailed information about a skill.
 
-use anyhow::Result;
-
 use skilllite_core::skill::metadata;
 
 use super::common;
+
+use crate::Result;
 
 /// `skilllite show <name>`
 pub fn cmd_show(skill_name: &str, skills_dir: &str, json_output: bool) -> Result<()> {
@@ -39,6 +39,8 @@ pub fn cmd_show(skill_name: &str, skills_dir: &str, json_output: bool) -> Result
             if let Some(ref at) = meta.allowed_tools {
                 eprintln!("   Allowed Tools: {}", at);
             }
+        } else if metadata::has_executable_scripts(&skill_path) {
+            eprintln!("   Type: script skill (no default entry point)");
         } else {
             eprintln!("   Type: prompt-only skill");
         }

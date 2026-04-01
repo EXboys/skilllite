@@ -15,6 +15,34 @@ use skilllite_sandbox::security::types::{
 
 use super::state::{CachedScan, McpServer};
 
+const ALLOWED_SCAN_LANGUAGES: &[&str] = &["python", "javascript", "node", "bash", "shell"];
+
+fn validate_scan_language(language: &str) -> Result<()> {
+    if ALLOWED_SCAN_LANGUAGES.contains(&language) {
+        Ok(())
+    } else {
+        Err(Error::msg(format!(
+            "Unsupported language: {}. Allowed: python, javascript, node, bash, shell",
+            language
+        )))
+    }
+}
+
+fn parse_sandbox_level_arg(arguments: &Value) -> Result<Option<u8>> {
+    match arguments.get("sandbox_level") {
+        None => Ok(None),
+        Some(v) => {
+            let Some(level) = v.as_u64() else {
+                return Err(Error::msg("sandbox_level must be an integer in [1, 2, 3]"));
+            };
+            if !(1..=3).contains(&level) {
+                return Err(Error::msg("sandbox_level must be one of [1, 2, 3]"));
+            }
+            Ok(Some(level as u8))
+        }
+    }
+}
+
 /// Handle the `scan_code` tool call.
 pub(super) fn handle_scan_code(server: &mut McpServer, arguments: &Value) -> Result<String> {
     let language = arguments
@@ -25,6 +53,7 @@ pub(super) fn handle_scan_code(server: &mut McpServer, arguments: &Value) -> Res
         .get("code")
         .and_then(|v| v.as_str())
         .ok_or_else(|| Error::msg("code is required"))?;
+    validate_scan_language(language)?;
 
     let (scan_result, scan_id, code_hash) = perform_scan(server, language, code)?;
 
@@ -193,15 +222,13 @@ pub(super) fn handle_execute_code(server: &mut McpServer, arguments: &Value) -> 
         .get("code")
         .and_then(|v| v.as_str())
         .ok_or_else(|| Error::msg("code is required"))?;
+    validate_scan_language(language)?;
     let confirmed = arguments
         .get("confirmed")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let scan_id = arguments.get("scan_id").and_then(|v| v.as_str());
-    let sandbox_level_arg = arguments
-        .get("sandbox_level")
-        .and_then(|v| v.as_u64())
-        .map(|v| v as u8);
+    let sandbox_level_arg = parse_sandbox_level_arg(arguments)?;
 
     let sandbox_level = SandboxLevel::from_env_or_cli(sandbox_level_arg);
 
@@ -339,4 +366,31 @@ pub(super) fn execute_code_in_sandbox(
     )?;
 
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn validate_scan_language_accepts_whitelist() {
+        assert!(validate_scan_language("python").is_ok());
+        assert!(validate_scan_language("javascript").is_ok());
+        assert!(validate_scan_language("node").is_ok());
+        assert!(validate_scan_language("bash").is_ok());
+        assert!(validate_scan_language("shell").is_ok());
+        assert!(validate_scan_language("rust").is_err());
+    }
+
+    #[test]
+    fn parse_sandbox_level_arg_validates_type_and_range() {
+        assert_eq!(parse_sandbox_level_arg(&json!({})).unwrap(), None);
+        assert_eq!(
+            parse_sandbox_level_arg(&json!({"sandbox_level": 3})).unwrap(),
+            Some(3)
+        );
+        assert!(parse_sandbox_level_arg(&json!({"sandbox_level": "3"})).is_err());
+        assert!(parse_sandbox_level_arg(&json!({"sandbox_level": 9})).is_err());
+    }
 }

@@ -59,7 +59,9 @@
 //! ```
 //! or `{"method": "clarify", "params": {"action": "stop"}}`
 
-use anyhow::{Context, Result};
+use crate::error::bail;
+use crate::Result;
+use anyhow::Context;
 use serde_json::{json, Value};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
@@ -258,7 +260,7 @@ pub fn serve_agent_rpc() -> Result<()> {
         {
             let mut reader = reader_arc
                 .lock()
-                .map_err(|e| anyhow::anyhow!("stdin lock poisoned: {}", e))?;
+                .map_err(|e| crate::Error::validation(format!("stdin lock poisoned: {}", e)))?;
             match reader.read_line(&mut line) {
                 Ok(0) => break,
                 Ok(_) => {}
@@ -399,7 +401,7 @@ async fn handle_agent_chat(
     }
 
     if config.api_key.is_empty() {
-        anyhow::bail!("API key required. Set OPENAI_API_KEY env var.");
+        bail!("API key required. Set OPENAI_API_KEY env var.");
     }
 
     let skill_dirs: Vec<String> =

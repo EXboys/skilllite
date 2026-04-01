@@ -12,7 +12,7 @@
 //!      SKILLLITE_MAX_OUTPUT_CHARS, SKILLLITE_LONG_TEXT_STRATEGY, SKILLLITE_EXTRACT_TOP_K_RATIO,
 //!      SKILLLITE_MAP_MODEL (optional, for Map stage)
 
-use anyhow::Result;
+use crate::Result;
 
 use super::llm::LlmClient;
 use super::types::{self, chunk_str, safe_slice_from, safe_truncate, ChatMessage};

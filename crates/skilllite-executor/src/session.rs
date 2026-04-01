@@ -2,7 +2,8 @@
 //!
 //! Schema aligned with OpenClaw: sessionId, sessionKey, token counts, compaction state.
 
-use anyhow::{Context, Result};
+use crate::error::Result;
+use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -43,7 +44,7 @@ impl SessionStore {
         }
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read session store: {}", path.display()))?;
-        serde_json::from_str(&content).with_context(|| "Invalid sessions.json")
+        Ok(serde_json::from_str(&content).with_context(|| "Invalid sessions.json")?)
     }
 
     pub fn save(&self, path: &Path) -> Result<()> {
@@ -51,8 +52,8 @@ impl SessionStore {
             fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(self)?;
-        fs::write(path, content)
-            .with_context(|| format!("Failed to write session store: {}", path.display()))
+        Ok(fs::write(path, content)
+            .with_context(|| format!("Failed to write session store: {}", path.display()))?)
     }
 
     pub fn get(&self, session_key: &str) -> Option<&SessionEntry> {

@@ -6,7 +6,9 @@
 #![allow(dead_code)]
 
 use super::types::{SecurityIssueType, SecuritySeverity};
-use anyhow::{Context, Result};
+use anyhow::Context;
+
+use crate::Result;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -65,12 +67,12 @@ impl SecurityRule {
 
     /// Compile the regex pattern
     pub fn compile(&self) -> Result<Regex> {
-        Regex::new(&self.pattern).with_context(|| {
+        Ok(Regex::new(&self.pattern).with_context(|| {
             format!(
                 "Failed to compile regex for rule '{}': {}",
                 self.id, self.pattern
             )
-        })
+        })?)
     }
 }
 
@@ -116,8 +118,8 @@ impl RulesConfig {
     pub fn load_from_file(path: &Path) -> Result<Self> {
         let content = fs::read_to_string(path)
             .with_context(|| format!("Failed to read rules config: {}", path.display()))?;
-        serde_yaml::from_str(&content)
-            .with_context(|| format!("Failed to parse rules config: {}", path.display()))
+        Ok(serde_yaml::from_str(&content)
+            .with_context(|| format!("Failed to parse rules config: {}", path.display()))?)
     }
 
     /// Try to load rules from the skill directory or use defaults

@@ -4,7 +4,7 @@ Last updated: 2026-04-01
 
 ## In Progress
 
-- `TASK-2026-002-agent-loop-modularization` - Status: `ready` - Owner: `TBD`
+- None.
 
 ## Ready
 
@@ -16,7 +16,11 @@ Last updated: 2026-04-01
 
 ## Done
 
-- `TASK-2026-001-sandbox-platform-dedup` - Status: `done` - Owner: `TBD`
+- `TASK-2026-006-error-type-unification` - Status: `done` - Owner: `exboys`
+- `TASK-2026-002-agent-loop-modularization` - Status: `done` - Owner: `exboys`
+- `TASK-2026-005-sandbox-unify-simple-exec` - Status: `done` - Owner: `exboys`
+- `TASK-2026-004-tool-lifecycle-contract` - Status: `done` - Owner: `exboys`
+- `TASK-2026-001-sandbox-platform-dedup` - Status: `done` - Owner: `exboys`
 
 ## Notes
 

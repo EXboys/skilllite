@@ -1,6 +1,7 @@
 //! preview_server: local HTTP file server for previewing output.
 
-use anyhow::Result;
+use crate::error::bail;
+use crate::Result;
 use serde_json::{json, Value};
 use std::path::Path;
 use std::sync::Mutex;
@@ -30,7 +31,9 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
                     },
                     "port": {
                         "type": "integer",
-                        "description": "Port number (default: 8765)"
+                        "description": "Port number (default: 8765)",
+                        "minimum": 1,
+                        "maximum": 65535
                     },
                     "open_browser": {
                         "type": "boolean",
@@ -61,7 +64,7 @@ pub(super) fn execute_preview_server(
     event_sink: &mut dyn EventSink,
 ) -> Result<String> {
     let dir_path = get_path_arg(args, true)
-        .ok_or_else(|| anyhow::anyhow!("'directory_path' or 'path' is required"))?;
+        .ok_or_else(|| crate::Error::validation("'directory_path' or 'path' is required"))?;
     let requested_port = args.get("port").and_then(|v| v.as_u64()).unwrap_or(8765) as u16;
     let should_open_browser = args
         .get("open_browser")
@@ -81,7 +84,7 @@ pub(super) fn execute_preview_server(
 
     if !serve_dir.exists() {
         event_sink.on_preview_failed(&format!("path not found: {}", dir_path));
-        anyhow::bail!("Path not found: {}", dir_path);
+        bail!("Path not found: {}", dir_path);
     }
 
     let serve_dir_str = serve_dir.to_string_lossy().to_string();
@@ -90,7 +93,7 @@ pub(super) fn execute_preview_server(
     {
         let guard = ACTIVE_PREVIEW
             .lock()
-            .map_err(|e| anyhow::anyhow!("Preview lock poisoned: {}", e))?;
+            .map_err(|e| crate::Error::validation(format!("Preview lock poisoned: {}", e)))?;
         if let Some(ref state) = *guard {
             if state.serve_dir == serve_dir_str {
                 let url = build_preview_url(state.port, target_file.as_deref());
@@ -130,14 +133,14 @@ pub(super) fn execute_preview_server(
                 requested_port + 19
             );
             event_sink.on_preview_failed(&message);
-            anyhow::bail!("{}", message)
+            bail!("{}", message)
         }
     };
 
     {
         let mut guard = ACTIVE_PREVIEW
             .lock()
-            .map_err(|e| anyhow::anyhow!("Preview lock poisoned: {}", e))?;
+            .map_err(|e| crate::Error::validation(format!("Preview lock poisoned: {}", e)))?;
         *guard = Some(PreviewServerState {
             serve_dir: serve_dir_str.clone(),
             port: used_port,
@@ -153,7 +156,7 @@ pub(super) fn execute_preview_server(
         .map_err(|e| {
             let message = format!("failed to spawn preview server thread: {}", e);
             event_sink.on_preview_failed(&message);
-            anyhow::anyhow!(message)
+            crate::Error::validation(message)
         })?;
 
     let url = build_preview_url(used_port, target_file.as_deref());

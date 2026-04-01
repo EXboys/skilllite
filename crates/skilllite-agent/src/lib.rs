@@ -1,3 +1,6 @@
+pub mod error;
+pub use error::{Error, Result};
+
 pub mod agent_loop;
 pub mod chat;
 pub mod chat_session;

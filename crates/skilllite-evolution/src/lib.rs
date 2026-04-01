@@ -7,6 +7,7 @@
 //!
 //! Interacts with the agent through the [`EvolutionLlm`] trait for LLM completion.
 
+pub mod error;
 pub mod external_learner;
 pub mod feedback;
 pub mod memory_learner;
@@ -14,10 +15,12 @@ pub mod prompt_learner;
 pub mod seed;
 pub mod skill_synth;
 
+pub use error::{Error, Result};
+
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::Result;
+use crate::error::bail;
 use rusqlite::{params, Connection};
 use skilllite_core::config::env_keys::evolution as evo_keys;
 
@@ -563,7 +566,7 @@ pub fn gatekeeper_l1_path(chat_root: &Path, target: &Path, skills_root: Option<&
 pub fn gatekeeper_l1_template_integrity(filename: &str, new_content: &str) -> Result<()> {
     let missing = seed::validate_template(filename, new_content);
     if !missing.is_empty() {
-        anyhow::bail!(
+        bail!(
             "Gatekeeper L1b: evolved template '{}' is missing required placeholders {:?}",
             filename,
             missing
@@ -601,7 +604,7 @@ pub fn gatekeeper_l3_content(content: &str) -> Result<()> {
     let lower = content.to_lowercase();
     for pattern in SENSITIVE_PATTERNS {
         if lower.contains(pattern) {
-            anyhow::bail!(
+            bail!(
                 "Gatekeeper L3: evolution product contains sensitive pattern: '{}'",
                 pattern
             );
@@ -648,7 +651,7 @@ pub fn create_snapshot(chat_root: &Path, txn_id: &str, files: &[&str]) -> Result
 pub fn restore_snapshot(chat_root: &Path, txn_id: &str) -> Result<()> {
     let snap_dir = versions_dir(chat_root).join(txn_id);
     if !snap_dir.exists() {
-        anyhow::bail!("Snapshot not found: {}", txn_id);
+        bail!("Snapshot not found: {}", txn_id);
     }
     let prompts = chat_root.join("prompts");
     for entry in std::fs::read_dir(&snap_dir)? {

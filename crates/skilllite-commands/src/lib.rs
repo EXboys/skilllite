@@ -8,13 +8,16 @@
 //!   commands/ → agent/           ❌ (forbidden — use agent/rpc.rs instead)
 //!
 //! Phase 3.5c additions:
-//!   init      — project initialization (binary check + .skills/ + deps + audit)
+//!   init      — project initialization (binary check + skills/ + deps + audit)
 //!   quickstart — zero-config LLM setup + chat launch
 //!
 //! Core execution (refactored from main.rs):
 //!   execute  — run_skill, exec_script, bash_command, validate_skill, show_skill_info
 //!   scan     — scan_skill and script analysis
 //!   security — security_scan_script, dependency_audit_skill
+
+pub mod error;
+pub use error::{Error, Result};
 
 pub mod audit_report;
 pub mod execute;

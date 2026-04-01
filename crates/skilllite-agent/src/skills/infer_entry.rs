@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use anyhow::Result;
+use crate::Result;
 use skilllite_evolution::{EvolutionLlm, EvolutionMessage};
 
 /// 列出 skill 目录下 scripts/ 中可执行脚本路径（相对 skill_dir）。

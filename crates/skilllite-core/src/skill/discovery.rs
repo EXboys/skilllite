@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 /// Default directories to search for skills, relative to workspace root.
 /// Includes "." to scan workspace root's direct children (e.g. for skill add from repo).
 pub const SKILL_SEARCH_DIRS: &[&str] =
-    &[".skills", "skills", ".agents/skills", ".claude/skills", "."];
+    &["skills", ".skills", ".agents/skills", ".claude/skills", "."];
 
 /// Discover all skill directories in a workspace.
 ///

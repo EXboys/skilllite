@@ -1,6 +1,6 @@
 //! Evolution feedback collection and evaluation system (EVO-1).
 
-use anyhow::Result;
+use crate::Result;
 use rusqlite::{params, Connection};
 use std::fs;
 use std::path::Path;
@@ -266,7 +266,7 @@ pub fn update_last_decision_feedback(
 // ─── Effectiveness aggregation ──────────────────────────────────────────────
 
 pub fn compute_effectiveness(conn: &Connection, rule_id: &str) -> Result<f32> {
-    let result: Result<(i64, i64), _> = conn.query_row(
+    let result: std::result::Result<(i64, i64), _> = conn.query_row(
         "SELECT
             COUNT(CASE WHEN d.task_completed = 1 AND d.feedback != 'neg' THEN 1 END),
             COUNT(*)

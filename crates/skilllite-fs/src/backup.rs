@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use crate::{Error, Result};
 
 use crate::dir;
 
@@ -11,7 +11,7 @@ pub fn backup_file(file_path: &Path, backup_dir: &Path) -> Result<PathBuf> {
     dir::create_dir_all(backup_dir)?;
     let filename = file_path
         .file_name()
-        .ok_or_else(|| anyhow::anyhow!("Invalid file path"))?
+        .ok_or_else(|| Error::validation("Invalid file path"))?
         .to_string_lossy()
         .to_string();
     let ts = std::time::SystemTime::now()

@@ -247,7 +247,7 @@ See [benchmark/README.md](./benchmark/README.md) for full documentation.
 
 ```bash
 pip install skilllite
-skilllite init        # sandbox binary + .skills/ + download skills
+skilllite init        # sandbox binary + skills/ + download skills
 skilllite list        # verify installation
 ```
 
@@ -262,7 +262,7 @@ skilllite quickstart
 ```python
 from skilllite import chat
 
-result = chat("Calculate 15 * 27", skills_dir=".skills")
+result = chat("Calculate 15 * 27", skills_dir="skills")
 print(result)
 ```
 
@@ -319,7 +319,7 @@ cp .env.example .env   # Edit: BASE_URL, API_KEY, MODEL
 ```python
 from skilllite import run_skill
 
-result = run_skill("./.skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
+result = run_skill("./skills/calculator", '{"operation": "add", "a": 15, "b": 27}')
 print(result["text"])
 ```
 
@@ -468,7 +468,7 @@ skilllite/                         Dependency Flow
 
 | Command                        | Description                                                            |
 | ------------------------------ | ---------------------------------------------------------------------- |
-| `skilllite init`               | Initialize project (.skills/ + download skills + dependencies + audit) |
+| `skilllite init`               | Initialize project (skills/ + download skills + dependencies + audit) |
 | `skilllite quickstart`         | Zero-config: detect LLM, setup skills, launch chat                     |
 | `skilllite chat`               | Interactive agent chat (or `--message` for single-shot)                |
 | `skilllite add owner/repo`     | Add skills from GitHub                                                 |
@@ -548,6 +548,8 @@ npm install
 npm run tauri dev    # dev mode (HMR)
 npm run tauri build
 ```
+
+Chat input behavior: `Enter` inserts a new line; submit by clicking the `Send` button.
 
 See [crates/skilllite-assistant/README.md](./crates/skilllite-assistant/README.md).
 
