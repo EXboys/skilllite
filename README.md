@@ -478,6 +478,7 @@ skilllite/                         Dependency Flow
 | `skilllite run <dir> '<json>'` | Execute a skill directly                                               |
 | `skilllite scan <dir>`         | Scan skill for security issues                                         |
 | `skilllite evolution status`   | View evolution metrics and history                                     |
+| `skilllite evolution backlog`  | Query evolution backlog proposals (status/risk/ROI)                    |
 | `skilllite evolution run`      | Force-trigger evolution cycle                                          |
 | `skilllite mcp`                | Start MCP server (Cursor/Claude Desktop)                               |
 | `skilllite serve`              | Start IPC daemon (stdio JSON-RPC)                                      |

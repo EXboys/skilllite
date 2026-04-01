@@ -199,6 +199,12 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | Max number of evolution txn snapshot dirs under `chat/prompts/_versions/` (oldest removed first by directory name). **`0` = never prune** — keeps full local prompt history without Git; disk use grows with runs |
 | `SKILLLITE_EVO_SHADOW_MODE` | bool | `1` | Evolution governance shadow mode. When enabled, dual trigger paths generate and score proposals, but coordinator does not auto-execute them |
 | `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `0` | Allow coordinator to auto-execute only low-risk proposals (effective only when `SKILLLITE_EVO_SHADOW_MODE=0`) |
+| `SKILLLITE_EVO_POLICY_RUNTIME_ENABLED` | bool | `1` | Enable coordinator policy runtime; decision is evaluated as `allow` / `ask` / `deny` with an auditable reason chain |
+| `SKILLLITE_EVO_DENY_CRITICAL` | bool | `1` | Deny critical-risk proposals by default in policy runtime (`policy_denied` backlog status) |
+| `SKILLLITE_EVO_RISK_BUDGET_LOW_PER_DAY` | int | `5` | Daily auto-execution budget for low-risk proposals (`0` = never auto execute) |
+| `SKILLLITE_EVO_RISK_BUDGET_MEDIUM_PER_DAY` | int | `0` | Daily auto-execution budget for medium-risk proposals (`0` = manual queue only) |
+| `SKILLLITE_EVO_RISK_BUDGET_HIGH_PER_DAY` | int | `0` | Daily auto-execution budget for high-risk proposals (`0` = manual queue only) |
+| `SKILLLITE_EVO_RISK_BUDGET_CRITICAL_PER_DAY` | int | `0` | Daily auto-execution budget for critical-risk proposals (`0` = deny/queue per policy) |
 | `SKILLLITE_EVO_PROFILE` | string | (unset) | Evolution trigger profile: `demo` = more frequent (demos/testing), `default` or unset = same as original defaults, `conservative` = less frequent (production/cost-saving). **Unset or `default` keeps behavior unchanged.** |
 | `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill same-round dedup: `0` disables description similarity check; otherwise skips if new skill's description is highly similar to existing pending |
 

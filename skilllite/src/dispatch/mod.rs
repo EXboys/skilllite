@@ -344,6 +344,15 @@ fn register_agent(reg: &mut CommandRegistry) {
             use crate::cli::EvolutionAction;
             let r = match action {
                 EvolutionAction::Status => skilllite_commands::evolution::cmd_status(),
+                EvolutionAction::Backlog {
+                    status,
+                    risk,
+                    limit,
+                } => skilllite_commands::evolution::cmd_backlog(
+                    status.as_deref(),
+                    risk.as_deref(),
+                    *limit,
+                ),
                 EvolutionAction::Reset { force } => {
                     skilllite_commands::evolution::cmd_reset(*force)
                 }

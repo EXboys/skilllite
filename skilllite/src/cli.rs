@@ -686,6 +686,19 @@ pub enum EvolutionAction {
     /// Show evolution statistics, effectiveness scores, trends, and time profile
     Status,
 
+    /// Query evolution backlog proposals with optional filters
+    Backlog {
+        /// Filter by backlog status (e.g. queued/executing/executed/shadow_approved/policy_denied)
+        #[arg(long)]
+        status: Option<String>,
+        /// Filter by risk level (low/medium/high/critical)
+        #[arg(long)]
+        risk: Option<String>,
+        /// Max rows to display
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+
     /// Reset to seed state — delete all evolved rules, examples, and skills
     Reset {
         /// Skip confirmation prompt

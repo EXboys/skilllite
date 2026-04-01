@@ -16,6 +16,8 @@ Last updated: 2026-04-01
 
 ## Done
 
+- `TASK-2026-014-evolution-backlog-query-command` - Status: `done` - Owner: `exboys`
+- `TASK-2026-013-evolution-policy-runtime-risk-budget` - Status: `done` - Owner: `exboys`
 - `TASK-2026-012-evolution-governance-backlog-coordinator` - Status: `done` - Owner: `exboys`
 - `TASK-2026-011-rpc-tool-result-dedupe` - Status: `done` - Owner: `exboys`
 - `TASK-2026-010-env-profiler-toolcheck` - Status: `done` - Owner: `exboys`

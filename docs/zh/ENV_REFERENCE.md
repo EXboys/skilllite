@@ -199,6 +199,12 @@
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | 每次进化后备份目录 `chat/prompts/_versions/<txn>/` 最多保留几个（按目录名排序删最旧）。设为 **`0` 表示不删除**，可长期本地溯源 prompt 版本，无需 Git；磁盘占用会随进化次数增长 |
 | `SKILLLITE_EVO_SHADOW_MODE` | bool | `1` | 进化治理的影子模式。开启后，主动/被动链路只产生并评分提案，coordinator 默认不自动执行 |
 | `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `0` | 允许 coordinator 自动执行低风险提案（仅在 `SKILLLITE_EVO_SHADOW_MODE=0` 时生效） |
+| `SKILLLITE_EVO_POLICY_RUNTIME_ENABLED` | bool | `1` | 启用 coordinator 的 policy runtime，对提案给出 `allow` / `ask` / `deny` 及可审计原因链 |
+| `SKILLLITE_EVO_DENY_CRITICAL` | bool | `1` | policy runtime 默认拒绝 critical 风险提案（backlog 状态为 `policy_denied`） |
+| `SKILLLITE_EVO_RISK_BUDGET_LOW_PER_DAY` | int | `5` | 低风险提案每日自动执行预算（`0` 表示不自动执行） |
+| `SKILLLITE_EVO_RISK_BUDGET_MEDIUM_PER_DAY` | int | `0` | 中风险提案每日自动执行预算（`0` 表示仅入人工队列） |
+| `SKILLLITE_EVO_RISK_BUDGET_HIGH_PER_DAY` | int | `0` | 高风险提案每日自动执行预算（`0` 表示仅入人工队列） |
+| `SKILLLITE_EVO_RISK_BUDGET_CRITICAL_PER_DAY` | int | `0` | 极高风险提案每日自动执行预算（`0` 表示由策略拒绝/排队） |
 | `SKILLLITE_EVO_PROFILE` | string | （不设） | 进化触发场景：`demo` 更频繁（演示/内测）、`default` 或不设与原有默认一致、`conservative` 更少（生产/省成本）。**不设或 `default` 时行为与之前完全一致。** |
 | `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill 同轮去重：`0` 关闭描述相似度检查；非 `0` 时，若新 skill 的 description 与已有 pending 高度相似则跳过 |
 

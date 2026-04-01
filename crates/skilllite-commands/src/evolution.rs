@@ -36,6 +36,172 @@ fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     Some(ws.join(".skills"))
 }
 
+#[derive(Debug)]
+struct BacklogRow {
+    proposal_id: String,
+    source: String,
+    risk_level: String,
+    status: String,
+    acceptance_status: String,
+    roi_score: f64,
+    updated_at: String,
+    note: String,
+}
+
+fn truncate_chars(s: &str, limit: usize) -> String {
+    let mut out = String::new();
+    for (count, ch) in s.chars().enumerate() {
+        if count >= limit {
+            out.push('…');
+            return out;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn normalize_status_filter(raw: Option<&str>) -> Result<Option<String>> {
+    let Some(v) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let lowered = v.to_lowercase();
+    let allowed = [
+        "queued",
+        "executing",
+        "executed",
+        "shadow_approved",
+        "policy_denied",
+    ];
+    if !allowed.contains(&lowered.as_str()) {
+        bail!("invalid --status '{}'; allowed: {}", v, allowed.join(", "));
+    }
+    Ok(Some(lowered))
+}
+
+fn normalize_risk_filter(raw: Option<&str>) -> Result<Option<String>> {
+    let Some(v) = raw.map(str::trim).filter(|s| !s.is_empty()) else {
+        return Ok(None);
+    };
+    let lowered = v.to_lowercase();
+    let allowed = ["low", "medium", "high", "critical"];
+    if !allowed.contains(&lowered.as_str()) {
+        bail!("invalid --risk '{}'; allowed: {}", v, allowed.join(", "));
+    }
+    Ok(Some(lowered))
+}
+
+fn query_backlog_rows(
+    root: &Path,
+    status_filter: Option<&str>,
+    risk_filter: Option<&str>,
+    limit: usize,
+) -> Result<Vec<BacklogRow>> {
+    let conn = skilllite_evolution::feedback::open_evolution_db(root)?;
+    let limit = limit.clamp(1, 200);
+    let mut stmt = conn
+        .prepare(
+            "SELECT proposal_id, source, risk_level, status, acceptance_status, roi_score, updated_at, COALESCE(note, '')
+             FROM evolution_backlog
+             ORDER BY updated_at DESC",
+        )
+        .map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(BacklogRow {
+                proposal_id: row.get(0)?,
+                source: row.get(1)?,
+                risk_level: row.get(2)?,
+                status: row.get(3)?,
+                acceptance_status: row.get(4)?,
+                roi_score: row.get(5)?,
+                updated_at: row.get(6)?,
+                note: row.get(7)?,
+            })
+        })
+        .map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
+
+    let mut out = Vec::new();
+    for row in rows {
+        let mut row = row.map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
+        if status_filter.is_some_and(|s| row.status != s) {
+            continue;
+        }
+        if risk_filter.is_some_and(|r| row.risk_level != r) {
+            continue;
+        }
+        if out.len() >= limit {
+            break;
+        }
+        row.note = truncate_chars(&row.note, 400);
+        out.push(row);
+    }
+    Ok(out)
+}
+
+/// `skilllite evolution backlog` — query evolution backlog proposals.
+pub fn cmd_backlog(status: Option<&str>, risk: Option<&str>, limit: usize) -> Result<()> {
+    let root = paths::chat_root();
+    let status_filter = normalize_status_filter(status)?;
+    let risk_filter = normalize_risk_filter(risk)?;
+    let rows = query_backlog_rows(
+        &root,
+        status_filter.as_deref(),
+        risk_filter.as_deref(),
+        limit,
+    )?;
+
+    println!(
+        "╭────────────────────────────────────────────────────────────────────────────────────╮"
+    );
+    println!(
+        "│ Evolution Backlog                                                                 │"
+    );
+    println!(
+        "╰────────────────────────────────────────────────────────────────────────────────────╯"
+    );
+    println!(
+        "filter: status={} risk={} limit={}",
+        status_filter.as_deref().unwrap_or("*"),
+        risk_filter.as_deref().unwrap_or("*"),
+        limit.clamp(1, 200)
+    );
+    println!();
+
+    if rows.is_empty() {
+        println!("(no backlog rows matched filters)");
+        return Ok(());
+    }
+
+    println!(
+        "{:22} {:7} {:8} {:15} {:10} {:>6} {:16} note",
+        "proposal_id", "source", "risk", "status", "accept", "roi", "updated_at"
+    );
+    println!(
+        "{:22} {:7} {:8} {:15} {:10} {:>6} {:16} ----",
+        "----------------------",
+        "-------",
+        "--------",
+        "---------------",
+        "----------",
+        "------",
+        "----------------"
+    );
+    for row in rows {
+        let pid = truncate_chars(&row.proposal_id, 22);
+        let source = truncate_chars(&row.source, 7);
+        let risk = truncate_chars(&row.risk_level, 8);
+        let status = truncate_chars(&row.status, 15);
+        let accept = truncate_chars(&row.acceptance_status, 10);
+        let updated = truncate_chars(&row.updated_at, 16);
+        let note = truncate_chars(&row.note.replace('\n', " "), 80);
+        println!(
+            "{:22} {:7} {:8} {:15} {:10} {:>6.2} {:16} {}",
+            pid, source, risk, status, accept, row.roi_score, updated, note
+        );
+    }
+    Ok(())
+}
+
 /// `skilllite evolution status` — show evolution statistics, effectiveness, trends.
 pub fn cmd_status() -> Result<()> {
     let root = paths::chat_root();
@@ -848,4 +1014,57 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>, from_source: bool) 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_filters_validate_allowed_values() {
+        assert_eq!(
+            normalize_status_filter(Some("queued"))
+                .expect("status ok")
+                .as_deref(),
+            Some("queued")
+        );
+        assert_eq!(
+            normalize_risk_filter(Some("HIGH"))
+                .expect("risk ok")
+                .as_deref(),
+            Some("high")
+        );
+        assert!(normalize_status_filter(Some("unknown")).is_err());
+        assert!(normalize_risk_filter(Some("urgent")).is_err());
+    }
+
+    #[test]
+    fn query_backlog_rows_applies_filters() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-cmd-test-{}", uuid::Uuid::new_v4()));
+        let conn = skilllite_evolution::feedback::open_evolution_db(&root).expect("open db");
+        conn.execute_batch(
+            "INSERT INTO evolution_backlog
+             (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria, status, note)
+             VALUES ('p_low', 'active', 'd_low', '{}', 'low', 0.8, 0.8, 1.0, '[]', 'queued', 'note a');
+             INSERT INTO evolution_backlog
+             (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria, status, note)
+             VALUES ('p_high', 'passive', 'd_high', '{}', 'high', 0.2, 0.2, 1.0, '[]', 'policy_denied', 'note b');",
+        )
+        .expect("insert seeds");
+
+        let all = query_backlog_rows(&root, None, None, 20).expect("query all");
+        assert_eq!(all.len(), 2);
+
+        let queued = query_backlog_rows(&root, Some("queued"), None, 20).expect("query queued");
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].proposal_id, "p_low");
+
+        let high =
+            query_backlog_rows(&root, Some("policy_denied"), Some("high"), 20).expect("query high");
+        assert_eq!(high.len(), 1);
+        assert_eq!(high[0].proposal_id, "p_high");
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

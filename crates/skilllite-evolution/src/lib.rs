@@ -456,15 +456,73 @@ pub struct EvolutionProposal {
 
 #[derive(Debug, Clone, Copy)]
 struct EvolutionCoordinatorConfig {
+    policy_runtime_enabled: bool,
     shadow_mode: bool,
     auto_execute_low_risk: bool,
+    deny_critical: bool,
+    risk_budget: EvolutionRiskBudget,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EvolutionRiskBudget {
+    low_per_day: i64,
+    medium_per_day: i64,
+    high_per_day: i64,
+    critical_per_day: i64,
+}
+
+impl EvolutionRiskBudget {
+    fn from_env() -> Self {
+        Self {
+            low_per_day: env_i64(evo_keys::SKILLLITE_EVO_RISK_BUDGET_LOW_PER_DAY, 5),
+            medium_per_day: env_i64(evo_keys::SKILLLITE_EVO_RISK_BUDGET_MEDIUM_PER_DAY, 0),
+            high_per_day: env_i64(evo_keys::SKILLLITE_EVO_RISK_BUDGET_HIGH_PER_DAY, 0),
+            critical_per_day: env_i64(evo_keys::SKILLLITE_EVO_RISK_BUDGET_CRITICAL_PER_DAY, 0),
+        }
+    }
+
+    fn limit_for(&self, risk: ProposalRiskLevel) -> i64 {
+        match risk {
+            ProposalRiskLevel::Low => self.low_per_day,
+            ProposalRiskLevel::Medium => self.medium_per_day,
+            ProposalRiskLevel::High => self.high_per_day,
+            ProposalRiskLevel::Critical => self.critical_per_day,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PolicyAction {
+    Allow,
+    Ask,
+    Deny,
+}
+
+impl PolicyAction {
+    fn as_str(&self) -> &'static str {
+        match self {
+            Self::Allow => "allow",
+            Self::Ask => "ask",
+            Self::Deny => "deny",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PolicyRuntimeDecision {
+    action: PolicyAction,
+    shadow_mode_applied: bool,
+    reasons: Vec<String>,
 }
 
 impl EvolutionCoordinatorConfig {
     fn from_env() -> Self {
         Self {
+            policy_runtime_enabled: env_bool(evo_keys::SKILLLITE_EVO_POLICY_RUNTIME_ENABLED, true),
             shadow_mode: env_bool(evo_keys::SKILLLITE_EVO_SHADOW_MODE, true),
             auto_execute_low_risk: env_bool(evo_keys::SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK, false),
+            deny_critical: env_bool(evo_keys::SKILLLITE_EVO_DENY_CRITICAL, true),
+            risk_budget: EvolutionRiskBudget::from_env(),
         }
     }
 }
@@ -473,6 +531,7 @@ enum CoordinatorDecision {
     NoCandidate,
     Shadow(EvolutionProposal),
     Queued(EvolutionProposal),
+    Denied(EvolutionProposal),
     Execute(EvolutionProposal),
 }
 
@@ -495,6 +554,105 @@ fn env_bool(key: &str, default: bool) -> bool {
         Some(_) => default,
         None => default,
     }
+}
+
+fn env_i64(key: &str, default: i64) -> i64 {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(default)
+}
+
+fn count_daily_executions_by_risk(conn: &Connection, risk: ProposalRiskLevel) -> Result<i64> {
+    let count = conn.query_row(
+        "SELECT COUNT(*) FROM evolution_backlog
+         WHERE date(updated_at) = date('now')
+           AND risk_level = ?1
+           AND status IN ('executing', 'executed')",
+        params![risk.as_str()],
+        |row| row.get(0),
+    )?;
+    Ok(count)
+}
+
+fn summarize_policy_runtime(decision: &PolicyRuntimeDecision) -> String {
+    format!(
+        "Policy runtime action={} ({})",
+        decision.action.as_str(),
+        decision.reasons.join(" -> ")
+    )
+}
+
+fn evaluate_policy_runtime(
+    conn: &Connection,
+    proposal: &EvolutionProposal,
+    config: EvolutionCoordinatorConfig,
+) -> Result<PolicyRuntimeDecision> {
+    let mut reasons = Vec::new();
+    reasons.push(format!(
+        "proposal risk={} roi={:.2}",
+        proposal.risk_level.as_str(),
+        proposal.roi_score
+    ));
+
+    if config.shadow_mode {
+        reasons.push("shadow mode enabled".to_string());
+        return Ok(PolicyRuntimeDecision {
+            action: PolicyAction::Ask,
+            shadow_mode_applied: true,
+            reasons,
+        });
+    }
+
+    if proposal.risk_level == ProposalRiskLevel::Critical && config.deny_critical {
+        reasons.push("critical risk is denied by policy".to_string());
+        return Ok(PolicyRuntimeDecision {
+            action: PolicyAction::Deny,
+            shadow_mode_applied: false,
+            reasons,
+        });
+    }
+
+    let daily_limit = config.risk_budget.limit_for(proposal.risk_level);
+    let consumed = count_daily_executions_by_risk(conn, proposal.risk_level)?;
+    reasons.push(format!(
+        "daily budget {}/{} for {}",
+        consumed,
+        daily_limit,
+        proposal.risk_level.as_str()
+    ));
+    if daily_limit <= 0 {
+        reasons.push("auto budget disabled for this risk tier".to_string());
+        return Ok(PolicyRuntimeDecision {
+            action: PolicyAction::Ask,
+            shadow_mode_applied: false,
+            reasons,
+        });
+    }
+    if consumed >= daily_limit {
+        reasons.push("daily budget exhausted".to_string());
+        return Ok(PolicyRuntimeDecision {
+            action: PolicyAction::Ask,
+            shadow_mode_applied: false,
+            reasons,
+        });
+    }
+
+    if proposal.risk_level == ProposalRiskLevel::Low && config.auto_execute_low_risk {
+        reasons.push("low-risk auto execution enabled".to_string());
+        return Ok(PolicyRuntimeDecision {
+            action: PolicyAction::Allow,
+            shadow_mode_applied: false,
+            reasons,
+        });
+    }
+
+    reasons.push("risk tier requires manual confirmation".to_string());
+    Ok(PolicyRuntimeDecision {
+        action: PolicyAction::Ask,
+        shadow_mode_applied: false,
+        reasons,
+    })
 }
 
 fn compute_roi_score(expected_gain: f32, effort: f32, risk: ProposalRiskLevel) -> f32 {
@@ -728,34 +886,70 @@ fn coordinate_proposals_with_config(
             )?;
             return Ok(CoordinatorDecision::Execute(selected));
         }
-        if config.shadow_mode {
+        if !config.policy_runtime_enabled {
+            if config.shadow_mode {
+                set_backlog_status(
+                    conn,
+                    &selected.proposal_id,
+                    "shadow_approved",
+                    "pending",
+                    "Shadow mode enabled: proposal queued only",
+                )?;
+                return Ok(CoordinatorDecision::Shadow(selected));
+            }
+            if config.auto_execute_low_risk && selected.risk_level == ProposalRiskLevel::Low {
+                set_backlog_status(
+                    conn,
+                    &selected.proposal_id,
+                    "executing",
+                    "pending",
+                    "Auto execution allowed for low-risk proposal",
+                )?;
+                return Ok(CoordinatorDecision::Execute(selected));
+            }
             set_backlog_status(
                 conn,
                 &selected.proposal_id,
-                "shadow_approved",
+                "queued",
                 "pending",
-                "Shadow mode enabled: proposal queued only",
+                "Waiting for manual or policy-based execution",
             )?;
-            return Ok(CoordinatorDecision::Shadow(selected));
+            return Ok(CoordinatorDecision::Queued(selected));
         }
-        if config.auto_execute_low_risk && selected.risk_level == ProposalRiskLevel::Low {
-            set_backlog_status(
-                conn,
-                &selected.proposal_id,
-                "executing",
-                "pending",
-                "Auto execution allowed for low-risk proposal",
-            )?;
-            return Ok(CoordinatorDecision::Execute(selected));
+
+        let policy = evaluate_policy_runtime(conn, &selected, config)?;
+        let note = summarize_policy_runtime(&policy);
+        match policy.action {
+            PolicyAction::Allow => {
+                set_backlog_status(conn, &selected.proposal_id, "executing", "pending", &note)?;
+                Ok(CoordinatorDecision::Execute(selected))
+            }
+            PolicyAction::Ask => {
+                if policy.shadow_mode_applied {
+                    set_backlog_status(
+                        conn,
+                        &selected.proposal_id,
+                        "shadow_approved",
+                        "pending",
+                        &note,
+                    )?;
+                    Ok(CoordinatorDecision::Shadow(selected))
+                } else {
+                    set_backlog_status(conn, &selected.proposal_id, "queued", "pending", &note)?;
+                    Ok(CoordinatorDecision::Queued(selected))
+                }
+            }
+            PolicyAction::Deny => {
+                set_backlog_status(
+                    conn,
+                    &selected.proposal_id,
+                    "policy_denied",
+                    "rejected",
+                    &note,
+                )?;
+                Ok(CoordinatorDecision::Denied(selected))
+            }
         }
-        set_backlog_status(
-            conn,
-            &selected.proposal_id,
-            "queued",
-            "pending",
-            "Waiting for manual or policy-based execution",
-        )?;
-        Ok(CoordinatorDecision::Queued(selected))
     })();
     finish_coordinator();
     result
@@ -1239,6 +1433,22 @@ async fn run_evolution_inner<L: EvolutionLlm>(
                 &conn,
                 chat_root,
                 "evolution_proposal",
+                &p.proposal_id,
+                &reason,
+                "",
+            );
+            return Ok(EvolutionRunResult::Completed(None));
+        }
+        CoordinatorDecision::Denied(p) => {
+            let reason = format!(
+                "Proposal {} ({}) denied by policy runtime",
+                p.proposal_id,
+                p.source.as_str()
+            );
+            let _ = log_evolution_event(
+                &conn,
+                chat_root,
+                "evolution_proposal_denied",
                 &p.proposal_id,
                 &reason,
                 "",
@@ -1768,8 +1978,16 @@ mod lib_tests {
             vec![proposal],
             false,
             EvolutionCoordinatorConfig {
+                policy_runtime_enabled: true,
                 shadow_mode: true,
                 auto_execute_low_risk: true,
+                deny_critical: true,
+                risk_budget: EvolutionRiskBudget {
+                    low_per_day: 5,
+                    medium_per_day: 0,
+                    high_per_day: 0,
+                    critical_per_day: 0,
+                },
             },
         )
         .expect("coordinate");
@@ -1800,12 +2018,113 @@ mod lib_tests {
             vec![proposal],
             false,
             EvolutionCoordinatorConfig {
+                policy_runtime_enabled: true,
                 shadow_mode: false,
                 auto_execute_low_risk: true,
+                deny_critical: true,
+                risk_budget: EvolutionRiskBudget {
+                    low_per_day: 5,
+                    medium_per_day: 0,
+                    high_per_day: 0,
+                    critical_per_day: 0,
+                },
             },
         )
         .expect("coordinate");
         assert!(matches!(decision, CoordinatorDecision::Execute(_)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn coordinator_queues_when_low_risk_budget_exhausted() {
+        let _g = EVO_LOCK.lock().expect("evo lock");
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let scope = EvolutionScope {
+            memory: true,
+            ..Default::default()
+        };
+        let proposal = build_proposal(
+            ProposalSource::Active,
+            scope,
+            ProposalRiskLevel::Low,
+            0.5,
+            1.0,
+            vec!["metric should improve".to_string()],
+        );
+
+        conn.execute(
+            "INSERT INTO evolution_backlog
+             (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria, status, note)
+             VALUES (?1, 'active', ?2, '{}', 'low', 0.1, 0.1, 1.0, '[]', 'executed', 'seed')",
+            rusqlite::params![
+                "seed_proposal",
+                format!("seed_{}", uuid::Uuid::new_v4()),
+            ],
+        )
+        .expect("insert seed");
+
+        let decision = coordinate_proposals_with_config(
+            &conn,
+            vec![proposal],
+            false,
+            EvolutionCoordinatorConfig {
+                policy_runtime_enabled: true,
+                shadow_mode: false,
+                auto_execute_low_risk: true,
+                deny_critical: true,
+                risk_budget: EvolutionRiskBudget {
+                    low_per_day: 1,
+                    medium_per_day: 0,
+                    high_per_day: 0,
+                    critical_per_day: 0,
+                },
+            },
+        )
+        .expect("coordinate");
+        assert!(matches!(decision, CoordinatorDecision::Queued(_)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn coordinator_denies_critical_when_policy_enabled() {
+        let _g = EVO_LOCK.lock().expect("evo lock");
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let scope = EvolutionScope {
+            skills: true,
+            skill_action: SkillAction::Generate,
+            ..Default::default()
+        };
+        let proposal = build_proposal(
+            ProposalSource::Passive,
+            scope,
+            ProposalRiskLevel::Critical,
+            0.9,
+            3.0,
+            vec!["no regressions".to_string()],
+        );
+        let decision = coordinate_proposals_with_config(
+            &conn,
+            vec![proposal],
+            false,
+            EvolutionCoordinatorConfig {
+                policy_runtime_enabled: true,
+                shadow_mode: false,
+                auto_execute_low_risk: true,
+                deny_critical: true,
+                risk_budget: EvolutionRiskBudget {
+                    low_per_day: 5,
+                    medium_per_day: 0,
+                    high_per_day: 0,
+                    critical_per_day: 1,
+                },
+            },
+        )
+        .expect("coordinate");
+        assert!(matches!(decision, CoordinatorDecision::Denied(_)));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

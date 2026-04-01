@@ -426,6 +426,7 @@ skilllite/                         依赖流向
 | `skilllite run <dir> '<json>'` | 直接执行 skill |
 | `skilllite scan <dir>` | 扫描 skill 安全性 |
 | `skilllite evolution status` | 查看进化指标和历史 |
+| `skilllite evolution backlog` | 查询进化提案 backlog（状态/风险/ROI） |
 | `skilllite evolution run` | 强制触发进化周期 |
 | `skilllite mcp` | 启动 MCP 服务器（Cursor/Claude Desktop） |
 | `skilllite serve` | 启动 IPC 守护进程（stdio JSON-RPC） |

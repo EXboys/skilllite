@@ -126,6 +126,24 @@ pub mod evolution {
     /// Allow coordinator to auto-execute low-risk proposals.
     /// Default disabled (`0`/`false`).
     pub const SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK: &str = "SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK";
+    /// Enable policy runtime in coordinator (`allow`/`ask`/`deny` with reason chain).
+    /// Default enabled (`1`/`true`).
+    pub const SKILLLITE_EVO_POLICY_RUNTIME_ENABLED: &str = "SKILLLITE_EVO_POLICY_RUNTIME_ENABLED";
+    /// Deny critical-risk proposals in policy runtime by default.
+    /// Default enabled (`1`/`true`).
+    pub const SKILLLITE_EVO_DENY_CRITICAL: &str = "SKILLLITE_EVO_DENY_CRITICAL";
+    /// Daily auto-execution budget for low-risk proposals (coordinator policy runtime).
+    /// Default `5`.
+    pub const SKILLLITE_EVO_RISK_BUDGET_LOW_PER_DAY: &str = "SKILLLITE_EVO_RISK_BUDGET_LOW_PER_DAY";
+    /// Daily auto-execution budget for medium-risk proposals (default `0` = manual only).
+    pub const SKILLLITE_EVO_RISK_BUDGET_MEDIUM_PER_DAY: &str =
+        "SKILLLITE_EVO_RISK_BUDGET_MEDIUM_PER_DAY";
+    /// Daily auto-execution budget for high-risk proposals (default `0` = manual only).
+    pub const SKILLLITE_EVO_RISK_BUDGET_HIGH_PER_DAY: &str =
+        "SKILLLITE_EVO_RISK_BUDGET_HIGH_PER_DAY";
+    /// Daily auto-execution budget for critical-risk proposals (default `0`).
+    pub const SKILLLITE_EVO_RISK_BUDGET_CRITICAL_PER_DAY: &str =
+        "SKILLLITE_EVO_RISK_BUDGET_CRITICAL_PER_DAY";
     /// 进化触发场景：demo（更频繁）/ default（与不设一致）/ conservative（更少、省成本）。不设或 default 时行为与原有默认完全一致。
     pub const SKILLLITE_EVO_PROFILE: &str = "SKILLLITE_EVO_PROFILE";
 
