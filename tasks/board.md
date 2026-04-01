@@ -16,6 +16,7 @@ Last updated: 2026-04-01
 
 ## Done
 
+- `TASK-2026-007-unify-skill-dir-fallback` - Status: `done` - Owner: `exboys`
 - `TASK-2026-006-error-type-unification` - Status: `done` - Owner: `exboys`
 - `TASK-2026-002-agent-loop-modularization` - Status: `done` - Owner: `exboys`
 - `TASK-2026-005-sandbox-unify-simple-exec` - Status: `done` - Owner: `exboys`

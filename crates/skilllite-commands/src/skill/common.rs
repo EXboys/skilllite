@@ -8,25 +8,14 @@ use crate::error::bail;
 use crate::Result;
 
 pub fn resolve_skills_dir(skills_dir: &str) -> PathBuf {
-    let p = PathBuf::from(skills_dir);
-    let resolved = if p.is_absolute() {
-        p
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(p)
-    };
-
-    if skills_dir == "skills" && !resolved.exists() {
-        if let Some(parent) = resolved.parent() {
-            let legacy = parent.join(".skills");
-            if legacy.is_dir() {
-                return legacy;
-            }
-        }
+    let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let resolution = skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(
+        &workspace, skills_dir,
+    );
+    if let Some(warning) = resolution.conflict_warning() {
+        eprintln!("{}", warning);
     }
-
-    resolved
+    resolution.effective_path
 }
 
 pub fn find_skill(skills_path: &Path, skill_name: &str) -> Result<PathBuf> {

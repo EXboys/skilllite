@@ -75,6 +75,6 @@ contain duplicated logic for:
 
 ## Links
 
-- Source TODO section: `todo/06-OPTIMIZATION.md` (§0.2 #6 平台沙箱代码重复)
+- Source TODO section: `todo/06-OPTIMIZATION.md` (§0.2 #6 Platform sandbox code duplication)
 - Related PRs/issues:
 - Related docs: N/A

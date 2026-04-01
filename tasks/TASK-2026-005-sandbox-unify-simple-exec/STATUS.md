@@ -4,6 +4,17 @@
 
 Last updated: 2026-04-01
 
+## Timeline
+
+- 2026-04-01:
+  - Progress:
+    - Completed extraction and deduplication of unsandboxed execution logic.
+    - Fixed incorrect Linux no-sandbox dispatch path.
+  - Blockers:
+    - None.
+  - Next step:
+    - Continue monitoring CI and regression results.
+
 ## Checkpoints
 
 - [x] Task folder created with TASK/PRD/CONTEXT

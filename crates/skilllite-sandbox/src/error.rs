@@ -15,6 +15,10 @@ pub enum Error {
     #[error(transparent)]
     BashValidation(#[from] BashValidationError),
 
+    /// Nix syscall error (e.g. mount/unshare namespace operations).
+    #[error(transparent)]
+    Nix(#[from] nix::errno::Errno),
+
     /// Input validation / configuration error.
     #[error("{0}")]
     Validation(String),

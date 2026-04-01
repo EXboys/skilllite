@@ -486,6 +486,9 @@ skilllite/                         Dependency Flow
 | `skilllite clean-env`          | Clean cached runtime environments                                      |
 | `skilllite reindex`            | Re-index all installed skills                                          |
 
+> Note: for default `skills` mode, if `skills/` is missing and `.skills/` exists, SkillLite automatically falls back to `.skills/`.
+> When both `skills/<name>` and `.skills/<name>` exist, commands print a duplicate-name warning to improve observability.
+
 </details>
 
 

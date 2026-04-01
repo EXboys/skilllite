@@ -31,6 +31,8 @@ where the Linux no-sandbox path incorrectly attempted sandbox execution. Removed
 - [x] Bug fix verified (runner.rs now calls correct function)
 - [x] Format and lint clean
 
+Merge readiness: `ready`
+
 ## Verification Evidence
 
 ```

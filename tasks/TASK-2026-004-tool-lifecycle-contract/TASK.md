@@ -64,6 +64,6 @@ This makes it harder to audit and test input validation, permission checks, exec
 
 ## Links
 
-- Source TODO section: `todo/skilllite-vs-claude-code.md` (A. 工具统一契约)
+- Source TODO section: `todo/skilllite-vs-claude-code.md` (A. Unified tool contract)
 - Related PRs/issues:
 - Related docs: N/A (no user-facing command/env/architecture-doc behavior change)

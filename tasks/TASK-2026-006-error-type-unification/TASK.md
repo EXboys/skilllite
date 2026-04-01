@@ -1,51 +1,57 @@
-# TASK-2026-006: 子 crate 错误类型统一
+# TASK Card
 
-## Summary
+## Metadata
 
-主 CLI 边界已有 `skilllite::Error` + `thiserror`，但 workspace 子 crate 仍普遍使用 `anyhow`。
-跨层错误传播时"该用哪种 Error"认知负担较高。统一每个子 crate 的错误类型。
+- Task ID: `TASK-2026-006`
+- Title: Unify Sub-crate Error Types
+- Status: `done`
+- Priority: `P1`
+- Owner: `exboys`
+- Contributors:
+- Created: `2026-04-01`
+- Target milestone:
 
-## Owner
+## Problem
 
-exboys
-
-## Priority
-
-P1
+The CLI boundary already uses `skilllite::Error` + `thiserror`, but workspace sub-crates still rely heavily on `anyhow`.
+Cross-crate error propagation lacks a consistent contract, increasing review and maintenance overhead.
 
 ## Scope
 
-为每个子 crate 定义 crate-level `Error` enum + `pub type Result<T>`:
-
-1. **skilllite-fs** — 新建 `error.rs`
-2. **skilllite-core** — 提升 `PathValidationError` → crate-level `Error`
-3. **skilllite-sandbox** — 提升 `BashValidationError` → crate-level `Error`
-4. **skilllite-executor** — 提升 `ExecutorError` → crate-level `Error`
-5. **skilllite-evolution** — 新建 `error.rs`
-6. **skilllite-swarm** — 新建 `error.rs`
-7. **skilllite-agent** — 新建 `error.rs`
-8. **skilllite-commands** — 新建 `error.rs`
-9. **skilllite CLI** — Error enum 添加 `#[from]` sub-crate variants
-
-每个 crate Error 保留 `Other(#[from] anyhow::Error)` 作为渐进迁移逃生口。
-公开 API 签名从 `anyhow::Result` → `crate::Result`。
+- In scope:
+  - Define a crate-level `Error` enum + `pub type Result<T>` for each sub-crate.
+  - Add `#[from]` conversions from sub-crate errors into CLI `skilllite::Error`.
+  - Migrate public API signatures from `anyhow::Result` to `crate::Result`.
+- Out of scope:
+  - Removing all internal `anyhow` usage in one pass (keep `Other(#[from] anyhow::Error)` as gradual migration escape hatch).
 
 ## Acceptance Criteria
 
-- [x] 每个子 crate 有且仅有一个 `pub enum Error` 和 `pub type Result<T>`
-- [x] 公开 API（lib.rs 导出的函数）返回 `crate::Result<T>`
-- [x] CLI crate Error 对子 crate Error 有 `#[from]` 自动转换
-- [x] `cargo check --workspace` 通过
-- [x] `cargo clippy --all-targets` 无新增警告
-- [x] `cargo test` 全量通过
-- [x] 已有的特定错误枚举（PathValidationError, BashValidationError）保留为 Error variant
+- [x] Each sub-crate has exactly one `pub enum Error` and one `pub type Result<T>`
+- [x] Public APIs (exported from `lib.rs`) return `crate::Result<T>`
+- [x] CLI crate `Error` includes `#[from]` auto-conversions for sub-crate errors
+- [x] `cargo check --workspace` passes
+- [x] `cargo clippy --all-targets` has no new warnings
+- [x] `cargo test` passes for the full workspace
+- [x] Existing narrow error enums (`PathValidationError`, `BashValidationError`) are preserved as variants
 
 ## Risks
 
-- 大量函数签名变更可能导致编译断裂，需自下而上逐 crate 推进
-- `#[from] anyhow::Error` 在多层嵌套时可能产生 conflicting impl，需注意
+- Large-scale signature changes may cause compile breakage; migration must proceed bottom-up per crate.
+- `#[from] anyhow::Error` can produce conflicting impls in nested conversions; care is required.
+
+## Validation Plan
+
+- Required tests:
+  - `cargo check --workspace`
+  - `cargo clippy --all-targets`
+  - `cargo test`
+- Manual checks:
+  - Verify cross-crate `?` conversion paths compile successfully.
 
 ## Regression Scope
 
-- 全量 `cargo test`
-- 特别关注 E2E 测试路径
+- Areas likely affected:
+  - Cross-crate error propagation paths and CLI aggregated error display.
+- Explicit non-goals:
+  - Rewriting business-facing error text.

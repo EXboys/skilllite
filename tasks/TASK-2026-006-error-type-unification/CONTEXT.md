@@ -1,18 +1,18 @@
-# Context: 子 crate 错误类型统一
+# Context: Unify Sub-crate Error Types
 
 ## Current State
 
-| Crate | thiserror Error | anyhow 使用量 |
+| Crate | thiserror Error | anyhow usage count |
 |-------|-----------------|--------------|
-| skilllite (CLI) | `Error` (完善) | 6 |
-| skilllite-core | `PathValidationError` (窄) | 14 |
-| skilllite-executor | `ExecutorError` (窄) | 7 |
-| skilllite-sandbox | `BashValidationError` (窄) | 59 |
-| skilllite-agent | 声明未使用 | 98 |
-| skilllite-commands | 无 | 84 |
-| skilllite-evolution | 无 | 51 |
-| skilllite-fs | 无 | 18 |
-| skilllite-swarm | 无 | 10 |
+| skilllite (CLI) | `Error` (mature) | 6 |
+| skilllite-core | `PathValidationError` (narrow) | 14 |
+| skilllite-executor | `ExecutorError` (narrow) | 7 |
+| skilllite-sandbox | `BashValidationError` (narrow) | 59 |
+| skilllite-agent | none declared | 98 |
+| skilllite-commands | none | 84 |
+| skilllite-evolution | none | 51 |
+| skilllite-fs | none | 18 |
+| skilllite-swarm | none | 10 |
 
 ## Dependency Direction (bottom-up migration order)
 
@@ -25,6 +25,6 @@ skilllite-fs → skilllite-core → skilllite-sandbox → skilllite-executor
 
 ## Technical Constraints
 
-- `#[from] anyhow::Error` 每个 Error enum 最多有一个（Rust orphan rule）
-- 已有的窄错误类型（PathValidationError 等）被外部 crate 直接引用，需保持 re-export
-- `skilllite-assistant` (Tauri) 被 workspace exclude，不在本次范围
+- Each `Error` enum can only have one `#[from] anyhow::Error` conversion to avoid conflicting impls.
+- Existing narrow error types (such as `PathValidationError`) are directly referenced by other crates and must remain re-exported.
+- `skilllite-assistant` (Tauri) is excluded from the workspace and out of scope.

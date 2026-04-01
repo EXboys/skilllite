@@ -17,6 +17,7 @@ use crate::error::bail;
 use crate::skill;
 use crate::Result;
 use skilllite_core::skill::dependency_resolver;
+use skilllite_core::skill::discovery;
 use skilllite_core::skill::metadata;
 
 /// `skilllite init`
@@ -130,29 +131,13 @@ pub fn cmd_init(
     Ok(())
 }
 
-pub(crate) fn resolve_path(dir: &str) -> PathBuf {
-    let p = PathBuf::from(dir);
-    if p.is_absolute() {
-        p
-    } else {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(p)
-    }
-}
-
 pub(crate) fn resolve_path_with_legacy_fallback(dir: &str) -> PathBuf {
-    let resolved = resolve_path(dir);
-    // Compatibility: when default "skills" is absent, reuse legacy ".skills".
-    if dir == "skills" && !resolved.exists() {
-        if let Some(parent) = resolved.parent() {
-            let legacy = parent.join(".skills");
-            if legacy.is_dir() {
-                return legacy;
-            }
-        }
+    let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let resolution = discovery::resolve_skills_dir_with_legacy_fallback(&workspace, dir);
+    if let Some(warning) = resolution.conflict_warning() {
+        eprintln!("{}", warning);
     }
-    resolved
+    resolution.effective_path
 }
 
 /// Ensure skills directory exists and has skills. When empty, download from

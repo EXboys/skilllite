@@ -1,35 +1,37 @@
-# REVIEW: TASK-2026-006 子 crate 错误类型统一
+# REVIEW: TASK-2026-006 Unify Sub-crate Error Types
 
 ## Merge Readiness: ready
 
+Merge readiness: `ready`
+
 ## Summary
 
-每个 workspace 子 crate 现在都有统一的 `pub enum Error` + `pub type Result<T>`。
-开发者认知规则简化为：
+Each workspace sub-crate now has a unified `pub enum Error` + `pub type Result<T>`.
+Developer conventions are now simplified:
 
-- **在 crate X 内**：使用 `crate::Result<T>` 和 `crate::Error` / `bail!` 宏
-- **跨 crate 调用**：`?` 通过 `#[from]` 自动转换
-- **CLI 入口**：`skilllite::Error` 聚合所有子 crate Error
+- **Inside crate X**: use `crate::Result<T>` and `crate::Error` / `bail!` macro
+- **Across crates**: `?` auto-converts via `#[from]`
+- **CLI entrypoint**: `skilllite::Error` aggregates all sub-crate errors
 
 ## Changes by Crate
 
-| Crate | Error 文件 | 新增 Variants | 保留旧类型 |
+| Crate | Error file | Added variants | Preserved legacy type |
 |-------|-----------|--------------|-----------|
-| skilllite-fs | 新建 | Io, Validation, Other | N/A |
-| skilllite-core | 扩展 | Io, PathValidation, Fs, Json, Yaml, Validation, Other | PathValidationError |
-| skilllite-sandbox | 新建 | Io, BashValidation, Validation, Other | BashValidationError |
-| skilllite-executor | 扩展 | Io, Executor, Json, Sqlite, Validation, Other | ExecutorError |
-| skilllite-evolution | 新建 | Io, Sqlite, Json, Http, Fs, Sandbox, Validation, Other | N/A |
-| skilllite-swarm | 新建 | Io, Validation, Other | N/A |
-| skilllite-agent | 新建 | Io, Json, Core, Executor, Evolution, Fs, Sandbox, Validation, Other | N/A |
-| skilllite-commands | 新建 | Io, Json, Core, Sandbox, Fs, Evolution, Agent, Validation, Other | N/A |
-| skilllite (CLI) | 扩展 | +Core, +Sandbox, +Executor, +Swarm, +Agent, +Commands | PathValidation, Io, Json |
+| skilllite-fs | Added | Io, Validation, Other | N/A |
+| skilllite-core | Expanded | Io, PathValidation, Fs, Json, Yaml, Validation, Other | PathValidationError |
+| skilllite-sandbox | Added | Io, BashValidation, Validation, Other | BashValidationError |
+| skilllite-executor | Expanded | Io, Executor, Json, Sqlite, Validation, Other | ExecutorError |
+| skilllite-evolution | Added | Io, Sqlite, Json, Http, Fs, Sandbox, Validation, Other | N/A |
+| skilllite-swarm | Added | Io, Validation, Other | N/A |
+| skilllite-agent | Added | Io, Json, Core, Executor, Evolution, Fs, Sandbox, Validation, Other | N/A |
+| skilllite-commands | Added | Io, Json, Core, Sandbox, Fs, Evolution, Agent, Validation, Other | N/A |
+| skilllite (CLI) | Expanded | +Core, +Sandbox, +Executor, +Swarm, +Agent, +Commands | PathValidation, Io, Json |
 
 ## Migration Strategy
 
-- `Other(#[from] anyhow::Error)` 作为渐进迁移逃生口，内部代码仍可用 `.context()` 等 anyhow 特性
-- `bail!` crate-local 宏替代 `anyhow::bail!`
-- 已有窄错误类型（PathValidationError, BashValidationError, ExecutorError）保持 backward-compatible
+- Keep `Other(#[from] anyhow::Error)` as a gradual migration escape hatch; internal code can still use `.context()`.
+- Use crate-local `bail!` macro instead of `anyhow::bail!`.
+- Preserve narrow legacy error types (`PathValidationError`, `BashValidationError`, `ExecutorError`) for backward compatibility.
 
 ## Verification
 

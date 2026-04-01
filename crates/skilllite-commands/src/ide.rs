@@ -8,6 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use skilllite_core::skill::discovery::SkillsDirResolution;
 use skilllite_core::skill::metadata;
 
 use crate::Result;
@@ -42,16 +43,19 @@ fn get_available_skills(skills_dir: &Path) -> Vec<(String, String)> {
     skills
 }
 
-fn resolve_skills_dir_with_legacy_fallback(project: &Path, skills_dir: &str) -> String {
-    let sd_clean = skills_dir.strip_prefix("./").unwrap_or(skills_dir);
-    let resolved = project.join(sd_clean);
-    if (skills_dir == "skills" || skills_dir == "./skills") && !resolved.exists() {
-        let legacy = project.join(".skills");
-        if legacy.is_dir() {
-            return "./.skills".to_string();
-        }
+fn resolve_skills_dir_with_legacy_fallback(
+    project: &Path,
+    skills_dir: &str,
+) -> SkillsDirResolution {
+    skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(project, skills_dir)
+}
+
+fn effective_skills_dir_arg(skills_dir: &str, resolution: &SkillsDirResolution) -> String {
+    if resolution.used_legacy_fallback {
+        "./.skills".to_string()
+    } else {
+        skills_dir.to_string()
     }
-    skills_dir.to_string()
 }
 
 /// Detect the best command to start the MCP server.
@@ -283,7 +287,11 @@ pub fn cmd_cursor(
     eprintln!("✓ MCP command: {}", command_desc);
     eprintln!("   → {}", command.join(" "));
 
-    let effective_skills_dir = resolve_skills_dir_with_legacy_fallback(&project, skills_dir);
+    let resolution = resolve_skills_dir_with_legacy_fallback(&project, skills_dir);
+    if let Some(warning) = resolution.conflict_warning() {
+        eprintln!("{}", warning);
+    }
+    let effective_skills_dir = effective_skills_dir_arg(skills_dir, &resolution);
 
     // Determine config paths
     let (cursor_dir, mcp_config_path, skills_dir_for_config) = if global {
@@ -354,7 +362,11 @@ pub fn cmd_cursor(
         .unwrap_or(effective_skills_dir.as_str());
     let full_skills_dir = project.join(sd_clean);
     let skills = get_available_skills(&full_skills_dir);
-    eprintln!("✓ Found {} skills in {}", skills.len(), effective_skills_dir);
+    eprintln!(
+        "✓ Found {} skills in {}",
+        skills.len(),
+        effective_skills_dir
+    );
 
     let mut created_files = vec![mcp_config_path.to_string_lossy().to_string()];
 
@@ -404,7 +416,11 @@ pub fn cmd_opencode(project_dir: Option<&str>, skills_dir: &str, force: bool) ->
     let project = project_dir
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let effective_skills_dir = resolve_skills_dir_with_legacy_fallback(&project, skills_dir);
+    let resolution = resolve_skills_dir_with_legacy_fallback(&project, skills_dir);
+    if let Some(warning) = resolution.conflict_warning() {
+        eprintln!("{}", warning);
+    }
+    let effective_skills_dir = effective_skills_dir_arg(skills_dir, &resolution);
 
     eprintln!("🚀 Initializing SkillLite integration for OpenCode...");
     eprintln!("   Project directory: {}", project.display());
@@ -467,10 +483,16 @@ pub fn cmd_opencode(project_dir: Option<&str>, skills_dir: &str, force: bool) ->
     .context("Failed to write opencode.json")?;
 
     // Get available skills
-    let sd_clean = skills_dir.strip_prefix("./").unwrap_or(skills_dir);
+    let sd_clean = effective_skills_dir
+        .strip_prefix("./")
+        .unwrap_or(effective_skills_dir.as_str());
     let full_skills_dir = project.join(sd_clean);
     let skills = get_available_skills(&full_skills_dir);
-    eprintln!("✓ Found {} skills in {}", skills.len(), skills_dir);
+    eprintln!(
+        "✓ Found {} skills in {}",
+        skills.len(),
+        effective_skills_dir
+    );
 
     // Create .opencode/skills/skilllite/SKILL.md
     let skill_dir = project.join(".opencode").join("skills").join("skilllite");

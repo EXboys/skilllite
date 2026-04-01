@@ -292,3 +292,24 @@ fn reindex_empty_dir() {
     let out = run_in_dir(&["reindex", "-s", ".skills"], tmp.path());
     assert!(out.status.success());
 }
+
+#[test]
+fn default_skills_mode_warns_on_duplicate_names_between_skills_and_dotskills() {
+    let tmp = tempfile::tempdir().unwrap();
+    let skills_dir = tmp.path().join("skills").join("calculator");
+    let legacy_dir = tmp.path().join(".skills").join("calculator");
+    std::fs::create_dir_all(&skills_dir).unwrap();
+    std::fs::create_dir_all(&legacy_dir).unwrap();
+    std::fs::write(skills_dir.join("SKILL.md"), "name: calculator\n").unwrap();
+    std::fs::write(legacy_dir.join("SKILL.md"), "name: calculator\n").unwrap();
+
+    let out = run_in_dir(&["list"], tmp.path());
+    assert!(out.status.success());
+    let text = stderr_str(&out);
+    assert!(
+        text.contains("Duplicate skill names found in both skills/ and .skills/")
+            && text.contains("calculator"),
+        "expected duplicate-name warning in stderr, got: {}",
+        text
+    );
+}

@@ -434,6 +434,9 @@ skilllite/                         依赖流向
 | `skilllite clean-env` | 清理缓存的运行时环境 |
 | `skilllite reindex` | 重新索引所有已安装 skills |
 
+> 说明：在默认 `skills` 模式下，若 `skills/` 不存在但 `.skills/` 存在，SkillLite 会自动回退到 `.skills/`。
+> 当 `skills/<name>` 与 `.skills/<name>` 同时存在时，命令会输出同名冲突告警，便于定位问题。
+
 </details>
 
 <details>

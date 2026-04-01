@@ -41,7 +41,7 @@
     - Keep lifecycle split between loop + builtin handlers.
     - Implement a fully trait-object based tool runtime replacing current enum handlers.
   - Why rejected:
-    - Split lifecycle does not solve “统一契约”目标 and keeps ownership ambiguous.
+    - Split lifecycle does not satisfy the "unified contract" goal and keeps ownership ambiguous.
     - Full runtime rewrite is high-risk for this task scope and unnecessary for immediate value.
 
 - Decision: infer default tool metadata from capabilities (`ToolExecutionProfile::from_capabilities`):

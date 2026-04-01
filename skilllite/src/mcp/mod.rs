@@ -126,14 +126,14 @@ fn skip_until_newline(reader: &mut impl BufRead) {
 ///
 /// This is the entry point for `skilllite mcp-serve`.
 pub fn serve_mcp_stdio(skills_dir: &str) -> Result<()> {
-    let mut skills_path = PathBuf::from(skills_dir);
-    if skills_dir == "skills" && !skills_path.exists() {
-        let legacy = PathBuf::from(".skills");
-        if legacy.is_dir() {
-            skills_path = legacy;
-        }
+    let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let resolution = skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(
+        &workspace, skills_dir,
+    );
+    if let Some(warning) = resolution.conflict_warning() {
+        eprintln!("{}", warning);
     }
-    let mut server = McpServer::new(skills_path);
+    let mut server = McpServer::new(resolution.effective_path);
 
     let stdin = io::stdin();
     let mut stdout = io::stdout();

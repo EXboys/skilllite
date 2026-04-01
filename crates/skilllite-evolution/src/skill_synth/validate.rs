@@ -203,7 +203,12 @@ pub struct SkillValidation {
 fn brief_error(trace: &str) -> String {
     fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
         if s.chars().count() > max_chars {
-            format!("{}…", s.chars().take(max_chars.saturating_sub(3)).collect::<String>())
+            format!(
+                "{}…",
+                s.chars()
+                    .take(max_chars.saturating_sub(3))
+                    .collect::<String>()
+            )
         } else {
             s.to_string()
         }
