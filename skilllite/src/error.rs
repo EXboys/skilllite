@@ -31,14 +31,17 @@ pub enum Error {
     Sandbox(#[from] skilllite_sandbox::Error),
 
     /// Errors from `skilllite-executor`.
+    #[cfg(feature = "executor")]
     #[error(transparent)]
     Executor(#[from] skilllite_executor::Error),
 
     /// Errors from `skilllite-swarm`.
+    #[cfg(feature = "swarm")]
     #[error(transparent)]
     Swarm(#[from] skilllite_swarm::Error),
 
     /// Errors from `skilllite-agent`.
+    #[cfg(feature = "agent")]
     #[error(transparent)]
     Agent(#[from] skilllite_agent::Error),
 
