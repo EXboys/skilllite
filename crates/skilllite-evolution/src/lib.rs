@@ -842,6 +842,73 @@ fn set_backlog_status(
     Ok(())
 }
 
+const ACCEPTANCE_WINDOW_DAYS: i64 = 3;
+const ACCEPTANCE_MIN_SUCCESS_RATE: f64 = 0.70;
+const ACCEPTANCE_MAX_CORRECTION_RATE: f64 = 0.20;
+const ACCEPTANCE_MAX_ROLLBACK_RATE: f64 = 0.20;
+
+fn auto_link_acceptance_status(conn: &Connection, proposal_id: &str) -> Result<()> {
+    let updated_at: String = conn.query_row(
+        "SELECT updated_at FROM evolution_backlog WHERE proposal_id = ?1",
+        params![proposal_id],
+        |row| row.get(0),
+    )?;
+
+    let (window_days, avg_success_rate, avg_correction_rate): (i64, f64, f64) = conn.query_row(
+        "SELECT
+            COUNT(*),
+            COALESCE(AVG(first_success_rate), 0.0),
+            COALESCE(AVG(user_correction_rate), 0.0)
+         FROM evolution_metrics
+         WHERE date >= date(?1)
+           AND date < date(?1, ?2)",
+        params![updated_at, format!("+{} days", ACCEPTANCE_WINDOW_DAYS)],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+
+    if window_days < ACCEPTANCE_WINDOW_DAYS {
+        let note = format!(
+            "Awaiting acceptance window: collected {}/{} daily metrics",
+            window_days, ACCEPTANCE_WINDOW_DAYS
+        );
+        set_backlog_status(conn, proposal_id, "executed", "pending_validation", &note)?;
+        return Ok(());
+    }
+
+    let (run_count, rollback_count): (i64, i64) = conn.query_row(
+        "SELECT
+            COUNT(CASE WHEN type LIKE 'evolution_run%' THEN 1 END),
+            COUNT(CASE WHEN type LIKE 'auto_rollback%' THEN 1 END)
+         FROM evolution_log
+         WHERE date(ts) >= date(?1)
+           AND date(ts) < date(?1, ?2)",
+        params![updated_at, format!("+{} days", ACCEPTANCE_WINDOW_DAYS)],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    let rollback_rate = if run_count > 0 {
+        rollback_count as f64 / run_count as f64
+    } else {
+        0.0
+    };
+
+    let met = avg_success_rate >= ACCEPTANCE_MIN_SUCCESS_RATE
+        && avg_correction_rate <= ACCEPTANCE_MAX_CORRECTION_RATE
+        && rollback_rate <= ACCEPTANCE_MAX_ROLLBACK_RATE;
+    let acceptance_status = if met { "met" } else { "not_met" };
+    let note = format!(
+        "Acceptance window(3d): success={:.2}, correction={:.2}, rollback={:.2} ({}/{}) => {}",
+        avg_success_rate,
+        avg_correction_rate,
+        rollback_rate,
+        rollback_count,
+        run_count,
+        acceptance_status
+    );
+    set_backlog_status(conn, proposal_id, "executed", acceptance_status, &note)?;
+    Ok(())
+}
+
 fn coordinate_proposals(
     conn: &Connection,
     proposals: Vec<EvolutionProposal>,
@@ -1701,6 +1768,13 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             "pending_validation",
             "Execution completed; awaiting acceptance metrics window",
         );
+        if let Err(e) = auto_link_acceptance_status(&conn, &proposal.proposal_id) {
+            tracing::warn!(
+                "Failed to auto-link acceptance status for proposal {}: {}",
+                proposal.proposal_id,
+                e
+            );
+        }
 
         tracing::info!("Evolution txn={} complete: {}", txn_id, reason);
     }
@@ -2125,6 +2199,114 @@ mod lib_tests {
         )
         .expect("coordinate");
         assert!(matches!(decision, CoordinatorDecision::Denied(_)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    fn seed_backlog_row(conn: &Connection, proposal_id: &str, updated_at: &str) {
+        conn.execute(
+            "INSERT INTO evolution_backlog
+             (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria, status, acceptance_status, note, updated_at)
+             VALUES (?1, 'active', ?2, '{}', 'low', 0.5, 0.5, 1.0, '[]', 'executed', 'pending_validation', 'seed', ?3)",
+            rusqlite::params![proposal_id, format!("dedupe_{}", proposal_id), updated_at],
+        )
+        .expect("insert backlog row");
+    }
+
+    #[test]
+    fn auto_link_acceptance_stays_pending_without_full_window() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        seed_backlog_row(&conn, "p_pending", "2026-04-01 00:00:00");
+
+        conn.execute(
+            "INSERT INTO evolution_metrics (date, first_success_rate, avg_replans, avg_tool_calls, user_correction_rate, egl)
+             VALUES ('2026-04-01', 0.90, 0.1, 1.0, 0.05, 0.0)",
+            [],
+        )
+        .expect("insert metric");
+        conn.execute(
+            "INSERT INTO evolution_log (ts, type, target_id, reason, version)
+             VALUES ('2026-04-01T08:00:00Z', 'evolution_run', 'run', 'seed', 'txn-1')",
+            [],
+        )
+        .expect("insert run");
+
+        auto_link_acceptance_status(&conn, "p_pending").expect("auto link");
+        let (status, note): (String, String) = conn
+            .query_row(
+                "SELECT acceptance_status, note FROM evolution_backlog WHERE proposal_id = 'p_pending'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("read backlog");
+        assert_eq!(status, "pending_validation");
+        assert!(note.contains("Awaiting acceptance window"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn auto_link_acceptance_marks_met_on_healthy_window() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        seed_backlog_row(&conn, "p_met", "2026-04-01 00:00:00");
+
+        conn.execute_batch(
+            "INSERT INTO evolution_metrics (date, first_success_rate, avg_replans, avg_tool_calls, user_correction_rate, egl)
+             VALUES
+             ('2026-04-01', 0.82, 0.1, 1.0, 0.08, 0.0),
+             ('2026-04-02', 0.85, 0.1, 1.0, 0.10, 0.0),
+             ('2026-04-03', 0.80, 0.1, 1.0, 0.12, 0.0);
+             INSERT INTO evolution_log (ts, type, target_id, reason, version) VALUES
+             ('2026-04-01T08:00:00Z', 'evolution_run', 'run', 'seed', 'txn-1'),
+             ('2026-04-02T08:00:00Z', 'evolution_run', 'run', 'seed', 'txn-2'),
+             ('2026-04-03T08:00:00Z', 'evolution_run', 'run', 'seed', 'txn-3');",
+        )
+        .expect("seed metrics and runs");
+
+        auto_link_acceptance_status(&conn, "p_met").expect("auto link");
+        let status: String = conn
+            .query_row(
+                "SELECT acceptance_status FROM evolution_backlog WHERE proposal_id = 'p_met'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read status");
+        assert_eq!(status, "met");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn auto_link_acceptance_marks_not_met_when_rollback_rate_high() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        seed_backlog_row(&conn, "p_not_met", "2026-04-01 00:00:00");
+
+        conn.execute_batch(
+            "INSERT INTO evolution_metrics (date, first_success_rate, avg_replans, avg_tool_calls, user_correction_rate, egl)
+             VALUES
+             ('2026-04-01', 0.85, 0.1, 1.0, 0.10, 0.0),
+             ('2026-04-02', 0.88, 0.1, 1.0, 0.10, 0.0),
+             ('2026-04-03', 0.87, 0.1, 1.0, 0.10, 0.0);
+             INSERT INTO evolution_log (ts, type, target_id, reason, version) VALUES
+             ('2026-04-01T08:00:00Z', 'evolution_run', 'run', 'seed', 'txn-1'),
+             ('2026-04-02T08:00:00Z', 'evolution_run', 'run', 'seed', 'txn-2'),
+             ('2026-04-03T08:00:00Z', 'evolution_run', 'run', 'seed', 'txn-3'),
+             ('2026-04-02T09:00:00Z', 'auto_rollback', 'txn-2', 'decline', 'rollback_txn-2');",
+        )
+        .expect("seed metrics and rollback");
+
+        auto_link_acceptance_status(&conn, "p_not_met").expect("auto link");
+        let status: String = conn
+            .query_row(
+                "SELECT acceptance_status FROM evolution_backlog WHERE proposal_id = 'p_not_met'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read status");
+        assert_eq!(status, "not_met");
         let _ = std::fs::remove_dir_all(&root);
     }
 }
