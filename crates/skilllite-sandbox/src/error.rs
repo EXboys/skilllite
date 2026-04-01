@@ -16,6 +16,7 @@ pub enum Error {
     BashValidation(#[from] BashValidationError),
 
     /// Nix syscall error (e.g. mount/unshare namespace operations).
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[error(transparent)]
     Nix(#[from] nix::errno::Errno),
 
