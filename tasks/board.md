@@ -16,6 +16,10 @@ Last updated: 2026-04-01
 
 ## Done
 
+- `TASK-2026-011-rpc-tool-result-dedupe` - Status: `done` - Owner: `exboys`
+- `TASK-2026-010-env-profiler-toolcheck` - Status: `done` - Owner: `exboys`
+- `TASK-2026-009-capability-registry-gap-analyzer` - Status: `done` - Owner: `exboys`
+- `TASK-2026-008-goal-contract-mvp` - Status: `done` - Owner: `exboys`
 - `TASK-2026-007-unify-skill-dir-fallback` - Status: `done` - Owner: `exboys`
 - `TASK-2026-006-error-type-unification` - Status: `done` - Owner: `exboys`
 - `TASK-2026-002-agent-loop-modularization` - Status: `done` - Owner: `exboys`

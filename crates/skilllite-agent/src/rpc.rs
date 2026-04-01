@@ -63,6 +63,8 @@ use crate::error::bail;
 use crate::Result;
 use anyhow::Context;
 use serde_json::{json, Value};
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -80,6 +82,10 @@ struct RpcEventSink {
     writer: Arc<Mutex<io::Stdout>>,
     /// Shared reader handle for confirmation prompts
     confirmation_rx: Arc<Mutex<BufReader<io::Stdin>>>,
+    /// Current conversation turn index for dedupe scoping.
+    turn_id: u64,
+    /// Same-turn emitted tool_result keys to suppress duplicates in UI stream.
+    emitted_tool_result_keys: HashSet<String>,
 }
 
 impl RpcEventSink {
@@ -87,6 +93,8 @@ impl RpcEventSink {
         Self {
             writer,
             confirmation_rx: reader,
+            turn_id: 0,
+            emitted_tool_result_keys: HashSet::new(),
         }
     }
 
@@ -99,7 +107,21 @@ impl RpcEventSink {
     }
 }
 
+fn build_tool_result_dedupe_key(turn_id: u64, name: &str, result: &str, is_error: bool) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    name.hash(&mut hasher);
+    result.hash(&mut hasher);
+    is_error.hash(&mut hasher);
+    let content_hash = hasher.finish();
+    format!("{turn_id}:{name}:{content_hash}:{is_error}")
+}
+
 impl EventSink for RpcEventSink {
+    fn on_turn_start(&mut self) {
+        self.turn_id = self.turn_id.saturating_add(1);
+        self.emitted_tool_result_keys.clear();
+    }
+
     fn on_text(&mut self, text: &str) {
         self.emit("text", json!({ "text": text }));
     }
@@ -113,6 +135,10 @@ impl EventSink for RpcEventSink {
     }
 
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool) {
+        let key = build_tool_result_dedupe_key(self.turn_id, name, result, is_error);
+        if !self.emitted_tool_result_keys.insert(key) {
+            return;
+        }
         self.emit(
             "tool_result",
             json!({ "name": name, "result": result, "is_error": is_error }),
@@ -442,4 +468,27 @@ async fn handle_agent_chat(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_tool_result_dedupe_key;
+
+    #[test]
+    fn dedupe_key_is_stable_for_same_input() {
+        let a = build_tool_result_dedupe_key(1, "weather", "ok", false);
+        let b = build_tool_result_dedupe_key(1, "weather", "ok", false);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn dedupe_key_changes_on_turn_or_content_or_error_flag() {
+        let base = build_tool_result_dedupe_key(1, "weather", "ok", false);
+        let different_turn = build_tool_result_dedupe_key(2, "weather", "ok", false);
+        let different_content = build_tool_result_dedupe_key(1, "weather", "ok2", false);
+        let different_error = build_tool_result_dedupe_key(1, "weather", "ok", true);
+        assert_ne!(base, different_turn);
+        assert_ne!(base, different_content);
+        assert_ne!(base, different_error);
+    }
 }

@@ -44,6 +44,7 @@ Rules:
 - Only one owner per task, but multiple contributors are allowed.
 - One task should target one mergeable objective.
 - A task cannot move to `done` without validation evidence.
+- Task artifacts (`TASK.md`, `PRD.md`, `CONTEXT.md`, `STATUS.md`, `REVIEW.md`) should be written in English (see `spec/task-artifact-language.md`).
 
 ## Execution Flow
 

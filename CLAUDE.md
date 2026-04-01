@@ -5,6 +5,7 @@ Use the same rule semantics as Cursor, but follow Claude's file conventions.
 ## Source of Truth
 
 - **Verification integrity (highest priority)**: `spec/verification-integrity.md`
+- Task artifact language policy: `spec/task-artifact-language.md`
 - Spec routing and enforcement: `spec/README.md`
 - Architecture constraints: `spec/architecture-boundaries.md`
 - Rust coding conventions: `spec/rust-conventions.md`
@@ -39,6 +40,7 @@ Do not duplicate rule content in this file. Follow the referenced files directly
    - `CONTEXT.md`
    - `STATUS.md`
    - `REVIEW.md`
+   - Keep task artifacts in English per `spec/task-artifact-language.md`
 5. Keep `tasks/board.md` in sync with real status.
 6. For any Rust code change, enforce `spec/rust-conventions.md` and `spec/testing-policy.md`.
 7. For behavior/command/env/doc/release changes, enforce `spec/docs-sync.md`.

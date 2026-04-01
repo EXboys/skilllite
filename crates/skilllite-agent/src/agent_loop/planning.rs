@@ -17,7 +17,7 @@ use super::super::skills::LoadedSkill;
 use super::super::soul::Soul;
 use super::super::task_planner::TaskPlanner;
 use super::super::types::*;
-use super::helpers::extract_goal_boundaries_hybrid;
+use super::helpers::{extract_goal_boundaries_hybrid, extract_goal_contract_hybrid};
 
 /// Output of the planning phase, consumed by the execution loop.
 pub(super) struct PlanningResult {
@@ -87,6 +87,11 @@ pub(super) async fn run_planning_phase(
     } else {
         config.goal_boundaries.clone()
     };
+    let effective_contract = if session_key == Some("run") {
+        Some(extract_goal_contract_hybrid(client, &config.model, user_message).await)
+    } else {
+        None
+    };
 
     // Generate task list via LLM
     let _tasks = planner
@@ -97,6 +102,7 @@ pub(super) async fn run_planning_phase(
             skills,
             conversation_context.as_deref(),
             effective_boundaries.as_ref(),
+            effective_contract.as_ref(),
             soul.as_ref(),
         )
         .await?;
@@ -161,7 +167,7 @@ pub(super) async fn run_planning_phase(
         &chat_root,
     );
 
-    let _ = (soul, effective_boundaries); // used locally above; not passed to caller
+    let _ = (soul, effective_boundaries, effective_contract); // used locally above; not passed to caller
     Ok(PlanningResult {
         planner,
         messages,

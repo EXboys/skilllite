@@ -9,7 +9,11 @@
 
 pub mod llm;
 pub mod extensions;
+pub mod capability_gap_analyzer;
+pub mod capability_registry;
+pub mod env_profiler;
 pub mod goal_boundaries;
+pub mod goal_contract;
 pub mod skills;
 pub mod prompt;
 pub mod agent_loop;

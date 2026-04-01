@@ -10,6 +10,7 @@ use crate::Result;
 
 use super::super::extensions::{self};
 use super::super::goal_boundaries::{self, GoalBoundaries};
+use super::super::goal_contract::{self, GoalContract, RiskLevel};
 use super::super::llm::LlmClient;
 use super::super::long_text;
 use super::super::prompt;
@@ -494,6 +495,112 @@ Use null for any field you cannot infer. Output only valid JSON, no markdown, no
     })
 }
 
+fn strip_json_code_fence(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    if trimmed.starts_with("```json") {
+        trimmed
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+    } else if trimmed.starts_with("```") {
+        trimmed
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim()
+    } else {
+        trimmed
+    }
+}
+
+fn parse_goal_contract_json(json_str: &str) -> Result<GoalContract> {
+    let v: Value = serde_json::from_str(json_str)
+        .map_err(|e| crate::Error::validation(format!("Goal contract JSON parse error: {}", e)))?;
+
+    let goal = v
+        .get("goal")
+        .and_then(|s| s.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let acceptance = v
+        .get("acceptance")
+        .and_then(|s| s.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let constraints = v
+        .get("constraints")
+        .and_then(|s| s.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let deadline = v
+        .get("deadline")
+        .and_then(|s| s.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let risk_level = v
+        .get("risk_level")
+        .and_then(|s| s.as_str())
+        .and_then(RiskLevel::from_text);
+
+    Ok(GoalContract {
+        goal,
+        acceptance,
+        constraints,
+        deadline,
+        risk_level,
+    })
+}
+
+/// Extract goal contract via LLM for better robustness on free-form input.
+pub(super) async fn extract_goal_contract_llm(
+    client: &LlmClient,
+    model: &str,
+    goal: &str,
+) -> Result<GoalContract> {
+    const PROMPT: &str = r#"Extract an executable goal contract from user goal text. Return JSON only:
+{"goal":"...","acceptance":"...","constraints":"...","deadline":"...","risk_level":"low|medium|high|critical"}
+- Use null for unknown fields
+- risk_level must be one of low|medium|high|critical or null
+- Output only valid JSON; no markdown or explanation."#;
+
+    let messages = vec![ChatMessage::system(PROMPT), ChatMessage::user(goal)];
+    let resp = client
+        .chat_completion(model, &messages, None, Some(0.2))
+        .await?;
+
+    let raw = resp
+        .choices
+        .first()
+        .and_then(|c| c.message.content.clone())
+        .unwrap_or_default();
+
+    parse_goal_contract_json(strip_json_code_fence(&raw))
+}
+
+/// Hybrid extraction for goal contract:
+/// - Try LLM first (richer semantic parsing for free-form goals)
+/// - Fallback to regex-based extractor on any failure
+pub(super) async fn extract_goal_contract_hybrid(
+    client: &LlmClient,
+    model: &str,
+    goal: &str,
+) -> GoalContract {
+    match extract_goal_contract_llm(client, model, goal).await {
+        Ok(c) if !c.is_empty() => c,
+        Ok(_) => {
+            tracing::info!("Goal contract LLM extraction empty, fallback to regex extraction");
+            goal_contract::extract_goal_contract(goal)
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Goal contract LLM extraction failed: {}, fallback to regex extraction",
+                e
+            );
+            goal_contract::extract_goal_contract(goal)
+        }
+    }
+}
+
 /// Hybrid extraction: regex first, LLM fallback when regex returns empty.
 /// LLM fallback only when SKILLLITE_GOAL_LLM_EXTRACT=1.
 pub(super) async fn extract_goal_boundaries_hybrid(
@@ -792,5 +899,26 @@ mod tests {
         assert_eq!(out.iterations, 4);
         assert_eq!(out.task_plan.len(), plan.len());
         assert_eq!(out.task_plan[0].id, plan[0].id);
+    }
+
+    #[test]
+    fn parse_goal_contract_json_maps_fields_and_risk() {
+        let json = r#"{"goal":"Ship v1","acceptance":"all tests pass","constraints":"no new deps","deadline":"Friday","risk_level":"high"}"#;
+        let c = parse_goal_contract_json(json).expect("should parse");
+        assert_eq!(c.goal.as_deref(), Some("Ship v1"));
+        assert_eq!(c.acceptance.as_deref(), Some("all tests pass"));
+        assert_eq!(c.constraints.as_deref(), Some("no new deps"));
+        assert_eq!(c.deadline.as_deref(), Some("Friday"));
+        assert_eq!(c.risk_level, Some(RiskLevel::High));
+    }
+
+    #[test]
+    fn parse_goal_contract_json_rejects_invalid_json() {
+        let err = parse_goal_contract_json("{invalid json").expect_err("must fail");
+        assert!(
+            err.to_string().contains("Goal contract JSON parse error"),
+            "{}",
+            err
+        );
     }
 }

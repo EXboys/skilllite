@@ -10,13 +10,14 @@ Before implementation, load `spec/README.md` and choose injected specs using its
 ## Required Workflow
 
 1. **Always** inject `spec/verification-integrity.md` first — this is the highest-priority spec and applies unconditionally.
-2. Determine task type:
+2. **Always** inject `spec/task-artifact-language.md` for task execution records (`tasks/TASK-.../*`).
+3. Determine task type:
    - `architecture`, `security`, `sandbox`, `agent`, `commands`, `mcp`, `python-sdk`, `docs-only`, or `mixed`.
-3. Build `[Injected Specs]` from `spec/README.md`.
-4. Follow all MUST / MUST NOT / CHECKLIST items in each injected spec.
-5. If multiple mappings match, inject all matched specs.
-6. For any Rust code change, always include `spec/rust-conventions.md` and `spec/testing-policy.md`.
-7. If user-visible behavior, env vars, commands, architecture docs, or release matrix change, include `spec/docs-sync.md`.
+4. Build `[Injected Specs]` from `spec/README.md`.
+5. Follow all MUST / MUST NOT / CHECKLIST items in each injected spec.
+6. If multiple mappings match, inject all matched specs.
+7. For any Rust code change, always include `spec/rust-conventions.md` and `spec/testing-policy.md`.
+8. If user-visible behavior, env vars, commands, architecture docs, or release matrix change, include `spec/docs-sync.md`.
 
 ## Output Convention
 

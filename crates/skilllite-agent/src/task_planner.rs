@@ -14,8 +14,12 @@ use std::path::Path;
 use crate::error::bail;
 use crate::Result;
 
+use super::capability_gap_analyzer::analyze_capability_gaps;
+use super::capability_registry::build_capability_registry;
+use super::env_profiler::collect_safe_env_profile;
 use super::extensions::ToolAvailabilityView;
 use super::goal_boundaries::GoalBoundaries;
+use super::goal_contract::GoalContract;
 use super::llm::LlmClient;
 use super::planning_rules;
 use super::skills::LoadedSkill;
@@ -181,6 +185,7 @@ impl TaskPlanner {
     ///
     /// `goal_boundaries`: Optional extracted boundaries (scope, exclusions, completion conditions)
     /// to inject into planning. Used in run mode for long-running tasks.
+    /// `goal_contract`: Optional executable contract (goal/acceptance/constraints/deadline/risk).
     /// `soul`: Optional SOUL identity document; when present, Scope & Boundaries are injected (A8).
     #[allow(clippy::too_many_arguments)]
     pub async fn generate_task_list(
@@ -191,6 +196,7 @@ impl TaskPlanner {
         skills: &[LoadedSkill],
         conversation_context: Option<&str>,
         goal_boundaries: Option<&GoalBoundaries>,
+        goal_contract: Option<&GoalContract>,
         soul: Option<&Soul>,
     ) -> Result<Vec<Task>> {
         self.available_rules = self.filter_rules_by_available_skills(&self.rules, skills);
@@ -228,6 +234,26 @@ impl TaskPlanner {
             "**PRIMARY — Plan ONLY based on this**:\nUser request: {}\n\n",
             user_message
         );
+        let env_profile = collect_safe_env_profile();
+        user_content.push_str(&env_profile.to_planning_block());
+        user_content.push_str("\n\n");
+        let capability_registry = build_capability_registry(&visible_skills);
+        if !capability_registry.is_empty() {
+            user_content.push_str(&capability_registry.to_planning_block());
+            user_content.push_str("\n\n");
+        }
+        let gap_report = analyze_capability_gaps(user_message, goal_contract, &capability_registry);
+        if !gap_report.is_empty() {
+            user_content.push_str(&gap_report.to_planning_block());
+            user_content.push_str("\n\n");
+        }
+        // P7-A: Inject executable goal contract when available.
+        if let Some(contract) = goal_contract {
+            if !contract.is_empty() {
+                user_content.push_str(&contract.to_planning_block());
+                user_content.push_str("\n\n");
+            }
+        }
         // A5: Inject goal boundaries when available (run mode)
         if let Some(gb) = goal_boundaries {
             if !gb.is_empty() {

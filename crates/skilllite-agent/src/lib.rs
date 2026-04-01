@@ -2,12 +2,16 @@ pub mod error;
 pub use error::{Error, Result};
 
 pub mod agent_loop;
+pub mod capability_gap_analyzer;
+pub mod capability_registry;
 pub mod chat;
 pub mod chat_session;
 pub mod dependency_resolver;
+pub mod env_profiler;
 pub mod evolution;
 pub mod extensions;
 pub mod goal_boundaries;
+pub mod goal_contract;
 pub mod high_risk;
 pub mod llm;
 pub mod long_text;
