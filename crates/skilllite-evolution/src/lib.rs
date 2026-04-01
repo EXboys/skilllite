@@ -842,12 +842,67 @@ fn set_backlog_status(
     Ok(())
 }
 
-const ACCEPTANCE_WINDOW_DAYS: i64 = 3;
-const ACCEPTANCE_MIN_SUCCESS_RATE: f64 = 0.70;
-const ACCEPTANCE_MAX_CORRECTION_RATE: f64 = 0.20;
-const ACCEPTANCE_MAX_ROLLBACK_RATE: f64 = 0.20;
+#[derive(Debug, Clone, Copy)]
+struct AcceptanceThresholds {
+    window_days: i64,
+    min_success_rate: f64,
+    max_correction_rate: f64,
+    max_rollback_rate: f64,
+}
+
+impl Default for AcceptanceThresholds {
+    fn default() -> Self {
+        Self {
+            window_days: 3,
+            min_success_rate: 0.70,
+            max_correction_rate: 0.20,
+            max_rollback_rate: 0.20,
+        }
+    }
+}
+
+impl AcceptanceThresholds {
+    fn from_env() -> Self {
+        let parse_i64 = |key: &str, default: i64| {
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
+        };
+        let parse_f64 = |key: &str, default: f64| {
+            std::env::var(key)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(default)
+        };
+        let base = Self::default();
+        Self {
+            window_days: parse_i64(
+                evo_keys::SKILLLITE_EVO_ACCEPTANCE_WINDOW_DAYS,
+                base.window_days,
+            )
+            .max(1),
+            min_success_rate: parse_f64(
+                evo_keys::SKILLLITE_EVO_ACCEPTANCE_MIN_SUCCESS_RATE,
+                base.min_success_rate,
+            )
+            .clamp(0.0, 1.0),
+            max_correction_rate: parse_f64(
+                evo_keys::SKILLLITE_EVO_ACCEPTANCE_MAX_CORRECTION_RATE,
+                base.max_correction_rate,
+            )
+            .clamp(0.0, 1.0),
+            max_rollback_rate: parse_f64(
+                evo_keys::SKILLLITE_EVO_ACCEPTANCE_MAX_ROLLBACK_RATE,
+                base.max_rollback_rate,
+            )
+            .clamp(0.0, 1.0),
+        }
+    }
+}
 
 fn auto_link_acceptance_status(conn: &Connection, proposal_id: &str) -> Result<()> {
+    let thresholds = AcceptanceThresholds::from_env();
     let updated_at: String = conn.query_row(
         "SELECT updated_at FROM evolution_backlog WHERE proposal_id = ?1",
         params![proposal_id],
@@ -862,14 +917,14 @@ fn auto_link_acceptance_status(conn: &Connection, proposal_id: &str) -> Result<(
          FROM evolution_metrics
          WHERE date >= date(?1)
            AND date < date(?1, ?2)",
-        params![updated_at, format!("+{} days", ACCEPTANCE_WINDOW_DAYS)],
+        params![updated_at, format!("+{} days", thresholds.window_days)],
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
 
-    if window_days < ACCEPTANCE_WINDOW_DAYS {
+    if window_days < thresholds.window_days {
         let note = format!(
             "Awaiting acceptance window: collected {}/{} daily metrics",
-            window_days, ACCEPTANCE_WINDOW_DAYS
+            window_days, thresholds.window_days
         );
         set_backlog_status(conn, proposal_id, "executed", "pending_validation", &note)?;
         return Ok(());
@@ -882,7 +937,7 @@ fn auto_link_acceptance_status(conn: &Connection, proposal_id: &str) -> Result<(
          FROM evolution_log
          WHERE date(ts) >= date(?1)
            AND date(ts) < date(?1, ?2)",
-        params![updated_at, format!("+{} days", ACCEPTANCE_WINDOW_DAYS)],
+        params![updated_at, format!("+{} days", thresholds.window_days)],
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
 
@@ -892,12 +947,13 @@ fn auto_link_acceptance_status(conn: &Connection, proposal_id: &str) -> Result<(
         0.0
     };
 
-    let met = avg_success_rate >= ACCEPTANCE_MIN_SUCCESS_RATE
-        && avg_correction_rate <= ACCEPTANCE_MAX_CORRECTION_RATE
-        && rollback_rate <= ACCEPTANCE_MAX_ROLLBACK_RATE;
+    let met = avg_success_rate >= thresholds.min_success_rate
+        && avg_correction_rate <= thresholds.max_correction_rate
+        && rollback_rate <= thresholds.max_rollback_rate;
     let acceptance_status = if met { "met" } else { "not_met" };
     let note = format!(
-        "Acceptance window(3d): success={:.2}, correction={:.2}, rollback={:.2} ({}/{}) => {}",
+        "Acceptance window({}d): success={:.2}, correction={:.2}, rollback={:.2} ({}/{}) => {}",
+        thresholds.window_days,
         avg_success_rate,
         avg_correction_rate,
         rollback_rate,
@@ -1278,6 +1334,84 @@ pub fn create_snapshot(chat_root: &Path, txn_id: &str, files: &[&str]) -> Result
     Ok(backed_up)
 }
 
+fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    if !src.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            if let Some(parent) = dst_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn create_extended_snapshot(
+    chat_root: &Path,
+    skills_root: Option<&Path>,
+    txn_id: &str,
+    include_prompts: bool,
+    include_memory: bool,
+    include_skills: bool,
+) -> Result<Vec<String>> {
+    let mut backed_up = Vec::new();
+    if include_prompts {
+        backed_up.extend(create_snapshot(
+            chat_root,
+            txn_id,
+            &[
+                "rules.json",
+                "examples.json",
+                "planning.md",
+                "execution.md",
+                "system.md",
+            ],
+        )?);
+    } else {
+        let snap_dir = versions_dir(chat_root).join(txn_id);
+        std::fs::create_dir_all(&snap_dir)?;
+    }
+
+    let snap_dir = versions_dir(chat_root).join(txn_id);
+    if include_memory {
+        let memory_src = chat_root
+            .join("memory")
+            .join("evolution")
+            .join("knowledge.md");
+        if memory_src.exists() {
+            let memory_dst = snap_dir.join("memory").join("knowledge.md");
+            if let Some(parent) = memory_dst.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(memory_src, memory_dst)?;
+            backed_up.push("memory/evolution/knowledge.md".to_string());
+        }
+    }
+
+    if include_skills {
+        if let Some(sr) = skills_root {
+            let evolved_src = sr.join("_evolved");
+            if evolved_src.exists() {
+                let evolved_dst = snap_dir.join("skills").join("_evolved");
+                copy_dir_recursive(&evolved_src, &evolved_dst)?;
+                backed_up.push("skills/_evolved".to_string());
+            }
+        }
+    }
+
+    prune_snapshots(chat_root, evolution_snapshot_keep_count());
+    Ok(backed_up)
+}
+
 pub fn restore_snapshot(chat_root: &Path, txn_id: &str) -> Result<()> {
     let snap_dir = versions_dir(chat_root).join(txn_id);
     if !snap_dir.exists() {
@@ -1286,10 +1420,46 @@ pub fn restore_snapshot(chat_root: &Path, txn_id: &str) -> Result<()> {
     let prompts = chat_root.join("prompts");
     for entry in std::fs::read_dir(&snap_dir)? {
         let entry = entry?;
+        if entry.file_type()?.is_dir() {
+            continue;
+        }
         let dst = prompts.join(entry.file_name());
         std::fs::copy(entry.path(), &dst)?;
     }
     tracing::info!("Restored snapshot {}", txn_id);
+    Ok(())
+}
+
+fn restore_extended_snapshot(
+    chat_root: &Path,
+    skills_root: Option<&Path>,
+    txn_id: &str,
+) -> Result<()> {
+    restore_snapshot(chat_root, txn_id)?;
+    let snap_dir = versions_dir(chat_root).join(txn_id);
+
+    let memory_src = snap_dir.join("memory").join("knowledge.md");
+    if memory_src.exists() {
+        let memory_dst = chat_root
+            .join("memory")
+            .join("evolution")
+            .join("knowledge.md");
+        if let Some(parent) = memory_dst.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::copy(memory_src, memory_dst)?;
+    }
+
+    let skills_src = snap_dir.join("skills").join("_evolved");
+    if skills_src.exists() {
+        if let Some(sr) = skills_root {
+            let skills_dst = sr.join("_evolved");
+            if skills_dst.exists() {
+                std::fs::remove_dir_all(&skills_dst)?;
+            }
+            copy_dir_recursive(&skills_src, &skills_dst)?;
+        }
+    }
     Ok(())
 }
 
@@ -1535,21 +1705,14 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         scope.memory,
         scope.skills
     );
-    let snapshot_files = if scope.prompts {
-        create_snapshot(
-            chat_root,
-            &txn_id,
-            &[
-                "rules.json",
-                "examples.json",
-                "planning.md",
-                "execution.md",
-                "system.md",
-            ],
-        )?
-    } else {
-        Vec::new()
-    };
+    let snapshot_files = create_extended_snapshot(
+        chat_root,
+        skills_root,
+        &txn_id,
+        scope.prompts,
+        scope.memory,
+        scope.skills,
+    )?;
 
     // Drop conn before async work (Connection is !Send, cannot hold across .await).
     drop(conn);
@@ -1654,7 +1817,7 @@ async fn run_evolution_inner<L: EvolutionLlm>(
 
         mark_decisions_evolved(&conn, &scope.decision_ids)?;
         let _ = feedback::update_daily_metrics(&conn);
-        let auto_rolled_back = check_auto_rollback(&conn, chat_root)?;
+        let auto_rolled_back = check_auto_rollback(&conn, chat_root, skills_root)?;
         if auto_rolled_back {
             tracing::info!("EVO: auto-rollback triggered for txn={}", txn_id);
             let _ = log_evolution_event(
@@ -1861,11 +2024,12 @@ pub fn on_shutdown(chat_root: &Path) {
 fn execute_evolution_rollback(
     conn: &Connection,
     chat_root: &Path,
+    skills_root: Option<&Path>,
     txn_id: &str,
     reason: &str,
 ) -> Result<()> {
     tracing::warn!("Evolution rollback executed: {} (txn={})", reason, txn_id);
-    restore_snapshot(chat_root, txn_id)?;
+    restore_extended_snapshot(chat_root, skills_root, txn_id)?;
 
     conn.execute(
         "UPDATE evolution_log SET type = type || '_rolled_back' WHERE version = ?1",
@@ -1882,7 +2046,11 @@ fn execute_evolution_rollback(
     )?;
     Ok(())
 }
-pub fn check_auto_rollback(conn: &Connection, chat_root: &Path) -> Result<bool> {
+pub fn check_auto_rollback(
+    conn: &Connection,
+    chat_root: &Path,
+    skills_root: Option<&Path>,
+) -> Result<bool> {
     let mut stmt = conn.prepare(
         "SELECT date, first_success_rate, user_correction_rate
          FROM evolution_metrics
@@ -1919,7 +2087,7 @@ pub fn check_auto_rollback(conn: &Connection, chat_root: &Path) -> Result<bool> 
             .ok();
 
         if let Some(txn_id) = last_txn {
-            execute_evolution_rollback(conn, chat_root, &txn_id, reason)?;
+            execute_evolution_rollback(conn, chat_root, skills_root, &txn_id, reason)?;
             return Ok(true);
         }
     }
@@ -2307,6 +2475,57 @@ mod lib_tests {
             )
             .expect("read status");
         assert_eq!(status, "not_met");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn acceptance_thresholds_read_from_env_and_clamped() {
+        std::env::set_var("SKILLLITE_EVO_ACCEPTANCE_WINDOW_DAYS", "0");
+        std::env::set_var("SKILLLITE_EVO_ACCEPTANCE_MIN_SUCCESS_RATE", "1.2");
+        std::env::set_var("SKILLLITE_EVO_ACCEPTANCE_MAX_CORRECTION_RATE", "-0.1");
+        std::env::set_var("SKILLLITE_EVO_ACCEPTANCE_MAX_ROLLBACK_RATE", "0.35");
+        let t = AcceptanceThresholds::from_env();
+        assert_eq!(t.window_days, 1);
+        assert!((t.min_success_rate - 1.0).abs() < 1e-9);
+        assert!((t.max_correction_rate - 0.0).abs() < 1e-9);
+        assert!((t.max_rollback_rate - 0.35).abs() < 1e-9);
+        std::env::remove_var("SKILLLITE_EVO_ACCEPTANCE_WINDOW_DAYS");
+        std::env::remove_var("SKILLLITE_EVO_ACCEPTANCE_MIN_SUCCESS_RATE");
+        std::env::remove_var("SKILLLITE_EVO_ACCEPTANCE_MAX_CORRECTION_RATE");
+        std::env::remove_var("SKILLLITE_EVO_ACCEPTANCE_MAX_ROLLBACK_RATE");
+    }
+
+    #[test]
+    fn extended_snapshot_restores_memory_and_skills() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let skills_root = root.join("skills_project");
+        let prompts_dir = root.join("prompts");
+        let memory_dir = root.join("memory").join("evolution");
+        let evolved_dir = skills_root.join("_evolved").join("s1");
+        std::fs::create_dir_all(&prompts_dir).expect("prompts");
+        std::fs::create_dir_all(&memory_dir).expect("memory");
+        std::fs::create_dir_all(&evolved_dir).expect("skills");
+        std::fs::write(prompts_dir.join("rules.json"), b"before_rules").expect("rules");
+        std::fs::write(memory_dir.join("knowledge.md"), b"before_memory").expect("memory");
+        std::fs::write(evolved_dir.join("SKILL.md"), b"before_skill").expect("skill");
+
+        let snap = create_extended_snapshot(&root, Some(&skills_root), "txn_x", true, true, true)
+            .expect("snapshot");
+        assert!(snap.iter().any(|f| f == "memory/evolution/knowledge.md"));
+        assert!(snap.iter().any(|f| f == "skills/_evolved"));
+
+        std::fs::write(prompts_dir.join("rules.json"), b"after_rules").expect("rules mutate");
+        std::fs::write(memory_dir.join("knowledge.md"), b"after_memory").expect("memory mutate");
+        std::fs::write(evolved_dir.join("SKILL.md"), b"after_skill").expect("skill mutate");
+
+        restore_extended_snapshot(&root, Some(&skills_root), "txn_x").expect("restore");
+        let rules = std::fs::read_to_string(prompts_dir.join("rules.json")).expect("rules read");
+        let memory = std::fs::read_to_string(memory_dir.join("knowledge.md")).expect("memory read");
+        let skill = std::fs::read_to_string(evolved_dir.join("SKILL.md")).expect("skill read");
+        assert_eq!(rules, "before_rules");
+        assert_eq!(memory, "before_memory");
+        assert_eq!(skill, "before_skill");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

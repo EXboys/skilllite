@@ -175,6 +175,17 @@ pub mod evolution {
     /// 重复模式判定：成功率 ≥ 此值（0~1）。默认 0.8。
     pub const SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE: &str =
         "SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE";
+    /// Acceptance window size (days) for auto-linking backlog acceptance status. Default 3.
+    pub const SKILLLITE_EVO_ACCEPTANCE_WINDOW_DAYS: &str = "SKILLLITE_EVO_ACCEPTANCE_WINDOW_DAYS";
+    /// Acceptance threshold: minimum first_success_rate in window. Default 0.70.
+    pub const SKILLLITE_EVO_ACCEPTANCE_MIN_SUCCESS_RATE: &str =
+        "SKILLLITE_EVO_ACCEPTANCE_MIN_SUCCESS_RATE";
+    /// Acceptance threshold: maximum user_correction_rate in window. Default 0.20.
+    pub const SKILLLITE_EVO_ACCEPTANCE_MAX_CORRECTION_RATE: &str =
+        "SKILLLITE_EVO_ACCEPTANCE_MAX_CORRECTION_RATE";
+    /// Acceptance threshold: maximum rollback_rate in window. Default 0.20.
+    pub const SKILLLITE_EVO_ACCEPTANCE_MAX_ROLLBACK_RATE: &str =
+        "SKILLLITE_EVO_ACCEPTANCE_MAX_ROLLBACK_RATE";
 }
 
 /// A11: 高危工具确认 — 可配置哪些操作需发消息确认

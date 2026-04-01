@@ -206,6 +206,10 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_EVO_RISK_BUDGET_HIGH_PER_DAY` | int | `0` | Daily auto-execution budget for high-risk proposals (`0` = manual queue only) |
 | `SKILLLITE_EVO_RISK_BUDGET_CRITICAL_PER_DAY` | int | `0` | Daily auto-execution budget for critical-risk proposals (`0` = deny/queue per policy) |
 | `SKILLLITE_EVO_PROFILE` | string | (unset) | Evolution trigger profile: `demo` = more frequent (demos/testing), `default` or unset = same as original defaults, `conservative` = less frequent (production/cost-saving). **Unset or `default` keeps behavior unchanged.** |
+| `SKILLLITE_EVO_ACCEPTANCE_WINDOW_DAYS` | int | `3` | Acceptance linkage window size (days) for backlog auto-judgement |
+| `SKILLLITE_EVO_ACCEPTANCE_MIN_SUCCESS_RATE` | float | `0.70` | Acceptance threshold: minimum `first_success_rate` within the window |
+| `SKILLLITE_EVO_ACCEPTANCE_MAX_CORRECTION_RATE` | float | `0.20` | Acceptance threshold: maximum `user_correction_rate` within the window |
+| `SKILLLITE_EVO_ACCEPTANCE_MAX_ROLLBACK_RATE` | float | `0.20` | Acceptance threshold: maximum rollback rate (`auto_rollback / evolution_run`) in the window |
 | `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill same-round dedup: `0` disables description similarity check; otherwise skips if new skill's description is highly similar to existing pending |
 
 **Advanced variables** (fine-tune thresholds when needed; when unset, values come from `SKILLLITE_EVO_PROFILE` or defaults):

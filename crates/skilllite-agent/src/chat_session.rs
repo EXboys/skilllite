@@ -1121,7 +1121,7 @@ async fn run_evolution_and_emit_summary(
                 for msg in &skilllite_evolution::format_evolution_changes(&changes) {
                     eprintln!("{}", msg);
                 }
-                let _ = skilllite_evolution::check_auto_rollback(&conn, data_root);
+                let _ = skilllite_evolution::check_auto_rollback(&conn, data_root, skills_root_ref);
                 // 若本次进化写入了记忆知识，将其加入 memory 索引，以便 memory_search / build_memory_context 能搜到
                 if changes.iter().any(|(t, _)| t == "memory_knowledge_added") {
                     let _ = extensions::index_evolution_knowledge(data_root, "default");

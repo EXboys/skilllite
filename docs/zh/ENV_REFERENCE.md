@@ -206,6 +206,10 @@
 | `SKILLLITE_EVO_RISK_BUDGET_HIGH_PER_DAY` | int | `0` | 高风险提案每日自动执行预算（`0` 表示仅入人工队列） |
 | `SKILLLITE_EVO_RISK_BUDGET_CRITICAL_PER_DAY` | int | `0` | 极高风险提案每日自动执行预算（`0` 表示由策略拒绝/排队） |
 | `SKILLLITE_EVO_PROFILE` | string | （不设） | 进化触发场景：`demo` 更频繁（演示/内测）、`default` 或不设与原有默认一致、`conservative` 更少（生产/省成本）。**不设或 `default` 时行为与之前完全一致。** |
+| `SKILLLITE_EVO_ACCEPTANCE_WINDOW_DAYS` | int | `3` | backlog 验收自动联动的指标窗口天数 |
+| `SKILLLITE_EVO_ACCEPTANCE_MIN_SUCCESS_RATE` | float | `0.70` | 验收阈值：窗口内 `first_success_rate` 最低要求 |
+| `SKILLLITE_EVO_ACCEPTANCE_MAX_CORRECTION_RATE` | float | `0.20` | 验收阈值：窗口内 `user_correction_rate` 最高允许值 |
+| `SKILLLITE_EVO_ACCEPTANCE_MAX_ROLLBACK_RATE` | float | `0.20` | 验收阈值：窗口内回滚率（`auto_rollback / evolution_run`）最高允许值 |
 | `SKILLLITE_SKILL_DEDUP_DESCRIPTION` | string | `1` | Skill 同轮去重：`0` 关闭描述相似度检查；非 `0` 时，若新 skill 的 description 与已有 pending 高度相似则跳过 |
 
 **高级变量**（按需细调阈值；未设时由 `SKILLLITE_EVO_PROFILE` 或默认值决定）：
