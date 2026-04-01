@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-001`
 - Title: Deduplicate sandbox platform logic (macOS/Linux/Windows)
-- Status: `ready`
+- Status: `done`
 - Priority: `P1`
 - Owner: `TBD`
 - Contributors: `TBD`
@@ -27,9 +27,9 @@ Platform sandbox files contain repeated resource-limit, logging, and error-handl
 
 ## Acceptance Criteria
 
-- [ ] Shared flow is centralized and reused by all three platform backends.
-- [ ] Existing behavior for level gating and fallback remains unchanged.
-- [ ] Regression tests pass for sandbox crate and e2e minimal path.
+- [x] Shared flow is centralized and reused by all three platform backends.
+- [x] Existing behavior for level gating and fallback remains unchanged.
+- [x] Regression tests pass for sandbox crate and e2e minimal path.
 
 ## Risks
 
@@ -61,3 +61,16 @@ Platform sandbox files contain repeated resource-limit, logging, and error-handl
 - Source TODO section: `todo/06-OPTIMIZATION.md` (`0.2 #6`, `0.2 large-file refactor`)
 - Related PRs/issues: `TBD`
 - Related docs: `docs/en/ARCHITECTURE.md`, `docs/zh/ARCHITECTURE.md`
+
+## Delivered Changes
+
+- Introduced shared execution env wiring in `crates/skilllite-sandbox/src/common.rs`:
+  - `apply_standard_execution_env(...)`
+- Migrated repeated env setup in:
+  - `crates/skilllite-sandbox/src/macos.rs`
+  - `crates/skilllite-sandbox/src/linux.rs`
+  - `crates/skilllite-sandbox/src/windows.rs`
+- Preserved security semantics:
+  - no fallback policy relaxation,
+  - no network policy broadening,
+  - no sandbox level behavior change.

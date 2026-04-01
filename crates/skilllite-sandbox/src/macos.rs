@@ -1,6 +1,6 @@
 use crate::common::{
-    self, get_script_args_from_env, pipe_stdio, resolve_which, spawn_write_and_wait,
-    start_network_proxy,
+    self, apply_standard_execution_env, get_script_args_from_env, pipe_stdio, resolve_which,
+    spawn_write_and_wait, start_network_proxy,
 };
 use crate::move_protection::{generate_log_tag, generate_move_blocking_rules, get_session_suffix};
 use crate::runner::{ExecutionResult, RuntimePaths, SandboxConfig};
@@ -81,13 +81,7 @@ pub fn execute_simple_with_limits(
     cmd.current_dir(skill_dir);
     pipe_stdio(&mut cmd);
 
-    cmd.env("SKILLLITE_SANDBOX", "0");
-    cmd.env("SKILLBOX_SANDBOX", "0");
-    cmd.env("TMPDIR", work_dir);
-    if !config.network_enabled {
-        cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
-        cmd.env("SKILLBOX_NETWORK_DISABLED", "1");
-    }
+    apply_standard_execution_env(&mut cmd, false, work_dir, config.network_enabled, false);
 
     unsafe { common::set_rlimits_pre_exec(&mut cmd, &limits) };
 
@@ -147,12 +141,7 @@ fn execute_with_sandbox(
     cmd.current_dir(skill_dir);
     pipe_stdio(&mut cmd);
 
-    cmd.env("SKILLLITE_SANDBOX", "1");
-    cmd.env("SKILLBOX_SANDBOX", "1");
-    cmd.env("TMPDIR", work_dir);
-    if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
-        cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
-    }
+    apply_standard_execution_env(&mut cmd, true, work_dir, config.network_enabled, true);
 
     for (k, v) in &resolved.extra_env {
         cmd.env(k, v);

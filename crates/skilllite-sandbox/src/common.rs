@@ -575,6 +575,43 @@ pub fn get_script_args_from_env() -> Vec<String> {
     Vec::new()
 }
 
+// ============================================================
+// Shared execution env wiring
+// ============================================================
+
+/// Apply shared sandbox/runtime environment variables to a spawned command.
+///
+/// This keeps marker/env compatibility behavior consistent across platforms.
+pub fn apply_standard_execution_env(
+    cmd: &mut Command,
+    sandbox_enabled: bool,
+    tmp_dir: &Path,
+    network_enabled: bool,
+    include_output_dir: bool,
+) {
+    let sandbox_flag = if sandbox_enabled { "1" } else { "0" };
+    cmd.env("SKILLLITE_SANDBOX", sandbox_flag);
+    cmd.env("SKILLBOX_SANDBOX", sandbox_flag); // legacy compat
+    cmd.env("TMPDIR", tmp_dir);
+
+    #[cfg(windows)]
+    {
+        cmd.env("TEMP", tmp_dir);
+        cmd.env("TMP", tmp_dir);
+    }
+
+    if include_output_dir {
+        if let Some(ref output_dir) = skilllite_core::config::PathsConfig::from_env().output_dir {
+            cmd.env("SKILLLITE_OUTPUT_DIR", output_dir);
+        }
+    }
+
+    if !network_enabled {
+        cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
+        cmd.env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

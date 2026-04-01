@@ -1,10 +1,9 @@
 # Task Board
 
-Last updated: 2026-03-31
+Last updated: 2026-04-01
 
 ## In Progress
 
-- `TASK-2026-001-sandbox-platform-dedup` - Status: `ready` - Owner: `TBD`
 - `TASK-2026-002-agent-loop-modularization` - Status: `ready` - Owner: `TBD`
 
 ## Ready
@@ -17,7 +16,7 @@ Last updated: 2026-03-31
 
 ## Done
 
-- None.
+- `TASK-2026-001-sandbox-platform-dedup` - Status: `done` - Owner: `TBD`
 
 ## Notes
 

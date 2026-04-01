@@ -14,6 +14,7 @@
 
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::RuntimeResolver;
+use crate::{common::apply_standard_execution_env, common::pipe_stdio};
 use anyhow::{Context, Result};
 use std::io::Write;
 use std::path::Path;
@@ -257,24 +258,13 @@ fn execute_with_native_isolation(
     cmd.current_dir(skill_dir);
 
     // Sanitized environment: only pass what the skill needs
-    cmd.env("SKILLLITE_SANDBOX", "1");
-    cmd.env("SKILLBOX_SANDBOX", "1"); // legacy compat
-    cmd.env("TMPDIR", work_dir);
-    cmd.env("TEMP", work_dir);
-    cmd.env("TMP", work_dir);
-
-    if !config.network_enabled {
-        cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
-        cmd.env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
-    }
+    apply_standard_execution_env(&mut cmd, true, work_dir, config.network_enabled, false);
 
     for (k, v) in &resolved.extra_env {
         cmd.env(k, v);
     }
 
-    cmd.stdin(Stdio::piped());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
+    pipe_stdio(&mut cmd);
 
     let mut child = cmd.spawn().context("Failed to spawn process")?;
 
@@ -436,19 +426,18 @@ pub fn execute_simple_with_limits(
     cmd.arg(&entry_point)
         .current_dir(skill_dir)
         .env("SKILL_INPUT_FILE", &input_file)
-        .env("SKILL_INPUT", input_json)
-        .env("SKILLLITE_SANDBOX", "0")
-        .env("SKILLBOX_SANDBOX", "0"); // legacy compat
+        .env("SKILL_INPUT", input_json);
+    apply_standard_execution_env(
+        &mut cmd,
+        false,
+        temp_dir.path(),
+        config.network_enabled,
+        false,
+    );
     for (k, v) in &resolved.extra_env {
         cmd.env(k, v);
     }
-    if !config.network_enabled {
-        cmd.env("SKILLLITE_NETWORK_DISABLED", "1");
-        cmd.env("SKILLBOX_NETWORK_DISABLED", "1"); // legacy compat
-    }
-    cmd.stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    pipe_stdio(&mut cmd);
 
     let mut child = cmd.spawn().context("Failed to execute skill")?;
 
