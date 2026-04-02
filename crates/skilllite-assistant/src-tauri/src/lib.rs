@@ -415,11 +415,17 @@ async fn skilllite_trigger_evolution_run(
     app: tauri::AppHandle,
     workspace: Option<String>,
     proposal_id: Option<String>,
+    config: Option<skilllite_bridge::ChatConfigOverrides>,
 ) -> Result<String, String> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
     let skilllite_path = skilllite_bridge::resolve_skilllite_path_app(&app);
     tauri::async_runtime::spawn_blocking(move || {
-        skilllite_bridge::trigger_evolution_run(&ws, proposal_id.as_deref(), &skilllite_path)
+        skilllite_bridge::trigger_evolution_run(
+            &ws,
+            proposal_id.as_deref(),
+            &skilllite_path,
+            config,
+        )
     })
     .await
     .map_err(|e| e.to_string())?
@@ -573,6 +579,15 @@ fn skilllite_life_pulse_set_workspace(
     Ok(())
 }
 
+#[tauri::command]
+fn skilllite_life_pulse_set_llm_overrides(
+    state: tauri::State<'_, life_pulse::LifePulseState>,
+    config: Option<skilllite_bridge::ChatConfigOverrides>,
+) -> Result<(), String> {
+    state.set_llm_overrides(config);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let run_result = tauri::Builder::default()
@@ -620,7 +635,8 @@ pub fn run() {
             skilllite_load_evolution_diffs,
             skilllite_life_pulse_status,
             skilllite_life_pulse_toggle,
-            skilllite_life_pulse_set_workspace
+            skilllite_life_pulse_set_workspace,
+            skilllite_life_pulse_set_llm_overrides
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())

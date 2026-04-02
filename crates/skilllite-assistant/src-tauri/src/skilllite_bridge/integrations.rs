@@ -6,6 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Emitter;
 
+use super::chat::ChatConfigOverrides;
 use super::paths::{find_project_root, load_dotenv_for_child};
 
 // ─── List skills & repair-skills (evolution) ───────────────────────────────────
@@ -758,6 +759,7 @@ pub fn trigger_evolution_run(
     workspace: &str,
     proposal_id: Option<&str>,
     _skilllite_path: &std::path::Path,
+    overrides: Option<ChatConfigOverrides>,
 ) -> Result<String, String> {
     fn env_first_non_empty(
         vars: &std::collections::HashMap<String, String>,
@@ -777,18 +779,38 @@ pub fn trigger_evolution_run(
     let root = find_project_root(workspace);
     let env_map: std::collections::HashMap<String, String> =
         load_dotenv_for_child(workspace).into_iter().collect();
-    let api_base = env_first_non_empty(
+    let mut api_base = env_first_non_empty(
         &env_map,
         &["SKILLLITE_API_BASE", "OPENAI_API_BASE", "OPENAI_BASE_URL", "BASE_URL"],
     )
     .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.api_base))
     .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
-    let api_key = env_first_non_empty(&env_map, &["SKILLLITE_API_KEY", "OPENAI_API_KEY", "API_KEY"])
+    let mut api_key = env_first_non_empty(&env_map, &["SKILLLITE_API_KEY", "OPENAI_API_KEY", "API_KEY"])
         .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.api_key))
         .unwrap_or_default();
-    let model = env_first_non_empty(&env_map, &["SKILLLITE_MODEL", "OPENAI_MODEL", "MODEL"])
+    let mut model = env_first_non_empty(&env_map, &["SKILLLITE_MODEL", "OPENAI_MODEL", "MODEL"])
         .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.model))
         .unwrap_or_else(|| "gpt-4o".to_string());
+
+    // Match chat: keys/base/model from Settings are not written to process env; merge here so
+    // manual evolution trigger works when the user only configured the assistant UI.
+    if let Some(ref cfg) = overrides {
+        if let Some(ref b) = cfg.api_base {
+            if !b.trim().is_empty() {
+                api_base = b.clone();
+            }
+        }
+        if let Some(ref k) = cfg.api_key {
+            if !k.trim().is_empty() {
+                api_key = k.clone();
+            }
+        }
+        if let Some(ref m) = cfg.model {
+            if !m.trim().is_empty() {
+                model = m.clone();
+            }
+        }
+    }
 
     if api_key.trim().is_empty() {
         return Err("执行 evolution run 失败: 缺少 API key（请配置 SKILLLITE_API_KEY 或 OPENAI_API_KEY）".to_string());

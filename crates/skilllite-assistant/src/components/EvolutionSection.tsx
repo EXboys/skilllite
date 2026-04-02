@@ -9,6 +9,7 @@ import {
   prependNoMaterialHelpIfNeeded,
 } from "../utils/evolutionDisplay";
 import { parseDetailWorkspaceFromUrl } from "../utils/detailWindow";
+import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
 
 export interface EvolutionLogEntryDto {
   ts: string;
@@ -401,6 +402,7 @@ type EvolutionDetailTab = "run" | "review" | "changes";
 
 /** 独立详情窗口：分 tab（运行 / 审核 / 变更）避免单页过长 */
 export function EvolutionDetailBody() {
+  const { settings } = useSettingsStore();
   const { status, loading, error, refresh, workspace } = useEvolutionStatus();
   const [detailTab, setDetailTab] = useState<EvolutionDetailTab>("run");
   const [pending, setPending] = useState<PendingSkillDto[]>([]);
@@ -634,10 +636,15 @@ export function EvolutionDetailBody() {
                         [row.proposal_id]: "触发请求已发送，等待执行结果…",
                       }));
                       try {
-                        const out = await invoke<string>("skilllite_trigger_evolution_run", {
-                          workspace,
-                          proposalId: row.proposal_id,
-                        });
+                        const config = buildAssistantBridgeConfig(settings);
+                        const out = await invoke<string>(
+                          "skilllite_trigger_evolution_run",
+                          {
+                            workspace,
+                            proposalId: row.proposal_id,
+                            config,
+                          }
+                        );
                         setTriggerResultByProposal((prev) => ({
                           ...prev,
                           [row.proposal_id]: `已手动触发：${prependNoMaterialHelpIfNeeded(out)}`,

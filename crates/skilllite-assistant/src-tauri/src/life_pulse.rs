@@ -7,6 +7,8 @@
 //! - **Growth**: runs `skilllite evolution run` when A9 matches workspace `.env`:
 //!   **every `SKILLLITE_EVOLUTION_INTERVAL_SECS`** (default 30 min) **or**
 //!   **unprocessed decisions ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`** (default 10).
+//!   Child env = workspace `.env` merged with **assistant Settings** (API key / base / model, etc.),
+//!   same rules as chat, via `skilllite_life_pulse_set_llm_overrides` from the UI.
 //!   The **agent-rpc** chat subprocess also runs the same A9 timers in-process; `run_evolution`
 //!   serializes on `feedback.sqlite` (`SkippedBusy` if both fire).
 //! - **Rhythm**: checks `schedule.json` for due jobs and runs
@@ -38,6 +40,8 @@ pub struct LifePulseState {
     rhythm_running: Arc<AtomicBool>,
     thread_handle: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     workspace: Arc<Mutex<String>>,
+    /// LLM-related overrides from the assistant UI (persisted in the webview); merged into child env.
+    llm_overrides: Arc<Mutex<Option<skilllite_bridge::ChatConfigOverrides>>>,
     /// Last unix time the **periodic** growth arm fired (`evolution_growth_due`).
     last_periodic_growth_unix: Arc<Mutex<Option<i64>>>,
 }
@@ -51,6 +55,7 @@ impl Default for LifePulseState {
             rhythm_running: Arc::new(AtomicBool::new(false)),
             thread_handle: Arc::new(Mutex::new(None)),
             workspace: Arc::new(Mutex::new(String::new())),
+            llm_overrides: Arc::new(Mutex::new(None)),
             last_periodic_growth_unix: Arc::new(Mutex::new(None)),
         }
     }
@@ -85,6 +90,12 @@ impl LifePulseState {
     pub fn set_workspace(&self, ws: &str) {
         if let Ok(mut guard) = self.workspace.lock() {
             *guard = ws.to_string();
+        }
+    }
+
+    pub fn set_llm_overrides(&self, cfg: Option<skilllite_bridge::ChatConfigOverrides>) {
+        if let Ok(mut guard) = self.llm_overrides.lock() {
+            *guard = cfg;
         }
     }
 }
@@ -233,6 +244,15 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                 }
 
                 let dotenv = skilllite_bridge::load_dotenv_for_child(&workspace);
+                let overrides = s
+                    .llm_overrides
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.clone());
+                let child_env = skilllite_bridge::merge_dotenv_with_chat_overrides(
+                    dotenv,
+                    overrides.as_ref(),
+                );
 
                 // ── Growth ──
                 if !s.growth_running.load(Ordering::Relaxed)
@@ -244,7 +264,7 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                     s.growth_running.store(true, Ordering::SeqCst);
                     spawn_growth(
                         &skilllite_path,
-                        &dotenv,
+                        &child_env,
                         s.growth_running.clone(),
                         app.clone(),
                     );
@@ -256,7 +276,7 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                     s.rhythm_running.store(true, Ordering::SeqCst);
                     spawn_rhythm(
                         &skilllite_path,
-                        &dotenv,
+                        &child_env,
                         s.rhythm_running.clone(),
                         app.clone(),
                     );

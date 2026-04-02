@@ -229,6 +229,8 @@
 
 **进化触发策略（A9）**：**周期性**（`SKILLLITE_EVOLUTION_INTERVAL_SECS`，默认 30 分钟）**与** **未进化决策数**（≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`，默认 10）触发 `run_evolution`。**`ChatSession`（`skilllite chat` / `agent-rpc` 子进程）**在进程内 Tokio 任务中执行；**桌面助手**另由 **Life Pulse** 按同一组环境变量 spawn `skilllite evolution run`（托盘/无对话时仍可查）。对话内 **不再** 因 partial_success / failure 弹出「启动进化」气泡；进化调度与右侧「自进化」面板一致，不由 P7 对话内授权条驱动。
 
+**SkillLite Assistant（桌面）**：自进化详情里队列行的 **立即执行** 与聊天共用 **设置** 中的 API Key、模型与接口地址（`api_base`）。**Life Pulse** 在启动 `skilllite evolution run` / `skilllite schedule tick` 子进程时，会把工作区 `.env` 与当前 **设置** 里同步到后端的 LLM 相关项合并后注入子进程环境（与对话子进程规则一致），**一般无需再单独写 `.env` 里的 Key**；若你希望完全脱离应用、仅用命令行在同一工作区跑进化，仍可依赖 `.env` 或系统环境变量。
+
 **同轮 Skill 去重**：单次进化会先执行失败驱动生成、再执行成功驱动生成，两者都可能向 `_pending` 写入新 skill。为避免重复，写入前会做：① 同名跳过（已有同名 pending 则不再写入）；② 描述相似跳过（description 归一化后互为子串则跳过，可通过 `SKILLLITE_SKILL_DEDUP_DESCRIPTION=0` 关闭）。
 
 **Skill 生成失败**：若出现 `Failed to parse skill generation JSON: EOF`，多为 LLM 输出被截断。可增大 `SKILLLITE_MAX_TOKENS`（如 16384）后重试。

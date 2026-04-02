@@ -38,7 +38,7 @@ pub struct ClarificationState(pub Arc<Mutex<Option<mpsc::Sender<ClarifyResponse>
 pub struct ChatProcessState(pub Arc<Mutex<Option<std::process::Child>>>);
 
 /// Config overrides from frontend (optional).
-#[derive(serde::Deserialize, Default)]
+#[derive(Clone, Debug, serde::Deserialize, Default)]
 pub struct ChatConfigOverrides {
     pub api_key: Option<String>,
     pub model: Option<String>,
@@ -48,6 +48,70 @@ pub struct ChatConfigOverrides {
     pub swarm_url: Option<String>,
     pub max_iterations: Option<u32>,
     pub max_tool_calls_per_task: Option<u32>,
+}
+
+/// Merge workspace `.env` pairs with optional UI overrides (same semantics as [`chat_stream`]).
+/// When `overrides` is `None`, returns `dotenv` unchanged (backward compatible).
+pub fn merge_dotenv_with_chat_overrides(
+    dotenv: Vec<(String, String)>,
+    overrides: Option<&ChatConfigOverrides>,
+) -> Vec<(String, String)> {
+    let Some(cfg) = overrides else {
+        return dotenv;
+    };
+
+    use std::collections::HashMap;
+    let mut m: HashMap<String, String> = dotenv.into_iter().collect();
+
+    let swarm_from_ui = cfg
+        .swarm_url
+        .as_ref()
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    if !swarm_from_ui {
+        m.remove("SKILLLITE_SWARM_URL");
+    }
+
+    if let Some(ref key) = cfg.api_key {
+        if !key.is_empty() {
+            m.insert("OPENAI_API_KEY".to_string(), key.clone());
+        }
+    }
+    if let Some(ref base) = cfg.api_base {
+        if !base.is_empty() {
+            m.insert("OPENAI_BASE_URL".to_string(), base.clone());
+        }
+    }
+    if let Some(ref model) = cfg.model {
+        if !model.is_empty() {
+            m.insert("OPENAI_MODEL".to_string(), model.clone());
+            m.insert(
+                skilllite_core::config::env_keys::llm::MODEL.to_string(),
+                model.clone(),
+            );
+        }
+    }
+    if let Some(level) = cfg.sandbox_level {
+        if (1..=3).contains(&level) {
+            m.insert("SKILLLITE_SANDBOX_LEVEL".to_string(), level.to_string());
+        }
+    }
+    if let Some(ref url) = cfg.swarm_url {
+        if !url.is_empty() {
+            m.insert("SKILLLITE_SWARM_URL".to_string(), url.clone());
+        }
+    }
+    if let Some(n) = cfg.max_iterations.filter(|&n| n > 0) {
+        m.insert("SKILLLITE_MAX_ITERATIONS".to_string(), n.to_string());
+    }
+    if let Some(n) = cfg.max_tool_calls_per_task.filter(|&n| n > 0) {
+        m.insert(
+            "SKILLLITE_MAX_TOOL_CALLS_PER_TASK".to_string(),
+            n.to_string(),
+        );
+    }
+
+    m.into_iter().collect()
 }
 
 fn resolve_skilllite_path(window: &Window) -> (PathBuf, bool) {
@@ -114,53 +178,16 @@ pub fn chat_stream(
         .stderr(Stdio::null())
         .current_dir(&workspace_root);
 
-    for (k, v) in load_dotenv_for_child(&raw_workspace) {
+    let env_pairs = merge_dotenv_with_chat_overrides(
+        load_dotenv_for_child(&raw_workspace),
+        config_overrides.as_ref(),
+    );
+    for (k, v) in env_pairs {
         cmd.env(k, v);
-    }
-    // Assistant passes `config` on every chat: Swarm is UI-controlled. If there is no non-empty
-    // `swarm_url` override, do not inherit SKILLLITE_SWARM_URL from .env (otherwise "Swarm off"
-    // in settings still delegates).
-    if let Some(ref cfg) = config_overrides {
-        let swarm_from_ui = cfg
-            .swarm_url
-            .as_ref()
-            .map(|s| !s.is_empty())
-            .unwrap_or(false);
-        if !swarm_from_ui {
-            cmd.env_remove("SKILLLITE_SWARM_URL");
-        }
     }
     cmd.env("RUST_LOG", "error");
     cmd.env("SKILLLITE_QUIET", "1");
     cmd.env("SKILLLITE_LOG_JSON", "0");
-    if let Some(ref cfg) = config_overrides {
-        if let Some(ref key) = cfg.api_key {
-            if !key.is_empty() {
-                cmd.env("OPENAI_API_KEY", key);
-            }
-        }
-        if let Some(ref base) = cfg.api_base {
-            if !base.is_empty() {
-                cmd.env("OPENAI_BASE_URL", base);
-            }
-        }
-        if let Some(level) = cfg.sandbox_level {
-            if (1..=3).contains(&level) {
-                cmd.env("SKILLLITE_SANDBOX_LEVEL", level.to_string());
-            }
-        }
-        if let Some(ref url) = cfg.swarm_url {
-            if !url.is_empty() {
-                cmd.env("SKILLLITE_SWARM_URL", url);
-            }
-        }
-        if let Some(n) = cfg.max_iterations.filter(|&n| n > 0) {
-            cmd.env("SKILLLITE_MAX_ITERATIONS", n.to_string());
-        }
-        if let Some(n) = cfg.max_tool_calls_per_task.filter(|&n| n > 0) {
-            cmd.env("SKILLLITE_MAX_TOOL_CALLS_PER_TASK", n.to_string());
-        }
-    }
 
     let mut child = cmd.spawn().map_err(|e| {
         if is_bundled {

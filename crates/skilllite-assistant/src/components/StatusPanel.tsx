@@ -10,6 +10,7 @@ import { openDetailWindow } from "../utils/detailWindow";
 import { EvolutionStatusSummary } from "./EvolutionSection";
 import { useLifePulse, type LifePulseActivity } from "../hooks/useLifePulse";
 import { getLocale, translate, useI18n } from "../i18n";
+import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
 
 interface MemoryEntryData {
   path: string;
@@ -651,7 +652,23 @@ export function LifePulseBadge() {
   useEffect(() => {
     const ws = settings.workspace?.trim() || ".";
     void setWorkspace(ws);
-  }, [settings.workspace, setWorkspace]);
+    void invoke("skilllite_life_pulse_set_llm_overrides", {
+      config: buildAssistantBridgeConfig(settings),
+    }).catch((e) => {
+      console.warn("[skilllite-assistant] life pulse LLM sync failed:", e);
+    });
+  }, [
+    settings.apiKey,
+    settings.apiBase,
+    settings.model,
+    settings.workspace,
+    settings.sandboxLevel,
+    settings.swarmEnabled,
+    settings.swarmUrl,
+    settings.maxIterations,
+    settings.maxToolCallsPerTask,
+    setWorkspace,
+  ]);
 
   if (!status) return null;
 

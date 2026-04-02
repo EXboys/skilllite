@@ -20,6 +20,7 @@ import {
   evolutionStatusHeadline,
   isEvolutionNoMaterialChanges,
 } from "../utils/evolutionDisplay";
+import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
 
 export default function ChatView() {
   const { t } = useI18n();
@@ -522,20 +523,7 @@ export default function ChatView() {
 
     // Always pass `config` (may be `{}`) so the bridge can clear SKILLLITE_SWARM_URL when Swarm
     // is off in settings; otherwise .env would still enable delegation.
-    const swarmUrlTrimmed = settings.swarmUrl?.trim() ?? "";
-    const config: Record<string, unknown> = {};
-    if (settings.apiKey) config.api_key = settings.apiKey;
-    if (settings.model && settings.model !== "gpt-4o") config.model = settings.model;
-    if (settings.workspace && settings.workspace !== ".") config.workspace = settings.workspace;
-    if (settings.apiBase) config.api_base = settings.apiBase;
-    if (settings.sandboxLevel !== 3) config.sandbox_level = settings.sandboxLevel;
-    if (settings.swarmEnabled && swarmUrlTrimmed) config.swarm_url = swarmUrlTrimmed;
-    if (settings.maxIterations != null && settings.maxIterations > 0) {
-      config.max_iterations = settings.maxIterations;
-    }
-    if (settings.maxToolCallsPerTask != null && settings.maxToolCallsPerTask > 0) {
-      config.max_tool_calls_per_task = settings.maxToolCallsPerTask;
-    }
+    const config = buildAssistantBridgeConfig(settings);
 
     try {
       await invoke("skilllite_chat_stream", {
