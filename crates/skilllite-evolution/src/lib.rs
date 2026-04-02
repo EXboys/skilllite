@@ -164,7 +164,7 @@ mod lib_tests {
     }
 
     #[test]
-    fn coordinator_shadow_mode_queues_without_execution() {
+    fn coordinator_executes_when_policy_runtime_disabled() {
         let _g = EVO_LOCK.lock().expect("evo lock");
         let root =
             std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
@@ -176,7 +176,7 @@ mod lib_tests {
         let proposal = build_proposal(
             ProposalSource::Active,
             scope,
-            ProposalRiskLevel::Low,
+            ProposalRiskLevel::Medium,
             0.5,
             1.0,
             vec!["metric should improve".to_string()],
@@ -186,9 +186,8 @@ mod lib_tests {
             vec![proposal],
             false,
             EvolutionCoordinatorConfig {
-                policy_runtime_enabled: true,
-                shadow_mode: true,
-                auto_execute_low_risk: true,
+                policy_runtime_enabled: false,
+                auto_execute_low_risk: false,
                 deny_critical: true,
                 risk_budget: EvolutionRiskBudget {
                     low_per_day: 5,
@@ -199,7 +198,7 @@ mod lib_tests {
             },
         )
         .expect("coordinate");
-        assert!(matches!(decision, CoordinatorDecision::Shadow(_)));
+        assert!(matches!(decision, CoordinatorDecision::Execute(_)));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -227,7 +226,6 @@ mod lib_tests {
             false,
             EvolutionCoordinatorConfig {
                 policy_runtime_enabled: true,
-                shadow_mode: false,
                 auto_execute_low_risk: true,
                 deny_critical: true,
                 risk_budget: EvolutionRiskBudget {
@@ -279,7 +277,6 @@ mod lib_tests {
             false,
             EvolutionCoordinatorConfig {
                 policy_runtime_enabled: true,
-                shadow_mode: false,
                 auto_execute_low_risk: true,
                 deny_critical: true,
                 risk_budget: EvolutionRiskBudget {
@@ -292,6 +289,46 @@ mod lib_tests {
         )
         .expect("coordinate");
         assert!(matches!(decision, CoordinatorDecision::Queued(_)));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn coordinator_denies_critical_when_policy_runtime_disabled() {
+        let _g = EVO_LOCK.lock().expect("evo lock");
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let scope = EvolutionScope {
+            skills: true,
+            skill_action: SkillAction::Generate,
+            ..Default::default()
+        };
+        let proposal = build_proposal(
+            ProposalSource::Passive,
+            scope,
+            ProposalRiskLevel::Critical,
+            0.9,
+            3.0,
+            vec!["no regressions".to_string()],
+        );
+        let decision = coordinate_proposals_with_config(
+            &conn,
+            vec![proposal],
+            false,
+            EvolutionCoordinatorConfig {
+                policy_runtime_enabled: false,
+                auto_execute_low_risk: true,
+                deny_critical: true,
+                risk_budget: EvolutionRiskBudget {
+                    low_per_day: 5,
+                    medium_per_day: 0,
+                    high_per_day: 0,
+                    critical_per_day: 1,
+                },
+            },
+        )
+        .expect("coordinate");
+        assert!(matches!(decision, CoordinatorDecision::Denied(_)));
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -320,7 +357,6 @@ mod lib_tests {
             false,
             EvolutionCoordinatorConfig {
                 policy_runtime_enabled: true,
-                shadow_mode: false,
                 auto_execute_low_risk: true,
                 deny_critical: true,
                 risk_budget: EvolutionRiskBudget {

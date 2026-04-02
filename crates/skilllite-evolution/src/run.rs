@@ -106,22 +106,6 @@ async fn run_evolution_inner<L: EvolutionLlm>(
     };
     let (scope, proposal) = match decision {
         CoordinatorDecision::NoCandidate => return Ok(EvolutionRunResult::NoScope),
-        CoordinatorDecision::Shadow(p) => {
-            let reason = format!(
-                "Proposal {} ({}) accepted in shadow mode; execution deferred",
-                p.proposal_id,
-                p.source.as_str()
-            );
-            let _ = log_evolution_event(
-                &conn,
-                chat_root,
-                "evolution_proposal",
-                &p.proposal_id,
-                &reason,
-                "",
-            );
-            return Ok(EvolutionRunResult::Completed(None));
-        }
         CoordinatorDecision::Queued(p) => {
             let reason = format!(
                 "Proposal {} ({}) queued; waiting execution gate",

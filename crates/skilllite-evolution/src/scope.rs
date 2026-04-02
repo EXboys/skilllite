@@ -105,7 +105,6 @@ pub struct EvolutionProposal {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct EvolutionCoordinatorConfig {
     pub(crate) policy_runtime_enabled: bool,
-    pub(crate) shadow_mode: bool,
     pub(crate) auto_execute_low_risk: bool,
     pub(crate) deny_critical: bool,
     pub(crate) risk_budget: EvolutionRiskBudget,
@@ -159,7 +158,6 @@ impl PolicyAction {
 #[derive(Debug, Clone)]
 struct PolicyRuntimeDecision {
     action: PolicyAction,
-    shadow_mode_applied: bool,
     reasons: Vec<String>,
 }
 
@@ -167,9 +165,6 @@ impl EvolutionCoordinatorConfig {
     fn from_env() -> Self {
         Self {
             policy_runtime_enabled: env_bool(evo_keys::SKILLLITE_EVO_POLICY_RUNTIME_ENABLED, true),
-            // Default off: evolution runs should apply changes unless the user opts into dry-run governance.
-            shadow_mode: env_bool(evo_keys::SKILLLITE_EVO_SHADOW_MODE, false),
-            // Default on: low-risk proposals (typical active-learning path) execute without manual confirm.
             auto_execute_low_risk: env_bool(evo_keys::SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK, true),
             deny_critical: env_bool(evo_keys::SKILLLITE_EVO_DENY_CRITICAL, true),
             risk_budget: EvolutionRiskBudget::from_env(),
@@ -179,7 +174,6 @@ impl EvolutionCoordinatorConfig {
 
 pub(crate) enum CoordinatorDecision {
     NoCandidate,
-    Shadow(EvolutionProposal),
     Queued(EvolutionProposal),
     Denied(EvolutionProposal),
     Execute(EvolutionProposal),
@@ -245,20 +239,10 @@ fn evaluate_policy_runtime(
         proposal.roi_score
     ));
 
-    if config.shadow_mode {
-        reasons.push("shadow mode enabled".to_string());
-        return Ok(PolicyRuntimeDecision {
-            action: PolicyAction::Ask,
-            shadow_mode_applied: true,
-            reasons,
-        });
-    }
-
     if proposal.risk_level == ProposalRiskLevel::Critical && config.deny_critical {
         reasons.push("critical risk is denied by policy".to_string());
         return Ok(PolicyRuntimeDecision {
             action: PolicyAction::Deny,
-            shadow_mode_applied: false,
             reasons,
         });
     }
@@ -275,7 +259,6 @@ fn evaluate_policy_runtime(
         reasons.push("auto budget disabled for this risk tier".to_string());
         return Ok(PolicyRuntimeDecision {
             action: PolicyAction::Ask,
-            shadow_mode_applied: false,
             reasons,
         });
     }
@@ -283,7 +266,6 @@ fn evaluate_policy_runtime(
         reasons.push("daily budget exhausted".to_string());
         return Ok(PolicyRuntimeDecision {
             action: PolicyAction::Ask,
-            shadow_mode_applied: false,
             reasons,
         });
     }
@@ -292,7 +274,6 @@ fn evaluate_policy_runtime(
         reasons.push("low-risk auto execution enabled".to_string());
         return Ok(PolicyRuntimeDecision {
             action: PolicyAction::Allow,
-            shadow_mode_applied: false,
             reasons,
         });
     }
@@ -300,7 +281,6 @@ fn evaluate_policy_runtime(
     reasons.push("risk tier requires manual confirmation".to_string());
     Ok(PolicyRuntimeDecision {
         action: PolicyAction::Ask,
-        shadow_mode_applied: false,
         reasons,
     })
 }
@@ -944,34 +924,32 @@ pub(crate) fn coordinate_proposals_with_config(
             return Ok(CoordinatorDecision::Execute(selected));
         }
         if !config.policy_runtime_enabled {
-            if config.shadow_mode {
+            if selected.risk_level == ProposalRiskLevel::Critical && config.deny_critical {
+                let note = "Policy runtime disabled; critical risk denied by policy";
                 set_backlog_status(
                     conn,
                     &selected.proposal_id,
-                    "shadow_approved",
-                    "pending",
-                    "Shadow mode enabled: proposal queued only",
+                    "policy_denied",
+                    "rejected",
+                    note,
                 )?;
-                return Ok(CoordinatorDecision::Shadow(selected));
+                return Ok(CoordinatorDecision::Denied(selected));
             }
-            if config.auto_execute_low_risk && selected.risk_level == ProposalRiskLevel::Low {
-                set_backlog_status(
-                    conn,
-                    &selected.proposal_id,
-                    "executing",
-                    "pending",
-                    "Auto execution allowed for low-risk proposal",
-                )?;
-                return Ok(CoordinatorDecision::Execute(selected));
-            }
+            let note = if config.auto_execute_low_risk
+                && selected.risk_level == ProposalRiskLevel::Low
+            {
+                "Policy runtime disabled; auto-execute low-risk"
+            } else {
+                "Policy runtime disabled; direct execution"
+            };
             set_backlog_status(
                 conn,
                 &selected.proposal_id,
-                "queued",
+                "executing",
                 "pending",
-                "Waiting for manual or policy-based execution",
+                note,
             )?;
-            return Ok(CoordinatorDecision::Queued(selected));
+            return Ok(CoordinatorDecision::Execute(selected));
         }
 
         let policy = evaluate_policy_runtime(conn, &selected, config)?;
@@ -982,19 +960,8 @@ pub(crate) fn coordinate_proposals_with_config(
                 Ok(CoordinatorDecision::Execute(selected))
             }
             PolicyAction::Ask => {
-                if policy.shadow_mode_applied {
-                    set_backlog_status(
-                        conn,
-                        &selected.proposal_id,
-                        "shadow_approved",
-                        "pending",
-                        &note,
-                    )?;
-                    Ok(CoordinatorDecision::Shadow(selected))
-                } else {
-                    set_backlog_status(conn, &selected.proposal_id, "queued", "pending", &note)?;
-                    Ok(CoordinatorDecision::Queued(selected))
-                }
+                set_backlog_status(conn, &selected.proposal_id, "queued", "pending", &note)?;
+                Ok(CoordinatorDecision::Queued(selected))
             }
             PolicyAction::Deny => {
                 set_backlog_status(
