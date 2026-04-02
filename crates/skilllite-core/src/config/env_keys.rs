@@ -112,9 +112,9 @@ pub mod evolution {
     /// Evolution mode: "1" (default, all), "prompts", "memory", "skills", "0" (disabled).
     pub const SKILLLITE_EVOLUTION: &str = "SKILLLITE_EVOLUTION";
     pub const SKILLLITE_MAX_EVOLUTIONS_PER_DAY: &str = "SKILLLITE_MAX_EVOLUTIONS_PER_DAY";
-    /// A9: Periodic evolution interval (seconds). Default 1800 (30 min). Used by `ChatSession` and desktop Life Pulse.
+    /// A9: Periodic evolution interval (seconds). Default 1800 (30 min). Desktop Life Pulse + manual/cron; not the agent chat process.
     pub const SKILLLITE_EVOLUTION_INTERVAL_SECS: &str = "SKILLLITE_EVOLUTION_INTERVAL_SECS";
-    /// A9: Unprocessed decision count threshold (default 10). Used by `ChatSession` and desktop Life Pulse.
+    /// A9: Unprocessed decision count threshold (default 10). Desktop Life Pulse + manual/cron; not the agent chat process.
     pub const SKILLLITE_EVOLUTION_DECISION_THRESHOLD: &str =
         "SKILLLITE_EVOLUTION_DECISION_THRESHOLD";
     /// Prompt snapshot dirs under `chat/prompts/_versions/` to keep after each evolution (oldest pruned first).

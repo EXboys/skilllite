@@ -228,7 +228,7 @@
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT` | int | `3` | 重复模式判定：同一模式出现次数 ≥ 此值且成功率达标才计为重复模式 |
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE` | float | `0.8` | 重复模式判定：成功率 ≥ 此值（0~1） |
 
-**进化触发策略（A9）**：**周期性**（`SKILLLITE_EVOLUTION_INTERVAL_SECS`，默认 30 分钟）**与** **未进化决策数**（≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`，默认 10）触发 `run_evolution`。**`ChatSession`（`skilllite chat` / `agent-rpc` 子进程）**在进程内 Tokio 任务中执行；**桌面助手**另由 **Life Pulse** 按同一组环境变量 spawn `skilllite evolution run`（托盘/无对话时仍可查）。对话内 **不再** 因 partial_success / failure 弹出「启动进化」气泡；进化调度与右侧「自进化」面板一致，不由 P7 对话内授权条驱动。
+**进化触发策略（A9）**：**周期性**（`SKILLLITE_EVOLUTION_INTERVAL_SECS`，默认 30 分钟）**与** **未进化决策数**（≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`，默认 10）触发 `skilllite evolution run`。**`ChatSession`（`skilllite chat` / `agent-rpc`）只写决策与指标，不在会话进程内跑进化**；**SkillLite Assistant** 由 **Life Pulse** 按工作区 `.env` 中上述变量 spawn 子进程执行。纯 CLI 请手动 `skilllite evolution run` 或 cron。对话内不弹 P7「启动进化」气泡。
 
 **同轮 Skill 去重**：单次进化会先执行失败驱动生成、再执行成功驱动生成，两者都可能向 `_pending` 写入新 skill。为避免重复，写入前会做：① 同名跳过（已有同名 pending 则不再写入）；② 描述相似跳过（description 归一化后互为子串则跳过，可通过 `SKILLLITE_SKILL_DEDUP_DESCRIPTION=0` 关闭）。
 

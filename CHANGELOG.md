@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **Evolution defaults**: Coordinator **shadow mode** is now **off** by default (`SKILLLITE_EVO_SHADOW_MODE` unset ⇒ execute when policy allows), and **low-risk auto-execute** is **on** by default (`SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK`). Restore the previous conservative behavior with `SKILLLITE_EVO_SHADOW_MODE=1` and `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK=0`.
-- **A9**: `ChatSession` again runs **in-process** periodic + decision-count evolution. **Life Pulse** still spawns `skilllite evolution run` on the same interval/threshold (workspace `.env`). **Desktop chat** no longer injects **P7 in-conversation “evolution_options”** bubbles on tool partial_success/failure or `complete_task` partial_success/failure (`useChatEvents.ts`); use the **自进化** panel or wait for A9.
+- **A9 / dual pipeline**: `ChatSession` **does not** run evolution in-process (reverts 2026-03-01 `36cbf93` in-agent timers). **Life Pulse** spawns `skilllite evolution run` on interval + unprocessed threshold (workspace `.env`). **Desktop chat** does not inject P7 **evolution_options** bubbles (`useChatEvents.ts`). CLI-only: `skilllite evolution run` or cron.
 
 ---
 
