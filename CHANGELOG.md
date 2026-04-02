@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.1.19] - 2026-04-02
+
 ### Changed
 
 - **Linux sandbox (fail-closed)**: If bubblewrap/firejail are missing or the strong sandbox path fails, execution is **refused by default** (aligned with Windows). Opt-in weak fallback (PID/UTS/net namespaces only) requires **`SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1`** (legacy `SKILLBOX_ALLOW_LINUX_NAMESPACE_FALLBACK`); the event is logged via `security_sandbox_fallback` with reason `linux_namespace_fallback`.
@@ -22,6 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **SkillLite Assistant (desktop)**: Stricter default **CSP** for bundled webviews (with `localhost` / `ipc` / `tauri` allowances for dev and in-app IPC); **Windows-oriented** relative-path checks for memory/output reads and transcript filenames; **Chinese** tray menu and tooltip; **tray build failures** and **global shortcut registration failures** surface as in-app toasts (tray also emits `skilllite-chrome-bootstrap`).
 - **SkillLite Assistant (desktop)**: Message list uses **virtual scrolling** (`@tanstack/react-virtual`) when there are many segments (threshold 48); **ErrorBoundary** adds “copy error details” (message, stack, component stack).
 - **SkillLite Assistant (desktop)**: `createUpdaterArtifacts` enabled in `tauri.conf.json` to prepare for Tauri updater wiring (endpoints and signing still required in release automation).
+
+### Release
+
+- Workspace, Python SDK, and SkillLite Assistant (Tauri) bumped to **0.1.19**; internal crate path dependency pins aligned to **0.1.19**.
 
 ---
 
@@ -239,7 +247,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.16...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.19...HEAD
+[0.1.19]: https://github.com/EXboys/skilllite/releases/tag/v0.1.19
 [0.1.16]: https://github.com/EXboys/skilllite/releases/tag/v0.1.16
 [0.1.15]: https://github.com/EXboys/skilllite/releases/tag/v0.1.15
 [0.1.14]: https://github.com/EXboys/skilllite/releases/tag/v0.1.14

@@ -16,11 +16,11 @@ agent = ["dep:skilllite-agent", "dep:tokio", "dep:uuid", "dep:rustyline", "skill
 audit = ["skilllite-sandbox/audit", "dep:ureq", "dep:zip"]
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core", version = "0.1.16", features = ["async-resolve"] }
-skilllite-fs = { path = "../skilllite-fs", version = "0.1.16" }
-skilllite-evolution = { path = "../skilllite-evolution", version = "0.1.16" }
-skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.16" }
-skilllite-agent = { path = "../skilllite-agent", version = "0.1.16", optional = true }
+skilllite-core = { path = "../skilllite-core", version = "0.1.19", features = ["async-resolve"] }
+skilllite-fs = { path = "../skilllite-fs", version = "0.1.19" }
+skilllite-evolution = { path = "../skilllite-evolution", version = "0.1.19" }
+skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.19" }
+skilllite-agent = { path = "../skilllite-agent", version = "0.1.19", optional = true }
 
 anyhow = "1.0"
 rayon = "1.10"
