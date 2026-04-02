@@ -155,7 +155,7 @@ export const zhMessages: Record<string, string> = {
   "status.addSkill": "添加",
   "status.addingSkill": "添加中…",
   "status.repairSelected": "修复选中 ({n})",
-  "status.repairAll": "修复全部失败技能",
+  "status.repairAll": "修复技能",
   "status.repairing": "修复中…",
   "status.initSkills": "初始化技能",
   "status.initializing": "初始化中…",

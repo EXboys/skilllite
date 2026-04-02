@@ -156,7 +156,7 @@ export const enMessages: Record<string, string> = {
   "status.addSkill": "Add",
   "status.addingSkill": "Adding…",
   "status.repairSelected": "Repair selected ({n})",
-  "status.repairAll": "Repair all failed",
+  "status.repairAll": "Repair skills",
   "status.repairing": "Repairing…",
   "status.initSkills": "Initialize skills",
   "status.initializing": "Initializing…",
