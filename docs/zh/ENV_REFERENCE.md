@@ -228,7 +228,7 @@
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT` | int | `3` | 重复模式判定：同一模式出现次数 ≥ 此值且成功率达标才计为重复模式 |
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE` | float | `0.8` | 重复模式判定：成功率 ≥ 此值（0~1） |
 
-**进化触发策略（A9）**：周期性触发（每 30 分钟）+ 决策数触发（每 N 条 decisions），即使用户持续交互也能在后台进化。
+**进化触发策略（A9）**：**SkillLite Assistant（桌面）**由 Life Pulse 按 `SKILLLITE_EVOLUTION_INTERVAL_SECS`（默认 30 分钟）**与** `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`（默认 ≥10 条未进化决策）触发子进程 `skilllite evolution run`。`skilllite chat` / agent 子进程**只写入决策与指标（监控）**，不在会话内启动进化循环；纯 CLI 请用手动 `skilllite evolution run` 或自行定时任务。
 
 **同轮 Skill 去重**：单次进化会先执行失败驱动生成、再执行成功驱动生成，两者都可能向 `_pending` 写入新 skill。为避免重复，写入前会做：① 同名跳过（已有同名 pending 则不再写入）；② 描述相似跳过（description 归一化后互为子串则跳过，可通过 `SKILLLITE_SKILL_DEDUP_DESCRIPTION=0` 关闭）。
 

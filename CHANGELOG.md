@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Changed
 
 - **Evolution defaults**: Coordinator **shadow mode** is now **off** by default (`SKILLLITE_EVO_SHADOW_MODE` unset ⇒ execute when policy allows), and **low-risk auto-execute** is **on** by default (`SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK`). Restore the previous conservative behavior with `SKILLLITE_EVO_SHADOW_MODE=1` and `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK=0`.
+- **A9 trigger split**: `skilllite-agent` `ChatSession` no longer spawns in-process periodic/decision-count evolution; it **records decisions/metrics only**. **SkillLite Assistant** Life Pulse now drives A9 using **`SKILLLITE_EVOLUTION_INTERVAL_SECS` + `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`** (workspace `.env`), replacing the old `should_evolve`-only growth gate. CLI-only users: run `skilllite evolution run` (or cron) explicitly.
 
 ---
 

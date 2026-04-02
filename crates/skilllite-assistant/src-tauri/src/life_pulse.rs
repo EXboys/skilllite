@@ -4,8 +4,10 @@
 //! minimized to the system tray). Each heartbeat (~30 s) performs lightweight
 //! in-process checks for two layers:
 //!
-//! - **Growth**: checks `feedback.sqlite` for unprocessed decisions and runs
-//!   `skilllite evolution run` as a subprocess when the evolution threshold is met.
+//! - **Growth**: runs `skilllite evolution run` as a subprocess when A9 matches the
+//!   evolution panel rules: **every `SKILLLITE_EVOLUTION_INTERVAL_SECS`** (default 30 min)
+//!   **or** **unprocessed decisions ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`** (default 10).
+//!   Chat / agent loop only **records** decisions (monitoring); it does not spawn evolution.
 //! - **Rhythm**: checks `schedule.json` for due jobs and runs
 //!   `skilllite schedule tick` as a subprocess when any are due.
 //!
@@ -35,6 +37,8 @@ pub struct LifePulseState {
     rhythm_running: Arc<AtomicBool>,
     thread_handle: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     workspace: Arc<Mutex<String>>,
+    /// Last unix time the **periodic** growth arm fired (`evolution_growth_due`).
+    last_periodic_growth_unix: Arc<Mutex<Option<i64>>>,
 }
 
 impl Default for LifePulseState {
@@ -46,6 +50,7 @@ impl Default for LifePulseState {
             rhythm_running: Arc::new(AtomicBool::new(false)),
             thread_handle: Arc::new(Mutex::new(None)),
             workspace: Arc::new(Mutex::new(String::new())),
+            last_periodic_growth_unix: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -108,23 +113,6 @@ fn emit(app: &tauri::AppHandle, kind: &str, detail: Option<String>) {
         detail,
     };
     let _ = app.emit("life-pulse", &evt);
-}
-
-// ─── Growth check (in-process, no LLM) ─────────────────────────────────────
-
-fn check_evolution_needed() -> bool {
-    if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
-        return false;
-    }
-    let chat_root = skilllite_core::paths::chat_root();
-    let conn = match skilllite_evolution::feedback::open_evolution_db(&chat_root) {
-        Ok(c) => c,
-        Err(_) => return false,
-    };
-    match skilllite_evolution::should_evolve(&conn) {
-        Ok(scope) => scope.prompts || scope.memory || scope.skills,
-        Err(_) => false,
-    }
 }
 
 // ─── Rhythm check (in-process, no LLM) ─────────────────────────────────────
@@ -246,7 +234,12 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                 let dotenv = skilllite_bridge::load_dotenv_for_child(&workspace);
 
                 // ── Growth ──
-                if !s.growth_running.load(Ordering::Relaxed) && check_evolution_needed() {
+                if !s.growth_running.load(Ordering::Relaxed)
+                    && skilllite_bridge::evolution_growth_due(
+                        &workspace,
+                        s.last_periodic_growth_unix.as_ref(),
+                    )
+                {
                     s.growth_running.store(true, Ordering::SeqCst);
                     spawn_growth(
                         &skilllite_path,

@@ -291,6 +291,64 @@ fn evolution_mode_from_workspace(workspace: &str) -> skilllite_evolution::Evolut
     }
 }
 
+/// Desktop **Life Pulse** only: whether to spawn `skilllite evolution run`.
+///
+/// Matches the evolution panel copy (A9): periodic interval **or** unprocessed decisions ≥ threshold.
+/// Does **not** use passive `should_evolve` heuristics — the subprocess runs and may return `NoScope`.
+///
+/// `last_periodic_spawn_unix`: last time the **periodic** arm fired; updated when the periodic
+/// condition is met. Initialized lazily on first check so the first periodic window starts then.
+pub fn evolution_growth_due(
+    workspace: &str,
+    last_periodic_spawn_unix: &std::sync::Mutex<Option<i64>>,
+) -> bool {
+    let mode = evolution_mode_from_workspace(workspace);
+    if mode.is_disabled() {
+        return false;
+    }
+    use skilllite_core::config::env_keys::evolution as evo_env;
+    let interval_secs: u64 = workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_INTERVAL_SECS)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1800);
+    let threshold: i64 =
+        workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(10);
+
+    let chat_root = skilllite_core::paths::chat_root();
+    let count: i64 = skilllite_evolution::feedback::open_evolution_db(&chat_root)
+        .ok()
+        .and_then(|conn| skilllite_evolution::feedback::count_unprocessed_decisions(&conn).ok())
+        .unwrap_or(0);
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let need_count = count >= threshold;
+
+    let mut g = last_periodic_spawn_unix
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let last_ts = match *g {
+        None => {
+            *g = Some(now);
+            now
+        }
+        Some(t) => t,
+    };
+    let need_periodic = now.saturating_sub(last_ts) >= interval_secs as i64;
+
+    if !need_count && !need_periodic {
+        return false;
+    }
+    if need_periodic {
+        *g = Some(now);
+    }
+    true
+}
+
 fn evolution_mode_labels(mode: &skilllite_evolution::EvolutionMode) -> (&'static str, &'static str) {
     match mode {
         skilllite_evolution::EvolutionMode::All => ("all", "全部启用"),

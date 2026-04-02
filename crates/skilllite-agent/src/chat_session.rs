@@ -13,8 +13,6 @@ use std::path::{Path, PathBuf};
 
 use skilllite_executor::{memory as executor_memory, session, transcript};
 
-use skilllite_core::config::env_keys::evolution as evo_env_keys;
-
 use super::agent_loop;
 use super::evolution;
 use super::extensions;
@@ -39,8 +37,6 @@ pub struct ChatSession {
     /// NOT the user's workspace directory.
     data_root: PathBuf,
     skills: Vec<LoadedSkill>,
-    /// A9: handle for periodic evolution (every N minutes, does not reset on turn).
-    periodic_evolution_handle: Option<tokio::task::JoinHandle<()>>,
     transcript_cache: TranscriptCache,
 }
 
@@ -56,11 +52,10 @@ struct CachedTranscriptFile {
 }
 
 impl ChatSession {
-    /// Full constructor: starts periodic evolution timer. Use for long-lived chat.
+    /// Full constructor for long-lived chat. Evolution runs are **not** spawned here;
+    /// desktop **Life Pulse** (or manual `skilllite evolution run`) drives A9 triggers.
     pub fn new(config: AgentConfig, session_key: &str, skills: Vec<LoadedSkill>) -> Self {
-        let mut session = Self::new_inner(config, session_key, skills);
-        session.start_periodic_evolution_timer();
-        session
+        Self::new_inner(config, session_key, skills)
     }
 
     /// For one-off clear-session: no Tokio spawn. Avoids "no reactor running" when run from sync CLI.
@@ -77,7 +72,6 @@ impl ChatSession {
             session_id: None,
             data_root,
             skills,
-            periodic_evolution_handle: None,
             transcript_cache: TranscriptCache::default(),
         }
     }
@@ -370,82 +364,16 @@ impl ChatSession {
         // EVO-1: Record execution decision (async-safe, <1ms with WAL).
         // Only record meaningful turns (at least 1 tool call).
         if result.feedback.total_tools >= 1 {
+            // EVO-1: monitoring only (decisions + metrics). A9 execution is desktop Life Pulse or CLI.
             self.record_decision(&result.feedback);
-            // A9: Decision-count trigger — if unprocessed decisions >= threshold, spawn evolution
-            self.maybe_trigger_evolution_by_decision_count();
         }
 
         Ok(result)
     }
 
-    /// Graceful shutdown: flush evolution metrics, cancel evolution timers.
+    /// Graceful shutdown: flush evolution metrics (no LLM).
     pub fn shutdown(&mut self) {
-        if let Some(handle) = self.periodic_evolution_handle.take() {
-            handle.abort();
-        }
         shutdown_evolution(&self.data_root);
-    }
-
-    // ─── A9: Periodic + decision-count evolution triggers ────────────────────
-
-    /// Start periodic evolution timer (every 30 min). Does not reset on user turns.
-    fn start_periodic_evolution_timer(&mut self) {
-        if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
-            return;
-        }
-        let interval_secs: u64 = std::env::var(evo_env_keys::SKILLLITE_EVOLUTION_INTERVAL_SECS)
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1800); // 30 min default
-        let data_root = self.data_root.clone();
-        let workspace = self.config.workspace.clone();
-        let api_base = self.config.api_base.clone();
-        let api_key = self.config.api_key.clone();
-        let model = self.config.model.clone();
-        if let Some(handle) = spawn_periodic_evolution(
-            data_root,
-            workspace,
-            api_base,
-            api_key,
-            model,
-            interval_secs,
-        ) {
-            self.periodic_evolution_handle = Some(handle);
-        }
-    }
-
-    /// A9: If unprocessed decisions >= threshold, spawn evolution (runs even when user is active).
-    /// No-op when not inside a Tokio runtime.
-    fn maybe_trigger_evolution_by_decision_count(&self) {
-        if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
-            return;
-        }
-        if tokio::runtime::Handle::try_current().is_err() {
-            return;
-        }
-        let threshold: i64 = std::env::var(evo_env_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(10);
-        let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&self.data_root) else {
-            return;
-        };
-        let Ok(count) = skilllite_evolution::feedback::count_unprocessed_decisions(&conn) else {
-            return;
-        };
-        if count >= threshold {
-            tracing::debug!(
-                "Decision-count trigger: {} unprocessed >= {}, spawning evolution",
-                count,
-                threshold
-            );
-            let data_root = self.data_root.clone();
-            let workspace = self.config.workspace.clone();
-            let api_base = self.config.api_base.clone();
-            let api_key = self.config.api_key.clone();
-            let model = self.config.model.clone();
-            let _ = spawn_evolution_once(data_root, workspace, api_base, api_key, model);
-        }
     }
 
     // ─── EVO-1: Feedback collection helpers ─────────────────────────────────
@@ -1018,131 +946,6 @@ fn apply_message_window_to_cache(cache: &mut TranscriptCache, paths: &[PathBuf],
         .filter(|entry| matches!(entry, transcript::TranscriptEntry::Message { .. }))
         .count();
     debug_assert!(total_messages <= limit || remaining_to_drop == 0);
-}
-
-// ─── A9: Evolution triggers (periodic + decision-count) ─────────────────────
-
-/// Run evolution once and emit summary. Shared by periodic and decision-count triggers.
-/// workspace: project root for skill evolution (skills written to workspace/.skills/_evolved/).
-async fn run_evolution_and_emit_summary(
-    data_root: &Path,
-    workspace: &str,
-    api_base: &str,
-    api_key: &str,
-    model: &str,
-) {
-    let skills_root = if workspace.is_empty() {
-        None
-    } else {
-        let ws = std::path::Path::new(workspace);
-        let sr = if ws.is_absolute() {
-            ws.join(".skills")
-        } else {
-            std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                .join(workspace)
-                .join(".skills")
-        };
-        Some(sr)
-    };
-    let llm = match LlmClient::new(api_base, api_key) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("LLM client build failed for evolution: {}", e);
-            return;
-        }
-    };
-    let adapter = evolution::EvolutionLlmAdapter { llm: &llm };
-    let skills_root_ref = skills_root.as_deref();
-    match skilllite_evolution::run_evolution(
-        data_root,
-        skills_root_ref,
-        &adapter,
-        api_base,
-        api_key,
-        model,
-        false,
-    )
-    .await
-    {
-        Ok(skilllite_evolution::EvolutionRunResult::Completed(Some(txn_id))) => {
-            tracing::info!("Evolution completed: {}", txn_id);
-            if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(data_root) {
-                let changes = skilllite_evolution::query_changes_by_txn(&conn, &txn_id);
-                for msg in &skilllite_evolution::format_evolution_changes(&changes) {
-                    eprintln!("{}", msg);
-                }
-                let _ = skilllite_evolution::check_auto_rollback(&conn, data_root, skills_root_ref);
-                // 若本次进化写入了记忆知识，将其加入 memory 索引，以便 memory_search / build_memory_context 能搜到
-                if changes.iter().any(|(t, _)| t == "memory_knowledge_added") {
-                    let _ = extensions::index_evolution_knowledge(data_root, "default");
-                }
-            }
-        }
-        Ok(skilllite_evolution::EvolutionRunResult::SkippedBusy) => {
-            tracing::warn!("Evolution skipped: another run in progress");
-        }
-        Ok(skilllite_evolution::EvolutionRunResult::NoScope)
-        | Ok(skilllite_evolution::EvolutionRunResult::Completed(None)) => {
-            tracing::debug!("Evolution: nothing to evolve");
-        }
-        Err(e) => tracing::warn!("Evolution failed: {}", e),
-    }
-}
-
-/// A9: Periodic evolution trigger — runs every N seconds, even when user is active.
-/// Returns None when not inside a Tokio runtime (e.g. clear-session CLI), so no panic.
-pub fn spawn_periodic_evolution(
-    data_root: PathBuf,
-    workspace: String,
-    api_base: String,
-    api_key: String,
-    model: String,
-    interval_secs: u64,
-) -> Option<tokio::task::JoinHandle<()>> {
-    let _handle = tokio::runtime::Handle::try_current().ok()?;
-    Some(_handle.spawn(async move {
-        if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
-            tracing::debug!("Evolution disabled, skipping periodic trigger");
-            return;
-        }
-        let interval = std::time::Duration::from_secs(interval_secs);
-        loop {
-            tokio::time::sleep(interval).await;
-            tracing::debug!(
-                "Periodic evolution trigger fired (every {}s)",
-                interval_secs
-            );
-            run_evolution_and_emit_summary(
-                &data_root,
-                workspace.as_str(),
-                &api_base,
-                &api_key,
-                &model,
-            )
-            .await;
-        }
-    }))
-}
-
-/// A9: Decision-count trigger — spawn evolution once when threshold is met.
-/// No-op when not inside a Tokio runtime (returns None).
-pub fn spawn_evolution_once(
-    data_root: PathBuf,
-    workspace: String,
-    api_base: String,
-    api_key: String,
-    model: String,
-) -> Option<tokio::task::JoinHandle<()>> {
-    let handle = tokio::runtime::Handle::try_current().ok()?;
-    Some(handle.spawn(async move {
-        if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
-            return;
-        }
-        tracing::debug!("Decision-count evolution trigger fired");
-        run_evolution_and_emit_summary(&data_root, workspace.as_str(), &api_base, &api_key, &model)
-            .await;
-    }))
 }
 
 /// Shutdown hook: flush metrics, no LLM calls. Called before process exit.
