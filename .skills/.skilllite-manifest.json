@@ -21,7 +21,7 @@
       "name": "brainstorming",
       "source": "obra/superpowers",
       "version": null,
-      "hash": "ba64743ab4351e0f9e72269748927adafaa204a86d4819e515d2b819ce14033b",
+      "hash": "31aab7fd68f917c6ab5475377e14001dd6f4f72a88679bc9faef9ac2c6cc17ca",
       "signature_status": "UNSIGNED",
       "trust_tier": "COMMUNITY",
       "trust_score": 63,
@@ -29,9 +29,9 @@
         "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-03-18T14:03:12.521120Z",
-      "installed_at": "2026-03-18T14:03:12.521120Z",
-      "admission_risk": "safe"
+      "tier_updated_at": "2026-04-02T10:24:04.759537Z",
+      "installed_at": "2026-04-02T10:24:04.759537Z",
+      "admission_risk": null
     },
     "calculator": {
       "name": "calculator",
@@ -45,9 +45,9 @@
         "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-03-10T12:31:28.987867Z",
-      "installed_at": "2026-03-10T12:31:28.987867Z",
-      "admission_risk": "safe"
+      "tier_updated_at": "2026-04-02T10:19:23.585036Z",
+      "installed_at": "2026-04-02T10:19:23.585036Z",
+      "admission_risk": null
     },
     "csdn-article": {
       "name": "csdn-article",
@@ -77,9 +77,9 @@
         "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-03-10T12:31:28.992232Z",
-      "installed_at": "2026-03-10T12:31:28.992232Z",
-      "admission_risk": "safe"
+      "tier_updated_at": "2026-04-02T10:24:20.659202Z",
+      "installed_at": "2026-04-02T10:24:20.659202Z",
+      "admission_risk": null
     },
     "dispatching-parallel-agents": {
       "name": "dispatching-parallel-agents",
@@ -269,8 +269,8 @@
         "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-04-01T10:38:45.846320Z",
-      "installed_at": "2026-04-01T10:38:45.846321Z",
+      "tier_updated_at": "2026-04-02T10:24:02.275123Z",
+      "installed_at": "2026-04-02T10:24:02.275123Z",
       "admission_risk": null
     },
     "subagent-driven-development": {
@@ -333,9 +333,9 @@
         "known repository source",
         "unsigned package"
       ],
-      "tier_updated_at": "2026-03-10T12:31:29.007597Z",
-      "installed_at": "2026-03-10T12:31:29.007597Z",
-      "admission_risk": "suspicious"
+      "tier_updated_at": "2026-04-02T10:20:06.289891Z",
+      "installed_at": "2026-04-02T10:20:06.289891Z",
+      "admission_risk": null
     },
     "using-git-worktrees": {
       "name": "using-git-worktrees",

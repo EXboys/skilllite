@@ -30,23 +30,19 @@ fn timestamp_now() -> String {
     format!("{}", secs)
 }
 
-/// Write tool call and result to transcript for complete traceability
-/// (aligned with OpenAI Agents SDK tracing and Claude Code format)
-fn write_tool_to_transcript(
+/// Append ToolCall **before** tool execution so transcript order matches UI:
+/// `tool_call` → (optional `custom_message` confirmation/clarification during execute) → `tool_result`.
+fn append_tool_call_to_transcript(
     session_key: Option<&str>,
     tool_call_id: &str,
     name: &str,
     arguments: &str,
-    result: &str,
-    is_error: bool,
-    elapsed_ms: Option<u64>,
 ) {
     let session_key = match session_key {
         Some(s) => s,
         None => return,
     };
 
-    // Get transcript path (transcripts live under chat root)
     let chat_root = skilllite_executor::chat_root();
     let transcripts_dir = chat_root.join("transcripts");
     let t_path = match skilllite_executor::transcript::transcript_path_today(
@@ -64,19 +60,48 @@ fn write_tool_to_transcript(
     };
 
     let now = timestamp_now();
-
-    // Write ToolCall entry
     let tool_call_entry = skilllite_executor::transcript::TranscriptEntry::ToolCall {
         id: uuid::Uuid::new_v4().to_string(),
         parent_id: None,
         tool_call_id: tool_call_id.to_string(),
         name: name.to_string(),
         arguments: arguments.to_string(),
-        timestamp: now.clone(),
+        timestamp: now,
     };
     let _ = skilllite_executor::transcript::append_entry(&t_path, &tool_call_entry);
+}
 
-    // Write ToolResult entry
+/// Append ToolResult **after** tool execution (paired with [`append_tool_call_to_transcript`]).
+fn append_tool_result_to_transcript(
+    session_key: Option<&str>,
+    tool_call_id: &str,
+    name: &str,
+    result: &str,
+    is_error: bool,
+    elapsed_ms: Option<u64>,
+) {
+    let session_key = match session_key {
+        Some(s) => s,
+        None => return,
+    };
+
+    let chat_root = skilllite_executor::chat_root();
+    let transcripts_dir = chat_root.join("transcripts");
+    let t_path = match skilllite_executor::transcript::transcript_path_today(
+        &transcripts_dir,
+        session_key,
+    ) {
+        p if p
+            .parent()
+            .map(|p| skilllite_fs::create_dir_all(p).is_ok())
+            .unwrap_or(false) =>
+        {
+            p
+        }
+        _ => return,
+    };
+
+    let now = timestamp_now();
     let tool_result_entry = skilllite_executor::transcript::TranscriptEntry::ToolResult {
         id: uuid::Uuid::new_v4().to_string(),
         parent_id: None,
@@ -309,6 +334,7 @@ pub(super) async fn execute_tool_batch_planning(
         let tool_name = &tc.function.name;
         let arguments = &tc.function.arguments;
         event_sink.on_tool_call(tool_name, arguments);
+        append_tool_call_to_transcript(session_key, &tc.id, tool_name, arguments);
 
         let is_planning_control =
             tool_name.as_str() == "update_task_plan" || tool_name.as_str() == "complete_task";
@@ -327,6 +353,14 @@ pub(super) async fn execute_tool_batch_planning(
                 is_error: false,
                 counts_as_failure: false,
             };
+            append_tool_result_to_transcript(
+                session_key,
+                &tc.id,
+                tool_name,
+                &result.content,
+                false,
+                None,
+            );
             event_sink.on_tool_result(tool_name, &result.content, false);
             messages.push(ChatMessage::tool_result(
                 &result.tool_call_id,
@@ -432,11 +466,10 @@ pub(super) async fn execute_tool_batch_planning(
         }
 
         let elapsed_ms = start_time.elapsed().as_millis() as u64;
-        write_tool_to_transcript(
+        append_tool_result_to_transcript(
             session_key,
             &tc.id,
             tool_name,
-            arguments,
             &result.content,
             result.is_error,
             Some(elapsed_ms),
@@ -493,6 +526,7 @@ pub(super) async fn execute_tool_batch_simple(
         let tool_name = &tc.function.name;
         let arguments = &tc.function.arguments;
         event_sink.on_tool_call(tool_name, arguments);
+        append_tool_call_to_transcript(session_key, &tc.id, tool_name, arguments);
 
         let start_time = Instant::now();
         let mut result = execute_tool_call(
@@ -525,12 +559,10 @@ pub(super) async fn execute_tool_batch_simple(
         });
 
         let elapsed_ms = start_time.elapsed().as_millis() as u64;
-        // Write to transcript for complete traceability
-        write_tool_to_transcript(
+        append_tool_result_to_transcript(
             session_key,
             &tc.id,
             tool_name,
-            arguments,
             &result.content,
             result.is_error,
             Some(elapsed_ms),

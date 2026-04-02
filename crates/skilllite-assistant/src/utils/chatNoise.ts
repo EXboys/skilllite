@@ -7,16 +7,27 @@ export function isChatHiddenToolName(name: string): boolean {
   return HIDDEN_TOOL_NAMES.has(name);
 }
 
-/** 仅折叠「计划 + 工具调用」；工具结果常含对用户可见的正文，应作为主对话气泡展示。 */
+/**
+ * 折叠进「内部步骤」时间线：
+ * - plan / tool_call：计划与调用
+ * - confirmation / clarification：与当次工具同一轮产生的确认（落盘后应与 tool_call 相邻；单独展示会跑到折叠区「上面」，观感像顺序颠倒）
+ *
+ * tool_result 仍单独成条：常含对用户可见的正文。
+ */
 export function isTechnicalTimelineMessage(m: ChatMessage): boolean {
-  return m.type === "plan" || m.type === "tool_call";
+  return (
+    m.type === "plan" ||
+    m.type === "tool_call" ||
+    m.type === "confirmation" ||
+    m.type === "clarification"
+  );
 }
 
 export type ChatSegment =
   | { kind: "single"; message: ChatMessage }
   | { kind: "timeline"; messages: ChatMessage[] };
 
-/** 将消息切成「单条」与「内部步骤」时间线（仅 plan + tool_call）；确认类、tool_result、助手正文均为单条。 */
+/** 将消息切成「单条」与「内部步骤」时间线（plan + tool_call + 确认/澄清）；tool_result、助手正文等为单条。 */
 export function partitionChatMessages(messages: ChatMessage[]): ChatSegment[] {
   const out: ChatSegment[] = [];
   let buf: ChatMessage[] = [];

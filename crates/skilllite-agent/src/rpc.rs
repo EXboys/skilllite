@@ -66,9 +66,11 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::io::{self, BufRead, BufReader, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
+
+use skilllite_executor::transcript::{self, TranscriptEntry};
 
 use super::types::*;
 use super::{chat_session::ChatSession, skills};
@@ -86,15 +88,22 @@ struct RpcEventSink {
     turn_id: u64,
     /// Same-turn emitted tool_result keys to suppress duplicates in UI stream.
     emitted_tool_result_keys: HashSet<String>,
+    /// When set, append resolved confirmation/clarification as `custom_message` for desktop reload.
+    transcript_path: Option<PathBuf>,
 }
 
 impl RpcEventSink {
-    fn new(writer: Arc<Mutex<io::Stdout>>, reader: Arc<Mutex<BufReader<io::Stdin>>>) -> Self {
+    fn new(
+        writer: Arc<Mutex<io::Stdout>>,
+        reader: Arc<Mutex<BufReader<io::Stdin>>>,
+        transcript_path: Option<PathBuf>,
+    ) -> Self {
         Self {
             writer,
             confirmation_rx: reader,
             turn_id: 0,
             emitted_tool_result_keys: HashSet::new(),
+            transcript_path,
         }
     }
 
@@ -103,6 +112,65 @@ impl RpcEventSink {
         if let Ok(mut w) = self.writer.lock() {
             let _ = writeln!(w, "{}", msg);
             let _ = w.flush();
+        }
+    }
+
+    fn append_confirmation_transcript(&self, prompt: &str, approved: bool) {
+        let Some(path) = &self.transcript_path else {
+            return;
+        };
+        let entry = TranscriptEntry::CustomMessage {
+            id: Uuid::new_v4().to_string(),
+            parent_id: None,
+            data: json!({
+                "ui_kind": "confirmation",
+                "prompt": prompt,
+                "resolved": true,
+                "approved": approved,
+            }),
+        };
+        if let Err(e) = transcript::append_entry(path, &entry) {
+            tracing::warn!(
+                target: "skilllite_agent_rpc",
+                error = %e,
+                "Failed to append confirmation to transcript"
+            );
+        }
+    }
+
+    fn append_clarification_transcript(
+        &self,
+        request: &ClarificationRequest,
+        response: &ClarificationResponse,
+    ) {
+        let Some(path) = &self.transcript_path else {
+            return;
+        };
+        let (action, hint) = match response {
+            ClarificationResponse::Stop => ("stop", Value::Null),
+            ClarificationResponse::Continue(h) => {
+                ("continue", h.as_ref().map(|s| json!(s)).unwrap_or(Value::Null))
+            }
+        };
+        let entry = TranscriptEntry::CustomMessage {
+            id: Uuid::new_v4().to_string(),
+            parent_id: None,
+            data: json!({
+                "ui_kind": "clarification",
+                "reason": request.reason,
+                "message": request.message,
+                "suggestions": request.suggestions,
+                "resolved": true,
+                "action": action,
+                "hint": hint,
+            }),
+        };
+        if let Err(e) = transcript::append_entry(path, &entry) {
+            tracing::warn!(
+                target: "skilllite_agent_rpc",
+                error = %e,
+                "Failed to append clarification to transcript"
+            );
         }
     }
 }
@@ -203,11 +271,13 @@ impl EventSink for RpcEventSink {
             if reader.read_line(&mut line).is_ok() {
                 if let Ok(msg) = serde_json::from_str::<Value>(line.trim()) {
                     if msg.get("method").and_then(|m| m.as_str()) == Some("confirm") {
-                        return msg
+                        let approved = msg
                             .get("params")
                             .and_then(|p| p.get("approved"))
                             .and_then(|a| a.as_bool())
                             .unwrap_or(false);
+                        self.append_confirmation_transcript(prompt, approved);
+                        return approved;
                     }
                 }
             }
@@ -244,13 +314,17 @@ impl EventSink for RpcEventSink {
                                 .and_then(|h| h.as_str())
                                 .filter(|s| !s.is_empty())
                                 .map(|s| s.to_string());
-                            return ClarificationResponse::Continue(hint);
+                            let response = ClarificationResponse::Continue(hint);
+                            self.append_clarification_transcript(request, &response);
+                            return response;
                         }
                     }
                 }
             }
         }
-        ClarificationResponse::Stop
+        let response = ClarificationResponse::Stop;
+        self.append_clarification_transcript(request, &response);
+        response
     }
 
     fn on_task_plan(&mut self, tasks: &[Task]) {
@@ -445,7 +519,8 @@ async fn handle_agent_chat(
     let loaded_skills = skills::load_skills(&skill_dirs);
 
     let mut session = ChatSession::new(config, session_key, loaded_skills);
-    let mut sink = RpcEventSink::new(writer.clone(), reader);
+    let transcript_path = session.transcript_append_path();
+    let mut sink = RpcEventSink::new(writer.clone(), reader, Some(transcript_path));
 
     match session.run_turn(message, &mut sink).await {
         Ok(agent_result) => {

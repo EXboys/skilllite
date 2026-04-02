@@ -116,6 +116,7 @@ export default function ChatView() {
             content: string;
             name?: string;
             is_error?: boolean;
+            ui?: Record<string, unknown> | null;
           }>
         >("skilllite_load_transcript", {
           sessionKey: currentSessionKey,
@@ -124,6 +125,47 @@ export default function ChatView() {
         if (!entries || entries.length === 0) return;
         const msgs: ChatMessage[] = [];
         for (const e of entries) {
+          if (e.role === "skilllite_ui" && e.ui && typeof e.ui === "object") {
+            const u = e.ui as Record<string, unknown>;
+            const kind = u.kind;
+            if (kind === "confirmation") {
+              msgs.push({
+                id: e.id,
+                type: "confirmation",
+                prompt: String(u.prompt ?? ""),
+                resolved: Boolean(u.resolved ?? true),
+                approved: u.approved === true,
+              });
+              continue;
+            }
+            if (kind === "clarification") {
+              const raw = u.suggestions;
+              const suggestions = Array.isArray(raw)
+                ? raw.map((x) => String(x))
+                : [];
+              const action = String(u.action ?? "stop");
+              const hint =
+                u.hint === null || u.hint === undefined
+                  ? ""
+                  : String(u.hint);
+              msgs.push({
+                id: e.id,
+                type: "clarification",
+                reason: String(u.reason ?? ""),
+                message: String(u.message ?? ""),
+                suggestions,
+                resolved: Boolean(u.resolved ?? true),
+                selectedOption:
+                  action === "stop"
+                    ? "stop"
+                    : hint.length > 0
+                      ? hint
+                      : "已继续",
+              });
+              continue;
+            }
+            continue;
+          }
           if (e.role === "tool_call") {
             const name = e.name ?? "";
             if (isChatHiddenToolName(name)) continue;

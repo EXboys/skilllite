@@ -3,6 +3,8 @@
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
+use serde_json::json;
+
 use super::paths::{find_project_root, load_dotenv_for_child, skilllite_chat_root};
 
 /// Single message entry for frontend display.
@@ -15,6 +17,9 @@ pub struct TranscriptMessage {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
+    /// Desktop-only rows restored from `custom_message` (confirmation / clarification).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ui: Option<serde_json::Value>,
 }
 
 /// List transcript file paths for session, sorted by date (legacy first, then YYYY-MM-DD).
@@ -66,6 +71,7 @@ struct TranscriptEntryRaw {
     summary: Option<String>,
     name: Option<String>,
     is_error: Option<bool>,
+    ui: Option<serde_json::Value>,
 }
 
 pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
@@ -122,6 +128,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     summary: None,
                     name: None,
                     is_error: None,
+                    ui: None,
                 });
             } else if ty == "tool_call" {
                 let name = v
@@ -146,6 +153,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     summary: None,
                     name: Some(name),
                     is_error: None,
+                    ui: None,
                 });
             } else if ty == "tool_result" {
                 let name = v
@@ -174,6 +182,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     summary: None,
                     name: Some(name),
                     is_error: Some(is_error),
+                    ui: None,
                 });
             } else if ty == "compaction" {
                 entries.push(TranscriptEntryRaw {
@@ -184,7 +193,65 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     summary: v.get("summary").and_then(|s| s.as_str()).map(String::from),
                     name: None,
                     is_error: None,
+                    ui: None,
                 });
+            } else if ty == "custom_message" {
+                let ui_kind = v
+                    .get("ui_kind")
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("");
+                if ui_kind == "confirmation" {
+                    let id = v
+                        .get("id")
+                        .and_then(|i| i.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let ui = json!({
+                        "kind": "confirmation",
+                        "prompt": v.get("prompt").cloned().unwrap_or(json!("")),
+                        "resolved": v.get("resolved").and_then(|b| b.as_bool()).unwrap_or(true),
+                        "approved": v.get("approved").and_then(|b| b.as_bool()).unwrap_or(false),
+                    });
+                    entries.push(TranscriptEntryRaw {
+                        ty: "custom_message".to_string(),
+                        id,
+                        role: "skilllite_ui".to_string(),
+                        content: String::new(),
+                        summary: None,
+                        name: None,
+                        is_error: None,
+                        ui: Some(ui),
+                    });
+                } else if ui_kind == "clarification" {
+                    let id = v
+                        .get("id")
+                        .and_then(|i| i.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let suggestions = v
+                        .get("suggestions")
+                        .cloned()
+                        .unwrap_or_else(|| json!([]));
+                    let ui = json!({
+                        "kind": "clarification",
+                        "reason": v.get("reason").cloned().unwrap_or(json!("")),
+                        "message": v.get("message").cloned().unwrap_or(json!("")),
+                        "suggestions": suggestions,
+                        "resolved": v.get("resolved").and_then(|b| b.as_bool()).unwrap_or(true),
+                        "action": v.get("action").cloned().unwrap_or(json!("stop")),
+                        "hint": v.get("hint").cloned().unwrap_or(json!(null)),
+                    });
+                    entries.push(TranscriptEntryRaw {
+                        ty: "custom_message".to_string(),
+                        id,
+                        role: "skilllite_ui".to_string(),
+                        content: String::new(),
+                        summary: None,
+                        name: None,
+                        is_error: None,
+                        ui: Some(ui),
+                    });
+                }
             }
         }
     }
@@ -204,13 +271,32 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 content: format!("[此前对话已压缩]\n\n{}", summary),
                 name: None,
                 is_error: None,
+                ui: None,
             });
         }
     }
     for (i, e) in to_use.iter().enumerate() {
-        let dominated_by_type =
-            e.ty == "message" || e.ty == "tool_call" || e.ty == "tool_result";
+        let dominated_by_type = e.ty == "message"
+            || e.ty == "tool_call"
+            || e.ty == "tool_result"
+            || e.ty == "custom_message";
         if !dominated_by_type {
+            continue;
+        }
+        if e.ty == "custom_message" {
+            let id = if e.id.is_empty() {
+                format!("msg-{}", i)
+            } else {
+                e.id.clone()
+            };
+            messages.push(TranscriptMessage {
+                id,
+                role: "skilllite_ui".to_string(),
+                content: String::new(),
+                name: None,
+                is_error: None,
+                ui: e.ui.clone(),
+            });
             continue;
         }
         if e.ty == "message" && e.content.is_empty() && e.role != "user" {
@@ -227,6 +313,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
             content: e.content.clone(),
             name: e.name.clone(),
             is_error: e.is_error,
+            ui: None,
         });
     }
     messages
