@@ -628,7 +628,7 @@ mod extract_json_tests {
 
     #[test]
     fn extract_json_block_plain_after_strip_think() {
-        let s = "<think>\n</think>\n{\"k\":\"v\"}";
+        let s = "<think>\n</redacted_thinking>\n{\"k\":\"v\"}";
         assert_eq!(extract_json_block(s), "{\"k\":\"v\"}");
     }
 }

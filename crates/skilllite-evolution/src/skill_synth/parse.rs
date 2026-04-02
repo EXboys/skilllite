@@ -486,15 +486,18 @@ mod tests {
 
     #[test]
     fn test_parse_refinement_with_think_block() {
-        let content = r#"<think>
+        let content = r#"<redacted_thinking>
 Let me analyze this task carefully.
 The test input was `{}` (empty JSON object).
 The script expects `base` and `exponent` parameters like {"base": 2}.
-</think>
+</redacted_thinking>
 {"fix_summary": "补充测试输入", "fix_test_input": "{\"base\": 2, \"exponent\": 10}", "fixed_script": null, "fix_skill_md": null}"#;
         let result =
             parse_refinement_response(content).expect("content with think block should parse");
-        assert!(result.is_some(), "should parse JSON after <think> block");
+        assert!(
+            result.is_some(),
+            "should parse JSON after <redacted_thinking> block"
+        );
         let refined = result.expect("test has refinement");
         assert_eq!(
             refined.fix_test_input.as_deref(),
@@ -504,12 +507,12 @@ The script expects `base` and `exponent` parameters like {"base": 2}.
 
     #[test]
     fn test_parse_refinement_think_block_with_code_fence() {
-        let content = "<think>\nAnalyzing the issue...\n</think>\n```json\n{\"fix_summary\": \"fix\", \"fix_test_input\": \"{\\\"start\\\": 1, \\\"end\\\": 10}\"}\n```";
+        let content = "<redacted_thinking>\nAnalyzing the issue...\n</redacted_thinking>\n```json\n{\"fix_summary\": \"fix\", \"fix_test_input\": \"{\\\"start\\\": 1, \\\"end\\\": 10}\"}\n```";
         let result = parse_refinement_response(content)
             .expect("content with think block and code fence should parse");
         assert!(
             result.is_some(),
-            "should parse JSON in code fence after <think>"
+            "should parse JSON in code fence after <redacted_thinking>"
         );
         let refined = result.expect("test has refinement");
         assert!(refined.fix_test_input.is_some());
@@ -519,12 +522,12 @@ The script expects `base` and `exponent` parameters like {"base": 2}.
     fn test_strip_think_blocks() {
         // Normal closed tags
         assert_eq!(
-            strip_think_blocks("<think>foo</think>{\"a\":1}"),
+            strip_think_blocks("<redacted_thinking>foo</redacted_thinking>{\"a\":1}"),
             "{\"a\":1}"
         );
         assert_eq!(strip_think_blocks("no think here"), "no think here");
         assert_eq!(
-            strip_think_blocks("<think>x{y}z</think>\n{\"b\":2}"),
+            strip_think_blocks("<redacted_thinking>x{y}z</redacted_thinking>\n{\"b\":2}"),
             "{\"b\":2}"
         );
         assert_eq!(
@@ -537,23 +540,23 @@ The script expects `base` and `exponent` parameters like {"base": 2}.
         );
         // Nested / multiple think blocks
         assert_eq!(
-            strip_think_blocks("<think>a</think>mid<think>b</think>{\"e\":5}"),
+            strip_think_blocks("<redacted_thinking>a</redacted_thinking>mid<redacted_thinking>b</redacted_thinking>{\"e\":5}"),
             "{\"e\":5}"
         );
         // Think block at end (content before it)
         assert_eq!(
-            strip_think_blocks("{\"f\":6}<think>verify</think>"),
-            "{\"f\":6}<think>verify</think>"
+            strip_think_blocks("{\"f\":6}<redacted_thinking>verify</redacted_thinking>"),
+            "{\"f\":6}<redacted_thinking>verify</redacted_thinking>"
         );
         // Unclosed think tag — take content before the opening tag
         assert_eq!(
-            strip_think_blocks("{\"g\":7}<think>still thinking..."),
+            strip_think_blocks("{\"g\":7}<redacted_thinking>still thinking..."),
             "{\"g\":7}"
         );
         // Unclosed think tag with nothing before — return original
         assert_eq!(
-            strip_think_blocks("<think>thinking with no output"),
-            "<think>thinking with no output"
+            strip_think_blocks("<redacted_thinking>thinking with no output"),
+            "<redacted_thinking>thinking with no output"
         );
     }
 
