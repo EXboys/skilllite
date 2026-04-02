@@ -158,3 +158,94 @@ fn list_dir_impl(
     }
     Ok(())
 }
+
+const TREE_SKIP_DIRS: &[&str] = &[
+    "node_modules",
+    "__pycache__",
+    ".git",
+    "venv",
+    ".venv",
+    ".tox",
+    "target",
+];
+
+/// ASCII directory tree (similar to the `tree` command), UTF-8 paths.
+pub fn directory_tree(path: &Path, recursive: bool) -> Result<String> {
+    if !path.exists() {
+        return Err(Error::validation(format!(
+            "Directory not found: {}",
+            path.display()
+        )));
+    }
+    if !path.is_dir() {
+        return Err(Error::validation(format!(
+            "Path is not a directory: {}",
+            path.display()
+        )));
+    }
+    let mut out = String::new();
+    let root_label = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| ".".to_string());
+    out.push_str(&root_label);
+    out.push('/');
+    out.push('\n');
+    write_tree_children(path, "", 0, recursive, &mut out)?;
+    Ok(out)
+}
+
+fn write_tree_children(
+    dir: &Path,
+    prefix: &str,
+    depth: usize,
+    recursive: bool,
+    out: &mut String,
+) -> Result<()> {
+    let mut items: Vec<_> = std::fs::read_dir(dir)
+        .with_context(|| format!("Failed to read dir: {}", dir.display()))?
+        .filter_map(|e| e.ok())
+        .collect();
+    items.sort_by_key(|e| e.file_name());
+
+    let len = items.len();
+    for (i, entry) in items.into_iter().enumerate() {
+        let is_last = i + 1 == len;
+        let name = entry.file_name().to_string_lossy().to_string();
+        let entry_path = entry.path();
+        let is_dir = entry_path.is_dir();
+
+        if depth == 0 && name.starts_with('.') && name != "." {
+            let branch = if is_last { "└── " } else { "├── " };
+            out.push_str(prefix);
+            out.push_str(branch);
+            if is_dir {
+                out.push_str(&name);
+                out.push('/');
+            } else {
+                let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                out.push_str(&format!("{} ({})", name, format_size(size)));
+            }
+            out.push('\n');
+            continue;
+        }
+
+        let branch = if is_last { "└── " } else { "├── " };
+        out.push_str(prefix);
+        out.push_str(branch);
+        if is_dir {
+            out.push_str(&name);
+            out.push('/');
+            out.push('\n');
+            let next_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
+            if recursive && !TREE_SKIP_DIRS.contains(&name.as_str()) {
+                write_tree_children(&entry_path, &next_prefix, depth + 1, recursive, out)?;
+            }
+        } else {
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            out.push_str(&format!("{} ({})", name, format_size(size)));
+            out.push('\n');
+        }
+    }
+    Ok(())
+}

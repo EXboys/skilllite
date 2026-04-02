@@ -1,5 +1,9 @@
 import { memo } from "react";
 import { MarkdownContent } from "../shared/MarkdownContent";
+import {
+  ListDirectoryToolResultView,
+  ReadFileToolResultView,
+} from "./FileToolResults";
 import { StructuredPayload, getConversationToolResultMarkdown } from "./StructuredPayload";
 import type { ChatMessage } from "../../types/chat";
 import {
@@ -142,6 +146,40 @@ function MessageBubbleInner({ message, onConfirm, onClarify, onEvolutionAction }
   }
 
   if (message.type === "tool_result") {
+    if (!message.isError && message.name === "read_file") {
+      return (
+        <div className="flex justify-start">
+          <div
+            className={`${bubbleAssistant} border-l-[3px] border-l-emerald-500/35 dark:border-l-emerald-500/40 pl-3.5 max-w-[min(92%,42rem)] w-full min-w-0`}
+          >
+            <p className="text-[10px] font-medium uppercase tracking-wider text-ink-mute dark:text-ink-dark-mute mb-2">
+              工具结果
+              <span className="ml-1.5 font-mono normal-case tracking-normal text-emerald-700/85 dark:text-emerald-300/90">
+                {message.name}
+              </span>
+            </p>
+            <ReadFileToolResultView result={message.result} />
+          </div>
+        </div>
+      );
+    }
+    if (!message.isError && message.name === "list_directory") {
+      return (
+        <div className="flex justify-start">
+          <div
+            className={`${bubbleAssistant} border-l-[3px] border-l-emerald-500/35 dark:border-l-emerald-500/40 pl-3.5 max-w-[min(92%,42rem)] w-full min-w-0`}
+          >
+            <p className="text-[10px] font-medium uppercase tracking-wider text-ink-mute dark:text-ink-dark-mute mb-2">
+              工具结果
+              <span className="ml-1.5 font-mono normal-case tracking-normal text-emerald-700/85 dark:text-emerald-300/90">
+                {message.name}
+              </span>
+            </p>
+            <ListDirectoryToolResultView result={message.result} />
+          </div>
+        </div>
+      );
+    }
     const convMd = getConversationToolResultMarkdown(message.result, message.isError);
     if (convMd !== null) {
       return (

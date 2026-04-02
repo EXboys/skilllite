@@ -160,7 +160,7 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "list_directory".to_string(),
-                description: "List files and directories in a given path. Supports recursive listing.".to_string(),
+                description: "List files and directories as an ASCII tree (├──/└──). Supports recursive listing; skips heavy dirs (node_modules, .git, target, etc.).".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -381,8 +381,7 @@ pub(super) fn execute_list_directory(args: &Value, workspace: &Path) -> Result<S
         .unwrap_or(false);
 
     let resolved = resolve_within_workspace_or_output(&path_str, workspace)?;
-    let entries = skilllite_fs::list_directory(&resolved, recursive)?;
-    Ok(entries.join("\n"))
+    Ok(skilllite_fs::directory_tree(&resolved, recursive)?)
 }
 
 pub(super) fn execute_file_exists(args: &Value, workspace: &Path) -> Result<String> {

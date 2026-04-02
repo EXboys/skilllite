@@ -22,8 +22,8 @@ pub use error::{Error, Result};
 // Re-export public API
 pub use backup::{backup_file, prune_oldest_files};
 pub use dir::{
-    copy, create_dir_all, file_exists, list_directory, modified_time, read_dir, remove_file,
-    rename, PathKind,
+    copy, create_dir_all, directory_tree, file_exists, list_directory, modified_time, read_dir,
+    remove_file, rename, PathKind,
 };
 pub use grep::{grep_directory, GrepMatch, SKIP_DIRS};
 pub use read_write::{
@@ -66,6 +66,19 @@ mod tests {
         assert!(entries.iter().any(|e| e.contains("sub")));
         let rec = list_directory(dir.path(), true).unwrap();
         assert!(rec.iter().any(|e| e.contains("b.txt")));
+    }
+
+    #[test]
+    fn test_directory_tree() {
+        let dir = TempDir::new().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "1").unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("sub").join("b.txt"), "2").unwrap();
+        let s = directory_tree(dir.path(), true).unwrap();
+        assert!(s.contains("├──") || s.contains("└──"));
+        assert!(s.contains("a.txt"));
+        assert!(s.contains("sub/"));
+        assert!(s.contains("b.txt"));
     }
 
     #[test]
