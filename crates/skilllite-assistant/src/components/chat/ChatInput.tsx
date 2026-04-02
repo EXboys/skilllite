@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 interface ChatInputProps {
   value: string;
   onChange: (value: string) => void;
@@ -8,6 +10,8 @@ interface ChatInputProps {
   placeholder?: string;
   /** 仅渲染输入行，用于与上方模块同处一个底栏容器 */
   bare?: boolean;
+  /** 输入框下方的附加行（如选项开关） */
+  footer?: ReactNode;
 }
 
 export function ChatInput({
@@ -19,6 +23,7 @@ export function ChatInput({
   loading,
   placeholder = "输入指令（Enter 换行，点击发送）…",
   bare = false,
+  footer,
 }: ChatInputProps) {
   const row = (
     <div className="flex gap-2">
@@ -51,11 +56,18 @@ export function ChatInput({
       </div>
   );
 
-  if (bare) return row;
+  const body = (
+    <div className={`flex flex-col gap-2 ${bare ? "w-full" : ""}`}>
+      {row}
+      {footer}
+    </div>
+  );
+
+  if (bare) return body;
 
   return (
     <div className="p-4 border-t border-border dark:border-border-dark bg-white dark:bg-paper-dark">
-      {row}
+      {body}
     </div>
   );
 }

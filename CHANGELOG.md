@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **SkillLite Assistant (desktop)**: Chat **internal steps** timeline **auto-expands** when it contains a pending **execution confirmation** or **clarification** (so users do not have to discover the collapsed block). When still collapsed, a **“action needed”** badge is shown. The input area adds an optional **auto-allow execution confirmations** checkbox (persisted in app settings); it only affects `confirmation` prompts, not clarification option pickers.
+
 ---
 
 ## [0.1.20] - 2026-04-02

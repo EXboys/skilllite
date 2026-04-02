@@ -23,6 +23,19 @@ export function isTechnicalTimelineMessage(m: ChatMessage): boolean {
   );
 }
 
+/** 时间线内是否有尚未处理的确认/澄清（需要用户在折叠区内点击按钮） */
+export function timelineGroupNeedsUserAction(messages: ChatMessage[]): boolean {
+  return messages.some((m) => {
+    if (m.type === "confirmation") {
+      return !m.resolved;
+    }
+    if (m.type === "clarification") {
+      return !m.resolved;
+    }
+    return false;
+  });
+}
+
 export type ChatSegment =
   | { kind: "single"; message: ChatMessage }
   | { kind: "timeline"; messages: ChatMessage[] };

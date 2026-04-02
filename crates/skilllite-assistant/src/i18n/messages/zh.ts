@@ -94,6 +94,11 @@ export const zhMessages: Record<string, string> = {
   "chat.requestFailed": "请求失败: {msg}",
   "chat.clearingNotice": "正在清空对话…",
   "chat.clearedNotice": "已清空对话",
+  "chat.autoApproveToolConfirmations": "自动允许执行确认",
+  "chat.autoApproveToolConfirmationsHint":
+    "开启后，工具执行前的「执行确认」将自动选择「允许」。请在可信环境中使用。",
+  "chat.timelineNeedsAction": "待操作",
+  "chat.timelineNeedsActionHint": "请展开本条，点击允许/拒绝或选择澄清选项。",
   "chat.apiError.tlsSuffix":
     "若使用系统/公司代理或 HTTPS 扫描，可尝试：1) 为应用配置 HTTPS_PROXY；2) 在本机终端用 curl 测试同一 URL；3) 查阅发行说明（当前 LLM 客户端使用 Rustls，部分自定义根证书环境可能需额外配置）。",
   "chat.apiError.unauthorized":

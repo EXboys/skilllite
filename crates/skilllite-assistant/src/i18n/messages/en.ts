@@ -95,6 +95,12 @@ export const enMessages: Record<string, string> = {
   "chat.requestFailed": "Request failed: {msg}",
   "chat.clearingNotice": "Clearing chat…",
   "chat.clearedNotice": "Chat cleared",
+  "chat.autoApproveToolConfirmations": "Auto-allow execution confirmations",
+  "chat.autoApproveToolConfirmationsHint":
+    "When enabled, pending tool execution confirmations are approved automatically. Only use in trusted environments.",
+  "chat.timelineNeedsAction": "Action needed",
+  "chat.timelineNeedsActionHint":
+    "Expand this block to allow/deny execution or pick a clarification option.",
   "chat.apiError.tlsSuffix":
     "If you use a corporate proxy or HTTPS inspection, try: 1) set HTTPS_PROXY for the app; 2) curl the same URL in a terminal; 3) check release notes (the LLM client uses Rustls; custom roots may need extra setup).",
   "chat.apiError.unauthorized":

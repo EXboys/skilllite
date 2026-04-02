@@ -37,6 +37,11 @@ export interface Settings {
   sessionPanelCollapsed?: boolean;
   /** 界面语言 */
   locale?: UiLocale;
+  /**
+   * 自动允许「执行确认」（工具执行前弹窗）；默认关闭以降低误操作风险。
+   * 持久化在 localStorage，与 `SETTINGS_STORE_PERSIST_KEY` 一致。
+   */
+  autoApproveToolConfirmations?: boolean;
 }
 
 /** localStorage 键名；详情窗口与主窗口同步设置时需与此一致 */

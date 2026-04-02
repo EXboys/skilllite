@@ -2,7 +2,10 @@ import { useRef, useEffect, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MessageBubble } from "./MessageBubble";
 import { SystemTimelineGroup } from "./SystemTimelineGroup";
-import { partitionChatMessages } from "../../utils/chatNoise";
+import {
+  partitionChatMessages,
+  timelineGroupNeedsUserAction,
+} from "../../utils/chatNoise";
 import type { ChatMessage } from "../../types/chat";
 
 const USE_VIRTUAL_THRESHOLD = 48;
@@ -87,7 +90,10 @@ export function MessageList({
         <SystemTimelineGroup
           key={seg.messages.map((m) => m.id).join("|")}
           messages={seg.messages}
-          defaultExpanded={timelineDefaultExpanded(messages, seg.messages, loading)}
+          defaultExpanded={
+            timelineDefaultExpanded(messages, seg.messages, loading) ||
+            timelineGroupNeedsUserAction(seg.messages)
+          }
           onConfirm={onConfirm}
           onClarify={onClarify}
           onEvolutionAction={onEvolutionAction}
@@ -113,7 +119,10 @@ export function MessageList({
             <SystemTimelineGroup
               key={seg.messages.map((m) => m.id).join("|")}
               messages={seg.messages}
-              defaultExpanded={timelineDefaultExpanded(messages, seg.messages, loading)}
+              defaultExpanded={
+                timelineDefaultExpanded(messages, seg.messages, loading) ||
+                timelineGroupNeedsUserAction(seg.messages)
+              }
               onConfirm={onConfirm}
               onClarify={onClarify}
               onEvolutionAction={onEvolutionAction}

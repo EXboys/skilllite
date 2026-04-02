@@ -36,6 +36,7 @@ npm run tauri:build
 - **Skills**：会自动从 workspace 向上查找 `.skills` 或 `skills` 目录
 - **skilllite**：需已安装（`pip install skilllite` 或 `cargo install --path skilllite`）
 - **Level 3 确认**：Skill 执行前会弹出安全扫描确认弹窗，点击「允许」继续执行
+- **聊天**：含「执行确认 / 需要你的确认」的步骤在 **内部步骤** 时间线中会默认展开（收起时若仍待操作会显示 **待操作** 标签）；输入框下方可选 **自动允许执行确认**（仅自动点「允许」，不代替澄清选项）
 
 ## 图标
 

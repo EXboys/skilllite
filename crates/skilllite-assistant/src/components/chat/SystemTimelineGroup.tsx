@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { MessageBubble } from "./MessageBubble";
-import { summarizeTimelineGroup } from "../../utils/chatNoise";
+import {
+  summarizeTimelineGroup,
+  timelineGroupNeedsUserAction,
+} from "../../utils/chatNoise";
 import type { ChatMessage } from "../../types/chat";
+import { useI18n } from "../../i18n";
 
 interface SystemTimelineGroupProps {
   messages: ChatMessage[];
@@ -19,10 +23,15 @@ export function SystemTimelineGroup({
   onClarify,
   onEvolutionAction,
 }: SystemTimelineGroupProps) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const needsUserAction = useMemo(
+    () => timelineGroupNeedsUserAction(messages),
+    [messages]
+  );
 
   useEffect(() => {
-    if (!defaultExpanded) setExpanded(false);
+    setExpanded(defaultExpanded);
   }, [defaultExpanded]);
 
   const summary = summarizeTimelineGroup(messages);
@@ -42,6 +51,14 @@ export function SystemTimelineGroup({
           </span>
           <span className="font-medium text-ink dark:text-ink-dark">内部步骤</span>
           <span className="text-xs tabular-nums opacity-80">· {n} 条</span>
+          {!expanded && needsUserAction && (
+            <span
+              className="shrink-0 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-200"
+              title={t("chat.timelineNeedsActionHint")}
+            >
+              {t("chat.timelineNeedsAction")}
+            </span>
+          )}
           {!expanded && (
             <span className="truncate text-xs opacity-75 min-w-0" title={summary}>
               — {summary}

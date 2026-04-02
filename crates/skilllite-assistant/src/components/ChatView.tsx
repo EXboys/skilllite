@@ -335,7 +335,7 @@ export default function ChatView() {
     [settings.workspace, stopEvolutionPoll]
   );
 
-  const handleConfirm = async (id: string, approved: boolean) => {
+  const handleConfirm = useCallback(async (id: string, approved: boolean) => {
     try {
       await invoke("skilllite_confirm", { approved });
       setMessages((prev) =>
@@ -351,7 +351,24 @@ export default function ChatView() {
         .getState()
         .show(t("toast.confirmFailed", { err: msg }), "error");
     }
-  };
+  }, [t]);
+
+  const autoApproveInFlightRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!settings.autoApproveToolConfirmations) return;
+    const pending = messages.find(
+      (m): m is Extract<ChatMessage, { type: "confirmation" }> =>
+        m.type === "confirmation" && !m.resolved
+    );
+    if (!pending) return;
+    if (autoApproveInFlightRef.current === pending.id) return;
+    autoApproveInFlightRef.current = pending.id;
+    void handleConfirm(pending.id, true).finally(() => {
+      if (autoApproveInFlightRef.current === pending.id) {
+        autoApproveInFlightRef.current = null;
+      }
+    });
+  }, [messages, settings.autoApproveToolConfirmations, handleConfirm]);
 
   const handleClarify = async (id: string, action: string, hint?: string) => {
     try {
@@ -572,6 +589,22 @@ export default function ChatView() {
   const showStarterPrompts =
     settings.showStarterPrompts === true && messages.length === 0 && !loading && !isClearing;
 
+  const chatInputFooter = (
+    <label className="flex items-center gap-2 text-xs text-ink-mute dark:text-ink-dark-mute cursor-pointer select-none">
+      <input
+        type="checkbox"
+        className="rounded border-border dark:border-border-dark text-accent focus:ring-accent/30"
+        checked={settings.autoApproveToolConfirmations === true}
+        onChange={(e) =>
+          setSettings({ autoApproveToolConfirmations: e.target.checked })
+        }
+      />
+      <span title={t("chat.autoApproveToolConfirmationsHint")}>
+        {t("chat.autoApproveToolConfirmations")}
+      </span>
+    </label>
+  );
+
   const chatInputProps = {
     value: input,
     onChange: setInput,
@@ -579,6 +612,7 @@ export default function ChatView() {
     onStop: handleStop,
     disabled: loading || isClearing,
     loading,
+    footer: chatInputFooter,
   };
 
   return (
