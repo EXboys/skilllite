@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Evolution defaults**: Coordinator **shadow mode** is now **off** by default (`SKILLLITE_EVO_SHADOW_MODE` unset ⇒ execute when policy allows), and **low-risk auto-execute** is **on** by default (`SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK`). Restore the previous conservative behavior with `SKILLLITE_EVO_SHADOW_MODE=1` and `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK=0`.
+
 ---
 
 ## [0.1.19] - 2026-04-02

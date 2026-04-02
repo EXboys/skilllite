@@ -167,8 +167,10 @@ impl EvolutionCoordinatorConfig {
     fn from_env() -> Self {
         Self {
             policy_runtime_enabled: env_bool(evo_keys::SKILLLITE_EVO_POLICY_RUNTIME_ENABLED, true),
-            shadow_mode: env_bool(evo_keys::SKILLLITE_EVO_SHADOW_MODE, true),
-            auto_execute_low_risk: env_bool(evo_keys::SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK, false),
+            // Default off: evolution runs should apply changes unless the user opts into dry-run governance.
+            shadow_mode: env_bool(evo_keys::SKILLLITE_EVO_SHADOW_MODE, false),
+            // Default on: low-risk proposals (typical active-learning path) execute without manual confirm.
+            auto_execute_low_risk: env_bool(evo_keys::SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK, true),
             deny_critical: env_bool(evo_keys::SKILLLITE_EVO_DENY_CRITICAL, true),
             risk_budget: EvolutionRiskBudget::from_env(),
         }

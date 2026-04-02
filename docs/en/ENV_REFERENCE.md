@@ -197,8 +197,8 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** Periodic trigger interval (seconds). Evolution runs every 30 min in background, even when user is active |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** Decision-count trigger. When unprocessed decisions ≥ this value, evolution is triggered |
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | Max number of evolution txn snapshot dirs under `chat/prompts/_versions/` (oldest removed first by directory name). **`0` = never prune** — keeps full local prompt history without Git; disk use grows with runs |
-| `SKILLLITE_EVO_SHADOW_MODE` | bool | `1` | Evolution governance shadow mode. When enabled, dual trigger paths generate and score proposals, but coordinator does not auto-execute them |
-| `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `0` | Allow coordinator to auto-execute only low-risk proposals (effective only when `SKILLLITE_EVO_SHADOW_MODE=0`) |
+| `SKILLLITE_EVO_SHADOW_MODE` | bool | `0` | Evolution governance shadow mode. Set to `1` to score/queue only (dry-run); default off so evolution applies changes |
+| `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `1` | Allow coordinator to auto-execute low-risk proposals (ignored while shadow mode is on) |
 | `SKILLLITE_EVO_POLICY_RUNTIME_ENABLED` | bool | `1` | Enable coordinator policy runtime; decision is evaluated as `allow` / `ask` / `deny` with an auditable reason chain |
 | `SKILLLITE_EVO_DENY_CRITICAL` | bool | `1` | Deny critical-risk proposals by default in policy runtime (`policy_denied` backlog status) |
 | `SKILLLITE_EVO_RISK_BUDGET_LOW_PER_DAY` | int | `5` | Daily auto-execution budget for low-risk proposals (`0` = never auto execute) |

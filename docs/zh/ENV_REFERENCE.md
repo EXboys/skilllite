@@ -197,8 +197,8 @@
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** 周期性触发间隔（秒）。每 30 分钟触发一次进化，即使用户活跃也会在后台进化 |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** 决策数触发阈值。当未处理决策数 ≥ 此值时触发进化 |
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | 每次进化后备份目录 `chat/prompts/_versions/<txn>/` 最多保留几个（按目录名排序删最旧）。设为 **`0` 表示不删除**，可长期本地溯源 prompt 版本，无需 Git；磁盘占用会随进化次数增长 |
-| `SKILLLITE_EVO_SHADOW_MODE` | bool | `1` | 进化治理的影子模式。开启后，主动/被动链路只产生并评分提案，coordinator 默认不自动执行 |
-| `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `0` | 允许 coordinator 自动执行低风险提案（仅在 `SKILLLITE_EVO_SHADOW_MODE=0` 时生效） |
+| `SKILLLITE_EVO_SHADOW_MODE` | bool | `0` | 进化治理的影子模式。设为 `1` 时只产生并评分提案、不自动执行（演习）；默认关闭以便进化会写入 |
+| `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `1` | 允许 coordinator 自动执行低风险提案（影子模式开启时不生效） |
 | `SKILLLITE_EVO_POLICY_RUNTIME_ENABLED` | bool | `1` | 启用 coordinator 的 policy runtime，对提案给出 `allow` / `ask` / `deny` 及可审计原因链 |
 | `SKILLLITE_EVO_DENY_CRITICAL` | bool | `1` | policy runtime 默认拒绝 critical 风险提案（backlog 状态为 `policy_denied`） |
 | `SKILLLITE_EVO_RISK_BUDGET_LOW_PER_DAY` | int | `5` | 低风险提案每日自动执行预算（`0` 表示不自动执行） |

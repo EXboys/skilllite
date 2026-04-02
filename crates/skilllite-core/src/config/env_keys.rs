@@ -121,10 +121,11 @@ pub mod evolution {
     /// Default `10`. Set to `0` to never delete snapshots (full local history, no Git required; disk usage grows).
     pub const SKILLLITE_EVOLUTION_SNAPSHOT_KEEP: &str = "SKILLLITE_EVOLUTION_SNAPSHOT_KEEP";
     /// Governance shadow mode for proposal coordinator.
-    /// Default enabled (`1`/`true`): proposals are queued/scored but not auto-executed.
+    /// Default disabled (`0`/`false`): coordinator may execute after policy allows.
+    /// Set to `1`/`true` for dry-run (queue/score only, no auto-execute).
     pub const SKILLLITE_EVO_SHADOW_MODE: &str = "SKILLLITE_EVO_SHADOW_MODE";
     /// Allow coordinator to auto-execute low-risk proposals.
-    /// Default disabled (`0`/`false`).
+    /// Default enabled (`1`/`true`); ineffective while shadow mode is on.
     pub const SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK: &str = "SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK";
     /// Enable policy runtime in coordinator (`allow`/`ask`/`deny` with reason chain).
     /// Default enabled (`1`/`true`).
