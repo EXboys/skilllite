@@ -148,9 +148,10 @@ impl RpcEventSink {
         };
         let (action, hint) = match response {
             ClarificationResponse::Stop => ("stop", Value::Null),
-            ClarificationResponse::Continue(h) => {
-                ("continue", h.as_ref().map(|s| json!(s)).unwrap_or(Value::Null))
-            }
+            ClarificationResponse::Continue(h) => (
+                "continue",
+                h.as_ref().map(|s| json!(s)).unwrap_or(Value::Null),
+            ),
         };
         let entry = TranscriptEntry::CustomMessage {
             id: Uuid::new_v4().to_string(),
