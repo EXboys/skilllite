@@ -7,9 +7,8 @@
 //! - **Growth**: runs `skilllite evolution run` when A9 matches workspace `.env`:
 //!   **every `SKILLLITE_EVOLUTION_INTERVAL_SECS`** (default 30 min) **or**
 //!   **unprocessed decisions ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`** (default 10).
-//!   The **agent-rpc** / `ChatSession` path **only writes** `feedback.sqlite` (decisions + metrics);
-//!   it does **not** spawn evolution in-process. A9 scheduling is **desktop-only** here (plus manual
-//!   `skilllite evolution run` / cron for headless CLI).
+//!   The **agent-rpc** chat subprocess also runs the same A9 timers in-process; `run_evolution`
+//!   serializes on `feedback.sqlite` (`SkippedBusy` if both fire).
 //! - **Rhythm**: checks `schedule.json` for due jobs and runs
 //!   `skilllite schedule tick` as a subprocess when any are due.
 //!
