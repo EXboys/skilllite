@@ -3730,7 +3730,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skilllite-agent"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3760,7 +3760,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-assistant"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -3782,7 +3782,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-core"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3805,7 +3805,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-evolution"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3828,7 +3828,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-executor"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3845,7 +3845,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-fs"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "regex",
@@ -3854,7 +3854,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-sandbox"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "chrono",

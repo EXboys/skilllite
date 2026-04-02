@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.1.20] - 2026-04-02
+
 ### Added
 
 - **Evolution audit**: `evolution_log` / `evolution.log` now records **`evolution_run_outcome`** when a `run_evolution` invocation ends as **`SkippedBusy`**, **`NoScope`** (no proposals or coordinator mutex busy), or **`Err`** (failure reason), so desktop/agent triggers are traceable without relying on tracing only.
@@ -17,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **SkillLite Assistant (desktop)**: Evolution backlog list in **运行与队列** hides rows that are **fully done** (`status=executed` with `acceptance_status` **`met`** or **`not_met`**); rows still in the acceptance window (**`pending_validation`**) remain visible. CLI `skilllite evolution backlog` is unchanged (full table; use `--status` to filter).
 - **Evolution coordinator**: **Shadow mode** (`SKILLLITE_EVO_SHADOW_MODE`) is **removed**; proposals no longer stop at a shadow-only backlog state. When **`SKILLLITE_EVO_POLICY_RUNTIME_ENABLED=0`**, the coordinator **executes** the selected proposal directly (except **critical** still respects **`SKILLLITE_EVO_DENY_CRITICAL`**). **Low-risk auto-execute** remains **on** by default (`SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK`) when policy runtime is enabled.
 - **A9**: `ChatSession` again runs **in-process** periodic + decision-count evolution. **Life Pulse** still spawns `skilllite evolution run` on the same interval/threshold (workspace `.env`). **Desktop chat** no longer injects **P7 in-conversation “evolution_options”** bubbles on tool partial_success/failure or `complete_task` partial_success/failure (`useChatEvents.ts`); use the **自进化** panel or wait for A9.
+
+### Release
+
+- Workspace, Python SDK, and SkillLite Assistant (Tauri) bumped to **0.1.20**; internal crate path dependency pins aligned to **0.1.20**.
 
 ---
 
@@ -257,7 +265,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.19...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.20...HEAD
+[0.1.20]: https://github.com/EXboys/skilllite/releases/tag/v0.1.20
 [0.1.19]: https://github.com/EXboys/skilllite/releases/tag/v0.1.19
 [0.1.16]: https://github.com/EXboys/skilllite/releases/tag/v0.1.16
 [0.1.15]: https://github.com/EXboys/skilllite/releases/tag/v0.1.15

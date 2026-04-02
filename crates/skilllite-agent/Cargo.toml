@@ -16,11 +16,11 @@ memory_vector = ["dep:sqlite-vec", "dep:zerocopy", "skilllite-executor/memory_ve
 async-resolve = []
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core", version = "0.1.19", features = ["async-resolve"] }
-skilllite-evolution = { path = "../skilllite-evolution", version = "0.1.19" }
-skilllite-fs = { path = "../skilllite-fs", version = "0.1.19" }
-skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.19" }
-skilllite-executor = { path = "../skilllite-executor", version = "0.1.19" }
+skilllite-core = { path = "../skilllite-core", version = "0.1.20", features = ["async-resolve"] }
+skilllite-evolution = { path = "../skilllite-evolution", version = "0.1.20" }
+skilllite-fs = { path = "../skilllite-fs", version = "0.1.20" }
+skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.20" }
+skilllite-executor = { path = "../skilllite-executor", version = "0.1.20" }
 
 async-trait = "0.1"
 

@@ -2165,7 +2165,7 @@ checksum = "e320a6c5ad31d271ad523dcf3ad13e2767ad8b1cb8f047f75a8aeaf8da139da2"
 
 [[package]]
 name = "skilllite"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2196,7 +2196,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-agent"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2230,7 +2230,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-commands"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2257,7 +2257,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-core"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2281,7 +2281,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-evolution"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2304,7 +2304,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-executor"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2323,7 +2323,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-fs"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "regex",
@@ -2333,7 +2333,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-sandbox"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2360,7 +2360,7 @@ dependencies = [
 
 [[package]]
 name = "skilllite-swarm"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "anyhow",
  "axum",
