@@ -604,7 +604,7 @@ export function EvolutionDetailBody() {
           <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
         ) : backlog.length === 0 ? (
           <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
-            暂无 backlog 记录。启动进化后会在这里显示 queued/executing/executed 等状态。
+            暂无待处理队列项。已执行且验收已结束（met / not_met）的记录不在此列表展示；仍在验收窗口（pending_validation）的仍会显示。
           </p>
         ) : (
           <div className="space-y-2">

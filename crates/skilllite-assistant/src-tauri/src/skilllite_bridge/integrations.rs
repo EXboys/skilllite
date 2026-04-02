@@ -729,6 +729,10 @@ pub fn load_evolution_backlog(_workspace: &str, limit: usize) -> Result<Vec<Evol
         .prepare(
             "SELECT proposal_id, source, risk_level, status, acceptance_status, roi_score, updated_at, COALESCE(note, '')
              FROM evolution_backlog
+             WHERE NOT (
+               status = 'executed'
+               AND COALESCE(acceptance_status, '') IN ('met', 'not_met')
+             )
              ORDER BY updated_at DESC
              LIMIT ?1",
         )
