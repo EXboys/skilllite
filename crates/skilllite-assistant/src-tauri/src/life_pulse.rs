@@ -4,10 +4,11 @@
 //! minimized to the system tray). Each heartbeat (~30 s) performs lightweight
 //! in-process checks for two layers:
 //!
-//! - **Growth**: runs `skilllite evolution run` as a subprocess when A9 matches the
-//!   evolution panel rules: **every `SKILLLITE_EVOLUTION_INTERVAL_SECS`** (default 30 min)
-//!   **or** **unprocessed decisions ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`** (default 10).
-//!   Chat / agent loop only **records** decisions (monitoring); it does not spawn evolution.
+//! - **Growth**: runs `skilllite evolution run` when A9 matches workspace `.env`:
+//!   **every `SKILLLITE_EVOLUTION_INTERVAL_SECS`** (default 30 min) **or**
+//!   **unprocessed decisions ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`** (default 10).
+//!   The **agent-rpc** chat subprocess also runs the same A9 timers in-process; `run_evolution`
+//!   serializes on `feedback.sqlite` (`SkippedBusy` if both fire).
 //! - **Rhythm**: checks `schedule.json` for due jobs and runs
 //!   `skilllite schedule tick` as a subprocess when any are due.
 //!

@@ -6,65 +6,6 @@ import { isChatHiddenToolName } from "../utils/chatNoise";
 import { humanizeApiError } from "../utils/humanizeApiError";
 
 const STREAM_THROTTLE_MS = 80;
-const EVOLUTION_OPTIONS = [
-  "重试当前方案",
-  "切换数据源/参数",
-  "稍后由定时任务处理",
-  "【启动进化】",
-];
-// Generic partial-success detection:
-// 1) limitation signal ("can't do full requirement")
-// 2) fulfillment signal ("did provide some usable output")
-// Only when both are present do we classify as partial_success.
-const PARTIAL_LIMITATION_PATTERNS: RegExp[] = [
-  /(?:仅|只|暂仅|目前仅|当前仅)(?:能|可|支持|提供)/i,
-  /(?:不支持|暂不支持|无法支持|不能支持)/i,
-  /(?:无法|不能|做不到|未能)(?:提供|完成|执行|查询|获取)/i,
-  /(?:缺少|缺失|没有)(?:权限|参数|能力|数据)/i,
-  /only\s+(?:supports?|provides?|returns?)/i,
-  /does\s+not\s+support/i,
-  /cannot\s+(?:provide|complete|execute|fetch)/i,
-  /unable\s+to\s+(?:provide|complete|execute|fetch)/i,
-  /missing\s+(?:permission|parameter|capability|data)/i,
-];
-
-const PARTIAL_FULFILLMENT_PATTERNS: RegExp[] = [
-  /成功[:：]?\s*true/i,
-  /success[:=]\s*true/i,
-  /(?:已|已经)(?:查询|返回|提供|完成|拿到)/i,
-  /(?:结果|信息|数据)(?:如下|如下所示)/i,
-  /当前(?:天气|状态|信息)/i,
-  /(?:here(?:'s| is)|below is|i was able to|i can provide)/i,
-];
-
-function hasPartialSuccessSignal(text: string): boolean {
-  if (!text.trim()) return false;
-  const hasLimitation = PARTIAL_LIMITATION_PATTERNS.some((re) => re.test(text));
-  if (!hasLimitation) return false;
-  return PARTIAL_FULFILLMENT_PATTERNS.some((re) => re.test(text));
-}
-
-function parseToolOutcome(
-  result: string,
-  isError: boolean
-): "failure" | "partial_success" | null {
-  if (isError) return "failure";
-  const text = result.trim();
-  if (!text) return null;
-  if (hasPartialSuccessSignal(text)) return "partial_success";
-  if (text[0] !== "{" && text[0] !== "[") return null;
-  try {
-    const parsed = JSON.parse(text) as Record<string, unknown>;
-    if (parsed.success === false) return "failure";
-    if (parsed.partial_success === true) return "partial_success";
-    // Lightweight fallback: structured output without explicit partial flag.
-    // If semantic hints indicate "subset fulfilled", classify as partial success.
-    if (hasPartialSuccessSignal(JSON.stringify(parsed))) return "partial_success";
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 interface UseChatEventsParams {
   sessionKey: string;
@@ -96,44 +37,6 @@ export function useChatEvents({
 }: UseChatEventsParams) {
   useEffect(() => {
     let dead = false;
-    const appendEvolutionOptions = (
-      toolName: string,
-      outcome: "partial_success" | "failure",
-      message: string
-    ) => {
-      setMessages((prev) => {
-        // De-duplicate only within current conversation turn (after last user msg).
-        // Cross-turn prompts should still appear even if a previous turn's option
-        // remains unresolved.
-        let lastUserIndex = -1;
-        for (let i = prev.length - 1; i >= 0; i--) {
-          if (prev[i].type === "user") {
-            lastUserIndex = i;
-            break;
-          }
-        }
-        const scope = lastUserIndex >= 0 ? prev.slice(lastUserIndex) : prev;
-        const exists = scope.some(
-          (m) =>
-            m.type === "evolution_options" &&
-            !m.resolved &&
-            m.toolName === toolName &&
-            m.outcome === outcome
-        );
-        if (exists) return prev;
-        return [
-          ...prev,
-          {
-            id: crypto.randomUUID(),
-            type: "evolution_options",
-            toolName,
-            outcome,
-            message,
-            options: EVOLUTION_OPTIONS,
-          },
-        ];
-      });
-    };
 
     const unlistenConfirm = listen<{ prompt: string; session_key?: string }>(
       "skilllite-confirmation-request",
@@ -279,14 +182,6 @@ export function useChatEvents({
           return prev;
         });
         setLoading(false);
-        const completionType = (data?.completion_type as string | undefined)?.trim();
-        if (completionType === "partial_success" || completionType === "failure") {
-          const message =
-            completionType === "failure"
-              ? "本轮任务未达成目标（failure）。你可以选择下一步处理方式，或直接选择「启动进化」补齐能力。"
-              : "本轮任务只部分满足了需求（partial_success）。你可以选择下一步处理方式，或直接选择「启动进化」补齐能力。";
-          appendEvolutionOptions("task_completion", completionType, message);
-        }
         clearPlan?.();
         onTurnComplete?.();
       } else if (event === "error") {
@@ -363,7 +258,6 @@ export function useChatEvents({
         const name = (data?.name as string) ?? "";
         const isErr = (data?.is_error as boolean) ?? false;
         const result = (data?.result as string) ?? "";
-        const outcome = parseToolOutcome(result, isErr);
         addLog({
           type: "tool_result" as const, name,
           text: result.length > 1200 ? result.slice(0, 1200) + "…" : result,
@@ -374,13 +268,6 @@ export function useChatEvents({
             ...prev,
             { id: crypto.randomUUID(), type: "tool_result", name, result, isError: isErr },
           ]);
-          if (outcome !== null) {
-            const message =
-              outcome === "failure"
-                ? `工具「${name}」执行失败。你可以选择下一步处理方式，或直接选择「启动进化」补齐能力。`
-                : `工具「${name}」只部分满足了需求（partial_success）。你可以选择下一步处理方式，或直接选择「启动进化」补齐能力。`;
-            appendEvolutionOptions(name, outcome, message);
-          }
         }
       } else if (event === "command_started") {
         const command = (data?.command as string) ?? "";
