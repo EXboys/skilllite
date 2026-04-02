@@ -368,6 +368,10 @@ pub(super) async fn process_result_content(
     tool_name: &str,
     content: &str,
 ) -> String {
+    if tool_name == "read_file" {
+        return extensions::process_read_file_tool_result_content(content);
+    }
+
     // Try sync fast path first
     match extensions::process_tool_result_content(content) {
         Some(processed) => processed,

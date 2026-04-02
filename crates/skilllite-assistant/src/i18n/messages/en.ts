@@ -101,6 +101,23 @@ export const enMessages: Record<string, string> = {
   "chat.timelineNeedsAction": "Action needed",
   "chat.timelineNeedsActionHint":
     "Expand this block to allow/deny execution or pick a clarification option.",
+  "chat.plannerNudgeFoldSummary": "Task-planning continuation hint (internal — expand)",
+  "chat.readFileFullView": "Fullscreen view / edit",
+  "chat.readFileFullscreenAria": "read_file fullscreen editor",
+  "chat.readFileFullscreenFallbackTitle": "read_file content",
+  "chat.readFileCopy": "Copy",
+  "chat.readFileCopied": "Copied to clipboard",
+  "chat.readFileCopyFailed": "Copy failed",
+  "chat.readFileSave": "Save to workspace",
+  "chat.readFileSaveOk": "Saved to workspace file",
+  "chat.readFileSaveErr": "Save failed: {msg}",
+  "chat.readFileClose": "Close",
+  "chat.readFileNoPathHint": "No file path linked; copy only",
+  "chat.readFileTruncatedHint": "Payload was truncated in transit; save disabled",
+  "chat.readFileTruncatedBadge": "Truncated",
+  "chat.readFileHljsLimited": "Large preview: syntax highlighting off (fullscreen still has full text)",
+  "chat.readFilePlainPreview": "Plain text preview",
+  "chat.readFileSyntaxHighlight": "Syntax highlighting",
   "chat.apiError.tlsSuffix":
     "If you use a corporate proxy or HTTPS inspection, try: 1) set HTTPS_PROXY for the app; 2) curl the same URL in a terminal; 3) check release notes (the LLM client uses Rustls; custom roots may need extra setup).",
   "chat.apiError.unauthorized":

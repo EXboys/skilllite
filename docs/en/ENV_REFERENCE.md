@@ -156,6 +156,7 @@ Sandbox resource limits are read through **config** (`SandboxEnvConfig`); legacy
 | `SKILLLITE_MAX_OUTPUT_CHARS` | int | `8000` | Max output length for summary (~2k tokens) |
 | `SKILLLITE_SUMMARIZE_THRESHOLD` | int | `15000` | Use summary when exceeding this length, otherwise truncate |
 | `SKILLLITE_TOOL_RESULT_MAX_CHARS` | int | `8000` | Max characters for single tool result in Agent loop |
+| `SKILLLITE_READ_FILE_TOOL_RESULT_MAX_CHARS` | int | `786432` | `read_file` only: max bytes before head+tail truncation when sending tool result to the model (default ~768 KiB) |
 
 **Usage**: Adjust as needed for very long context; usually no modification required.
 

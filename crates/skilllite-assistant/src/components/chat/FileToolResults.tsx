@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
 import css from "highlight.js/lib/languages/css";
@@ -13,8 +13,18 @@ import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 
 import { MarkdownContent } from "../shared/MarkdownContent";
+import { parseReadFileToolResult, type ParsedReadFile } from "../../utils/readFileParse";
+import { ReadFileFullscreenModal } from "./ReadFileFullscreenModal";
+import { useI18n } from "../../i18n";
+import {
+  plainTextBodyFromReadFileResult,
+  readFileResultLooksTruncated,
+} from "../../utils/readFileToolMeta";
 
 import "highlight.js/styles/github-dark.min.css";
+
+export type { ParsedReadFile };
+export { parseReadFileToolResult };
 
 let hljsReady = false;
 function ensureHljsRegistered() {
@@ -33,30 +43,6 @@ function ensureHljsRegistered() {
   hljs.registerLanguage("xml", xml);
   hljs.registerLanguage("yaml", yaml);
   hljsReady = true;
-}
-
-const READ_FILE_LINE_RE = /^\s*(\d+)\|(.*)$/;
-
-export type ParsedReadFile =
-  | { kind: "lines"; lines: { n: number; text: string }[]; suffix: string }
-  | { kind: "plain"; text: string };
-
-export function parseReadFileToolResult(raw: string): ParsedReadFile {
-  const lines = raw.split("\n");
-  const numbered: { n: number; text: string }[] = [];
-  let i = 0;
-  for (; i < lines.length; i++) {
-    const m = lines[i].match(READ_FILE_LINE_RE);
-    if (!m) {
-      break;
-    }
-    numbered.push({ n: Number.parseInt(m[1], 10), text: m[2] });
-  }
-  if (numbered.length === 0) {
-    return { kind: "plain", text: raw };
-  }
-  const suffix = lines.slice(i).join("\n");
-  return { kind: "lines", lines: numbered, suffix };
 }
 
 function looksLikeMarkdown(body: string): boolean {
@@ -126,10 +112,25 @@ function highlightCode(body: string): string {
   }
 }
 
+/** 超大文件避免 highlight.js 阻塞主线程 */
+const HLJS_MAX_CHARS = 96_000;
+const PREVIEW_MAX_H_CLASS = "max-h-[min(70vh,42rem)]";
+
 /** read_file 成功结果：避免整段被当作 Markdown 误解析；Markdown 文件渲染，其余语法高亮 */
-export function ReadFileToolResultView({ result }: { result: string }) {
+export function ReadFileToolResultView({
+  result,
+  sourcePath,
+  workspace = ".",
+}: {
+  result: string;
+  sourcePath?: string;
+  workspace?: string;
+}) {
+  const { t } = useI18n();
+  const [fullscreen, setFullscreen] = useState(false);
   const trimmed = result.trim();
   const isBinary = trimmed.startsWith("[Binary file");
+  const truncated = readFileResultLooksTruncated(result);
 
   const parsed = useMemo(() => parseReadFileToolResult(result), [result]);
 
@@ -140,17 +141,23 @@ export function ReadFileToolResultView({ result }: { result: string }) {
     return parsed.lines.map((l) => l.text).join("\n");
   }, [parsed]);
 
+  const plainForEdit = useMemo(() => plainTextBodyFromReadFileResult(result), [result]);
+
   const isMarkdownBody = useMemo(
     () => body.length > 0 && looksLikeMarkdown(body),
     [body],
   );
 
   const highlighted = useMemo(() => {
-    if (!body || isMarkdownBody) {
+    if (!body || isMarkdownBody || body.length > HLJS_MAX_CHARS) {
       return "";
     }
     return highlightCode(body);
   }, [body, isMarkdownBody]);
+
+  const hljsTooLarge = body.length > HLJS_MAX_CHARS && !isMarkdownBody && body.length > 0;
+
+  const openFull = () => setFullscreen(true);
 
   if (isBinary) {
     return (
@@ -162,9 +169,35 @@ export function ReadFileToolResultView({ result }: { result: string }) {
 
   if (parsed.kind === "plain") {
     return (
-      <pre className="mt-1.5 text-xs font-mono whitespace-pre-wrap break-words rounded-lg border border-border/60 dark:border-border-dark/60 bg-ink/[0.04] dark:bg-white/[0.06] px-3 py-2 text-ink dark:text-ink-dark max-h-96 overflow-auto leading-relaxed">
-        {result.trimEnd()}
-      </pre>
+      <div className="mt-1.5 space-y-2 min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={openFull}
+            className="text-xs px-2.5 py-1 rounded-md border border-border dark:border-border-dark text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
+          >
+            {t("chat.readFileFullView")}
+          </button>
+          {truncated && (
+            <span className="text-[11px] text-amber-700 dark:text-amber-300">
+              {t("chat.readFileTruncatedHint")}
+            </span>
+          )}
+        </div>
+        <pre
+          className={`text-xs font-mono whitespace-pre-wrap break-words rounded-lg border border-border/60 dark:border-border-dark/60 bg-ink/[0.04] dark:bg-white/[0.06] px-3 py-2 text-ink dark:text-ink-dark overflow-auto leading-relaxed ${PREVIEW_MAX_H_CLASS}`}
+        >
+          {result.trimEnd()}
+        </pre>
+        <ReadFileFullscreenModal
+          open={fullscreen}
+          onClose={() => setFullscreen(false)}
+          initialPlainBody={plainForEdit}
+          rawResult={result}
+          sourcePath={sourcePath}
+          workspace={workspace}
+        />
+      </div>
     );
   }
 
@@ -173,13 +206,38 @@ export function ReadFileToolResultView({ result }: { result: string }) {
   const startLine = parsed.lines[0]?.n ?? 1;
   const endLine = parsed.lines[parsed.lines.length - 1]?.n ?? startLine;
 
+  const toolbar = (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={openFull}
+        className="text-xs px-2.5 py-1 rounded-md border border-border dark:border-border-dark text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
+      >
+        {t("chat.readFileFullView")}
+      </button>
+      {truncated && (
+        <span className="text-[11px] text-amber-700 dark:text-amber-300">
+          {t("chat.readFileTruncatedBadge")}
+        </span>
+      )}
+      {hljsTooLarge && (
+        <span className="text-[11px] text-ink-mute dark:text-ink-dark-mute">
+          {t("chat.readFileHljsLimited")}
+        </span>
+      )}
+    </div>
+  );
+
   if (isMarkdownBody) {
     return (
       <div className="mt-1.5 space-y-2 min-w-0">
+        {toolbar}
         <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">
           第 {startLine}–{endLine} 行（共 {lineCount} 行）· Markdown 预览
         </p>
-        <div className="max-h-96 overflow-auto rounded-lg border border-border/70 dark:border-border-dark/70 bg-white/80 dark:bg-black/20 px-3 py-2">
+        <div
+          className={`overflow-auto rounded-lg border border-border/70 dark:border-border-dark/70 bg-white/80 dark:bg-black/20 px-3 py-2 ${PREVIEW_MAX_H_CLASS}`}
+        >
           <MarkdownContent content={body} />
         </div>
         {suffix ? (
@@ -187,29 +245,54 @@ export function ReadFileToolResultView({ result }: { result: string }) {
             {suffix}
           </pre>
         ) : null}
+        <ReadFileFullscreenModal
+          open={fullscreen}
+          onClose={() => setFullscreen(false)}
+          initialPlainBody={plainForEdit}
+          rawResult={result}
+          sourcePath={sourcePath}
+          workspace={workspace}
+        />
       </div>
     );
   }
 
   return (
     <div className="mt-1.5 space-y-2 min-w-0">
+      {toolbar}
       <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">
-        第 {startLine}–{endLine} 行（共 {lineCount} 行）· 语法高亮
+        第 {startLine}–{endLine} 行（共 {lineCount} 行）·{" "}
+        {hljsTooLarge ? t("chat.readFilePlainPreview") : t("chat.readFileSyntaxHighlight")}
       </p>
-      <div className="rounded-lg border border-border/70 dark:border-border-dark/70 max-h-96 overflow-y-auto bg-[#0d1117]">
-        <pre className="m-0 p-3 text-xs leading-5 whitespace-pre">
-          <code
-            className="hljs"
-            // highlight.js 已对特殊字符转义
-            dangerouslySetInnerHTML={{ __html: highlighted }}
-          />
-        </pre>
+      <div
+        className={`rounded-lg border border-border/70 dark:border-border-dark/70 overflow-y-auto bg-[#0d1117] ${PREVIEW_MAX_H_CLASS}`}
+      >
+        {hljsTooLarge || !highlighted ? (
+          <pre className="m-0 p-3 text-xs leading-5 whitespace-pre text-[#e6edf3] font-mono">
+            {body}
+          </pre>
+        ) : (
+          <pre className="m-0 p-3 text-xs leading-5 whitespace-pre">
+            <code
+              className="hljs"
+              dangerouslySetInnerHTML={{ __html: highlighted }}
+            />
+          </pre>
+        )}
       </div>
       {suffix ? (
         <pre className="text-[11px] font-mono whitespace-pre-wrap text-ink-mute dark:text-ink-dark-mute border-t border-border/50 dark:border-border-dark/50 pt-2">
           {suffix}
         </pre>
       ) : null}
+      <ReadFileFullscreenModal
+        open={fullscreen}
+        onClose={() => setFullscreen(false)}
+        initialPlainBody={plainForEdit}
+        rawResult={result}
+        sourcePath={sourcePath}
+        workspace={workspace}
+      />
     </div>
   );
 }

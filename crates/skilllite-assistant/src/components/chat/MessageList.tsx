@@ -24,6 +24,7 @@ function timelineDefaultExpanded(
 interface MessageListProps {
   messages: ChatMessage[];
   loading: boolean;
+  workspace: string;
   onConfirm: (id: string, approved: boolean) => void;
   onClarify?: (id: string, action: string, hint?: string) => void;
   onEvolutionAction?: (id: string, option: string) => void;
@@ -32,6 +33,7 @@ interface MessageListProps {
 export function MessageList({
   messages,
   loading,
+  workspace,
   onConfirm,
   onClarify,
   onEvolutionAction,
@@ -78,6 +80,7 @@ export function MessageList({
         <div className="pb-4">
           <MessageBubble
             message={seg.message}
+            workspace={workspace}
             onConfirm={onConfirm}
             onClarify={onClarify}
             onEvolutionAction={onEvolutionAction}
@@ -90,6 +93,7 @@ export function MessageList({
         <SystemTimelineGroup
           key={seg.messages.map((m) => m.id).join("|")}
           messages={seg.messages}
+          workspace={workspace}
           defaultExpanded={
             timelineDefaultExpanded(messages, seg.messages, loading) ||
             timelineGroupNeedsUserAction(seg.messages)
@@ -110,6 +114,7 @@ export function MessageList({
             <div key={seg.message.id}>
               <MessageBubble
                 message={seg.message}
+                workspace={workspace}
                 onConfirm={onConfirm}
                 onClarify={onClarify}
                 onEvolutionAction={onEvolutionAction}
@@ -119,6 +124,7 @@ export function MessageList({
             <SystemTimelineGroup
               key={seg.messages.map((m) => m.id).join("|")}
               messages={seg.messages}
+              workspace={workspace}
               defaultExpanded={
                 timelineDefaultExpanded(messages, seg.messages, loading) ||
                 timelineGroupNeedsUserAction(seg.messages)

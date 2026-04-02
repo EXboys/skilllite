@@ -466,3 +466,56 @@ pub fn load_memory_summaries() -> Vec<MemoryEntry> {
         })
         .collect()
 }
+
+fn normalize_path_components(path: &std::path::Path) -> std::path::PathBuf {
+    let mut components: Vec<std::path::Component<'_>> = Vec::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::ParentDir => {
+                components.pop();
+            }
+            std::path::Component::CurDir => {}
+            other => components.push(other),
+        }
+    }
+    components.iter().collect()
+}
+
+fn workspace_write_path_blocked(path: &std::path::Path) -> bool {
+    let s = path.to_string_lossy().to_lowercase();
+    if s.ends_with(".env") || s.contains("/.env/") || s.contains("\\.env\\") {
+        return true;
+    }
+    if s.contains(".git/config") {
+        return true;
+    }
+    if s.ends_with(".key") || s.ends_with(".pem") {
+        return true;
+    }
+    false
+}
+
+/// Write UTF-8 text to a path relative to the workspace root (same discovery as chat / agent).
+/// Blocks obvious sensitive paths (.env, .git/config, .key, .pem).
+pub fn write_workspace_text_file(workspace: &str, relative_path: &str, content: &str) -> Result<(), String> {
+    let rel = relative_path.trim();
+    if rel.is_empty() {
+        return Err("路径为空".to_string());
+    }
+    let root = super::paths::find_project_root(workspace);
+    let workspace_canon = root.canonicalize().map_err(|e| format!("无效工作区: {}", e))?;
+    let input = std::path::Path::new(rel);
+    let joined = if input.is_absolute() {
+        input.to_path_buf()
+    } else {
+        workspace_canon.join(input)
+    };
+    let normalized = normalize_path_components(&joined);
+    if !normalized.starts_with(&workspace_canon) {
+        return Err("路径超出工作区范围".to_string());
+    }
+    if workspace_write_path_blocked(&normalized) {
+        return Err("禁止写入该路径（敏感文件）".to_string());
+    }
+    skilllite_fs::write_file(&normalized, content).map_err(|e| e.to_string())
+}

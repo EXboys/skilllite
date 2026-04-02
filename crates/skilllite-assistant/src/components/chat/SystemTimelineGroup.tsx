@@ -9,6 +9,7 @@ import { useI18n } from "../../i18n";
 
 interface SystemTimelineGroupProps {
   messages: ChatMessage[];
+  workspace: string;
   /** 为 true 时默认展开（例如本轮仍在进行且尚未出现助手回复） */
   defaultExpanded: boolean;
   onConfirm: (id: string, approved: boolean) => void;
@@ -18,6 +19,7 @@ interface SystemTimelineGroupProps {
 
 export function SystemTimelineGroup({
   messages,
+  workspace,
   defaultExpanded,
   onConfirm,
   onClarify,
@@ -71,6 +73,7 @@ export function SystemTimelineGroup({
               <div key={m.id} className="first:pt-3">
                 <MessageBubble
                   message={m}
+                  workspace={workspace}
                   onConfirm={onConfirm}
                   onClarify={onClarify}
                   onEvolutionAction={onEvolutionAction}

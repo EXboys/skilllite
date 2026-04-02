@@ -10,6 +10,11 @@ import {
   evolutionNoteForDisplay,
   evolutionStatusHeadline,
 } from "../../utils/evolutionDisplay";
+import {
+  plannerNudgeCurrentTaskHint,
+  splitPlannerBoilerplate,
+} from "../../utils/plannerNudgeUi";
+import { useI18n } from "../../i18n";
 
 function splitProgressStatusKey(
   key: string | undefined
@@ -26,6 +31,8 @@ function splitProgressStatusKey(
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  /** 当前设置中的工作区路径，用于 read_file 全屏保存 */
+  workspace?: string;
   onConfirm?: (id: string, approved: boolean) => void;
   onClarify?: (id: string, action: string, hint?: string) => void;
   onEvolutionAction?: (id: string, option: string) => void;
@@ -44,6 +51,60 @@ const bubbleAssistant =
 const bubbleMuted =
   `${bubbleShell} mr-4 px-4 py-3 bg-ink/[0.03] dark:bg-white/[0.05] border-border dark:border-border-dark text-ink dark:text-ink-dark`;
 
+function PlannerBoilerplateFold({
+  boilerplate,
+  summaryLabel,
+}: {
+  boilerplate: string;
+  summaryLabel: string;
+}) {
+  return (
+    <details className="group mt-2 rounded-lg border border-border/70 dark:border-border-dark/80 bg-ink/[0.025] dark:bg-white/[0.04] px-2.5 py-1.5 text-left">
+      <summary className="cursor-pointer select-none list-none flex items-center gap-1.5 text-xs text-ink-mute dark:text-ink-dark-mute [&::-webkit-details-marker]:hidden">
+        <span
+          className="shrink-0 inline-block text-[10px] opacity-75 transition-transform duration-200 group-open:rotate-90"
+          aria-hidden
+        >
+          ▸
+        </span>
+        <span>{summaryLabel}</span>
+      </summary>
+      <pre className="mt-2 max-h-72 overflow-y-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-ink/90 dark:text-ink-dark/90 font-mono border-t border-border/50 dark:border-border-dark/60 pt-2">
+        {boilerplate}
+      </pre>
+    </details>
+  );
+}
+
+/** Markdown body; when not streaming, folds echoed planner nudge blocks below a one-line summary. */
+function ChatMarkdownWithPlannerFold({
+  content,
+  streaming,
+}: {
+  content: string;
+  streaming?: boolean;
+}) {
+  const { t } = useI18n();
+  if (streaming || !content) {
+    return <MarkdownContent content={content} />;
+  }
+  const { main, boilerplate } = splitPlannerBoilerplate(content);
+  if (!boilerplate) {
+    return <MarkdownContent content={content} />;
+  }
+  const hint = plannerNudgeCurrentTaskHint(boilerplate);
+  const summaryLabel =
+    hint != null
+      ? `${t("chat.plannerNudgeFoldSummary")} · ${hint}`
+      : t("chat.plannerNudgeFoldSummary");
+  return (
+    <>
+      {main.length > 0 ? <MarkdownContent content={main} /> : null}
+      <PlannerBoilerplateFold boilerplate={boilerplate} summaryLabel={summaryLabel} />
+    </>
+  );
+}
+
 function ConfirmationBody({ text }: { text: string }) {
   const blocks = text.split(/\n{2,}/);
   return (
@@ -60,12 +121,18 @@ function ConfirmationBody({ text }: { text: string }) {
   );
 }
 
-function MessageBubbleInner({ message, onConfirm, onClarify, onEvolutionAction }: MessageBubbleProps) {
+function MessageBubbleInner({
+  message,
+  workspace = ".",
+  onConfirm,
+  onClarify,
+  onEvolutionAction,
+}: MessageBubbleProps) {
   if (message.type === "user") {
     return (
       <div className="flex justify-end">
         <div className={bubbleUser}>
-          <MarkdownContent content={message.content} />
+          <ChatMarkdownWithPlannerFold content={message.content} />
         </div>
       </div>
     );
@@ -75,7 +142,10 @@ function MessageBubbleInner({ message, onConfirm, onClarify, onEvolutionAction }
     return (
       <div className="flex justify-start">
         <div className={bubbleAssistant}>
-          <MarkdownContent content={message.content} />
+          <ChatMarkdownWithPlannerFold
+            content={message.content}
+            streaming={message.streaming}
+          />
           {message.streaming && (
             <span className="inline-block w-2 h-4 ml-1 bg-accent animate-pulse align-middle rounded-sm" />
           )}
@@ -158,7 +228,11 @@ function MessageBubbleInner({ message, onConfirm, onClarify, onEvolutionAction }
                 {message.name}
               </span>
             </p>
-            <ReadFileToolResultView result={message.result} />
+            <ReadFileToolResultView
+              result={message.result}
+              sourcePath={message.sourcePath}
+              workspace={workspace}
+            />
           </div>
         </div>
       );

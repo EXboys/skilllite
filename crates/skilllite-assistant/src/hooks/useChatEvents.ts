@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { ChatMessage, StreamEventPayload } from "../types/chat";
 import type { LogEntry } from "../stores/useStatusStore";
 import { isChatHiddenToolName } from "../utils/chatNoise";
+import { tryParseReadFilePathFromToolArgs } from "../utils/readFileToolMeta";
 import { humanizeApiError } from "../utils/humanizeApiError";
 
 const STREAM_THROTTLE_MS = 80;
@@ -264,10 +265,29 @@ export function useChatEvents({
           isError: isErr,
         });
         if (!isChatHiddenToolName(name)) {
-          setMessages((prev) => [
-            ...prev,
-            { id: crypto.randomUUID(), type: "tool_result", name, result, isError: isErr },
-          ]);
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            let sourcePath: string | undefined;
+            if (
+              name.replace(/-/g, "_") === "read_file" &&
+              last?.type === "tool_call" &&
+              last.name.replace(/-/g, "_") === "read_file"
+            ) {
+              const p = tryParseReadFilePathFromToolArgs(last.args);
+              if (p) sourcePath = p;
+            }
+            return [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                type: "tool_result" as const,
+                name,
+                result,
+                isError: isErr,
+                sourcePath,
+              },
+            ];
+          });
         }
       } else if (event === "command_started") {
         const command = (data?.command as string) ?? "";

@@ -290,6 +290,21 @@ async fn skilllite_load_memory_summaries() -> Vec<skilllite_bridge::MemoryEntry>
 }
 
 #[tauri::command]
+async fn skilllite_write_workspace_file(
+    workspace: String,
+    relative_path: String,
+    content: String,
+) -> Result<(), String> {
+    let ws = workspace.trim().to_string();
+    let rel = relative_path;
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::write_workspace_text_file(&ws, &rel, &content)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn skilllite_load_evolution_status(
     workspace: Option<String>,
 ) -> skilllite_bridge::EvolutionStatusPayload {
@@ -623,6 +638,7 @@ pub fn run() {
             skilllite_rename_session,
             skilllite_delete_session,
             skilllite_load_memory_summaries,
+            skilllite_write_workspace_file,
             skilllite_load_evolution_status,
             skilllite_list_evolution_pending,
             skilllite_read_pending_skill_md,

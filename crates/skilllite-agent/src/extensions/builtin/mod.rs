@@ -264,10 +264,9 @@ pub fn process_tool_result_content(content: &str) -> Option<String> {
     ))
 }
 
-pub fn process_tool_result_content_fallback(content: &str) -> String {
-    let max_chars = types::get_tool_result_max_chars();
+/// Head+tail truncation with an explicit byte budget (used for `read_file` vs other tools).
+pub fn process_tool_result_content_fallback_with_max(content: &str, max_chars: usize) -> String {
     let len = content.len();
-
     if len <= max_chars {
         return content.to_string();
     }
@@ -280,4 +279,23 @@ pub fn process_tool_result_content_fallback(content: &str) -> String {
         "{}\n\n... [content truncated: {} chars total, showing head+tail] ...\n\n{}",
         head, len, tail
     )
+}
+
+pub fn process_tool_result_content_fallback(content: &str) -> String {
+    process_tool_result_content_fallback_with_max(content, types::get_tool_result_max_chars())
+}
+
+/// `read_file` only: large dedicated cap; never LLM-summarized (see `process_result_content`).
+pub fn process_read_file_tool_result_content(content: &str) -> String {
+    let cap = types::get_read_file_tool_result_max_chars();
+    let len = content.len();
+    if len <= cap {
+        return content.to_string();
+    }
+    tracing::info!(
+        "read_file tool result {} chars exceeds SKILLLITE_READ_FILE_TOOL_RESULT_MAX_CHARS ({}), using head+tail truncation",
+        len,
+        cap
+    );
+    process_tool_result_content_fallback_with_max(content, cap)
 }

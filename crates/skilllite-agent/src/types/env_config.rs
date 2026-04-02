@@ -106,6 +106,13 @@ pub fn get_tool_result_max_chars() -> usize {
     env_usize("SKILLLITE_TOOL_RESULT_MAX_CHARS", 12000)
 }
 
+/// Max chars for a single `read_file` tool result before head+tail truncation.
+/// `SKILLLITE_READ_FILE_TOOL_RESULT_MAX_CHARS`. Default 786432 (~768 KiB) so typical
+/// source files pass through to the UI without truncation; still bounded for memory.
+pub fn get_read_file_tool_result_max_chars() -> usize {
+    env_usize("SKILLLITE_READ_FILE_TOOL_RESULT_MAX_CHARS", 786_432)
+}
+
 /// Max chars for tool messages during context-overflow recovery.
 /// `SKILLLITE_TOOL_RESULT_RECOVERY_MAX_CHARS`.
 pub fn get_tool_result_recovery_max_chars() -> usize {

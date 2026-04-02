@@ -8,6 +8,28 @@ fn disable_audit_in_tests() {
     std::env::set_var("SKILLLITE_AUDIT_DISABLED", "1");
 }
 
+/// Serial env mutation: default cap passes medium payloads; low cap triggers truncation.
+#[test]
+fn test_read_file_tool_result_cap_env() {
+    let key = "SKILLLITE_READ_FILE_TOOL_RESULT_MAX_CHARS";
+    let saved = std::env::var(key).ok();
+    std::env::remove_var(key);
+    let small = "a".repeat(20_000);
+    let out_full = process_read_file_tool_result_content(&small);
+    assert_eq!(out_full, small);
+
+    std::env::set_var(key, "800");
+    let big = "b".repeat(5000);
+    let out_trunc = process_read_file_tool_result_content(&big);
+    assert!(out_trunc.len() < big.len());
+    assert!(out_trunc.contains("content truncated"));
+
+    match saved {
+        Some(ref v) => std::env::set_var(key, v),
+        None => std::env::remove_var(key),
+    }
+}
+
 #[test]
 fn test_search_replace_first_occurrence() {
     let tmp = tempfile::tempdir().unwrap();

@@ -3771,6 +3771,7 @@ dependencies = [
  "skilllite-agent",
  "skilllite-core",
  "skilllite-evolution",
+ "skilllite-fs",
  "skilllite-sandbox",
  "tauri",
  "tauri-build",

@@ -156,6 +156,7 @@
 | `SKILLLITE_MAX_OUTPUT_CHARS` | int | `8000` | 摘要最大输出长度（约 2k tokens） |
 | `SKILLLITE_SUMMARIZE_THRESHOLD` | int | `15000` | 超过此长度用摘要，否则截断 |
 | `SKILLLITE_TOOL_RESULT_MAX_CHARS` | int | `8000` | Agent 循环中单次工具结果最大字符数 |
+| `SKILLLITE_READ_FILE_TOOL_RESULT_MAX_CHARS` | int | `786432` | 仅 `read_file`：工具结果在传入模型前的最大字节数（默认约 768KiB，超出则 head+tail 截断） |
 
 **使用场景**：处理超长上下文时按需调整，一般无需修改。
 

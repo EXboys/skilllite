@@ -21,6 +21,7 @@ import {
   isEvolutionNoMaterialChanges,
 } from "../utils/evolutionDisplay";
 import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
+import { tryParseReadFilePathFromToolArgs } from "../utils/readFileToolMeta";
 
 export default function ChatView() {
   const { t } = useI18n();
@@ -125,6 +126,7 @@ export default function ChatView() {
         if (cancelled) return;
         if (!entries || entries.length === 0) return;
         const msgs: ChatMessage[] = [];
+        let pendingReadFilePath: string | null = null;
         for (const e of entries) {
           if (e.role === "skilllite_ui" && e.ui && typeof e.ui === "object") {
             const u = e.ui as Record<string, unknown>;
@@ -169,6 +171,10 @@ export default function ChatView() {
           }
           if (e.role === "tool_call") {
             const name = e.name ?? "";
+            pendingReadFilePath =
+              name.replace(/-/g, "_") === "read_file"
+                ? tryParseReadFilePathFromToolArgs(e.content)
+                : null;
             if (isChatHiddenToolName(name)) continue;
             msgs.push({
               id: e.id,
@@ -180,6 +186,11 @@ export default function ChatView() {
           }
           if (e.role === "tool_result") {
             const name = e.name ?? "";
+            const sourcePath =
+              name.replace(/-/g, "_") === "read_file"
+                ? pendingReadFilePath ?? undefined
+                : undefined;
+            pendingReadFilePath = null;
             if (isChatHiddenToolName(name)) continue;
             msgs.push({
               id: e.id,
@@ -187,6 +198,7 @@ export default function ChatView() {
               name,
               result: e.content,
               isError: e.is_error ?? false,
+              sourcePath,
             });
             continue;
           }
@@ -718,6 +730,7 @@ export default function ChatView() {
       <MessageList
         messages={messages}
         loading={loading}
+        workspace={settings.workspace || "."}
         onConfirm={handleConfirm}
         onClarify={handleClarify}
         onEvolutionAction={handleEvolutionAction}

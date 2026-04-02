@@ -16,6 +16,7 @@ skilllite-core = { path = "../../skilllite-core" }
 skilllite-evolution = { path = "../../skilllite-evolution" }
 skilllite-sandbox = { path = "../../skilllite-sandbox" }
 skilllite-agent = { path = "../../skilllite-agent" }
+skilllite-fs = { path = "../../skilllite-fs" }
 dirs = "5"
 chrono = "0.4"
 tauri-plugin-shell = "2"
