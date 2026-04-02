@@ -307,6 +307,7 @@ function SkillRepairSection() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingList, setLoadingList] = useState(false);
   const [repairing, setRepairing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [repairResult, setRepairResult] = useState<string | null>(null);
   const [resultIsError, setResultIsError] = useState(false);
   const [addSource, setAddSource] = useState("");
@@ -363,6 +364,33 @@ function SkillRepairSection() {
       setResultIsError(true);
     } finally {
       setRepairing(false);
+    }
+  };
+
+  const runDelete = async () => {
+    if (selected.size === 0) {
+      useUiToastStore.getState().show(t("status.deleteSkillNeedSelect"), "error");
+      return;
+    }
+    const n = selected.size;
+    if (!window.confirm(t("status.deleteSkillConfirm", { n }))) return;
+    setDeleting(true);
+    setRepairResult(null);
+    setResultIsError(false);
+    try {
+      const names = Array.from(selected);
+      const out = await invoke<string>("skilllite_remove_skills", {
+        workspace,
+        skillNames: names,
+      });
+      setRepairResult(out || t("status.deleteSkill"));
+      setSelected(new Set());
+      loadSkills();
+    } catch (e) {
+      setRepairResult(String(e));
+      setResultIsError(true);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -569,7 +597,7 @@ function SkillRepairSection() {
       <button
         type="button"
         onClick={runRepair}
-        disabled={repairing || skillNames.length === 0}
+        disabled={repairing || deleting || skillNames.length === 0}
         className="w-full text-sm px-3 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {repairing
@@ -577,6 +605,19 @@ function SkillRepairSection() {
           : selected.size > 0
             ? t("status.repairSelected", { n: selected.size })
             : t("status.repairAll")}
+      </button>
+
+      <button
+        type="button"
+        onClick={runDelete}
+        disabled={deleting || repairing || skillNames.length === 0 || selected.size === 0}
+        className="w-full mt-2 text-sm px-3 py-2 rounded-lg border border-red-300 dark:border-red-800/80 text-red-700 dark:text-red-300 font-medium hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {deleting
+          ? t("status.deletingSkills")
+          : selected.size > 0
+            ? t("status.deleteSelected", { n: selected.size })
+            : t("status.deleteSkill")}
       </button>
 
       {/* 修复结果 */}

@@ -36,6 +36,7 @@ else
 fi
 
 # 内置技能：同步到 resources，供首次打开 workspace 时落地到 .skills/
+# 刻意不包含 brainstorming（浏览器伴生、体积大）；需要时请用「添加技能」从源安装。
 BUNDLED_SKILLS="$ASSISTANT_DIR/src-tauri/resources/bundled-skills/.skills"
 mkdir -p "$BUNDLED_SKILLS"
 BUNDLED_SKILL_NAMES=(

@@ -1,6 +1,8 @@
 //! 技能、进化、引导、运行时、Ollama、日程。
 
 use serde::Serialize;
+use skilllite_core::skill::manifest;
+use std::fs;
 use std::path::PathBuf;
 use tauri::Emitter;
 
@@ -155,6 +157,47 @@ pub fn open_skill_directory(workspace: &str, skill_name: &str) -> Result<(), Str
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// Remove installed skills from `.skills` or `skills` under the workspace (same discovery as list/open).
+/// Updates `.skilllite-manifest.json` when present. `skill_names` must be non-empty.
+pub fn remove_skills(workspace: &str, skill_names: &[String]) -> Result<String, String> {
+    if skill_names.is_empty() {
+        return Err("请至少勾选一个要删除的技能".to_string());
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let mut deleted = 0usize;
+    for name in skill_names {
+        let name = name.trim();
+        if name.is_empty() {
+            continue;
+        }
+        let Some(skill_path) = find_skill_dir(workspace, name) else {
+            lines.push(format!("未找到技能，已跳过: {}", name));
+            continue;
+        };
+        let skills_parent = skill_path
+            .parent()
+            .ok_or_else(|| format!("无效技能路径: {}", skill_path.display()))?;
+        manifest::remove_skill_entry(skills_parent, &skill_path).map_err(|e| e.to_string())?;
+        fs::remove_dir_all(&skill_path).map_err(|e| {
+            format!(
+                "删除目录失败 {}: {}",
+                skill_path.display(),
+                e
+            )
+        })?;
+        deleted += 1;
+        lines.push(format!("已删除: {}", name));
+    }
+    if deleted == 0 {
+        return Err(if lines.is_empty() {
+            "没有可删除的技能".to_string()
+        } else {
+            lines.join("\n")
+        });
+    }
+    Ok(lines.join("\n"))
 }
 
 /// Run `skilllite evolution repair-skills [skill_names...]`. If skill_names is empty, repairs all failed; otherwise only those.

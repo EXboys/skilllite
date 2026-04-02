@@ -17,22 +17,6 @@
       "installed_at": "2026-03-10T12:31:28.983467Z",
       "admission_risk": "safe"
     },
-    "brainstorming": {
-      "name": "brainstorming",
-      "source": "obra/superpowers",
-      "version": null,
-      "hash": "31aab7fd68f917c6ab5475377e14001dd6f4f72a88679bc9faef9ac2c6cc17ca",
-      "signature_status": "UNSIGNED",
-      "trust_tier": "COMMUNITY",
-      "trust_score": 63,
-      "tier_reason": [
-        "known repository source",
-        "unsigned package"
-      ],
-      "tier_updated_at": "2026-04-02T10:24:04.759537Z",
-      "installed_at": "2026-04-02T10:24:04.759537Z",
-      "admission_risk": null
-    },
     "calculator": {
       "name": "calculator",
       "source": "Exboys/skilllite",
