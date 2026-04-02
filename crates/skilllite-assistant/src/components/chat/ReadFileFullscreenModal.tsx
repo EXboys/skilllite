@@ -1,8 +1,40 @@
-import { useEffect, useState, useCallback } from "react";
+import {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
+import CodeMirror from "@uiw/react-codemirror";
+import { EditorView } from "@codemirror/view";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../../i18n";
 import { readFileResultLooksTruncated } from "../../utils/readFileToolMeta";
+import {
+  highlightCodeToHtml,
+  preferMarkdownPreview,
+  READ_FILE_FULLSCREEN_PREVIEW_MAX,
+} from "../../utils/readFileHljs";
+import {
+  readFileCodeMirrorLanguage,
+  readFileCodeMirrorTheme,
+} from "../../utils/readFileCodeMirror";
+import { MarkdownContent } from "../shared/MarkdownContent";
+
+function usePrefersDarkMedia(): boolean {
+  return useSyncExternalStore(
+    (onStoreChange) => {
+      const mq = window.matchMedia("(prefers-color-scheme: dark)");
+      mq.addEventListener("change", onStoreChange);
+      return () => mq.removeEventListener("change", onStoreChange);
+    },
+    () => window.matchMedia("(prefers-color-scheme: dark)").matches,
+    () => false,
+  );
+}
+
+type ViewMode = "edit" | "preview";
 
 interface ReadFileFullscreenModalProps {
   open: boolean;
@@ -24,17 +56,43 @@ export function ReadFileFullscreenModal({
   workspace,
 }: ReadFileFullscreenModalProps) {
   const { t } = useI18n();
+  const prefersDark = usePrefersDarkMedia();
   const [draft, setDraft] = useState(initialPlainBody);
+  const [viewMode, setViewMode] = useState<ViewMode>("edit");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
+  const codeMirrorExtensions = useMemo(
+    () => [
+      ...readFileCodeMirrorTheme(prefersDark),
+      ...readFileCodeMirrorLanguage(sourcePath, initialPlainBody),
+      EditorView.lineWrapping,
+    ],
+    [prefersDark, sourcePath, initialPlainBody],
+  );
+
   const truncated = readFileResultLooksTruncated(rawResult);
   const canSave = Boolean(sourcePath?.trim()) && !truncated && !saving;
+
+  const markdownPreview = useMemo(
+    () => preferMarkdownPreview(draft, sourcePath),
+    [draft, sourcePath],
+  );
+
+  const codePreviewHtml = useMemo(() => {
+    if (markdownPreview) return "";
+    const slice =
+      draft.length > READ_FILE_FULLSCREEN_PREVIEW_MAX
+        ? draft.slice(0, READ_FILE_FULLSCREEN_PREVIEW_MAX)
+        : draft;
+    return highlightCodeToHtml(slice);
+  }, [draft, markdownPreview]);
 
   useEffect(() => {
     if (open) {
       setDraft(initialPlainBody);
       setNotice(null);
+      setViewMode("edit");
     }
   }, [open, initialPlainBody]);
 
@@ -44,7 +102,7 @@ export function ReadFileFullscreenModal({
         onClose();
       }
     },
-    [onClose]
+    [onClose],
   );
 
   useEffect(() => {
@@ -77,7 +135,7 @@ export function ReadFileFullscreenModal({
       setNotice(
         t("chat.readFileSaveErr", {
           msg: e instanceof Error ? e.message : String(e),
-        })
+        }),
       );
     } finally {
       setSaving(false);
@@ -90,6 +148,20 @@ export function ReadFileFullscreenModal({
     sourcePath?.trim() ||
     t("chat.readFileFullscreenFallbackTitle");
 
+  const tabBtn = (mode: ViewMode, label: string) => (
+    <button
+      type="button"
+      onClick={() => setViewMode(mode)}
+      className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+        viewMode === mode
+          ? "bg-accent/15 text-accent dark:text-blue-300 font-medium"
+          : "text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return createPortal(
     <div
       className="fixed inset-0 z-[300] flex flex-col bg-paper dark:bg-paper-dark text-ink dark:text-ink-dark"
@@ -98,9 +170,13 @@ export function ReadFileFullscreenModal({
       aria-label={t("chat.readFileFullscreenAria")}
     >
       <header className="shrink-0 flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border dark:border-border-dark bg-white/90 dark:bg-paper-dark/95 backdrop-blur-sm">
-        <h2 className="text-sm font-semibold truncate min-w-0 flex-1" title={title}>
+        <h2 className="text-sm font-semibold truncate min-w-0 flex-1 basis-full sm:basis-auto" title={title}>
           {title}
         </h2>
+        <div className="flex items-center rounded-lg border border-border/70 dark:border-border-dark/70 p-0.5 bg-ink/[0.02] dark:bg-white/[0.04]">
+          {tabBtn("edit", t("chat.readFileTabEdit"))}
+          {tabBtn("preview", t("chat.readFileTabPreview"))}
+        </div>
         {truncated && (
           <span className="text-xs text-amber-700 dark:text-amber-300 shrink-0">
             {t("chat.readFileTruncatedHint")}
@@ -111,7 +187,7 @@ export function ReadFileFullscreenModal({
             {t("chat.readFileNoPathHint")}
           </span>
         )}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
           <button
             type="button"
             onClick={() => void copy()}
@@ -141,13 +217,52 @@ export function ReadFileFullscreenModal({
           {notice}
         </div>
       )}
-      <textarea
-        className="flex-1 min-h-0 w-full resize-none p-4 font-mono text-sm leading-relaxed bg-white dark:bg-black/25 text-ink dark:text-ink-dark border-0 focus:outline-none focus:ring-0"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        spellCheck={false}
-      />
+      {viewMode === "edit" ? (
+        <div className="flex-1 min-h-0 flex flex-col overflow-hidden px-2 pb-2 pt-1">
+          <CodeMirror
+            value={draft}
+            height="100%"
+            theme="none"
+            extensions={codeMirrorExtensions}
+            onChange={(v) => setDraft(v)}
+            basicSetup={{
+              lineNumbers: true,
+              foldGutter: true,
+              highlightSelectionMatches: true,
+            }}
+            className="h-full min-h-0 overflow-hidden text-sm [&_.cm-editor]:h-full [&_.cm-editor]:outline-none [&_.cm-scroller]:h-full [&_.cm-scroller]:overflow-auto"
+            indentWithTab
+            spellCheck={false}
+          />
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-auto p-4 bg-ink/[0.02] dark:bg-white/[0.03]">
+          {markdownPreview ? (
+            <div className="rounded-lg border border-border/70 dark:border-border-dark/70 bg-white/90 dark:bg-black/20 px-4 py-3 text-sm text-ink dark:text-ink-dark leading-relaxed">
+              <MarkdownContent content={draft} />
+            </div>
+          ) : draft.length > READ_FILE_FULLSCREEN_PREVIEW_MAX ? (
+            <div className="space-y-2">
+              <p className="text-xs text-amber-800 dark:text-amber-200">
+                {t("chat.readFilePreviewCodeLimited", {
+                  n: READ_FILE_FULLSCREEN_PREVIEW_MAX,
+                })}
+              </p>
+              <pre className="m-0 p-4 rounded-lg border border-border/70 dark:border-border-dark/70 bg-[#0d1117] text-sm text-[#e6edf3] font-mono whitespace-pre-wrap break-words overflow-x-auto">
+                {draft.slice(0, READ_FILE_FULLSCREEN_PREVIEW_MAX)}
+              </pre>
+            </div>
+          ) : (
+            <pre className="m-0 p-4 rounded-lg border border-border/70 dark:border-border-dark/70 bg-[#0d1117] overflow-x-auto">
+              <code
+                className="hljs text-sm leading-relaxed"
+                dangerouslySetInnerHTML={{ __html: codePreviewHtml }}
+              />
+            </pre>
+          )}
+        </div>
+      )}
     </div>,
-    document.body
+    document.body,
   );
 }

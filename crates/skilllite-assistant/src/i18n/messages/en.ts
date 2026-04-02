@@ -102,6 +102,10 @@ export const enMessages: Record<string, string> = {
   "chat.timelineNeedsActionHint":
     "Expand this block to allow/deny execution or pick a clarification option.",
   "chat.plannerNudgeFoldSummary": "Task-planning continuation hint (internal — expand)",
+  "chat.readFileTabEdit": "Edit",
+  "chat.readFileTabPreview": "Preview",
+  "chat.readFilePreviewCodeLimited":
+    "Content is very long; code preview shows the first {n} chars only (switch to Edit for full text).",
   "chat.readFileFullView": "Fullscreen view / edit",
   "chat.readFileFullscreenAria": "read_file fullscreen editor",
   "chat.readFileFullscreenFallbackTitle": "read_file content",
