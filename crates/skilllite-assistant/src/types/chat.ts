@@ -36,6 +36,11 @@ export type ChatMessage =
       options: string[];
       resolved?: boolean;
       selectedOption?: string;
+      proposalId?: string;
+      progressStatus?: string;
+      progressUpdatedAt?: string;
+      progressNote?: string;
+      progressDone?: boolean;
     };
 
 export interface StreamEventPayload {

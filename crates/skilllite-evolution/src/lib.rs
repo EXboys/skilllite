@@ -172,6 +172,15 @@ pub enum SkillAction {
     Refine,
 }
 
+impl SkillAction {
+    /// When `true`, `skill_synth::evolve_skills` runs failure- and success-driven generation before
+    /// any fallback refine. When `false` (`Refine`), only retire + `refine_weakest_skill` run.
+    #[must_use]
+    pub fn should_run_skill_generation_paths(self) -> bool {
+        !matches!(self, Self::Refine)
+    }
+}
+
 // ─── Concurrency: evolution mutex ────────────────────────────────────────────
 
 static EVOLUTION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
@@ -826,6 +835,25 @@ fn upsert_backlog_proposal(
     Ok(())
 }
 
+fn latest_non_executed_proposal_id_by_dedupe(
+    conn: &Connection,
+    dedupe_key: &str,
+) -> Result<Option<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT proposal_id
+         FROM evolution_backlog
+         WHERE dedupe_key = ?1 AND status != 'executed'
+         ORDER BY updated_at DESC, proposal_id DESC
+         LIMIT 1",
+    )?;
+    let row = stmt.query_row([dedupe_key], |row| row.get::<_, String>(0));
+    match row {
+        Ok(id) => Ok(Some(id)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e.into()),
+    }
+}
+
 /// Enqueue a user-authorized capability evolution proposal into backlog.
 ///
 /// This is intentionally bounded to backlog insertion only. It does not bypass
@@ -904,7 +932,10 @@ pub fn enqueue_user_capability_evolution(
         )
     };
     upsert_backlog_proposal(conn, &proposal, "queued", &note)?;
-    Ok(proposal.proposal_id)
+    Ok(
+        latest_non_executed_proposal_id_by_dedupe(conn, &proposal.dedupe_key)?
+            .unwrap_or(proposal.proposal_id),
+    )
 }
 
 fn set_backlog_status(
@@ -921,6 +952,187 @@ fn set_backlog_status(
         params![status, acceptance_status, note, proposal_id],
     )?;
     Ok(())
+}
+
+fn parse_proposal_source(s: &str) -> Option<ProposalSource> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "active" => Some(ProposalSource::Active),
+        "passive" => Some(ProposalSource::Passive),
+        _ => None,
+    }
+}
+
+fn parse_proposal_risk(s: &str) -> Option<ProposalRiskLevel> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "low" => Some(ProposalRiskLevel::Low),
+        "medium" => Some(ProposalRiskLevel::Medium),
+        "high" => Some(ProposalRiskLevel::High),
+        "critical" => Some(ProposalRiskLevel::Critical),
+        _ => None,
+    }
+}
+
+fn load_backlog_proposal_by_id(
+    conn: &Connection,
+    proposal_id: &str,
+) -> Result<Option<EvolutionProposal>> {
+    let mut stmt = conn.prepare(
+        "SELECT proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria
+         FROM evolution_backlog
+         WHERE proposal_id = ?1
+         LIMIT 1",
+    )?;
+    let row = stmt.query_row([proposal_id], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, f32>(5)?,
+            row.get::<_, f32>(6)?,
+            row.get::<_, f32>(7)?,
+            row.get::<_, String>(8)?,
+        ))
+    });
+    let Ok((
+        proposal_id,
+        source,
+        dedupe_key,
+        scope_json,
+        risk_level,
+        roi_score,
+        expected_gain,
+        effort,
+        acceptance_criteria_json,
+    )) = row
+    else {
+        return Ok(None);
+    };
+    let Some(source) = parse_proposal_source(&source) else {
+        return Ok(None);
+    };
+    let Some(risk_level) = parse_proposal_risk(&risk_level) else {
+        return Ok(None);
+    };
+    let scope: EvolutionScope = serde_json::from_str(&scope_json).unwrap_or_default();
+    let acceptance_criteria: Vec<String> =
+        serde_json::from_str(&acceptance_criteria_json).unwrap_or_default();
+    Ok(Some(EvolutionProposal {
+        proposal_id,
+        source,
+        scope,
+        risk_level,
+        expected_gain,
+        effort,
+        roi_score,
+        dedupe_key,
+        acceptance_criteria,
+    }))
+}
+
+fn load_backlog_proposal_by_dedupe_key(
+    conn: &Connection,
+    dedupe_key: &str,
+) -> Result<Option<EvolutionProposal>> {
+    let mut stmt = conn.prepare(
+        "SELECT proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria
+         FROM evolution_backlog
+         WHERE dedupe_key = ?1 AND status != 'executed'
+         ORDER BY updated_at DESC, proposal_id DESC
+         LIMIT 1",
+    )?;
+    let row = stmt.query_row([dedupe_key], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, f32>(5)?,
+            row.get::<_, f32>(6)?,
+            row.get::<_, f32>(7)?,
+            row.get::<_, String>(8)?,
+        ))
+    });
+    let Ok((
+        proposal_id,
+        source,
+        dedupe_key,
+        scope_json,
+        risk_level,
+        roi_score,
+        expected_gain,
+        effort,
+        acceptance_criteria_json,
+    )) = row
+    else {
+        return Ok(None);
+    };
+    let Some(source) = parse_proposal_source(&source) else {
+        return Ok(None);
+    };
+    let Some(risk_level) = parse_proposal_risk(&risk_level) else {
+        return Ok(None);
+    };
+    let scope: EvolutionScope = serde_json::from_str(&scope_json).unwrap_or_default();
+    let acceptance_criteria: Vec<String> =
+        serde_json::from_str(&acceptance_criteria_json).unwrap_or_default();
+    Ok(Some(EvolutionProposal {
+        proposal_id,
+        source,
+        scope,
+        risk_level,
+        expected_gain,
+        effort,
+        roi_score,
+        dedupe_key,
+        acceptance_criteria,
+    }))
+}
+
+fn parse_outcome_from_authorized_reason(reason: &str) -> Option<String> {
+    let marker = "outcome=";
+    let pos = reason.find(marker)?;
+    let mut raw = reason[pos + marker.len()..].trim();
+    if let Some(idx) = raw.find(',') {
+        raw = &raw[..idx];
+    }
+    let normalized = raw.trim().to_ascii_lowercase();
+    if normalized == "partial_success" || normalized == "failure" {
+        Some(normalized)
+    } else {
+        None
+    }
+}
+
+fn recover_forced_proposal_by_authorization_log(
+    conn: &Connection,
+    forced_proposal_id: &str,
+) -> Result<Option<EvolutionProposal>> {
+    let mut stmt = conn.prepare(
+        "SELECT target_id, reason
+         FROM evolution_log
+         WHERE type = 'capability_evolution_authorized'
+           AND reason LIKE '%' || ?1 || '%'
+         ORDER BY ts DESC
+         LIMIT 1",
+    )?;
+    let row = stmt.query_row([forced_proposal_id], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    });
+    let Ok((tool_name, reason)) = row else {
+        return Ok(None);
+    };
+    let Some(outcome) = parse_outcome_from_authorized_reason(&reason) else {
+        return Ok(None);
+    };
+    let dedupe_key = format!(
+        "user_capability:{}:{}",
+        tool_name.trim().to_ascii_lowercase(),
+        outcome
+    );
+    load_backlog_proposal_by_dedupe_key(conn, &dedupe_key)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1721,8 +1933,50 @@ async fn run_evolution_inner<L: EvolutionLlm>(
     force: bool,
 ) -> Result<EvolutionRunResult> {
     let conn = feedback::open_evolution_db(chat_root)?;
-    let proposals = build_evolution_proposals(&conn, EvolutionMode::from_env(), force)?;
-    let decision = coordinate_proposals(&conn, proposals, force)?;
+    let forced_proposal_id = std::env::var("SKILLLITE_EVO_FORCE_PROPOSAL_ID")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let decision = if let Some(pid) = forced_proposal_id.as_deref() {
+        match load_backlog_proposal_by_id(&conn, pid)? {
+            Some(p) => {
+                tracing::info!(
+                    "Manual proposal trigger: forcing execution candidate {}",
+                    pid
+                );
+                coordinate_proposals(&conn, vec![p], true)?
+            }
+            None => {
+                if let Some(recovered) = recover_forced_proposal_by_authorization_log(&conn, pid)? {
+                    let _ = log_evolution_event(
+                        &conn,
+                        chat_root,
+                        "evolution_proposal_recovered",
+                        pid,
+                        &format!(
+                            "Forced proposal id was stale; recovered backlog proposal {} via authorization log",
+                            recovered.proposal_id
+                        ),
+                        "",
+                    );
+                    coordinate_proposals(&conn, vec![recovered], true)?
+                } else {
+                    let _ = log_evolution_event(
+                        &conn,
+                        chat_root,
+                        "evolution_proposal_missing",
+                        pid,
+                        "Forced proposal id not found in backlog",
+                        "",
+                    );
+                    return Ok(EvolutionRunResult::NoScope);
+                }
+            }
+        }
+    } else {
+        let proposals = build_evolution_proposals(&conn, EvolutionMode::from_env(), force)?;
+        coordinate_proposals(&conn, proposals, force)?
+    };
     let (scope, proposal) = match decision {
         CoordinatorDecision::NoCandidate => return Ok(EvolutionRunResult::NoScope),
         CoordinatorDecision::Shadow(p) => {
@@ -1813,7 +2067,7 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         },
         async {
             if scope.skills {
-                let generate = true;
+                let generate = scope.skill_action.should_run_skill_generation_paths();
                 skill_synth::evolve_skills(
                     chat_root,
                     skills_root,
@@ -2212,6 +2466,13 @@ mod lib_tests {
     }
 
     #[test]
+    fn skill_action_maps_to_evolve_skills_generate_flag() {
+        assert!(SkillAction::None.should_run_skill_generation_paths());
+        assert!(SkillAction::Generate.should_run_skill_generation_paths());
+        assert!(!SkillAction::Refine.should_run_skill_generation_paths());
+    }
+
+    #[test]
     fn evolution_mode_capability_flags() {
         assert!(EvolutionMode::All.prompts_enabled());
         assert!(EvolutionMode::All.memory_enabled());
@@ -2473,6 +2734,47 @@ mod lib_tests {
         assert_eq!(status, "queued");
         assert_eq!(risk, "medium");
         assert_eq!(dedupe, "user_capability:weather:failure");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn enqueue_user_capability_evolution_returns_existing_id_when_deduped() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let first_id = enqueue_user_capability_evolution(
+            &conn,
+            "task_completion",
+            "partial_success",
+            "first auth",
+        )
+        .expect("first enqueue");
+        let second_id = enqueue_user_capability_evolution(
+            &conn,
+            "task_completion",
+            "partial_success",
+            "second auth",
+        )
+        .expect("second enqueue");
+
+        let backlog_rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM evolution_backlog WHERE dedupe_key = 'user_capability:task_completion:partial_success' AND status != 'executed'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("count backlog rows");
+        assert_eq!(backlog_rows, 1);
+        assert_eq!(second_id, first_id);
+
+        let exists: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM evolution_backlog WHERE proposal_id = ?1",
+                [second_id],
+                |row| row.get(0),
+            )
+            .expect("verify returned proposal id exists");
+        assert_eq!(exists, 1);
         let _ = std::fs::remove_dir_all(&root);
     }
 

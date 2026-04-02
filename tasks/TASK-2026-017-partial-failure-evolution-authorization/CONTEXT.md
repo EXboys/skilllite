@@ -13,6 +13,7 @@
   - Confirmation flow is boolean only (`allow/deny`) from backend `confirmation_request`.
   - Clarification flow is suggestion-based and tied to agent-side `clarification_request`.
   - No dedicated user action to directly enqueue capability evolution proposal from chat tool outcomes.
+  - Legacy `complete_task` semantics were binary (done/not-done) without partial/failure completion class.
 
 ## Architecture Fit
 
@@ -21,6 +22,7 @@
 - Interfaces to preserve:
   - Existing confirmation/clarification channels and payload formats.
   - Evolution coordinator policy runtime and backlog schema compatibility.
+- Existing task-plan state transitions and event payload compatibility.
 
 ## Dependency and Compatibility
 
@@ -39,6 +41,10 @@
   - Rationale: Keep enqueue semantics centralized in `skilllite-evolution`.
   - Alternatives considered: Direct SQL insertion in assistant bridge.
   - Why rejected: Violates ownership and increases schema drift risk.
+- Decision: Make `completion_type` mandatory on `complete_task` with explicit `success|partial_success|failure`.
+  - Rationale: Enforce explicit completion declaration and prevent silent default-to-success on partial/failure outcomes.
+  - Alternatives considered: Keep completion binary and classify only from tool-result text.
+  - Why rejected: Domain-specific heuristics are brittle and disconnected from planner completion semantics.
 
 ## Open Questions
 

@@ -497,7 +497,7 @@ npm run tauri build
 ```
 
 聊天输入行为：`Enter` 仅换行，发送需点击 `发送` 按钮。
-当工具结果被标记为 `partial_success` 或 `failure` 时，助手会弹出多选恢复项，其中包含 `【授权进化能力】`，用于将能力补齐请求写入受治理的进化 backlog。
+当工具结果被标记为 `partial_success` 或 `failure` 时，助手会弹出多选恢复项，其中包含 `【启动进化】`，用于将能力补齐请求写入受治理的进化 backlog。
 
 详见 [crates/skilllite-assistant/README.md](../../crates/skilllite-assistant/README.md)。
 

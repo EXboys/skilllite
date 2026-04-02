@@ -2,6 +2,25 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Task completion classification from model-reported structured completion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TaskCompletionType {
+    #[default]
+    Success,
+    PartialSuccess,
+    Failure,
+}
+
+impl TaskCompletionType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::PartialSuccess => "partial_success",
+            Self::Failure => "failure",
+        }
+    }
+}
+
 /// Structured feedback collected from each agent loop execution.
 /// Used by the evolution engine to evaluate rule/skill effectiveness.
 #[derive(Debug, Clone, Default)]
@@ -13,6 +32,7 @@ pub struct ExecutionFeedback {
     pub elapsed_ms: u64,
     pub context_overflow_retries: usize,
     pub task_completed: bool,
+    pub completion_type: TaskCompletionType,
     /// Brief task description (generalized, not user's original text).
     pub task_description: Option<String>,
     /// Names of planning rules that were matched for this task.

@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MarkdownContent } from "./shared/MarkdownContent";
 import { PromptDiffView } from "./PromptDiffView";
 import { useSettingsStore } from "../stores/useSettingsStore";
+import { useUiToastStore } from "../stores/useUiToastStore";
+import {
+  evolutionBacklogNoteForDisplay,
+  prependNoMaterialHelpIfNeeded,
+} from "../utils/evolutionDisplay";
+import { parseDetailWorkspaceFromUrl } from "../utils/detailWindow";
 
 export interface EvolutionLogEntryDto {
   ts: string;
@@ -36,6 +42,17 @@ export interface EvolutionFileDiffDto {
   evolved: boolean;
   content: string;
   original_content: string | null;
+}
+
+export interface EvolutionBacklogRowDto {
+  proposal_id: string;
+  source: string;
+  risk_level: string;
+  status: string;
+  acceptance_status: string;
+  roi_score: number;
+  updated_at: string;
+  note: string;
 }
 
 function formatInterval(secs: number): string {
@@ -94,7 +111,9 @@ function eventIcon(eventType: string): string {
 
 function useEvolutionStatus() {
   const { settings } = useSettingsStore();
-  const workspace = settings.workspace || ".";
+  /** 详情独立窗口通过 URL ?w= 传入主窗口工作区，避免 WebView 间 localStorage 不同步 */
+  const workspaceFromUrl = useMemo(() => parseDetailWorkspaceFromUrl(), []);
+  const workspace = workspaceFromUrl ?? (settings.workspace || ".");
   const [status, setStatus] = useState<EvolutionStatusPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -378,14 +397,21 @@ function PendingSkillReviewCard({
   );
 }
 
-/** 独立详情窗口：时间线 + 待审核列表 + 进化变更对比 */
+type EvolutionDetailTab = "run" | "review" | "changes";
+
+/** 独立详情窗口：分 tab（运行 / 审核 / 变更）避免单页过长 */
 export function EvolutionDetailBody() {
   const { status, loading, error, refresh, workspace } = useEvolutionStatus();
+  const [detailTab, setDetailTab] = useState<EvolutionDetailTab>("run");
   const [pending, setPending] = useState<PendingSkillDto[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [diffs, setDiffs] = useState<EvolutionFileDiffDto[]>([]);
   const [diffsLoading, setDiffsLoading] = useState(true);
   const [showDiff, setShowDiff] = useState<Record<string, boolean>>({});
+  const [backlog, setBacklog] = useState<EvolutionBacklogRowDto[]>([]);
+  const [backlogLoading, setBacklogLoading] = useState(true);
+  const [triggeringProposalId, setTriggeringProposalId] = useState<string | null>(null);
+  const [triggerResultByProposal, setTriggerResultByProposal] = useState<Record<string, string>>({});
 
   const loadPending = useCallback(async () => {
     setPendingLoading(true);
@@ -411,15 +437,32 @@ export function EvolutionDetailBody() {
     }
   }, [workspace]);
 
+  const loadBacklog = useCallback(async () => {
+    setBacklogLoading(true);
+    try {
+      const list = await invoke<EvolutionBacklogRowDto[]>("skilllite_load_evolution_backlog", {
+        workspace,
+        limit: 40,
+      });
+      setBacklog(list);
+    } catch {
+      setBacklog([]);
+    } finally {
+      setBacklogLoading(false);
+    }
+  }, [workspace]);
+
   useEffect(() => {
     void loadPending();
     void loadDiffs();
-  }, [loadPending, loadDiffs]);
+    void loadBacklog();
+  }, [loadPending, loadDiffs, loadBacklog]);
 
   const onSkillChanged = useCallback(() => {
     void loadPending();
     void refresh();
-  }, [loadPending, refresh]);
+    void loadBacklog();
+  }, [loadPending, refresh, loadBacklog]);
 
   if (error && !status) {
     return (
@@ -434,9 +477,68 @@ export function EvolutionDetailBody() {
 
   const s = status;
 
+  const tabBtnClass = (active: boolean) =>
+    `flex-1 min-w-0 py-2 px-1.5 text-xs font-medium rounded-t-md border-b-2 transition-colors ${
+      active
+        ? "border-accent text-ink dark:text-ink-dark"
+        : "border-transparent text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
+    }`;
+
+  const pendingCount = pending.length;
+  const hasJudgement = Boolean(s?.judgement_label);
+
   return (
-    <div className="space-y-6 p-1">
-      <div className="flex items-start justify-between gap-2">
+    <div className="space-y-4 p-1">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div
+          role="tablist"
+          aria-label="自进化详情分类"
+          className="flex flex-1 min-w-0 gap-0 border-b border-border/80 dark:border-border-dark/80"
+        >
+          <button
+            type="button"
+            role="tab"
+            id="evolution-detail-tab-run"
+            aria-controls="evolution-detail-panel-run"
+            aria-selected={detailTab === "run"}
+            tabIndex={detailTab === "run" ? 0 : -1}
+            onClick={() => setDetailTab("run")}
+            className={tabBtnClass(detailTab === "run")}
+          >
+            运行与队列
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="evolution-detail-tab-review"
+            aria-controls="evolution-detail-panel-review"
+            aria-selected={detailTab === "review"}
+            tabIndex={detailTab === "review" ? 0 : -1}
+            onClick={() => setDetailTab("review")}
+            className={tabBtnClass(detailTab === "review")}
+          >
+            <span className="inline-flex items-center justify-center gap-1">
+              审核
+              {(pendingCount > 0 || hasJudgement) && (
+                <span className="tabular-nums rounded-full bg-accent/15 dark:bg-accent/25 px-1.5 py-px text-[10px] font-semibold text-accent">
+                  {pendingCount > 0 ? pendingCount : "!"}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="evolution-detail-tab-changes"
+            aria-controls="evolution-detail-panel-changes"
+            aria-selected={detailTab === "changes"}
+            tabIndex={detailTab === "changes" ? 0 : -1}
+            onClick={() => setDetailTab("changes")}
+            className={tabBtnClass(detailTab === "changes")}
+          >
+            变更对比
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => void refresh()}
@@ -451,148 +553,140 @@ export function EvolutionDetailBody() {
         <p className="text-sm text-amber-700 dark:text-amber-400">{s.db_error}</p>
       )}
 
-      {s && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">调度与配置</h2>
-          <ul className="text-xs text-ink dark:text-ink-dark space-y-1.5 bg-gray-50/80 dark:bg-surface-dark/50 rounded-lg p-3 border border-border/50 dark:border-border-dark/50">
-            <li>
-              <span className="text-ink-mute dark:text-ink-dark-mute">模式：</span>
-              {s.mode_label}
-            </li>
-            <li>
-              <span className="text-ink-mute dark:text-ink-dark-mute">周期触发：</span>
-              {s.mode_key === "disabled" ? "—" : formatInterval(s.interval_secs)}
-            </li>
-            <li>
-              <span className="text-ink-mute dark:text-ink-dark-mute">决策数触发阈值：</span>
-              {s.decision_threshold}（当前未进化 {s.unprocessed_decisions}）
-            </li>
-            <li>
-              <span className="text-ink-mute dark:text-ink-dark-mute">上次 evolution_run：</span>
-              {s.last_run_ts ? formatTs(s.last_run_ts) : "暂无记录"}
-            </li>
-            <li className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-              说明：周期与阈值可在工作区 .env 中设置 SKILLLITE_EVOLUTION_INTERVAL_SECS、
-              SKILLLITE_EVOLUTION_DECISION_THRESHOLD；SKILLLITE_EVOLUTION_SNAPSHOT_KEEP=0 可保留全部 prompt
-              快照以便溯源（不占 Git）；SKILLLITE_EVOLUTION=0 可关闭进化。
-            </li>
-          </ul>
-        </section>
-      )}
-
-      {s?.judgement_label && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">系统审核判断</h2>
-          <div className="rounded-lg border border-border dark:border-border-dark p-3 text-sm">
-            <p className="font-medium text-ink dark:text-ink-dark">{s.judgement_label}</p>
-            {s.judgement_reason && (
-              <p className="text-xs text-ink-mute dark:text-ink-dark-mute mt-2 whitespace-pre-wrap">
-                {s.judgement_reason}
-              </p>
-            )}
-          </div>
-        </section>
-      )}
+      {detailTab === "run" && (
+        <div
+          role="tabpanel"
+          id="evolution-detail-panel-run"
+          aria-labelledby="evolution-detail-tab-run"
+          className="space-y-6"
+        >
+          {s && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">调度与配置</h2>
+              <ul className="text-xs text-ink dark:text-ink-dark space-y-1.5 bg-gray-50/80 dark:bg-surface-dark/50 rounded-lg p-3 border border-border/50 dark:border-border-dark/50">
+                <li>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">模式：</span>
+                  {s.mode_label}
+                </li>
+                <li>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">周期触发：</span>
+                  {s.mode_key === "disabled" ? "—" : formatInterval(s.interval_secs)}
+                </li>
+                <li>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">决策数触发阈值：</span>
+                  {s.decision_threshold}（当前未进化 {s.unprocessed_decisions}）
+                </li>
+                <li>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">上次 evolution_run：</span>
+                  {s.last_run_ts ? formatTs(s.last_run_ts) : "暂无记录"}
+                </li>
+                <li className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                  说明：周期与阈值可在工作区 .env 中设置 SKILLLITE_EVOLUTION_INTERVAL_SECS、
+                  SKILLLITE_EVOLUTION_DECISION_THRESHOLD；SKILLLITE_EVOLUTION_SNAPSHOT_KEEP=0 可保留全部 prompt
+                  快照以便溯源（不占 Git）；SKILLLITE_EVOLUTION=0 可关闭进化。
+                </li>
+              </ul>
+            </section>
+          )}
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">待确认技能（人工审核）</h2>
+          <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">能力进化队列与执行</h2>
           <button
             type="button"
-            onClick={() => void loadPending()}
+            onClick={() => void loadBacklog()}
             className="text-xs text-accent hover:underline"
           >
-            刷新列表
+            刷新队列
           </button>
         </div>
-        {pendingLoading ? (
+        {backlogLoading ? (
           <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
-        ) : pending.length === 0 ? (
+        ) : backlog.length === 0 ? (
           <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
-            暂无待确认技能。进化生成的新技能会出现在 .skills/_evolved/_pending/。
+            暂无 backlog 记录。启动进化后会在这里显示 queued/executing/executed 等状态。
           </p>
         ) : (
-          <div className="space-y-4">
-            {pending.map((p) => (
-              <PendingSkillReviewCard
-                key={p.name}
-                skill={p}
-                workspace={workspace}
-                onChanged={onSkillChanged}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">进化变更对比</h2>
-          <button
-            type="button"
-            onClick={() => void loadDiffs()}
-            className="text-xs text-accent hover:underline"
-          >
-            刷新
-          </button>
-        </div>
-        {diffsLoading ? (
-          <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
-        ) : diffs.length === 0 ? (
-          <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
-            暂无进化变更。进化运行修改 prompts 后，可在此查看新旧版本对比。
-          </p>
-        ) : (
-          <div className="space-y-3">
-            <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
-              <span className="text-green-600 dark:text-green-400">+绿色</span> = 进化新增，
-              <span className="text-red-500 dark:text-red-400/70 line-through">−红色</span> = 原有已移除
-            </p>
-            {diffs.map((d) => {
-              const canDiff = d.evolved && !!d.original_content;
-              const isDiffMode = canDiff && (showDiff[d.filename] ?? true);
-              return (
-                <div
-                  key={d.filename}
-                  className={`rounded-lg border text-xs overflow-hidden ${
-                    d.evolved
-                      ? "bg-green-50/50 dark:bg-green-900/10 border-green-300/60 dark:border-green-700/40"
-                      : "bg-gray-50/50 dark:bg-surface-dark/40 border-border/50 dark:border-border-dark/50"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/30 dark:border-border-dark/30 bg-gray-100/50 dark:bg-surface-dark/30">
-                    <span className="font-mono font-medium text-ink dark:text-ink-dark">
-                      {d.filename}
-                    </span>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {d.evolved && (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-300/50 dark:border-green-600/50">
-                          ✨ 进化
-                        </span>
-                      )}
-                      {canDiff && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowDiff((prev) => ({ ...prev, [d.filename]: !isDiffMode }))
-                          }
-                          className="px-1.5 py-0.5 rounded text-[10px] bg-gray-200/80 dark:bg-surface-dark/60 text-ink-mute dark:text-ink-dark-mute border border-border/40 dark:border-border-dark/40 hover:bg-gray-300/80 dark:hover:bg-surface-dark/80 hover:text-ink dark:hover:text-ink-dark transition-colors"
-                        >
-                          {isDiffMode ? "原文" : "对比"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {isDiffMode && d.original_content != null ? (
-                    <PromptDiffView original={d.original_content} current={d.content} />
-                  ) : (
-                    <pre className="p-3 text-ink-mute dark:text-ink-dark-mute whitespace-pre-wrap break-words font-mono text-[11px] max-h-48 overflow-y-auto">
-                      {d.content || "（空）"}
-                    </pre>
-                  )}
+          <div className="space-y-2">
+            {backlog.map((row) => (
+              <div
+                key={row.proposal_id}
+                className="rounded-lg border border-border/60 dark:border-border-dark/60 bg-gray-50/60 dark:bg-surface-dark/50 p-3 text-xs"
+              >
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-mono text-ink dark:text-ink-dark">{row.proposal_id}</span>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">[{row.source}]</span>
+                  <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">
+                    {row.status}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">
+                    {row.acceptance_status}
+                  </span>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">
+                    risk={row.risk_level} ROI={row.roi_score.toFixed(2)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setTriggeringProposalId(row.proposal_id);
+                      setTriggerResultByProposal((prev) => ({
+                        ...prev,
+                        [row.proposal_id]: "触发请求已发送，等待执行结果…",
+                      }));
+                      try {
+                        const out = await invoke<string>("skilllite_trigger_evolution_run", {
+                          workspace,
+                          proposalId: row.proposal_id,
+                        });
+                        setTriggerResultByProposal((prev) => ({
+                          ...prev,
+                          [row.proposal_id]: `已手动触发：${prependNoMaterialHelpIfNeeded(out)}`,
+                        }));
+                        useUiToastStore.getState().show("已触发一次进化运行", "info");
+                        await loadBacklog();
+                        await refresh();
+                      } catch (e) {
+                        const msg = String(e);
+                        setTriggerResultByProposal((prev) => ({
+                          ...prev,
+                          [row.proposal_id]: `触发失败：${msg}`,
+                        }));
+                        useUiToastStore.getState().show(`触发失败：${msg}`, "error");
+                      } finally {
+                        setTriggeringProposalId(null);
+                      }
+                    }}
+                    disabled={triggeringProposalId !== null}
+                    className="ml-auto px-2 py-0.5 rounded border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50"
+                    title="手动触发一次 evolution run（全局调度，不保证只执行当前 proposal）"
+                  >
+                    {triggeringProposalId === row.proposal_id ? "触发中…" : "立即执行"}
+                  </button>
                 </div>
-              );
-            })}
+                <div className="mt-1 text-ink-mute dark:text-ink-dark-mute">
+                  更新: {formatTs(row.updated_at)}
+                </div>
+                {row.note && (
+                  <p className="mt-1 whitespace-pre-wrap text-ink-mute dark:text-ink-dark-mute">
+                    {(() => {
+                      const shown = evolutionBacklogNoteForDisplay(
+                        row.status,
+                        row.acceptance_status,
+                        row.note
+                      );
+                      return shown.length > 280
+                        ? `${shown.slice(0, 280)}…`
+                        : shown;
+                    })()}
+                  </p>
+                )}
+                {triggerResultByProposal[row.proposal_id] && (
+                  <p className="mt-1 whitespace-pre-wrap text-ink-mute dark:text-ink-dark-mute">
+                    {triggerResultByProposal[row.proposal_id]}
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </section>
@@ -632,6 +726,145 @@ export function EvolutionDetailBody() {
           </ul>
         )}
       </section>
+        </div>
+      )}
+
+      {detailTab === "review" && (
+        <div
+          role="tabpanel"
+          id="evolution-detail-panel-review"
+          aria-labelledby="evolution-detail-tab-review"
+          className="space-y-6"
+        >
+          <section className="space-y-2">
+            <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">系统审核判断</h2>
+            {s?.judgement_label ? (
+              <div className="rounded-lg border border-border dark:border-border-dark p-3 text-sm">
+                <p className="font-medium text-ink dark:text-ink-dark">{s.judgement_label}</p>
+                {s.judgement_reason && (
+                  <p className="text-xs text-ink-mute dark:text-ink-dark-mute mt-2 whitespace-pre-wrap">
+                    {s.judgement_reason}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
+                暂无系统审核结论（最近一次进化判断未记录或为空）。
+              </p>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">待确认技能（人工审核）</h2>
+              <button
+                type="button"
+                onClick={() => void loadPending()}
+                className="text-xs text-accent hover:underline"
+              >
+                刷新列表
+              </button>
+            </div>
+            {pendingLoading ? (
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
+            ) : pending.length === 0 ? (
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
+                暂无待确认技能。进化生成的新技能会出现在 .skills/_evolved/_pending/。
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {pending.map((p) => (
+                  <PendingSkillReviewCard
+                    key={p.name}
+                    skill={p}
+                    workspace={workspace}
+                    onChanged={onSkillChanged}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
+      )}
+
+      {detailTab === "changes" && (
+        <div
+          role="tabpanel"
+          id="evolution-detail-panel-changes"
+          aria-labelledby="evolution-detail-tab-changes"
+          className="space-y-3"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">进化变更对比</h2>
+            <button
+              type="button"
+              onClick={() => void loadDiffs()}
+              className="text-xs text-accent hover:underline"
+            >
+              刷新
+            </button>
+          </div>
+          {diffsLoading ? (
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
+          ) : diffs.length === 0 ? (
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
+              暂无进化变更。进化运行修改 prompts 后，可在此查看新旧版本对比。
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
+                <span className="text-green-600 dark:text-green-400">+绿色</span> = 进化新增，
+                <span className="text-red-500 dark:text-red-400/70 line-through">−红色</span> = 原有已移除
+              </p>
+              {diffs.map((d) => {
+                const canDiff = d.evolved && !!d.original_content;
+                const isDiffMode = canDiff && (showDiff[d.filename] ?? true);
+                return (
+                  <div
+                    key={d.filename}
+                    className={`rounded-lg border text-xs overflow-hidden ${
+                      d.evolved
+                        ? "bg-green-50/50 dark:bg-green-900/10 border-green-300/60 dark:border-green-700/40"
+                        : "bg-gray-50/50 dark:bg-surface-dark/40 border-border/50 dark:border-border-dark/50"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/30 dark:border-border-dark/30 bg-gray-100/50 dark:bg-surface-dark/30">
+                      <span className="font-mono font-medium text-ink dark:text-ink-dark">
+                        {d.filename}
+                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {d.evolved && (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-300/50 dark:border-green-600/50">
+                            ✨ 进化
+                          </span>
+                        )}
+                        {canDiff && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowDiff((prev) => ({ ...prev, [d.filename]: !isDiffMode }))
+                            }
+                            className="px-1.5 py-0.5 rounded text-[10px] bg-gray-200/80 dark:bg-surface-dark/60 text-ink-mute dark:text-ink-dark-mute border border-border/40 dark:border-border-dark/40 hover:bg-gray-300/80 dark:hover:bg-surface-dark/80 hover:text-ink dark:hover:text-ink-dark transition-colors"
+                          >
+                            {isDiffMode ? "原文" : "对比"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {isDiffMode && d.original_content != null ? (
+                      <PromptDiffView original={d.original_content} current={d.content} />
+                    ) : (
+                      <pre className="p-3 text-ink-mute dark:text-ink-dark-mute whitespace-pre-wrap break-words font-mono text-[11px] max-h-48 overflow-y-auto">
+                        {d.content || "（空）"}
+                      </pre>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

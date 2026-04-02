@@ -1,0 +1,3 @@
+{"category":"evolution","details":{"reason":"Forced proposal id not found in backlog","target_id":"proposal_20260402_020358.520","txn_id":"","type":"evolution_proposal_missing"},"event":"evolution","source_layer":"agent","ts":"2026-04-02T03:45:25.093Z"}
+{"category":"evolution","details":{"reason":"Forced proposal id not found in backlog","target_id":"proposal_20260402_020358.520","txn_id":"","type":"evolution_proposal_missing"},"event":"evolution","source_layer":"agent","ts":"2026-04-02T03:52:59.841Z"}
+{"category":"evolution","details":{"reason":"Forced proposal id not found in backlog","target_id":"proposal_20260402_020358.520","txn_id":"","type":"evolution_proposal_missing"},"event":"evolution","source_layer":"agent","ts":"2026-04-02T04:37:10.597Z"}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../stores/useSettingsStore";
@@ -15,6 +15,11 @@ import { notifyRuntimeStatusMayHaveChanged } from "../utils/runtimeStatusRefresh
 import { formatInvokeError } from "../utils/formatInvokeError";
 import { useUiToastStore } from "../stores/useUiToastStore";
 import { useI18n, translate } from "../i18n";
+import {
+  evolutionNoteForDisplay,
+  evolutionStatusHeadline,
+  isEvolutionNoMaterialChanges,
+} from "../utils/evolutionDisplay";
 
 export default function ChatView() {
   const { t } = useI18n();
@@ -33,6 +38,8 @@ export default function ChatView() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [transcriptError, setTranscriptError] = useState<string | null>(null);
+  const evolutionPollTimersRef = useRef<Map<string, number>>(new Map());
+  const evolutionLastStatusRef = useRef<Map<string, string>>(new Map());
   const { settings, setSettings } = useSettingsStore();
   const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
   const planTasks = useStatusStore((s) => s.tasks);
@@ -169,6 +176,122 @@ export default function ChatView() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  useEffect(() => {
+    return () => {
+      for (const timerId of evolutionPollTimersRef.current.values()) {
+        window.clearTimeout(timerId);
+      }
+      evolutionPollTimersRef.current.clear();
+      evolutionLastStatusRef.current.clear();
+    };
+  }, []);
+
+  const stopEvolutionPoll = useCallback((messageId: string) => {
+    const timerId = evolutionPollTimersRef.current.get(messageId);
+    if (timerId != null) {
+      window.clearTimeout(timerId);
+      evolutionPollTimersRef.current.delete(messageId);
+    }
+  }, []);
+
+  const startEvolutionPoll = useCallback(
+    (messageId: string, proposalId: string) => {
+      stopEvolutionPoll(messageId);
+      let attempts = 0;
+      const maxAttempts = 24; // ~2 minutes (5s interval)
+      const pollOnce = async () => {
+        attempts += 1;
+        try {
+          const status = await invoke<{
+            proposal_id: string;
+            status: string;
+            acceptance_status: string;
+            updated_at: string;
+            note: string | null;
+          }>("skilllite_get_evolution_proposal_status", {
+            workspace: settings.workspace || ".",
+            proposalId,
+          });
+          const doneStates = new Set([
+            "executed",
+            "policy_denied",
+            "blocked",
+            "failed",
+            "archived",
+          ]);
+          const progressDone = doneStates.has(status.status);
+          const statusKey = `${status.status}/${status.acceptance_status}`;
+          const lastKey = evolutionLastStatusRef.current.get(proposalId);
+          setMessages((prev) =>
+            [
+              ...prev.map((m) =>
+                m.type === "evolution_options" && m.id === messageId
+                  ? {
+                      ...m,
+                      proposalId,
+                      progressStatus: statusKey,
+                      progressUpdatedAt: status.updated_at,
+                      progressNote: status.note ?? undefined,
+                      progressDone,
+                    }
+                  : m
+              ),
+              ...((lastKey !== statusKey || progressDone)
+                ? (() => {
+                    const headline = evolutionStatusHeadline(
+                      status.status,
+                      status.acceptance_status,
+                      status.note
+                    );
+                    const extra = evolutionNoteForDisplay(
+                      status.status,
+                      status.acceptance_status,
+                      status.note
+                    );
+                    const isNoMat = isEvolutionNoMaterialChanges(
+                      status.status,
+                      status.acceptance_status,
+                      status.note
+                    );
+                    let content =
+                      `进化进度更新：提案 ${proposalId}\n` +
+                      `- 进度：${headline}\n` +
+                      `- 更新时间：${status.updated_at}`;
+                    if (extra) {
+                      content += isNoMat
+                        ? `\n- 说明：${extra}`
+                        : `\n- 备注：${extra}`;
+                    }
+                    return [
+                      {
+                        id: crypto.randomUUID(),
+                        type: "assistant" as const,
+                        content,
+                      },
+                    ];
+                  })()
+                : []),
+            ]
+          );
+          evolutionLastStatusRef.current.set(proposalId, statusKey);
+          if (progressDone || attempts >= maxAttempts) {
+            stopEvolutionPoll(messageId);
+            return;
+          }
+        } catch {
+          if (attempts >= maxAttempts) {
+            stopEvolutionPoll(messageId);
+            return;
+          }
+        }
+        const timerId = window.setTimeout(pollOnce, 5000);
+        evolutionPollTimersRef.current.set(messageId, timerId);
+      };
+      void pollOnce();
+    },
+    [settings.workspace, stopEvolutionPoll]
+  );
+
   const handleConfirm = async (id: string, approved: boolean) => {
     try {
       await invoke("skilllite_confirm", { approved });
@@ -213,21 +336,59 @@ export default function ChatView() {
       const target = messages.find(
         (m) => m.type === "evolution_options" && m.id === id
       );
-      if (option === "【授权进化能力】" && target?.type === "evolution_options") {
-        await invoke("skilllite_authorize_capability_evolution", {
+      let selectedOption = option;
+      let progressNotice: string | null = null;
+      let queuedProposalId: string | null = null;
+      if (option === "【启动进化】" && target?.type === "evolution_options") {
+        const proposalId = await invoke<string>("skilllite_authorize_capability_evolution", {
           workspace: settings.workspace || ".",
           toolName: target.toolName,
           outcome: target.outcome,
           summary: target.message,
         });
+        queuedProposalId = proposalId;
+        selectedOption = `【启动进化】（已入队: ${proposalId}）`;
+        progressNotice =
+          `已启动进化，提案 ${proposalId} 已加入队列（queued）。` +
+          "后续由后台进化调度执行；聊天会自动推送进度更新，也可在右侧「自进化 > 详情与审核」查看。";
+        try {
+          const s = await invoke<{
+            unprocessed_decisions: number;
+            pending_skill_count: number;
+            last_run_ts: string | null;
+          }>("skilllite_load_evolution_status", {
+            workspace: settings.workspace || ".",
+          });
+          progressNotice += ` 当前未进化决策: ${s.unprocessed_decisions}，待确认技能: ${s.pending_skill_count}` +
+            (s.last_run_ts ? `，上次进化运行: ${s.last_run_ts}` : "");
+        } catch {
+          // Ignore status fetch failures; queueing already succeeded.
+        }
       }
       setMessages((prev) =>
-        prev.map((m) =>
+        [
+          ...prev.map((m) =>
           m.type === "evolution_options" && m.id === id
-            ? { ...m, resolved: true, selectedOption: option }
+            ? {
+                ...m,
+                resolved: true,
+                selectedOption,
+                proposalId: queuedProposalId ?? m.proposalId,
+                progressStatus: queuedProposalId ? "queued / pending" : m.progressStatus,
+                progressUpdatedAt: queuedProposalId ? new Date().toISOString() : m.progressUpdatedAt,
+                progressDone: false,
+              }
             : m
-        )
+          ),
+          ...(progressNotice
+            ? [{ id: crypto.randomUUID(), type: "assistant" as const, content: progressNotice }]
+            : []),
+        ]
       );
+      if (queuedProposalId) {
+        evolutionLastStatusRef.current.set(queuedProposalId, "queued/pending");
+        startEvolutionPoll(id, queuedProposalId);
+      }
     } catch (e) {
       const msg = formatInvokeError(e);
       useUiToastStore

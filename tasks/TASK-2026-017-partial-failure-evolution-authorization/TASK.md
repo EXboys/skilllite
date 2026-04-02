@@ -33,6 +33,7 @@ As a result, capability gap handling is delayed to periodic evolution and user i
 - [ ] For tool outcomes classified as `partial_success` or `failure`, UI shows a multi-option prompt with `【授权进化能力】` as one option.
 - [ ] Choosing `【授权进化能力】` sends a structured request to backend and creates/updates a backlog proposal entry.
 - [ ] Existing confirmation and clarification flows continue to work without regression.
+- [ ] `complete_task` rejects calls without `completion_type`, and planner prompts require explicit `completion_type`.
 
 ## Risks
 
@@ -66,7 +67,7 @@ As a result, capability gap handling is delayed to periodic evolution and user i
   - tauri invoke bridge for chat/evolution
   - evolution backlog insertion path
 - Explicit non-goals:
-  - Agent core planning/execution loop semantics
+  - High-risk autonomous capability execution in the same turn
 
 ## Links
 

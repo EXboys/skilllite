@@ -1,4 +1,5 @@
-import DetailWindowView, { parseDetailModuleFromHash } from "./components/DetailWindowView";
+import DetailWindowView from "./components/DetailWindowView";
+import { parseDetailModuleFromHash } from "./utils/detailWindow";
 import MainLayout from "./components/MainLayout";
 import { ToastHost } from "./components/ToastHost";
 

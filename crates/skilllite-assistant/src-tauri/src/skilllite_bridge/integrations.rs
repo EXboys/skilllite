@@ -492,6 +492,7 @@ pub fn authorize_capability_evolution(
     tool_name: &str,
     outcome: &str,
     summary: &str,
+    skilllite_path: &std::path::Path,
 ) -> Result<String, String> {
     let chat_root = skilllite_core::paths::chat_root();
     let conn =
@@ -507,7 +508,277 @@ pub fn authorize_capability_evolution(
         &format!("outcome={}, proposal_id={}", outcome, proposal_id),
         workspace,
     );
+    // User-authorized proposals should be acted on promptly:
+    // enqueue first (auditable), then trigger one immediate evolution run in background.
+    let workspace_owned = workspace.to_string();
+    let proposal_id_owned = proposal_id.clone();
+    let skilllite_path_owned = skilllite_path.to_path_buf();
+    let chat_root_for_log = chat_root.clone();
+    std::thread::spawn(move || {
+        let root = find_project_root(&workspace_owned);
+        let mut cmd = std::process::Command::new(&skilllite_path_owned);
+        cmd.arg("evolution")
+            .arg("run")
+            .arg("--json")
+            .current_dir(&root)
+            // Do NOT set SKILLLITE_WORKSPACE here: `agent-rpc` chat stores decisions under
+            // `skilllite_core::paths::chat_root()` (default `~/.skilllite/chat` when workspace
+            // env is unset). Forcing project root makes evolution open `<project>/chat`, a
+            // different `feedback.sqlite` — empty decisions → "进化队列为空" and backlog mismatch.
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        for (k, v) in load_dotenv_for_child(&workspace_owned) {
+            cmd.env(k, v);
+        }
+        // Must force this backlog row: generic `evolution run` only considers Passive/Active
+        // proposals from build_evolution_proposals, not queued user-authorized capability rows.
+        cmd.env("SKILLLITE_EVO_FORCE_PROPOSAL_ID", &proposal_id_owned);
+        let output = cmd.output();
+        let status_note = match output {
+            Ok(out) => {
+                let stdout = String::from_utf8_lossy(&out.stdout);
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                let mut merged = stdout.trim().to_string();
+                if !stderr.trim().is_empty() {
+                    if !merged.is_empty() {
+                        merged.push_str(" | ");
+                    }
+                    merged.push_str(stderr.trim());
+                }
+                if merged.is_empty() {
+                    format!("trigger_exit={}", out.status)
+                } else {
+                    let mut clipped = merged;
+                    if clipped.len() > 280 {
+                        clipped.truncate(280);
+                        clipped.push('…');
+                    }
+                    clipped
+                }
+            }
+            Err(e) => format!("trigger_failed: {}", e),
+        };
+        if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&chat_root_for_log) {
+            let _ = skilllite_evolution::log_evolution_event(
+                &conn,
+                &chat_root_for_log,
+                "capability_evolution_trigger_run",
+                &proposal_id_owned,
+                &status_note,
+                &workspace_owned,
+            );
+        }
+    });
     Ok(proposal_id)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EvolutionProposalStatusDto {
+    pub proposal_id: String,
+    pub status: String,
+    pub acceptance_status: String,
+    pub updated_at: String,
+    pub note: Option<String>,
+}
+
+pub fn get_evolution_proposal_status(
+    _workspace: &str,
+    proposal_id: &str,
+) -> Result<EvolutionProposalStatusDto, String> {
+    let chat_root = skilllite_core::paths::chat_root();
+    let conn =
+        skilllite_evolution::feedback::open_evolution_db(&chat_root).map_err(|e| e.to_string())?;
+    conn.query_row(
+        "SELECT proposal_id, status, acceptance_status, updated_at, note
+         FROM evolution_backlog
+         WHERE proposal_id = ?1
+         LIMIT 1",
+        [proposal_id],
+        |row| {
+            Ok(EvolutionProposalStatusDto {
+                proposal_id: row.get(0)?,
+                status: row.get(1)?,
+                acceptance_status: row.get(2)?,
+                updated_at: row.get(3)?,
+                note: row.get(4)?,
+            })
+        },
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EvolutionBacklogRowDto {
+    pub proposal_id: String,
+    pub source: String,
+    pub risk_level: String,
+    pub status: String,
+    pub acceptance_status: String,
+    pub roi_score: f64,
+    pub updated_at: String,
+    pub note: String,
+}
+
+pub fn load_evolution_backlog(_workspace: &str, limit: usize) -> Result<Vec<EvolutionBacklogRowDto>, String> {
+    let chat_root = skilllite_core::paths::chat_root();
+    let conn =
+        skilllite_evolution::feedback::open_evolution_db(&chat_root).map_err(|e| e.to_string())?;
+    let limit = limit.clamp(1, 200);
+    let mut stmt = conn
+        .prepare(
+            "SELECT proposal_id, source, risk_level, status, acceptance_status, roi_score, updated_at, COALESCE(note, '')
+             FROM evolution_backlog
+             ORDER BY updated_at DESC
+             LIMIT ?1",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([limit as i64], |row| {
+            Ok(EvolutionBacklogRowDto {
+                proposal_id: row.get(0)?,
+                source: row.get(1)?,
+                risk_level: row.get(2)?,
+                status: row.get(3)?,
+                acceptance_status: row.get(4)?,
+                roi_score: row.get(5)?,
+                updated_at: row.get(6)?,
+                note: row.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(rows.flatten().collect())
+}
+
+pub fn trigger_evolution_run(
+    workspace: &str,
+    proposal_id: Option<&str>,
+    _skilllite_path: &std::path::Path,
+) -> Result<String, String> {
+    fn env_first_non_empty(
+        vars: &std::collections::HashMap<String, String>,
+        keys: &[&str],
+    ) -> Option<String> {
+        for k in keys {
+            if let Some(v) = vars.get(*k) {
+                let t = v.trim();
+                if !t.is_empty() {
+                    return Some(t.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    let root = find_project_root(workspace);
+    let env_map: std::collections::HashMap<String, String> =
+        load_dotenv_for_child(workspace).into_iter().collect();
+    let api_base = env_first_non_empty(
+        &env_map,
+        &["SKILLLITE_API_BASE", "OPENAI_API_BASE", "OPENAI_BASE_URL", "BASE_URL"],
+    )
+    .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.api_base))
+    .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+    let api_key = env_first_non_empty(&env_map, &["SKILLLITE_API_KEY", "OPENAI_API_KEY", "API_KEY"])
+        .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.api_key))
+        .unwrap_or_default();
+    let model = env_first_non_empty(&env_map, &["SKILLLITE_MODEL", "OPENAI_MODEL", "MODEL"])
+        .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.model))
+        .unwrap_or_else(|| "gpt-4o".to_string());
+
+    if api_key.trim().is_empty() {
+        return Err("执行 evolution run 失败: 缺少 API key（请配置 SKILLLITE_API_KEY 或 OPENAI_API_KEY）".to_string());
+    }
+
+    let llm = skilllite_agent::llm::LlmClient::new(&api_base, &api_key)
+        .map_err(|e| format!("执行 evolution run 失败: 初始化 LLM 客户端失败: {}", e))?;
+    let adapter = skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
+    let skills_root = if root.join(".skills").is_dir() {
+        Some(root.join(".skills"))
+    } else if root.join("skills").is_dir() {
+        Some(root.join("skills"))
+    } else {
+        None
+    };
+
+    let prev_force = std::env::var("SKILLLITE_EVO_FORCE_PROPOSAL_ID").ok();
+    match proposal_id {
+        Some(pid) => std::env::set_var("SKILLLITE_EVO_FORCE_PROPOSAL_ID", pid),
+        None => std::env::remove_var("SKILLLITE_EVO_FORCE_PROPOSAL_ID"),
+    }
+    let run_result = tokio::runtime::Runtime::new()
+        .map_err(|e| format!("执行 evolution run 失败: runtime 初始化失败: {}", e))?
+        .block_on(skilllite_evolution::run_evolution(
+            &skilllite_core::paths::chat_root(),
+            skills_root.as_deref(),
+            &adapter,
+            &api_base,
+            &api_key,
+            &model,
+            true,
+        ));
+    match prev_force {
+        Some(v) => std::env::set_var("SKILLLITE_EVO_FORCE_PROPOSAL_ID", v),
+        None => std::env::remove_var("SKILLLITE_EVO_FORCE_PROPOSAL_ID"),
+    }
+
+    let response = match run_result {
+        Ok(skilllite_evolution::EvolutionRunResult::Completed(Some(txn_id))) => {
+            let conn = skilllite_evolution::feedback::open_evolution_db(&skilllite_core::paths::chat_root())
+                .map_err(|e| format!("执行 evolution run 失败: 打开进化数据库失败: {}", e))?;
+            let changes = skilllite_evolution::query_changes_by_txn(&conn, &txn_id);
+            let summary: Vec<String> = skilllite_evolution::format_evolution_changes(&changes);
+            if summary.is_empty() {
+                format!("Evolution completed (txn={})", txn_id)
+            } else {
+                summary.join("\n")
+            }
+        }
+        Ok(skilllite_evolution::EvolutionRunResult::SkippedBusy) => {
+            "Evolution skipped: another run in progress".to_string()
+        }
+        Ok(skilllite_evolution::EvolutionRunResult::NoScope)
+        | Ok(skilllite_evolution::EvolutionRunResult::Completed(None)) => {
+            let mut hint = String::from("Evolution: nothing to evolve");
+            if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&skilllite_core::paths::chat_root()) {
+                if let Ok((total, with_desc)) =
+                    skilllite_evolution::feedback::count_decisions_with_task_desc(&conn)
+                {
+                    if total > 0 && with_desc == 0 {
+                        hint.push_str("\n\n提示: 进化需要 task_description。当前未进化决策均无 task_description。");
+                    } else if total == 0 {
+                        let all_count: i64 = conn
+                            .query_row("SELECT COUNT(*) FROM decisions", [], |r| r.get(0))
+                            .unwrap_or(0);
+                        if all_count > 0 {
+                            hint.push_str("\n\n提示: 未进化决策队列为空。已有决策均已标记为已进化。");
+                            hint.push_str("\n请执行新任务积累新决策后再触发进化。");
+                        } else {
+                            hint.push_str("\n\n提示: 进化队列为空。请先运行 skilllite run 或 skilllite chat 积累决策。");
+                        }
+                    }
+                }
+            }
+            hint
+        }
+        Err(e) => return Err(format!("执行 evolution run 失败: {}", e)),
+    };
+
+    let mut clipped = response.clone();
+    if clipped.len() > 480 {
+        clipped.truncate(480);
+        clipped.push('…');
+    }
+    if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&skilllite_core::paths::chat_root()) {
+        let _ = skilllite_evolution::log_evolution_event(
+            &conn,
+            &skilllite_core::paths::chat_root(),
+            "manual_evolution_run_triggered",
+            proposal_id.unwrap_or("all"),
+            &clipped,
+            workspace,
+        );
+    }
+    Ok(clipped)
 }
 
 // ─── Evolution diffs (prompt snapshot diff for UI) ────────────────────────────

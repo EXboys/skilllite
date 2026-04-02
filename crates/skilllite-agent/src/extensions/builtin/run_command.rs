@@ -156,9 +156,12 @@ pub(super) async fn execute_run_command(
     use tokio::sync::mpsc;
     let start_time = std::time::Instant::now();
 
+    // Do not inherit stdin: GUI / RPC parents often leave stdin open as a pipe with no EOF,
+    // which makes `read()` in child scripts (e.g. `sys.stdin.read()`) block until timeout.
     let mut child = Command::new("sh")
         .arg("-c")
         .arg(cmd)
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .current_dir(workspace)

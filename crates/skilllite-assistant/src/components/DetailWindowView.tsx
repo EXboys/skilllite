@@ -14,18 +14,13 @@ import { groupMemoryFiles } from "../utils/fileUtils";
 import { useRecentData } from "../hooks/useRecentData";
 import { EvolutionDetailBody } from "./EvolutionSection";
 import { translate, useI18n } from "../i18n";
+import { parseDetailModuleFromHash } from "../utils/detailWindow";
+import { SETTINGS_STORE_PERSIST_KEY, useSettingsStore } from "../stores/useSettingsStore";
 
 /** 读取失败时在 state 中使用的哨兵，避免把某语言文案写死进比较逻辑 */
 const DETAIL_READ_FAILED = "__DETAIL_READ_FAILED__";
 
 export type DetailModule = "plan" | "mem" | "log" | "output" | "evolution";
-
-/** 从 hash 解析模块类型，如 #detail/plan -> "plan" */
-export function parseDetailModuleFromHash(): DetailModule | null {
-  const hash = window.location.hash;
-  const m = hash.match(/^#?detail\/(plan|mem|log|output|evolution)$/);
-  return (m?.[1] as DetailModule) ?? null;
-}
 
 function TaskList({ tasks }: { tasks: TaskItem[] }) {
   const { t } = useI18n();
@@ -414,8 +409,7 @@ export default function DetailWindowView() {
   );
 
   useEffect(() => {
-    const m = parseDetailModuleFromHash();
-    setModule(m ?? null);
+    setModule(parseDetailModuleFromHash() as DetailModule | null);
   }, []);
 
   useEffect(() => {
@@ -445,6 +439,26 @@ export default function DetailWindowView() {
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       bc?.close();
+      window.removeEventListener("storage", onStorage);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+
+  // 工作区等设置同理：与主窗口持久化对齐（URL ?w= 优先，见 EvolutionSection）
+  useEffect(() => {
+    const pull = () => {
+      void useSettingsStore.persist.rehydrate();
+    };
+    queueMicrotask(pull);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === SETTINGS_STORE_PERSIST_KEY) pull();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") pull();
+    };
+    window.addEventListener("storage", onStorage);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
       window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", onVisible);
     };

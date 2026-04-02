@@ -554,7 +554,7 @@ npm run tauri build
 ```
 
 Chat input behavior: `Enter` inserts a new line; submit by clicking the `Send` button.
-For tool outcomes marked as `partial_success` or `failure`, the assistant shows a multi-option recovery prompt, including `【授权进化能力】` to enqueue a governed capability-evolution backlog proposal.
+For tool outcomes marked as `partial_success` or `failure`, the assistant shows a multi-option recovery prompt, including `【启动进化】` to enqueue a governed capability-evolution backlog proposal.
 
 See [crates/skilllite-assistant/README.md](./crates/skilllite-assistant/README.md).
 

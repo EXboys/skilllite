@@ -33,7 +33,7 @@ def make_request(url: str, timeout: int = 5, headers: dict = None) -> dict:
         return {"error": str(e), "success": False}
 
 
-def get_weather_from_wnl(city: str) -> dict:
+def get_weather_from_wnl(city: str, day: str = "today") -> dict:
     """
     使用中华万年历天气 API（免费，无需 API Key，国内稳定）
     """
@@ -50,7 +50,8 @@ def get_weather_from_wnl(city: str) -> dict:
             return {"city": city, "error": f"获取失败: {desc}", "success": False}
         
         weather_data = data["data"]
-        today = weather_data.get("forecast", [{}])[0] if weather_data.get("forecast") else {}
+        forecast_index = 0 if day == "today" else (1 if day == "tomorrow" else 0) # Default to today if invalid day
+        today = weather_data.get("forecast", [{}])[forecast_index] if weather_data.get("forecast") and len(weather_data.get("forecast")) > forecast_index else {}
         
         return {
             "city": weather_data.get("city", city),
@@ -67,7 +68,7 @@ def get_weather_from_wnl(city: str) -> dict:
         return {"city": city, "error": str(e), "success": False}
 
 
-def get_weather_from_sojson(city: str) -> dict:
+def get_weather_from_sojson(city: str, day: str = "today") -> dict:
     """
     使用 sojson 天气 API（免费，无需 API Key，含空气质量）
     """
@@ -100,7 +101,8 @@ def get_weather_from_sojson(city: str) -> dict:
             return {"city": city, "error": data.get("message", "获取失败"), "success": False}
         city_info = data.get("cityInfo", {})
         weather_data = data.get("data", {})
-        today = weather_data.get("forecast", [{}])[0] if weather_data.get("forecast") else {}
+        forecast_index = 0 if day == "today" else (1 if day == "tomorrow" else 0)
+        today = weather_data.get("forecast", [{}])[forecast_index] if weather_data.get("forecast") and len(weather_data.get("forecast")) > forecast_index else {}
         return {
             "city": city_info.get("city", city),
             "temperature": weather_data.get("wendu", "N/A") + "°C",
@@ -149,27 +151,28 @@ def get_weather_from_wttr(city: str) -> dict:
         return {"city": city, "error": str(e), "success": False}
 
 
-def get_weather(city: str) -> dict:
+def get_weather(city: str, day: str = "today") -> dict:
     """
     获取城市天气
     优先级：中华万年历 > sojson > wttr.in（均免费无需 API Key）
     """
     errors = []
-    result = get_weather_from_wnl(city)
+    result = get_weather_from_wnl(city, day)
     if result.get("success"):
         return result
     errors.append(f"中华万年历: {result.get('error', '未知错误')}")
-    result = get_weather_from_sojson(city)
+    result = get_weather_from_sojson(city, day)
     if result.get("success"):
         return result
     errors.append(f"sojson: {result.get('error', '未知错误')}")
-    result = get_weather_from_wttr(city)
-    if result.get("success"):
-        return result
-    errors.append(f"wttr.in: {result.get('error', '未知错误')}")
+    if day == "today":
+        wttr_result = get_weather_from_wttr(city)
+        if wttr_result.get("success"):
+            return wttr_result
+        errors.append(f"wttr.in: {wttr_result.get('error', '未知错误')}")
     return {
         "city": city,
-        "error": "所有天气源均获取失败",
+        "error": f"所有天气源均获取失败: {day} 天气",
         "details": errors,
         "tip": "请检查网络连接或城市名称是否正确",
         "success": False
@@ -180,12 +183,15 @@ def main():
     # argparse 用于 skilllite schema 推断，使 LLM 知道需传入 city 参数
     parser = argparse.ArgumentParser()
     parser.add_argument("--city", default=None, help="城市名称，如 '北京'、'深圳'、'清迈'")
+    parser.add_argument("--day", default="today", help="查询哪天的天气，可选值: 'today' (今天), 'tomorrow' (明天)")
     args, _ = parser.parse_known_args()
 
-    input_data = json.loads(sys.stdin.read())
+    raw = sys.stdin.read()
+    input_data = json.loads(raw) if raw.strip() else {}
     city = args.city or input_data.get("city", "北京")
+    day = args.day or input_data.get("day", "today")
     
-    result = get_weather(city)
+    result = get_weather(city, day)
     
     print(json.dumps(result, ensure_ascii=False))
 

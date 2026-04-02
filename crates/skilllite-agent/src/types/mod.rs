@@ -35,7 +35,8 @@ pub use event_sink::{
     TerminalEventSink,
 };
 pub use feedback::{
-    classify_user_feedback, ExecutionFeedback, FeedbackSignal, SkillAction, ToolExecDetail,
+    classify_user_feedback, ExecutionFeedback, FeedbackSignal, SkillAction, TaskCompletionType,
+    ToolExecDetail,
 };
 pub use string_utils::{chunk_str, safe_slice_from, safe_truncate};
 pub use task::{PlanningRule, SourceEntry, SourceRegistry, Task};

@@ -67,9 +67,14 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
                         "summary": {
                             "type": "string",
                             "description": "One-sentence summary of what was accomplished"
+                        },
+                        "completion_type": {
+                            "type": "string",
+                            "enum": ["success", "partial_success", "failure"],
+                            "description": "Required completion classification. Use partial_success when only part of the requirement was fulfilled, and failure when the task goal was not achieved."
                         }
                     },
-                    "required": ["task_id"]
+                    "required": ["task_id", "completion_type"]
                 }),
             },
         },

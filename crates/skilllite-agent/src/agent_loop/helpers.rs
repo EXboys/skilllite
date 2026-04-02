@@ -268,12 +268,45 @@ pub(super) fn handle_complete_task(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    let completion_type = match args
+        .get("completion_type")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+    {
+        None | Some("") => {
+            return super::super::types::ToolResult {
+                tool_call_id: String::new(),
+                tool_name: "complete_task".to_string(),
+                content:
+                    "Missing required field: completion_type. Use one of success, partial_success, failure."
+                        .to_string(),
+                is_error: true,
+                counts_as_failure: true,
+            };
+        }
+        Some("success") => TaskCompletionType::Success,
+        Some("partial_success") => TaskCompletionType::PartialSuccess,
+        Some("failure") => TaskCompletionType::Failure,
+        Some(other) => {
+            return super::super::types::ToolResult {
+                tool_call_id: String::new(),
+                tool_name: "complete_task".to_string(),
+                content: format!(
+                    "Invalid completion_type: {:?}. Allowed values: success, partial_success, failure.",
+                    other
+                ),
+                is_error: true,
+                counts_as_failure: true,
+            };
+        }
+    };
 
     planner.mark_completed(task_id);
     event_sink.on_task_progress(task_id, true, &planner.task_list);
     tracing::info!(
-        "complete_task: task {} marked done. summary={:?}",
+        "complete_task: task {} marked done. completion_type={}. summary={:?}",
         task_id,
+        completion_type.as_str(),
         summary
     );
 
@@ -281,8 +314,10 @@ pub(super) fn handle_complete_task(
         tool_call_id: String::new(),
         tool_name: "complete_task".to_string(),
         content: format!(
-            r#"{{"success": true, "task_id": {}, "message": "Task {} marked as completed"}}"#,
-            task_id, task_id
+            r#"{{"success": true, "task_id": {}, "completion_type": "{}", "message": "Task {} marked as completed"}}"#,
+            task_id,
+            completion_type.as_str(),
+            task_id
         ),
         is_error: false,
         counts_as_failure: false,
@@ -628,12 +663,21 @@ pub(super) fn build_agent_result(
     task_plan: Vec<Task>,
     feedback: ExecutionFeedback,
 ) -> AgentResult {
-    let final_response = messages
-        .iter()
-        .rev()
-        .find(|m| m.role == "assistant" && m.content.is_some())
-        .and_then(|m| m.content.clone())
-        .unwrap_or_else(|| "[Agent completed without text response]".to_string());
+    let final_response = if !feedback.task_completed && !task_plan.is_empty() {
+        let completed = task_plan.iter().filter(|t| t.completed).count();
+        let total = task_plan.len();
+        format!(
+            "任务未完成（{}/{}）。当前仅获得部分信息，未满足完整目标。请继续执行任务，或重规划后以 `complete_task(..., completion_type=\"partial_success|failure\")` 结束本轮。",
+            completed, total
+        )
+    } else {
+        messages
+            .iter()
+            .rev()
+            .find(|m| m.role == "assistant" && m.content.is_some())
+            .and_then(|m| m.content.clone())
+            .unwrap_or_else(|| "[Agent completed without text response]".to_string())
+    };
 
     AgentResult {
         response: final_response,
@@ -713,7 +757,11 @@ mod tests {
             completed: false,
         }];
         let mut sink = SilentEventSink;
-        let r = handle_complete_task(r#"{"task_id": 9}"#, &mut planner, &mut sink);
+        let r = handle_complete_task(
+            r#"{"task_id": 9, "completion_type":"success"}"#,
+            &mut planner,
+            &mut sink,
+        );
         assert!(r.is_error);
         assert!(r.content.contains("current task"));
     }
@@ -728,10 +776,55 @@ mod tests {
             completed: false,
         }];
         let mut sink = SilentEventSink;
-        let r = handle_complete_task(r#"{"task_id":3,"summary":"ok"}"#, &mut planner, &mut sink);
+        let r = handle_complete_task(
+            r#"{"task_id":3,"summary":"ok","completion_type":"success"}"#,
+            &mut planner,
+            &mut sink,
+        );
         assert!(!r.is_error);
         assert!(planner.task_list[0].completed);
         assert!(r.content.contains("\"task_id\": 3"));
+        assert!(r.content.contains("\"completion_type\": \"success\""));
+    }
+
+    #[test]
+    fn complete_task_accepts_partial_success_completion_type() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 1,
+            description: "a".into(),
+            tool_hint: None,
+            completed: false,
+        }];
+        let mut sink = SilentEventSink;
+        let r = handle_complete_task(
+            r#"{"task_id":1,"completion_type":"partial_success"}"#,
+            &mut planner,
+            &mut sink,
+        );
+        assert!(!r.is_error, "{}", r.content);
+        assert!(r
+            .content
+            .contains("\"completion_type\": \"partial_success\""));
+    }
+
+    #[test]
+    fn complete_task_rejects_invalid_completion_type() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 1,
+            description: "a".into(),
+            tool_hint: None,
+            completed: false,
+        }];
+        let mut sink = SilentEventSink;
+        let r = handle_complete_task(
+            r#"{"task_id":1,"completion_type":"unknown"}"#,
+            &mut planner,
+            &mut sink,
+        );
+        assert!(r.is_error);
+        assert!(r.content.contains("Invalid completion_type"));
     }
 
     // ── Long-task regression tests: LLM sends wrong JSON types ──────────────
@@ -747,7 +840,7 @@ mod tests {
         }];
         let mut sink = SilentEventSink;
         let r = handle_complete_task(
-            r#"{"task_id": "1", "summary": "done"}"#,
+            r#"{"task_id": "1", "summary": "done", "completion_type":"success"}"#,
             &mut planner,
             &mut sink,
         );
@@ -769,7 +862,11 @@ mod tests {
             completed: false,
         }];
         let mut sink = SilentEventSink;
-        let r = handle_complete_task(r#"{"task_id": "abc"}"#, &mut planner, &mut sink);
+        let r = handle_complete_task(
+            r#"{"task_id": "abc", "completion_type":"success"}"#,
+            &mut planner,
+            &mut sink,
+        );
         assert!(r.is_error);
         assert!(
             r.content.contains("not a valid number"),
@@ -788,13 +885,34 @@ mod tests {
             completed: false,
         }];
         let mut sink = SilentEventSink;
-        let r = handle_complete_task(r#"{"summary": "done"}"#, &mut planner, &mut sink);
+        let r = handle_complete_task(
+            r#"{"summary": "done", "completion_type":"success"}"#,
+            &mut planner,
+            &mut sink,
+        );
         assert!(r.is_error);
         assert!(
             r.content.contains("Missing required field"),
             "{}",
             r.content
         );
+    }
+
+    #[test]
+    fn complete_task_rejects_missing_completion_type() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        planner.task_list = vec![Task {
+            id: 1,
+            description: "a".into(),
+            tool_hint: None,
+            completed: false,
+        }];
+        let mut sink = SilentEventSink;
+        let r = handle_complete_task(r#"{"task_id":1}"#, &mut planner, &mut sink);
+        assert!(r.is_error);
+        assert!(r
+            .content
+            .contains("Missing required field: completion_type"));
     }
 
     #[test]
@@ -849,7 +967,8 @@ mod tests {
             completed: false,
         }];
         let mut sink = SilentEventSink;
-        let double_encoded = r#""{\"task_id\": 1, \"summary\": \"done\"}""#;
+        let double_encoded =
+            r#""{\"task_id\": 1, \"summary\": \"done\", \"completion_type\":\"success\"}""#;
         let r = handle_complete_task(double_encoded, &mut planner, &mut sink);
         assert!(
             !r.is_error,
@@ -892,13 +1011,35 @@ mod tests {
             2,
             4,
             plan.clone(),
-            ExecutionFeedback::default(),
+            ExecutionFeedback {
+                task_completed: true,
+                ..ExecutionFeedback::default()
+            },
         );
         assert_eq!(out.response, "final answer");
         assert_eq!(out.tool_calls_count, 2);
         assert_eq!(out.iterations, 4);
         assert_eq!(out.task_plan.len(), plan.len());
         assert_eq!(out.task_plan[0].id, plan[0].id);
+    }
+
+    #[test]
+    fn build_agent_result_returns_unfinished_summary_when_plan_pending() {
+        let messages = vec![
+            ChatMessage::user("深圳明天的天气怎样"),
+            ChatMessage::assistant("我只能查到当前天气"),
+        ];
+        let plan = vec![Task {
+            id: 1,
+            description: "查询深圳明天天气".into(),
+            tool_hint: Some("weather".into()),
+            completed: false,
+        }];
+        let out = build_agent_result(messages, 1, 2, plan, ExecutionFeedback::default());
+        assert!(out.response.contains("任务未完成（0/1）"));
+        assert!(out
+            .response
+            .contains("completion_type=\"partial_success|failure\""));
     }
 
     #[test]

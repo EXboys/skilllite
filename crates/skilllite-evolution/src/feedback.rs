@@ -15,6 +15,8 @@ pub struct DecisionInput {
     pub replans: usize,
     pub elapsed_ms: u64,
     pub task_completed: bool,
+    pub completion_type: String,
+    pub completion_type_reported: String,
     pub task_description: Option<String>,
     pub rules_used: Vec<String>,
     pub tools_detail: Vec<ToolExecDetail>,
@@ -116,6 +118,8 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
             replans INTEGER DEFAULT 0,
             elapsed_ms INTEGER DEFAULT 0,
             task_completed BOOLEAN DEFAULT 0,
+            completion_type TEXT DEFAULT 'success',
+            completion_type_reported TEXT DEFAULT 'success',
             feedback TEXT DEFAULT 'neutral',
             evolved BOOLEAN DEFAULT 0,
             task_description TEXT,
@@ -180,6 +184,14 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
         "ALTER TABLE decisions ADD COLUMN tool_sequence_key TEXT",
         [],
     );
+    let _ = conn.execute(
+        "ALTER TABLE decisions ADD COLUMN completion_type TEXT DEFAULT 'success'",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE decisions ADD COLUMN completion_type_reported TEXT DEFAULT 'success'",
+        [],
+    );
     // Index must be created after ALTER TABLE so existing DBs have the column first.
     let _ = conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_decisions_seq ON decisions(tool_sequence_key)",
@@ -217,8 +229,8 @@ pub fn insert_decision(
 
     conn.execute(
         "INSERT INTO decisions (session_id, total_tools, failed_tools, replans,
-         elapsed_ms, task_completed, feedback, task_description, tools_detail, tool_sequence_key)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+         elapsed_ms, task_completed, completion_type, completion_type_reported, feedback, task_description, tools_detail, tool_sequence_key)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             session_id,
             feedback.total_tools as i64,
@@ -226,6 +238,8 @@ pub fn insert_decision(
             feedback.replans as i64,
             feedback.elapsed_ms as i64,
             feedback.task_completed,
+            feedback.completion_type,
+            feedback.completion_type_reported,
             user_feedback.as_str(),
             feedback.task_description,
             tools_detail_json,
@@ -648,6 +662,8 @@ mod tests {
             replans: 0,
             elapsed_ms: 100,
             task_completed: true,
+            completion_type: "success".to_string(),
+            completion_type_reported: "success".to_string(),
             task_description: Some("test task".to_string()),
             rules_used: vec![],
             tools_detail: vec![],
@@ -671,6 +687,8 @@ mod tests {
             replans: 0,
             elapsed_ms: 100,
             task_completed: true,
+            completion_type: "success".to_string(),
+            completion_type_reported: "success".to_string(),
             task_description: Some("test task".to_string()),
             rules_used: vec![],
             tools_detail: vec![],
@@ -787,6 +805,8 @@ mod tests {
             replans: 0,
             elapsed_ms: 100,
             task_completed: true,
+            completion_type: "success".to_string(),
+            completion_type_reported: "success".to_string(),
             task_description: Some("test".to_string()),
             rules_used: vec!["rule-a".to_string(), "rule-b".to_string()],
             tools_detail: vec![ToolExecDetail {

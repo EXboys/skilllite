@@ -2,6 +2,23 @@ import { memo } from "react";
 import { MarkdownContent } from "../shared/MarkdownContent";
 import { StructuredPayload, getConversationToolResultMarkdown } from "./StructuredPayload";
 import type { ChatMessage } from "../../types/chat";
+import {
+  evolutionNoteForDisplay,
+  evolutionStatusHeadline,
+} from "../../utils/evolutionDisplay";
+
+function splitProgressStatusKey(
+  key: string | undefined
+): [string, string] | null {
+  if (!key?.trim()) {
+    return null;
+  }
+  const parts = key.split("/").map((p) => p.trim());
+  if (parts.length < 2 || !parts[0] || !parts[1]) {
+    return null;
+  }
+  return [parts[0], parts[1]];
+}
 
 interface MessageBubbleProps {
   message: ChatMessage;
@@ -273,8 +290,50 @@ function MessageBubbleInner({ message, onConfirm, onClarify, onEvolutionAction }
           </div>
           <p className="text-sm text-ink dark:text-ink-dark-mute mb-2">{message.message}</p>
           {message.resolved ? (
-            <div className="text-sm text-ink-mute dark:text-ink-dark-mute">
-              ✓ {message.selectedOption ?? "已处理"}
+            <div className="space-y-1.5 text-sm text-ink-mute dark:text-ink-dark-mute">
+              <div>✓ {message.selectedOption ?? "已处理"}</div>
+              {message.proposalId && (
+                <div className="text-xs">
+                  提案: <span className="font-mono">{message.proposalId}</span>
+                </div>
+              )}
+              {message.progressStatus && (
+                <div className="text-xs">
+                  进度:{" "}
+                  <span
+                    className={
+                      message.progressDone
+                        ? "font-medium text-emerald-700 dark:text-emerald-300"
+                        : "font-medium text-purple-700 dark:text-purple-300"
+                    }
+                  >
+                    {(() => {
+                      const sp = splitProgressStatusKey(message.progressStatus);
+                      return sp
+                        ? evolutionStatusHeadline(
+                            sp[0],
+                            sp[1],
+                            message.progressNote
+                          )
+                        : message.progressStatus;
+                    })()}
+                  </span>
+                  {message.progressUpdatedAt ? ` · ${message.progressUpdatedAt}` : ""}
+                </div>
+              )}
+              {(() => {
+                const sp = splitProgressStatusKey(message.progressStatus);
+                const noteText = sp
+                  ? evolutionNoteForDisplay(
+                      sp[0],
+                      sp[1],
+                      message.progressNote
+                    )
+                  : message.progressNote?.trim() || null;
+                return noteText ? (
+                  <div className="text-xs opacity-90 whitespace-pre-wrap">{noteText}</div>
+                ) : null;
+              })()}
             </div>
           ) : (
             onEvolutionAction && (
@@ -285,7 +344,7 @@ function MessageBubbleInner({ message, onConfirm, onClarify, onEvolutionAction }
                     type="button"
                     onClick={() => onEvolutionAction(message.id, option)}
                     className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                      option === "【授权进化能力】"
+                      option === "启动进化"
                         ? "bg-purple-600 text-white font-medium hover:bg-purple-700"
                         : "border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-gray-100 dark:hover:bg-white/5"
                     }`}

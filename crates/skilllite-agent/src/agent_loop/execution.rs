@@ -8,6 +8,8 @@ use std::collections::HashSet;
 use std::path::Path;
 use std::time::Instant;
 
+use serde_json::Value;
+
 use super::super::extensions::{self, MemoryVectorContext, PlanningControlExecutor};
 use super::super::llm::LlmClient;
 use super::super::skills::LoadedSkill;
@@ -102,6 +104,7 @@ pub(super) struct ExecutionState {
     pub context_overflow_retries: usize,
     pub iterations: usize,
     pub rules_used: Vec<String>,
+    pub completion_type: TaskCompletionType,
     /// Tracks repeated failures: (tool_name, error_prefix) -> consecutive count.
     /// Reset when a different tool/error combination occurs or a tool succeeds.
     last_failure_sig: Option<(String, String)>,
@@ -126,6 +129,7 @@ impl ExecutionState {
             context_overflow_retries: 0,
             iterations: 0,
             rules_used: Vec::new(),
+            completion_type: TaskCompletionType::Success,
             last_failure_sig: None,
             repeated_failure_count: 0,
         }
@@ -147,6 +151,39 @@ impl ExecutionState {
     pub fn reset_failure_sig(&mut self) {
         self.last_failure_sig = None;
         self.repeated_failure_count = 0;
+    }
+
+    pub fn observe_completion_type(&mut self, observed: TaskCompletionType) {
+        match observed {
+            TaskCompletionType::Failure => self.completion_type = TaskCompletionType::Failure,
+            TaskCompletionType::PartialSuccess => {
+                if self.completion_type != TaskCompletionType::Failure {
+                    self.completion_type = TaskCompletionType::PartialSuccess;
+                }
+            }
+            TaskCompletionType::Success => {}
+        }
+    }
+}
+
+fn parse_completion_type_from_arguments(arguments: &str) -> TaskCompletionType {
+    let parsed: Value = match serde_json::from_str(arguments) {
+        Ok(v) => v,
+        Err(_) => return TaskCompletionType::Success,
+    };
+    let args = if let Some(inner) = parsed.as_str() {
+        serde_json::from_str::<Value>(inner).unwrap_or(parsed)
+    } else {
+        parsed
+    };
+    match args
+        .get("completion_type")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+    {
+        Some("partial_success") => TaskCompletionType::PartialSuccess,
+        Some("failure") => TaskCompletionType::Failure,
+        _ => TaskCompletionType::Success,
     }
 }
 
@@ -202,6 +239,21 @@ impl PlanningControlExecutor for PlanningControlExecutorImpl<'_> {
             }
             r
         } else if tool_name == "complete_task" {
+            let declared = parse_completion_type_from_arguments(arguments);
+            if declared == TaskCompletionType::Success
+                && (self.state.failed_tool_calls > 0 || self.state.replan_count > 0)
+            {
+                return super::super::types::ToolResult {
+                    tool_call_id: String::new(),
+                    tool_name: "complete_task".to_string(),
+                    content: "completion_type=success conflicts with execution signals \
+                              (failed tools or replans observed). \
+                              Use completion_type=partial_success or failure."
+                        .to_string(),
+                    is_error: true,
+                    counts_as_failure: true,
+                };
+            }
             handle_complete_task(arguments, self.planner, event_sink)
         } else {
             super::super::types::ToolResult {
@@ -335,7 +387,7 @@ pub(super) async fn execute_tool_batch_planning(
                     result.is_error = false;
                     result.counts_as_failure = false;
                     result.content = format!(
-                        "{{\"success\": true, \"task_id\": {}, \"message\": \"Task {} auto-completed \
+                        "{{\"success\": true, \"task_id\": {}, \"completion_type\": \"success\", \"message\": \"Task {} auto-completed \
                          (format issues after {} attempts)\"}}",
                         auto_id, auto_id, repeat_count
                     );
@@ -365,6 +417,12 @@ pub(super) async fn execute_tool_batch_planning(
         if task_after != task_before {
             planning_executor.state.tool_calls_current_task = 0;
             task_transitioned = true;
+        }
+        if tool_name.as_str() == "complete_task" && !result.is_error {
+            let completion_type = parse_completion_type_from_arguments(arguments);
+            planning_executor
+                .state
+                .observe_completion_type(completion_type);
         }
         if !is_planning_control {
             planning_executor.state.tools_detail.push(ToolExecDetail {
@@ -557,7 +615,8 @@ mod tests {
                 call_type: "function".to_string(),
                 function: FunctionCall {
                     name: "complete_task".to_string(),
-                    arguments: r#"{"task_id":1,"summary":"done"}"#.to_string(),
+                    arguments: r#"{"task_id":1,"summary":"done","completion_type":"success"}"#
+                        .to_string(),
                 },
             },
         ];
@@ -663,7 +722,8 @@ mod tests {
             call_type: "function".to_string(),
             function: FunctionCall {
                 name: "complete_task".to_string(),
-                arguments: r#"{"task_id": "1", "summary": "done"}"#.to_string(),
+                arguments: r#"{"task_id": "1", "summary": "done", "completion_type":"success"}"#
+                    .to_string(),
             },
         }];
         let mut sink = SilentEventSink;
@@ -695,6 +755,62 @@ mod tests {
             "task_id as string \"1\" should complete the task"
         );
         assert_eq!(state.failed_tool_calls, 0);
+    }
+
+    #[tokio::test]
+    async fn test_complete_task_rejects_success_when_failures_or_replans_exist() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path();
+        let registry = ExtensionRegistry::new(false, false, &[]);
+        let client = LlmClient::new("", "").expect("test client");
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Analyze data".to_string(),
+            tool_hint: None,
+            completed: false,
+        }]);
+        let tool_calls = vec![ToolCall {
+            id: "call_ct_guard".to_string(),
+            call_type: "function".to_string(),
+            function: FunctionCall {
+                name: "complete_task".to_string(),
+                arguments: r#"{"task_id":1,"summary":"done","completion_type":"success"}"#
+                    .to_string(),
+            },
+        }];
+        let mut sink = SilentEventSink;
+        let mut messages = Vec::new();
+        let mut documented_skills = HashSet::new();
+        let mut state = ExecutionState::new();
+        state.failed_tool_calls = 1;
+
+        execute_tool_batch_planning(
+            &tool_calls,
+            &registry,
+            workspace,
+            &mut sink,
+            None,
+            &client,
+            "test-model",
+            &mut planner,
+            &[],
+            &mut messages,
+            &mut documented_skills,
+            &mut state,
+            8,
+            Some(3),
+            None,
+        )
+        .await;
+
+        assert!(
+            !planner.task_list[0].completed,
+            "success completion_type should be rejected when failure/replan signals exist"
+        );
+        assert!(
+            state.failed_tool_calls >= 2,
+            "guard rejection should count as failed tool call"
+        );
     }
 
     #[tokio::test]
@@ -796,26 +912,36 @@ mod tests {
         let mut documented_skills = HashSet::new();
         let mut state = ExecutionState::new();
 
-        // The actual error from handle_complete_task when task_id is missing
-        let actual_error = "Missing required field(s): task_id";
-
-        // Pre-load 2 failures with the SAME error prefix the handler produces.
-        state.record_failure("complete_task", actual_error);
-        state.record_failure("complete_task", actual_error);
-        assert_eq!(state.repeated_failure_count, 2);
-
         // Auto-recovery requires at least 1 real tool call (proves work was done)
         state.total_tool_calls = 3;
 
-        // 3rd call triggers auto-recovery
-        let tool_calls = vec![ToolCall {
-            id: "call_auto".to_string(),
-            call_type: "function".to_string(),
-            function: FunctionCall {
-                name: "complete_task".to_string(),
-                arguments: r#"{"summary": "done"}"#.to_string(),
+        // Third repeated complete_task format failure should trigger auto-recovery.
+        let tool_calls = vec![
+            ToolCall {
+                id: "call_auto_1".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "complete_task".to_string(),
+                    arguments: r#"{"task_id": 1}"#.to_string(),
+                },
             },
-        }];
+            ToolCall {
+                id: "call_auto_2".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "complete_task".to_string(),
+                    arguments: r#"{"task_id": 1}"#.to_string(),
+                },
+            },
+            ToolCall {
+                id: "call_auto_3".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "complete_task".to_string(),
+                    arguments: r#"{"task_id": 1}"#.to_string(),
+                },
+            },
+        ];
 
         execute_tool_batch_planning(
             &tool_calls,

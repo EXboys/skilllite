@@ -430,6 +430,7 @@ async fn run_simple_loop(
         elapsed_ms: start_time.elapsed().as_millis() as u64,
         context_overflow_retries: state.context_overflow_retries,
         task_completed,
+        completion_type: state.completion_type,
         task_description: Some(user_message.to_string()),
         rules_used: state.rules_used,
         tools_detail: state.tools_detail,
@@ -816,6 +817,16 @@ async fn run_with_task_planning(
         }
     }
 
+    let effective_completion_type = if planner.all_completed() {
+        state.completion_type
+    } else if state.total_tool_calls == 0
+        || (state.failed_tool_calls > 0 && state.failed_tool_calls == state.total_tool_calls)
+    {
+        TaskCompletionType::Failure
+    } else {
+        TaskCompletionType::PartialSuccess
+    };
+
     let feedback = ExecutionFeedback {
         total_tools: state.total_tool_calls,
         failed_tools: state.failed_tool_calls,
@@ -824,6 +835,7 @@ async fn run_with_task_planning(
         elapsed_ms: start_time.elapsed().as_millis() as u64,
         context_overflow_retries: state.context_overflow_retries,
         task_completed: planner.all_completed(),
+        completion_type: effective_completion_type,
         task_description: Some(user_message.to_string()),
         rules_used: planner.matched_rule_ids().to_vec(),
         tools_detail: state.tools_detail,

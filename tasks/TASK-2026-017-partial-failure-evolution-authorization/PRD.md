@@ -20,6 +20,7 @@ Introduce a bounded, explicit UX flow that lets users choose recovery actions fo
   4) `【授权进化能力】`
 - FR-3: On selecting `【授权进化能力】`, backend receives a structured request and writes a queued proposal into `evolution_backlog`.
 - FR-4: The authorization flow must not bypass existing policy runtime; it only creates backlog candidate(s).
+- FR-5: Extend model-reported `complete_task` signal to require `completion_type` (`success` / `partial_success` / `failure`) on every call.
 
 ## Non-Functional Requirements
 

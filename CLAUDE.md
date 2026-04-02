@@ -12,6 +12,7 @@ Use the same rule semantics as Cursor, but follow Claude's file conventions.
 - Security constraints: `spec/security-nonnegotiables.md`
 - Testing policy: `spec/testing-policy.md`
 - Docs sync policy: `spec/docs-sync.md`
+- Structured-signal-first policy: `spec/structured-signal-first.md`
 - Task workflow: `tasks/README.md`
 - Task board: `tasks/board.md`
 

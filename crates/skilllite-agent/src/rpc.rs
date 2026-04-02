@@ -451,7 +451,7 @@ async fn handle_agent_chat(
         Ok(agent_result) => {
             let task_id = Uuid::new_v4().to_string();
             let node_result = agent_result.to_node_result(&task_id);
-            let data = serde_json::to_value(&node_result).unwrap_or_else(|_| {
+            let mut data = serde_json::to_value(&node_result).unwrap_or_else(|_| {
                 serde_json::json!({
                     "task_id": task_id,
                     "response": agent_result.response,
@@ -460,6 +460,14 @@ async fn handle_agent_chat(
                     "new_skill": serde_json::Value::Null
                 })
             });
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert(
+                    "completion_type".to_string(),
+                    serde_json::Value::String(
+                        agent_result.feedback.completion_type.as_str().to_string(),
+                    ),
+                );
+            }
             emit_event(&writer, "done", data);
         }
         Err(e) => {

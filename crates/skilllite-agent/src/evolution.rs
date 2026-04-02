@@ -7,7 +7,7 @@ use skilllite_evolution::feedback::{DecisionInput, FeedbackSignal as EvolutionFe
 use skilllite_evolution::{strip_think_blocks, EvolutionLlm, EvolutionMessage};
 
 use super::llm::LlmClient;
-use super::types::{ChatMessage, ExecutionFeedback, FeedbackSignal};
+use super::types::{ChatMessage, ExecutionFeedback, FeedbackSignal, TaskCompletionType};
 
 /// Adapter that makes LlmClient implement EvolutionLlm.
 pub struct EvolutionLlmAdapter<'a> {
@@ -53,14 +53,44 @@ impl EvolutionLlm for EvolutionLlmAdapter<'_> {
     }
 }
 
+fn reconcile_completion_type(feedback: &ExecutionFeedback) -> TaskCompletionType {
+    if !feedback.task_completed {
+        return TaskCompletionType::Failure;
+    }
+    if feedback.total_tools > 0 && feedback.failed_tools >= feedback.total_tools {
+        return TaskCompletionType::Failure;
+    }
+    match feedback.completion_type {
+        TaskCompletionType::Success => {
+            if feedback.failed_tools > 0 || feedback.replans > 0 {
+                TaskCompletionType::PartialSuccess
+            } else {
+                TaskCompletionType::Success
+            }
+        }
+        TaskCompletionType::PartialSuccess => TaskCompletionType::PartialSuccess,
+        TaskCompletionType::Failure => {
+            // Reported failure but objective signals look healthy; downgrade to partial.
+            if feedback.failed_tools == 0 && feedback.replans == 0 {
+                TaskCompletionType::Success
+            } else {
+                TaskCompletionType::PartialSuccess
+            }
+        }
+    }
+}
+
 /// Convert agent's ExecutionFeedback to evolution's DecisionInput.
 pub fn execution_feedback_to_decision_input(feedback: &ExecutionFeedback) -> DecisionInput {
+    let effective = reconcile_completion_type(feedback);
     DecisionInput {
         total_tools: feedback.total_tools,
         failed_tools: feedback.failed_tools,
         replans: feedback.replans,
         elapsed_ms: feedback.elapsed_ms,
         task_completed: feedback.task_completed,
+        completion_type: effective.as_str().to_string(),
+        completion_type_reported: feedback.completion_type.as_str().to_string(),
         task_description: feedback.task_description.clone(),
         rules_used: feedback.rules_used.clone(),
         tools_detail: feedback
@@ -94,18 +124,19 @@ pub use skilllite_evolution::{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{ExecutionFeedback, ToolExecDetail};
+    use crate::types::{ExecutionFeedback, TaskCompletionType, ToolExecDetail};
 
     #[test]
     fn test_execution_feedback_to_decision_input_preserves_rules_used() {
         let feedback = ExecutionFeedback {
             total_tools: 2,
             failed_tools: 0,
-            replans: 1,
+            replans: 0,
             iterations: 3,
             elapsed_ms: 1200,
             context_overflow_retries: 0,
             task_completed: true,
+            completion_type: TaskCompletionType::Success,
             task_description: Some("test task".to_string()),
             rules_used: vec!["rule.alpha".to_string(), "rule.beta".to_string()],
             tools_detail: vec![ToolExecDetail {
@@ -119,6 +150,8 @@ mod tests {
             input.rules_used,
             vec!["rule.alpha".to_string(), "rule.beta".to_string()]
         );
+        assert_eq!(input.completion_type, "success");
+        assert_eq!(input.completion_type_reported, "success");
     }
 
     #[test]
@@ -131,6 +164,7 @@ mod tests {
             elapsed_ms: 1200,
             context_overflow_retries: 0,
             task_completed: false,
+            completion_type: TaskCompletionType::Failure,
             task_description: Some("another test task".to_string()),
             rules_used: vec!["rule.gamma".to_string()],
             tools_detail: vec![
@@ -151,5 +185,26 @@ mod tests {
         assert!(input.tools_detail[0].success);
         assert_eq!(input.tools_detail[1].tool, "write_file".to_string());
         assert!(!input.tools_detail[1].success);
+        assert_eq!(input.completion_type, "failure");
+    }
+
+    #[test]
+    fn test_completion_type_is_downgraded_when_success_conflicts_with_failures() {
+        let feedback = ExecutionFeedback {
+            total_tools: 2,
+            failed_tools: 1,
+            replans: 1,
+            iterations: 3,
+            elapsed_ms: 1200,
+            context_overflow_retries: 0,
+            task_completed: true,
+            completion_type: TaskCompletionType::Success,
+            task_description: Some("conflict task".to_string()),
+            rules_used: vec![],
+            tools_detail: vec![],
+        };
+        let input = execution_feedback_to_decision_input(&feedback);
+        assert_eq!(input.completion_type_reported, "success");
+        assert_eq!(input.completion_type, "partial_success");
     }
 }

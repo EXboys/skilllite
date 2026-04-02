@@ -39,6 +39,9 @@ export interface Settings {
   locale?: UiLocale;
 }
 
+/** localStorage 键名；详情窗口与主窗口同步设置时需与此一致 */
+export const SETTINGS_STORE_PERSIST_KEY = "skilllite-assistant-settings";
+
 const defaultSettings: Settings = {
   provider: "api",
   apiKey: "",
@@ -67,6 +70,6 @@ export const useSettingsStore = create<{
         })),
       reset: () => set({ settings: defaultSettings }),
     }),
-    { name: "skilllite-assistant-settings" }
+    { name: SETTINGS_STORE_PERSIST_KEY }
   )
 );

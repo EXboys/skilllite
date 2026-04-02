@@ -351,14 +351,64 @@ async fn skilllite_reject_pending_skill(
 
 #[tauri::command]
 async fn skilllite_authorize_capability_evolution(
+    app: tauri::AppHandle,
     workspace: Option<String>,
     tool_name: String,
     outcome: String,
     summary: String,
 ) -> Result<String, String> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
+    let skilllite_path = skilllite_bridge::resolve_skilllite_path_app(&app);
     tauri::async_runtime::spawn_blocking(move || {
-        skilllite_bridge::authorize_capability_evolution(&ws, &tool_name, &outcome, &summary)
+        skilllite_bridge::authorize_capability_evolution(
+            &ws,
+            &tool_name,
+            &outcome,
+            &summary,
+            &skilllite_path,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_get_evolution_proposal_status(
+    workspace: Option<String>,
+    proposal_id: String,
+) -> Result<skilllite_bridge::EvolutionProposalStatusDto, String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::get_evolution_proposal_status(&ws, &proposal_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_load_evolution_backlog(
+    workspace: Option<String>,
+    limit: Option<u32>,
+) -> Result<Vec<skilllite_bridge::EvolutionBacklogRowDto>, String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    let capped = limit.unwrap_or(30) as usize;
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::load_evolution_backlog(&ws, capped)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_trigger_evolution_run(
+    app: tauri::AppHandle,
+    workspace: Option<String>,
+    proposal_id: Option<String>,
+) -> Result<String, String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    let skilllite_path = skilllite_bridge::resolve_skilllite_path_app(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::trigger_evolution_run(&ws, proposal_id.as_deref(), &skilllite_path)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -552,6 +602,9 @@ pub fn run() {
             skilllite_confirm_pending_skill,
             skilllite_reject_pending_skill,
             skilllite_authorize_capability_evolution,
+            skilllite_get_evolution_proposal_status,
+            skilllite_load_evolution_backlog,
+            skilllite_trigger_evolution_run,
             skilllite_load_evolution_diffs,
             skilllite_life_pulse_status,
             skilllite_life_pulse_toggle,
