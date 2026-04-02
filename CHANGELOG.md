@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **Evolution audit**: `evolution_log` / `evolution.log` now records **`evolution_run_outcome`** when a `run_evolution` invocation ends as **`SkippedBusy`**, **`NoScope`** (no proposals or coordinator mutex busy), or **`Err`** (failure reason), so desktop/agent triggers are traceable without relying on tracing only.
+
 ### Changed
 
 - **Evolution coordinator**: **Shadow mode** (`SKILLLITE_EVO_SHADOW_MODE`) is **removed**; proposals no longer stop at a shadow-only backlog state. When **`SKILLLITE_EVO_POLICY_RUNTIME_ENABLED=0`**, the coordinator **executes** the selected proposal directly (except **critical** still respects **`SKILLLITE_EVO_DENY_CRITICAL`**). **Low-risk auto-execute** remains **on** by default (`SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK`) when policy runtime is enabled.

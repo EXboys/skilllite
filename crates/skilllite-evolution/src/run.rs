@@ -27,14 +27,7 @@ use crate::Result;
 /// (or fails before returning `Ok`). Uses `evolution_log` + `evolution.log`; ignores DB errors.
 fn try_log_evolution_run_outcome(chat_root: &Path, reason: &str) {
     if let Ok(conn) = feedback::open_evolution_db(chat_root) {
-        let _ = log_evolution_event(
-            &conn,
-            chat_root,
-            "evolution_run_outcome",
-            "run",
-            reason,
-            "",
-        );
+        let _ = log_evolution_event(&conn, chat_root, "evolution_run_outcome", "run", reason, "");
     }
 }
 
@@ -55,6 +48,10 @@ pub async fn run_evolution<L: EvolutionLlm>(
     force: bool,
 ) -> Result<EvolutionRunResult> {
     if !try_start_evolution() {
+        try_log_evolution_run_outcome(
+            chat_root,
+            "SkippedBusy: another evolution run held the global mutex",
+        );
         return Ok(EvolutionRunResult::SkippedBusy);
     }
 
@@ -62,6 +59,9 @@ pub async fn run_evolution<L: EvolutionLlm>(
         run_evolution_inner(chat_root, skills_root, llm, api_base, api_key, model, force).await;
 
     finish_evolution();
+    if let Err(ref e) = result {
+        try_log_evolution_run_outcome(chat_root, &format!("Error: {e}"));
+    }
     result
 }
 
@@ -117,10 +117,23 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         }
     } else {
         let proposals = build_evolution_proposals(&conn, EvolutionMode::from_env(), force)?;
+        if proposals.is_empty() {
+            try_log_evolution_run_outcome(
+                chat_root,
+                "NoScope: no proposals built (thresholds, cooldown, evolution mode, or daily cap)",
+            );
+            return Ok(EvolutionRunResult::NoScope);
+        }
         coordinate_proposals(&conn, proposals, force)?
     };
     let (scope, proposal) = match decision {
-        CoordinatorDecision::NoCandidate => return Ok(EvolutionRunResult::NoScope),
+        CoordinatorDecision::NoCandidate => {
+            try_log_evolution_run_outcome(
+                chat_root,
+                "NoScope: evolution coordinator mutex busy; retry later",
+            );
+            return Ok(EvolutionRunResult::NoScope);
+        }
         CoordinatorDecision::Queued(p) => {
             let reason = format!(
                 "Proposal {} ({}) queued; waiting execution gate",
