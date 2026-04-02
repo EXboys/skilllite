@@ -4,7 +4,7 @@
 
 Refactor-only change: file moves and module boundaries. Public API preserved through `lib.rs` re-exports.
 
-## Merge readiness
+## Merge readiness:
 
 - Ready: Yes.
 
