@@ -935,20 +935,13 @@ pub(crate) fn coordinate_proposals_with_config(
                 )?;
                 return Ok(CoordinatorDecision::Denied(selected));
             }
-            let note = if config.auto_execute_low_risk
-                && selected.risk_level == ProposalRiskLevel::Low
-            {
-                "Policy runtime disabled; auto-execute low-risk"
-            } else {
-                "Policy runtime disabled; direct execution"
-            };
-            set_backlog_status(
-                conn,
-                &selected.proposal_id,
-                "executing",
-                "pending",
-                note,
-            )?;
+            let note =
+                if config.auto_execute_low_risk && selected.risk_level == ProposalRiskLevel::Low {
+                    "Policy runtime disabled; auto-execute low-risk"
+                } else {
+                    "Policy runtime disabled; direct execution"
+                };
+            set_backlog_status(conn, &selected.proposal_id, "executing", "pending", note)?;
             return Ok(CoordinatorDecision::Execute(selected));
         }
 

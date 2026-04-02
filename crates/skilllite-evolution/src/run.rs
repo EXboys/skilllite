@@ -23,6 +23,21 @@ use crate::skill_synth;
 use crate::snapshots::{create_extended_snapshot, versions_dir};
 use crate::Result;
 
+/// One audit row per `run_evolution` invocation when the run does not enter execution
+/// (or fails before returning `Ok`). Uses `evolution_log` + `evolution.log`; ignores DB errors.
+fn try_log_evolution_run_outcome(chat_root: &Path, reason: &str) {
+    if let Ok(conn) = feedback::open_evolution_db(chat_root) {
+        let _ = log_evolution_event(
+            &conn,
+            chat_root,
+            "evolution_run_outcome",
+            "run",
+            reason,
+            "",
+        );
+    }
+}
+
 // ─── Run evolution (main entry point) ──────────────────────────────────────────
 
 /// Run a full evolution cycle.
