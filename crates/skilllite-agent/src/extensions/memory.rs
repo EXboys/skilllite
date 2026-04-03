@@ -426,28 +426,78 @@ pub fn build_memory_context(
 
 // ─── Evolution knowledge index ───────────────────────────────────────────────
 
-/// Index `memory/evolution/knowledge.md` into the memory FTS so it can be found by
-/// memory_search and build_memory_context. Call this after memory evolution writes the file.
+fn evolution_index_skip_rel_path(rel: &str) -> bool {
+    if rel == "evolution/INDEX.md" {
+        return true;
+    }
+    matches!(
+        rel,
+        "evolution/entities.md"
+            | "evolution/relations.md"
+            | "evolution/episodes.md"
+            | "evolution/preferences.md"
+            | "evolution/patterns.md"
+    )
+}
+
+fn collect_evolution_md_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) -> Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    for (path, is_dir) in skilllite_fs::read_dir(dir)? {
+        if is_dir {
+            collect_evolution_md_files(&path, out)?;
+        } else if path.extension().is_some_and(|e| e == "md") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+/// Re-index everything under `memory/evolution/` into FTS (except navigation `INDEX.md` and
+/// per-dimension `*.md` indexes). Removes stale `evolution/*` rows first so deleted shards
+/// disappear from search. Call after memory evolution writes shards.
 pub fn index_evolution_knowledge(chat_root: &Path, agent_id: &str) -> Result<()> {
-    let path = chat_root
-        .join("memory")
-        .join("evolution")
-        .join("knowledge.md");
-    if !path.exists() {
+    let evolution_dir = chat_root.join("memory").join("evolution");
+    if !evolution_dir.exists() {
         return Ok(());
     }
-    let content = skilllite_fs::read_file(&path).unwrap_or_default();
-    if content.is_empty() {
-        return Ok(());
-    }
+
+    let mut files = Vec::new();
+    collect_evolution_md_files(&evolution_dir, &mut files)?;
+    files.sort();
+    let file_count = files.len();
+
+    let memory_root = chat_root.join("memory");
     let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
     if let Some(parent) = idx_path.parent() {
         skilllite_fs::create_dir_all(parent)?;
     }
     let conn = Connection::open(&idx_path).context("Failed to open memory index")?;
     skilllite_executor::memory::ensure_index(&conn)?;
-    skilllite_executor::memory::index_file(&conn, "evolution/knowledge.md", &content)?;
-    tracing::debug!("Indexed evolution/knowledge.md into memory");
+
+    conn.execute("DELETE FROM memory_fts WHERE path LIKE 'evolution/%'", [])
+        .context("Failed to clear evolution FTS paths")?;
+
+    for path in files {
+        let rel = path
+            .strip_prefix(&memory_root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        if evolution_index_skip_rel_path(&rel) {
+            continue;
+        }
+        let content = skilllite_fs::read_file(&path).unwrap_or_default();
+        if content.trim().is_empty() {
+            continue;
+        }
+        skilllite_executor::memory::index_file(&conn, &rel, &content)?;
+    }
+
+    tracing::debug!(
+        "Re-indexed memory/evolution into FTS ({} files under evolution/, navigational md skipped)",
+        file_count
+    );
     Ok(())
 }
 

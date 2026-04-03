@@ -148,9 +148,14 @@ export default function MainLayout() {
           <LifePulseBadge />
           <button
             type="button"
-            onClick={() => setSettingsOpen(true)}
-            className="px-2 py-1.5 text-sm text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent rounded-md hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
+            onClick={() => setSettingsOpen((v) => !v)}
+            className={`px-2 py-1.5 text-sm rounded-md transition-colors ${
+              settingsOpen
+                ? "text-accent bg-accent/10 dark:bg-accent/15"
+                : "text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent hover:bg-ink/5 dark:hover:bg-white/5"
+            }`}
             aria-label={t("main.settings")}
+            aria-pressed={settingsOpen}
           >
             {t("main.settings")}
           </button>
@@ -171,55 +176,56 @@ export default function MainLayout() {
           <ChatView key={currentSessionKey} />
         </main>
 
-        {/* Right: StatusPanel — 分隔线上的按钮展开/收起 */}
-        <aside
-          className={`relative flex flex-col bg-white dark:bg-paper-dark transition-[width] duration-200 shrink-0 ${
-            rightPanelCollapsed ? "w-10 min-w-10" : "w-[280px] min-w-[200px]"
-          }`}
-        >
-          <div
-            className="pointer-events-none absolute inset-y-0 left-0 w-px bg-border dark:bg-border-dark"
-            aria-hidden
-          />
-          <button
-            type="button"
-            onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
-            className="absolute left-0 top-1/2 z-10 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border dark:border-border-dark bg-white dark:bg-paper-dark text-ink-mute dark:text-ink-dark-mute shadow-sm hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark transition-colors"
-            aria-label={
-              rightPanelCollapsed ? t("main.expandPanel") : t("main.collapsePanel")
-            }
-            title={
-              rightPanelCollapsed ? t("main.expandPanel") : t("main.collapsePanel")
-            }
+        {/* Right: StatusPanel + 设置侧栏（与聊天并行，非遮罩模态） */}
+        <div className="flex min-h-0 shrink-0">
+          <aside
+            className={`relative flex flex-col bg-white dark:bg-paper-dark transition-[width] duration-200 shrink-0 ${
+              rightPanelCollapsed ? "w-10 min-w-10" : "w-[280px] min-w-[200px]"
+            }`}
           >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <div
+              className="pointer-events-none absolute inset-y-0 left-0 w-px bg-border dark:bg-border-dark"
               aria-hidden
+            />
+            <button
+              type="button"
+              onClick={() => setRightPanelCollapsed(!rightPanelCollapsed)}
+              className="absolute left-0 top-1/2 z-10 flex h-7 w-7 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-border dark:border-border-dark bg-white dark:bg-paper-dark text-ink-mute dark:text-ink-dark-mute shadow-sm hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark transition-colors"
+              aria-label={
+                rightPanelCollapsed ? t("main.expandPanel") : t("main.collapsePanel")
+              }
+              title={
+                rightPanelCollapsed ? t("main.expandPanel") : t("main.collapsePanel")
+              }
             >
-              {rightPanelCollapsed ? (
-                <path d="M15 18l-6-6 6-6" />
-              ) : (
-                <path d="M9 18l6-6-6-6" />
-              )}
-            </svg>
-          </button>
-          {!rightPanelCollapsed && (
-            <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-5 pr-3 pb-3 pt-3">
-              <StatusPanel />
-            </div>
-          )}
-        </aside>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                {rightPanelCollapsed ? (
+                  <path d="M15 18l-6-6 6-6" />
+                ) : (
+                  <path d="M9 18l6-6-6-6" />
+                )}
+              </svg>
+            </button>
+            {!rightPanelCollapsed && (
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-5 pr-3 pb-3 pt-3">
+                <StatusPanel />
+              </div>
+            )}
+          </aside>
+          <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        </div>
       </div>
-
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {showOnboarding && <OnboardingModal />}
     </div>
   );

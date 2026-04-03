@@ -259,6 +259,7 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                     && skilllite_bridge::evolution_growth_due(
                         &workspace,
                         s.last_periodic_growth_unix.as_ref(),
+                        overrides.as_ref(),
                     )
                 {
                     s.growth_running.store(true, Ordering::SeqCst);

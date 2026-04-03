@@ -120,6 +120,12 @@ fn append_tool_result_to_transcript(
 /// Mutable counters accumulated across all loop iterations.
 pub(super) struct ExecutionState {
     pub total_tool_calls: usize,
+    /// Extra tool-call slots granted when the user chooses **Continue** on a
+    /// `tool_call_limit` clarification (see agent loop). Base budget per turn is
+    /// `max_iterations * max_tool_calls_per_task` (simple) or
+    /// `effective_max * max_tool_calls_per_task` (planning); each approval adds
+    /// another chunk of that size so the loop does not immediately re-trigger.
+    pub tool_call_budget_extension: usize,
     pub failed_tool_calls: usize,
     pub consecutive_failures: usize,
     /// Calls since the last per-task depth reset.
@@ -146,6 +152,7 @@ impl ExecutionState {
     pub fn new() -> Self {
         Self {
             total_tool_calls: 0,
+            tool_call_budget_extension: 0,
             failed_tool_calls: 0,
             consecutive_failures: 0,
             tool_calls_current_task: 0,

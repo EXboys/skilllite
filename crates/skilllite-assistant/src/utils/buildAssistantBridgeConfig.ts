@@ -19,5 +19,22 @@ export function buildAssistantBridgeConfig(settings: Settings): Record<string, u
   if (settings.maxToolCallsPerTask != null && settings.maxToolCallsPerTask > 0) {
     config.max_tool_calls_per_task = settings.maxToolCallsPerTask;
   }
+  if (settings.evolutionIntervalSecs != null && settings.evolutionIntervalSecs > 0) {
+    config.evolution_interval_secs = settings.evolutionIntervalSecs;
+  }
+  if (settings.evolutionDecisionThreshold != null && settings.evolutionDecisionThreshold > 0) {
+    config.evolution_decision_threshold = settings.evolutionDecisionThreshold;
+  }
+  if (settings.evoProfile === "demo" || settings.evoProfile === "conservative") {
+    config.evo_profile = settings.evoProfile;
+  }
+  if (
+    settings.evoCooldownHours != null &&
+    Number.isFinite(settings.evoCooldownHours) &&
+    settings.evoCooldownHours >= 0
+  ) {
+    config.evo_cooldown_hours = settings.evoCooldownHours;
+  }
+  config.ui_locale = settings.locale === "en" ? "en" : "zh";
   return config;
 }

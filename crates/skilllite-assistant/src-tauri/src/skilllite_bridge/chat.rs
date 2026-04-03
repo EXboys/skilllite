@@ -48,9 +48,19 @@ pub struct ChatConfigOverrides {
     pub swarm_url: Option<String>,
     pub max_iterations: Option<u32>,
     pub max_tool_calls_per_task: Option<u32>,
+    /// 覆盖 `SKILLLITE_EVOLUTION_INTERVAL_SECS`（Life Pulse / 状态展示）。
+    pub evolution_interval_secs: Option<u64>,
+    /// 覆盖 `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`。
+    pub evolution_decision_threshold: Option<u32>,
+    /// 覆盖 `SKILLLITE_EVO_PROFILE`：`demo` / `conservative`；不设则沿用工作区合并后的环境配置。
+    pub evo_profile: Option<String>,
+    /// 覆盖 `SKILLLITE_EVO_COOLDOWN_HOURS`（被动提案冷却）。
+    pub evo_cooldown_hours: Option<f64>,
+    /// 桌面界面语言：`zh` | `en` → 写入子进程 `SKILLLITE_UI_LOCALE`，与聊天 / 定时任务共用。
+    pub ui_locale: Option<String>,
 }
 
-/// Merge workspace `.env` pairs with optional UI overrides (same semantics as [`chat_stream`]).
+/// Merge workspace dotenv-derived pairs with optional UI overrides (same semantics as [`chat_stream`]).
 /// When `overrides` is `None`, returns `dotenv` unchanged (backward compatible).
 pub fn merge_dotenv_with_chat_overrides(
     dotenv: Vec<(String, String)>,
@@ -109,6 +119,43 @@ pub fn merge_dotenv_with_chat_overrides(
             "SKILLLITE_MAX_TOOL_CALLS_PER_TASK".to_string(),
             n.to_string(),
         );
+    }
+
+    use skilllite_core::config::env_keys::evolution as evo_keys;
+    if let Some(n) = cfg.evolution_interval_secs.filter(|&n| n > 0) {
+        m.insert(
+            evo_keys::SKILLLITE_EVOLUTION_INTERVAL_SECS.to_string(),
+            n.to_string(),
+        );
+    }
+    if let Some(n) = cfg.evolution_decision_threshold.filter(|&n| n > 0) {
+        m.insert(
+            evo_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD.to_string(),
+            n.to_string(),
+        );
+    }
+    if let Some(ref p) = cfg.evo_profile {
+        let t = p.trim();
+        if t == "demo" || t == "conservative" {
+            m.insert(evo_keys::SKILLLITE_EVO_PROFILE.to_string(), t.to_string());
+        }
+    }
+    if let Some(h) = cfg.evo_cooldown_hours.filter(|h| h.is_finite() && *h >= 0.0) {
+        m.insert(
+            evo_keys::SKILLLITE_EVO_COOLDOWN_HOURS.to_string(),
+            format!("{h}"),
+        );
+    }
+
+    use skilllite_core::config::env_keys::agent as agent_keys;
+    if let Some(ref loc) = cfg.ui_locale {
+        let t = loc.trim();
+        if t == "en" || t == "zh" {
+            m.insert(
+                agent_keys::SKILLLITE_UI_LOCALE.to_string(),
+                t.to_string(),
+            );
+        }
     }
 
     m.into_iter().collect()

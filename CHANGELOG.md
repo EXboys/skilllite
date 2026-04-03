@@ -10,7 +10,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **SkillLite Assistant (desktop)**: Default window size is now **1280×800** (was 900×650) so the three-column layout and settings drawer fit comfortably; window remains **resizable** with **minimum 1024×600** for small screens.
+- **SkillLite Assistant (desktop)**: **Settings → Evolution** tab holds **in-app overrides** for `SKILLLITE_EVOLUTION_INTERVAL_SECS`, `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`, `SKILLLITE_EVO_PROFILE` (demo / conservative), and `SKILLLITE_EVO_COOLDOWN_HOURS`, merged into chat / Life Pulse / manual evolution-run env (same as LLM overrides). Status API and Life Pulse **growth due** use the effective values. `ENV_REFERENCE` documents the behavior.
+- **Evolution memory knowledge**: Auto-extracted knowledge is written under `memory/evolution/` as **five dimensions** (`entities/`, `relations/`, `episodes/`, `preferences/`, `patterns/`) with **monthly shards** (`YYYY-MM.md`), plus per-dimension index files (`entities.md`, …) and a root **`INDEX.md`**. Legacy single-file `knowledge.md` is still read for dedup summaries and can remain on disk. Evolution **snapshots/restore** now copy the whole `memory/evolution/` tree (with **legacy** restore from snapshot `memory/knowledge.md` when present). **`index_evolution_knowledge`** reindexes all evolution markdown except navigational indexes and clears stale `evolution/*` FTS rows first.
 - **SkillLite Assistant (desktop)**: Chat **internal steps** timeline **auto-expands** when it contains a pending **execution confirmation** or **clarification** (so users do not have to discover the collapsed block). When still collapsed, a **“action needed”** badge is shown. The input area adds an optional **auto-allow execution confirmations** checkbox (persisted in app settings); it only affects `confirmation` prompts, not clarification option pickers.
+- **SkillLite Assistant (desktop)**: **Settings** opens as a **right-edge drawer** beside the status column (parallel to chat; no full-window dimmer). The header **Settings** control **toggles** the drawer; **Escape** or **Close** still dismisses it. Tabs, fields, save/cancel, and persistence are unchanged.
 
 ---
 

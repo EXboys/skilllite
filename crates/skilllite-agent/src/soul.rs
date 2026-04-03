@@ -70,7 +70,8 @@ impl Law {
 // ─── Beliefs: 可进化行为模式（派生自现有进化产出）────────────────────────────────
 
 /// Beliefs 不新增文件，从 rules.json + examples.json 派生。
-/// 对应关系：decision_tendency ← rules，success_patterns ← examples，knowledge.md 倾向/模式由 memory 检索注入。
+/// 对应关系：decision_tendency ← rules，success_patterns ← examples；
+/// 进化知识（`memory/evolution/` 下分卷与 legacy `knowledge.md`）由 memory 检索注入。
 const BELIEFS_RULES_TOP: usize = 5;
 const BELIEFS_EXAMPLES_TOP: usize = 3;
 

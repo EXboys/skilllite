@@ -7,6 +7,7 @@
 
 use std::path::Path;
 
+use crate::error::bail;
 use crate::Result;
 use rusqlite::Connection;
 use tokio::task::block_in_place;
@@ -32,7 +33,199 @@ const MAX_EPISODES: usize = 8;
 const MAX_PREFERENCES: usize = 8;
 const MAX_PATTERNS: usize = 5;
 
-/// 运行 memory 进化：从近期 decisions 抽取实体、关系、情节、倾向、模式，追加到 memory/evolution/knowledge.md。
+/// 五维分类：子目录名（`memory/evolution/<dir>/YYYY-MM.md`）与中文标题（维度索引 / 总索引用）。
+const EVOLUTION_CATEGORIES: &[(&str, &str)] = &[
+    ("entities", "实体"),
+    ("relations", "关系"),
+    ("episodes", "情节"),
+    ("preferences", "倾向"),
+    ("patterns", "模式"),
+];
+
+fn evolution_month_key() -> String {
+    chrono::Utc::now().format("%Y-%m").to_string()
+}
+
+fn evolution_run_heading() -> String {
+    chrono::Utc::now().format("%Y-%m-%d %H:%M UTC").to_string()
+}
+
+fn tail_chars_utf8(s: &str, max_chars: usize) -> String {
+    let n = s.chars().count();
+    if n <= max_chars {
+        return s.to_string();
+    }
+    s.chars().skip(n.saturating_sub(max_chars)).collect()
+}
+
+/// 汇总已有知识供抽取去重：legacy `knowledge.md` + 各维最新月份分卷尾部。
+fn build_existing_knowledge_summary(chat_root: &Path) -> String {
+    let evolution = chat_root.join("memory").join("evolution");
+    let mut parts: Vec<String> = Vec::new();
+
+    let legacy = evolution.join("knowledge.md");
+    if legacy.exists() {
+        let full = skilllite_fs::read_file(&legacy).unwrap_or_default();
+        let cap = EXISTING_KNOWLEDGE_CAP / 2;
+        let tail = tail_chars_utf8(full.trim(), cap);
+        if !tail.is_empty() {
+            parts.push(format!("[legacy knowledge.md tail]\n{tail}"));
+        }
+    }
+
+    let n_cat = EVOLUTION_CATEGORIES.len().max(1);
+    let per = (EXISTING_KNOWLEDGE_CAP / 2 / n_cat).max(200);
+
+    for (dir_name, _) in EVOLUTION_CATEGORIES {
+        let dir = evolution.join(dir_name);
+        if !dir.exists() {
+            continue;
+        }
+        let Ok(entries) = skilllite_fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut stems: Vec<String> = entries
+            .iter()
+            .filter(|(_p, is_dir)| !*is_dir)
+            .filter(|(p, _)| p.extension().and_then(|e| e.to_str()) == Some("md"))
+            .filter_map(|(p, _)| p.file_stem().and_then(|s| s.to_str()).map(String::from))
+            .collect();
+        stems.sort();
+        if let Some(last_month) = stems.last() {
+            let p = dir.join(format!("{last_month}.md"));
+            let full = skilllite_fs::read_file(&p).unwrap_or_default();
+            let tail = tail_chars_utf8(full.trim(), per);
+            if !tail.is_empty() {
+                parts.push(format!("[{dir_name}/{last_month} tail]\n{tail}"));
+            }
+        }
+    }
+
+    let joined = parts.join("\n\n---\n\n");
+    tail_chars_utf8(&joined, EXISTING_KNOWLEDGE_CAP)
+}
+
+fn category_title_zh(dir_name: &str) -> String {
+    EVOLUTION_CATEGORIES
+        .iter()
+        .find(|(d, _)| *d == dir_name)
+        .map(|(_, t)| (*t).to_string())
+        .unwrap_or_else(|| dir_name.to_string())
+}
+
+/// 将一轮抽取的非空正文追加到 `memory/evolution/<category>/<YYYY-MM>.md`。
+fn append_evolution_shard(
+    chat_root: &Path,
+    category_dir: &str,
+    month: &str,
+    run_heading: &str,
+    body: &str,
+) -> Result<()> {
+    let evolution = chat_root.join("memory").join("evolution");
+    let sub = evolution.join(category_dir);
+    skilllite_fs::create_dir_all(&sub)?;
+    let shard = sub.join(format!("{month}.md"));
+    if !gatekeeper_l1_path(chat_root, &shard, None) {
+        bail!(
+            "Path escapes allowed evolution memory tree: {}",
+            shard.display()
+        );
+    }
+
+    let section = format!("## {run_heading}\n\n{body}\n\n");
+    gatekeeper_l3_content(&section)?;
+
+    let block_to_append = section;
+    let final_content = if shard.exists() {
+        let existing = skilllite_fs::read_file(&shard).unwrap_or_default();
+        format!(
+            "{}\n\n---\n\n{}",
+            existing.trim_end(),
+            block_to_append.trim_end()
+        )
+    } else {
+        let zh = category_title_zh(category_dir);
+        format!(
+            "# {zh} — {month}\n\n由 Memory 进化自动写入；本分卷位于 `{category_dir}/`。\n\n---\n\n{}",
+            block_to_append.trim_end()
+        )
+    };
+    skilllite_fs::write_file(&shard, &final_content)?;
+    Ok(())
+}
+
+/// 各维 `entities.md` 等：列出该维下所有 `YYYY-MM.md` 分卷。
+fn regenerate_dimension_indexes(chat_root: &Path) -> Result<()> {
+    let evolution = chat_root.join("memory").join("evolution");
+    for (dir_name, title_zh) in EVOLUTION_CATEGORIES {
+        let shard_dir = evolution.join(dir_name);
+        let index_path = evolution.join(format!("{dir_name}.md"));
+        if !gatekeeper_l1_path(chat_root, &index_path, None) {
+            bail!("Rejected dimension index path: {}", index_path.display());
+        }
+
+        let mut months: Vec<String> = Vec::new();
+        if shard_dir.exists() {
+            let entries = skilllite_fs::read_dir(&shard_dir)?;
+            for (p, is_dir) in entries {
+                if is_dir {
+                    continue;
+                }
+                if p.extension().and_then(|e| e.to_str()) != Some("md") {
+                    continue;
+                }
+                if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                    months.push(stem.to_string());
+                }
+            }
+            months.sort();
+        }
+
+        let table = if months.is_empty() {
+            "| — | （尚无分卷） |".to_string()
+        } else {
+            months
+                .iter()
+                .map(|m| format!("| {m} | [{m}]({dir_name}/{m}.md) |"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        let content = format!(
+            "# {title_zh}（索引）\n\n按月分卷；正文在 [`{dir_name}/`]({dir_name}/)。\n\n| 月份 | 卷 |\n|------|-----|\n{table}\n"
+        );
+        gatekeeper_l3_content(&content)?;
+        skilllite_fs::write_file(&index_path, &content)?;
+    }
+    Ok(())
+}
+
+/// `memory/evolution/INDEX.md`：五维总览与跳转。
+fn regenerate_evolution_root_index(chat_root: &Path, last_run: &str) -> Result<()> {
+    let evolution = chat_root.join("memory").join("evolution");
+    let index_path = evolution.join("INDEX.md");
+    if !gatekeeper_l1_path(chat_root, &index_path, None) {
+        bail!("Rejected evolution INDEX path: {}", index_path.display());
+    }
+
+    let content = format!(
+        "# 进化知识库总索引\n\n\
+         由 Memory 进化自动维护；以下为五维索引（各维目录内为按月分卷 `YYYY-MM.md`）。\n\n\
+         **最后更新**: {last_run}\n\n\
+         | 维度 | 索引 | 分卷目录 |\n|------|------|----------|\n\
+         | 实体 | [entities.md](entities.md) | [entities/](entities/) |\n\
+         | 关系 | [relations.md](relations.md) | [relations/](relations/) |\n\
+         | 情节 | [episodes.md](episodes.md) | [episodes/](episodes/) |\n\
+         | 倾向 | [preferences.md](preferences.md) | [preferences/](preferences/) |\n\
+         | 模式 | [patterns.md](patterns.md) | [patterns/](patterns/) |\n\n\
+         历史单文件 [knowledge.md](knowledge.md) 若仍存在，会参与去重摘要；新增长期写入分卷。\n"
+    );
+    gatekeeper_l3_content(&content)?;
+    skilllite_fs::write_file(&index_path, &content)?;
+    Ok(())
+}
+
+/// 运行 memory 进化：从近期 decisions 抽取实体、关系、情节、倾向、模式，按五维 + 按月分卷写入 `memory/evolution/`，并刷新各维索引与 `INDEX.md`。
 /// 返回 changelog 用 (change_type, target_id)，无变更时返回空 Vec。
 pub async fn evolve_memory<L: EvolutionLlm>(
     chat_root: &Path,
@@ -50,23 +243,7 @@ pub async fn evolve_memory<L: EvolutionLlm>(
         return Ok(Vec::new());
     }
 
-    let knowledge_path = chat_root
-        .join("memory")
-        .join("evolution")
-        .join("knowledge.md");
-    let existing_summary = if knowledge_path.exists() {
-        let full = skilllite_fs::read_file(&knowledge_path).unwrap_or_default();
-        if full.len() <= EXISTING_KNOWLEDGE_CAP {
-            full
-        } else {
-            // 取末尾一段（最近写入的），便于去重
-            full.chars()
-                .skip(full.len().saturating_sub(EXISTING_KNOWLEDGE_CAP))
-                .collect::<String>()
-        }
-    } else {
-        String::new()
-    };
+    let existing_summary = build_existing_knowledge_summary(chat_root);
 
     let prompt = MEMORY_KNOWLEDGE_PROMPT
         .replace("{{decisions_summary}}", &summary)
@@ -175,47 +352,76 @@ pub async fn evolve_memory<L: EvolutionLlm>(
         .collect::<Vec<_>>()
         .join("\n");
 
-    let full_content =
-        format!(
-        "## {}\n\n### 实体\n{}\n\n### 关系\n{}\n\n### 情节\n{}\n\n### 倾向\n{}\n\n### 模式\n{}\n",
-        chrono::Utc::now().format("%Y-%m-%d %H:%M"),
-        if entity_block.is_empty() { "*无*".to_string() } else { entity_block },
-        if relation_block.is_empty() { "*无*".to_string() } else { relation_block },
-        if episode_block.is_empty() { "*无*".to_string() } else { episode_block },
-        if preference_block.is_empty() { "*无*".to_string() } else { preference_block },
-        if pattern_block.is_empty() { "*无*".to_string() } else { pattern_block }
-    );
+    let mut l3_blob = String::new();
+    if !entity_block.is_empty() {
+        l3_blob.push_str("### 实体\n");
+        l3_blob.push_str(&entity_block);
+        l3_blob.push('\n');
+    }
+    if !relation_block.is_empty() {
+        l3_blob.push_str("### 关系\n");
+        l3_blob.push_str(&relation_block);
+        l3_blob.push('\n');
+    }
+    if !episode_block.is_empty() {
+        l3_blob.push_str("### 情节\n");
+        l3_blob.push_str(&episode_block);
+        l3_blob.push('\n');
+    }
+    if !preference_block.is_empty() {
+        l3_blob.push_str("### 倾向\n");
+        l3_blob.push_str(&preference_block);
+        l3_blob.push('\n');
+    }
+    if !pattern_block.is_empty() {
+        l3_blob.push_str("### 模式\n");
+        l3_blob.push_str(&pattern_block);
+        l3_blob.push('\n');
+    }
 
-    if let Err(e) = gatekeeper_l3_content(&full_content) {
+    if let Err(e) = gatekeeper_l3_content(&l3_blob) {
         tracing::warn!("Memory evolution L3 rejected content: {}", e);
         return Ok(Vec::new());
     }
 
+    let month = evolution_month_key();
+    let run_heading = evolution_run_heading();
     let memory_dir = chat_root.join("memory").join("evolution");
-    let knowledge_path = memory_dir.join("knowledge.md");
-    if !gatekeeper_l1_path(chat_root, &knowledge_path, None) {
-        tracing::warn!(
-            "Memory evolution L1 path rejected: {}",
-            knowledge_path.display()
-        );
-        return Ok(Vec::new());
+    skilllite_fs::create_dir_all(&memory_dir)?;
+
+    if !entity_block.is_empty() {
+        append_evolution_shard(chat_root, "entities", &month, &run_heading, &entity_block)?;
+    }
+    if !relation_block.is_empty() {
+        append_evolution_shard(
+            chat_root,
+            "relations",
+            &month,
+            &run_heading,
+            &relation_block,
+        )?;
+    }
+    if !episode_block.is_empty() {
+        append_evolution_shard(chat_root, "episodes", &month, &run_heading, &episode_block)?;
+    }
+    if !preference_block.is_empty() {
+        append_evolution_shard(
+            chat_root,
+            "preferences",
+            &month,
+            &run_heading,
+            &preference_block,
+        )?;
+    }
+    if !pattern_block.is_empty() {
+        append_evolution_shard(chat_root, "patterns", &month, &run_heading, &pattern_block)?;
     }
 
-    skilllite_fs::create_dir_all(&memory_dir)?;
-    let to_append = full_content;
-    let final_content = if knowledge_path.exists() {
-        let existing = skilllite_fs::read_file(&knowledge_path).unwrap_or_default();
-        format!("{}\n\n---\n\n{}", existing.trim_end(), to_append.trim())
-    } else {
-        format!(
-            "# 进化知识库（实体·关系·情节·倾向·模式）\n\n由 Memory 进化从任务执行记录中自动抽取，仅沉淀事实与经历供检索，不与规则/技能重复。\n\n---\n\n{}",
-            to_append.trim()
-        )
-    };
-    skilllite_fs::write_file(&knowledge_path, &final_content)?;
+    regenerate_dimension_indexes(chat_root)?;
+    regenerate_evolution_root_index(chat_root, &run_heading)?;
 
     tracing::info!(
-        "Memory evolution: wrote {} entities, {} relations, {} episodes, {} preferences, {} patterns to knowledge.md",
+        "Memory evolution: wrote {} entities, {} relations, {} episodes, {} preferences, {} patterns (monthly shards under memory/evolution/)",
         entities.len(),
         relations.len(),
         episodes.len(),

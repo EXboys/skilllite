@@ -101,6 +101,12 @@ pub mod observability {
         "SKILLLITE_AUDIT_ALERT_EDIT_UNIQUE_PATHS";
 }
 
+/// Agent 行为提示（桌面 / CLI 可选）
+pub mod agent {
+    /// 桌面或包装器传入的界面语言：`zh` | `en`。合并进聊天类 system prompt 的附加段（与 `AgentConfig.context_append` 同源逻辑）。
+    pub const SKILLLITE_UI_LOCALE: &str = "SKILLLITE_UI_LOCALE";
+}
+
 /// Memory 向量检索
 pub mod memory {
     pub const SKILLLITE_EMBEDDING_MODEL: &str = "SKILLLITE_EMBEDDING_MODEL";

@@ -17,6 +17,10 @@ pub(super) enum ReflectionOutcome {
     Nudge(String),
     /// Stop the loop.
     Break,
+    /// Simple mode: text-only wrap-up after a successful tool batch — exit without user clarification.
+    Complete,
+    /// Planning mode: nudge without treating as a "stuck" iteration (e.g. remind `complete_task` after tools).
+    SoftNudge(String),
 }
 
 // ── Simple-mode reflection ────────────────────────────────────────────────────
@@ -25,6 +29,7 @@ pub(super) enum ReflectionOutcome {
 ///
 /// Handles the anti-hallucination nudge on iteration 1 and the normal
 /// "too many no-tool retries" termination condition.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn reflect_simple(
     assistant_content: &Option<String>,
     all_tools_len: usize,
@@ -33,6 +38,7 @@ pub(super) fn reflect_simple(
     max_no_tool_retries: usize,
     event_sink: &mut dyn EventSink,
     messages: &mut Vec<ChatMessage>,
+    after_successful_tool_batch: bool,
 ) -> ReflectionOutcome {
     // Anti-hallucination nudge: first iteration, tools available, never nudged
     if iterations == 1 && all_tools_len > 0 && *no_tool_retries == 0 {
@@ -52,6 +58,19 @@ pub(super) fn reflect_simple(
              would do — actually do it by invoking the tools."
                 .to_string(),
         );
+    }
+
+    // After tools actually ran and succeeded, a text-only reply is usually a normal wrap-up — do not
+    // route to `try_clarify` (which used to happen because `assistant_content.is_some()` forced Break).
+    if after_successful_tool_batch
+        && assistant_content
+            .as_ref()
+            .is_some_and(|c| !c.trim().is_empty())
+    {
+        if let Some(ref content) = assistant_content {
+            event_sink.on_text(content);
+        }
+        return ReflectionOutcome::Complete;
     }
 
     // Emit final text before deciding
@@ -78,6 +97,7 @@ pub(super) fn reflect_simple(
 /// Two paths:
 /// - `suppress_stream = true`:  hallucination-guard path (streaming was suppressed).
 /// - `suppress_stream = false`: no-tool nudge path — pending tasks remain, push LLM to act.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn reflect_planning(
     assistant_content: &Option<String>,
     suppress_stream: bool,
@@ -86,8 +106,29 @@ pub(super) fn reflect_planning(
     max_no_tool_retries: usize,
     event_sink: &mut dyn EventSink,
     messages: &mut Vec<ChatMessage>,
+    after_successful_tool_batch: bool,
 ) -> ReflectionOutcome {
     if suppress_stream {
+        // After a successful tool batch, text-only output is often a user-facing summary while the
+        // model forgot `complete_task` — nudge structurally instead of popping as "hallucination".
+        if after_successful_tool_batch
+            && assistant_content
+                .as_ref()
+                .is_some_and(|c| !c.trim().is_empty())
+        {
+            if let Some(ref content) = assistant_content {
+                event_sink.on_text(content);
+            }
+            if let Some(ct) = planner.current_task() {
+                let msg = format!(
+                    "Tools ran successfully for the current step, but the plan is not updated yet. \
+                     Call `complete_task(task_id={}, completion_type=\"success\"|\"partial_success\"|\"failure\")` now. \
+                     If more tasks remain, continue with the next task; otherwise answer the user.",
+                    ct.id
+                );
+                return ReflectionOutcome::SoftNudge(msg);
+            }
+        }
         // Pop the hallucinated assistant message (user never saw it)
         if messages.last().is_some_and(|m| m.role == "assistant") {
             messages.pop();
@@ -186,6 +227,7 @@ mod tests {
             3,
             &mut sink,
             &mut messages,
+            false,
         );
 
         match &out {
@@ -214,6 +256,7 @@ mod tests {
             3,
             &mut sink,
             &mut messages,
+            false,
         );
 
         assert!(matches!(out, ReflectionOutcome::Break));
@@ -235,6 +278,7 @@ mod tests {
             3,
             &mut sink,
             &mut messages,
+            false,
         );
 
         assert!(matches!(out, ReflectionOutcome::Break));
@@ -262,6 +306,7 @@ mod tests {
             3,
             &mut sink,
             &mut messages,
+            false,
         );
 
         assert!(matches!(out, ReflectionOutcome::Break));
@@ -288,6 +333,7 @@ mod tests {
             3,
             &mut sink,
             &mut messages,
+            false,
         );
 
         match &out {
@@ -316,6 +362,7 @@ mod tests {
             3,
             &mut sink,
             &mut messages,
+            false,
         );
 
         assert!(matches!(out, ReflectionOutcome::Break));
@@ -323,6 +370,61 @@ mod tests {
             messages.len(),
             1,
             "assistant message must NOT be popped for empty plans"
+        );
+    }
+
+    #[test]
+    fn test_reflect_simple_complete_after_successful_tool_batch_with_text() {
+        let mut no_tool_retries = 0;
+        let mut messages = vec![];
+        let mut sink = SilentEventSink;
+        let content = Some("已清空记忆目录，请核实。".to_string());
+        let out = reflect_simple(
+            &content,
+            5,
+            2,
+            &mut no_tool_retries,
+            3,
+            &mut sink,
+            &mut messages,
+            true,
+        );
+        assert!(matches!(out, ReflectionOutcome::Complete));
+    }
+
+    #[test]
+    fn test_reflect_planning_soft_nudge_after_tools_when_task_still_pending() {
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 1,
+            description: "Clear memory".to_string(),
+            tool_hint: Some("run_command".to_string()),
+            completed: false,
+        }]);
+        let mut consecutive_no_tool = 0;
+        let mut messages = vec![ChatMessage::assistant("命令已成功执行。")];
+        let mut sink = SilentEventSink;
+        let content = Some("命令已成功执行。".to_string());
+        let out = reflect_planning(
+            &content,
+            true,
+            &mut planner,
+            &mut consecutive_no_tool,
+            3,
+            &mut sink,
+            &mut messages,
+            true,
+        );
+        match &out {
+            ReflectionOutcome::SoftNudge(s) => {
+                assert!(s.contains("complete_task"));
+                assert!(s.contains("task_id=1"));
+            }
+            _ => panic!("expected SoftNudge, got {:?}", out),
+        }
+        assert_eq!(
+            messages.len(),
+            1,
+            "assistant summary must not be popped on soft-nudge path"
         );
     }
 }

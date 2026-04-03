@@ -99,6 +99,7 @@ export const zhMessages: Record<string, string> = {
     "开启后，工具执行前的「执行确认」将自动选择「允许」。请在可信环境中使用。",
   "chat.timelineNeedsAction": "待操作",
   "chat.timelineNeedsActionHint": "请展开本条，点击允许/拒绝或选择澄清选项。",
+  "chat.clarifyContinueNoHint": "继续（不补充说明）",
   "chat.plannerNudgeFoldSummary": "任务规划续跑提示（内部，可展开）",
   "chat.readFileTabEdit": "编辑",
   "chat.readFileTabPreview": "预览",
@@ -152,6 +153,32 @@ export const zhMessages: Record<string, string> = {
   "lifePulse.toggleWake": "点击唤醒它",
   "lifePulse.toggleRest": "点击让它休息",
 
+  "evolution.profile.default": "默认（与工作区里保存的配置一致）",
+  "evolution.profile.demo": "演示（更频繁进化）",
+  "evolution.profile.conservative": "保守（更少、省成本）",
+  "evolution.thresholds.title": "应用内调整（保存后与后台任务一致）",
+  "evolution.thresholds.interval": "检查间隔（秒）",
+  "evolution.thresholds.intervalHint":
+    "Life Pulse 检查周期；留空则沿用工作区里已有值，默认 1800（30 分钟）",
+  "evolution.thresholds.decision": "决策数触发阈值",
+  "evolution.thresholds.decisionHint":
+    "未进化决策 ≥ 此值会触发；留空则沿用工作区里已有值，默认 10",
+  "evolution.thresholds.profile": "阈值预设",
+  "evolution.thresholds.profileHint":
+    "「演示 / 保守」会覆盖「默认」下的同名阈值；选「默认」时由工作区里保存的值决定",
+  "evolution.thresholds.profileInherit": "默认（跟随工作区配置）",
+  "evolution.thresholds.cooldown": "被动冷却（小时）",
+  "evolution.thresholds.cooldownHint":
+    "距上次进化不足此间隔时不易生成被动提案；留空则沿用工作区里已有值",
+  "evolution.thresholds.note":
+    "说明：单项留空表示不在本应用里覆盖该项。与聊天、Life Pulse 使用相同合并规则；进阶说明见帮助文档中的环境变量章节。",
+  "evolution.adjustInSettingsHint":
+    "触发周期、决策阈值、阈值预设与被动冷却等：点击顶栏「设置」打开侧栏，切到「自进化」标签填写并保存；保存后与下方展示一致。",
+  "evolution.detailEnvHint":
+    "进阶用户也可在工作区通过环境变量配置同名项（详见文档）。若想保留全部 prompt 快照，可将 SKILLLITE_EVOLUTION_SNAPSHOT_KEEP 设为 0；将 SKILLLITE_EVOLUTION 设为 0 可关闭进化。",
+  "evolution.summary.profile": "阈值预设",
+  "evolution.summary.cooldown": "被动冷却",
+
   "status.noLogs": "暂无日志",
   "status.moreFiles": "+ {n} 个文件",
   "status.noOutput": "暂无输出文件",
@@ -204,12 +231,15 @@ export const zhMessages: Record<string, string> = {
   "settings.tab.llm": "模型与 API",
   "settings.tab.workspace": "工作区与沙箱",
   "settings.tab.agent": "Agent 预算",
+  "settings.tab.evolution": "自进化",
   "settings.tab.schedule": "定时任务",
+  "settings.evolutionIntro":
+    "以下项会用于后台进化调度（与聊天、定时检查、手动触发共用同一套规则）。在这里填写的值会覆盖工作区里仅通过配置文件保存的同名项。点「保存」后生效。",
   "settings.providerMode": "使用方式",
   "settings.providerApi": "API Key",
   "settings.providerOllama": "本地 Ollama",
   "settings.apiKey": "API Key",
-  "settings.apiKeyHint": "sk-…（留空则使用 .env 中的 OPENAI_API_KEY）",
+  "settings.apiKeyHint": "sk-…（留空则尝试使用本机或工作区里已配置的密钥）",
   "settings.model": "模型",
   "settings.modelPlaceholder": "选择模型",
   "settings.apiBase": "API Base URL（可选）",
@@ -245,7 +275,7 @@ export const zhMessages: Record<string, string> = {
   "settings.defaultPlaceholder50": "默认 50",
   "settings.defaultPlaceholder15": "默认 15",
   "settings.agentBudgetHint":
-    "留空则使用工作区 .env 或内置默认值（SKILLLITE_MAX_ITERATIONS、SKILLLITE_MAX_TOOL_CALLS_PER_TASK）。",
+    "留空则沿用内置或工作区里保存的默认上限（对应 SKILLLITE_MAX_ITERATIONS、SKILLLITE_MAX_TOOL_CALLS_PER_TASK）。",
   "settings.scheduleIntro":
     "应用运行期间会自动检查并执行到期的定时任务（Life Pulse 心跳驱动，约 30 秒一次）。配置保存在 .skilllite/schedule.json，与 CLI skilllite schedule tick 共用。执行需在环境中设置 SKILLLITE_SCHEDULE_ENABLED=1。",
   "settings.scheduleLoading": "正在加载定时配置…",

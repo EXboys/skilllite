@@ -14,6 +14,7 @@ pub mod goal_boundaries;
 pub mod goal_contract;
 pub mod high_risk;
 pub mod llm;
+pub mod locale_prompt;
 pub mod long_text;
 pub mod planning_guard;
 pub mod planning_rules;

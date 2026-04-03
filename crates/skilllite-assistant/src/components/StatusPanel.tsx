@@ -662,11 +662,16 @@ export function LifePulseBadge() {
     settings.apiBase,
     settings.model,
     settings.workspace,
+    settings.locale,
     settings.sandboxLevel,
     settings.swarmEnabled,
     settings.swarmUrl,
     settings.maxIterations,
     settings.maxToolCallsPerTask,
+    settings.evolutionIntervalSecs,
+    settings.evolutionDecisionThreshold,
+    settings.evoProfile,
+    settings.evoCooldownHours,
     setWorkspace,
   ]);
 

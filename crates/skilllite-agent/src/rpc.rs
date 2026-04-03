@@ -500,6 +500,8 @@ async fn handle_agent_chat(
     {
         config.context_append = Some(ctx.to_string());
     }
+    config.context_append =
+        crate::locale_prompt::merge_ui_locale_env_into_context_append(config.context_append);
 
     if config.api_key.is_empty() {
         bail!("API key required. Set OPENAI_API_KEY env var.");

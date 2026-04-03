@@ -10,6 +10,7 @@ import {
 } from "../utils/evolutionDisplay";
 import { parseDetailWorkspaceFromUrl } from "../utils/detailWindow";
 import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
+import { useI18n } from "../i18n";
 
 export interface EvolutionLogEntryDto {
   ts: string;
@@ -23,6 +24,8 @@ export interface EvolutionStatusPayload {
   mode_label: string;
   interval_secs: number;
   decision_threshold: number;
+  evo_profile_key: string;
+  evo_cooldown_hours: number;
   unprocessed_decisions: number;
   last_run_ts: string | null;
   judgement_label: string | null;
@@ -119,12 +122,15 @@ function useEvolutionStatus() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const bridgeConfig = useMemo(() => buildAssistantBridgeConfig(settings), [settings]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const s = await invoke<EvolutionStatusPayload>("skilllite_load_evolution_status", {
         workspace,
+        config: bridgeConfig,
       });
       setStatus(s);
     } catch (e) {
@@ -133,7 +139,7 @@ function useEvolutionStatus() {
     } finally {
       setLoading(false);
     }
-  }, [workspace]);
+  }, [workspace, bridgeConfig]);
 
   useEffect(() => {
     void refresh();
@@ -144,6 +150,7 @@ function useEvolutionStatus() {
 
 /** 右侧面板摘要 */
 export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => void }) {
+  const { t } = useI18n();
   const { status, loading, error, refresh, workspace } = useEvolutionStatus();
 
   if (loading && !status) {
@@ -176,6 +183,13 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
   }
 
   const s = status!;
+  const pk = s.evo_profile_key ?? "default";
+  const profileLabel =
+    pk === "demo"
+      ? t("evolution.profile.demo")
+      : pk === "conservative"
+        ? t("evolution.profile.conservative")
+        : t("evolution.profile.default");
   const scheduleHint =
     s.mode_key === "disabled"
       ? "已禁用，后台不会自动进化"
@@ -240,6 +254,18 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
           <span className="min-w-0 truncate text-right font-medium">{s.mode_label}</span>
         </div>
         <p className="text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute break-words">{scheduleHint}</p>
+        <div className="flex min-w-0 justify-between gap-2">
+          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}</span>
+          <span className="min-w-0 truncate text-right text-[11px]">{profileLabel}</span>
+        </div>
+        <div className="flex min-w-0 justify-between gap-2">
+          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}</span>
+          <span className="min-w-0 tabular-nums text-right text-[11px]">
+            {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours)
+              ? `${s.evo_cooldown_hours} h`
+              : "—"}
+          </span>
+        </div>
         <div className="flex min-w-0 justify-between gap-2">
           <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">未进化决策</span>
           <span className="min-w-0 truncate text-right">{s.unprocessed_decisions}</span>
@@ -402,6 +428,7 @@ type EvolutionDetailTab = "run" | "review" | "changes";
 
 /** 独立详情窗口：分 tab（运行 / 审核 / 变更）避免单页过长 */
 export function EvolutionDetailBody() {
+  const { t } = useI18n();
   const { settings } = useSettingsStore();
   const { status, loading, error, refresh, workspace } = useEvolutionStatus();
   const [detailTab, setDetailTab] = useState<EvolutionDetailTab>("run");
@@ -579,13 +606,28 @@ export function EvolutionDetailBody() {
                   {s.decision_threshold}（当前未进化 {s.unprocessed_decisions}）
                 </li>
                 <li>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}（生效）：</span>
+                  {(s.evo_profile_key ?? "default") === "demo"
+                    ? t("evolution.profile.demo")
+                    : (s.evo_profile_key ?? "default") === "conservative"
+                      ? t("evolution.profile.conservative")
+                      : t("evolution.profile.default")}
+                </li>
+                <li>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}（生效）：</span>
+                  {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours)
+                    ? `${s.evo_cooldown_hours} h`
+                    : "—"}
+                </li>
+                <li>
                   <span className="text-ink-mute dark:text-ink-dark-mute">上次 evolution_run：</span>
                   {s.last_run_ts ? formatTs(s.last_run_ts) : "暂无记录"}
                 </li>
                 <li className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-                  说明：周期与阈值可在工作区 .env 中设置 SKILLLITE_EVOLUTION_INTERVAL_SECS、
-                  SKILLLITE_EVOLUTION_DECISION_THRESHOLD；SKILLLITE_EVOLUTION_SNAPSHOT_KEEP=0 可保留全部 prompt
-                  快照以便溯源（不占 Git）；SKILLLITE_EVOLUTION=0 可关闭进化。
+                  {t("evolution.adjustInSettingsHint")}
+                </li>
+                <li className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                  {t("evolution.detailEnvHint")}
                 </li>
               </ul>
             </section>

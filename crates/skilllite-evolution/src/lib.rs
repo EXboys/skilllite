@@ -573,23 +573,25 @@ mod lib_tests {
         let evolved_dir = skills_root.join("_evolved").join("s1");
         std::fs::create_dir_all(&prompts_dir).expect("prompts");
         std::fs::create_dir_all(&memory_dir).expect("memory");
+        let entities_dir = memory_dir.join("entities");
+        std::fs::create_dir_all(&entities_dir).expect("entities");
         std::fs::create_dir_all(&evolved_dir).expect("skills");
         std::fs::write(prompts_dir.join("rules.json"), b"before_rules").expect("rules");
-        std::fs::write(memory_dir.join("knowledge.md"), b"before_memory").expect("memory");
+        std::fs::write(entities_dir.join("2026-04.md"), b"before_memory").expect("memory shard");
         std::fs::write(evolved_dir.join("SKILL.md"), b"before_skill").expect("skill");
 
         let snap = create_extended_snapshot(&root, Some(&skills_root), "txn_x", true, true, true)
             .expect("snapshot");
-        assert!(snap.iter().any(|f| f == "memory/evolution/knowledge.md"));
+        assert!(snap.iter().any(|f| f == "memory/evolution"));
         assert!(snap.iter().any(|f| f == "skills/_evolved"));
 
         std::fs::write(prompts_dir.join("rules.json"), b"after_rules").expect("rules mutate");
-        std::fs::write(memory_dir.join("knowledge.md"), b"after_memory").expect("memory mutate");
+        std::fs::write(entities_dir.join("2026-04.md"), b"after_memory").expect("memory mutate");
         std::fs::write(evolved_dir.join("SKILL.md"), b"after_skill").expect("skill mutate");
 
         restore_extended_snapshot(&root, Some(&skills_root), "txn_x").expect("restore");
         let rules = std::fs::read_to_string(prompts_dir.join("rules.json")).expect("rules read");
-        let memory = std::fs::read_to_string(memory_dir.join("knowledge.md")).expect("memory read");
+        let memory = std::fs::read_to_string(entities_dir.join("2026-04.md")).expect("memory read");
         let skill = std::fs::read_to_string(evolved_dir.join("SKILL.md")).expect("skill read");
         assert_eq!(rules, "before_rules");
         assert_eq!(memory, "before_memory");

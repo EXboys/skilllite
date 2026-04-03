@@ -42,6 +42,22 @@ export interface Settings {
    * 持久化在 localStorage，与 `SETTINGS_STORE_PERSIST_KEY` 一致。
    */
   autoApproveToolConfirmations?: boolean;
+  /**
+   * 覆盖 `SKILLLITE_EVOLUTION_INTERVAL_SECS`（Life Pulse 周期与状态展示）。不设则沿用工作区已合并配置 / 默认 1800。
+   */
+  evolutionIntervalSecs?: number;
+  /**
+   * 覆盖 `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`。不设则沿用工作区已合并配置 / 默认 10。
+   */
+  evolutionDecisionThreshold?: number;
+  /**
+   * 覆盖 `SKILLLITE_EVO_PROFILE`：`demo` | `conservative`。不设则跟随工作区已合并配置。
+   */
+  evoProfile?: "demo" | "conservative";
+  /**
+   * 覆盖 `SKILLLITE_EVO_COOLDOWN_HOURS`（被动提案冷却，小时）。不设则沿用工作区已合并配置 / 内置默认。
+   */
+  evoCooldownHours?: number;
 }
 
 /** localStorage 键名；详情窗口与主窗口同步设置时需与此一致 */

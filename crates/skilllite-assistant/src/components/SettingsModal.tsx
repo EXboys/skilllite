@@ -25,7 +25,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type SettingsTabId = "llm" | "workspace" | "agent" | "schedule";
+type SettingsTabId = "llm" | "workspace" | "agent" | "evolution" | "schedule";
 
 export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const { t, locale, setLocale } = useI18n();
@@ -35,6 +35,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
         { id: "llm" as const, label: t("settings.tab.llm") },
         { id: "workspace" as const, label: t("settings.tab.workspace") },
         { id: "agent" as const, label: t("settings.tab.agent") },
+        { id: "evolution" as const, label: t("settings.tab.evolution") },
         { id: "schedule" as const, label: t("settings.tab.schedule") },
       ] as const,
     [t]
@@ -51,6 +52,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [swarmUrl, setSwarmUrl] = useState(settings.swarmUrl ?? "");
   const [maxIterationsStr, setMaxIterationsStr] = useState("");
   const [maxToolCallsPerTaskStr, setMaxToolCallsPerTaskStr] = useState("");
+  const [evolutionIntervalStr, setEvolutionIntervalStr] = useState("");
+  const [evolutionDecisionStr, setEvolutionDecisionStr] = useState("");
+  const [evoProfileChoice, setEvoProfileChoice] = useState<"inherit" | "demo" | "conservative">(
+    "inherit"
+  );
+  const [evoCooldownStr, setEvoCooldownStr] = useState("");
 
   const [activeTab, setActiveTab] = useState<SettingsTabId>("llm");
   const [scheduleData, setScheduleData] = useState<ScheduleForm | null>(null);
@@ -75,6 +82,15 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   }, [model]);
 
   useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  useEffect(() => {
     if (open) {
       setProvider(settings.provider || "api");
       setApiKey(settings.apiKey);
@@ -90,6 +106,16 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       setMaxToolCallsPerTaskStr(
         settings.maxToolCallsPerTask != null ? String(settings.maxToolCallsPerTask) : ""
       );
+      setEvolutionIntervalStr(
+        settings.evolutionIntervalSecs != null ? String(settings.evolutionIntervalSecs) : ""
+      );
+      setEvolutionDecisionStr(
+        settings.evolutionDecisionThreshold != null
+          ? String(settings.evolutionDecisionThreshold)
+          : ""
+      );
+      setEvoProfileChoice(settings.evoProfile ?? "inherit");
+      setEvoCooldownStr(settings.evoCooldownHours != null ? String(settings.evoCooldownHours) : "");
       setOllamaProbe(null);
       setActiveTab("llm");
       setScheduleLoadError(null);
@@ -145,6 +171,22 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     return n;
   };
 
+  const parseEvolutionIntervalSecs = (s: string): number | undefined => {
+    const trimmed = s.trim();
+    if (!trimmed) return undefined;
+    const n = parseInt(trimmed, 10);
+    if (!Number.isFinite(n) || n < 1) return undefined;
+    return n;
+  };
+
+  const parseCooldownHoursField = (s: string): number | undefined => {
+    const trimmed = s.trim();
+    if (!trimmed) return undefined;
+    const n = parseFloat(trimmed);
+    if (!Number.isFinite(n) || n < 0) return undefined;
+    return n;
+  };
+
   const handleSave = async () => {
     const shared = {
       sandboxLevel,
@@ -152,6 +194,11 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       swarmUrl: swarmUrl.trim(),
       maxIterations: parsePositiveIntField(maxIterationsStr),
       maxToolCallsPerTask: parsePositiveIntField(maxToolCallsPerTaskStr),
+      evolutionIntervalSecs: parseEvolutionIntervalSecs(evolutionIntervalStr),
+      evolutionDecisionThreshold: parsePositiveIntField(evolutionDecisionStr),
+      evoProfile:
+        evoProfileChoice === "inherit" ? undefined : (evoProfileChoice as "demo" | "conservative"),
+      evoCooldownHours: parseCooldownHoursField(evoCooldownStr),
     };
     if (provider === "ollama") {
       setSettings({
@@ -213,11 +260,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   const sbKey = `l${sandboxLevel}` as "l1" | "l2" | "l3";
 
-  if (!open) return null;
-
   const inputCls =
     "w-full rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-3 py-2 text-ink dark:text-ink-dark placeholder-ink-mute text-sm focus:ring-2 focus:ring-accent/40 focus:border-accent outline-none";
   const labelCls = "block text-xs font-medium text-ink dark:text-ink-dark-mute mb-1";
+  /** 自进化页：略增高、等宽数字、悬停时边框微调 */
+  const evolutionFieldCls = `${inputCls} min-h-[2.5rem] tabular-nums transition-[border-color,box-shadow] hover:border-ink/15 dark:hover:border-white/20`;
+  const evolutionSelectCls = `${evolutionFieldCls} cursor-pointer appearance-none pr-10`;
 
   const ollamaModelPresets = ollamaProbe?.available
     ? ollamaProbe.models
@@ -226,22 +274,34 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     : [];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 dark:bg-black/50 backdrop-blur-sm p-4"
-      onClick={onClose}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => e.key === "Escape" && onClose()}
+    <aside
+      className={`relative z-20 flex h-full min-h-0 shrink-0 flex-col border-l border-border dark:border-border-dark bg-white dark:bg-paper-dark transition-[width] duration-200 ease-out motion-reduce:transition-none ${
+        open
+          ? "w-[min(400px,38vw)] min-w-[260px] border-border dark:border-border-dark"
+          : "w-0 min-w-0 overflow-hidden border-transparent"
+      }`}
+      aria-hidden={!open}
     >
-      <div
-        className="w-full max-w-xl rounded-xl bg-white dark:bg-paper-dark shadow-xl border border-border dark:border-border-dark flex flex-col max-h-[min(90vh,720px)]"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {open ? (
+      <div className="flex h-full min-h-0 w-[min(400px,38vw)] min-w-[260px] flex-col">
         {/* Fixed header + tabs */}
-        <div className="px-5 pt-5 pb-0 border-b border-border dark:border-border-dark shrink-0">
-          <h2 className="text-base font-semibold text-ink dark:text-ink-dark pb-3">
-            {t("settings.title")}
-          </h2>
+        <div className="px-4 pt-4 pb-0 border-b border-border dark:border-border-dark shrink-0">
+          <div className="flex items-center justify-between gap-2 pb-2">
+            <h2 className="text-base font-semibold text-ink dark:text-ink-dark">
+              {t("settings.title")}
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-md p-1.5 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark transition-colors"
+              aria-label={t("common.close")}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <path d="M18 6 6 18" />
+                <path d="m6 6 12 12" />
+              </svg>
+            </button>
+          </div>
           <div className="flex gap-1 overflow-x-auto pb-0 -mx-1 px-1">
             {settingsTabs.map((tab) => (
               <button
@@ -261,7 +321,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 space-y-4 min-h-0">
 
           {activeTab === "llm" && (
           <div className="space-y-4">
@@ -566,6 +626,113 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           </div>
           )}
 
+          {activeTab === "evolution" && (
+          <div className="space-y-4">
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+              {t("settings.evolutionIntro")}
+            </p>
+            <div className="rounded-xl border border-border/60 dark:border-border-dark/50 bg-gray-50/80 dark:bg-surface-dark/35 p-4 space-y-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2)]">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="min-w-0">
+                  <label className={labelCls}>{t("evolution.thresholds.interval")}</label>
+                  <input
+                    type="number"
+                    min={60}
+                    step={60}
+                    inputMode="numeric"
+                    placeholder="1800"
+                    value={evolutionIntervalStr}
+                    onChange={(e) => setEvolutionIntervalStr(e.target.value)}
+                    className={evolutionFieldCls}
+                  />
+                  <p className="mt-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                    {t("evolution.thresholds.intervalHint")}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <label className={labelCls}>{t("evolution.thresholds.decision")}</label>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    inputMode="numeric"
+                    placeholder="10"
+                    value={evolutionDecisionStr}
+                    onChange={(e) => setEvolutionDecisionStr(e.target.value)}
+                    className={evolutionFieldCls}
+                  />
+                  <p className="mt-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                    {t("evolution.thresholds.decisionHint")}
+                  </p>
+                </div>
+              </div>
+              <div>
+                <label className={labelCls} htmlFor="settings-evo-profile">
+                  {t("evolution.thresholds.profile")}
+                </label>
+                <div className="relative">
+                  <select
+                    id="settings-evo-profile"
+                    value={evoProfileChoice}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "inherit" || v === "demo" || v === "conservative") {
+                        setEvoProfileChoice(v);
+                      }
+                    }}
+                    className={evolutionSelectCls}
+                  >
+                    <option value="inherit">{t("evolution.thresholds.profileInherit")}</option>
+                    <option value="demo">{t("evolution.profile.demo")}</option>
+                    <option value="conservative">{t("evolution.profile.conservative")}</option>
+                  </select>
+                  <span
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-ink-mute dark:text-ink-dark-mute"
+                    aria-hidden
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="opacity-70"
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </span>
+                </div>
+                <p className="mt-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                  {t("evolution.thresholds.profileHint")}
+                </p>
+              </div>
+              <div>
+                <label className={labelCls}>{t("evolution.thresholds.cooldown")}</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.25}
+                  inputMode="decimal"
+                  placeholder="1"
+                  value={evoCooldownStr}
+                  onChange={(e) => setEvoCooldownStr(e.target.value)}
+                  className={evolutionFieldCls}
+                />
+                <p className="mt-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                  {t("evolution.thresholds.cooldownHint")}
+                </p>
+              </div>
+            </div>
+            <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed border-t border-border/40 dark:border-border-dark/40 pt-2">
+              {t("evolution.thresholds.note")}
+            </p>
+          </div>
+          )}
+
           {activeTab === "schedule" && (
           <div className="space-y-3">
             <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
@@ -614,7 +781,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         {/* Fixed footer */}
-        <div className="px-5 py-3 border-t border-border dark:border-border-dark flex justify-end gap-2 shrink-0">
+        <div className="px-4 py-3 border-t border-border dark:border-border-dark flex justify-end gap-2 shrink-0 bg-white dark:bg-paper-dark">
           <button
             type="button"
             onClick={onClose}
@@ -631,6 +798,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           </button>
         </div>
       </div>
-    </div>
+      ) : null}
+    </aside>
   );
 }

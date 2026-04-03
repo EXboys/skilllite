@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-02
+Last updated: 2026-04-03
 
 ## In Progress
 
@@ -16,6 +16,7 @@ Last updated: 2026-04-02
 
 ## Done
 
+- `TASK-2026-019-evolution-memory-sharded-kb` - Status: `done` - Owner: `TBD`
 - `TASK-2026-018-evolution-lib-split` - Status: `done` - Owner: `exboys`
 - `TASK-2026-017-partial-failure-evolution-authorization` - Status: `done` - Owner: `exboys`
 - `TASK-2026-016-evolution-p0-thresholds-and-rollback-boundary` - Status: `done` - Owner: `exboys`

@@ -177,22 +177,6 @@
       "installed_at": "2026-03-10T12:31:28.999866Z",
       "admission_risk": "suspicious"
     },
-    "nodejs-test": {
-      "name": "node-test",
-      "source": "reindex-local",
-      "version": null,
-      "hash": "e7b83c0c858ea2af1be3e9cd62ee6ca70113bd66e2f0e7297e3cc2cc911e0804",
-      "signature_status": "UNSIGNED",
-      "trust_tier": "COMMUNITY",
-      "trust_score": 56,
-      "tier_reason": [
-        "local/custom source",
-        "unsigned package"
-      ],
-      "tier_updated_at": "2026-02-24T05:08:26.727828Z",
-      "installed_at": "2026-02-24T05:08:26.727828Z",
-      "admission_risk": "suspicious"
-    },
     "receiving-code-review": {
       "name": "receiving-code-review",
       "source": "obra/superpowers",

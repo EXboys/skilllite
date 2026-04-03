@@ -6,7 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use tauri::Emitter;
 
-use super::chat::ChatConfigOverrides;
+use super::chat::{merge_dotenv_with_chat_overrides, ChatConfigOverrides};
 use super::paths::{find_project_root, load_dotenv_for_child};
 
 // ─── List skills & repair-skills (evolution) ───────────────────────────────────
@@ -323,6 +323,109 @@ fn workspace_env_lookup(workspace: &str, key: &str) -> Option<String> {
         .or_else(|| std::env::var(key).ok())
 }
 
+fn is_evolution_runtime_env_key(k: &str) -> bool {
+    use skilllite_core::config::env_keys::evolution as evo;
+    k == evo::SKILLLITE_EVOLUTION
+        || k == evo::SKILLLITE_MAX_EVOLUTIONS_PER_DAY
+        || k.starts_with("SKILLLITE_EVO")
+        || k.starts_with("SKILLLITE_EVOLUTION_")
+}
+
+/// 将合并后的子进程环境变量中、与进化运行时相关的键同步到当前进程，供 `run_evolution` 内 `from_env()` 读取。
+struct EvolutionRunEnvGuard {
+    prev: Vec<(String, Option<String>)>,
+}
+
+impl EvolutionRunEnvGuard {
+    fn push_from_merged(m: &std::collections::HashMap<String, String>) -> Self {
+        let mut prev = Vec::new();
+        for (k, v) in m.iter() {
+            if !is_evolution_runtime_env_key(k) {
+                continue;
+            }
+            prev.push((k.clone(), std::env::var(k).ok()));
+            std::env::set_var(k, v);
+        }
+        Self { prev }
+    }
+}
+
+impl Drop for EvolutionRunEnvGuard {
+    fn drop(&mut self) {
+        for (k, ov) in self.prev.drain(..) {
+            match ov {
+                Some(val) => std::env::set_var(&k, val),
+                None => std::env::remove_var(&k),
+            }
+        }
+    }
+}
+
+fn effective_evolution_interval_secs(
+    workspace: &str,
+    cfg: Option<&ChatConfigOverrides>,
+) -> u64 {
+    use skilllite_core::config::env_keys::evolution as evo_env;
+    if let Some(c) = cfg {
+        if let Some(n) = c.evolution_interval_secs.filter(|&n| n > 0) {
+            return n;
+        }
+    }
+    workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_INTERVAL_SECS)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1800)
+}
+
+fn effective_evolution_decision_threshold(
+    workspace: &str,
+    cfg: Option<&ChatConfigOverrides>,
+) -> i64 {
+    use skilllite_core::config::env_keys::evolution as evo_env;
+    if let Some(c) = cfg {
+        if let Some(n) = c.evolution_decision_threshold.filter(|&n| n > 0) {
+            return i64::from(n);
+        }
+    }
+    workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10)
+}
+
+fn effective_evo_profile_key(workspace: &str, cfg: Option<&ChatConfigOverrides>) -> &'static str {
+    use skilllite_core::config::env_keys::evolution as evo_env;
+    if let Some(c) = cfg {
+        if let Some(ref p) = c.evo_profile {
+            let t = p.trim();
+            if t == "demo" {
+                return "demo";
+            }
+            if t == "conservative" {
+                return "conservative";
+            }
+        }
+    }
+    match workspace_env_lookup(workspace, evo_env::SKILLLITE_EVO_PROFILE).as_deref() {
+        Some("demo") => "demo",
+        Some("conservative") => "conservative",
+        _ => "default",
+    }
+}
+
+fn effective_evo_cooldown_hours(workspace: &str, cfg: Option<&ChatConfigOverrides>) -> f64 {
+    use skilllite_core::config::env_keys::evolution as evo_env;
+    if let Some(c) = cfg {
+        if let Some(h) = c
+            .evo_cooldown_hours
+            .filter(|h| h.is_finite() && *h >= 0.0)
+        {
+            return h;
+        }
+    }
+    workspace_env_lookup(workspace, evo_env::SKILLLITE_EVO_COOLDOWN_HOURS)
+        .and_then(|v| v.parse().ok())
+        .unwrap_or_else(|| skilllite_evolution::EvolutionThresholds::default().cooldown_hours)
+}
+
 fn evolution_mode_from_workspace(workspace: &str) -> skilllite_evolution::EvolutionMode {
     use skilllite_core::config::env_keys::evolution as evo_env;
     match workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION).as_deref() {
@@ -345,19 +448,14 @@ fn evolution_mode_from_workspace(workspace: &str) -> skilllite_evolution::Evolut
 pub fn evolution_growth_due(
     workspace: &str,
     last_periodic_spawn_unix: &std::sync::Mutex<Option<i64>>,
+    cfg: Option<&ChatConfigOverrides>,
 ) -> bool {
     let mode = evolution_mode_from_workspace(workspace);
     if mode.is_disabled() {
         return false;
     }
-    use skilllite_core::config::env_keys::evolution as evo_env;
-    let interval_secs: u64 = workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_INTERVAL_SECS)
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1800);
-    let threshold: i64 =
-        workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(10);
+    let interval_secs = effective_evolution_interval_secs(workspace, cfg);
+    let threshold = effective_evolution_decision_threshold(workspace, cfg);
 
     let chat_root = skilllite_core::paths::chat_root();
     let count: i64 = skilllite_evolution::feedback::open_evolution_db(&chat_root)
@@ -418,6 +516,9 @@ pub struct EvolutionStatusPayload {
     pub mode_label: String,
     pub interval_secs: u64,
     pub decision_threshold: i64,
+    /// `default` / `demo` / `conservative`（应用内覆盖优先于工作区 `.env`）。
+    pub evo_profile_key: String,
+    pub evo_cooldown_hours: f64,
     pub unprocessed_decisions: i64,
     pub last_run_ts: Option<String>,
     pub judgement_label: Option<String>,
@@ -428,18 +529,17 @@ pub struct EvolutionStatusPayload {
 }
 
 /// Evolution feedback DB + schedule hints for the assistant UI.
-pub fn load_evolution_status(workspace: &str) -> EvolutionStatusPayload {
-    use skilllite_core::config::env_keys::evolution as evo_env;
+pub fn load_evolution_status(
+    workspace: &str,
+    cfg: Option<ChatConfigOverrides>,
+) -> EvolutionStatusPayload {
     let mode = evolution_mode_from_workspace(workspace);
     let (mode_key, mode_label) = evolution_mode_labels(&mode);
 
-    let interval_secs: u64 = workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_INTERVAL_SECS)
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(1800);
-    let decision_threshold: i64 =
-        workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(10);
+    let interval_secs = effective_evolution_interval_secs(workspace, cfg.as_ref());
+    let decision_threshold = effective_evolution_decision_threshold(workspace, cfg.as_ref());
+    let evo_profile_key = effective_evo_profile_key(workspace, cfg.as_ref()).to_string();
+    let evo_cooldown_hours = effective_evo_cooldown_hours(workspace, cfg.as_ref());
 
     let chat_root = skilllite_core::paths::chat_root();
     let mut pending_skill_count = 0;
@@ -499,6 +599,8 @@ pub fn load_evolution_status(workspace: &str) -> EvolutionStatusPayload {
         mode_label: mode_label.to_string(),
         interval_secs,
         decision_threshold,
+        evo_profile_key,
+        evo_cooldown_hours,
         unprocessed_decisions,
         last_run_ts,
         judgement_label,
@@ -815,6 +917,12 @@ pub fn trigger_evolution_run(
     if api_key.trim().is_empty() {
         return Err("执行 evolution run 失败: 缺少 API key（请配置 SKILLLITE_API_KEY 或 OPENAI_API_KEY）".to_string());
     }
+
+    let dotenv = load_dotenv_for_child(workspace);
+    let merged_vec = merge_dotenv_with_chat_overrides(dotenv, overrides.as_ref());
+    let merged_map: std::collections::HashMap<String, String> =
+        merged_vec.into_iter().collect();
+    let _evo_env_guard = EvolutionRunEnvGuard::push_from_merged(&merged_map);
 
     let llm = skilllite_agent::llm::LlmClient::new(&api_base, &api_key)
         .map_err(|e| format!("执行 evolution run 失败: 初始化 LLM 客户端失败: {}", e))?;

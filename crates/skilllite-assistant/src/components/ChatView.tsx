@@ -384,11 +384,19 @@ export default function ChatView() {
 
   const handleClarify = async (id: string, action: string, hint?: string) => {
     try {
-      await invoke("skilllite_clarify", { action, hint: hint ?? null });
+      const hintParam =
+        hint != null && hint.trim().length > 0 ? hint : null;
+      await invoke("skilllite_clarify", { action, hint: hintParam });
+      const selectedLabel =
+        action === "stop"
+          ? "stop"
+          : hintParam != null
+            ? hintParam
+            : t("chat.clarifyContinueNoHint");
       setMessages((prev) =>
         prev.map((m) =>
           m.type === "clarification" && m.id === id
-            ? { ...m, resolved: true, selectedOption: action === "stop" ? "stop" : hint }
+            ? { ...m, resolved: true, selectedOption: selectedLabel }
             : m
         )
       );
@@ -430,6 +438,7 @@ export default function ChatView() {
             last_run_ts: string | null;
           }>("skilllite_load_evolution_status", {
             workspace: settings.workspace || ".",
+            config: buildAssistantBridgeConfig(settings),
           });
           progressNotice += ` 当前未进化决策: ${s.unprocessed_decisions}，待确认技能: ${s.pending_skill_count}` +
             (s.last_run_ts ? `，上次进化运行: ${s.last_run_ts}` : "");
@@ -551,7 +560,7 @@ export default function ChatView() {
     setLoading(true);
 
     // Always pass `config` (may be `{}`) so the bridge can clear SKILLLITE_SWARM_URL when Swarm
-    // is off in settings; otherwise .env would still enable delegation.
+    // is off in settings; otherwise workspace-saved env would still enable delegation.
     const config = buildAssistantBridgeConfig(settings);
 
     try {
@@ -589,6 +598,7 @@ export default function ChatView() {
     settings.swarmUrl,
     settings.maxIterations,
     settings.maxToolCallsPerTask,
+    settings.locale,
     currentSessionKey,
     statusActions,
     t,

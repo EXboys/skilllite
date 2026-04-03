@@ -128,6 +128,7 @@ function MessageBubbleInner({
   onClarify,
   onEvolutionAction,
 }: MessageBubbleProps) {
+  const { t } = useI18n();
   if (message.type === "user") {
     return (
       <div className="flex justify-end">
@@ -366,6 +367,13 @@ function MessageBubbleInner({
           ) : (
             onClarify && (
               <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => onClarify(message.id, "continue")}
+                  className="px-3 py-1.5 text-sm rounded-md border-2 border-accent/40 bg-white dark:bg-paper-dark text-accent dark:text-blue-300 font-semibold hover:bg-accent/10 transition-colors"
+                >
+                  {t("chat.clarifyContinueNoHint")}
+                </button>
                 {message.suggestions.map((s) => (
                   <button
                     key={s}
@@ -381,7 +389,7 @@ function MessageBubbleInner({
                   onClick={() => onClarify(message.id, "stop")}
                   className="px-3 py-1.5 text-sm rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
                 >
-                  停止
+                  {t("chat.stop")}
                 </button>
               </div>
             )

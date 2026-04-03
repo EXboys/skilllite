@@ -107,6 +107,7 @@ impl AgentConfig {
             enable_memory_vector: flags.enable_memory_vector,
             enable_task_planning: flags.enable_task_planning,
             max_consecutive_failures: Some(5),
+            context_append: crate::locale_prompt::context_append_from_ui_locale_env(),
             ..Default::default()
         }
     }

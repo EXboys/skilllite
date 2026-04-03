@@ -24,7 +24,16 @@ async fn skilllite_chat_stream(
     let clar = (*clar_state).clone();
     let proc = (*process_state).clone();
     tauri::async_runtime::spawn_blocking(move || {
-        skilllite_bridge::chat_stream(window, message, workspace, config, session_key, conf, clar, proc)
+        skilllite_bridge::chat_stream(
+            window,
+            message,
+            workspace,
+            config,
+            session_key,
+            conf,
+            clar,
+            proc,
+        )
     })
     .await
     .map_err(|e| e.to_string())?
@@ -307,15 +316,20 @@ async fn skilllite_write_workspace_file(
 #[tauri::command]
 async fn skilllite_load_evolution_status(
     workspace: Option<String>,
+    config: Option<skilllite_bridge::ChatConfigOverrides>,
 ) -> skilllite_bridge::EvolutionStatusPayload {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
-    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::load_evolution_status(&ws))
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::load_evolution_status(&ws, config)
+    })
         .await
         .unwrap_or_else(|e| skilllite_bridge::EvolutionStatusPayload {
             mode_key: "error".into(),
             mode_label: format!("任务失败: {}", e),
             interval_secs: 1800,
             decision_threshold: 10,
+            evo_profile_key: "default".into(),
+            evo_cooldown_hours: 1.0,
             unprocessed_decisions: 0,
             last_run_ts: None,
             judgement_label: None,

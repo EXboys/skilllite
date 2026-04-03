@@ -90,17 +90,11 @@ pub(crate) fn create_extended_snapshot(
 
     let snap_dir = versions_dir(chat_root).join(txn_id);
     if include_memory {
-        let memory_src = chat_root
-            .join("memory")
-            .join("evolution")
-            .join("knowledge.md");
+        let memory_src = chat_root.join("memory").join("evolution");
         if memory_src.exists() {
-            let memory_dst = snap_dir.join("memory").join("knowledge.md");
-            if let Some(parent) = memory_dst.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::copy(memory_src, memory_dst)?;
-            backed_up.push("memory/evolution/knowledge.md".to_string());
+            let memory_dst = snap_dir.join("memory").join("evolution");
+            copy_dir_recursive(&memory_src, &memory_dst)?;
+            backed_up.push("memory/evolution".to_string());
         }
     }
 
@@ -145,16 +139,25 @@ pub(crate) fn restore_extended_snapshot(
     restore_snapshot(chat_root, txn_id)?;
     let snap_dir = versions_dir(chat_root).join(txn_id);
 
-    let memory_src = snap_dir.join("memory").join("knowledge.md");
-    if memory_src.exists() {
-        let memory_dst = chat_root
-            .join("memory")
-            .join("evolution")
-            .join("knowledge.md");
-        if let Some(parent) = memory_dst.parent() {
+    let memory_tree_src = snap_dir.join("memory").join("evolution");
+    let memory_legacy_src = snap_dir.join("memory").join("knowledge.md");
+    let memory_dst_root = chat_root.join("memory").join("evolution");
+    if memory_tree_src.exists() {
+        if memory_dst_root.exists() {
+            std::fs::remove_dir_all(&memory_dst_root)?;
+        }
+        if let Some(parent) = memory_dst_root.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::copy(memory_src, memory_dst)?;
+        std::fs::create_dir_all(&memory_dst_root)?;
+        copy_dir_recursive(&memory_tree_src, &memory_dst_root)?;
+    } else if memory_legacy_src.exists() {
+        if let Some(parent) = memory_dst_root.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::create_dir_all(&memory_dst_root)?;
+        let legacy_dst = memory_dst_root.join("knowledge.md");
+        std::fs::copy(&memory_legacy_src, &legacy_dst)?;
     }
 
     let skills_src = snap_dir.join("skills").join("_evolved");

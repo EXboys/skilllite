@@ -311,13 +311,14 @@ fn register_agent(reg: &mut CommandRegistry) {
             config.verbose = *verbose;
             config.read_only_tools = *read_only;
             if *read_only {
-                config.context_append = Some(
-                    "Replay is running in read-only evaluation mode. \
-                     You must not modify files, write outputs, write memory, execute shell commands, \
-                     start preview servers, delegate tasks, or execute skills. \
-                     Only inspect the workspace and report findings."
-                        .to_string(),
-                );
+                config.context_append =
+                    skilllite_agent::locale_prompt::merge_ui_locale_env_into_context_append(Some(
+                        "Replay is running in read-only evaluation mode. \
+                         You must not modify files, write outputs, write memory, execute shell commands, \
+                         start preview servers, delegate tasks, or execute skills. \
+                         Only inspect the workspace and report findings."
+                            .to_string(),
+                    ));
             }
             config.enable_task_planning = true;
             config.enable_memory = true;

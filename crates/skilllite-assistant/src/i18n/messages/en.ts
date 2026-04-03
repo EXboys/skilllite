@@ -101,6 +101,7 @@ export const enMessages: Record<string, string> = {
   "chat.timelineNeedsAction": "Action needed",
   "chat.timelineNeedsActionHint":
     "Expand this block to allow/deny execution or pick a clarification option.",
+  "chat.clarifyContinueNoHint": "Continue without extra input",
   "chat.plannerNudgeFoldSummary": "Task-planning continuation hint (internal — expand)",
   "chat.readFileTabEdit": "Edit",
   "chat.readFileTabPreview": "Preview",
@@ -155,6 +156,32 @@ export const enMessages: Record<string, string> = {
   "lifePulse.toggleWake": "Click to wake",
   "lifePulse.toggleRest": "Click to rest",
 
+  "evolution.profile.default": "Default (match workspace-saved values)",
+  "evolution.profile.demo": "Demo (evolve more often)",
+  "evolution.profile.conservative": "Conservative (fewer runs, lower cost)",
+  "evolution.thresholds.title": "In-app tuning (same as background jobs after Save)",
+  "evolution.thresholds.interval": "Check interval (seconds)",
+  "evolution.thresholds.intervalHint":
+    "Life Pulse check period; leave empty to keep the workspace default, usually 1800 (30 min)",
+  "evolution.thresholds.decision": "Decision-count trigger threshold",
+  "evolution.thresholds.decisionHint":
+    "Fires when unprocessed decisions ≥ this; leave empty to keep the workspace default (10)",
+  "evolution.thresholds.profile": "Threshold preset",
+  "evolution.thresholds.profileHint":
+    "Demo / Conservative override the values used under Default; Default follows what is saved for the workspace",
+  "evolution.thresholds.profileInherit": "Default (follow workspace)",
+  "evolution.thresholds.cooldown": "Passive cooldown (hours)",
+  "evolution.thresholds.cooldownHint":
+    "Passive proposals are unlikely below this gap since last run; leave empty to keep the workspace default",
+  "evolution.thresholds.note":
+    "Empty fields mean “do not override in the app”. Chat and Life Pulse use the same merge rules; advanced details are in the environment-variable section of the docs.",
+  "evolution.adjustInSettingsHint":
+    "Check interval, decision threshold, profile preset, passive cooldown: open Settings from the header, choose the Evolution tab, edit, and Save; the summary below reflects saved values.",
+  "evolution.detailEnvHint":
+    "Power users can also set the same keys via environment variables for the workspace (see docs). Set SKILLLITE_EVOLUTION_SNAPSHOT_KEEP=0 to keep all prompt snapshots; SKILLLITE_EVOLUTION=0 disables evolution.",
+  "evolution.summary.profile": "Threshold preset",
+  "evolution.summary.cooldown": "Passive cooldown",
+
   "status.noLogs": "No logs yet",
   "status.moreFiles": "+ {n} files",
   "status.noOutput": "No output files yet",
@@ -207,12 +234,15 @@ export const enMessages: Record<string, string> = {
   "settings.tab.llm": "Model & API",
   "settings.tab.workspace": "Workspace & sandbox",
   "settings.tab.agent": "Agent budget",
+  "settings.tab.evolution": "Evolution",
   "settings.tab.schedule": "Schedule",
+  "settings.evolutionIntro":
+    "These values drive background evolution scheduling (same rules as chat, periodic checks, and manual runs). Anything you fill in here overrides workspace-saved defaults. Click Save to apply.",
   "settings.providerMode": "Provider",
   "settings.providerApi": "API key",
   "settings.providerOllama": "Local Ollama",
   "settings.apiKey": "API key",
-  "settings.apiKeyHint": "sk-… (leave empty to use OPENAI_API_KEY from .env)",
+  "settings.apiKeyHint": "sk-… (leave empty to use a key already configured on this machine or workspace)",
   "settings.model": "Model",
   "settings.modelPlaceholder": "Choose model",
   "settings.apiBase": "API base URL (optional)",
@@ -247,7 +277,7 @@ export const enMessages: Record<string, string> = {
   "settings.defaultPlaceholder50": "default 50",
   "settings.defaultPlaceholder15": "default 15",
   "settings.agentBudgetHint":
-    "Empty = use workspace .env or built-in defaults (SKILLLITE_MAX_ITERATIONS, SKILLLITE_MAX_TOOL_CALLS_PER_TASK).",
+    "Empty = use built-in or workspace-saved defaults (SKILLLITE_MAX_ITERATIONS, SKILLLITE_MAX_TOOL_CALLS_PER_TASK).",
   "settings.scheduleIntro":
     "While the app runs, due scheduled jobs run via Life Pulse (~30s). Config is .skilllite/schedule.json, shared with CLI skilllite schedule tick. Set SKILLLITE_SCHEDULE_ENABLED=1 to run for real.",
   "settings.scheduleLoading": "Loading schedule…",

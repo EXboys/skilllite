@@ -251,6 +251,8 @@ async fn run_simple_loop(
     let max_no_tool_retries = 3;
     let mut task_completed = true;
     let mut clarification_count = 0usize;
+    // Set after a tool batch runs without disclosure/failure-limit and all new calls succeed.
+    let mut after_successful_tool_batch = false;
 
     let tools_ref = if all_tools.is_empty() {
         None
@@ -328,12 +330,18 @@ async fn run_simple_loop(
                 max_no_tool_retries,
                 event_sink,
                 &mut messages,
+                after_successful_tool_batch,
             ) {
                 ReflectionOutcome::Nudge(msg) => {
+                    after_successful_tool_batch = false;
                     messages.push(ChatMessage::user(&msg));
                     continue;
                 }
+                ReflectionOutcome::Complete => {
+                    break;
+                }
                 ReflectionOutcome::Break => {
+                    after_successful_tool_batch = false;
                     if let ClarifyAction::Continue = try_clarify(
                         "no_progress",
                         "Agent 多次尝试后无法继续执行任务，可能需要更多信息。",
@@ -347,7 +355,15 @@ async fn run_simple_loop(
                     }
                     break;
                 }
-                ReflectionOutcome::Continue => continue,
+                ReflectionOutcome::Continue => {
+                    after_successful_tool_batch = false;
+                    continue;
+                }
+                ReflectionOutcome::SoftNudge(msg) => {
+                    after_successful_tool_batch = false;
+                    messages.push(ChatMessage::user(&msg));
+                    continue;
+                }
             }
         }
 
@@ -358,6 +374,7 @@ async fn run_simple_loop(
             _ => continue,
         };
 
+        let tools_before = state.total_tool_calls;
         let outcome = execute_tool_batch_simple(
             &tool_calls,
             &registry,
@@ -376,9 +393,11 @@ async fn run_simple_loop(
         .await;
 
         if outcome.disclosure_injected {
+            after_successful_tool_batch = false;
             continue;
         }
         if outcome.failure_limit_reached {
+            after_successful_tool_batch = false;
             tracing::warn!(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
@@ -404,8 +423,18 @@ async fn run_simple_loop(
             break;
         }
 
-        // Global tool call depth limit
-        if state.total_tool_calls >= config.max_iterations * config.max_tool_calls_per_task {
+        let new_tools = state.total_tool_calls.saturating_sub(tools_before);
+        after_successful_tool_batch = new_tools > 0 && state.consecutive_failures == 0;
+
+        // 全局工具次数上限：`tool_call_budget_extension` 初值为 0 时，条件与原先
+        // `total_tool_calls >= max_iterations * max_tool_calls_per_task` 完全相同。
+        // 根因修复：用户在该处澄清里选「继续」后若不加 extension，下一轮会立刻再次命中
+        // 同一条件，表现为「点了继续却没有继续」。每批准一次，追加一整块同名乘积额度。
+        let base_tool_cap = config
+            .max_iterations
+            .saturating_mul(config.max_tool_calls_per_task);
+        if state.total_tool_calls >= base_tool_cap.saturating_add(state.tool_call_budget_extension)
+        {
             tracing::warn!("Agent loop reached total tool call limit");
             if let ClarifyAction::Continue = try_clarify(
                 "tool_call_limit",
@@ -415,6 +444,15 @@ async fn run_simple_loop(
                 event_sink,
                 &mut messages,
             ) {
+                state.tool_call_budget_extension = state
+                    .tool_call_budget_extension
+                    .saturating_add(base_tool_cap);
+                tracing::info!(
+                    total_tool_calls = state.total_tool_calls,
+                    base_tool_cap,
+                    tool_call_budget_extension = state.tool_call_budget_extension,
+                    "User chose continue after tool_call_limit; extended cap by one base chunk"
+                );
                 continue;
             }
             task_completed = false;
@@ -512,6 +550,7 @@ async fn run_with_task_planning(
     let mut clarification_count = 0usize;
     let mut total_stuck_iterations = 0usize;
     const MAX_TOTAL_STUCK: usize = 8;
+    let mut after_successful_tool_batch = false;
 
     let num_tasks = planner.task_list.len();
     let effective_max = if num_tasks == 0 {
@@ -612,8 +651,10 @@ async fn run_with_task_planning(
                 max_no_tool_retries,
                 event_sink,
                 &mut messages,
+                after_successful_tool_batch,
             ) {
                 ReflectionOutcome::Nudge(msg) => {
+                    after_successful_tool_batch = false;
                     total_stuck_iterations += 1;
                     if total_stuck_iterations >= MAX_TOTAL_STUCK {
                         tracing::warn!(
@@ -626,7 +667,13 @@ async fn run_with_task_planning(
                     messages.push(ChatMessage::user(&msg));
                     continue;
                 }
+                ReflectionOutcome::SoftNudge(msg) => {
+                    after_successful_tool_batch = false;
+                    messages.push(ChatMessage::user(&msg));
+                    continue;
+                }
                 ReflectionOutcome::Break => {
+                    after_successful_tool_batch = false;
                     if !planner.all_completed() {
                         if let ClarifyAction::Continue = try_clarify(
                             "no_progress",
@@ -643,7 +690,10 @@ async fn run_with_task_planning(
                     }
                     break;
                 }
-                _ => continue,
+                ReflectionOutcome::Continue | ReflectionOutcome::Complete => {
+                    after_successful_tool_batch = false;
+                    continue;
+                }
             }
         }
 
@@ -692,9 +742,11 @@ async fn run_with_task_planning(
         }
 
         if outcome.disclosure_injected {
+            after_successful_tool_batch = false;
             continue;
         }
         if outcome.failure_limit_reached {
+            after_successful_tool_batch = false;
             tracing::warn!(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
@@ -718,6 +770,7 @@ async fn run_with_task_planning(
             }
             break;
         }
+        after_successful_tool_batch = new_calls > 0 && state.consecutive_failures == 0;
         if suppressed_planning_text && !planner.all_completed() {
             if let Some(nudge) = planner.build_nudge_message() {
                 messages.push(ChatMessage::user(&format!(
@@ -800,8 +853,11 @@ async fn run_with_task_planning(
             messages.push(ChatMessage::system(&focus_msg));
         }
 
-        // Global tool call depth limit
-        if state.total_tool_calls >= effective_max * config.max_tool_calls_per_task {
+        // 同简单循环：`extension==0` 时等价于原先 `effective_max * max_tool_calls_per_task`；
+        // 「继续」后追加一块 `effective_max * max_tool_calls_per_task`，否则会继续误判上限。
+        let base_tool_cap = effective_max.saturating_mul(config.max_tool_calls_per_task);
+        if state.total_tool_calls >= base_tool_cap.saturating_add(state.tool_call_budget_extension)
+        {
             tracing::warn!("Agent loop reached total tool call limit");
             if let ClarifyAction::Continue = try_clarify(
                 "tool_call_limit",
@@ -811,6 +867,15 @@ async fn run_with_task_planning(
                 event_sink,
                 &mut messages,
             ) {
+                state.tool_call_budget_extension = state
+                    .tool_call_budget_extension
+                    .saturating_add(base_tool_cap);
+                tracing::info!(
+                    total_tool_calls = state.total_tool_calls,
+                    base_tool_cap,
+                    tool_call_budget_extension = state.tool_call_budget_extension,
+                    "User chose continue after tool_call_limit (planning); extended cap by one base chunk"
+                );
                 continue;
             }
             break;
@@ -876,6 +941,24 @@ mod tests {
         assert!(text.contains("2/2"));
         assert!(text.contains("打开 YouTube"));
         assert!(text.contains("搜索 AI 相关内容"));
+    }
+
+    #[test]
+    fn tool_call_limit_user_extension_raises_ceiling_by_base_chunk() {
+        let base_chunk = 50usize;
+        let mut extension = 0usize;
+        assert_eq!(base_chunk.saturating_add(extension), 50);
+        let total_at_limit = 50usize;
+        assert!(
+            total_at_limit >= base_chunk.saturating_add(extension),
+            "at-limit total should meet initial ceiling"
+        );
+        extension = extension.saturating_add(base_chunk);
+        assert_eq!(base_chunk.saturating_add(extension), 100);
+        assert!(
+            total_at_limit < base_chunk.saturating_add(extension),
+            "same total should be under raised ceiling until more tools run"
+        );
     }
 
     #[test]
