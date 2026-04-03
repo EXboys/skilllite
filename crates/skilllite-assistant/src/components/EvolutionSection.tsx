@@ -5,12 +5,18 @@ import { PromptDiffView } from "./PromptDiffView";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUiToastStore } from "../stores/useUiToastStore";
 import {
+  evolutionAcceptanceStatusLabel,
   evolutionBacklogNoteForDisplay,
+  evolutionBacklogStatusLabel,
+  evolutionLogEventTypeLabel,
+  evolutionLogReasonForDisplay,
+  evolutionLogTargetLine,
   prependNoMaterialHelpIfNeeded,
 } from "../utils/evolutionDisplay";
 import { parseDetailWorkspaceFromUrl } from "../utils/detailWindow";
 import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
 import { useI18n } from "../i18n";
+import type { Locale } from "../i18n/translate";
 
 export interface EvolutionLogEntryDto {
   ts: string;
@@ -428,7 +434,8 @@ type EvolutionDetailTab = "run" | "review" | "changes";
 
 /** 独立详情窗口：分 tab（运行 / 审核 / 变更）避免单页过长 */
 export function EvolutionDetailBody() {
-  const { t } = useI18n();
+  const { t, locale: localeRaw } = useI18n();
+  const locale: Locale = localeRaw === "en" ? "en" : "zh";
   const { settings } = useSettingsStore();
   const { status, loading, error, refresh, workspace } = useEvolutionStatus();
   const [detailTab, setDetailTab] = useState<EvolutionDetailTab>("run");
@@ -660,11 +667,17 @@ export function EvolutionDetailBody() {
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="font-mono text-ink dark:text-ink-dark">{row.proposal_id}</span>
                   <span className="text-ink-mute dark:text-ink-dark-mute">[{row.source}]</span>
-                  <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300">
-                    {row.status}
+                  <span
+                    className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300"
+                    title={row.status}
+                  >
+                    {evolutionBacklogStatusLabel(row.status)}
                   </span>
-                  <span className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300">
-                    {row.acceptance_status}
+                  <span
+                    className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300"
+                    title={row.acceptance_status}
+                  >
+                    {evolutionAcceptanceStatusLabel(row.acceptance_status)}
                   </span>
                   <span className="text-ink-mute dark:text-ink-dark-mute">
                     risk={row.risk_level} ROI={row.roi_score.toFixed(2)}
@@ -707,7 +720,7 @@ export function EvolutionDetailBody() {
                     }}
                     disabled={triggeringProposalId !== null}
                     className="ml-auto px-2 py-0.5 rounded border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50"
-                    title="手动触发一次 evolution run（全局调度，不保证只执行当前 proposal）"
+                    title="对此提案强制触发一轮进化（后端会设置 SKILLLITE_EVO_FORCE_PROPOSAL_ID 并 force 执行该 proposal）"
                   >
                     {triggeringProposalId === row.proposal_id ? "触发中…" : "立即执行"}
                   </button>
@@ -741,12 +754,19 @@ export function EvolutionDetailBody() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">最近进化事件</h2>
+        <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">
+          {t("evolution.log.sectionRecent")}
+        </h2>
         {!s?.recent_events.length ? (
-          <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">暂无事件记录</p>
+          <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
+            {t("evolution.log.noEvents")}
+          </p>
         ) : (
           <ul className="space-y-2 text-xs">
-            {s.recent_events.map((e, i) => (
+            {s.recent_events.map((e, i) => {
+              const reasonShown = evolutionLogReasonForDisplay(e.reason ?? null, locale);
+              const targetShown = evolutionLogTargetLine(e.target_id, locale);
+              return (
               <li
                 key={`${e.ts}-${e.event_type}-${i}`}
                 className="border-b border-border/40 dark:border-border-dark/40 pb-2 last:border-0"
@@ -757,21 +777,27 @@ export function EvolutionDetailBody() {
                     <div className="text-ink-mute dark:text-ink-dark-mute font-mono text-[11px]">
                       {formatTs(e.ts)}
                     </div>
-                    <div className="font-medium text-ink dark:text-ink-dark">{e.event_type}</div>
-                    {e.target_id && (
+                    <div
+                      className="font-medium text-ink dark:text-ink-dark"
+                      title={e.event_type}
+                    >
+                      {evolutionLogEventTypeLabel(e.event_type, locale)}
+                    </div>
+                    {targetShown && (
                       <div className="text-ink-mute dark:text-ink-dark-mute truncate">
-                        target: {e.target_id}
+                        {targetShown}
                       </div>
                     )}
-                    {e.reason && (
+                    {reasonShown && (
                       <p className="text-ink-mute dark:text-ink-dark-mute mt-0.5 whitespace-pre-wrap break-words">
-                        {e.reason.length > 280 ? `${e.reason.slice(0, 280)}…` : e.reason}
+                        {reasonShown.length > 280 ? `${reasonShown.slice(0, 280)}…` : reasonShown}
                       </p>
                     )}
                   </div>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>

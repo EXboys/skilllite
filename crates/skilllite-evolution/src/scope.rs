@@ -992,9 +992,12 @@ fn should_evolve_impl(
 
     let thresholds = EvolutionThresholds::from_env();
 
+    // Only count real evolution runs for the daily cap. Scheduler "pings" that log
+    // `evolution_run_outcome` (e.g. NoScope) must not consume the budget or they block forever.
     let today_evolutions: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM evolution_log WHERE date(ts) = date('now')",
+            "SELECT COUNT(*) FROM evolution_log
+             WHERE date(ts) = date('now') AND type = 'evolution_run'",
             [],
             |row| row.get(0),
         )
@@ -1008,12 +1011,15 @@ fn should_evolve_impl(
     }
 
     if !force {
+        // Cooldown is time since the last *completed evolution run*, not since the last
+        // `evolution_run_outcome` row (NoScope / SkippedBusy would otherwise reset cooldown
+        // every scheduler tick and passive evolution never opens).
         let last_evo_hours: f64 = conn
             .query_row(
                 "SELECT COALESCE(
                     (julianday('now') - julianday(MAX(ts))) * 24,
                     999.0
-                ) FROM evolution_log",
+                ) FROM evolution_log WHERE type = 'evolution_run'",
                 [],
                 |row| row.get(0),
             )
