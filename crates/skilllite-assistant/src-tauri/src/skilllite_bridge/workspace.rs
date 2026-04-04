@@ -4,8 +4,18 @@ use base64::Engine;
 use serde::Serialize;
 
 use super::paths::{
-    skilllite_chat_root, validate_chat_subdir_relative, validate_transcript_log_filename,
+    find_project_root, skilllite_chat_root, validate_chat_subdir_relative,
+    validate_transcript_log_filename,
 };
+
+/// Agent `write_output` / 截图等使用的目录：当前 UI 工作区工程根下的 `output/`。
+fn workspace_output_dir(workspace: Option<&str>) -> std::path::PathBuf {
+    let raw = workspace
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(".");
+    find_project_root(raw).join("output")
+}
 
 /// Task step from plan JSON.
 #[derive(Debug, Clone, Serialize)]
@@ -32,10 +42,12 @@ pub struct RecentData {
 }
 
 /// Open a directory in the system file manager.
-pub fn open_directory(module: &str) -> Result<(), String> {
+///
+/// `workspace` 用于解析工程根下的 `output/`（与 agent 默认 `SKILLLITE_OUTPUT_DIR` 一致）；其它模块仍使用全局 chat 根。
+pub fn open_directory(module: &str, workspace: Option<String>) -> Result<(), String> {
     let chat_root = skilllite_chat_root();
     let path = match module {
-        "output" => chat_root.join("output"),
+        "output" => workspace_output_dir(workspace.as_deref()),
         "memory" => chat_root.join("memory"),
         "plan" => chat_root.join("plans"),
         "log" => chat_root.join("transcripts"),
@@ -261,11 +273,10 @@ pub fn read_log_file(filename: &str) -> Result<String, String> {
     std::fs::read_to_string(&full_path).map_err(|e| e.to_string())
 }
 
-fn load_output_files(chat_root: &std::path::Path) -> Vec<String> {
-    let output_dir = chat_root.join("output");
+fn load_output_files_from_dir(output_dir: &std::path::Path) -> Vec<String> {
     let mut out = Vec::new();
     if output_dir.exists() {
-        collect_output_files_inner(&output_dir, &output_dir, &mut out);
+        collect_output_files_inner(output_dir, output_dir, &mut out);
     }
     sort_newest_first(out)
 }
@@ -345,27 +356,38 @@ fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
     Some(RecentPlan { task, steps })
 }
 
-pub fn load_recent() -> RecentData {
+pub fn load_recent(workspace: Option<String>) -> RecentData {
     let chat_root = skilllite_chat_root();
-    if !chat_root.exists() {
-        return RecentData {
-            memory_files: vec![],
-            output_files: vec![],
-            log_files: vec![],
-            plan: None,
-        };
-    }
+    let output_dir = workspace_output_dir(workspace.as_deref());
 
     let root = chat_root.clone();
-    let mem_handle = std::thread::spawn(move || load_memory_files(&root));
+    let mem_handle = std::thread::spawn(move || {
+        if root.exists() {
+            load_memory_files(&root)
+        } else {
+            vec![]
+        }
+    });
+
+    let out_handle = std::thread::spawn(move || load_output_files_from_dir(&output_dir));
 
     let root = chat_root.clone();
-    let out_handle = std::thread::spawn(move || load_output_files(&root));
+    let log_handle = std::thread::spawn(move || {
+        if root.exists() {
+            load_log_files(&root)
+        } else {
+            vec![]
+        }
+    });
 
     let root = chat_root.clone();
-    let log_handle = std::thread::spawn(move || load_log_files(&root));
-
-    let plan_handle = std::thread::spawn(move || load_plan_data(&chat_root));
+    let plan_handle = std::thread::spawn(move || {
+        if root.exists() {
+            load_plan_data(&root)
+        } else {
+            None
+        }
+    });
 
     let memory_files = mem_handle.join().unwrap_or_default();
     let output_files = out_handle.join().unwrap_or_default();
@@ -380,21 +402,24 @@ pub fn load_recent() -> RecentData {
     }
 }
 
-pub fn read_output_file(relative_path: &str) -> Result<String, String> {
+pub fn read_output_file(relative_path: &str, workspace: Option<String>) -> Result<String, String> {
     validate_chat_subdir_relative(relative_path)?;
-    let chat_root = skilllite_chat_root();
-    let full_path = chat_root.join("output").join(relative_path);
-    if !full_path.starts_with(&chat_root) {
+    let base = workspace_output_dir(workspace.as_deref());
+    let full_path = base.join(relative_path);
+    if !full_path.starts_with(&base) {
         return Err("Path escape".to_string());
     }
     std::fs::read_to_string(&full_path).map_err(|e| e.to_string())
 }
 
-pub fn read_output_file_base64(relative_path: &str) -> Result<String, String> {
+pub fn read_output_file_base64(
+    relative_path: &str,
+    workspace: Option<String>,
+) -> Result<String, String> {
     validate_chat_subdir_relative(relative_path)?;
-    let chat_root = skilllite_chat_root();
-    let full_path = chat_root.join("output").join(relative_path);
-    if !full_path.starts_with(&chat_root) {
+    let base = workspace_output_dir(workspace.as_deref());
+    let full_path = base.join(relative_path);
+    if !full_path.starts_with(&base) {
         return Err("Path escape".to_string());
     }
     let bytes = std::fs::read(&full_path).map_err(|e| e.to_string())?;

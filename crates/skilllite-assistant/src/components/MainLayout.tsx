@@ -79,7 +79,7 @@ export default function MainLayout() {
 
   useEffect(() => {
     refreshRecentData();
-  }, [refreshRecentData]);
+  }, [refreshRecentData, settings.workspace]);
 
   return (
     <div className="flex flex-col h-screen bg-surface dark:bg-surface-dark">

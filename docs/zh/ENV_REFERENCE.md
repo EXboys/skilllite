@@ -79,7 +79,7 @@
 | `SKILLS_DIR` | string | `./skills` | Skills 目录路径，支持相对/绝对路径（兼容 `./.skills`） |
 | `SKILLLITE_SKILLS_DIR` | string | - | 同上（别名） |
 | `SKILLLITE_SKILLS_REPO` | string | `EXboys/skilllite` | `skilllite init` 在 `skills/` 为空时下载 skills 的 GitHub 仓库（如 `owner/repo`），可自定义 |
-| `SKILLLITE_OUTPUT_DIR` | string | `{workspace_root}/output` | 输出目录，用于报告、图片等 |
+| `SKILLLITE_OUTPUT_DIR` | string | `{workspace}/output` | 输出目录（`write_output`、截图等）。未设置时 `workspace` 与 `SKILLLITE_WORKSPACE` 一致，缺省为**当前工作目录**（桌面聊天子进程的 cwd 为所选工程根） |
 | （内部） | string | 当前工作目录 | 沙箱内 skill 路径根目录；旧变量 `SKILLBOX_SKILLS_ROOT`（暂无 SKILLLITE 命名） |
 
 ---

@@ -143,6 +143,10 @@ export default function ChatView() {
   });
 
   useEffect(() => {
+    refreshRecentData();
+  }, [refreshRecentData, settings.workspace]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const run = async () => {

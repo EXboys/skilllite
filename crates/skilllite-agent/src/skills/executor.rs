@@ -364,7 +364,7 @@ fn execute_bash_in_skill(
 ///
 /// Examples:
 ///   "agent-browser screenshot shot.png"
-///   → "agent-browser screenshot /Users/x/.skilllite/chat/output/shot.png"
+///   → "agent-browser screenshot /Users/x/myproject/output/shot.png"
 ///
 ///   "agent-browser screenshot $SKILLLITE_OUTPUT_DIR/shot.png"
 ///   → unchanged (already uses env var / absolute prefix)

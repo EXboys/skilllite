@@ -31,7 +31,8 @@ use skilllite_evolution::seed;
 /// Resolve the output directory path for prompt injection.
 fn resolve_output_dir() -> String {
     get_output_dir().unwrap_or_else(|| {
-        skilllite_executor::chat_root()
+        let paths = skilllite_core::config::PathsConfig::from_env();
+        skilllite_core::paths::resolve_workspace_filesystem_root(&paths.workspace)
             .join("output")
             .to_string_lossy()
             .to_string()

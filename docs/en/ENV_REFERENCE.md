@@ -79,7 +79,7 @@ When the same variable is set in multiple places, resolution order is (highest â
 | `SKILLS_DIR` | string | `./skills` | Skills directory path, supports relative/absolute paths (compatible with `./.skills`) |
 | `SKILLLITE_SKILLS_DIR` | string | - | Same as above (alias) |
 | `SKILLLITE_SKILLS_REPO` | string | `EXboys/skilllite` | GitHub repo for `skilllite init` to download skills when `skills/` is empty (e.g. `owner/repo`) |
-| `SKILLLITE_OUTPUT_DIR` | string | `{workspace_root}/output` | Output directory for reports, images, etc. |
+| `SKILLLITE_OUTPUT_DIR` | string | `{workspace}/output` | Output directory (`write_output`, screenshots, etc.). When unset, `workspace` matches `SKILLLITE_WORKSPACE`, else **current working directory** (desktop chat child uses the selected project root as cwd). |
 | (internal) | string | Current working directory | Root for skill paths in sandbox; legacy `SKILLBOX_SKILLS_ROOT` (no SKILLLITE name yet) |
 
 ---

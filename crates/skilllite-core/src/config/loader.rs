@@ -228,17 +228,21 @@ pub fn init_daemon_env() {
     set_env_var("SKILLLITE_QUIET", "1");
 }
 
-/// 确保 `SKILLLITE_OUTPUT_DIR` 有值，若未设置则使用 `~/.skilllite/chat/output/`。
+/// 确保 `SKILLLITE_OUTPUT_DIR` 有值，若未设置则使用 `{workspace}/output`。
+///
+/// `workspace` 与 [`super::schema::PathsConfig::workspace`] 一致：来自 `SKILLLITE_WORKSPACE`，否则为当前工作目录。
+/// 与桌面 `agent-rpc`（`current_dir` = 工程根）及 CLI 在仓库内启动时的期望一致。
 ///
 /// 同时创建目录（若不存在）。chat 和 agent-rpc 入口共用。
 pub fn ensure_default_output_dir() {
     let paths = super::PathsConfig::from_env();
     if paths.output_dir.is_none() {
-        let chat_output = crate::paths::chat_root().join("output");
-        let s = chat_output.to_string_lossy().to_string();
+        let default_output =
+            crate::paths::resolve_workspace_filesystem_root(&paths.workspace).join("output");
+        let s = default_output.to_string_lossy().to_string();
         set_env_var("SKILLLITE_OUTPUT_DIR", &s);
-        if !chat_output.exists() {
-            let _ = std::fs::create_dir_all(&chat_output);
+        if !default_output.exists() {
+            let _ = std::fs::create_dir_all(&default_output);
         }
     } else if let Some(ref output_dir) = paths.output_dir {
         let p = std::path::PathBuf::from(output_dir);

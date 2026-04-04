@@ -332,20 +332,6 @@ function SummarySection({
 
 type StatusPanelTab = "evolution" | "archive";
 
-const openDir = (module: string) => () => {
-  invoke("skilllite_open_directory", { module }).catch((err) => {
-    console.error("[skilllite-assistant] skilllite_open_directory failed:", err);
-    useUiToastStore
-      .getState()
-      .show(
-        translate("status.openDirFailed", {
-          module,
-          err: formatInvokeError(err),
-        }),
-        "error"
-      );
-  });
-};
 
 const SKILL_LIST_MAX_HEIGHT = 200;
 
@@ -805,6 +791,23 @@ export default function StatusPanel() {
   const { t } = useI18n();
   const [tab, setTab] = useState<StatusPanelTab>("evolution");
   const { logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();
+  const { settings } = useSettingsStore();
+  const workspace = settings.workspace?.trim() || ".";
+
+  const openDir = (module: string) => () => {
+    invoke("skilllite_open_directory", { module, workspace }).catch((err) => {
+      console.error("[skilllite-assistant] skilllite_open_directory failed:", err);
+      useUiToastStore
+        .getState()
+        .show(
+          translate("status.openDirFailed", {
+            module,
+            err: formatInvokeError(err),
+          }),
+          "error"
+        );
+    });
+  };
 
   const memHasMore = memoryFiles.length > PREVIEW_LIMIT || memoryHints.length > 0 || memoryFiles.length > 0;
   const logHasMore = logFiles.length > 0 || logEntries.length > PREVIEW_LIMIT || logEntries.length > 0;

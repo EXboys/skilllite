@@ -290,7 +290,7 @@ const getImageMime = (path: string): string | null => {
 };
 const isImageFile = (path: string) => IMAGE_EXTENSIONS.some((ext) => path.toLowerCase().endsWith(ext));
 
-function OutputFileContent({ files }: { files: string[] }) {
+function OutputFileContent({ files, workspace }: { files: string[]; workspace: string }) {
   const { t } = useI18n();
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -318,12 +318,14 @@ function OutputFileContent({ files }: { files: string[] }) {
       if (isImageFile(path)) {
         const base64 = await invoke<string>("skilllite_read_output_file_base64", {
           relativePath: path,
+          workspace,
         });
         const mime = getImageMime(path) ?? "image/png";
         setFileContent(`data:${mime};base64,${base64}`);
       } else {
         const content = await invoke<string>("skilllite_read_output_file", {
           relativePath: path,
+          workspace,
         });
         setFileContent(content);
       }
@@ -403,6 +405,8 @@ export default function DetailWindowView() {
   const [module, setModule] = useState<DetailModule | null>(null);
   const { refreshRecentData } = useRecentData();
   const { tasks, logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();
+  const { settings } = useSettingsStore();
+  const workspace = settings.workspace?.trim() || ".";
 
   const titles = useMemo(
     () =>
@@ -422,7 +426,7 @@ export default function DetailWindowView() {
 
   useEffect(() => {
     refreshRecentData();
-  }, [refreshRecentData]);
+  }, [refreshRecentData, workspace]);
 
   // 独立 WebView 与主窗口内存不共享：主窗口写入 persist 后，由此拉取最新 tasks（含 clearPlan 后空计划）
   useEffect(() => {
@@ -490,7 +494,7 @@ export default function DetailWindowView() {
           : module;
   const handleOpenDir = async () => {
     try {
-      await invoke("skilllite_open_directory", { module: dirModule });
+      await invoke("skilllite_open_directory", { module: dirModule, workspace });
     } catch (err) {
       console.error("[skilllite-assistant] skilllite_open_directory failed:", err);
       useUiToastStore
@@ -519,7 +523,9 @@ export default function DetailWindowView() {
         {module === "plan" && <TaskList tasks={tasks} />}
         {module === "mem" && <MemoryContent files={memoryFiles} hints={memoryHints} />}
         {module === "log" && <LogFileContent files={logFiles} entries={logEntries} />}
-        {module === "output" && <OutputFileContent files={outputFiles} />}
+        {module === "output" && (
+          <OutputFileContent files={outputFiles} workspace={workspace} />
+        )}
         {module === "evolution" && <EvolutionDetailBody />}
       </main>
     </div>
