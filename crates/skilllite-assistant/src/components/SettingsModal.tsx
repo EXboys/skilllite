@@ -50,6 +50,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [sandboxLevel, setSandboxLevel] = useState<SandboxLevel>(settings.sandboxLevel ?? 3);
   const [swarmEnabled, setSwarmEnabled] = useState(settings.swarmEnabled ?? false);
   const [swarmUrl, setSwarmUrl] = useState(settings.swarmUrl ?? "");
+  const [autoApproveToolConfirmations, setAutoApproveToolConfirmations] = useState(
+    settings.autoApproveToolConfirmations === true
+  );
   const [maxIterationsStr, setMaxIterationsStr] = useState("");
   const [maxToolCallsPerTaskStr, setMaxToolCallsPerTaskStr] = useState("");
   const [evolutionIntervalStr, setEvolutionIntervalStr] = useState("");
@@ -100,6 +103,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       setSandboxLevel(settings.sandboxLevel ?? 3);
       setSwarmEnabled(settings.swarmEnabled ?? false);
       setSwarmUrl(settings.swarmUrl ?? "");
+      setAutoApproveToolConfirmations(settings.autoApproveToolConfirmations === true);
       setMaxIterationsStr(
         settings.maxIterations != null ? String(settings.maxIterations) : ""
       );
@@ -192,6 +196,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       sandboxLevel,
       swarmEnabled,
       swarmUrl: swarmUrl.trim(),
+      autoApproveToolConfirmations,
       maxIterations: parsePositiveIntField(maxIterationsStr),
       maxToolCallsPerTask: parsePositiveIntField(maxToolCallsPerTaskStr),
       evolutionIntervalSecs: parseEvolutionIntervalSecs(evolutionIntervalStr),
@@ -621,6 +626,36 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             </div>
             <p className="mt-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
               {t("settings.agentBudgetHint")}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-border/60 dark:border-border-dark/50 bg-gray-50/80 dark:bg-surface-dark/35 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className="text-sm text-ink dark:text-ink-dark-mute"
+                title={t("chat.autoApproveToolConfirmationsHint")}
+              >
+                {t("chat.autoApproveToolConfirmations")}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoApproveToolConfirmations}
+                aria-label={t("chat.autoApproveToolConfirmations")}
+                onClick={() => setAutoApproveToolConfirmations(!autoApproveToolConfirmations)}
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors cursor-pointer ${
+                  autoApproveToolConfirmations ? "bg-accent" : "bg-gray-300 dark:bg-gray-600"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+                    autoApproveToolConfirmations ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="mt-2 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+              {t("chat.autoApproveToolConfirmationsHint")}
             </p>
           </div>
           </div>

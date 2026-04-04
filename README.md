@@ -554,7 +554,7 @@ npm run tauri build
 ```
 
 Chat input behavior: `Enter` inserts a new line; submit by clicking the `Send` button.
-Pending **execution confirmations** live inside the collapsible **internal steps** timeline (it auto-expands when action is required; you can enable **auto-allow execution confirmations** under the input on trusted machines).
+Pending **execution confirmations** live inside the collapsible **internal steps** timeline (it auto-expands when action is required; you can enable **auto-allow execution confirmations** in **Settings → Agent budget** or under the input on trusted machines).
 For tool outcomes marked as `partial_success` or `failure`, the assistant shows a multi-option recovery prompt, including `【启动进化】` to enqueue a governed capability-evolution backlog proposal.
 
 See [crates/skilllite-assistant/README.md](./crates/skilllite-assistant/README.md).
