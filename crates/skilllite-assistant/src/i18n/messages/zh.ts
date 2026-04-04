@@ -159,7 +159,7 @@ export const zhMessages: Record<string, string> = {
   "evolution.thresholds.title": "应用内调整（保存后与后台任务一致）",
   "evolution.thresholds.interval": "检查间隔（秒）",
   "evolution.thresholds.intervalHint":
-    "Life Pulse 检查周期；留空则沿用工作区里已有值，默认 1800（30 分钟）",
+    "Life Pulse 检查周期；留空则沿用工作区里已有值，默认 600（10 分钟）",
   "evolution.thresholds.decision": "决策数触发阈值",
   "evolution.thresholds.decisionHint":
     "未进化决策 ≥ 此值会触发；留空则沿用工作区里已有值，默认 10",

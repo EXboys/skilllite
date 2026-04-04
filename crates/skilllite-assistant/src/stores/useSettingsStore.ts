@@ -43,7 +43,7 @@ export interface Settings {
    */
   autoApproveToolConfirmations?: boolean;
   /**
-   * 覆盖 `SKILLLITE_EVOLUTION_INTERVAL_SECS`（Life Pulse 周期与状态展示）。不设则沿用工作区已合并配置 / 默认 1800。
+   * 覆盖 `SKILLLITE_EVOLUTION_INTERVAL_SECS`（Life Pulse 周期与状态展示）。不设则沿用工作区已合并配置 / 默认 600。
    */
   evolutionIntervalSecs?: number;
   /**

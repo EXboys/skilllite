@@ -326,8 +326,11 @@ async fn skilllite_load_evolution_status(
         .unwrap_or_else(|e| skilllite_bridge::EvolutionStatusPayload {
             mode_key: "error".into(),
             mode_label: format!("任务失败: {}", e),
-            interval_secs: 1800,
+            interval_secs: 600,
             decision_threshold: 10,
+            weighted_signal_sum: 0,
+            weighted_trigger_min: 3,
+            signal_window: 10,
             evo_profile_key: "default".into(),
             evo_cooldown_hours: 1.0,
             unprocessed_decisions: 0,

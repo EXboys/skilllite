@@ -201,8 +201,13 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 |----------|------|---------|-------------|
 | `SKILLLITE_EVOLUTION` | string | `1` | Evolution mode: `1`/`true` all enabled, `0`/`false` disabled, `prompts`/`memory`/`skills` for specific dimensions only |
 | `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | Daily evolution cap |
-| `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** Periodic trigger interval (seconds). Evolution runs every 30 min in background, even when user is active |
-| `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** Decision-count trigger. When unprocessed decisions ≥ this value, evolution is triggered |
+| `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `600` | **A9** Periodic trigger interval (seconds). Default 10 min; each tick may spawn `evolution run` when growth scheduling says “due” |
+| `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** OR-trigger: when raw unprocessed decision rows (`evolved = 0`, any tool count) ≥ this value, growth is due |
+| `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN` | int | `3` | **A9** Weighted sum over the latest `SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW` meaningful unprocessed decisions (`total_tools ≥ 1`); weight 2 if `feedback = neg` or `failed_tools > 0`, else 1. Growth is due when sum ≥ this |
+| `SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW` | int | `10` | **A9** How many latest meaningful unprocessed decisions participate in the weighted sum |
+| `SKILLLITE_EVO_SWEEP_INTERVAL_SECS` | int | `86400` | **A9** If no `evolution_run` log for this many seconds and weighted sum ≥ 1, growth is due (low-priority catch-up) |
+| `SKILLLITE_EVO_MIN_RUN_GAP_SEC` | int | `0` | **A9** Minimum seconds since last `evolution_run` before another autorun; `0` disables |
+| `SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS` | int | `10` | Minimum count of stable successful unprocessed decisions before **active** evolution proposals are built (separate from A9 growth spawn) |
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | Max number of evolution txn snapshot dirs under `chat/prompts/_versions/` (oldest removed first by directory name). **`0` = never prune** — keeps full local prompt history without Git; disk use grows with runs |
 | `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `1` | When policy runtime is enabled, allow coordinator to auto-execute low-risk proposals |
 | `SKILLLITE_EVO_POLICY_RUNTIME_ENABLED` | bool | `1` | Enable coordinator policy runtime; decision is evaluated as `allow` / `ask` / `deny` with an auditable reason chain |
@@ -234,7 +239,7 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT` | int | `3` | Repeated pattern: same pattern count ≥ this and success rate met |
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE` | float | `0.8` | Repeated pattern: min success rate (0–1) |
 
-**Evolution triggers (A9)**: **Periodic** (`SKILLLITE_EVOLUTION_INTERVAL_SECS`, default 30 min) **and** **unprocessed decision count** (≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`, default 10) trigger `run_evolution`. **`ChatSession`** (`skilllite chat` / `agent-rpc` subprocess) runs these timers in-process; **SkillLite Assistant** also runs `skilllite evolution run` from **Life Pulse** with the same env keys (tray / no chat). In-chat **P7 “authorize evolution” bubbles** after partial_success/failure are **not** shown; scheduling aligns with the evolution panel, not inline chat prompts.
+**Evolution triggers (A9)**: Growth scheduling (`skilllite-evolution::growth_schedule`) marks a run **due** when **any** of: **periodic** interval elapsed (`SKILLLITE_EVOLUTION_INTERVAL_SECS`, default 10 min), **weighted signals** over a sliding window (≥ `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN`, default 3), **raw backlog** (unprocessed rows ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`, default 10), or **sweep** (long idle + weighted ≥ 1). **`SKILLLITE_EVO_MIN_RUN_GAP_SEC`** can throttle consecutive autoruns. **`ChatSession`** (`skilllite chat` / `agent-rpc` subprocess) runs timers in-process; **SkillLite Assistant** spawns `skilllite evolution run` from **Life Pulse** with merged workspace + UI env. In-chat **P7 “authorize evolution” bubbles** after partial_success/failure are **not** shown; scheduling aligns with the evolution panel, not inline chat prompts.
 
 **SkillLite Assistant (desktop)**: **Run now** on a backlog row in the evolution detail view uses the same **Settings** API key, model, and base URL as chat. **Life Pulse** merges workspace `.env` with the same **Settings** snapshot pushed from the UI into the child environment for `skilllite evolution run` and `skilllite schedule tick`, matching the chat subprocess rules—you usually **do not** need a project `.env` API key for background evolution. For pure CLI use outside the app, keep using `.env` or shell env as before.
 

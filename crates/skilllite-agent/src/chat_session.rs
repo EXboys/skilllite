@@ -26,6 +26,9 @@ use super::types::*;
 // Compaction threshold/keep are configurable via types::get_compaction_threshold()
 // and types::get_compaction_keep_recent() (SKILLLITE_COMPACTION_* env vars).
 
+/// Periodic-arm anchor for A9 growth scheduling (aligned with desktop Life Pulse).
+static A9_LAST_PERIODIC_GROWTH_UNIX: std::sync::Mutex<Option<i64>> = std::sync::Mutex::new(None);
+
 /// Persistent chat session.
 ///
 /// Storage layout (matching Python SDK, stored in `~/.skilllite/`):
@@ -395,7 +398,7 @@ impl ChatSession {
         let interval_secs: u64 = std::env::var(evo_env_keys::SKILLLITE_EVOLUTION_INTERVAL_SECS)
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(1800);
+            .unwrap_or(600);
         let data_root = self.data_root.clone();
         let workspace = self.config.workspace.clone();
         let api_base = self.config.api_base.clone();
@@ -413,7 +416,7 @@ impl ChatSession {
         }
     }
 
-    /// A9: if unprocessed decisions ≥ threshold, spawn evolution once.
+    /// A9: weighted / raw-count / sweep arms (no periodic) — spawn evolution once when due.
     fn maybe_trigger_evolution_by_decision_count(&self) {
         if skilllite_evolution::EvolutionMode::from_env().is_disabled() {
             return;
@@ -421,22 +424,15 @@ impl ChatSession {
         if tokio::runtime::Handle::try_current().is_err() {
             return;
         }
-        let threshold: i64 = std::env::var(evo_env_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(10);
         let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&self.data_root) else {
             return;
         };
-        let Ok(count) = skilllite_evolution::feedback::count_unprocessed_decisions(&conn) else {
+        let cfg = skilllite_evolution::growth_schedule::GrowthScheduleConfig::from_env();
+        let Ok(due) = skilllite_evolution::growth_schedule::signal_burst_due(&conn, &cfg) else {
             return;
         };
-        if count >= threshold {
-            tracing::debug!(
-                "Decision-count trigger: {} unprocessed >= {}, spawning evolution",
-                count,
-                threshold
-            );
+        if due {
+            tracing::debug!("A9 signal-burst trigger: spawning evolution");
             let data_root = self.data_root.clone();
             let workspace = self.config.workspace.clone();
             let api_base = self.config.api_base.clone();
@@ -1101,10 +1097,33 @@ pub fn spawn_periodic_evolution(
             return;
         }
         let interval = std::time::Duration::from_secs(interval_secs);
+        let mut first_tick = true;
         loop {
-            tokio::time::sleep(interval).await;
+            if !first_tick {
+                tokio::time::sleep(interval).await;
+            }
+            first_tick = false;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            let mut cfg = skilllite_evolution::growth_schedule::GrowthScheduleConfig::from_env();
+            cfg.interval_secs = interval_secs;
+            let due = skilllite_evolution::feedback::open_evolution_db(&data_root)
+                .ok()
+                .and_then(|conn| {
+                    let mut anchor = A9_LAST_PERIODIC_GROWTH_UNIX
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    skilllite_evolution::growth_schedule::growth_due(&conn, now, &mut anchor, &cfg)
+                        .ok()
+                })
+                .unwrap_or(false);
+            if !due {
+                continue;
+            }
             tracing::debug!(
-                "Periodic evolution trigger fired (every {}s)",
+                "Periodic evolution tick: A9 growth_due true (interval base {}s)",
                 interval_secs
             );
             run_evolution_and_emit_summary(

@@ -118,11 +118,22 @@ pub mod evolution {
     /// Evolution mode: "1" (default, all), "prompts", "memory", "skills", "0" (disabled).
     pub const SKILLLITE_EVOLUTION: &str = "SKILLLITE_EVOLUTION";
     pub const SKILLLITE_MAX_EVOLUTIONS_PER_DAY: &str = "SKILLLITE_MAX_EVOLUTIONS_PER_DAY";
-    /// A9: Periodic evolution interval (seconds). Default 1800 (30 min). Used by `ChatSession` and desktop Life Pulse.
+    /// A9: Periodic evolution interval (seconds). Default 600 (10 min). Used by `ChatSession` and desktop Life Pulse.
     pub const SKILLLITE_EVOLUTION_INTERVAL_SECS: &str = "SKILLLITE_EVOLUTION_INTERVAL_SECS";
-    /// A9: Unprocessed decision count threshold (default 10). Used by `ChatSession` and desktop Life Pulse.
+    /// A9: OR-trigger — raw unprocessed decision rows (`evolved = 0`, default 10). Used with weighted signal arm.
     pub const SKILLLITE_EVOLUTION_DECISION_THRESHOLD: &str =
         "SKILLLITE_EVOLUTION_DECISION_THRESHOLD";
+    /// A9: Weighted sum of recent meaningful unprocessed decisions must reach this (default 3). See `growth_schedule`.
+    pub const SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN: &str = "SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN";
+    /// A9: Sliding window size for weighted trigger (default 10).
+    pub const SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW: &str = "SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW";
+    /// A9: If no `evolution_run` for this many seconds and weighted sum ≥ 1, allow sweep trigger (default 86400).
+    pub const SKILLLITE_EVO_SWEEP_INTERVAL_SECS: &str = "SKILLLITE_EVO_SWEEP_INTERVAL_SECS";
+    /// A9: Minimum seconds since last `evolution_run` before another autorun (0 = disabled).
+    pub const SKILLLITE_EVO_MIN_RUN_GAP_SEC: &str = "SKILLLITE_EVO_MIN_RUN_GAP_SEC";
+    /// Active-scope proposals: minimum stable successful decisions before active evolution (default 10).
+    pub const SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS: &str =
+        "SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS";
     /// Prompt snapshot dirs under `chat/prompts/_versions/` to keep after each evolution (oldest pruned first).
     /// Default `10`. Set to `0` to never delete snapshots (full local history, no Git required; disk usage grows).
     pub const SKILLLITE_EVOLUTION_SNAPSHOT_KEEP: &str = "SKILLLITE_EVOLUTION_SNAPSHOT_KEEP";

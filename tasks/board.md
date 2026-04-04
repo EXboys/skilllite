@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-03
+Last updated: 2026-04-04
 
 ## In Progress
 
@@ -16,6 +16,7 @@ Last updated: 2026-04-03
 
 ## Done
 
+- `TASK-2026-020-evo-growth-schedule` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-019-evolution-memory-sharded-kb` - Status: `done` - Owner: `TBD`
 - `TASK-2026-018-evolution-lib-split` - Status: `done` - Owner: `exboys`
 - `TASK-2026-017-partial-failure-evolution-authorization` - Status: `done` - Owner: `exboys`

@@ -5,8 +5,9 @@
 //! in-process checks for two layers:
 //!
 //! - **Growth**: runs `skilllite evolution run` when A9 matches workspace `.env`:
-//!   **every `SKILLLITE_EVOLUTION_INTERVAL_SECS`** (default 30 min) **or**
-//!   **unprocessed decisions ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`** (default 10).
+//!   **every `SKILLLITE_EVOLUTION_INTERVAL_SECS`** (default 10 min) **or**
+//!   **weighted recent signals ≥ `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN`** (default 3) **or**
+//!   **raw unprocessed ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`** (default 10) **or** sweep.
 //!   Child env = workspace `.env` merged with **assistant Settings** (API key / base / model, etc.),
 //!   same rules as chat, via `skilllite_life_pulse_set_llm_overrides` from the UI.
 //!   The **agent-rpc** chat subprocess also runs the same A9 timers in-process; `run_evolution`

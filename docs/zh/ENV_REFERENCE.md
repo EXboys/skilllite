@@ -201,8 +201,13 @@
 |------|------|--------|------|
 | `SKILLLITE_EVOLUTION` | string | `1` | 进化模式：`1`/`true` 全部启用，`0`/`false` 禁用，`prompts`/`memory`/`skills` 仅启用对应维度 |
 | `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | 每日进化次数上限 |
-| `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `1800` | **A9** 周期性触发间隔（秒）。每 30 分钟触发一次进化，即使用户活跃也会在后台进化 |
-| `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** 决策数触发阈值。当未处理决策数 ≥ 此值时触发进化 |
+| `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `600` | **A9** 周期性检查间隔（秒）。默认 10 分钟；每次 tick 在调度判定「到期」时才 spawn `evolution run` |
+| `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** OR 条件：原始未进化决策行数（`evolved = 0`，含零 tool 行）≥ 此值则到期 |
+| `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN` | int | `3` | **A9** 滑动窗口内「有意义」未进化决策的加权和阈值；失败/负反馈计 2，其余计 1 |
+| `SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW` | int | `10` | **A9** 参与加权和的最近多少条有意义未进化决策 |
+| `SKILLLITE_EVO_SWEEP_INTERVAL_SECS` | int | `86400` | **A9** 若距上次 `evolution_run` 超过此秒数且加权和 ≥ 1，则到期（低优先级补跑） |
+| `SKILLLITE_EVO_MIN_RUN_GAP_SEC` | int | `0` | **A9** 两次自动进化运行之间的最短间隔（秒）；`0` 表示不限制 |
+| `SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS` | int | `10` | 构建 **active** 进化提案前，至少需要多少条稳定成功且未进化的决策（与 A9 是否 spawn 分开） |
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | 每次进化后备份目录 `chat/prompts/_versions/<txn>/` 最多保留几个（按目录名排序删最旧）。设为 **`0` 表示不删除**，可长期本地溯源 prompt 版本，无需 Git；磁盘占用会随进化次数增长 |
 | `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `1` | 在启用 policy runtime 时，允许 coordinator 自动执行低风险提案 |
 | `SKILLLITE_EVO_POLICY_RUNTIME_ENABLED` | bool | `1` | 启用 coordinator 的 policy runtime，对提案给出 `allow` / `ask` / `deny` 及可审计原因链 |
@@ -234,7 +239,7 @@
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT` | int | `3` | 重复模式判定：同一模式出现次数 ≥ 此值且成功率达标才计为重复模式 |
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE` | float | `0.8` | 重复模式判定：成功率 ≥ 此值（0~1） |
 
-**进化触发策略（A9）**：**周期性**（`SKILLLITE_EVOLUTION_INTERVAL_SECS`，默认 30 分钟）**与** **未进化决策数**（≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`，默认 10）触发 `run_evolution`。**`ChatSession`（`skilllite chat` / `agent-rpc` 子进程）**在进程内 Tokio 任务中执行；**桌面助手**另由 **Life Pulse** 按同一组环境变量 spawn `skilllite evolution run`（托盘/无对话时仍可查）。对话内 **不再** 因 partial_success / failure 弹出「启动进化」气泡；进化调度与右侧「自进化」面板一致，不由 P7 对话内授权条驱动。
+**进化触发策略（A9）**：由 `growth_schedule` 判定「到期」，满足 **任一** 即可：**周期**（`SKILLLITE_EVOLUTION_INTERVAL_SECS`，默认 10 分钟）、**加权信号**（窗口内加权和 ≥ `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN`，默认 3）、**原始积压**（未处理行数 ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`，默认 10）、**清扫**（长期无 `evolution_run` 且加权和 ≥ 1）。可用 `SKILLLITE_EVO_MIN_RUN_GAP_SEC` 限制连续自动运行间隔。**`ChatSession`** 在进程内跑定时与回合后触发；**桌面助手**由 **Life Pulse** 合并工作区与界面环境后 spawn `skilllite evolution run`。对话内 **不再** 因 partial_success / failure 弹出「启动进化」气泡；调度与右侧「自进化」面板一致。
 
 **SkillLite Assistant（桌面）**：自进化详情里队列行的 **立即执行** 与聊天共用 **设置** 中的 API Key、模型与接口地址（`api_base`）。**Life Pulse** 在启动 `skilllite evolution run` / `skilllite schedule tick` 子进程时，会把工作区 `.env` 与当前 **设置** 里同步到后端的 LLM 相关项合并后注入子进程环境（与对话子进程规则一致），**一般无需再单独写 `.env` 里的 Key**；若你希望完全脱离应用、仅用命令行在同一工作区跑进化，仍可依赖 `.env` 或系统环境变量。
 

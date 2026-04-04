@@ -332,7 +332,7 @@ fn collect_active_scope(conn: &Connection, mode: EvolutionMode) -> Result<Evolut
     if mode.is_disabled() {
         return Ok(EvolutionScope::default());
     }
-    let threshold: i64 = std::env::var(evo_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD)
+    let min_stable: i64 = std::env::var(evo_keys::SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS)
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(10);
@@ -344,7 +344,7 @@ fn collect_active_scope(conn: &Connection, mode: EvolutionMode) -> Result<Evolut
             |row| row.get(0),
         )
         .unwrap_or(0);
-    if stable_successes < threshold {
+    if stable_successes < min_stable {
         return Ok(EvolutionScope::default());
     }
     let mut stmt = conn.prepare(

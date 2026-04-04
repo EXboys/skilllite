@@ -162,7 +162,7 @@ export const enMessages: Record<string, string> = {
   "evolution.thresholds.title": "In-app tuning (same as background jobs after Save)",
   "evolution.thresholds.interval": "Check interval (seconds)",
   "evolution.thresholds.intervalHint":
-    "Life Pulse check period; leave empty to keep the workspace default, usually 1800 (30 min)",
+    "Life Pulse check period; leave empty to keep the workspace default, usually 600 (10 min)",
   "evolution.thresholds.decision": "Decision-count trigger threshold",
   "evolution.thresholds.decisionHint":
     "Fires when unprocessed decisions ≥ this; leave empty to keep the workspace default (10)",

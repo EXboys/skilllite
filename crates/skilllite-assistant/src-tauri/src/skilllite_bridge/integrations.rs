@@ -373,7 +373,7 @@ fn effective_evolution_interval_secs(
     }
     workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION_INTERVAL_SECS)
         .and_then(|v| v.parse().ok())
-        .unwrap_or(1800)
+        .unwrap_or(600)
 }
 
 fn effective_evolution_decision_threshold(
@@ -426,6 +426,17 @@ fn effective_evo_cooldown_hours(workspace: &str, cfg: Option<&ChatConfigOverride
         .unwrap_or_else(|| skilllite_evolution::EvolutionThresholds::default().cooldown_hours)
 }
 
+/// Merged A9 growth config: workspace `.env` + optional UI overrides for interval / raw threshold.
+fn growth_schedule_merged_for_workspace(
+    workspace: &str,
+    cfg: Option<&ChatConfigOverrides>,
+) -> skilllite_evolution::growth_schedule::GrowthScheduleConfig {
+    let mut c = skilllite_evolution::growth_schedule::GrowthScheduleConfig::from_env();
+    c.interval_secs = effective_evolution_interval_secs(workspace, cfg);
+    c.raw_unprocessed_threshold = effective_evolution_decision_threshold(workspace, cfg);
+    c
+}
+
 fn evolution_mode_from_workspace(workspace: &str) -> skilllite_evolution::EvolutionMode {
     use skilllite_core::config::env_keys::evolution as evo_env;
     match workspace_env_lookup(workspace, evo_env::SKILLLITE_EVOLUTION).as_deref() {
@@ -440,7 +451,7 @@ fn evolution_mode_from_workspace(workspace: &str) -> skilllite_evolution::Evolut
 
 /// Desktop **Life Pulse** only: whether to spawn `skilllite evolution run`.
 ///
-/// Matches the evolution panel copy (A9): periodic interval **or** unprocessed decisions ≥ threshold.
+/// A9: periodic interval **or** weighted recent signals **or** raw unprocessed count **or** long-interval sweep.
 /// Does **not** use passive `should_evolve` heuristics — the subprocess runs and may return `NoScope`.
 ///
 /// `last_periodic_spawn_unix`: last time the **periodic** arm fired; updated when the periodic
@@ -454,41 +465,20 @@ pub fn evolution_growth_due(
     if mode.is_disabled() {
         return false;
     }
-    let interval_secs = effective_evolution_interval_secs(workspace, cfg);
-    let threshold = effective_evolution_decision_threshold(workspace, cfg);
-
+    let schedule_cfg = growth_schedule_merged_for_workspace(workspace, cfg);
     let chat_root = skilllite_core::paths::chat_root();
-    let count: i64 = skilllite_evolution::feedback::open_evolution_db(&chat_root)
-        .ok()
-        .and_then(|conn| skilllite_evolution::feedback::count_unprocessed_decisions(&conn).ok())
-        .unwrap_or(0);
-
+    let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&chat_root) else {
+        return false;
+    };
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-
-    let need_count = count >= threshold;
-
     let mut g = last_periodic_spawn_unix
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    let last_ts = match *g {
-        None => {
-            *g = Some(now);
-            now
-        }
-        Some(t) => t,
-    };
-    let need_periodic = now.saturating_sub(last_ts) >= interval_secs as i64;
-
-    if !need_count && !need_periodic {
-        return false;
-    }
-    if need_periodic {
-        *g = Some(now);
-    }
-    true
+    skilllite_evolution::growth_schedule::growth_due(&conn, now, &mut *g, &schedule_cfg)
+        .unwrap_or(false)
 }
 
 fn evolution_mode_labels(mode: &skilllite_evolution::EvolutionMode) -> (&'static str, &'static str) {
@@ -516,6 +506,11 @@ pub struct EvolutionStatusPayload {
     pub mode_label: String,
     pub interval_secs: u64,
     pub decision_threshold: i64,
+    /// Weighted sum over the latest `signal_window` meaningful unprocessed decisions (A9).
+    pub weighted_signal_sum: i64,
+    /// Env `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN` (after workspace merge for interval/threshold only).
+    pub weighted_trigger_min: i64,
+    pub signal_window: i64,
     /// `default` / `demo` / `conservative`（应用内覆盖优先于工作区 `.env`）。
     pub evo_profile_key: String,
     pub evo_cooldown_hours: f64,
@@ -536,8 +531,11 @@ pub fn load_evolution_status(
     let mode = evolution_mode_from_workspace(workspace);
     let (mode_key, mode_label) = evolution_mode_labels(&mode);
 
-    let interval_secs = effective_evolution_interval_secs(workspace, cfg.as_ref());
-    let decision_threshold = effective_evolution_decision_threshold(workspace, cfg.as_ref());
+    let schedule_cfg = growth_schedule_merged_for_workspace(workspace, cfg.as_ref());
+    let interval_secs = schedule_cfg.interval_secs;
+    let decision_threshold = schedule_cfg.raw_unprocessed_threshold;
+    let weighted_trigger_min = schedule_cfg.weighted_min;
+    let signal_window = schedule_cfg.signal_window;
     let evo_profile_key = effective_evo_profile_key(workspace, cfg.as_ref()).to_string();
     let evo_cooldown_hours = effective_evo_cooldown_hours(workspace, cfg.as_ref());
 
@@ -551,6 +549,7 @@ pub fn load_evolution_status(
 
     let mut db_error = None;
     let mut unprocessed_decisions = 0i64;
+    let mut weighted_signal_sum = 0i64;
     let mut recent_events = Vec::new();
     let mut last_run_ts = None;
     let mut judgement_label = None;
@@ -560,6 +559,12 @@ pub fn load_evolution_status(
         Ok(conn) => {
             if let Ok(c) = skilllite_evolution::feedback::count_unprocessed_decisions(&conn) {
                 unprocessed_decisions = c;
+            }
+            if let Ok(w) = skilllite_evolution::growth_schedule::weighted_unprocessed_signal_sum(
+                &conn,
+                signal_window,
+            ) {
+                weighted_signal_sum = w;
             }
             if let Ok(Some(summary)) = skilllite_evolution::feedback::build_latest_judgement(&conn) {
                 judgement_label = Some(summary.judgement.label_zh().to_string());
@@ -599,6 +604,9 @@ pub fn load_evolution_status(
         mode_label: mode_label.to_string(),
         interval_secs,
         decision_threshold,
+        weighted_signal_sum,
+        weighted_trigger_min,
+        signal_window,
         evo_profile_key,
         evo_cooldown_hours,
         unprocessed_decisions,

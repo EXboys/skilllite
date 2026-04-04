@@ -14,6 +14,7 @@ pub mod error;
 pub mod external_learner;
 pub mod feedback;
 pub mod gatekeeper;
+pub mod growth_schedule;
 pub mod lifecycle;
 pub mod llm;
 pub mod memory_learner;
@@ -33,6 +34,10 @@ pub use changelog::append_changelog;
 pub use config::{EvolutionMode, EvolutionProfile, EvolutionThresholds, SkillAction};
 pub use gatekeeper::{
     gatekeeper_l1_path, gatekeeper_l1_template_integrity, gatekeeper_l2_size, gatekeeper_l3_content,
+};
+pub use growth_schedule::{
+    growth_due, seconds_since_last_evolution_run, signal_burst_due,
+    weighted_unprocessed_signal_sum, GrowthScheduleConfig,
 };
 pub use lifecycle::on_shutdown;
 pub use llm::{strip_think_blocks, EvolutionLlm, EvolutionMessage};

@@ -30,6 +30,10 @@ export interface EvolutionStatusPayload {
   mode_label: string;
   interval_secs: number;
   decision_threshold: number;
+  /** Weighted sum over latest meaningful unprocessed decisions (A9). */
+  weighted_signal_sum: number;
+  weighted_trigger_min: number;
+  signal_window: number;
   evo_profile_key: string;
   evo_cooldown_hours: number;
   unprocessed_decisions: number;
@@ -199,7 +203,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
   const scheduleHint =
     s.mode_key === "disabled"
       ? "已禁用，后台不会自动进化"
-      : `${formatInterval(s.interval_secs)} 检查一次；未进化决策 ≥ ${s.decision_threshold} 条也会触发`;
+      : `${formatInterval(s.interval_secs)} 检查一次；近期加权（窗口 ${s.signal_window ?? 10}）≥ ${s.weighted_trigger_min ?? 3}（当前 ${s.weighted_signal_sum ?? 0}）或未处理 ≥ ${s.decision_threshold} 条也会触发`;
 
   return (
     <section className="mb-4 min-w-0">
@@ -609,8 +613,13 @@ export function EvolutionDetailBody() {
                   {s.mode_key === "disabled" ? "—" : formatInterval(s.interval_secs)}
                 </li>
                 <li>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">决策数触发阈值：</span>
-                  {s.decision_threshold}（当前未进化 {s.unprocessed_decisions}）
+                  <span className="text-ink-mute dark:text-ink-dark-mute">加权触发：</span>
+                  窗口 {s.signal_window ?? 10} 条内加权和需 ≥ {s.weighted_trigger_min ?? 3}（当前{" "}
+                  {s.weighted_signal_sum ?? 0}）
+                </li>
+                <li>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">未处理条数（OR）：</span>
+                  ≥ {s.decision_threshold} 条即触发（当前 {s.unprocessed_decisions}）
                 </li>
                 <li>
                   <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}（生效）：</span>
