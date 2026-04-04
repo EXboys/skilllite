@@ -207,6 +207,7 @@
 | `SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW` | int | `10` | **A9** 参与加权和的最近多少条有意义未进化决策 |
 | `SKILLLITE_EVO_SWEEP_INTERVAL_SECS` | int | `86400` | **A9** 若距上次 `evolution_run` 超过此秒数且加权和 ≥ 1，则到期（低优先级补跑） |
 | `SKILLLITE_EVO_MIN_RUN_GAP_SEC` | int | `0` | **A9** 两次自动进化运行之间的最短间隔（秒）；`0` 表示不限制 |
+| `SKILLLITE_EVO_SHALLOW_PREFLIGHT` | bool | `1` | **运行** 为 `1` 时，若加权/未处理积压为空且技能目录与外部学习无需工作，则跳过快照与各 learner（减轻周期空跑；可能推迟一轮仅依赖「零积压 tick」的 **规则 retire**）。`0` 关闭 |
 | `SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS` | int | `10` | 构建 **active** 进化提案前，至少需要多少条稳定成功且未进化的决策（与 A9 是否 spawn 分开） |
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | 每次进化后备份目录 `chat/prompts/_versions/<txn>/` 最多保留几个（按目录名排序删最旧）。设为 **`0` 表示不删除**，可长期本地溯源 prompt 版本，无需 Git；磁盘占用会随进化次数增长 |
 | `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `1` | 在启用 policy runtime 时，允许 coordinator 自动执行低风险提案 |

@@ -131,6 +131,8 @@ pub mod evolution {
     pub const SKILLLITE_EVO_SWEEP_INTERVAL_SECS: &str = "SKILLLITE_EVO_SWEEP_INTERVAL_SECS";
     /// A9: Minimum seconds since last `evolution_run` before another autorun (0 = disabled).
     pub const SKILLLITE_EVO_MIN_RUN_GAP_SEC: &str = "SKILLLITE_EVO_MIN_RUN_GAP_SEC";
+    /// Skip snapshot + learners when there is no decision backlog (default on). Set `0` to disable.
+    pub const SKILLLITE_EVO_SHALLOW_PREFLIGHT: &str = "SKILLLITE_EVO_SHALLOW_PREFLIGHT";
     /// Active-scope proposals: minimum stable successful decisions before active evolution (default 10).
     pub const SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS: &str =
         "SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS";

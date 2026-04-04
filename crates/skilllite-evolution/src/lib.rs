@@ -24,6 +24,7 @@ pub mod run;
 pub mod run_state;
 pub mod scope;
 pub mod seed;
+pub mod shallow_preflight;
 pub mod skill_synth;
 pub mod snapshots;
 

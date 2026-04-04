@@ -207,6 +207,7 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW` | int | `10` | **A9** How many latest meaningful unprocessed decisions participate in the weighted sum |
 | `SKILLLITE_EVO_SWEEP_INTERVAL_SECS` | int | `86400` | **A9** If no `evolution_run` log for this many seconds and weighted sum ≥ 1, growth is due (low-priority catch-up) |
 | `SKILLLITE_EVO_MIN_RUN_GAP_SEC` | int | `0` | **A9** Minimum seconds since last `evolution_run` before another autorun; `0` disables |
+| `SKILLLITE_EVO_SHALLOW_PREFLIGHT` | bool | `1` | **Run** When `1`, skip snapshot + learners if weighted/unprocessed backlog is empty and skills dir / external learning do not require work (reduces periodic **NoOp** cost; may defer one tick of prompt **rule retirement**). Set `0` to disable |
 | `SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS` | int | `10` | Minimum count of stable successful unprocessed decisions before **active** evolution proposals are built (separate from A9 growth spawn) |
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | Max number of evolution txn snapshot dirs under `chat/prompts/_versions/` (oldest removed first by directory name). **`0` = never prune** — keeps full local prompt history without Git; disk use grows with runs |
 | `SKILLLITE_EVO_AUTO_EXECUTE_LOW_RISK` | bool | `1` | When policy runtime is enabled, allow coordinator to auto-execute low-risk proposals |

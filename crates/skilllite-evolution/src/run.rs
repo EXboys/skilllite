@@ -169,6 +169,21 @@ async fn run_evolution_inner<L: EvolutionLlm>(
         CoordinatorDecision::Execute(p) => (p.scope.clone(), p),
     };
 
+    if !force {
+        if let Some(note) = crate::shallow_preflight::shallow_skip_evolution_run(
+            &conn,
+            skills_root,
+            &scope,
+            &proposal,
+        )? {
+            tracing::info!("{}", note);
+            try_log_evolution_run_outcome(chat_root, note);
+            let _ = log_evolution_event(&conn, chat_root, "evolution_run_outcome", "run", note, "");
+            let _ = set_backlog_status(&conn, &proposal.proposal_id, "executed", "not_met", note);
+            return Ok(EvolutionRunResult::Completed(None));
+        }
+    }
+
     let txn_id = format!("evo_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
     tracing::info!(
         "Starting evolution txn={} proposal={} source={} (prompts={}, memory={}, skills={})",
