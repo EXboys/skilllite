@@ -1,11 +1,26 @@
-# REVIEW
+# Review Report
 
-## Merge readiness
+## Scope Reviewed
 
-- [x] Acceptance criteria in `TASK.md` satisfied
-- [x] Docs synced (assistant README + ENTRYPOINTS EN/ZH + rpc module doc comment)
+- Files/modules: `skilllite-assistant` (ChatView, ChatInput, MessageBubble, i18n, Tauri lib + bridge), `skilllite-agent` (rpc, chat_session, types, llm openai/claude, agent_loop, planning), `skilllite-executor` (transcript), docs (ENTRYPOINTS EN/ZH, assistant README).
+- Commits/changes: TASK-2026-021 desktop chat images implementation.
 
-## Verification (actual commands)
+## Findings
+
+- Critical: None.
+- Major: None.
+- Minor: None.
+
+## Quality Gates
+
+- Architecture boundary checks: pass
+- Security invariants: pass
+- Required tests executed: pass
+- Docs sync (EN/ZH): pass
+
+## Test Evidence
+
+- Commands run:
 
 ```text
 $ cargo test -p skilllite-agent openai_attachment_tests -- --nocapture
@@ -21,6 +36,14 @@ $ cd crates/skilllite-assistant && npm run build
 ✓ built in 1.53s
 ```
 
+- Key outputs: unit test passed; clippy clean; Tauri crate checks; frontend build OK.
+
+## Decision
+
+- Merge readiness: ready
+- Follow-up actions: None.
+
 ## Notes
 
-- `skilllite_chat_stream` Tauri command now takes optional `images`; callers must pass `undefined`/omit for text-only (frontend uses conditional payload).
+- `skilllite_chat_stream` accepts optional `images`; text-only callers omit the field.
+- Tauri desktop uses `plugin-dialog` + `skilllite_read_local_image_b64` for reliable file pick and preview.

@@ -65,3 +65,4 @@ Before marking work complete:
 - regression scope is reviewed,
 - task artifacts are updated,
 - `tasks/board.md` is updated AND re-read to confirm the status change landed.
+- When `tasks/TASK-.../` files change, `python3 scripts/validate_tasks.py` passes (see `spec/task-artifact-language.md` for required `STATUS.md` / `REVIEW.md` shape).

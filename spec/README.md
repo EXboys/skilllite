@@ -72,6 +72,7 @@ Before marking a task done:
 - Confirm all relevant checklists were completed.
 - Confirm verification commands were executed for the affected scope.
 - Confirm task artifacts in `tasks/TASK-.../` are updated (`TASK.md`, `STATUS.md`, `REVIEW.md`) and `tasks/board.md` is in sync.
+- When `tasks/TASK-.../` files change, run `python3 scripts/validate_tasks.py` (requires `STATUS.md` sections `## Timeline` / `## Checkpoints` and `REVIEW.md` substring `Merge readiness:` — see `spec/task-artifact-language.md`).
 
 Lightweight exception:
 

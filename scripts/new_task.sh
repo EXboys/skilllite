@@ -136,3 +136,5 @@ PY
 echo "Created task: ${TASK_DIR_NAME}"
 echo "Path: ${TASK_DIR}"
 echo "Remember to fill PRD/CONTEXT and update STATUS as you progress."
+echo "Do not delete template sections: STATUS.md must keep '## Timeline' and '## Checkpoints'; REVIEW.md must include 'Merge readiness:' (see tasks/_templates)."
+echo "Before PR: python3 scripts/validate_tasks.py"

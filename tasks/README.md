@@ -55,6 +55,22 @@ Rules:
 5. Record findings and release decision in `REVIEW.md`.
 6. Update `tasks/board.md`.
 
+## CI validation (`scripts/validate_tasks.py`)
+
+CI and local checks should pass:
+
+```bash
+python3 scripts/validate_tasks.py
+```
+
+The script requires, for each `tasks/TASK-*/` folder:
+
+- All of `TASK.md`, `PRD.md`, `CONTEXT.md`, `REVIEW.md`, `STATUS.md`.
+- `TASK.md` metadata fields and a backtick-quoted `Status:` in the allowed set.
+- `STATUS.md` must contain the headings **`## Timeline`** and **`## Checkpoints`** (copy structure from `tasks/_templates/STATUS.md`; do not replace with a headerless bullet list).
+- `REVIEW.md` must contain the substring **`Merge readiness:`** (e.g. `- Merge readiness: ready` under `## Decision` in `tasks/_templates/REVIEW.md`).
+- The task directory name must appear in `tasks/board.md`.
+
 Completion note:
 
 - Do not close a task if `PRD.md` / `CONTEXT.md` are stale versus final implementation.
