@@ -103,7 +103,16 @@ export const enMessages: Record<string, string> = {
   "chat.timelineNeedsAction": "Action needed",
   "chat.timelineNeedsActionHint":
     "Expand this block to allow/deny execution or pick a clarification option.",
-  "chat.clarifyContinueNoHint": "Continue without extra input",
+  "chat.clarifyTitle": "Confirmation needed",
+  "chat.clarifyQuickReplyExplainer":
+    "Quick supplements open an editor first so you can edit before sending. \"Write your own\" starts blank. \"Continue run\" adds no message.",
+  "chat.clarifyContinueNoHint": "Continue run",
+  "chat.clarifyWriteYourOwn": "Write your own…",
+  "chat.clarifyComposerTitle": "Add details",
+  "chat.clarifyComposerPlaceholder":
+    "Edit or add context, paths, constraints for the agent. Sending empty is the same as \"Continue run\".",
+  "chat.clarifyComposerSend": "Send and continue",
+  "chat.clarifyComposerCancel": "Cancel",
   "chat.plannerNudgeFoldSummary": "Task-planning continuation hint (internal — expand)",
   "chat.readFileTabEdit": "Edit",
   "chat.readFileTabPreview": "Preview",

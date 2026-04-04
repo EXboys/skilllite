@@ -33,7 +33,10 @@ use super::soul::Soul;
 use super::types::*;
 use skilllite_core::config::EmbeddingConfig;
 
-use clarification::{try_clarify, ClarifyAction};
+use clarification::{
+    no_progress_planning_copy, no_progress_simple_copy, tool_limit_chip, try_clarify,
+    too_many_failures_message, ClarifyAction, CHIP_NARROW_SCOPE,
+};
 use execution::{
     execute_tool_batch_planning, execute_tool_batch_simple,
     should_suppress_planning_assistant_text, ExecutionState,
@@ -272,7 +275,7 @@ async fn run_simple_loop(
                     "已达到最大执行轮次 ({})，任务可能尚未完成。",
                     config.max_iterations
                 ),
-                &["继续执行更多轮次", "请指定接下来要做什么"],
+                &[CHIP_NARROW_SCOPE],
                 &mut clarification_count,
                 event_sink,
                 &mut messages,
@@ -342,10 +345,17 @@ async fn run_simple_loop(
                 }
                 ReflectionOutcome::Break => {
                     after_successful_tool_batch = false;
+                    let (clarify_msg, clarify_sugg) = no_progress_simple_copy(
+                        state.iterations,
+                        no_tool_retries,
+                        all_tools.len(),
+                    );
+                    let sugg_refs: Vec<&str> =
+                        clarify_sugg.iter().map(|s| s.as_str()).collect();
                     if let ClarifyAction::Continue = try_clarify(
                         "no_progress",
-                        "Agent 多次尝试后无法继续执行任务，可能需要更多信息。",
-                        &["请补充更多细节或换一种方式描述需求", "继续尝试，不做更改"],
+                        &clarify_msg,
+                        &sugg_refs,
                         &mut clarification_count,
                         event_sink,
                         &mut messages,
@@ -402,15 +412,16 @@ async fn run_simple_loop(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
             );
+            let fail_msg = too_many_failures_message(
+                state.consecutive_failures,
+                &state.tools_detail,
+            );
             if let ClarifyAction::Continue = try_clarify(
                 "too_many_failures",
-                &format!(
-                    "工具执行连续失败 {} 次，可能遇到了环境或权限问题。",
-                    state.consecutive_failures
-                ),
+                &fail_msg,
                 &[
-                    "跳过失败的步骤，继续后续任务",
-                    "请补充信息帮助 Agent 解决问题",
+                    "先跳过受阻步骤，继续做后面互不依赖的待办",
+                    "我补充环境信息（报错全文/路径/权限/期望输出）：",
                 ],
                 &mut clarification_count,
                 event_sink,
@@ -436,10 +447,15 @@ async fn run_simple_loop(
         if state.total_tool_calls >= base_tool_cap.saturating_add(state.tool_call_budget_extension)
         {
             tracing::warn!("Agent loop reached total tool call limit");
+            let tool_limit_msg = format!(
+                "已达到工具调用次数上限（已累计 {} 次），任务可能尚未完成。",
+                state.total_tool_calls
+            );
+            let tool_chip = tool_limit_chip(state.total_tool_calls);
             if let ClarifyAction::Continue = try_clarify(
                 "tool_call_limit",
-                "已达到工具调用次数上限，任务可能尚未完成。",
-                &["继续执行", "请指定接下来要做什么"],
+                &tool_limit_msg,
+                &[tool_chip.as_str()],
                 &mut clarification_count,
                 event_sink,
                 &mut messages,
@@ -576,7 +592,7 @@ async fn run_with_task_planning(
             if let ClarifyAction::Continue = try_clarify(
                 "max_iterations",
                 &format!("已达到最大执行轮次 ({})，任务可能尚未完成。", effective_max),
-                &["继续执行更多轮次", "请指定接下来要做什么"],
+                &[CHIP_NARROW_SCOPE],
                 &mut clarification_count,
                 event_sink,
                 &mut messages,
@@ -674,11 +690,18 @@ async fn run_with_task_planning(
                 }
                 ReflectionOutcome::Break => {
                     after_successful_tool_batch = false;
-                    if !planner.all_completed() {
+                    // Empty plan: reflect_planning already treated text-only as normal completion
+                    // (see `planner.is_empty()` branch). `all_completed()` is false for [], so we
+                    // must not open clarification here — otherwise chit-chat loops on try_clarify.
+                    if !planner.all_completed() && !planner.is_empty() {
+                        let (clarify_msg, clarify_sugg) =
+                            no_progress_planning_copy(&planner, consecutive_no_tool);
+                        let sugg_refs: Vec<&str> =
+                            clarify_sugg.iter().map(|s| s.as_str()).collect();
                         if let ClarifyAction::Continue = try_clarify(
                             "no_progress",
-                            "Agent 多次尝试后无法继续执行任务，可能需要更多信息。",
-                            &["请补充更多细节或换一种方式描述需求", "继续尝试，不做更改"],
+                            &clarify_msg,
+                            &sugg_refs,
                             &mut clarification_count,
                             event_sink,
                             &mut messages,
@@ -751,15 +774,16 @@ async fn run_with_task_planning(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
             );
+            let fail_msg = too_many_failures_message(
+                state.consecutive_failures,
+                &state.tools_detail,
+            );
             if let ClarifyAction::Continue = try_clarify(
                 "too_many_failures",
-                &format!(
-                    "工具执行连续失败 {} 次，可能遇到了环境或权限问题。",
-                    state.consecutive_failures
-                ),
+                &fail_msg,
                 &[
-                    "跳过失败的步骤，继续后续任务",
-                    "请补充信息帮助 Agent 解决问题",
+                    "先跳过受阻步骤，继续做后面互不依赖的待办",
+                    "我补充环境信息（报错全文/路径/权限/期望输出）：",
                 ],
                 &mut clarification_count,
                 event_sink,
@@ -859,10 +883,15 @@ async fn run_with_task_planning(
         if state.total_tool_calls >= base_tool_cap.saturating_add(state.tool_call_budget_extension)
         {
             tracing::warn!("Agent loop reached total tool call limit");
+            let tool_limit_msg = format!(
+                "已达到工具调用次数上限（已累计 {} 次），任务可能尚未完成。",
+                state.total_tool_calls
+            );
+            let tool_chip = tool_limit_chip(state.total_tool_calls);
             if let ClarifyAction::Continue = try_clarify(
                 "tool_call_limit",
-                "已达到工具调用次数上限，任务可能尚未完成。",
-                &["继续执行", "请指定接下来要做什么"],
+                &tool_limit_msg,
+                &[tool_chip.as_str()],
                 &mut clarification_count,
                 event_sink,
                 &mut messages,

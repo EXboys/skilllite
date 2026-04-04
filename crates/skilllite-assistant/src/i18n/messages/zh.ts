@@ -101,7 +101,16 @@ export const zhMessages: Record<string, string> = {
     "开启后，工具执行前的「执行确认」将自动选择「允许」。请在可信环境中使用。",
   "chat.timelineNeedsAction": "待操作",
   "chat.timelineNeedsActionHint": "请展开本条，点击允许/拒绝或选择澄清选项。",
-  "chat.clarifyContinueNoHint": "继续（不补充说明）",
+  "chat.clarifyTitle": "需要你的确认",
+  "chat.clarifyQuickReplyExplainer":
+    "点快捷补充会先打开输入框，可改写后再发送；「自行补充」从空白写起。「继续运行」不附加消息。",
+  "chat.clarifyContinueNoHint": "继续运行",
+  "chat.clarifyWriteYourOwn": "自行补充…",
+  "chat.clarifyComposerTitle": "补充说明",
+  "chat.clarifyComposerPlaceholder":
+    "在此编辑或续写要告诉 Agent 的上下文、路径、约束等；留空发送等同于「继续运行」。",
+  "chat.clarifyComposerSend": "发送并继续",
+  "chat.clarifyComposerCancel": "取消",
   "chat.plannerNudgeFoldSummary": "任务规划续跑提示（内部，可展开）",
   "chat.readFileTabEdit": "编辑",
   "chat.readFileTabPreview": "预览",

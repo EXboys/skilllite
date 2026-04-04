@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { MarkdownContent } from "../shared/MarkdownContent";
 import {
   ListDirectoryToolResultView,
@@ -129,6 +129,33 @@ function MessageBubbleInner({
   onEvolutionAction,
 }: MessageBubbleProps) {
   const { t } = useI18n();
+  const [clarifyComposer, setClarifyComposer] = useState<{
+    messageId: string;
+    draft: string;
+  } | null>(null);
+  const clarifyTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!clarifyComposer) return;
+    const id = requestAnimationFrame(() => {
+      const el = clarifyTextareaRef.current;
+      if (!el) return;
+      el.focus();
+      const len = el.value.length;
+      el.setSelectionRange(len, len);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [clarifyComposer]);
+
+  useEffect(() => {
+    if (!clarifyComposer) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setClarifyComposer(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [clarifyComposer]);
+
   if (message.type === "user") {
     return (
       <div className="flex justify-end">
@@ -347,55 +374,136 @@ function MessageBubbleInner({
   }
 
   if (message.type === "clarification") {
+    const clarifyBtn =
+      "w-full min-h-[2.75rem] px-3 py-2 text-sm rounded-lg text-center text-balance leading-snug break-words whitespace-normal transition-colors";
+    const openComposer = (preset: string) =>
+      setClarifyComposer({ messageId: message.id, draft: preset });
+    const closeComposer = () => setClarifyComposer(null);
+    const submitComposer = () => {
+      if (!clarifyComposer || !onClarify) return;
+      if (clarifyComposer.messageId !== message.id) return;
+      const raw = clarifyComposer.draft.trim();
+      closeComposer();
+      void onClarify(message.id, "continue", raw.length > 0 ? raw : undefined);
+    };
+    const composerOpen =
+      clarifyComposer != null && clarifyComposer.messageId === message.id;
+
     return (
-      <div className="flex justify-start">
-        <div
-          className={`${bubbleShell} mr-4 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50`}
-        >
-          <div className="text-xs font-semibold uppercase tracking-wide text-blue-800 dark:text-blue-200 mb-1.5">
-            需要你的确认
-          </div>
-          <p className="text-sm text-ink dark:text-ink-dark-mute mb-3">
-            {message.message}
-          </p>
-          {message.resolved ? (
-            <div className="text-sm text-ink-mute dark:text-ink-dark-mute">
-              {message.selectedOption === "stop"
-                ? "✗ 已停止"
-                : `✓ ${message.selectedOption ?? "已继续"}`}
+      <>
+        <div className="flex justify-start">
+          <div
+            className={`${bubbleShell} mr-4 w-full max-w-[min(92%,36rem)] min-w-0 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/50`}
+          >
+            <div className="text-xs font-semibold uppercase tracking-wide text-blue-800 dark:text-blue-200 mb-1.5">
+              {t("chat.clarifyTitle")}
             </div>
-          ) : (
-            onClarify && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => onClarify(message.id, "continue")}
-                  className="px-3 py-1.5 text-sm rounded-md border-2 border-accent/40 bg-white dark:bg-paper-dark text-accent dark:text-blue-300 font-semibold hover:bg-accent/10 transition-colors"
-                >
-                  {t("chat.clarifyContinueNoHint")}
-                </button>
-                {message.suggestions.map((s) => (
+            <p className="text-sm text-ink dark:text-ink-dark-mute mb-2 whitespace-pre-wrap">
+              {message.message}
+            </p>
+            {message.resolved ? (
+              <div className="text-sm text-ink-mute dark:text-ink-dark-mute">
+                {message.selectedOption === "stop"
+                  ? "✗ 已停止"
+                  : `✓ ${message.selectedOption ?? "已继续"}`}
+              </div>
+            ) : (
+              onClarify && (
+                <div className="flex flex-col gap-2 w-full min-w-0">
+                  <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                    {t("chat.clarifyQuickReplyExplainer")}
+                  </p>
                   <button
-                    key={s}
                     type="button"
-                    onClick={() => onClarify(message.id, "continue", s)}
-                    className="px-3 py-1.5 text-sm rounded-md bg-accent text-white font-medium hover:bg-accent-hover transition-colors"
+                    onClick={() => onClarify(message.id, "continue")}
+                    className={`${clarifyBtn} border-2 border-accent/40 bg-white dark:bg-paper-dark text-accent dark:text-blue-300 font-semibold hover:bg-accent/10`}
                   >
-                    {s}
+                    {t("chat.clarifyContinueNoHint")}
                   </button>
-                ))}
+                  {message.suggestions.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      title={s}
+                      aria-label={s}
+                      onClick={() => openComposer(s)}
+                      className={`${clarifyBtn} bg-accent text-white font-medium hover:bg-accent-hover text-left line-clamp-3 overflow-hidden`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => openComposer("")}
+                    className={`${clarifyBtn} border border-accent/35 bg-white dark:bg-paper-dark text-accent dark:text-blue-300 font-medium hover:bg-accent/10`}
+                  >
+                    {t("chat.clarifyWriteYourOwn")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onClarify(message.id, "stop")}
+                    className={`${clarifyBtn} border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-gray-100 dark:hover:bg-white/5`}
+                  >
+                    {t("chat.stop")}
+                  </button>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+        {composerOpen && onClarify && (
+          <div
+            className="fixed inset-0 z-[200] flex items-end sm:items-center justify-center p-4 bg-black/45 dark:bg-black/55"
+            role="presentation"
+            onClick={closeComposer}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="clarify-composer-title"
+              className="w-full max-w-lg rounded-2xl border border-border dark:border-border-dark bg-white dark:bg-paper-dark shadow-xl shadow-ink/10 dark:shadow-none p-4 space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2
+                id="clarify-composer-title"
+                className="text-sm font-semibold text-ink dark:text-ink-dark"
+              >
+                {t("chat.clarifyComposerTitle")}
+              </h2>
+              <textarea
+                ref={clarifyTextareaRef}
+                value={clarifyComposer.draft}
+                onChange={(e) =>
+                  setClarifyComposer((prev) =>
+                    prev && prev.messageId === message.id
+                      ? { ...prev, draft: e.target.value }
+                      : prev
+                  )
+                }
+                rows={6}
+                className="w-full min-h-[8rem] rounded-xl border border-border dark:border-border-dark bg-ink/[0.02] dark:bg-white/[0.04] px-3 py-2 text-sm text-ink dark:text-ink-dark placeholder:text-ink-mute dark:placeholder:text-ink-dark-mute focus:outline-none focus:ring-2 focus:ring-accent/30 resize-y"
+                placeholder={t("chat.clarifyComposerPlaceholder")}
+              />
+              <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => onClarify(message.id, "stop")}
-                  className="px-3 py-1.5 text-sm rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                  onClick={closeComposer}
+                  className="w-full sm:w-auto min-h-[2.5rem] px-4 py-2 text-sm rounded-lg border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-gray-100 dark:hover:bg-white/5"
                 >
-                  {t("chat.stop")}
+                  {t("chat.clarifyComposerCancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={submitComposer}
+                  className="w-full sm:w-auto min-h-[2.5rem] px-4 py-2 text-sm rounded-lg bg-accent text-white font-medium hover:bg-accent-hover"
+                >
+                  {t("chat.clarifyComposerSend")}
                 </button>
               </div>
-            )
-          )}
-        </div>
-      </div>
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 
