@@ -34,8 +34,8 @@ use super::types::*;
 use skilllite_core::config::EmbeddingConfig;
 
 use clarification::{
-    no_progress_planning_copy, no_progress_simple_copy, tool_limit_chip, try_clarify,
-    too_many_failures_message, ClarifyAction, CHIP_NARROW_SCOPE,
+    no_progress_planning_copy, no_progress_simple_copy, too_many_failures_message, tool_limit_chip,
+    try_clarify, ClarifyAction, CHIP_NARROW_SCOPE,
 };
 use execution::{
     execute_tool_batch_planning, execute_tool_batch_simple,
@@ -345,13 +345,9 @@ async fn run_simple_loop(
                 }
                 ReflectionOutcome::Break => {
                     after_successful_tool_batch = false;
-                    let (clarify_msg, clarify_sugg) = no_progress_simple_copy(
-                        state.iterations,
-                        no_tool_retries,
-                        all_tools.len(),
-                    );
-                    let sugg_refs: Vec<&str> =
-                        clarify_sugg.iter().map(|s| s.as_str()).collect();
+                    let (clarify_msg, clarify_sugg) =
+                        no_progress_simple_copy(state.iterations, no_tool_retries, all_tools.len());
+                    let sugg_refs: Vec<&str> = clarify_sugg.iter().map(|s| s.as_str()).collect();
                     if let ClarifyAction::Continue = try_clarify(
                         "no_progress",
                         &clarify_msg,
@@ -412,10 +408,8 @@ async fn run_simple_loop(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
             );
-            let fail_msg = too_many_failures_message(
-                state.consecutive_failures,
-                &state.tools_detail,
-            );
+            let fail_msg =
+                too_many_failures_message(state.consecutive_failures, &state.tools_detail);
             if let ClarifyAction::Continue = try_clarify(
                 "too_many_failures",
                 &fail_msg,
@@ -774,10 +768,8 @@ async fn run_with_task_planning(
                 "Stopping: {} consecutive tool failures",
                 state.consecutive_failures
             );
-            let fail_msg = too_many_failures_message(
-                state.consecutive_failures,
-                &state.tools_detail,
-            );
+            let fail_msg =
+                too_many_failures_message(state.consecutive_failures, &state.tools_detail);
             if let ClarifyAction::Continue = try_clarify(
                 "too_many_failures",
                 &fail_msg,

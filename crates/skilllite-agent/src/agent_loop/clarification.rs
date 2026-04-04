@@ -89,9 +89,9 @@ pub(super) fn too_many_failures_message(
         .find(|d| !d.success)
         .map(|d| d.tool.as_str());
     match last_fail {
-        Some(name) => format!(
-            "工具「{name}」等已连续失败 {consecutive} 次，可能是参数、环境或权限问题。"
-        ),
+        Some(name) => {
+            format!("工具「{name}」等已连续失败 {consecutive} 次，可能是参数、环境或权限问题。")
+        }
         None => format!("工具执行已连续失败 {consecutive} 次，可能是环境或权限问题。"),
     }
 }
@@ -101,9 +101,7 @@ pub(super) const CHIP_NARROW_SCOPE: &str = "请先完成我最关心的这一部
 
 /// Single quick-reply after global tool-call budget.
 pub(super) fn tool_limit_chip(total_tool_calls: usize) -> String {
-    format!(
-        "工具已用 {total_tool_calls} 次仍不够的话，请帮我砍掉非核心步骤，只保留必须交付："
-    )
+    format!("工具已用 {total_tool_calls} 次仍不够的话，请帮我砍掉非核心步骤，只保留必须交付：")
 }
 
 /// What the caller should do after a clarification attempt.
