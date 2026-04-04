@@ -5,7 +5,12 @@ import { useUiToastStore } from "../stores/useUiToastStore";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useStatusStore, type LogEntry } from "../stores/useStatusStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
-import { groupMemoryFiles } from "../utils/fileUtils";
+import {
+  groupMemoryEntriesByTopDir,
+  groupMemoryFiles,
+  memoryPathUnderTopGroup,
+  sortedMemoryGroupKeys,
+} from "../utils/fileUtils";
 import { openDetailWindow } from "../utils/detailWindow";
 import { EvolutionStatusSummary } from "./EvolutionSection";
 import { useLifePulse, type LifePulseActivity } from "../hooks/useLifePulse";
@@ -147,28 +152,59 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
   }
 
   if (hasSummaries) {
-    const show = limit ? summaries.slice(0, limit) : summaries;
+    const lim = limit ?? summaries.length;
+    const groupedAll = groupMemoryEntriesByTopDir(summaries);
+    const keysAll = sortedMemoryGroupKeys(groupedAll);
+    const showEntries: MemoryEntryData[] = [];
+    outer: for (const k of keysAll) {
+      for (const e of groupedAll[k]!) {
+        showEntries.push(e);
+        if (showEntries.length >= lim) break outer;
+      }
+    }
+    const showGrouped = groupMemoryEntriesByTopDir(showEntries);
+    const showKeys = sortedMemoryGroupKeys(showGrouped);
+    const shownCount = showEntries.length;
+
     return (
-      <div className="min-w-0 space-y-1.5">
-        {show.map((entry) => (
-          <div
-            key={entry.path}
-            className="max-w-full min-w-0 rounded-md border border-border/50 dark:border-border-dark/50 bg-white/50 px-2.5 py-1.5 dark:bg-white/[0.02]"
-          >
-            <div className="text-xs font-medium text-ink dark:text-ink-dark truncate">
-              {entry.title}
-            </div>
-            {entry.summary && (
-              <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute mt-0.5 line-clamp-2 break-words">
-                {entry.summary}
-              </p>
+      <div className="min-w-0 space-y-2">
+        {showKeys.map((group) => (
+          <div key={group} className="min-w-0 space-y-1">
+            {group !== "." && (
+              <div className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute truncate">
+                {group}/
+              </div>
             )}
+            <div className="min-w-0 space-y-1.5">
+              {showGrouped[group]!.map((entry) => {
+                const subPath = memoryPathUnderTopGroup(entry.path);
+                return (
+                <div
+                  key={entry.path}
+                  className="max-w-full min-w-0 rounded-md border border-border/50 dark:border-border-dark/50 bg-white/50 px-2.5 py-1.5 dark:bg-white/[0.02]"
+                  title={entry.path}
+                >
+                  <div className="text-xs font-medium text-ink dark:text-ink-dark truncate">{entry.title}</div>
+                  {subPath.includes("/") && (
+                    <div className="text-[10px] text-ink-mute/90 dark:text-ink-dark-mute/90 truncate mt-0.5 font-mono">
+                      {subPath}
+                    </div>
+                  )}
+                  {entry.summary && (
+                    <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute mt-0.5 line-clamp-2 break-words">
+                      {entry.summary}
+                    </p>
+                  )}
+                </div>
+                );
+              })}
+            </div>
           </div>
         ))}
-        {summaries.length > (limit ?? summaries.length) && (
+        {summaries.length > shownCount && (
           <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
             {t("status.memoryMoreEntries", {
-              n: summaries.length - (limit ?? summaries.length),
+              n: summaries.length - shownCount,
             })}
           </p>
         )}
@@ -181,25 +217,58 @@ function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string
     );
   }
 
-  const flatFiles = Object.values(groupMemoryFiles(files)).flat();
-  const showFiles = limit ? flatFiles.slice(0, limit) : flatFiles;
+  const groups = groupMemoryFiles(files);
+  const keys = sortedMemoryGroupKeys(groups);
+  const lim = limit ?? Number.POSITIVE_INFINITY;
+  let remaining = lim;
   return (
-    <ul className="min-w-0 space-y-0.5">
-      {showFiles.map((f, i) => (
-        <li
-          key={i}
-          className="flex min-w-0 max-w-full items-center gap-1 truncate text-xs text-ink-mute dark:text-ink-dark-mute"
-        >
-          <span className="shrink-0">📄</span>
-          <span className="min-w-0 truncate">{f.split("/").pop() ?? f}</span>
-        </li>
-      ))}
-      {hasHints && limit && (
-        <li className="text-xs text-ink-mute dark:text-ink-dark-mute truncate pt-1">
-          {t("status.recentHintsCount", { n: hints.length })}
-        </li>
+    <div className="min-w-0 space-y-2">
+      {keys.map((group) => {
+        const paths = groups[group]!;
+        const showPaths = limit ? paths.slice(0, Math.max(0, remaining)) : paths;
+        if (limit) remaining -= showPaths.length;
+        if (showPaths.length === 0) return null;
+        return (
+          <div key={group} className="min-w-0 space-y-0.5">
+            {group !== "." && (
+              <div className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute truncate">
+                {group}/
+              </div>
+            )}
+            <ul className="min-w-0 space-y-0.5">
+              {showPaths.map((f) => {
+                const subPath = memoryPathUnderTopGroup(f);
+                return (
+                <li
+                  key={f}
+                  className="flex min-w-0 max-w-full flex-col gap-0.5 text-xs text-ink-mute dark:text-ink-dark-mute"
+                  title={f}
+                >
+                  <span className="flex min-w-0 items-center gap-1 truncate">
+                    <span className="shrink-0">📄</span>
+                    <span className="min-w-0 truncate">{f.split("/").pop() ?? f}</span>
+                  </span>
+                  {subPath.includes("/") && (
+                    <span className="min-w-0 truncate pl-5 text-[10px] font-mono opacity-90">{subPath}</span>
+                  )}
+                </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })}
+      {limit && files.length > limit && (
+        <p className="text-xs text-ink-mute dark:text-ink-dark-mute pt-0.5">
+          {t("status.moreFiles", { n: files.length - limit })}
+        </p>
       )}
-    </ul>
+      {hasHints && limit && (
+        <p className="text-xs text-ink-mute dark:text-ink-dark-mute truncate pt-1">
+          {t("status.recentHintsCount", { n: hints.length })}
+        </p>
+      )}
+    </div>
   );
 }
 

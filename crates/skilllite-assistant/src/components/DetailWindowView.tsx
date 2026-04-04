@@ -10,7 +10,7 @@ import {
   type LogEntry,
 } from "../stores/useStatusStore";
 import { MarkdownContent } from "./shared/MarkdownContent";
-import { groupMemoryFiles } from "../utils/fileUtils";
+import { groupMemoryFiles, memoryPathUnderTopGroup, sortedMemoryGroupKeys } from "../utils/fileUtils";
 import { useRecentData } from "../hooks/useRecentData";
 import { EvolutionDetailBody } from "./EvolutionSection";
 import { translate, useI18n } from "../i18n";
@@ -191,6 +191,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
   }
 
   const groups = groupMemoryFiles(files);
+  const groupKeys = sortedMemoryGroupKeys(groups);
 
   const handleFileClick = async (path: string) => {
     if (expandedFile === path) {
@@ -215,14 +216,16 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
   return (
     <div className="space-y-3">
       <ul className="space-y-1.5">
-        {Object.entries(groups).map(([group, paths]) => (
+        {groupKeys.map((group) => {
+          const paths = groups[group]!;
+          return (
           <li key={group}>
             {group !== "." && (
               <div className="text-sm font-medium text-ink-mute dark:text-ink-dark-mute mb-1">{group}/</div>
             )}
             <ul className="space-y-0.5">
-              {paths.map((f, i) => (
-                <li key={`file-${i}`}>
+              {paths.map((f) => (
+                <li key={f}>
                   <button
                     type="button"
                     onClick={() => handleFileClick(f)}
@@ -230,7 +233,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
                     title={f}
                   >
                     <span className="shrink-0">📄</span>
-                    <span className="truncate flex-1">{f.split("/").pop() ?? f}</span>
+                    <span className="truncate flex-1 font-mono text-[13px]">{memoryPathUnderTopGroup(f)}</span>
                     <span className="text-ink-mute/80 shrink-0">{expandedFile === f ? "▼" : "▶"}</span>
                   </button>
                   {expandedFile === f && (
@@ -252,7 +255,8 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
               ))}
             </ul>
           </li>
-        ))}
+          );
+        })}
       </ul>
       {hasHints && (
         <>
@@ -299,6 +303,7 @@ function OutputFileContent({ files }: { files: string[] }) {
   }
 
   const groups = groupMemoryFiles(files);
+  const groupKeys = sortedMemoryGroupKeys(groups);
 
   const handleFileClick = async (path: string) => {
     if (expandedFile === path) {
@@ -332,14 +337,16 @@ function OutputFileContent({ files }: { files: string[] }) {
   return (
     <div className="space-y-3">
       <ul className="space-y-1.5">
-        {Object.entries(groups).map(([group, paths]) => (
+        {groupKeys.map((group) => {
+          const paths = groups[group]!;
+          return (
           <li key={group}>
             {group !== "." && (
               <div className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{group}/</div>
             )}
             <ul className="space-y-0.5">
-              {paths.map((f, i) => (
-                <li key={`file-${i}`}>
+              {paths.map((f) => (
+                <li key={f}>
                   <button
                     type="button"
                     onClick={() => handleFileClick(f)}
@@ -347,7 +354,7 @@ function OutputFileContent({ files }: { files: string[] }) {
                     title={f}
                   >
                     <span className="shrink-0">📄</span>
-                    <span className="truncate flex-1">{f.split("/").pop() ?? f}</span>
+                    <span className="truncate flex-1 font-mono text-[13px]">{memoryPathUnderTopGroup(f)}</span>
                     <span className="text-gray-400 shrink-0">{expandedFile === f ? "▼" : "▶"}</span>
                   </button>
                   {expandedFile === f && (
@@ -384,7 +391,8 @@ function OutputFileContent({ files }: { files: string[] }) {
               ))}
             </ul>
           </li>
-        ))}
+          );
+        })}
       </ul>
     </div>
   );
