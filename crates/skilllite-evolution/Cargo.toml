@@ -28,7 +28,7 @@ dirs = "5.0"
 tempfile = "3.10"
 uuid = { version = "1", features = ["v4"] }
 regex = "1.10"
-thiserror = "2.0.18"
+thiserror.workspace = true
 
 [dev-dependencies]
 tempfile = "3.10"

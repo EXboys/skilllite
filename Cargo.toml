@@ -14,6 +14,10 @@ repository = "https://github.com/EXboys/skilllite"
 homepage = "https://github.com/EXboys/skilllite"
 documentation = "https://docs.rs/skilllite"
 
+[workspace.dependencies]
+# Single thiserror major across the workspace (see spec/rust-conventions.md).
+thiserror = "2.0.18"
+
 [profile.release]
 lto = true
 strip = true

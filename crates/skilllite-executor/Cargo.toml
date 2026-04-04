@@ -18,7 +18,7 @@ memory_vector = ["dep:sqlite-vec", "dep:zerocopy"]
 skilllite-core = { path = "../skilllite-core", version = "0.1.20" }
 skilllite-fs = { path = "../skilllite-fs", version = "0.1.20" }
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 rusqlite = { version = "0.31", features = ["bundled"] }
