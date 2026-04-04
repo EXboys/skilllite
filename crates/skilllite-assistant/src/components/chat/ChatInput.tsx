@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
 
 interface ChatInputProps {
   value: string;
@@ -21,15 +21,71 @@ export function ChatInput({
   onStop,
   disabled,
   loading,
-  placeholder = "输入指令（Enter 换行，点击发送）…",
+  placeholder = "Enter to send · Shift+Enter for newline",
   bare = false,
   footer,
 }: ChatInputProps) {
+  /** True while IME composition is active, or until deferred clear after compositionend (WebKit ordering). */
+  const imeComposingRef = useRef(false);
+  const imeEndClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (imeEndClearTimerRef.current !== null) {
+        clearTimeout(imeEndClearTimerRef.current);
+      }
+    };
+  }, []);
+
+  const cancelDeferredImeEnd = () => {
+    if (imeEndClearTimerRef.current !== null) {
+      clearTimeout(imeEndClearTimerRef.current);
+      imeEndClearTimerRef.current = null;
+    }
+  };
+
+  const handleCompositionStart = () => {
+    cancelDeferredImeEnd();
+    imeComposingRef.current = true;
+  };
+
+  const handleCompositionEnd = () => {
+    cancelDeferredImeEnd();
+    // WebKit/WKWebView often fires compositionend before the Enter keydown that commits text.
+    // Clearing synchronously makes that keydown look "not composing" and preventDefault breaks IME.
+    imeEndClearTimerRef.current = setTimeout(() => {
+      imeComposingRef.current = false;
+      imeEndClearTimerRef.current = null;
+    }, 0);
+  };
+
+  /** Enter belongs to IME (candidate confirm, etc.) — do not send. */
+  const isImeConsumingEnter = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    const ne = e.nativeEvent;
+    if (ne.isComposing || imeComposingRef.current) return true;
+    // Chromium legacy: keyCode 229 while IME is handling the key.
+    if (ne.keyCode === 229) return true;
+    if (e.key === "Process") return true;
+    return false;
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    if (disabled || loading) return;
+    if (isImeConsumingEnter(e)) return;
+    e.preventDefault();
+    if (!value.trim()) return;
+    onSend();
+  };
+
   const row = (
     <div className="flex gap-2">
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
           placeholder={placeholder}
           disabled={disabled}
           rows={3}

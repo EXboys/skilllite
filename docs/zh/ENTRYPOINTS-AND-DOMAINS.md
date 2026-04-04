@@ -52,6 +52,7 @@
   - **编译时**：`skilllite-core`（路径、配置等）
   - **运行时**：系统已安装的 `skilllite` 二进制（用于 chat、clear-session、读 transcript 等）
 - **能力**：图形化聊天、会话清除、读聊天记录/记忆/输出文件；通过 `skilllite_bridge` 调起 `skilllite`。
+- **聊天输入**：`Enter` 发送；`Shift+Enter` 换行；**输入法组合输入（未上屏）**时回车交给输入法确认选词，不会发送。
 - **适用**：不想写命令行的桌面用户、需要常驻托盘与快捷方式的场景。
 
 ---

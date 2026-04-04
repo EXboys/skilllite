@@ -74,6 +74,8 @@ export const zhMessages: Record<string, string> = {
 
   "chat.stop": "停止",
   "chat.stopTask": "停止当前任务",
+  "chat.inputPlaceholder":
+    "Enter 发送，Shift+Enter 换行；输入法未上屏时回车用于确认选词",
   "chat.clear": "清空对话",
   "chat.clearing": "正在清空",
   "chat.clearingHint": "正在清空会话并整理历史，请稍候…",

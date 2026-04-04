@@ -74,6 +74,8 @@ export const enMessages: Record<string, string> = {
 
   "chat.stop": "Stop",
   "chat.stopTask": "Stop current task",
+  "chat.inputPlaceholder":
+    "Enter to send · Shift+Enter newline · IME: Enter confirms candidates",
   "chat.clear": "Clear chat",
   "chat.clearing": "Clearing…",
   "chat.clearingHint": "Clearing chat and history, please wait…",

@@ -635,6 +635,7 @@ export default function ChatView() {
     disabled: loading || isClearing,
     loading,
     footer: chatInputFooter,
+    placeholder: t("chat.inputPlaceholder"),
   };
 
   return (

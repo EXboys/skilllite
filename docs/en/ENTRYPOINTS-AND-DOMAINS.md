@@ -52,6 +52,7 @@
   - **Build time**: `skilllite-core` (paths, config, etc.)
   - **Runtime**: System-installed `skilllite` binary (for chat, clear-session, reading transcript, etc.)
 - **Capabilities**: GUI chat, session clear, read chat history / memory / output files; invokes `skilllite` via `skilllite_bridge`.
+- **Chat input**: `Enter` sends; `Shift+Enter` inserts a newline; during an active IME composition, `Enter` is left to the IME (confirm candidates) and does not send.
 - **Use case**: Desktop users who prefer not to use the CLI; tray and shortcut scenarios.
 
 ---
