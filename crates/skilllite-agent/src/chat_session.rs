@@ -219,7 +219,8 @@ impl ChatSession {
         user_message: &str,
         event_sink: &mut dyn EventSink,
     ) -> Result<AgentResult> {
-        self.run_turn_inner(user_message, None, event_sink, None).await
+        self.run_turn_inner(user_message, None, event_sink, None)
+            .await
     }
 
     /// Run one turn with optional user image attachments (vision models).
@@ -229,7 +230,8 @@ impl ChatSession {
         images: Option<Vec<crate::types::UserImageAttachment>>,
         event_sink: &mut dyn EventSink,
     ) -> Result<AgentResult> {
-        self.run_turn_inner(user_message, images, event_sink, None).await
+        self.run_turn_inner(user_message, images, event_sink, None)
+            .await
     }
 
     /// A13: Run with overridden history (for --resume from checkpoint).

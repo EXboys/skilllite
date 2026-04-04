@@ -11,7 +11,9 @@ use crate::types::{
     ToolDefinition,
 };
 
-use super::{normalize_vision_media_type, ChatCompletionResponse, Choice, ChoiceMessage, LlmClient, Usage};
+use super::{
+    normalize_vision_media_type, ChatCompletionResponse, Choice, ChoiceMessage, LlmClient, Usage,
+};
 
 fn claude_send_err(url: &str, e: reqwest::Error) -> anyhow::Error {
     anyhow!("Claude API request failed (POST {}): {}", url, e)

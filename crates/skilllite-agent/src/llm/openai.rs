@@ -10,16 +10,14 @@ use crate::types::{
     get_max_tokens, ChatMessage, EventSink, FunctionCall, ToolCall, ToolDefinition,
 };
 
-use super::{normalize_vision_media_type, ChatCompletionResponse, Choice, ChoiceMessage, LlmClient};
+use super::{
+    normalize_vision_media_type, ChatCompletionResponse, Choice, ChoiceMessage, LlmClient,
+};
 
 fn messages_contain_user_images(messages: &[ChatMessage]) -> bool {
-    messages.iter().any(|m| {
-        m.role == "user"
-            && m
-                .images
-                .as_ref()
-                .is_some_and(|imgs| !imgs.is_empty())
-    })
+    messages
+        .iter()
+        .any(|m| m.role == "user" && m.images.as_ref().is_some_and(|imgs| !imgs.is_empty()))
 }
 
 fn openai_user_content_value(msg: &ChatMessage) -> crate::Result<Value> {

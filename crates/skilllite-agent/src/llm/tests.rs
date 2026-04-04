@@ -44,7 +44,8 @@ fn test_convert_messages_for_claude_basic() {
         ChatMessage::assistant("Hi there!"),
     ];
 
-    let (system, claude_msgs) = LlmClient::convert_messages_for_claude(&messages).expect("claude convert");
+    let (system, claude_msgs) =
+        LlmClient::convert_messages_for_claude(&messages).expect("claude convert");
 
     assert_eq!(system, Some("You are helpful.".to_string()));
     assert_eq!(claude_msgs.len(), 2); // user + assistant (system extracted)
@@ -76,7 +77,8 @@ fn test_convert_messages_for_claude_tool_calls() {
         ChatMessage::tool_result("tc_123", "File contents here"),
     ];
 
-    let (system, claude_msgs) = LlmClient::convert_messages_for_claude(&messages).expect("claude convert");
+    let (system, claude_msgs) =
+        LlmClient::convert_messages_for_claude(&messages).expect("claude convert");
 
     assert!(system.is_some());
     assert_eq!(claude_msgs.len(), 3); // user, assistant (with tool_use), user (with tool_result)
@@ -125,7 +127,8 @@ fn test_convert_messages_for_claude_multiple_tool_results() {
         ChatMessage::tool_result("tc_2", "result b"),
     ];
 
-    let (_, claude_msgs) = LlmClient::convert_messages_for_claude(&messages).expect("claude convert");
+    let (_, claude_msgs) =
+        LlmClient::convert_messages_for_claude(&messages).expect("claude convert");
 
     // Multiple tool results should be batched into one user message
     assert_eq!(claude_msgs.len(), 3); // user, assistant, user(tool_results)

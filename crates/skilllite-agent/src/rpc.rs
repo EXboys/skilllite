@@ -434,7 +434,9 @@ fn emit_event(writer: &Arc<Mutex<io::Stdout>>, event: &str, data: Value) {
     }
 }
 
-fn parse_agent_chat_images(params: &Value) -> Result<Option<Vec<crate::types::UserImageAttachment>>> {
+fn parse_agent_chat_images(
+    params: &Value,
+) -> Result<Option<Vec<crate::types::UserImageAttachment>>> {
     use crate::llm::normalize_vision_media_type;
 
     let Some(arr) = params.get("images").and_then(|v| v.as_array()) else {
