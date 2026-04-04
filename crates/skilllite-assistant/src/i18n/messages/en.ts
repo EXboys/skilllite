@@ -76,6 +76,16 @@ export const enMessages: Record<string, string> = {
   "chat.stopTask": "Stop current task",
   "chat.inputPlaceholder":
     "Enter to send · Shift+Enter newline · IME: Enter confirms candidates",
+  "chat.attachImage": "Image",
+  "chat.removeAttachment": "Remove attachment",
+  "chat.attachNotImage": "Choose an image file (PNG, JPEG, WebP, or GIF)",
+  "chat.attachTooLarge": "Each image must be 5MB or smaller",
+  "chat.attachReadFailed": "Could not read the selected image",
+  "chat.attachMaxImages": "At most {max} images per message",
+  "chat.attachDecodeFailed":
+    "Could not decode image data; try another file or use PNG/JPEG/WebP/GIF",
+  "chat.attachLoadErr": "Could not load selected file: {msg}",
+  "chat.attachPickerErr": "Could not open file picker: {msg}",
   "chat.clear": "Clear chat",
   "chat.clearing": "Clearing…",
   "chat.clearingHint": "Clearing chat and history, please wait…",

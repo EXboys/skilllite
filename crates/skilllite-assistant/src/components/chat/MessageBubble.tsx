@@ -157,10 +157,32 @@ function MessageBubbleInner({
   }, [clarifyComposer]);
 
   if (message.type === "user") {
+    const imgs = message.images;
     return (
       <div className="flex justify-end">
         <div className={bubbleUser}>
-          <ChatMarkdownWithPlannerFold content={message.content} />
+          {imgs && imgs.length > 0 ? (
+            <div className="flex flex-wrap gap-2 mb-2 justify-end">
+              {imgs.map((im, idx) => (
+                <a
+                  key={`${im.preview_url.slice(0, 32)}-${idx}`}
+                  href={im.preview_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block shrink-0 rounded-lg border border-accent/20 overflow-hidden max-w-[min(100%,12rem)]"
+                >
+                  <img
+                    src={im.preview_url}
+                    alt=""
+                    className="max-h-40 w-auto object-contain bg-black/5 dark:bg-white/5"
+                  />
+                </a>
+              ))}
+            </div>
+          ) : null}
+          {message.content.trim().length > 0 ? (
+            <ChatMarkdownWithPlannerFold content={message.content} />
+          ) : null}
         </div>
       </div>
     );

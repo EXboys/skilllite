@@ -1,5 +1,13 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  type ChangeEvent,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openImageDialog } from "@tauri-apps/plugin-dialog";
 import { useShallow } from "zustand/react/shallow";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useStatusStore } from "../stores/useStatusStore";
@@ -9,7 +17,52 @@ import { useRecentData } from "../hooks/useRecentData";
 import { MessageList } from "./chat/MessageList";
 import { ChatInput } from "./chat/ChatInput";
 import { InputPlanStrip } from "./chat/InputPlanStrip";
-import type { ChatMessage } from "../types/chat";
+import type {
+  ChatImagePreview,
+  ChatMessage,
+} from "../types/chat";
+
+const MAX_CHAT_IMAGES = 6;
+const MAX_IMAGE_FILE_BYTES = 5 * 1024 * 1024;
+
+type PendingImage = {
+  id: string;
+  media_type: string;
+  data_base64: string;
+  preview_url: string;
+};
+
+/** Handles `data:image/png;base64,...` and `data:image/jpeg;charset=UTF-8;base64,...`. */
+function parseDataUrl(dataUrl: string): { media_type: string; data_base64: string } | null {
+  const s = dataUrl.trim();
+  const marker = ";base64,";
+  const idx = s.indexOf(marker);
+  if (idx < 0 || !s.startsWith("data:")) return null;
+  let media_type = s.slice("data:".length, idx).trim();
+  const paramIdx = media_type.indexOf(";");
+  if (paramIdx >= 0) {
+    media_type = media_type.slice(0, paramIdx).trim();
+  }
+  const data_base64 = s.slice(idx + marker.length).trim();
+  if (!media_type || !data_base64) return null;
+  return { media_type, data_base64 };
+}
+
+function isTauriWebview(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__)
+  );
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(file);
+  });
+}
 import { isChatHiddenToolName } from "../utils/chatNoise";
 import { notifyRuntimeStatusMayHaveChanged } from "../utils/runtimeStatusRefresh";
 import { formatInvokeError } from "../utils/formatInvokeError";
@@ -34,6 +87,8 @@ export default function ChatView() {
     [t]
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -63,6 +118,7 @@ export default function ChatView() {
   if (activeKey !== currentSessionKey) {
     setActiveKey(currentSessionKey);
     setMessages([]);
+    setPendingImages([]);
     setLoading(false);
     setError(null);
     setNotice(null);
@@ -119,6 +175,7 @@ export default function ChatView() {
             name?: string;
             is_error?: boolean;
             ui?: Record<string, unknown> | null;
+            images?: ChatImagePreview[];
           }>
         >("skilllite_load_transcript", {
           sessionKey: currentSessionKey,
@@ -202,11 +259,22 @@ export default function ChatView() {
             });
             continue;
           }
-          msgs.push({
-            id: e.id,
-            type: (e.role === "user" ? "user" : "assistant") as "user" | "assistant",
-            content: e.content,
-          });
+          const role = e.role === "user" ? "user" : "assistant";
+          const uiImages = e.images;
+          if (role === "user" && uiImages && uiImages.length > 0) {
+            msgs.push({
+              id: e.id,
+              type: "user",
+              content: e.content,
+              images: uiImages,
+            });
+          } else {
+            msgs.push({
+              id: e.id,
+              type: role,
+              content: e.content,
+            });
+          }
         }
         setMessages(msgs);
       } catch (err) {
@@ -488,6 +556,7 @@ export default function ChatView() {
         workspace: settings.workspace || ".",
       });
       setMessages([]);
+      setPendingImages([]);
       setError(null);
       statusActions.clearAll();
       refreshRecentData();
@@ -537,79 +606,249 @@ export default function ChatView() {
     }
   }, [refreshRecentData, statusActions, t]);
 
-  const sendMessage = useCallback(async (rawText: string) => {
-    const text = rawText.trim();
-    if (!text || loading || isClearing) return;
+  const sendMessage = useCallback(
+    async (rawText: string, attachments: PendingImage[]) => {
+      const text = rawText.trim();
+      const hasImages = attachments.length > 0;
+      if ((!text && !hasImages) || loading || isClearing) return;
 
-    if (text === "/new" || text === "/reset") {
+      if (text === "/new" || text === "/reset") {
+        setInput("");
+        setSettings({ showStarterPrompts: false });
+        await handleClear();
+        return;
+      }
+
       setInput("");
+      setPendingImages([]);
+      setError(null);
       setSettings({ showStarterPrompts: false });
-      await handleClear();
-      return;
-    }
-
-    setInput("");
-    setError(null);
-    setSettings({ showStarterPrompts: false });
-    statusActions.clearPlan();
-    statusActions.setLatestOutput("");
-    setMessages((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), type: "user", content: text },
-    ]);
-    setLoading(true);
-
-    // Always pass `config` (may be `{}`) so the bridge can clear SKILLLITE_SWARM_URL when Swarm
-    // is off in settings; otherwise workspace-saved env would still enable delegation.
-    const config = buildAssistantBridgeConfig(settings);
-
-    try {
-      await invoke("skilllite_chat_stream", {
-        message: text,
-        workspace: settings.workspace || ".",
-        sessionKey: currentSessionKey,
-        config,
-      });
-    } catch (e) {
-      const errMsg = e instanceof Error ? e.message : String(e);
-      setError(errMsg);
+      statusActions.clearPlan();
+      statusActions.setLatestOutput("");
+      const previewImages: ChatImagePreview[] = attachments.map((p) => ({
+        media_type: p.media_type,
+        preview_url: p.preview_url,
+      }));
       setMessages((prev) => [
         ...prev,
         {
           id: crypto.randomUUID(),
-          type: "assistant",
-          content: t("chat.requestFailed", { msg: errMsg }),
+          type: "user",
+          content: text,
+          ...(previewImages.length > 0 ? { images: previewImages } : {}),
         },
       ]);
-    } finally {
-      setLoading(false);
+      setLoading(true);
+
+      const config = buildAssistantBridgeConfig(settings);
+      const rpcImages =
+        attachments.length > 0
+          ? attachments.map(({ media_type, data_base64 }) => ({
+              media_type,
+              data_base64,
+            }))
+          : undefined;
+
+      try {
+        const payload: Record<string, unknown> = {
+          message: text,
+          workspace: settings.workspace || ".",
+          sessionKey: currentSessionKey,
+          config,
+        };
+        if (rpcImages && rpcImages.length > 0) {
+          payload.images = rpcImages;
+        }
+        await invoke("skilllite_chat_stream", payload);
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        setError(errMsg);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            type: "assistant",
+            content: t("chat.requestFailed", { msg: errMsg }),
+          },
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      handleClear,
+      isClearing,
+      loading,
+      setSettings,
+      settings.apiBase,
+      settings.apiKey,
+      settings.model,
+      settings.workspace,
+      settings.sandboxLevel,
+      settings.swarmEnabled,
+      settings.swarmUrl,
+      settings.maxIterations,
+      settings.maxToolCallsPerTask,
+      settings.locale,
+      currentSessionKey,
+      statusActions,
+      t,
+    ]
+  );
+
+  const appendPendingImages = useCallback(
+    (additions: PendingImage[]) => {
+      if (additions.length === 0) return;
+      setPendingImages((prev) => {
+        const merged = [...prev, ...additions];
+        if (merged.length > MAX_CHAT_IMAGES) {
+          useUiToastStore
+            .getState()
+            .show(t("chat.attachMaxImages", { max: MAX_CHAT_IMAGES }), "error");
+        }
+        return merged.slice(0, MAX_CHAT_IMAGES);
+      });
+    },
+    [t]
+  );
+
+  /** Tauri: native dialog + Rust read (WKWebView often blocks programmatic `<input type="file">`). */
+  const openImagePicker = useCallback(async () => {
+    if (loading || isClearing) return;
+    if (isTauriWebview()) {
+      try {
+        const selected = await openImageDialog({
+          multiple: true,
+          filters: [
+            {
+              name: "Image",
+              extensions: ["png", "jpg", "jpeg", "webp", "gif"],
+            },
+          ],
+        });
+        if (selected == null) return;
+        const paths = Array.isArray(selected) ? selected : [selected];
+        const additions: PendingImage[] = [];
+        for (const path of paths) {
+          try {
+            const img = await invoke<{ media_type: string; data_base64: string }>(
+              "skilllite_read_local_image_b64",
+              { path }
+            );
+            const preview_url = `data:${img.media_type};base64,${img.data_base64}`;
+            additions.push({
+              id: crypto.randomUUID(),
+              media_type: img.media_type,
+              data_base64: img.data_base64,
+              preview_url,
+            });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            useUiToastStore
+              .getState()
+              .show(t("chat.attachLoadErr", { msg }), "error");
+          }
+        }
+        appendPendingImages(additions);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        useUiToastStore
+          .getState()
+          .show(t("chat.attachPickerErr", { msg }), "error");
+        fileInputRef.current?.click();
+      }
+      return;
     }
-  }, [
-    handleClear,
-    isClearing,
-    loading,
-    setSettings,
-    settings.apiBase,
-    settings.apiKey,
-    settings.model,
-    settings.workspace,
-    settings.sandboxLevel,
-    settings.swarmEnabled,
-    settings.swarmUrl,
-    settings.maxIterations,
-    settings.maxToolCallsPerTask,
-    settings.locale,
-    currentSessionKey,
-    statusActions,
-    t,
-  ]);
+    fileInputRef.current?.click();
+  }, [appendPendingImages, isClearing, loading, t]);
+
+  const handleImagePick = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const list = e.target.files;
+      e.target.value = "";
+      if (!list?.length) return;
+      const additions: PendingImage[] = [];
+      for (let i = 0; i < list.length; i++) {
+        const file = list[i];
+        if (!file.type.startsWith("image/")) {
+          useUiToastStore.getState().show(t("chat.attachNotImage"), "error");
+          continue;
+        }
+        if (file.size > MAX_IMAGE_FILE_BYTES) {
+          useUiToastStore.getState().show(t("chat.attachTooLarge"), "error");
+          continue;
+        }
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          const parsed = parseDataUrl(dataUrl);
+          if (!parsed) {
+            continue;
+          }
+          additions.push({
+            id: crypto.randomUUID(),
+            media_type: parsed.media_type,
+            data_base64: parsed.data_base64,
+            preview_url: dataUrl,
+          });
+        } catch {
+          useUiToastStore.getState().show(t("chat.attachReadFailed"), "error");
+        }
+      }
+      if (additions.length === 0 && list.length > 0) {
+        useUiToastStore.getState().show(t("chat.attachDecodeFailed"), "error");
+      }
+      appendPendingImages(additions);
+    },
+    [appendPendingImages, t]
+  );
 
   const handleSend = async () => {
-    await sendMessage(input);
+    await sendMessage(input, pendingImages);
   };
 
   const showStarterPrompts =
     settings.showStarterPrompts === true && messages.length === 0 && !loading && !isClearing;
+
+  const chatInputAttachmentSlot = (
+    <div className="flex flex-wrap items-end gap-2">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+        multiple
+        className="hidden"
+        onChange={(e) => void handleImagePick(e)}
+      />
+      <button
+        type="button"
+        disabled={loading || isClearing}
+        onClick={() => void openImagePicker()}
+        className="text-xs px-2.5 py-1 rounded-lg border border-border dark:border-border-dark text-ink-mute dark:text-ink-dark-mute hover:bg-ink/[0.04] dark:hover:bg-white/[0.06] disabled:opacity-50"
+      >
+        {t("chat.attachImage")}
+      </button>
+      {pendingImages.map((p) => (
+        <div key={p.id} className="relative inline-block">
+          <img
+            src={p.preview_url}
+            alt=""
+            className="h-14 w-14 object-cover rounded-lg border border-border dark:border-border-dark"
+          />
+          <button
+            type="button"
+            aria-label={t("chat.removeAttachment")}
+            disabled={loading || isClearing}
+            onClick={() =>
+              setPendingImages((prev) => prev.filter((x) => x.id !== p.id))
+            }
+            className="absolute -right-1.5 -top-1.5 h-5 w-5 rounded-full bg-red-500 text-white text-xs leading-5 opacity-90 hover:opacity-100 disabled:opacity-40"
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 
   const chatInputFooter = (
     <label className="flex items-center gap-2 text-xs text-ink-mute dark:text-ink-dark-mute cursor-pointer select-none">
@@ -634,6 +873,8 @@ export default function ChatView() {
     onStop: handleStop,
     disabled: loading || isClearing,
     loading,
+    attachmentSlot: chatInputAttachmentSlot,
+    allowEmptySend: pendingImages.length > 0,
     footer: chatInputFooter,
     placeholder: t("chat.inputPlaceholder"),
   };
@@ -726,7 +967,7 @@ export default function ChatView() {
               <button
                 key={action.title}
                 type="button"
-                onClick={() => void sendMessage(action.prompt)}
+                onClick={() => void sendMessage(action.prompt, [])}
                 className="w-full text-left rounded-lg border border-border dark:border-border-dark px-3 py-2 text-sm text-ink dark:text-ink-dark hover:border-accent/40 hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors"
               >
                 <span className="font-medium block">{action.title}</span>

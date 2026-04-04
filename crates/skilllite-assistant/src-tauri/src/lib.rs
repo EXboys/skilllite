@@ -16,6 +16,7 @@ async fn skilllite_chat_stream(
     workspace: Option<String>,
     session_key: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
+    images: Option<Vec<skilllite_bridge::ChatImageAttachment>>,
     conf_state: tauri::State<'_, skilllite_bridge::ConfirmationState>,
     clar_state: tauri::State<'_, skilllite_bridge::ClarificationState>,
     process_state: tauri::State<'_, skilllite_bridge::ChatProcessState>,
@@ -30,6 +31,7 @@ async fn skilllite_chat_stream(
             workspace,
             config,
             session_key,
+            images,
             conf,
             clar,
             proc,
@@ -620,6 +622,50 @@ fn skilllite_life_pulse_set_llm_overrides(
     Ok(())
 }
 
+/// Read a user-picked image from disk (after native file dialog) for chat attachments.
+#[tauri::command]
+fn skilllite_read_local_image_b64(path: String) -> Result<skilllite_bridge::ChatImageAttachment, String> {
+    use base64::Engine;
+    use std::path::Path;
+
+    const MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+    let p = Path::new(&path);
+    let meta = std::fs::metadata(p).map_err(|e| format!("Cannot read file: {}", e))?;
+    if !meta.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+    if meta.len() > MAX_BYTES {
+        return Err("Image exceeds 5MB limit".to_string());
+    }
+
+    let ext = p
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let media_type = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        _ => {
+            return Err(format!(
+                "Unsupported extension .{} (use png, jpg, webp, or gif)",
+                ext
+            ));
+        }
+    };
+
+    let bytes = std::fs::read(p).map_err(|e| format!("Failed to read image: {}", e))?;
+    let data_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+
+    Ok(skilllite_bridge::ChatImageAttachment {
+        media_type: media_type.to_string(),
+        data_base64,
+    })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let run_result = tauri::Builder::default()
@@ -634,6 +680,7 @@ pub fn run() {
             skilllite_read_log_file,
             skilllite_read_output_file,
             skilllite_read_output_file_base64,
+            skilllite_read_local_image_b64,
             skilllite_open_directory,
             skilllite_reveal_in_file_manager,
             skilllite_open_skill_directory,

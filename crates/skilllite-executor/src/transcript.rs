@@ -9,6 +9,15 @@
 use crate::error::Result;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
+
+/// Image attachment for a user `message` transcript row (vision / multimodal).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TranscriptImage {
+    /// e.g. `image/png`, `image/jpeg`
+    pub media_type: String,
+    /// Raw base64 (no `data:` prefix)
+    pub data_base64: String,
+}
 use std::collections::HashMap;
 use std::env;
 use std::fs::OpenOptions;
@@ -32,6 +41,8 @@ pub enum TranscriptEntry {
         content: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         tool_calls: Option<serde_json::Value>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        images: Option<Vec<TranscriptImage>>,
     },
     /// Tool call request - independent entry for complete traceability (aligned with OpenAI Agents SDK tracing)
     ToolCall {

@@ -11,7 +11,7 @@
 | **CLI** | Main binary `skilllite` | core, sandbox, commands, (optional) executor, agent, swarm | Terminal users, scripts, CI: run skills, scan, chat, init, and full feature set. |
 | **Python** | python-sdk + IPC/subprocess | Calls local `skilllite` binary (`serve` / subcommands) | Python apps, LangChain/LlamaIndex: scan_code, execute_code, chat, run_skill. |
 | **MCP** | Subcommand `skilllite mcp` | Same as CLI main binary (mcp module lives in skilllite package) | Cursor/VSCode etc.: MCP protocol exposes list_skills, run_skill, scan_code, execute_code. |
-| **Desktop** | skilllite-assistant (Tauri) | skilllite-core (paths/config); runtime requires installed `skilllite` | Desktop users: GUI chat, session management, read transcript/memory via `skilllite`. |
+| **Desktop** | skilllite-assistant (Tauri) | skilllite-core (paths/config); runtime requires installed `skilllite` | Desktop users: GUI chat (optional **image attachments** → multimodal `agent_chat`), session management, read transcript/memory via `skilllite`. |
 | **Swarm** | Subcommand `skilllite swarm` | skilllite-swarm (+ main binary; with agent, includes swarm_executor) | Multi-machine / multi-agent: mDNS discovery, P2P task routing, NewSkill sync. |
 
 ---

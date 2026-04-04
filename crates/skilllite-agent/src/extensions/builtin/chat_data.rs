@@ -178,17 +178,25 @@ pub(super) fn execute_chat_history(args: &Value) -> Result<String> {
             TranscriptEntry::Session { .. } => {}
             TranscriptEntry::Message {
                 role,
-                content: Some(c),
+                content,
+                images,
                 ..
             } => {
-                lines.push(format!("[{}] {}", role, c.trim()));
+                let text = content.as_deref().unwrap_or("").trim();
+                let img_note = match images {
+                    Some(im) if !im.is_empty() => format!(" [{} image(s)]", im.len()),
+                    _ => String::new(),
+                };
+                if !text.is_empty() || !img_note.is_empty() {
+                    lines.push(format!("[{}] {}{}", role, text, img_note));
+                }
             }
             TranscriptEntry::Compaction {
                 summary: Some(s), ..
             } => {
                 lines.push(format!("[compaction] {}", s));
             }
-            TranscriptEntry::Message { .. } | TranscriptEntry::Compaction { .. } => {}
+            TranscriptEntry::Compaction { .. } => {}
             _ => {}
         }
     }

@@ -187,6 +187,7 @@ pub fn cmd_replay(
                 &config,
                 Vec::new(),
                 &case.prompt,
+                None,
                 &loaded_skills,
                 sink.as_mut(),
                 None,

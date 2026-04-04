@@ -11,7 +11,7 @@
 | **CLI** | 主二进制 `skilllite` | core, sandbox, commands, (可选) executor, agent, swarm | 终端用户、脚本、CI：执行技能、扫描、聊天、初始化等全功能。 |
 | **Python** | python-sdk + IPC/子进程 | 调用本机 `skilllite` 二进制（`serve` / 子命令） | Python 应用、LangChain/LlamaIndex 集成：scan_code、execute_code、chat、run_skill。 |
 | **MCP** | 子命令 `skilllite mcp` | 同 CLI 主二进制（mcp 模块在 skilllite 包内） | Cursor/VSCode 等 IDE：通过 MCP 协议暴露 list_skills、run_skill、scan_code、execute_code。 |
-| **Desktop** | skilllite-assistant (Tauri) | skilllite-core（路径/配置）；运行时需已安装 `skilllite` | 桌面用户：图形化聊天、会话管理、读 transcript/memory，背后调 `skilllite`。 |
+| **Desktop** | skilllite-assistant (Tauri) | skilllite-core（路径/配置）；运行时需已安装 `skilllite` | 桌面用户：图形化聊天（含可选 **图片附件** → `agent_chat` 多模态）、会话管理、读 transcript/memory，背后调 `skilllite`。 |
 | **Swarm** | 子命令 `skilllite swarm` | skilllite-swarm（+ 主 binary，agent 时含 swarm_executor） | 多机/多 Agent 组网：mDNS 发现、P2P 任务路由、NewSkill 同步。 |
 
 ---

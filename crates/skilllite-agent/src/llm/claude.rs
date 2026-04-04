@@ -11,7 +11,7 @@ use crate::types::{
     ToolDefinition,
 };
 
-use super::{ChatCompletionResponse, Choice, ChoiceMessage, LlmClient, Usage};
+use super::{normalize_vision_media_type, ChatCompletionResponse, Choice, ChoiceMessage, LlmClient, Usage};
 
 fn claude_send_err(url: &str, e: reqwest::Error) -> anyhow::Error {
     anyhow!("Claude API request failed (POST {}): {}", url, e)
@@ -20,7 +20,7 @@ fn claude_send_err(url: &str, e: reqwest::Error) -> anyhow::Error {
 impl LlmClient {
     pub(super) fn convert_messages_for_claude(
         messages: &[ChatMessage],
-    ) -> (Option<String>, Vec<Value>) {
+    ) -> crate::Result<(Option<String>, Vec<Value>)> {
         let mut system_prompt = None;
         let mut claude_messages: Vec<Value> = Vec::new();
 
@@ -48,10 +48,41 @@ impl LlmClient {
                     }
                 }
                 "user" => {
-                    claude_messages.push(json!({
-                        "role": "user",
-                        "content": msg.content.as_deref().unwrap_or("")
-                    }));
+                    if let Some(slice) = msg.images.as_deref().filter(|s| !s.is_empty()) {
+                        let mut blocks: Vec<Value> = Vec::new();
+                        let text = msg.content.as_deref().unwrap_or("").trim();
+                        if !text.is_empty() {
+                            blocks.push(json!({
+                                "type": "text",
+                                "text": text
+                            }));
+                        }
+                        for img in slice {
+                            let mt = normalize_vision_media_type(&img.media_type)?;
+                            blocks.push(json!({
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": mt,
+                                    "data": img.data_base64.trim()
+                                }
+                            }));
+                        }
+                        if blocks.is_empty() {
+                            return Err(crate::Error::validation(
+                                "Claude user message has images but no usable parts",
+                            ));
+                        }
+                        claude_messages.push(json!({
+                            "role": "user",
+                            "content": blocks
+                        }));
+                    } else {
+                        claude_messages.push(json!({
+                            "role": "user",
+                            "content": msg.content.as_deref().unwrap_or("")
+                        }));
+                    }
                 }
                 "assistant" => {
                     let mut content_blocks: Vec<Value> = Vec::new();
@@ -108,7 +139,7 @@ impl LlmClient {
             }));
         }
 
-        (system_prompt, claude_messages)
+        Ok((system_prompt, claude_messages))
     }
 
     pub(super) async fn claude_chat_completion(
@@ -120,7 +151,7 @@ impl LlmClient {
     ) -> Result<ChatCompletionResponse> {
         let url = format!("{}/v1/messages", self.api_base.trim_end_matches("/v1"));
 
-        let (system_prompt, claude_messages) = Self::convert_messages_for_claude(messages);
+        let (system_prompt, claude_messages) = Self::convert_messages_for_claude(messages)?;
 
         let mut body = json!({
             "model": model,
@@ -175,7 +206,7 @@ impl LlmClient {
     ) -> Result<ChatCompletionResponse> {
         let url = format!("{}/v1/messages", self.api_base.trim_end_matches("/v1"));
 
-        let (system_prompt, claude_messages) = Self::convert_messages_for_claude(messages);
+        let (system_prompt, claude_messages) = Self::convert_messages_for_claude(messages)?;
 
         let mut body = json!({
             "model": model,

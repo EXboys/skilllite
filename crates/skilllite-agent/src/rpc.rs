@@ -18,6 +18,7 @@
 //! {"method": "agent_chat", "params": {
 //!     "message": "user input",
 //!     "session_key": "default",
+//!     "images": [ { "media_type": "image/png", "data_base64": "..." } ],
 //!     "context": { "append": "optional string to append to system prompt" },
 //!     "config": { "model": "gpt-4o", ... }  // optional overrides
 //! }}
@@ -433,6 +434,46 @@ fn emit_event(writer: &Arc<Mutex<io::Stdout>>, event: &str, data: Value) {
     }
 }
 
+fn parse_agent_chat_images(params: &Value) -> Result<Option<Vec<crate::types::UserImageAttachment>>> {
+    use crate::llm::normalize_vision_media_type;
+
+    let Some(arr) = params.get("images").and_then(|v| v.as_array()) else {
+        return Ok(None);
+    };
+    if arr.is_empty() {
+        return Ok(None);
+    }
+    const MAX_IMAGES: usize = 6;
+    const MAX_B64_CHARS: usize = 7_200_000;
+    if arr.len() > MAX_IMAGES {
+        bail!("At most {} images per message", MAX_IMAGES);
+    }
+    let mut out = Vec::with_capacity(arr.len());
+    for (i, item) in arr.iter().enumerate() {
+        let media_type = item
+            .get("media_type")
+            .and_then(|v| v.as_str())
+            .with_context(|| format!("images[{}].media_type (string) required", i))?;
+        let canonical = normalize_vision_media_type(media_type)?;
+        let data_base64 = item
+            .get("data_base64")
+            .and_then(|v| v.as_str())
+            .with_context(|| format!("images[{}].data_base64 (string) required", i))?;
+        let data_base64 = data_base64.trim();
+        if data_base64.is_empty() {
+            bail!("images[{}].data_base64 is empty", i);
+        }
+        if data_base64.len() > MAX_B64_CHARS {
+            bail!("images[{}]: base64 payload too large", i);
+        }
+        out.push(crate::types::UserImageAttachment {
+            media_type: canonical.to_string(),
+            data_base64: data_base64.to_string(),
+        });
+    }
+    Ok(Some(out))
+}
+
 async fn handle_agent_chat(
     params: &Value,
     writer: Arc<Mutex<io::Stdout>>,
@@ -441,7 +482,13 @@ async fn handle_agent_chat(
     let message = params
         .get("message")
         .and_then(|m| m.as_str())
-        .context("'message' is required in agent_chat params")?;
+        .unwrap_or("")
+        .to_string();
+    let images = parse_agent_chat_images(params)?;
+    let has_images = images.as_ref().is_some_and(|v| !v.is_empty());
+    if message.trim().is_empty() && !has_images {
+        bail!("agent_chat requires non-empty 'message' and/or non-empty 'images'");
+    }
     let session_key = params
         .get("session_key")
         .and_then(|s| s.as_str())
@@ -525,7 +572,10 @@ async fn handle_agent_chat(
     let transcript_path = session.transcript_append_path();
     let mut sink = RpcEventSink::new(writer.clone(), reader, Some(transcript_path));
 
-    match session.run_turn(message, &mut sink).await {
+    match session
+        .run_turn_with_media(&message, images, &mut sink)
+        .await
+    {
         Ok(agent_result) => {
             let task_id = Uuid::new_v4().to_string();
             let node_result = agent_result.to_node_result(&task_id);

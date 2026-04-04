@@ -5,12 +5,17 @@ use serde::{Deserialize, Serialize};
 use super::feedback::ExecutionFeedback;
 use super::task::Task;
 
+pub use skilllite_executor::transcript::TranscriptImage as UserImageAttachment;
+
 /// A chat message in OpenAI format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatMessage {
     pub role: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    /// User multimodal images (not serialized verbatim into OpenAI bodies; see `llm/openai.rs`).
+    #[serde(skip)]
+    pub images: Option<Vec<UserImageAttachment>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_calls: Option<Vec<ToolCall>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -24,6 +29,7 @@ impl ChatMessage {
         Self {
             role: "system".to_string(),
             content: Some(content.to_string()),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -34,6 +40,25 @@ impl ChatMessage {
         Self {
             role: "user".to_string(),
             content: Some(content.to_string()),
+            images: None,
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }
+    }
+
+    /// User turn with optional vision images (`media_type` + raw base64).
+    pub fn user_with_images(text: &str, images: Option<Vec<UserImageAttachment>>) -> Self {
+        let images = images.filter(|v| !v.is_empty());
+        let content = if text.trim().is_empty() {
+            None
+        } else {
+            Some(text.to_string())
+        };
+        Self {
+            role: "user".to_string(),
+            content,
+            images,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -44,6 +69,7 @@ impl ChatMessage {
         Self {
             role: "assistant".to_string(),
             content: Some(content.to_string()),
+            images: None,
             tool_calls: None,
             tool_call_id: None,
             name: None,
@@ -54,6 +80,7 @@ impl ChatMessage {
         Self {
             role: "assistant".to_string(),
             content: content.map(|s| s.to_string()),
+            images: None,
             tool_calls: Some(tool_calls),
             tool_call_id: None,
             name: None,
@@ -64,6 +91,7 @@ impl ChatMessage {
         Self {
             role: "tool".to_string(),
             content: Some(content.to_string()),
+            images: None,
             tool_calls: None,
             tool_call_id: Some(tool_call_id.to_string()),
             name: None,

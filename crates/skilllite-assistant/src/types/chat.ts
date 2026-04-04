@@ -5,8 +5,25 @@ export interface TaskItem {
   completed?: boolean;
 }
 
+/** User-attached image for vision (matches agent-rpc `images[]`). */
+export interface ChatImageAttachment {
+  media_type: string;
+  data_base64: string;
+}
+
+/** Restored from transcript for UI preview. */
+export interface ChatImagePreview {
+  media_type: string;
+  preview_url: string;
+}
+
 export type ChatMessage =
-  | { id: string; type: "user"; content: string }
+  | {
+      id: string;
+      type: "user";
+      content: string;
+      images?: ChatImagePreview[];
+    }
   | { id: string; type: "assistant"; content: string; streaming?: boolean }
   | { id: string; type: "plan"; tasks: TaskItem[] }
   | { id: string; type: "tool_call"; name: string; args: string }

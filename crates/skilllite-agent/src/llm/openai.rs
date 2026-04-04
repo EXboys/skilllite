@@ -10,7 +10,58 @@ use crate::types::{
     get_max_tokens, ChatMessage, EventSink, FunctionCall, ToolCall, ToolDefinition,
 };
 
-use super::{ChatCompletionResponse, Choice, ChoiceMessage, LlmClient};
+use super::{normalize_vision_media_type, ChatCompletionResponse, Choice, ChoiceMessage, LlmClient};
+
+fn messages_contain_user_images(messages: &[ChatMessage]) -> bool {
+    messages.iter().any(|m| {
+        m.role == "user"
+            && m
+                .images
+                .as_ref()
+                .is_some_and(|imgs| !imgs.is_empty())
+    })
+}
+
+fn openai_user_content_value(msg: &ChatMessage) -> crate::Result<Value> {
+    let imgs = msg.images.as_deref().filter(|s| !s.is_empty());
+    let text = msg.content.as_deref().unwrap_or("").trim();
+    if imgs.is_none() {
+        return Ok(json!(text));
+    }
+    let mut parts = Vec::new();
+    if !text.is_empty() {
+        parts.push(json!({ "type": "text", "text": text }));
+    }
+    if let Some(slice) = imgs {
+        for img in slice {
+            let mt = normalize_vision_media_type(&img.media_type)?;
+            parts.push(json!({
+                "type": "image_url",
+                "image_url": {
+                    "url": format!("data:{};base64,{}", mt, img.data_base64.trim())
+                }
+            }));
+        }
+    }
+    if parts.is_empty() {
+        return Err(crate::Error::validation(
+            "User message has image metadata but no usable image parts",
+        ));
+    }
+    Ok(Value::Array(parts))
+}
+
+fn openai_api_message(msg: &ChatMessage) -> crate::Result<Value> {
+    if msg.role == "user" {
+        let content = openai_user_content_value(msg)?;
+        return Ok(json!({ "role": "user", "content": content }));
+    }
+    serde_json::to_value(msg).map_err(|e| e.into())
+}
+
+fn chat_messages_to_openai_json(messages: &[ChatMessage]) -> crate::Result<Vec<Value>> {
+    messages.iter().map(openai_api_message).collect()
+}
 
 /// MiniMax Coding Plan 不支持 `system` role (error 2013)。
 /// 将所有 system 消息提取合并，注入到第一条 user 消息开头，保留指令语义。
@@ -67,6 +118,12 @@ impl LlmClient {
     ) -> Result<ChatCompletionResponse> {
         let url = format!("{}/chat/completions", self.api_base);
 
+        if is_minimax(&self.api_base) && messages_contain_user_images(messages) {
+            bail!(
+                "Image attachments are not supported for MiniMax Coding Plan. Use a vision-capable OpenAI-compatible model (e.g. gpt-4o) or another provider."
+            );
+        }
+
         let effective_messages: Vec<ChatMessage>;
         let msgs: &[ChatMessage] = if is_minimax(&self.api_base) {
             effective_messages = transform_messages_for_minimax(messages);
@@ -75,10 +132,12 @@ impl LlmClient {
             messages
         };
 
+        let messages_json = chat_messages_to_openai_json(msgs)?;
+
         let mut body = json!({
             "model": model,
             "max_tokens": get_max_tokens(),
-            "messages": msgs,
+            "messages": messages_json,
         });
 
         if let Some(temp) = temperature {
@@ -125,6 +184,12 @@ impl LlmClient {
     ) -> Result<ChatCompletionResponse> {
         let url = format!("{}/chat/completions", self.api_base);
 
+        if is_minimax(&self.api_base) && messages_contain_user_images(messages) {
+            bail!(
+                "Image attachments are not supported for MiniMax Coding Plan. Use a vision-capable OpenAI-compatible model (e.g. gpt-4o) or another provider."
+            );
+        }
+
         let effective_messages: Vec<ChatMessage>;
         let msgs: &[ChatMessage] = if is_minimax(&self.api_base) {
             effective_messages = transform_messages_for_minimax(messages);
@@ -133,10 +198,12 @@ impl LlmClient {
             messages
         };
 
+        let messages_json = chat_messages_to_openai_json(msgs)?;
+
         let mut body = json!({
             "model": model,
             "max_tokens": get_max_tokens(),
-            "messages": msgs,
+            "messages": messages_json,
             "stream": true,
         });
 
@@ -336,5 +403,29 @@ impl LlmClient {
             }],
             usage,
         })
+    }
+}
+
+#[cfg(test)]
+mod openai_attachment_tests {
+    use super::*;
+    use crate::types::{ChatMessage, UserImageAttachment};
+
+    #[test]
+    fn openai_user_with_image_uses_content_array() {
+        let m = ChatMessage::user_with_images(
+            "describe",
+            Some(vec![UserImageAttachment {
+                media_type: "image/png".to_string(),
+                data_base64: "QUJD".to_string(),
+            }]),
+        );
+        let v = openai_api_message(&m).expect("openai_api_message");
+        assert_eq!(v["role"], "user");
+        let parts = v["content"].as_array().expect("content array");
+        assert!(parts.iter().any(|p| p.get("type") == Some(&json!("text"))));
+        assert!(parts
+            .iter()
+            .any(|p| p.get("type") == Some(&json!("image_url"))));
     }
 }

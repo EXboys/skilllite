@@ -27,6 +27,7 @@ impl EvolutionLlm for EvolutionLlmAdapter<'_> {
             .map(|m| ChatMessage {
                 role: m.role.clone(),
                 content: m.content.clone(),
+                images: None,
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,

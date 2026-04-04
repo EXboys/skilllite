@@ -163,6 +163,7 @@ pub async fn run_agent_loop(
     config: &AgentConfig,
     initial_messages: Vec<ChatMessage>,
     user_message: &str,
+    user_images: Option<Vec<UserImageAttachment>>,
     skills: &[LoadedSkill],
     event_sink: &mut dyn EventSink,
     session_key: Option<&str>,
@@ -172,6 +173,7 @@ pub async fn run_agent_loop(
             config,
             initial_messages,
             user_message,
+            user_images,
             skills,
             event_sink,
             session_key,
@@ -182,6 +184,7 @@ pub async fn run_agent_loop(
             config,
             initial_messages,
             user_message,
+            user_images,
             skills,
             event_sink,
             session_key,
@@ -198,6 +201,7 @@ async fn run_simple_loop(
     config: &AgentConfig,
     initial_messages: Vec<ChatMessage>,
     user_message: &str,
+    user_images: Option<Vec<UserImageAttachment>>,
     skills: &[LoadedSkill],
     event_sink: &mut dyn EventSink,
     session_key: Option<&str>,
@@ -246,7 +250,10 @@ async fn run_simple_loop(
     let mut messages = Vec::new();
     messages.push(ChatMessage::system(&system_prompt));
     messages.extend(initial_messages);
-    messages.push(ChatMessage::user(user_message));
+    messages.push(ChatMessage::user_with_images(
+        user_message,
+        user_images.filter(|v| !v.is_empty()),
+    ));
 
     let mut documented_skills: HashSet<String> = HashSet::new();
     let mut state = ExecutionState::new();
@@ -502,6 +509,7 @@ async fn run_with_task_planning(
     config: &AgentConfig,
     initial_messages: Vec<ChatMessage>,
     user_message: &str,
+    user_images: Option<Vec<UserImageAttachment>>,
     skills: &[LoadedSkill],
     event_sink: &mut dyn EventSink,
     session_key: Option<&str>,
@@ -544,6 +552,7 @@ async fn run_with_task_planning(
         config,
         initial_messages,
         user_message,
+        user_images,
         skills,
         registry.availability(),
         event_sink,

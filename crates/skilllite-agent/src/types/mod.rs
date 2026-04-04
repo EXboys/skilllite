@@ -20,7 +20,7 @@ mod task;
 // Re-export all public types for backward compatibility.
 pub use chat::{
     parse_claude_tool_calls, AgentResult, ChatMessage, FunctionCall, FunctionDef, ToolCall,
-    ToolDefinition, ToolFormat, ToolResult,
+    ToolDefinition, ToolFormat, ToolResult, UserImageAttachment,
 };
 pub use config::AgentConfig;
 pub use env_config::{

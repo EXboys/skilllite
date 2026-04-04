@@ -36,6 +36,7 @@ pub(super) async fn run_planning_phase(
     config: &AgentConfig,
     initial_messages: Vec<ChatMessage>,
     user_message: &str,
+    user_images: Option<Vec<UserImageAttachment>>,
     skills: &[LoadedSkill],
     availability: &ToolAvailabilityView,
     event_sink: &mut dyn EventSink,
@@ -155,7 +156,10 @@ pub(super) async fn run_planning_phase(
     let mut messages = Vec::new();
     messages.push(ChatMessage::system(&system_prompt));
     messages.extend(initial_messages);
-    messages.push(ChatMessage::user(user_message));
+    messages.push(ChatMessage::user_with_images(
+        user_message,
+        user_images.filter(|v| !v.is_empty()),
+    ));
 
     // A13: Save initial checkpoint for --resume
     maybe_save_checkpoint(

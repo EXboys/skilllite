@@ -1,7 +1,7 @@
 //! 与 `skilllite agent-rpc` 子进程交互：启动、JSON-RPC、确认/澄清、事件转发。
 
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -36,6 +36,13 @@ pub struct ClarificationState(pub Arc<Mutex<Option<mpsc::Sender<ClarifyResponse>
 /// Shared state for the chat subprocess; skilllite_stop can kill it.
 #[derive(Default, Clone)]
 pub struct ChatProcessState(pub Arc<Mutex<Option<std::process::Child>>>);
+
+/// Single image from the desktop UI (vision); sent to `agent_chat` as base64.
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+pub struct ChatImageAttachment {
+    pub media_type: String,
+    pub data_base64: String,
+}
 
 /// Config overrides from frontend (optional).
 #[derive(Clone, Debug, serde::Deserialize, Default)]
@@ -201,6 +208,7 @@ pub fn chat_stream(
     workspace: Option<String>,
     config_overrides: Option<ChatConfigOverrides>,
     session_key: Option<String>,
+    images: Option<Vec<ChatImageAttachment>>,
     confirmation_state: ConfirmationState,
     clarification_state: ClarificationState,
     process_state: ChatProcessState,
@@ -302,13 +310,29 @@ pub fn chat_stream(
     }
 
     let session = session_key.unwrap_or_else(|| "default".to_string());
+    let imgs_json: Option<Vec<Value>> = images.map(|v| {
+        v.into_iter()
+            .map(|img| {
+                json!({
+                    "media_type": img.media_type,
+                    "data_base64": img.data_base64,
+                })
+            })
+            .collect()
+    });
+    let mut params = json!({
+        "message": message,
+        "session_key": session.clone(),
+        "config": config_json
+    });
+    if let Some(obj) = params.as_object_mut() {
+        if let Some(arr) = imgs_json.filter(|a| !a.is_empty()) {
+            obj.insert("images".to_string(), json!(arr));
+        }
+    }
     let request = json!({
         "method": "agent_chat",
-        "params": {
-            "message": message,
-            "session_key": session.clone(),
-            "config": config_json
-        }
+        "params": params
     });
     writeln!(stdin, "{}", request).map_err(|e| e.to_string())?;
 

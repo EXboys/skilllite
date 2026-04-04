@@ -16,7 +16,8 @@ mod workspace;
 pub use bundled_skills_sync::sync_bundled_skills_from_resources;
 pub use chat::{
     chat_stream, merge_dotenv_with_chat_overrides, stop_chat, ChatConfigOverrides,
-    ChatProcessState, ClarificationState, ClarifyResponse, ConfirmationState,
+    ChatImageAttachment, ChatProcessState, ClarificationState, ClarifyResponse,
+    ConfirmationState,
 };
 pub use integrations::*;
 pub use paths::resolve_skilllite_path_app;

@@ -19,6 +19,18 @@ use super::types::{safe_truncate, ChatMessage, EventSink, ToolCall, ToolDefiniti
 mod claude;
 mod openai;
 
+/// Normalize image MIME for OpenAI / Claude vision payloads.
+pub(crate) fn normalize_vision_media_type(mt: &str) -> Result<&'static str> {
+    let t = mt.trim().to_ascii_lowercase();
+    match t.as_str() {
+        "image/png" | "png" => Ok("image/png"),
+        "image/jpeg" | "image/jpg" | "jpeg" | "jpg" => Ok("image/jpeg"),
+        "image/webp" | "webp" => Ok("image/webp"),
+        "image/gif" | "gif" => Ok("image/gif"),
+        _ => bail!("Unsupported image media_type: {}", mt),
+    }
+}
+
 #[cfg(test)]
 mod tests;
 

@@ -7,6 +7,13 @@ use serde_json::json;
 
 use super::paths::{find_project_root, load_dotenv_for_child, skilllite_chat_root};
 
+/// Image preview for transcript reload (data URL for `<img src>`).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TranscriptImagePreview {
+    pub media_type: String,
+    pub preview_url: String,
+}
+
 /// Single message entry for frontend display.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TranscriptMessage {
@@ -17,6 +24,8 @@ pub struct TranscriptMessage {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub images: Option<Vec<TranscriptImagePreview>>,
     /// Desktop-only rows restored from `custom_message` (confirmation / clarification).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<serde_json::Value>,
@@ -63,6 +72,12 @@ pub(crate) fn list_transcript_paths(transcripts_dir: &Path, session_key: &str) -
 }
 
 #[derive(Clone)]
+struct TranscriptImageRaw {
+    media_type: String,
+    data_base64: String,
+}
+
+#[derive(Clone)]
 struct TranscriptEntryRaw {
     ty: String,
     id: String,
@@ -72,6 +87,41 @@ struct TranscriptEntryRaw {
     name: Option<String>,
     is_error: Option<bool>,
     ui: Option<serde_json::Value>,
+    images: Option<Vec<TranscriptImageRaw>>,
+}
+
+fn parse_message_images(v: &serde_json::Value) -> Option<Vec<TranscriptImageRaw>> {
+    let arr = v.get("images")?.as_array()?;
+    if arr.is_empty() {
+        return None;
+    }
+    let mut out = Vec::new();
+    for item in arr {
+        let media_type = item
+            .get("media_type")
+            .and_then(|x| x.as_str())
+            .unwrap_or("image/png")
+            .trim()
+            .to_string();
+        let data_base64 = item
+            .get("data_base64")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if data_base64.is_empty() {
+            continue;
+        }
+        out.push(TranscriptImageRaw {
+            media_type,
+            data_base64,
+        });
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
@@ -112,6 +162,12 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 if role != "user" && role != "assistant" {
                     continue;
                 }
+                let content = v
+                    .get("content")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let images = parse_message_images(&v);
                 entries.push(TranscriptEntryRaw {
                     ty,
                     id: v
@@ -120,15 +176,12 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         .unwrap_or("")
                         .to_string(),
                     role,
-                    content: v
-                        .get("content")
-                        .and_then(|c| c.as_str())
-                        .unwrap_or("")
-                        .to_string(),
+                    content,
                     summary: None,
                     name: None,
                     is_error: None,
                     ui: None,
+                    images,
                 });
             } else if ty == "tool_call" {
                 let name = v
@@ -154,6 +207,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     name: Some(name),
                     is_error: None,
                     ui: None,
+                    images: None,
                 });
             } else if ty == "tool_result" {
                 let name = v
@@ -183,6 +237,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     name: Some(name),
                     is_error: Some(is_error),
                     ui: None,
+                    images: None,
                 });
             } else if ty == "compaction" {
                 entries.push(TranscriptEntryRaw {
@@ -194,6 +249,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     name: None,
                     is_error: None,
                     ui: None,
+                    images: None,
                 });
             } else if ty == "custom_message" {
                 let ui_kind = v
@@ -221,6 +277,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         name: None,
                         is_error: None,
                         ui: Some(ui),
+                        images: None,
                     });
                 } else if ui_kind == "clarification" {
                     let id = v
@@ -250,6 +307,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         name: None,
                         is_error: None,
                         ui: Some(ui),
+                        images: None,
                     });
                 }
             }
@@ -271,6 +329,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 content: format!("[此前对话已压缩]\n\n{}", summary),
                 name: None,
                 is_error: None,
+                images: None,
                 ui: None,
             });
         }
@@ -295,6 +354,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 content: String::new(),
                 name: None,
                 is_error: None,
+                images: None,
                 ui: e.ui.clone(),
             });
             continue;
@@ -307,12 +367,31 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
         } else {
             e.id.clone()
         };
+        let images = e.images.as_ref().and_then(|imgs| {
+            let v: Vec<TranscriptImagePreview> = imgs
+                .iter()
+                .map(|im| TranscriptImagePreview {
+                    media_type: im.media_type.clone(),
+                    preview_url: format!(
+                        "data:{};base64,{}",
+                        im.media_type.trim(),
+                        im.data_base64.trim()
+                    ),
+                })
+                .collect();
+            if v.is_empty() {
+                None
+            } else {
+                Some(v)
+            }
+        });
         messages.push(TranscriptMessage {
             id,
             role: e.role.clone(),
             content: e.content.clone(),
             name: e.name.clone(),
             is_error: e.is_error,
+            images,
             ui: None,
         });
     }

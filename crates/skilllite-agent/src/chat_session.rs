@@ -219,7 +219,17 @@ impl ChatSession {
         user_message: &str,
         event_sink: &mut dyn EventSink,
     ) -> Result<AgentResult> {
-        self.run_turn_inner(user_message, event_sink, None).await
+        self.run_turn_inner(user_message, None, event_sink, None).await
+    }
+
+    /// Run one turn with optional user image attachments (vision models).
+    pub async fn run_turn_with_media(
+        &mut self,
+        user_message: &str,
+        images: Option<Vec<crate::types::UserImageAttachment>>,
+        event_sink: &mut dyn EventSink,
+    ) -> Result<AgentResult> {
+        self.run_turn_inner(user_message, images, event_sink, None).await
     }
 
     /// A13: Run with overridden history (for --resume from checkpoint).
@@ -229,13 +239,14 @@ impl ChatSession {
         event_sink: &mut dyn EventSink,
         history_override: Vec<ChatMessage>,
     ) -> Result<AgentResult> {
-        self.run_turn_inner(user_message, event_sink, Some(history_override))
+        self.run_turn_inner(user_message, None, event_sink, Some(history_override))
             .await
     }
 
     async fn run_turn_inner(
         &mut self,
         user_message: &str,
+        turn_images: Option<Vec<crate::types::UserImageAttachment>>,
         event_sink: &mut dyn EventSink,
         history_override: Option<Vec<ChatMessage>>,
     ) -> Result<AgentResult> {
@@ -339,18 +350,20 @@ impl ChatSession {
         let effective_user_message =
             long_text::maybe_process_user_input(&client, &self.config.model, user_message).await;
 
-        // Append (compressed) user message to transcript
-        self.append_message("user", &effective_user_message)?;
+        let imgs_slice = turn_images.as_deref().filter(|s| !s.is_empty());
+        self.append_user_message_with_images(&effective_user_message, imgs_slice)?;
 
         event_sink.on_turn_start();
 
         // Run the agent loop — receives the already-compressed message.
         // Note: update_previous_feedback and build_memory_context above intentionally
         // use the original user_message for accurate intent matching.
+        let loop_images = turn_images.filter(|v| !v.is_empty());
         let result = agent_loop::run_agent_loop(
             &self.config,
             history,
             &effective_user_message,
+            loop_images,
             &self.skills,
             event_sink,
             Some(&self.session_key),
@@ -477,7 +490,7 @@ impl ChatSession {
         }
     }
 
-    /// Append a message entry to the transcript.
+    /// Append a message entry to the transcript (no images).
     fn append_message(&self, role: &str, content: &str) -> Result<()> {
         let transcripts_dir = self.data_root.join("transcripts");
         let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
@@ -487,6 +500,30 @@ impl ChatSession {
             role: role.to_string(),
             content: Some(content.to_string()),
             tool_calls: None,
+            images: None,
+        };
+        Ok(transcript::append_entry(&t_path, &entry)?)
+    }
+
+    /// Append a user message, optionally with vision images.
+    fn append_user_message_with_images(
+        &self,
+        text: &str,
+        images: Option<&[crate::types::UserImageAttachment]>,
+    ) -> Result<()> {
+        let transcripts_dir = self.data_root.join("transcripts");
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let entry = transcript::TranscriptEntry::Message {
+            id: uuid::Uuid::new_v4().to_string(),
+            parent_id: None,
+            role: "user".to_string(),
+            content: if text.is_empty() {
+                None
+            } else {
+                Some(text.to_string())
+            },
+            tool_calls: None,
+            images: images.map(|s| s.to_vec()),
         };
         Ok(transcript::append_entry(&t_path, &entry)?)
     }
@@ -600,6 +637,7 @@ impl ChatSession {
             &self.config,
             flush_messages,
             &memory_flush_prompt,
+            None,
             &self.skills,
             &mut silent_sink,
             Some(&self.session_key),
@@ -631,8 +669,15 @@ impl ChatSession {
                 .iter()
                 .filter_map(|m| {
                     let content = m.content.as_deref().unwrap_or("");
-                    if content.is_empty() { None }
-                    else { Some(format!("[{}] {}", m.role, content)) }
+                    let img_note = match &m.images {
+                        Some(im) if !im.is_empty() => format!(" [{} image(s)]", im.len()),
+                        _ => String::new(),
+                    };
+                    if content.is_empty() && img_note.is_empty() {
+                        None
+                    } else {
+                        Some(format!("[{}] {}{}", m.role, content, img_note))
+                    }
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -1165,13 +1210,38 @@ pub fn shutdown_evolution(data_root: &std::path::Path) {
 /// Convert a transcript entry to a ChatMessage.
 fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<ChatMessage> {
     match entry {
-        transcript::TranscriptEntry::Message { role, content, .. } => Some(ChatMessage {
-            role: role.clone(),
-            content: content.clone(),
-            tool_calls: None,
-            tool_call_id: None,
-            name: None,
-        }),
+        transcript::TranscriptEntry::Message {
+            role,
+            content,
+            images,
+            ..
+        } => {
+            if role == "user" {
+                let imgs = images.clone().filter(|v| !v.is_empty());
+                let text = content.as_deref().unwrap_or("");
+                if imgs.is_some() {
+                    Some(ChatMessage::user_with_images(text, imgs))
+                } else {
+                    Some(ChatMessage {
+                        role: role.clone(),
+                        content: content.clone(),
+                        images: None,
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    })
+                }
+            } else {
+                Some(ChatMessage {
+                    role: role.clone(),
+                    content: content.clone(),
+                    images: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                })
+            }
+        }
         transcript::TranscriptEntry::Compaction { summary, .. } => summary
             .as_ref()
             .map(|s| ChatMessage::system(&format!("[Previous conversation summary]\n{}", s))),
@@ -1190,6 +1260,7 @@ mod history_window_tests {
             role: "user".to_string(),
             content: Some(content.to_string()),
             tool_calls: None,
+            images: None,
         }
     }
 

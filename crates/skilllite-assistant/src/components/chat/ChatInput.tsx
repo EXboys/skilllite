@@ -8,6 +8,10 @@ interface ChatInputProps {
   disabled: boolean;
   loading: boolean;
   placeholder?: string;
+  /** 输入框上方：附图、工具条等 */
+  attachmentSlot?: ReactNode;
+  /** 允许在正文为空时发送（例如仅发图片） */
+  allowEmptySend?: boolean;
   /** 仅渲染输入行，用于与上方模块同处一个底栏容器 */
   bare?: boolean;
   /** 输入框下方的附加行（如选项开关） */
@@ -22,6 +26,8 @@ export function ChatInput({
   disabled,
   loading,
   placeholder = "Enter to send · Shift+Enter for newline",
+  attachmentSlot,
+  allowEmptySend = false,
   bare = false,
   footer,
 }: ChatInputProps) {
@@ -74,7 +80,7 @@ export function ChatInput({
     if (disabled || loading) return;
     if (isImeConsumingEnter(e)) return;
     e.preventDefault();
-    if (!value.trim()) return;
+    if (!value.trim() && !allowEmptySend) return;
     onSend();
   };
 
@@ -103,7 +109,7 @@ export function ChatInput({
           <button
             type="button"
             onClick={onSend}
-            disabled={disabled || !value.trim()}
+            disabled={disabled || (!value.trim() && !allowEmptySend)}
             className="px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             发送
@@ -114,6 +120,7 @@ export function ChatInput({
 
   const body = (
     <div className={`flex flex-col gap-2 ${bare ? "w-full" : ""}`}>
+      {attachmentSlot}
       {row}
       {footer}
     </div>
