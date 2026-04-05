@@ -25,6 +25,8 @@ export const zhMessages: Record<string, string> = {
   "main.collapseIdeSidebar": "收起左侧栏",
 
   "ide.tabFiles": "文件",
+  "ide.resizeSidebar": "调整左侧文件树与会话栏宽度",
+  "ide.resizeChat": "调整右侧对话栏宽度",
   "ide.tabSessions": "会话",
   "ide.workspaceFiles": "工作区",
   "ide.refreshTree": "刷新",

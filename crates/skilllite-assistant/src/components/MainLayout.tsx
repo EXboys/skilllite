@@ -8,12 +8,21 @@ import WorkspaceFileTree from "./WorkspaceFileTree";
 import WorkspaceIdeEditor from "./WorkspaceIdeEditor";
 import SettingsModal from "./SettingsModal";
 import OnboardingModal from "./OnboardingModal";
+import IdePanelResizeHandle from "./IdePanelResizeHandle";
 import { useRecentData } from "../hooks/useRecentData";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useIdeFileOpenerStore } from "../stores/useIdeFileOpenerStore";
 import { useSessionStore } from "../stores/useSessionStore";
 import { useUiToastStore } from "../stores/useUiToastStore";
 import { useI18n } from "../i18n";
+
+const IDE_MIN_EDITOR_PX = 160;
+const IDE_DEFAULT_SIDEBAR_PX = 220;
+const IDE_MIN_SIDEBAR_PX = 180;
+const IDE_MAX_SIDEBAR_PX = 400;
+const IDE_DEFAULT_CHAT_PX = 420;
+const IDE_MIN_CHAT_PX = 260;
+const IDE_MAX_CHAT_PX = 520;
 
 export default function MainLayout() {
   const { t } = useI18n();
@@ -52,6 +61,9 @@ export default function MainLayout() {
   const [ideLeftTab, setIdeLeftTab] = useState<IdeLeftTab>("files");
   const [ideSelectedFile, setIdeSelectedFile] = useState<string | null>(null);
   const [ideTreeRefresh, setIdeTreeRefresh] = useState(0);
+  const ideRowRef = useRef<HTMLDivElement>(null);
+  const [liveIdeSidebarW, setLiveIdeSidebarW] = useState<number | null>(null);
+  const [liveIdeChatW, setLiveIdeChatW] = useState<number | null>(null);
   const { refreshRecentData } = useRecentData();
   const showOnboarding = settings.onboardingCompleted === false;
 
@@ -110,6 +122,42 @@ export default function MainLayout() {
         : { ideLayout: false }
     );
   }, [ideLayout, setSettings]);
+
+  const ideSidebarW =
+    liveIdeSidebarW ?? settings.ideSidebarWidthPx ?? IDE_DEFAULT_SIDEBAR_PX;
+  const ideChatW =
+    liveIdeChatW ?? settings.ideChatWidthPx ?? IDE_DEFAULT_CHAT_PX;
+
+  const clampIdeSidebar = useCallback(
+    (w: number) => {
+      const cw = ideRowRef.current?.clientWidth ?? window.innerWidth;
+      const chat =
+        liveIdeChatW ?? settings.ideChatWidthPx ?? IDE_DEFAULT_CHAT_PX;
+      const max = Math.max(
+        IDE_MIN_SIDEBAR_PX,
+        Math.min(IDE_MAX_SIDEBAR_PX, cw - chat - IDE_MIN_EDITOR_PX)
+      );
+      return Math.round(Math.min(Math.max(w, IDE_MIN_SIDEBAR_PX), max));
+    },
+    [liveIdeChatW, settings.ideChatWidthPx]
+  );
+
+  const clampIdeChat = useCallback(
+    (w: number) => {
+      const cw = ideRowRef.current?.clientWidth ?? window.innerWidth;
+      const sb = leftPanelCollapsed
+        ? 0
+        : (liveIdeSidebarW ??
+          settings.ideSidebarWidthPx ??
+          IDE_DEFAULT_SIDEBAR_PX);
+      const max = Math.max(
+        IDE_MIN_CHAT_PX,
+        Math.min(IDE_MAX_CHAT_PX, cw - sb - IDE_MIN_EDITOR_PX)
+      );
+      return Math.round(Math.min(Math.max(w, IDE_MIN_CHAT_PX), max));
+    },
+    [leftPanelCollapsed, liveIdeSidebarW, settings.ideSidebarWidthPx]
+  );
 
   return (
     <div className="flex flex-col h-screen bg-surface dark:bg-surface-dark">
@@ -221,48 +269,67 @@ export default function MainLayout() {
       {/* Main content */}
       <div className="flex flex-1 min-h-0">
         {ideLayout ? (
-          <>
+          <div
+            ref={ideRowRef}
+            className="flex flex-1 min-w-0 min-h-0"
+          >
             {!leftPanelCollapsed && (
-              <aside className="w-[220px] min-w-[180px] shrink-0 border-r border-border dark:border-border-dark bg-white dark:bg-paper-dark flex flex-col min-h-0">
-                <div className="shrink-0 flex border-b border-border dark:border-border-dark">
-                  <button
-                    type="button"
-                    onClick={() => setIdeLeftTab("files")}
-                    className={`flex-1 py-2 text-xs font-medium transition-colors ${
-                      ideLeftTab === "files"
-                        ? "text-accent border-b-2 border-accent bg-accent/5 dark:bg-accent/10"
-                        : "text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
-                    }`}
-                  >
-                    {t("ide.tabFiles")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIdeLeftTab("sessions")}
-                    className={`flex-1 py-2 text-xs font-medium transition-colors ${
-                      ideLeftTab === "sessions"
-                        ? "text-accent border-b-2 border-accent bg-accent/5 dark:bg-accent/10"
-                        : "text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
-                    }`}
-                  >
-                    {t("ide.tabSessions")}
-                  </button>
-                </div>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  {ideLeftTab === "files" ? (
-                    <WorkspaceFileTree
-                      workspace={settings.workspace || "."}
-                      selectedPath={ideSelectedFile}
-                      onSelectFile={setIdeSelectedFile}
-                      refreshToken={ideTreeRefresh}
-                    />
-                  ) : (
-                    <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
-                      <SessionSidebar />
-                    </div>
-                  )}
-                </div>
-              </aside>
+              <>
+                <aside
+                  style={{ width: ideSidebarW }}
+                  className="min-w-0 shrink-0 border-r border-border dark:border-border-dark bg-white dark:bg-paper-dark flex flex-col min-h-0"
+                >
+                  <div className="shrink-0 flex border-b border-border dark:border-border-dark">
+                    <button
+                      type="button"
+                      onClick={() => setIdeLeftTab("files")}
+                      className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                        ideLeftTab === "files"
+                          ? "text-accent border-b-2 border-accent bg-accent/5 dark:bg-accent/10"
+                          : "text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
+                      }`}
+                    >
+                      {t("ide.tabFiles")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIdeLeftTab("sessions")}
+                      className={`flex-1 py-2 text-xs font-medium transition-colors ${
+                        ideLeftTab === "sessions"
+                          ? "text-accent border-b-2 border-accent bg-accent/5 dark:bg-accent/10"
+                          : "text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
+                      }`}
+                    >
+                      {t("ide.tabSessions")}
+                    </button>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {ideLeftTab === "files" ? (
+                      <WorkspaceFileTree
+                        workspace={settings.workspace || "."}
+                        selectedPath={ideSelectedFile}
+                        onSelectFile={setIdeSelectedFile}
+                        refreshToken={ideTreeRefresh}
+                      />
+                    ) : (
+                      <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden">
+                        <SessionSidebar />
+                      </div>
+                    )}
+                  </div>
+                </aside>
+                <IdePanelResizeHandle
+                  ariaLabel={t("ide.resizeSidebar")}
+                  direction={1}
+                  getStartWidth={() => ideSidebarW}
+                  clamp={clampIdeSidebar}
+                  onDrag={setLiveIdeSidebarW}
+                  onCommit={(w) => {
+                    setSettings({ ideSidebarWidthPx: w });
+                    setLiveIdeSidebarW(null);
+                  }}
+                />
+              </>
             )}
             <section className="flex-1 min-w-0 min-h-0 overflow-hidden bg-surface dark:bg-surface-dark">
               <WorkspaceIdeEditor
@@ -271,10 +338,24 @@ export default function MainLayout() {
                 onSaved={() => setIdeTreeRefresh((n) => n + 1)}
               />
             </section>
-            <main className="w-[min(420px,38vw)] min-w-[260px] max-w-[520px] shrink-0 overflow-hidden border-l border-border dark:border-border-dark bg-white dark:bg-paper-dark">
+            <IdePanelResizeHandle
+              ariaLabel={t("ide.resizeChat")}
+              direction={-1}
+              getStartWidth={() => ideChatW}
+              clamp={clampIdeChat}
+              onDrag={setLiveIdeChatW}
+              onCommit={(w) => {
+                setSettings({ ideChatWidthPx: w });
+                setLiveIdeChatW(null);
+              }}
+            />
+            <main
+              style={{ width: ideChatW }}
+              className="min-w-0 shrink-0 overflow-hidden border-l border-border dark:border-border-dark bg-white dark:bg-paper-dark"
+            >
               <ChatView key={currentSessionKey} />
             </main>
-          </>
+          </div>
         ) : (
           <>
             {!leftPanelCollapsed && (

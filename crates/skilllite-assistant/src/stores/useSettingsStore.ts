@@ -39,6 +39,10 @@ export interface Settings {
    * 主界面 IDE 三栏：工作区文件树 | 编辑器 | 对话（关闭时恢复「会话 | 对话 | 状态」布局）。
    */
   ideLayout?: boolean;
+  /** IDE 左侧栏宽度（px），拖拽分隔条时写入 */
+  ideSidebarWidthPx?: number;
+  /** IDE 右侧对话栏宽度（px），拖拽分隔条时写入 */
+  ideChatWidthPx?: number;
   /** 界面语言 */
   locale?: UiLocale;
   /**

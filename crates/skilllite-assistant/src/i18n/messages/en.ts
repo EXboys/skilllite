@@ -26,6 +26,8 @@ export const enMessages: Record<string, string> = {
   "main.collapseIdeSidebar": "Collapse sidebar",
 
   "ide.tabFiles": "Files",
+  "ide.resizeSidebar": "Resize file tree and sessions panel",
+  "ide.resizeChat": "Resize chat panel",
   "ide.tabSessions": "Sessions",
   "ide.workspaceFiles": "Workspace",
   "ide.refreshTree": "Refresh",
