@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use skilllite_core::planning::{PlanningRule, SourceRegistry};
 
-const SEED_VERSION: u32 = 2;
+const SEED_VERSION: u32 = 3;
 
 const SEED_RULES: &str = include_str!("rules.seed.json");
 const SEED_SOURCES: &str = include_str!("sources.seed.json");
