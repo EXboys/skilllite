@@ -107,6 +107,11 @@ export const zhMessages: Record<string, string> = {
   "chat.starterTitle": "配置已完成，先试一个入门操作",
   "chat.starterDesc": "这些操作会直接发给 Agent，帮助你快速完成第一次成功体验。",
   "chat.starterHide": "暂不显示",
+  "chat.evolutionOpenChangesTab": "打开自进化详情 · 变更对比",
+  "chat.evolutionOpenChangesHint":
+    "在此对比 rules / examples 等 prompts 快照。记忆写入 memory/evolution/ 时，请在侧栏「记忆」中查看对应文件。",
+  "chat.evolutionProgressFooterHint":
+    "提示：在上方紫色「能力缺口」卡片内可点击「打开自进化详情 · 变更对比」查看 prompts；记忆请在侧栏「记忆」查看。",
   "chat.starter1": "介绍当前工作区",
   "chat.starter1Prompt":
     "请介绍一下当前工作区适合怎么使用 SkillLite，并给我一个建议的第一步。",
@@ -221,6 +226,9 @@ export const zhMessages: Record<string, string> = {
   "evolution.summary.cooldown": "被动冷却",
 
   "evolution.log.sectionRecent": "最近进化事件",
+  "evolution.log.rowOpenDiffTitle": "点击查看本轮 prompts 快照对比（将切换到「变更对比」并选中该 txn）",
+  "evolution.log.rowOpenDiffBadge": "可点",
+  "evolution.log.openMemoryPanel": "打开记忆详情（memory/evolution）",
   "evolution.log.noEvents": "暂无事件记录",
   "evolution.log.targetWithId": "对象：{id}",
   "evolution.log.type.evolution_run_outcome": "调度结果",
@@ -247,6 +255,29 @@ export const zhMessages: Record<string, string> = {
   "evolution.log.reason.errorWithDetail": "错误：{detail}",
   "evolution.log.reason.proposalQueued": "提案 {id}（{source}）已入队，等待放行后执行",
   "evolution.log.reason.proposalDenied": "提案 {id}（{source}）被策略运行时拒绝",
+
+  "evolution.diff.versionLeft": "左侧版本",
+  "evolution.diff.versionRight": "右侧版本",
+  "evolution.diff.currentWorkspace": "当前（prompts 文件）",
+  "evolution.diff.txnOption": "{id} · {time}",
+  "evolution.diff.toggleCompare": "对比",
+  "evolution.diff.togglePlain": "两侧原文",
+  "evolution.diff.loadVersionsError": "加载快照列表失败",
+  "evolution.diff.loadContentError": "读取版本内容失败",
+  "evolution.diff.loadingVersions": "加载快照列表…",
+  "evolution.diff.loadingContent": "加载内容…",
+  "evolution.diff.legend":
+    "任选左右版本对比；绿色为右侧相对左侧新增，红色删除线为左侧有而右侧无。旧快照可能因保留策略被清理。",
+  "evolution.diff.emptyHint":
+    "暂无写入 changelog 的 prompts 变更，无法做版本对比。你仍可在下方展开「手动编辑」直接改 chat 内 prompts，或打开 prompts 目录用外部编辑器。",
+
+  "evolution.manualEdit.summary": "手动编辑 prompts（无对比时也可用）",
+  "evolution.manualEdit.intro":
+    "读写的是数据目录下 chat/prompts（与进化引擎相同），不是工程工作区根目录。保存后立即影响后续对话与进化。",
+  "evolution.manualEdit.openPromptsDir": "在文件管理器中打开 prompts 目录",
+  "evolution.manualEdit.save": "保存",
+  "evolution.manualEdit.revert": "还原未保存",
+  "evolution.manualEdit.saveOk": "已保存",
 
   "status.noLogs": "暂无日志",
   "status.moreFiles": "+ {n} 个文件",

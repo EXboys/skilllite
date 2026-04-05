@@ -51,6 +51,8 @@ pub fn open_directory(module: &str, workspace: Option<String>) -> Result<(), Str
         "memory" => chat_root.join("memory"),
         "plan" => chat_root.join("plans"),
         "log" => chat_root.join("transcripts"),
+        // chat/prompts（规则与示例等），便于无对比时在外部编辑器修改
+        "prompts" => chat_root.join("prompts"),
         "evolution" => chat_root,
         _ => return Err(format!("Unknown module: {}", module)),
     };

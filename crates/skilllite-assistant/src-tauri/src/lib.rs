@@ -527,6 +527,65 @@ async fn skilllite_load_evolution_diffs(
 }
 
 #[tauri::command]
+async fn skilllite_list_prompt_snapshot_txns(
+    filename: String,
+) -> Result<Vec<skilllite_bridge::EvolutionSnapshotTxnDto>, String> {
+    let f = filename;
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_prompt_snapshot_txns(&f))
+        .await
+    {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+async fn skilllite_list_prompt_snapshots_batch(
+    filenames: Vec<String>,
+) -> Result<std::collections::HashMap<String, Vec<skilllite_bridge::EvolutionSnapshotTxnDto>>, String> {
+    let names = filenames;
+    match tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::list_prompt_snapshots_batch(&names)
+    })
+    .await
+    {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+async fn skilllite_read_prompt_version_content(
+    filename: String,
+    version_ref: String,
+) -> Result<String, String> {
+    let f = filename;
+    let v = version_ref;
+    match tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::read_prompt_version_content(&f, &v)
+    })
+    .await
+    {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
+async fn skilllite_write_chat_prompt_file(filename: String, content: String) -> Result<(), String> {
+    let f = filename;
+    let c = content;
+    match tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::write_chat_prompt_text_file(&f, &c)
+    })
+    .await
+    {
+        Ok(inner) => inner,
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[tauri::command]
 async fn skilllite_probe_ollama() -> skilllite_bridge::OllamaProbeResult {
     tauri::async_runtime::spawn_blocking(skilllite_bridge::probe_ollama)
         .await
@@ -767,6 +826,10 @@ pub fn run() {
             skilllite_load_evolution_backlog,
             skilllite_trigger_evolution_run,
             skilllite_load_evolution_diffs,
+            skilllite_list_prompt_snapshot_txns,
+            skilllite_list_prompt_snapshots_batch,
+            skilllite_read_prompt_version_content,
+            skilllite_write_chat_prompt_file,
             skilllite_life_pulse_status,
             skilllite_life_pulse_toggle,
             skilllite_life_pulse_set_workspace,

@@ -111,6 +111,11 @@ export const enMessages: Record<string, string> = {
   "chat.starterDesc":
     "These send messages to the Agent to help you get a first success.",
   "chat.starterHide": "Don’t show again",
+  "chat.evolutionOpenChangesTab": "Open evolution detail · Diff",
+  "chat.evolutionOpenChangesHint":
+    "Compare prompts snapshots (rules, examples, …). For memory/evolution/ shards, use the Memory side panel.",
+  "chat.evolutionProgressFooterHint":
+    "Tip: in the purple capability card above, use “Open evolution detail · Diff” for prompts; use Memory for evolution memory files.",
   "chat.starter1": "Introduce this workspace",
   "chat.starter1Prompt":
     "Briefly explain how to use SkillLite in this workspace and suggest a good first step.",
@@ -229,6 +234,10 @@ export const enMessages: Record<string, string> = {
   "evolution.summary.cooldown": "Passive cooldown",
 
   "evolution.log.sectionRecent": "Recent evolution events",
+  "evolution.log.rowOpenDiffTitle":
+    "Click to compare prompts snapshots for this run (opens the Diff tab with this txn on the left)",
+  "evolution.log.rowOpenDiffBadge": "Open",
+  "evolution.log.openMemoryPanel": "Open memory (memory/evolution)",
   "evolution.log.noEvents": "No events yet",
   "evolution.log.targetWithId": "Target: {id}",
   "evolution.log.type.evolution_run_outcome": "Run outcome",
@@ -257,6 +266,29 @@ export const enMessages: Record<string, string> = {
     "Proposal {id} ({source}) queued; waiting for execution gate",
   "evolution.log.reason.proposalDenied":
     "Proposal {id} ({source}) denied by policy runtime",
+
+  "evolution.diff.versionLeft": "Left version",
+  "evolution.diff.versionRight": "Right version",
+  "evolution.diff.currentWorkspace": "Current (live prompts file)",
+  "evolution.diff.txnOption": "{id} · {time}",
+  "evolution.diff.toggleCompare": "Diff",
+  "evolution.diff.togglePlain": "Side-by-side text",
+  "evolution.diff.loadVersionsError": "Failed to load snapshot list",
+  "evolution.diff.loadContentError": "Failed to read version content",
+  "evolution.diff.loadingVersions": "Loading snapshots…",
+  "evolution.diff.loadingContent": "Loading content…",
+  "evolution.diff.legend":
+    "Pick any two versions; green = added on the right vs left, red strikethrough = removed from left. Older snapshots may be pruned.",
+  "evolution.diff.emptyHint":
+    "No prompts changes recorded in the changelog yet, so there is nothing to diff. Expand “Manual edit” below to edit chat prompts in-app, or open the prompts folder in an external editor.",
+
+  "evolution.manualEdit.summary": "Manual edit prompts (even when there is no diff)",
+  "evolution.manualEdit.intro":
+    "Files live under the app chat data dir (chat/prompts), not your project workspace root. Saving affects chat and evolution immediately.",
+  "evolution.manualEdit.openPromptsDir": "Open prompts folder in file manager",
+  "evolution.manualEdit.save": "Save",
+  "evolution.manualEdit.revert": "Revert unsaved",
+  "evolution.manualEdit.saveOk": "Saved",
 
   "status.noLogs": "No logs yet",
   "status.moreFiles": "+ {n} files",

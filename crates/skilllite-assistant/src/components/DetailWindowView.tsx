@@ -14,7 +14,11 @@ import { groupMemoryFiles, memoryPathUnderTopGroup, sortedMemoryGroupKeys } from
 import { useRecentData } from "../hooks/useRecentData";
 import { EvolutionDetailBody } from "./EvolutionSection";
 import { translate, useI18n } from "../i18n";
-import { parseDetailModuleFromHash } from "../utils/detailWindow";
+import {
+  parseDetailEvolutionFocusTxnFromHash,
+  parseDetailEvolutionTabFromHash,
+  parseDetailModuleFromHash,
+} from "../utils/detailWindow";
 import { SETTINGS_STORE_PERSIST_KEY, useSettingsStore } from "../stores/useSettingsStore";
 
 /** 读取失败时在 state 中使用的哨兵，避免把某语言文案写死进比较逻辑 */
@@ -420,6 +424,15 @@ export default function DetailWindowView() {
     [t]
   );
 
+  /** 详情窗首帧解析一次，避免 hash 读数在重渲染间抖动 */
+  const evolutionEntryParams = useMemo(
+    () => ({
+      tab: parseDetailEvolutionTabFromHash() ?? undefined,
+      focusTxn: parseDetailEvolutionFocusTxnFromHash(),
+    }),
+    []
+  );
+
   useEffect(() => {
     setModule(parseDetailModuleFromHash() as DetailModule | null);
   }, []);
@@ -526,7 +539,12 @@ export default function DetailWindowView() {
         {module === "output" && (
           <OutputFileContent files={outputFiles} workspace={workspace} />
         )}
-        {module === "evolution" && <EvolutionDetailBody />}
+        {module === "evolution" && (
+          <EvolutionDetailBody
+            initialTab={evolutionEntryParams.tab}
+            initialFocusTxn={evolutionEntryParams.focusTxn}
+          />
+        )}
       </main>
     </div>
   );

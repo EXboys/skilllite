@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MarkdownContent } from "./shared/MarkdownContent";
 import { PromptDiffView } from "./PromptDiffView";
@@ -13,7 +13,11 @@ import {
   evolutionLogTargetLine,
   prependNoMaterialHelpIfNeeded,
 } from "../utils/evolutionDisplay";
-import { parseDetailWorkspaceFromUrl } from "../utils/detailWindow";
+import {
+  openDetailWindow,
+  parseDetailWorkspaceFromUrl,
+  type EvolutionDetailTab,
+} from "../utils/detailWindow";
 import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
 import { useI18n } from "../i18n";
 import type { Locale } from "../i18n/translate";
@@ -23,6 +27,8 @@ export interface EvolutionLogEntryDto {
   event_type: string;
   target_id: string | null;
   reason: string | null;
+  /** evolution_log.version，常为本轮 txn */
+  txn_id?: string | null;
 }
 
 export interface EvolutionStatusPayload {
@@ -56,6 +62,372 @@ export interface EvolutionFileDiffDto {
   evolved: boolean;
   content: string;
   original_content: string | null;
+}
+
+export interface EvolutionSnapshotTxnDto {
+  txn_id: string;
+  modified_unix: number;
+}
+
+/** Matches `skilllite_bridge::PROMPT_VERSION_CURRENT` */
+const PROMPT_VERSION_CURRENT = "__current__";
+
+/** 与 `EVOLUTION_PROMPT_DIFF_FILENAMES` 一致，可安全写入 chat prompts */
+const CHAT_PROMPT_EDIT_FILENAMES = [
+  "planning.md",
+  "execution.md",
+  "system.md",
+  "examples.md",
+  "rules.json",
+  "examples.json",
+] as const;
+
+function PromptChatFileEditorRow({ filename }: { filename: string }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [baseline, setBaseline] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const saveOkText = t("evolution.manualEdit.saveOk");
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    setLoading(true);
+    setNotice(null);
+    void (async () => {
+      try {
+        const text = await invoke<string>("skilllite_read_prompt_version_content", {
+          filename,
+          versionRef: PROMPT_VERSION_CURRENT,
+        });
+        if (cancelled) return;
+        setDraft(text);
+        setBaseline(text);
+      } catch (e) {
+        if (!cancelled) setNotice(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, filename]);
+
+  const dirty = draft !== baseline;
+  const save = async () => {
+    setSaving(true);
+    setNotice(null);
+    try {
+      await invoke("skilllite_write_chat_prompt_file", { filename, content: draft });
+      setBaseline(draft);
+      setNotice(saveOkText);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="rounded border border-border/50 dark:border-border-dark/50 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-2 py-2 text-left text-xs font-mono bg-white/60 dark:bg-paper-dark/60 hover:bg-ink/5 dark:hover:bg-white/5"
+      >
+        <span>{filename}</span>
+        <span className="text-ink-mute dark:text-ink-dark-mute text-[10px]">{open ? "▼" : "▶"}</span>
+      </button>
+      {open ? (
+        <div className="p-2 border-t border-border/40 dark:border-border-dark/40 space-y-2">
+          {loading ? (
+            <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">{t("common.loading")}</p>
+          ) : (
+            <>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={12}
+                className="w-full rounded border border-border dark:border-border-dark bg-white dark:bg-paper-dark px-2 py-1.5 text-[11px] font-mono text-ink dark:text-ink-dark"
+                spellCheck={false}
+              />
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!dirty || saving}
+                  onClick={() => void save()}
+                  className="px-2 py-1 rounded bg-accent text-white text-[11px] font-medium disabled:opacity-50"
+                >
+                  {saving ? "…" : t("evolution.manualEdit.save")}
+                </button>
+                <button
+                  type="button"
+                  disabled={!dirty}
+                  onClick={() => setDraft(baseline)}
+                  className="px-2 py-1 rounded border border-border dark:border-border-dark text-[11px] text-ink dark:text-ink-dark disabled:opacity-50"
+                >
+                  {t("evolution.manualEdit.revert")}
+                </button>
+              </div>
+            </>
+          )}
+          {notice ? (
+            <p
+              className={
+                notice === saveOkText
+                  ? "text-[11px] text-emerald-600 dark:text-emerald-400"
+                  : "text-[11px] text-red-600 dark:text-red-400 break-words"
+              }
+            >
+              {notice}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function EvolutionPromptManualEditSection({
+  workspace,
+  defaultOpen,
+}: {
+  workspace: string;
+  defaultOpen: boolean;
+}) {
+  const { t } = useI18n();
+  const ws = workspace.trim() || ".";
+  const [sectionOpen, setSectionOpen] = useState(defaultOpen);
+  useEffect(() => {
+    setSectionOpen(defaultOpen);
+  }, [defaultOpen]);
+  return (
+    <details
+      className="rounded-lg border border-border/60 dark:border-border-dark/60 bg-gray-50/50 dark:bg-surface-dark/40 px-3 py-2 mt-3"
+      open={sectionOpen}
+      onToggle={(e) => setSectionOpen(e.currentTarget.open)}
+    >
+      <summary className="cursor-pointer text-sm font-medium text-ink dark:text-ink-dark select-none list-none [&::-webkit-details-marker]:hidden flex items-center gap-1.5">
+        <span
+          className={`text-[10px] opacity-70 transition-transform inline-block ${sectionOpen ? "rotate-90" : ""}`}
+          aria-hidden
+        >
+          ▸
+        </span>
+        {t("evolution.manualEdit.summary")}
+      </summary>
+      <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute mt-2 leading-relaxed">
+        {t("evolution.manualEdit.intro")}
+      </p>
+      <button
+        type="button"
+        className="mt-2 text-xs text-accent hover:underline font-medium"
+        onClick={() =>
+          void invoke("skilllite_open_directory", { module: "prompts", workspace: ws }).catch(
+            (e) =>
+              useUiToastStore.getState().show(e instanceof Error ? e.message : String(e), "error")
+          )
+        }
+      >
+        {t("evolution.manualEdit.openPromptsDir")}
+      </button>
+      <div className="mt-3 space-y-2">
+        {CHAT_PROMPT_EDIT_FILENAMES.map((fn) => (
+          <PromptChatFileEditorRow key={fn} filename={fn} />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function formatSnapshotTimeLabel(modifiedUnix: number, locale: Locale): string {
+  if (!modifiedUnix || modifiedUnix <= 0) return "";
+  try {
+    const d = new Date(modifiedUnix * 1000);
+    if (Number.isNaN(d.getTime())) return "";
+    return locale === "en"
+      ? d.toLocaleString("en-US", { dateStyle: "short", timeStyle: "short" })
+      : d.toLocaleString("zh-CN", { dateStyle: "short", timeStyle: "short" });
+  } catch {
+    return "";
+  }
+}
+
+function EvolutionPromptVersionCompare({
+  filename,
+  focusTxn = null,
+  txns,
+  txnsLoading,
+  txnsErr,
+}: {
+  filename: string;
+  /** 若该 txn 在快照中存在，则左侧默认选中它（相对当前） */
+  focusTxn?: string | null;
+  /** 由父级批量拉取，避免每文件一次 invoke（Strict Mode 下易卡住「加载快照列表」） */
+  txns: EvolutionSnapshotTxnDto[];
+  txnsLoading: boolean;
+  txnsErr: string | null;
+}) {
+  const { t, locale } = useI18n();
+  const localeResolved: Locale = locale === "en" ? "en" : "zh";
+  const [leftRef, setLeftRef] = useState(PROMPT_VERSION_CURRENT);
+  const [rightRef, setRightRef] = useState(PROMPT_VERSION_CURRENT);
+  const [leftText, setLeftText] = useState("");
+  const [rightText, setRightText] = useState("");
+  const [contentErr, setContentErr] = useState<string | null>(null);
+  const [loadingContent, setLoadingContent] = useState(false);
+  const [compareMode, setCompareMode] = useState(true);
+  const contentFetchGen = useRef(0);
+
+  useEffect(() => {
+    if (txnsLoading) return;
+    const txnTrim = focusTxn?.trim() ?? "";
+    const hasFocus =
+      txnTrim.length > 0 &&
+      txnTrim !== PROMPT_VERSION_CURRENT &&
+      txns.some((x) => x.txn_id === txnTrim);
+    const oldest =
+      txns.length > 0 ? txns[txns.length - 1].txn_id : PROMPT_VERSION_CURRENT;
+    setLeftRef(hasFocus ? txnTrim : oldest);
+    setRightRef(PROMPT_VERSION_CURRENT);
+  }, [txns, txnsLoading, focusTxn]);
+
+  useEffect(() => {
+    const id = ++contentFetchGen.current;
+    setLoadingContent(true);
+    setContentErr(null);
+    void (async () => {
+      try {
+        const [l, r] = await Promise.all([
+          invoke<string>("skilllite_read_prompt_version_content", {
+            filename,
+            versionRef: leftRef,
+          }),
+          invoke<string>("skilllite_read_prompt_version_content", {
+            filename,
+            versionRef: rightRef,
+          }),
+        ]);
+        if (contentFetchGen.current !== id) return;
+        setLeftText(l);
+        setRightText(r);
+      } catch (e) {
+        if (contentFetchGen.current !== id) return;
+        setContentErr(e instanceof Error ? e.message : String(e));
+        setLeftText("");
+        setRightText("");
+      } finally {
+        if (contentFetchGen.current === id) setLoadingContent(false);
+      }
+    })();
+  }, [filename, leftRef, rightRef]);
+
+  const selectCls =
+    "min-w-0 flex-1 rounded border border-border/60 dark:border-border-dark/60 bg-white/80 dark:bg-paper-dark/80 px-2 py-1.5 text-[11px] font-mono text-ink dark:text-ink-dark";
+
+  const txnOptions = txns.map((x) => {
+    const time = formatSnapshotTimeLabel(x.modified_unix, localeResolved);
+    const label =
+      time.length > 0
+        ? t("evolution.diff.txnOption", { id: x.txn_id, time })
+        : x.txn_id;
+    return (
+      <option key={x.txn_id} value={x.txn_id}>
+        {label}
+      </option>
+    );
+  });
+
+  return (
+    <div className="space-y-2 px-3 pb-3 pt-1">
+      {txnsLoading ? (
+        <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.diff.loadingVersions")}</p>
+      ) : txnsErr ? (
+        <p className="text-[11px] text-red-600 dark:text-red-400 break-words">
+          {t("evolution.diff.loadVersionsError")}: {txnsErr}
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <label className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[10px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.diff.versionLeft")}</span>
+            <select
+              className={selectCls}
+              value={leftRef}
+              onChange={(e) => setLeftRef(e.target.value)}
+              aria-label={t("evolution.diff.versionLeft")}
+            >
+              <option value={PROMPT_VERSION_CURRENT}>{t("evolution.diff.currentWorkspace")}</option>
+              {txnOptions}
+            </select>
+          </label>
+          <label className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-[10px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.diff.versionRight")}</span>
+            <select
+              className={selectCls}
+              value={rightRef}
+              onChange={(e) => setRightRef(e.target.value)}
+              aria-label={t("evolution.diff.versionRight")}
+            >
+              <option value={PROMPT_VERSION_CURRENT}>{t("evolution.diff.currentWorkspace")}</option>
+              {txnOptions}
+            </select>
+          </label>
+        </div>
+      )}
+      {contentErr && (
+        <p className="text-[11px] text-red-600 dark:text-red-400 break-words">
+          {t("evolution.diff.loadContentError")}: {contentErr}
+        </p>
+      )}
+      {loadingContent && !contentErr ? (
+        <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.diff.loadingContent")}</p>
+      ) : null}
+      {!loadingContent && !contentErr && !txnsLoading && !txnsErr ? (
+        <>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setCompareMode(true)}
+              className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+                compareMode
+                  ? "border-accent/50 bg-accent/10 text-accent dark:text-blue-300"
+                  : "border-border/50 dark:border-border-dark/50 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
+              }`}
+            >
+              {t("evolution.diff.toggleCompare")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setCompareMode(false)}
+              className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
+                !compareMode
+                  ? "border-accent/50 bg-accent/10 text-accent dark:text-blue-300"
+                  : "border-border/50 dark:border-border-dark/50 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
+              }`}
+            >
+              {t("evolution.diff.togglePlain")}
+            </button>
+          </div>
+          {compareMode ? (
+            <PromptDiffView original={leftText} current={rightText} />
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2">
+              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border/40 dark:border-border-dark/40 bg-gray-50/80 dark:bg-surface-dark/50 p-2 font-mono text-[11px] text-ink-mute dark:text-ink-dark-mute">
+                {leftText || "（空）"}
+              </pre>
+              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border/40 dark:border-border-dark/40 bg-gray-50/80 dark:bg-surface-dark/50 p-2 font-mono text-[11px] text-ink-mute dark:text-ink-dark-mute">
+                {rightText || "（空）"}
+              </pre>
+            </div>
+          )}
+        </>
+      ) : null}
+    </div>
+  );
 }
 
 export interface EvolutionBacklogRowDto {
@@ -94,6 +466,11 @@ function formatTs(ts: string): string {
   } catch {
     return ts.length >= 16 ? ts.slice(0, 16).replace("T", " ") : ts;
   }
+}
+
+function reasonMentionsMemoryKnowledge(reason: string | null | undefined): boolean {
+  if (!reason) return false;
+  return /memory knowledge|knowledge update/i.test(reason);
 }
 
 function eventIcon(eventType: string): string {
@@ -434,20 +811,36 @@ function PendingSkillReviewCard({
   );
 }
 
-type EvolutionDetailTab = "run" | "review" | "changes";
-
 /** 独立详情窗口：分 tab（运行 / 审核 / 变更）避免单页过长 */
-export function EvolutionDetailBody() {
+export function EvolutionDetailBody({
+  initialTab,
+  initialFocusTxn,
+}: {
+  /** 自 `#detail/evolution?tab=...` 传入，用于从聊天等入口直达某 Tab */
+  initialTab?: EvolutionDetailTab;
+  /** 自 `#detail/evolution?txn=...` 传入，变更对比默认左侧选中该快照 */
+  initialFocusTxn?: string | null;
+} = {}) {
   const { t, locale: localeRaw } = useI18n();
   const locale: Locale = localeRaw === "en" ? "en" : "zh";
   const { settings } = useSettingsStore();
   const { status, loading, error, refresh, workspace } = useEvolutionStatus();
-  const [detailTab, setDetailTab] = useState<EvolutionDetailTab>("run");
+  const [detailTab, setDetailTab] = useState<EvolutionDetailTab>(() => initialTab ?? "run");
+  const [compareFocusTxn, setCompareFocusTxn] = useState<string | null>(() => {
+    const x = initialFocusTxn?.trim();
+    return x && x.length > 0 ? x : null;
+  });
   const [pending, setPending] = useState<PendingSkillDto[]>([]);
   const [pendingLoading, setPendingLoading] = useState(true);
   const [diffs, setDiffs] = useState<EvolutionFileDiffDto[]>([]);
   const [diffsLoading, setDiffsLoading] = useState(true);
-  const [showDiff, setShowDiff] = useState<Record<string, boolean>>({});
+  const snapFetchGenRef = useRef(0);
+  const [snapshotsByFile, setSnapshotsByFile] = useState<Record<
+    string,
+    EvolutionSnapshotTxnDto[]
+  > | null>(null);
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  const [snapshotsErr, setSnapshotsErr] = useState<string | null>(null);
   const [backlog, setBacklog] = useState<EvolutionBacklogRowDto[]>([]);
   const [backlogLoading, setBacklogLoading] = useState(true);
   const [triggeringProposalId, setTriggeringProposalId] = useState<string | null>(null);
@@ -497,6 +890,44 @@ export function EvolutionDetailBody() {
     void loadDiffs();
     void loadBacklog();
   }, [loadPending, loadDiffs, loadBacklog]);
+
+  useEffect(() => {
+    if (detailTab !== "changes") {
+      return;
+    }
+    if (diffsLoading) {
+      setSnapshotsLoading(true);
+      return;
+    }
+    if (diffs.length === 0) {
+      setSnapshotsByFile({});
+      setSnapshotsErr(null);
+      setSnapshotsLoading(false);
+      return;
+    }
+    const id = ++snapFetchGenRef.current;
+    setSnapshotsLoading(true);
+    setSnapshotsErr(null);
+    const filenames = diffs.map((d) => d.filename);
+    void (async () => {
+      try {
+        const m = await invoke<Record<string, EvolutionSnapshotTxnDto[]>>(
+          "skilllite_list_prompt_snapshots_batch",
+          { filenames }
+        );
+        if (snapFetchGenRef.current !== id) return;
+        setSnapshotsByFile(m);
+      } catch (e) {
+        if (snapFetchGenRef.current !== id) return;
+        setSnapshotsErr(e instanceof Error ? e.message : String(e));
+        setSnapshotsByFile(null);
+      } finally {
+        if (snapFetchGenRef.current === id) {
+          setSnapshotsLoading(false);
+        }
+      }
+    })();
+  }, [detailTab, diffs, diffsLoading]);
 
   const onSkillChanged = useCallback(() => {
     void loadPending();
@@ -775,36 +1206,88 @@ export function EvolutionDetailBody() {
             {s.recent_events.map((e, i) => {
               const reasonShown = evolutionLogReasonForDisplay(e.reason ?? null, locale);
               const targetShown = evolutionLogTargetLine(e.target_id, locale);
+              const txnTrim = e.txn_id?.trim() ?? "";
+              const rowOpensDiff =
+                e.event_type === "evolution_run" && txnTrim.length > 0;
+              const showMemoryLink = reasonMentionsMemoryKnowledge(e.reason);
               return (
-              <li
-                key={`${e.ts}-${e.event_type}-${i}`}
-                className="border-b border-border/40 dark:border-border-dark/40 pb-2 last:border-0"
-              >
-                <div className="flex items-start gap-2">
-                  <span className="shrink-0 w-4 text-center">{eventIcon(e.event_type)}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-ink-mute dark:text-ink-dark-mute font-mono text-[11px]">
-                      {formatTs(e.ts)}
+                <li
+                  key={`${e.ts}-${e.event_type}-${i}`}
+                  className="border-b border-border/40 dark:border-border-dark/40 pb-2 last:border-0"
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 w-4 text-center pt-0.5">{eventIcon(e.event_type)}</span>
+                    <div className="min-w-0 flex-1">
+                      {rowOpensDiff ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDetailTab("changes");
+                            setCompareFocusTxn(txnTrim);
+                          }}
+                          title={t("evolution.log.rowOpenDiffTitle")}
+                          className="w-full rounded-lg text-left px-1 py-0.5 -mx-1 transition-colors cursor-pointer hover:bg-ink/[0.06] dark:hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                        >
+                          <div className="text-ink-mute dark:text-ink-dark-mute font-mono text-[11px]">
+                            {formatTs(e.ts)}
+                            <span className="ml-1.5 text-[10px] text-accent font-sans font-medium">
+                              {t("evolution.log.rowOpenDiffBadge")}
+                            </span>
+                          </div>
+                          <div className="font-medium text-ink dark:text-ink-dark" title={e.event_type}>
+                            {evolutionLogEventTypeLabel(e.event_type, locale)}
+                          </div>
+                          {targetShown && (
+                            <div className="text-ink-mute dark:text-ink-dark-mute truncate">
+                              {targetShown}
+                            </div>
+                          )}
+                          <div className="text-[10px] font-mono text-ink-mute/90 dark:text-ink-dark-mute/90 mt-0.5">
+                            txn: {txnTrim}
+                          </div>
+                          {reasonShown && (
+                            <p className="text-ink-mute dark:text-ink-dark-mute mt-0.5 whitespace-pre-wrap break-words">
+                              {reasonShown.length > 280 ? `${reasonShown.slice(0, 280)}…` : reasonShown}
+                            </p>
+                          )}
+                        </button>
+                      ) : (
+                        <div className="w-full px-1 py-0.5 -mx-1">
+                          <div className="text-ink-mute dark:text-ink-dark-mute font-mono text-[11px]">
+                            {formatTs(e.ts)}
+                          </div>
+                          <div className="font-medium text-ink dark:text-ink-dark" title={e.event_type}>
+                            {evolutionLogEventTypeLabel(e.event_type, locale)}
+                          </div>
+                          {targetShown && (
+                            <div className="text-ink-mute dark:text-ink-dark-mute truncate">
+                              {targetShown}
+                            </div>
+                          )}
+                          {txnTrim ? (
+                            <div className="text-[10px] font-mono text-ink-mute/90 dark:text-ink-dark-mute/90 mt-0.5">
+                              txn: {txnTrim}
+                            </div>
+                          ) : null}
+                          {reasonShown && (
+                            <p className="text-ink-mute dark:text-ink-dark-mute mt-0.5 whitespace-pre-wrap break-words">
+                              {reasonShown.length > 280 ? `${reasonShown.slice(0, 280)}…` : reasonShown}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {showMemoryLink ? (
+                        <button
+                          type="button"
+                          onClick={() => void openDetailWindow("mem")}
+                          className="mt-1.5 ml-1 text-[11px] text-accent hover:underline font-medium"
+                        >
+                          {t("evolution.log.openMemoryPanel")}
+                        </button>
+                      ) : null}
                     </div>
-                    <div
-                      className="font-medium text-ink dark:text-ink-dark"
-                      title={e.event_type}
-                    >
-                      {evolutionLogEventTypeLabel(e.event_type, locale)}
-                    </div>
-                    {targetShown && (
-                      <div className="text-ink-mute dark:text-ink-dark-mute truncate">
-                        {targetShown}
-                      </div>
-                    )}
-                    {reasonShown && (
-                      <p className="text-ink-mute dark:text-ink-dark-mute mt-0.5 whitespace-pre-wrap break-words">
-                        {reasonShown.length > 280 ? `${reasonShown.slice(0, 280)}…` : reasonShown}
-                      </p>
-                    )}
                   </div>
-                </div>
-              </li>
+                </li>
               );
             })}
           </ul>
@@ -890,62 +1373,52 @@ export function EvolutionDetailBody() {
           </div>
           {diffsLoading ? (
             <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
-          ) : diffs.length === 0 ? (
-            <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
-              暂无进化变更。进化运行修改 prompts 后，可在此查看新旧版本对比。
-            </p>
           ) : (
-            <div className="space-y-3">
-              <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
-                <span className="text-green-600 dark:text-green-400">+绿色</span> = 进化新增，
-                <span className="text-red-500 dark:text-red-400/70 line-through">−红色</span> = 原有已移除
-              </p>
-              {diffs.map((d) => {
-                const canDiff = d.evolved && !!d.original_content;
-                const isDiffMode = canDiff && (showDiff[d.filename] ?? true);
-                return (
-                  <div
-                    key={d.filename}
-                    className={`rounded-lg border text-xs overflow-hidden ${
-                      d.evolved
-                        ? "bg-green-50/50 dark:bg-green-900/10 border-green-300/60 dark:border-green-700/40"
-                        : "bg-gray-50/50 dark:bg-surface-dark/40 border-border/50 dark:border-border-dark/50"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/30 dark:border-border-dark/30 bg-gray-100/50 dark:bg-surface-dark/30">
-                      <span className="font-mono font-medium text-ink dark:text-ink-dark">
-                        {d.filename}
-                      </span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {d.evolved && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-300/50 dark:border-green-600/50">
+            <>
+              {diffs.length === 0 ? (
+                <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
+                  {t("evolution.diff.emptyHint")}
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                    {t("evolution.diff.legend")}
+                  </p>
+                  {diffs.map((d) => (
+                    <div
+                      key={d.filename}
+                      className={`rounded-lg border text-xs overflow-hidden ${
+                        d.evolved
+                          ? "bg-green-50/50 dark:bg-green-900/10 border-green-300/60 dark:border-green-700/40"
+                          : "bg-gray-50/50 dark:bg-surface-dark/40 border-border/50 dark:border-border-dark/50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/30 dark:border-border-dark/30 bg-gray-100/50 dark:bg-surface-dark/30">
+                        <span className="font-mono font-medium text-ink dark:text-ink-dark">
+                          {d.filename}
+                        </span>
+                        {d.evolved ? (
+                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-300/50 dark:border-green-600/50 shrink-0">
                             ✨ 进化
                           </span>
-                        )}
-                        {canDiff && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setShowDiff((prev) => ({ ...prev, [d.filename]: !isDiffMode }))
-                            }
-                            className="px-1.5 py-0.5 rounded text-[10px] bg-gray-200/80 dark:bg-surface-dark/60 text-ink-mute dark:text-ink-dark-mute border border-border/40 dark:border-border-dark/40 hover:bg-gray-300/80 dark:hover:bg-surface-dark/80 hover:text-ink dark:hover:text-ink-dark transition-colors"
-                          >
-                            {isDiffMode ? "原文" : "对比"}
-                          </button>
-                        )}
+                        ) : null}
                       </div>
+                      <EvolutionPromptVersionCompare
+                        filename={d.filename}
+                        focusTxn={compareFocusTxn}
+                        txns={snapshotsByFile?.[d.filename] ?? []}
+                        txnsLoading={snapshotsLoading}
+                        txnsErr={snapshotsErr}
+                      />
                     </div>
-                    {isDiffMode && d.original_content != null ? (
-                      <PromptDiffView original={d.original_content} current={d.content} />
-                    ) : (
-                      <pre className="p-3 text-ink-mute dark:text-ink-dark-mute whitespace-pre-wrap break-words font-mono text-[11px] max-h-48 overflow-y-auto">
-                        {d.content || "（空）"}
-                      </pre>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  ))}
+                </div>
+              )}
+              <EvolutionPromptManualEditSection
+                workspace={workspace}
+                defaultOpen={diffs.length === 0}
+              />
+            </>
           )}
         </div>
       )}

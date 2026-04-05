@@ -389,6 +389,7 @@ export default function ChatView() {
                         ? `\n- 说明：${extra}`
                         : `\n- 备注：${extra}`;
                     }
+                    content += `\n\n${translate("chat.evolutionProgressFooterHint")}`;
                     return [
                       {
                         id: crypto.randomUUID(),

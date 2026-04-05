@@ -15,6 +15,7 @@ import {
   splitPlannerBoilerplate,
 } from "../../utils/plannerNudgeUi";
 import { useI18n } from "../../i18n";
+import { openDetailWindow } from "../../utils/detailWindow";
 
 function splitProgressStatusKey(
   key: string | undefined
@@ -584,6 +585,22 @@ function MessageBubbleInner({
                   <div className="text-xs opacity-90 whitespace-pre-wrap">{noteText}</div>
                 ) : null;
               })()}
+              {message.proposalId ? (
+                <div className="pt-2 mt-1 border-t border-purple-200/60 dark:border-purple-800/40">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void openDetailWindow("evolution", { evolutionTab: "changes" })
+                    }
+                    className="text-xs font-medium text-accent hover:underline text-left"
+                  >
+                    {t("chat.evolutionOpenChangesTab")}
+                  </button>
+                  <p className="text-[10px] text-ink-mute dark:text-ink-dark-mute mt-1 leading-snug">
+                    {t("chat.evolutionOpenChangesHint")}
+                  </p>
+                </div>
+              ) : null}
             </div>
           ) : (
             onEvolutionAction && (
