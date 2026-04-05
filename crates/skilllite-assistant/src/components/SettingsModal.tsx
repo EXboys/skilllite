@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
+import { ask, message, open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore, type Provider, type SandboxLevel } from "../stores/useSettingsStore";
 import ScheduleEditor from "./ScheduleEditor";
@@ -18,6 +18,17 @@ interface OllamaProbeResult {
   available: boolean;
   models: string[];
   has_embedding: boolean;
+}
+
+interface AssistantUninstallInfo {
+  platform: string;
+  executableParent: string;
+  macosAppBundlePath: string | null;
+  tauriAppDataDir: string;
+  skillliteChatRoot: string;
+  skillliteDataRoot: string;
+  canScheduleMacosBundleRemoval: boolean;
+  isDevBuild: boolean;
 }
 
 interface SettingsModalProps {
@@ -69,6 +80,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   const [ollamaProbe, setOllamaProbe] = useState<OllamaProbeResult | null>(null);
   const [ollamaLoading, setOllamaLoading] = useState(false);
+  const [uninstallInfo, setUninstallInfo] = useState<AssistantUninstallInfo | null>(null);
 
   const probeOllama = useCallback(async () => {
     setOllamaLoading(true);
@@ -84,6 +96,52 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       setOllamaLoading(false);
     }
   }, [model]);
+
+  useEffect(() => {
+    if (!open || activeTab !== "workspace") return;
+    void (async () => {
+      try {
+        const info = await invoke<AssistantUninstallInfo>("assistant_uninstall_info");
+        setUninstallInfo(info);
+      } catch {
+        setUninstallInfo(null);
+      }
+    })();
+  }, [open, activeTab]);
+
+  const runQuitUninstall = useCallback(
+    async (removeUserData: boolean) => {
+      const detail = removeUserData
+        ? t("settings.uninstall.quitWithDataDetail")
+        : t("settings.uninstall.quitAppOnlyDetail");
+      const q = removeUserData
+        ? t("settings.uninstall.quitWithDataAsk")
+        : t("settings.uninstall.quitAppOnlyAsk");
+      const ok = await ask(`${detail}\n\n${q}`, {
+        title: t("settings.uninstall.title"),
+        kind: "warning",
+        okLabel: removeUserData
+          ? t("settings.uninstall.confirmOkWithData")
+          : t("settings.uninstall.confirmOkAppOnly"),
+        cancelLabel: t("common.cancel"),
+      });
+      if (!ok) return;
+      try {
+        await invoke("skilllite_stop").catch(() => {});
+        await invoke("assistant_quit_uninstall", {
+          removeUserData,
+          removeAppBundle: true,
+        });
+      } catch (e: unknown) {
+        const err = e instanceof Error ? e.message : String(e);
+        await message(t("settings.uninstall.failed", { err }), {
+          title: t("settings.uninstall.title"),
+          kind: "error",
+        });
+      }
+    },
+    [t]
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -624,6 +682,133 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 </p>
               </div>
             )}
+          </div>
+
+          <div className="rounded-xl border border-border dark:border-border-dark overflow-hidden bg-gray-50/90 dark:bg-surface-dark/40 shadow-sm">
+            <div className="border-l-[3px] border-l-amber-500 dark:border-l-amber-600">
+              <div className="px-3.5 pt-3.5 pb-3 border-b border-border/70 dark:border-border-dark/80 bg-white/70 dark:bg-black/20">
+                <h3 className="text-sm font-semibold text-ink dark:text-ink-dark-mute tracking-tight">
+                  {t("settings.uninstall.title")}
+                </h3>
+                <div className="mt-2 space-y-1.5 text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                  <p>{t("settings.uninstall.introPrimary")}</p>
+                  <p className="text-[11px] opacity-[0.92]">{t("settings.uninstall.introSecondary")}</p>
+                </div>
+              </div>
+
+              {uninstallInfo ? (
+                <details className="group border-b border-border/70 dark:border-border-dark/80 bg-white/40 dark:bg-black/10">
+                  <summary className="px-3.5 py-2.5 cursor-pointer select-none list-none flex items-center justify-between gap-2 text-xs font-medium text-ink dark:text-ink-dark-mute hover:bg-black/[0.03] dark:hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
+                    <span>{t("settings.uninstall.pathsSummary")}</span>
+                    <svg
+                      className="w-3.5 h-3.5 shrink-0 text-ink-mute dark:text-ink-dark-mute transition-transform group-open:rotate-180"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      aria-hidden
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 9l-7 7-7-7"
+                      />
+                    </svg>
+                  </summary>
+                  <div className="px-3.5 pb-3.5 space-y-2.5">
+                    <div>
+                      <div className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                        {t("settings.uninstall.pathAppData")}
+                      </div>
+                      <div className="mt-1 rounded-md bg-black/[0.05] dark:bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-mono text-ink/90 dark:text-ink-dark-mute/95 break-all leading-snug">
+                        {uninstallInfo.tauriAppDataDir}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                        {t("settings.uninstall.pathChat")}
+                      </div>
+                      <div className="mt-1 rounded-md bg-black/[0.05] dark:bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-mono text-ink/90 dark:text-ink-dark-mute/95 break-all leading-snug">
+                        {uninstallInfo.skillliteChatRoot}
+                      </div>
+                    </div>
+                  </div>
+                </details>
+              ) : (
+                <div className="px-3.5 py-2.5 border-b border-border/70 dark:border-border-dark/80 bg-white/40 dark:bg-black/10">
+                  <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">
+                    {t("settings.uninstall.loadFailed")}
+                  </p>
+                </div>
+              )}
+
+              {uninstallInfo?.isDevBuild ? (
+                <div className="px-3.5 py-2 border-b border-amber-200/70 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/25">
+                  <p className="text-[11px] text-amber-950 dark:text-amber-100/90 leading-relaxed">
+                    {t("settings.uninstall.devNote")}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="px-3.5 py-3 space-y-2 bg-white/80 dark:bg-black/25">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                  {t("settings.uninstall.actionsHeading")}
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    disabled={!uninstallInfo}
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await invoke("assistant_reveal_install_location");
+                        } catch (e: unknown) {
+                          const err = e instanceof Error ? e.message : String(e);
+                          await message(t("settings.uninstall.failed", { err }), {
+                            title: t("settings.uninstall.title"),
+                            kind: "error",
+                          });
+                        }
+                      })();
+                    }}
+                    className="w-full text-left rounded-lg border border-border dark:border-border-dark px-3 py-2.5 transition-colors hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <span className="block text-sm font-medium text-ink dark:text-ink-dark-mute">
+                      {t("settings.uninstall.reveal")}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] text-ink-mute dark:text-ink-dark-mute leading-snug">
+                      {t("settings.uninstall.revealSub")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!uninstallInfo}
+                    onClick={() => void runQuitUninstall(false)}
+                    className="w-full text-left rounded-lg border border-border dark:border-border-dark px-3 py-2.5 transition-colors hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <span className="block text-sm font-medium text-ink dark:text-ink-dark-mute">
+                      {t("settings.uninstall.quitAppOnly")}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] text-ink-mute dark:text-ink-dark-mute leading-snug">
+                      {t("settings.uninstall.quitAppOnlySub")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!uninstallInfo}
+                    onClick={() => void runQuitUninstall(true)}
+                    className="w-full text-left rounded-lg border border-red-300/90 dark:border-red-900/55 bg-red-50/40 dark:bg-red-950/20 px-3 py-2.5 transition-colors hover:bg-red-50 dark:hover:bg-red-950/35 disabled:opacity-40 disabled:pointer-events-none"
+                  >
+                    <span className="block text-sm font-medium text-red-800 dark:text-red-300">
+                      {t("settings.uninstall.quitWithData")}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] text-red-700/85 dark:text-red-300/80 leading-snug">
+                      {t("settings.uninstall.quitWithDataSub")}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           </div>
           )}

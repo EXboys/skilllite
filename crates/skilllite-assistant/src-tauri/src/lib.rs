@@ -2,6 +2,7 @@
 
 mod life_pulse;
 mod skilllite_bridge;
+mod uninstall;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -732,6 +733,26 @@ fn skilllite_life_pulse_set_llm_overrides(
     Ok(())
 }
 
+#[tauri::command]
+fn assistant_uninstall_info(app: tauri::AppHandle) -> Result<uninstall::UninstallInfo, String> {
+    uninstall::collect_uninstall_info(&app)
+}
+
+#[tauri::command]
+fn assistant_reveal_install_location() -> Result<(), String> {
+    uninstall::reveal_install_location()
+}
+
+/// `remove_user_data`: 删除本应用数据目录与 SkillLite `chat/`（会话、transcript 等）。`remove_app_bundle`: macOS 正式包退出后删 .app；Windows 打开「应用和功能」后退出。
+#[tauri::command]
+fn assistant_quit_uninstall(
+    app: tauri::AppHandle,
+    remove_user_data: bool,
+    remove_app_bundle: bool,
+) -> Result<(), String> {
+    uninstall::quit_uninstall(app, remove_user_data, remove_app_bundle)
+}
+
 /// Read a user-picked image from disk (after native file dialog) for chat attachments.
 #[tauri::command]
 fn skilllite_read_local_image_b64(path: String) -> Result<skilllite_bridge::ChatImageAttachment, String> {
@@ -833,7 +854,10 @@ pub fn run() {
             skilllite_life_pulse_status,
             skilllite_life_pulse_toggle,
             skilllite_life_pulse_set_workspace,
-            skilllite_life_pulse_set_llm_overrides
+            skilllite_life_pulse_set_llm_overrides,
+            assistant_uninstall_info,
+            assistant_reveal_install_location,
+            assistant_quit_uninstall
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())

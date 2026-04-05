@@ -30,6 +30,10 @@ npm run tauri:build
 
 如需单独预装 skilllite：`npm run prebuild:tauri`
 
+## 卸载与数据
+
+在 **设置 → 工作区与沙箱** 底部 **卸载与数据** 中可：**在安装位置显示** 程序；**仅卸载应用并退出**（保留界面设置与 SkillLite `chat/`）；或 **卸载并删除数据**（同时删除 Tauri 应用数据目录与当前 `chat/` 树，不可恢复）。macOS **正式安装包**会在退出后约 2 秒尝试删除 `.app`；**Windows** 会打开「应用和功能」，请在系统中完成卸载；**Linux** 需自行删除安装文件。**开发构建**（`tauri dev` / `target/debug`）不会自动删除构建产物。`~/.skilllite/bin` 中的命令行 skilllite **不会**被自动删除。
+
 ## 环境与 Skills
 
 - **API Key**：在项目根目录或 workspace 的 `.env` 中设置 `OPENAI_API_KEY`

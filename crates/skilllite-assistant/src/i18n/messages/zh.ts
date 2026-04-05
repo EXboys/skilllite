@@ -385,6 +385,33 @@ export const zhMessages: Record<string, string> = {
   "settings.workspacePath": "工作区路径",
   "settings.workspaceHintPrefix": "修改路径后，「定时任务」页会按新路径加载 ",
   "settings.workspaceHintSuffix": "。",
+  "settings.uninstall.title": "卸载与数据",
+  "settings.uninstall.introPrimary":
+    "可只移除本程序；若不再需要本地记录，也可在卸载前一并删除助手数据（界面设置、会话与 transcript 等）。",
+  "settings.uninstall.introSecondary":
+    "不会删除 ~/.skilllite/bin 中的命令行 skilllite，除非您自行处理。",
+  "settings.uninstall.pathsSummary": "本机数据路径",
+  "settings.uninstall.pathAppData": "应用数据",
+  "settings.uninstall.pathChat": "会话与 transcript（chat）",
+  "settings.uninstall.actionsHeading": "操作",
+  "settings.uninstall.reveal": "在安装位置显示",
+  "settings.uninstall.revealSub": "在访达或资源管理器中定位本应用",
+  "settings.uninstall.quitAppOnly": "仅卸载应用并退出",
+  "settings.uninstall.quitAppOnlySub": "保留设置与 chat，只移除应用程序",
+  "settings.uninstall.quitAppOnlyDetail":
+    "macOS 正式安装包：约 2 秒后删除 .app。Windows：打开「应用和功能」，请在系统中完成卸载。Linux：请随后自行删除安装文件。您的设置与 chat 数据将保留。",
+  "settings.uninstall.quitAppOnlyAsk": "确定要退出并执行上述卸载步骤吗？",
+  "settings.uninstall.quitWithData": "卸载应用并删除数据",
+  "settings.uninstall.quitWithDataSub": "清除应用数据目录与 chat（不可恢复）",
+  "settings.uninstall.quitWithDataDetail":
+    "将删除 Tauri 应用数据目录，以及当前 SkillLite 的 chat 目录（默认 ~/.skilllite/chat；若设置了 SKILLLITE_WORKSPACE 则为该路径下的 chat）。随后执行与「仅卸载」相同的程序移除步骤。不可恢复。",
+  "settings.uninstall.quitWithDataAsk": "确定要删除数据并退出吗？",
+  "settings.uninstall.devNote":
+    "当前为开发构建：不会自动删除本机构建产物，卸载步骤请手动完成。",
+  "settings.uninstall.loadFailed": "无法读取卸载信息",
+  "settings.uninstall.failed": "操作失败：{err}",
+  "settings.uninstall.confirmOkAppOnly": "退出并卸载",
+  "settings.uninstall.confirmOkWithData": "删除数据并退出",
   "settings.ideLayout": "IDE 三栏主界面",
   "settings.ideLayoutHint":
     "开启后为主窗口显示「文件树 | 编辑器 | 对话」；右侧状态栏仅在关闭 IDE 布局时显示。",

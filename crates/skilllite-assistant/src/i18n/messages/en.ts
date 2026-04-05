@@ -396,6 +396,33 @@ export const enMessages: Record<string, string> = {
   "settings.workspacePath": "Workspace path",
   "settings.workspaceHintPrefix": "After changing path, the Schedule tab loads ",
   "settings.workspaceHintSuffix": " for that workspace.",
+  "settings.uninstall.title": "Uninstall & data",
+  "settings.uninstall.introPrimary":
+    "Remove the app only, or wipe local assistant data first (UI settings, sessions, transcripts).",
+  "settings.uninstall.introSecondary":
+    "Does not remove the CLI binary under ~/.skilllite/bin unless you delete it yourself.",
+  "settings.uninstall.pathsSummary": "Local data paths",
+  "settings.uninstall.pathAppData": "App data",
+  "settings.uninstall.pathChat": "Sessions & transcripts (chat)",
+  "settings.uninstall.actionsHeading": "Actions",
+  "settings.uninstall.reveal": "Show install location",
+  "settings.uninstall.revealSub": "Reveal this app in Finder or File Explorer",
+  "settings.uninstall.quitAppOnly": "Uninstall app and quit",
+  "settings.uninstall.quitAppOnlySub": "Keeps settings and chat; removes the application only",
+  "settings.uninstall.quitAppOnlyDetail":
+    "macOS (release .app): removes the bundle after ~2s. Windows: opens Apps & features — finish uninstall there. Linux: delete install files manually. Settings and chat data are kept.",
+  "settings.uninstall.quitAppOnlyAsk": "Quit and proceed with uninstall steps?",
+  "settings.uninstall.quitWithData": "Uninstall app and delete data",
+  "settings.uninstall.quitWithDataSub": "Wipes app data and chat (cannot be undone)",
+  "settings.uninstall.quitWithDataDetail":
+    "Deletes the Tauri app data folder and the current SkillLite chat tree (default ~/.skilllite/chat; or <SKILLLITE_WORKSPACE>/chat if set). Then runs the same app-removal steps as “Uninstall only”. This cannot be undone.",
+  "settings.uninstall.quitWithDataAsk": "Delete data and quit?",
+  "settings.uninstall.devNote":
+    "Development build: the app bundle under target/ is not auto-deleted; uninstall manually.",
+  "settings.uninstall.loadFailed": "Could not load uninstall info",
+  "settings.uninstall.failed": "Action failed: {err}",
+  "settings.uninstall.confirmOkAppOnly": "Quit & uninstall",
+  "settings.uninstall.confirmOkWithData": "Delete data & quit",
   "settings.ideLayout": "IDE three-pane main window",
   "settings.ideLayoutHint":
     "When on: file tree, editor, and chat; the right status panel is only shown when this is off.",

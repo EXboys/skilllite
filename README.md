@@ -558,6 +558,7 @@ Optional **IDE** three-pane layout (toolbar **IDE** or **Settings → Workspace 
 Pending **execution confirmations** live inside the collapsible **internal steps** timeline (it auto-expands when action is required; you can enable **auto-allow execution confirmations** in **Settings → Agent budget** or under the input on trusted machines).
 For tool outcomes marked as `partial_success` or `failure`, the assistant shows a multi-option recovery prompt, including `【启动进化】` to enqueue a governed capability-evolution backlog proposal.
 Default agent prompts bias toward **implementing** missing capabilities (scripts, `run_command`, small skills) instead of flatly refusing browser/desktop-style requests when no dedicated skill exists. App upgrades that bump the prompt **seed version** may **overwrite** `~/.skilllite/chat/prompts/*.md` when the on-disk file differs from the new bundled template (including upgrades from older stock); **back up** those files if you customized them.
+**Uninstall**: **Settings → Workspace & sandbox** includes **Uninstall & data** (remove the app only or wipe local assistant data; see the assistant README).
 
 See [crates/skilllite-assistant/README.md](./crates/skilllite-assistant/README.md).
 
