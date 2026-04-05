@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.1.21] - 2026-04-05
+
 ### Changed
 
 - **Evolution memory rollup**: After Memory 进化写入按月分卷（`memory/evolution/<dim>/YYYY-MM.md`），引擎会为该月重算 **`YYYY-MM.rollup.md` 去重汇总**（确定性合并同键条目；原始按次记录保留在分卷中）。各维索引表增加「去重汇总」列；抽取时的已有知识摘要**优先纳入**最新 rollup 尾部以降低重复抽取。
@@ -18,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Evolution memory knowledge**: Auto-extracted knowledge is written under `memory/evolution/` as **five dimensions** (`entities/`, `relations/`, `episodes/`, `preferences/`, `patterns/`) with **monthly shards** (`YYYY-MM.md`), plus per-dimension index files (`entities.md`, …) and a root **`INDEX.md`**. Legacy single-file `knowledge.md` is still read for dedup summaries and can remain on disk. Evolution **snapshots/restore** now copy the whole `memory/evolution/` tree (with **legacy** restore from snapshot `memory/knowledge.md` when present). **`index_evolution_knowledge`** reindexes all evolution markdown except navigational indexes and clears stale `evolution/*` FTS rows first.
 - **SkillLite Assistant (desktop)**: Chat **internal steps** timeline **auto-expands** when it contains a pending **execution confirmation** or **clarification** (so users do not have to discover the collapsed block). When still collapsed, a **“action needed”** badge is shown. The input area adds an optional **auto-allow execution confirmations** checkbox (persisted in app settings); it only affects `confirmation` prompts, not clarification option pickers.
 - **SkillLite Assistant (desktop)**: **Settings** opens as a **right-edge drawer** beside the status column (parallel to chat; no full-window dimmer). The header **Settings** control **toggles** the drawer; **Escape** or **Close** still dismisses it. Tabs, fields, save/cancel, and persistence are unchanged.
+
+### Release
+
+- Workspace, Python SDK, and SkillLite Assistant (Tauri) bumped to **0.1.21**; internal crate path dependency pins aligned to **0.1.21**.
 
 ---
 
@@ -276,7 +284,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.20...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.21...HEAD
+[0.1.21]: https://github.com/EXboys/skilllite/releases/tag/v0.1.21
 [0.1.20]: https://github.com/EXboys/skilllite/releases/tag/v0.1.20
 [0.1.19]: https://github.com/EXboys/skilllite/releases/tag/v0.1.19
 [0.1.16]: https://github.com/EXboys/skilllite/releases/tag/v0.1.16

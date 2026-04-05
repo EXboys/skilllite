@@ -11,9 +11,9 @@ keywords = ["ai", "self-evolving", "agent", "memory", "llm"]
 categories = ["development-tools", "algorithms"]
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core", version = "0.1.20" }
-skilllite-fs = { path = "../skilllite-fs", version = "0.1.20" }
-skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.20" }
+skilllite-core = { path = "../skilllite-core", version = "0.1.21" }
+skilllite-fs = { path = "../skilllite-fs", version = "0.1.21" }
+skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.21" }
 
 async-trait = "0.1"
 anyhow = "1.0"
