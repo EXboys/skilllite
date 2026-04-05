@@ -12,6 +12,7 @@ use crate::Result;
 use rusqlite::Connection;
 use tokio::task::block_in_place;
 
+use crate::evolution_memory_rollup::rebuild_rollups_for_month;
 use crate::feedback::open_evolution_db;
 use crate::gatekeeper_l1_path;
 use crate::gatekeeper_l3_content;
@@ -48,6 +49,21 @@ fn evolution_month_key() -> String {
 
 fn evolution_run_heading() -> String {
     chrono::Utc::now().format("%Y-%m-%d %H:%M UTC").to_string()
+}
+
+/// `YYYY-MM.md` 分卷的 stem；排除 `*.rollup.md` 等。
+fn is_month_shard_stem(stem: &str) -> bool {
+    let b = stem.as_bytes();
+    if b.len() != 7 || b[4] != b'-' {
+        return false;
+    }
+    stem.chars().enumerate().all(|(i, ch)| {
+        if i == 4 {
+            ch == '-'
+        } else {
+            ch.is_ascii_digit()
+        }
+    })
 }
 
 fn tail_chars_utf8(s: &str, max_chars: usize) -> String {
@@ -88,15 +104,40 @@ fn build_existing_knowledge_summary(chat_root: &Path) -> String {
             .iter()
             .filter(|(_p, is_dir)| !*is_dir)
             .filter(|(p, _)| p.extension().and_then(|e| e.to_str()) == Some("md"))
-            .filter_map(|(p, _)| p.file_stem().and_then(|s| s.to_str()).map(String::from))
+            .filter_map(|(p, _)| {
+                let stem = p.file_stem().and_then(|s| s.to_str())?;
+                if is_month_shard_stem(stem) {
+                    Some(stem.to_string())
+                } else {
+                    None
+                }
+            })
             .collect();
         stems.sort();
         if let Some(last_month) = stems.last() {
-            let p = dir.join(format!("{last_month}.md"));
-            let full = skilllite_fs::read_file(&p).unwrap_or_default();
-            let tail = tail_chars_utf8(full.trim(), per);
-            if !tail.is_empty() {
-                parts.push(format!("[{dir_name}/{last_month} tail]\n{tail}"));
+            let rollup_p = dir.join(format!("{last_month}.rollup.md"));
+            let shard_p = dir.join(format!("{last_month}.md"));
+            let rollup_cap = if rollup_p.exists() {
+                (per * 3 / 4).max(120)
+            } else {
+                0
+            };
+            let shard_cap = per.saturating_sub(rollup_cap);
+            if rollup_cap > 0 {
+                let rollup_full = skilllite_fs::read_file(&rollup_p).unwrap_or_default();
+                let rollup_tail = tail_chars_utf8(rollup_full.trim(), rollup_cap);
+                if !rollup_tail.is_empty() {
+                    parts.push(format!(
+                        "[{dir_name}/{last_month}.rollup tail]\n{rollup_tail}"
+                    ));
+                }
+            }
+            if shard_cap > 0 {
+                let full = skilllite_fs::read_file(&shard_p).unwrap_or_default();
+                let tail = tail_chars_utf8(full.trim(), shard_cap);
+                if !tail.is_empty() {
+                    parts.push(format!("[{dir_name}/{last_month} tail]\n{tail}"));
+                }
             }
         }
     }
@@ -175,24 +216,33 @@ fn regenerate_dimension_indexes(chat_root: &Path) -> Result<()> {
                     continue;
                 }
                 if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
-                    months.push(stem.to_string());
+                    if is_month_shard_stem(stem) {
+                        months.push(stem.to_string());
+                    }
                 }
             }
             months.sort();
         }
 
         let table = if months.is_empty() {
-            "| — | （尚无分卷） |".to_string()
+            "| — | （尚无分卷） | — |".to_string()
         } else {
             months
                 .iter()
-                .map(|m| format!("| {m} | [{m}]({dir_name}/{m}.md) |"))
+                .map(|m| {
+                    let rollup_cell = if shard_dir.join(format!("{m}.rollup.md")).exists() {
+                        format!("[{m} 汇总]({dir_name}/{m}.rollup.md)")
+                    } else {
+                        "—".to_string()
+                    };
+                    format!("| {m} | [{m}]({dir_name}/{m}.md) | {rollup_cell} |")
+                })
                 .collect::<Vec<_>>()
                 .join("\n")
         };
 
         let content = format!(
-            "# {title_zh}（索引）\n\n按月分卷；正文在 [`{dir_name}/`]({dir_name}/)。\n\n| 月份 | 卷 |\n|------|-----|\n{table}\n"
+            "# {title_zh}（索引）\n\n按月分卷；正文在 [`{dir_name}/`]({dir_name}/)。**去重汇总卷** `YYYY-MM.rollup.md` 在每次 Memory 进化写入分卷后自动重算。\n\n| 月份 | 分卷 | 去重汇总 |\n|------|------|----------|\n{table}\n",
         );
         gatekeeper_l3_content(&content)?;
         skilllite_fs::write_file(&index_path, &content)?;
@@ -210,7 +260,7 @@ fn regenerate_evolution_root_index(chat_root: &Path, last_run: &str) -> Result<(
 
     let content = format!(
         "# 进化知识库总索引\n\n\
-         由 Memory 进化自动维护；以下为五维索引（各维目录内为按月分卷 `YYYY-MM.md`）。\n\n\
+         由 Memory 进化自动维护；以下为五维索引（各维目录内为按月分卷 `YYYY-MM.md`，另有自动去重汇总 `YYYY-MM.rollup.md`）。\n\n\
          **最后更新**: {last_run}\n\n\
          | 维度 | 索引 | 分卷目录 |\n|------|------|----------|\n\
          | 实体 | [entities.md](entities.md) | [entities/](entities/) |\n\
@@ -416,6 +466,8 @@ pub async fn evolve_memory<L: EvolutionLlm>(
     if !pattern_block.is_empty() {
         append_evolution_shard(chat_root, "patterns", &month, &run_heading, &pattern_block)?;
     }
+
+    rebuild_rollups_for_month(chat_root, &month)?;
 
     regenerate_dimension_indexes(chat_root)?;
     regenerate_evolution_root_index(chat_root, &run_heading)?;

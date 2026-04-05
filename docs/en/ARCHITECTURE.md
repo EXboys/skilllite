@@ -441,6 +441,8 @@ registry.register(memory::tools());
 | `memory_write` | Write new memory |
 | `memory_list` | List all memories |
 
+**Evolution extracted knowledge** (workspace `memory/evolution/`): five dimensions with monthly `YYYY-MM.md` shards per folder; after each memory-evolution write, the engine regenerates **`YYYY-MM.rollup.md`** deduplicated summaries (append-only shard content is unchanged). Rollups are indexed for BM25 like other evolution markdown.
+
 ---
 
 ### 5. MCP Module (skilllite/mcp/)

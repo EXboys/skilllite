@@ -11,6 +11,7 @@ pub mod audit;
 pub mod changelog;
 pub mod config;
 pub mod error;
+mod evolution_memory_rollup;
 pub mod external_learner;
 pub mod feedback;
 pub mod gatekeeper;

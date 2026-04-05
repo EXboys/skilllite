@@ -439,6 +439,8 @@ registry.register(memory::tools());
 | `memory_write` | 写入新记忆 |
 | `memory_list` | 列出所有记忆 |
 
+**进化抽取知识**（工作区 `memory/evolution/`）：五维目录下按月分卷 `YYYY-MM.md`；每次 Memory 进化写入后，引擎会重算 **`YYYY-MM.rollup.md`** 去重汇总（分卷正文仍按次追加保留）。汇总卷与其他 evolution 正文一样参与 BM25 索引。
+
 ---
 
 ### 5. MCP 模块 (skilllite/mcp/)
