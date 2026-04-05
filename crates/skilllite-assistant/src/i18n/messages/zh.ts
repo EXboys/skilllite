@@ -154,6 +154,11 @@ export const zhMessages: Record<string, string> = {
   "chat.readFileHljsLimited": "预览过长，已关闭语法高亮（全屏仍可编辑全文）",
   "chat.readFilePlainPreview": "纯文本预览",
   "chat.readFileSyntaxHighlight": "语法高亮",
+  "chat.readFilePreviewAriaIde": "在 IDE 布局中打开此文件",
+  "chat.readFilePreviewAriaFullscreen": "打开全屏阅读",
+  "chat.readFilePreviewHintIde": "点击预览在 IDE 中打开 · 可滚动查看更多行",
+  "chat.readFilePreviewHintFullscreen": "点击预览全屏查看 · 可滚动查看更多行",
+  "chat.listDirectoryPreviewHint": "可上下滚动查看更多目录内容",
   "chat.apiError.tlsSuffix":
     "若使用系统/公司代理或 HTTPS 扫描，可尝试：1) 为应用配置 HTTPS_PROXY；2) 在本机终端用 curl 测试同一 URL；3) 查阅发行说明（当前 LLM 客户端使用 Rustls，部分自定义根证书环境可能需额外配置）。",
   "chat.apiError.unauthorized":

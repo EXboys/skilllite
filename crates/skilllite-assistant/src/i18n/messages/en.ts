@@ -160,6 +160,13 @@ export const enMessages: Record<string, string> = {
   "chat.readFileHljsLimited": "Large preview: syntax highlighting off (fullscreen still has full text)",
   "chat.readFilePlainPreview": "Plain text preview",
   "chat.readFileSyntaxHighlight": "Syntax highlighting",
+  "chat.readFilePreviewAriaIde": "Open this file in IDE layout",
+  "chat.readFilePreviewAriaFullscreen": "Open fullscreen reader",
+  "chat.readFilePreviewHintIde":
+    "Click the preview to open in IDE · scroll for more lines",
+  "chat.readFilePreviewHintFullscreen":
+    "Click the preview for fullscreen · scroll for more lines",
+  "chat.listDirectoryPreviewHint": "Scroll to see more of the tree",
   "chat.apiError.tlsSuffix":
     "If you use a corporate proxy or HTTPS inspection, try: 1) set HTTPS_PROXY for the app; 2) curl the same URL in a terminal; 3) check release notes (the LLM client uses Rustls; custom roots may need extra setup).",
   "chat.apiError.unauthorized":

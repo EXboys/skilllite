@@ -36,9 +36,34 @@ export function timelineGroupNeedsUserAction(messages: ChatMessage[]): boolean {
   });
 }
 
+/** 对话内有专用预览 UI 的文件类工具结果（与 indexOfLastTimelineSegment 组合使用，只对最后一段时间线默认展开）。 */
+const FILE_PREVIEW_TOOL_RESULTS = new Set(["read_file", "list_directory"]);
+
+function normalizeToolName(name: string): string {
+  return name.replace(/-/g, "_").trim().toLowerCase();
+}
+
+export function timelineGroupHasFilePreviewResult(messages: ChatMessage[]): boolean {
+  return messages.some(
+    (m) =>
+      m.type === "tool_result" &&
+      !m.isError &&
+      FILE_PREVIEW_TOOL_RESULTS.has(normalizeToolName(m.name)),
+  );
+}
+
 export type ChatSegment =
   | { kind: "single"; message: ChatMessage }
   | { kind: "timeline"; messages: ChatMessage[] };
+
+/** `partitionChatMessages` 结果中，最后一个 `timeline` 片段的下标；无则 -1 */
+export function indexOfLastTimelineSegment(segments: ChatSegment[]): number {
+  let idx = -1;
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i].kind === "timeline") idx = i;
+  }
+  return idx;
+}
 
 /** 将消息切成「单条」与「内部步骤」时间线（plan + tool_call + tool_result + 确认/澄清）；用户消息与助手正文等为单条。 */
 export function partitionChatMessages(messages: ChatMessage[]): ChatSegment[] {

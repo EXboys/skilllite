@@ -3,8 +3,11 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { MessageBubble } from "./MessageBubble";
 import { SystemTimelineGroup } from "./SystemTimelineGroup";
 import {
+  indexOfLastTimelineSegment,
   partitionChatMessages,
+  timelineGroupHasFilePreviewResult,
   timelineGroupNeedsUserAction,
+  type ChatSegment,
 } from "../../utils/chatNoise";
 import type { ChatMessage } from "../../types/chat";
 
@@ -19,6 +22,20 @@ function timelineDefaultExpanded(
   const last = all[all.length - 1];
   const gl = group[group.length - 1];
   return last?.id === gl?.id;
+}
+
+/** 内部步骤默认展开：待操作 / 本轮仍在跑 / 或「最后一段」时间线里含 read_file·list_directory 成功结果（历史段保持折叠） */
+function timelineDefaultExpandedState(
+  segments: ChatSegment[],
+  segmentIndex: number,
+  allMessages: ChatMessage[],
+  group: ChatMessage[],
+  loading: boolean
+): boolean {
+  if (timelineDefaultExpanded(allMessages, group, loading)) return true;
+  if (timelineGroupNeedsUserAction(group)) return true;
+  if (indexOfLastTimelineSegment(segments) !== segmentIndex) return false;
+  return timelineGroupHasFilePreviewResult(group);
 }
 
 interface MessageListProps {
@@ -94,10 +111,13 @@ export function MessageList({
           key={seg.messages.map((m) => m.id).join("|")}
           messages={seg.messages}
           workspace={workspace}
-          defaultExpanded={
-            timelineDefaultExpanded(messages, seg.messages, loading) ||
-            timelineGroupNeedsUserAction(seg.messages)
-          }
+          defaultExpanded={timelineDefaultExpandedState(
+            segments,
+            index,
+            messages,
+            seg.messages,
+            loading
+          )}
           onConfirm={onConfirm}
           onClarify={onClarify}
           onEvolutionAction={onEvolutionAction}
@@ -109,7 +129,7 @@ export function MessageList({
   if (!useVirtual) {
     return (
       <div ref={parentRef} className="flex-1 overflow-y-auto p-5 space-y-4">
-        {segments.map((seg) =>
+        {segments.map((seg, segmentIndex) =>
           seg.kind === "single" ? (
             <div key={seg.message.id}>
               <MessageBubble
@@ -125,10 +145,13 @@ export function MessageList({
               key={seg.messages.map((m) => m.id).join("|")}
               messages={seg.messages}
               workspace={workspace}
-              defaultExpanded={
-                timelineDefaultExpanded(messages, seg.messages, loading) ||
-                timelineGroupNeedsUserAction(seg.messages)
-              }
+              defaultExpanded={timelineDefaultExpandedState(
+                segments,
+                segmentIndex,
+                messages,
+                seg.messages,
+                loading
+              )}
               onConfirm={onConfirm}
               onClarify={onClarify}
               onEvolutionAction={onEvolutionAction}
