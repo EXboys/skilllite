@@ -111,6 +111,8 @@ source ~/.bashrc
 
 如果自动安装失败，请从以下地址下载：https://github.com/EXboys/skilllite/releases
 
+**维护者推送 `v*` 版本标签后**，Releases 页面要等 [Build and Release SkillLite](https://github.com/EXboys/skilllite/actions/workflows/release.yml) 里各平台构建 **全部成功** 后才会出现新版本（常见约 10–20 分钟）。日志里黄色的 “Node.js 20 deprecated” 是 **弃用提示**，**不是**构建失败。**桌面安装包**（dmg / msi / AppImage）由 [另一条工作流](https://github.com/EXboys/skilllite/actions/workflows/release-desktop.yml) 构建，可能会稍晚才出现在同一 Release 上。
+
 ### 从源码构建
 
 ```bash

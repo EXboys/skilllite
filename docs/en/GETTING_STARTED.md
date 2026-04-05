@@ -111,6 +111,8 @@ source ~/.bashrc
 
 If auto-install fails, download from: https://github.com/EXboys/skilllite/releases
 
+**After a maintainer pushes a `v*` tag**, the release page is updated only when [Build and Release SkillLite](https://github.com/EXboys/skilllite/actions/workflows/release.yml) finishes all platform jobs (often about 10–20 minutes). Yellow “Node.js 20 deprecated” lines in the log are **warnings**, not build failures. **Desktop installers** (dmg / msi / AppImage) are built by a [separate workflow](https://github.com/EXboys/skilllite/actions/workflows/release-desktop.yml) and may appear on the same release a bit later.
+
 ### Building from source
 
 ```bash

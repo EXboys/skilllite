@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { MarkdownContent } from "./shared/MarkdownContent";
 import { PromptDiffView } from "./PromptDiffView";
@@ -64,6 +64,13 @@ export interface EvolutionFileDiffDto {
   original_content: string | null;
 }
 
+/** 曾在 changelog 中出现且相对最早快照有文本差异：用于绿框与「本轮已进化」徽标 */
+export function evolutionPromptHasNetChange(d: EvolutionFileDiffDto): boolean {
+  if (!d.evolved) return false;
+  if (d.original_content == null) return false;
+  return d.original_content !== d.content;
+}
+
 export interface EvolutionSnapshotTxnDto {
   txn_id: string;
   modified_unix: number;
@@ -71,6 +78,16 @@ export interface EvolutionSnapshotTxnDto {
 
 /** Matches `skilllite_bridge::PROMPT_VERSION_CURRENT` */
 const PROMPT_VERSION_CURRENT = "__current__";
+
+function EvolutionBrandTitle({ className }: { className?: string }) {
+  const { t } = useI18n();
+  return (
+    <span className={className}>
+      {t("evolution.brand.lead")}
+      <span className="text-accent font-bold">{t("evolution.brand.accent")}</span>
+    </span>
+  );
+}
 
 /** 与 `EVOLUTION_PROMPT_DIFF_FILENAMES` 一致，可安全写入 chat prompts */
 const CHAT_PROMPT_EDIT_FILENAMES = [
@@ -257,6 +274,67 @@ function formatSnapshotTimeLabel(modifiedUnix: number, locale: Locale): string {
   }
 }
 
+const PROMPT_VERSION_SELECT_CLS =
+  "w-full min-w-0 appearance-none rounded-lg border border-border dark:border-border-dark " +
+  "bg-white dark:bg-paper-dark shadow-sm pl-3 pr-9 py-2 text-[11px] font-mono " +
+  "text-ink dark:text-ink-dark transition-[border-color,box-shadow] duration-150 " +
+  "hover:border-accent/40 dark:hover:border-accent/35 " +
+  "focus:outline-none focus:ring-2 focus:ring-accent/25 focus:border-accent/50 " +
+  "disabled:cursor-not-allowed disabled:opacity-60";
+
+function PromptVersionSelectRow({
+  label,
+  value,
+  onChange,
+  ariaLabel,
+  txnOptions,
+  currentOptionLabel,
+}: {
+  label: string;
+  value: string;
+  onChange: (next: string) => void;
+  ariaLabel: string;
+  txnOptions: ReactNode;
+  currentOptionLabel: string;
+}) {
+  return (
+    <label className="flex min-w-0 flex-1 flex-col gap-1">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+        {label}
+      </span>
+      <div className="relative min-w-0 group">
+        <select
+          className={PROMPT_VERSION_SELECT_CLS}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={ariaLabel}
+        >
+          <option value={PROMPT_VERSION_CURRENT}>{currentOptionLabel}</option>
+          {txnOptions}
+        </select>
+        <span
+          className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-mute dark:text-ink-dark-mute opacity-55 transition-opacity group-focus-within:opacity-100 group-focus-within:text-accent"
+          aria-hidden
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M6 9l6 6 6-6" />
+          </svg>
+        </span>
+      </div>
+    </label>
+  );
+}
+
 function EvolutionPromptVersionCompare({
   filename,
   focusTxn = null,
@@ -280,7 +358,6 @@ function EvolutionPromptVersionCompare({
   const [rightText, setRightText] = useState("");
   const [contentErr, setContentErr] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(false);
-  const [compareMode, setCompareMode] = useState(true);
   const contentFetchGen = useRef(0);
 
   useEffect(() => {
@@ -326,9 +403,6 @@ function EvolutionPromptVersionCompare({
     })();
   }, [filename, leftRef, rightRef]);
 
-  const selectCls =
-    "min-w-0 flex-1 rounded border border-border/60 dark:border-border-dark/60 bg-white/80 dark:bg-paper-dark/80 px-2 py-1.5 text-[11px] font-mono text-ink dark:text-ink-dark";
-
   const txnOptions = txns.map((x) => {
     const time = formatSnapshotTimeLabel(x.modified_unix, localeResolved);
     const label =
@@ -351,31 +425,23 @@ function EvolutionPromptVersionCompare({
           {t("evolution.diff.loadVersionsError")}: {txnsErr}
         </p>
       ) : (
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <label className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-[10px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.diff.versionLeft")}</span>
-            <select
-              className={selectCls}
-              value={leftRef}
-              onChange={(e) => setLeftRef(e.target.value)}
-              aria-label={t("evolution.diff.versionLeft")}
-            >
-              <option value={PROMPT_VERSION_CURRENT}>{t("evolution.diff.currentWorkspace")}</option>
-              {txnOptions}
-            </select>
-          </label>
-          <label className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="text-[10px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.diff.versionRight")}</span>
-            <select
-              className={selectCls}
-              value={rightRef}
-              onChange={(e) => setRightRef(e.target.value)}
-              aria-label={t("evolution.diff.versionRight")}
-            >
-              <option value={PROMPT_VERSION_CURRENT}>{t("evolution.diff.currentWorkspace")}</option>
-              {txnOptions}
-            </select>
-          </label>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <PromptVersionSelectRow
+            label={t("evolution.diff.versionLeft")}
+            value={leftRef}
+            onChange={setLeftRef}
+            ariaLabel={t("evolution.diff.versionLeft")}
+            currentOptionLabel={t("evolution.diff.currentWorkspace")}
+            txnOptions={txnOptions}
+          />
+          <PromptVersionSelectRow
+            label={t("evolution.diff.versionRight")}
+            value={rightRef}
+            onChange={setRightRef}
+            ariaLabel={t("evolution.diff.versionRight")}
+            currentOptionLabel={t("evolution.diff.currentWorkspace")}
+            txnOptions={txnOptions}
+          />
         </div>
       )}
       {contentErr && (
@@ -387,44 +453,7 @@ function EvolutionPromptVersionCompare({
         <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.diff.loadingContent")}</p>
       ) : null}
       {!loadingContent && !contentErr && !txnsLoading && !txnsErr ? (
-        <>
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setCompareMode(true)}
-              className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
-                compareMode
-                  ? "border-accent/50 bg-accent/10 text-accent dark:text-blue-300"
-                  : "border-border/50 dark:border-border-dark/50 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
-              }`}
-            >
-              {t("evolution.diff.toggleCompare")}
-            </button>
-            <button
-              type="button"
-              onClick={() => setCompareMode(false)}
-              className={`px-2 py-0.5 rounded text-[10px] border transition-colors ${
-                !compareMode
-                  ? "border-accent/50 bg-accent/10 text-accent dark:text-blue-300"
-                  : "border-border/50 dark:border-border-dark/50 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
-              }`}
-            >
-              {t("evolution.diff.togglePlain")}
-            </button>
-          </div>
-          {compareMode ? (
-            <PromptDiffView original={leftText} current={rightText} />
-          ) : (
-            <div className="grid gap-2 md:grid-cols-2">
-              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border/40 dark:border-border-dark/40 bg-gray-50/80 dark:bg-surface-dark/50 p-2 font-mono text-[11px] text-ink-mute dark:text-ink-dark-mute">
-                {leftText || "（空）"}
-              </pre>
-              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded border border-border/40 dark:border-border-dark/40 bg-gray-50/80 dark:bg-surface-dark/50 p-2 font-mono text-[11px] text-ink-mute dark:text-ink-dark-mute">
-                {rightText || "（空）"}
-              </pre>
-            </div>
-          )}
-        </>
+        <PromptDiffView original={leftText} current={rightText} />
       ) : null}
     </div>
   );
@@ -544,7 +573,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
     return (
       <section className="mb-4 min-w-0">
         <div className="flex items-center justify-between mb-2">
-          <span className="font-medium text-ink dark:text-ink-dark">自进化</span>
+          <EvolutionBrandTitle className="font-medium text-ink dark:text-ink-dark" />
         </div>
         <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
       </section>
@@ -555,7 +584,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
     return (
       <section className="mb-4 min-w-0">
         <div className="flex items-center justify-between mb-2">
-          <span className="font-medium text-ink dark:text-ink-dark">自进化</span>
+          <EvolutionBrandTitle className="font-medium text-ink dark:text-ink-dark" />
           <button
             type="button"
             onClick={() => void refresh()}
@@ -590,9 +619,9 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
           onClick={onOpenDetail}
           className="flex-1 min-w-0 text-left font-medium text-ink dark:text-ink-dark group hover:text-accent dark:hover:text-accent"
         >
-          <span>自进化</span>
+          <EvolutionBrandTitle />
           <span className="text-xs font-normal text-ink-mute group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent inline-flex items-center gap-0.5 ml-0.5 transition-colors">
-            详情与审核
+            {t("evolution.summary.openDetail")}
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 18l6-6-6-6" />
             </svg>
@@ -603,8 +632,8 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
           onClick={() => void refresh()}
           disabled={loading}
           className="p-1.5 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 shrink-0"
-          title="刷新"
-          aria-label="刷新进化状态"
+          title={t("evolution.summary.refreshTitle")}
+          aria-label={t("evolution.summary.refreshEvolutionAria")}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -627,7 +656,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
       </div>
 
       <div
-        className="max-w-full min-w-0 cursor-pointer rounded-lg border border-border/60 dark:border-border-dark/60 bg-gray-50/50 dark:bg-surface-dark/50 px-2.5 py-2 text-xs text-ink dark:text-ink-dark space-y-1.5 break-words"
+        className="max-w-full min-w-0 cursor-pointer rounded-lg border border-border/60 dark:border-border-dark/60 border-l-[3px] border-l-accent/55 dark:border-l-accent/45 bg-gray-50/50 dark:bg-surface-dark/50 px-2.5 py-2 text-xs text-ink dark:text-ink-dark space-y-1.5 break-words shadow-sm shadow-accent/[0.07] dark:shadow-accent/[0.12]"
         onClick={onOpenDetail}
         role="button"
         onKeyDown={(e) => e.key === "Enter" && onOpenDetail()}
@@ -834,6 +863,23 @@ export function EvolutionDetailBody({
   const [pendingLoading, setPendingLoading] = useState(true);
   const [diffs, setDiffs] = useState<EvolutionFileDiffDto[]>([]);
   const [diffsLoading, setDiffsLoading] = useState(true);
+  const evolvedPromptWithChangeCount = useMemo(
+    () => diffs.filter(evolutionPromptHasNetChange).length,
+    [diffs]
+  );
+  const sortedDiffs = useMemo(() => {
+    const rank = (d: EvolutionFileDiffDto) => {
+      if (evolutionPromptHasNetChange(d)) return 0;
+      if (d.evolved) return 1;
+      return 2;
+    };
+    return [...diffs].sort((a, b) => {
+      const ra = rank(a);
+      const rb = rank(b);
+      if (ra !== rb) return ra - rb;
+      return a.filename.localeCompare(b.filename);
+    });
+  }, [diffs]);
   const snapFetchGenRef = useRef(0);
   const [snapshotsByFile, setSnapshotsByFile] = useState<Record<
     string,
@@ -948,10 +994,12 @@ export function EvolutionDetailBody({
 
   const s = status;
 
-  const tabBtnClass = (active: boolean) =>
+  const tabBtnClass = (active: boolean, emphasize?: boolean) =>
     `flex-1 min-w-0 py-2 px-1.5 text-xs font-medium rounded-t-md border-b-2 transition-colors ${
       active
-        ? "border-accent text-ink dark:text-ink-dark"
+        ? emphasize
+          ? "border-accent text-accent dark:text-accent font-semibold"
+          : "border-accent text-ink dark:text-ink-dark"
         : "border-transparent text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
     }`;
 
@@ -963,7 +1011,7 @@ export function EvolutionDetailBody({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div
           role="tablist"
-          aria-label="自进化详情分类"
+          aria-label={t("evolution.detail.tabListAria")}
           className="flex flex-1 min-w-0 gap-0 border-b border-border/80 dark:border-border-dark/80"
         >
           <button
@@ -976,7 +1024,7 @@ export function EvolutionDetailBody({
             onClick={() => setDetailTab("run")}
             className={tabBtnClass(detailTab === "run")}
           >
-            运行与队列
+            {t("evolution.detail.tabRun")}
           </button>
           <button
             type="button"
@@ -989,7 +1037,7 @@ export function EvolutionDetailBody({
             className={tabBtnClass(detailTab === "review")}
           >
             <span className="inline-flex items-center justify-center gap-1">
-              审核
+              {t("evolution.detail.tabReview")}
               {(pendingCount > 0 || hasJudgement) && (
                 <span className="tabular-nums rounded-full bg-accent/15 dark:bg-accent/25 px-1.5 py-px text-[10px] font-semibold text-accent">
                   {pendingCount > 0 ? pendingCount : "!"}
@@ -1005,9 +1053,19 @@ export function EvolutionDetailBody({
             aria-selected={detailTab === "changes"}
             tabIndex={detailTab === "changes" ? 0 : -1}
             onClick={() => setDetailTab("changes")}
-            className={tabBtnClass(detailTab === "changes")}
+            className={tabBtnClass(detailTab === "changes", true)}
           >
-            变更对比
+            <span className="inline-flex items-center justify-center gap-1">
+              {t("evolution.detail.tabChanges")}
+              {evolvedPromptWithChangeCount > 0 && (
+                <span
+                  className="tabular-nums rounded-full bg-emerald-500/20 dark:bg-emerald-400/15 px-1.5 py-px text-[10px] font-semibold text-emerald-800 dark:text-emerald-300"
+                  title={t("evolution.diff.changedFilesTabHint")}
+                >
+                  {t("evolution.diff.evolvedFilesCount", { n: evolvedPromptWithChangeCount })}
+                </span>
+              )}
+            </span>
           </button>
         </div>
         <button
@@ -1016,7 +1074,7 @@ export function EvolutionDetailBody({
           disabled={loading}
           className="text-xs text-accent hover:underline disabled:opacity-50 shrink-0"
         >
-          {loading ? "刷新中…" : "刷新状态"}
+          {loading ? t("evolution.detail.refreshing") : t("evolution.detail.refreshStatus")}
         </button>
       </div>
 
@@ -1362,13 +1420,22 @@ export function EvolutionDetailBody({
           className="space-y-3"
         >
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">进化变更对比</h2>
+            <h2 className="text-sm font-semibold text-ink dark:text-ink-dark flex items-center gap-2 min-w-0">
+              <span
+                className="h-5 w-1 shrink-0 rounded-full bg-gradient-to-b from-accent to-accent/55"
+                aria-hidden
+              />
+              <span className="min-w-0 leading-snug">
+                <span className="text-accent font-bold">{t("evolution.diff.sectionTitleEvolution")}</span>
+                <span>{t("evolution.diff.sectionTitleRest")}</span>
+              </span>
+            </h2>
             <button
               type="button"
               onClick={() => void loadDiffs()}
-              className="text-xs text-accent hover:underline"
+              className="text-xs text-accent hover:underline shrink-0"
             >
-              刷新
+              {t("status.refresh")}
             </button>
           </div>
           {diffsLoading ? (
@@ -1384,24 +1451,48 @@ export function EvolutionDetailBody({
                   <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
                     {t("evolution.diff.legend")}
                   </p>
-                  {diffs.map((d) => (
+                  {sortedDiffs.map((d) => (
                     <div
                       key={d.filename}
                       className={`rounded-lg border text-xs overflow-hidden ${
-                        d.evolved
-                          ? "bg-green-50/50 dark:bg-green-900/10 border-green-300/60 dark:border-green-700/40"
+                        evolutionPromptHasNetChange(d)
+                          ? "bg-green-50/60 dark:bg-green-900/15 border-green-400/70 dark:border-green-600/50 ring-1 ring-accent/20 dark:ring-accent/25 shadow-sm shadow-emerald-500/10 dark:shadow-emerald-400/5"
                           : "bg-gray-50/50 dark:bg-surface-dark/40 border-border/50 dark:border-border-dark/50"
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/30 dark:border-border-dark/30 bg-gray-100/50 dark:bg-surface-dark/30">
-                        <span className="font-mono font-medium text-ink dark:text-ink-dark">
+                      <div
+                        className={`flex items-center justify-between gap-2 px-3 py-2 border-b border-border/30 dark:border-border-dark/30 ${
+                          evolutionPromptHasNetChange(d)
+                            ? "bg-gradient-to-r from-accent/[0.08] to-transparent dark:from-accent/[0.12]"
+                            : "bg-gray-100/50 dark:bg-surface-dark/30"
+                        }`}
+                      >
+                        <span className="font-mono font-medium text-ink dark:text-ink-dark min-w-0">
                           {d.filename}
                         </span>
-                        {d.evolved ? (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-300/50 dark:border-green-600/50 shrink-0">
-                            ✨ 进化
-                          </span>
-                        ) : null}
+                        <div className="flex flex-col items-end gap-0.5 shrink-0">
+                          {evolutionPromptHasNetChange(d) ? (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide bg-emerald-100/95 dark:bg-emerald-900/55 text-emerald-900 dark:text-emerald-200 border border-emerald-400/55 dark:border-emerald-500/45 ring-1 ring-emerald-500/25">
+                              {t("evolution.diff.evolvedBadge")}
+                            </span>
+                          ) : d.evolved ? (
+                            d.original_content != null ? (
+                              <span
+                                className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-ink/[0.06] dark:bg-white/[0.08] text-ink-mute dark:text-ink-dark-mute border border-border/60 dark:border-border-dark/50"
+                                title={t("evolution.diff.evolvedNoChangeHint")}
+                              >
+                                {t("evolution.diff.evolvedNoChangeBadge")}
+                              </span>
+                            ) : (
+                              <span
+                                className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-amber-50/90 dark:bg-amber-900/25 text-amber-900 dark:text-amber-200/90 border border-amber-200/70 dark:border-amber-700/45"
+                                title={t("evolution.diff.evolvedNoSnapshotHint")}
+                              >
+                                {t("evolution.diff.evolvedNoSnapshotBadge")}
+                              </span>
+                            )
+                          ) : null}
+                        </div>
                       </div>
                       <EvolutionPromptVersionCompare
                         filename={d.filename}

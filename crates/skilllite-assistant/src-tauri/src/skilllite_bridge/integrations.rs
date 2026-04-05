@@ -1293,13 +1293,11 @@ pub fn load_evolution_diffs(_workspace: &str) -> Vec<EvolutionFileDiffDto> {
             continue;
         }
         let is_evolved = evolved_files.contains(*filename);
-        let mut original_content: Option<String> = None;
-        if is_evolved {
-            original_content = get_earliest_snapshot_content(&chat_root, filename);
-        }
-        if !is_evolved {
-            continue;
-        }
+        let original_content = if is_evolved {
+            get_earliest_snapshot_content(&chat_root, filename)
+        } else {
+            None
+        };
         result.push(EvolutionFileDiffDto {
             filename: filename.to_string(),
             evolved: is_evolved,

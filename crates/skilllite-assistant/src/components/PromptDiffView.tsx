@@ -1,3 +1,6 @@
+import { Fragment, type ReactNode } from "react";
+import { useI18n } from "../i18n";
+
 type DiffLineKind = "added" | "removed" | "unchanged";
 interface DiffLine {
   kind: DiffLineKind;
@@ -35,6 +38,9 @@ function computeDiff(original: string, current: string): DiffLine[] {
   return result.reverse();
 }
 
+const cellBase =
+  "px-2 py-0.5 text-[11px] font-mono leading-relaxed break-words whitespace-pre-wrap border-b border-ink/[0.06] dark:border-white/[0.08] align-top";
+
 export function PromptDiffView({
   original,
   current,
@@ -42,94 +48,95 @@ export function PromptDiffView({
   original: string;
   current: string;
 }) {
-  const CONTEXT = 3;
+  const { t } = useI18n();
   const lines = computeDiff(original, current);
   const addedCount = lines.filter((l) => l.kind === "added").length;
   const removedCount = lines.filter((l) => l.kind === "removed").length;
 
-  const visibleSet = new Set<number>();
-  lines.forEach((l, idx) => {
-    if (l.kind !== "unchanged") {
-      for (
-        let k = Math.max(0, idx - CONTEXT);
-        k <= Math.min(lines.length - 1, idx + CONTEXT);
-        k++
-      ) {
-        visibleSet.add(k);
-      }
-    }
-  });
-
-  const rendered: React.ReactNode[] = [];
-  let ri = 0;
-  while (ri < lines.length) {
-    if (visibleSet.has(ri)) {
-      const l = lines[ri];
-      rendered.push(
-        <div
-          key={ri}
-          className={
-            l.kind === "added"
-              ? "bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-l-2 border-green-500 pl-2 -ml-2"
-              : l.kind === "removed"
-                ? "bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400/70 line-through border-l-2 border-red-400 dark:border-red-700/50 pl-2 -ml-2"
-                : "text-ink-mute dark:text-ink-dark-mute"
-          }
-        >
-          {l.kind === "added" && (
-            <span className="mr-1 text-green-600 dark:text-green-400 select-none">+</span>
-          )}
-          {l.kind === "removed" && (
-            <span className="mr-1 text-red-500/70 select-none">−</span>
-          )}
-          {l.kind === "unchanged" && (
-            <span className="mr-1 text-ink-mute/50 dark:text-ink-dark-mute/50 select-none">
-              {" "}
-            </span>
-          )}
-          <span className="whitespace-pre-wrap break-words">{l.text || "\u00a0"}</span>
-        </div>,
-      );
-      ri++;
-    } else {
-      let skipped = 0;
-      while (ri < lines.length && !visibleSet.has(ri)) {
-        skipped++;
-        ri++;
-      }
-      rendered.push(
-        <div
-          key={`skip-${ri}`}
-          className="text-ink-mute/60 dark:text-ink-dark-mute/60 text-[10px] py-0.5 select-none"
-        >
-          ···{skipped} 行未变···
-        </div>,
-      );
-    }
-  }
-
-  if (visibleSet.size === 0) {
+  if (lines.length === 0) {
     return (
       <div className="p-3 text-[11px] text-ink-mute dark:text-ink-dark-mute italic">
-        内容无变化（快照与当前版本相同）
+        {t("evolution.diff.sameContent")}
       </div>
     );
   }
 
+  const gridRows: ReactNode[] = lines.map((l, ri) => {
+    if (l.kind === "unchanged") {
+      return (
+        <Fragment key={ri}>
+          <div className={`${cellBase} text-ink dark:text-ink-dark`}>
+            <span className="mr-1 select-none text-ink-mute/40 dark:text-ink-dark-mute/40"> </span>
+            <span>{l.text || "\u00a0"}</span>
+          </div>
+          <div className={`${cellBase} text-ink dark:text-ink-dark`}>
+            <span className="mr-1 select-none text-ink-mute/40 dark:text-ink-dark-mute/40"> </span>
+            <span>{l.text || "\u00a0"}</span>
+          </div>
+        </Fragment>
+      );
+    }
+    if (l.kind === "removed") {
+      return (
+        <Fragment key={ri}>
+          <div
+            className={`${cellBase} bg-red-100/90 dark:bg-red-900/25 text-red-800 dark:text-red-300/90 line-through border-l-2 border-red-400 dark:border-red-600/60`}
+          >
+            <span className="mr-1 select-none text-red-500/80 dark:text-red-400/80">−</span>
+            <span>{l.text || "\u00a0"}</span>
+          </div>
+          <div
+            className={`${cellBase} bg-ink/[0.02] dark:bg-white/[0.02] text-ink-mute/30 dark:text-ink-dark-mute/30`}
+          >
+            <span className="select-none">{"\u00a0"}</span>
+          </div>
+        </Fragment>
+      );
+    }
+    return (
+      <Fragment key={ri}>
+        <div
+          className={`${cellBase} bg-ink/[0.02] dark:bg-white/[0.02] text-ink-mute/30 dark:text-ink-dark-mute/30`}
+        >
+          <span className="select-none">{"\u00a0"}</span>
+        </div>
+        <div
+          className={`${cellBase} bg-green-100/90 dark:bg-green-900/30 text-green-800 dark:text-green-300 border-l-2 border-green-500 dark:border-green-600/50`}
+        >
+          <span className="mr-1 select-none text-green-600 dark:text-green-400">+</span>
+          <span>{l.text || "\u00a0"}</span>
+        </div>
+      </Fragment>
+    );
+  });
+
   return (
-    <div className="text-[11px] font-mono leading-relaxed">
-      <div className="flex items-center gap-3 px-3 py-1.5 bg-gray-100/80 dark:bg-surface-dark/50 border-b border-border/40 dark:border-border-dark/40 text-[10px]">
+    <div className="text-[11px] font-mono leading-relaxed rounded-md border border-border/40 dark:border-border-dark/50 overflow-hidden">
+      <div className="flex flex-wrap items-center gap-3 px-3 py-1.5 bg-gray-100/80 dark:bg-surface-dark/50 border-b border-border/40 dark:border-border-dark/40 text-[10px]">
         {addedCount > 0 && (
-          <span className="text-green-600 dark:text-green-400">+{addedCount} 新增</span>
+          <span className="text-green-600 dark:text-green-400">
+            {t("evolution.diff.statsAdded", { n: addedCount })}
+          </span>
         )}
         {removedCount > 0 && (
-          <span className="text-red-500 dark:text-red-400/70">−{removedCount} 移除</span>
+          <span className="text-red-500 dark:text-red-400/80">
+            {t("evolution.diff.statsRemoved", { n: removedCount })}
+          </span>
         )}
         {addedCount === 0 && removedCount === 0 && (
-          <span className="text-ink-mute dark:text-ink-dark-mute">无变化</span>
+          <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.diff.statsNone")}</span>
         )}
+        <span className="text-ink-mute/80 dark:text-ink-dark-mute/80">{t("evolution.diff.fullTextHint")}</span>
       </div>
-      <div className="p-3 max-h-72 overflow-y-auto space-y-0">{rendered}</div>
+      <div className="grid grid-cols-2 border-b border-border/40 dark:border-border-dark/40 bg-gray-100/60 dark:bg-surface-dark/40 text-[10px] text-ink-mute dark:text-ink-dark-mute">
+        <span className="px-2 py-1 border-r border-border/40 dark:border-border-dark/40 font-medium">
+          {t("evolution.diff.compareColumnLeft")}
+        </span>
+        <span className="px-2 py-1 font-medium">{t("evolution.diff.compareColumnRight")}</span>
+      </div>
+      <div className="max-h-[min(70vh,28rem)] overflow-y-auto overflow-x-hidden">
+        <div className="grid grid-cols-2 min-w-0">{gridRows}</div>
+      </div>
     </div>
   );
 }
