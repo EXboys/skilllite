@@ -576,6 +576,22 @@ pub fn read_workspace_text_file(workspace: &str, relative_path: &str) -> Result<
     std::fs::read_to_string(&normalized).map_err(|e| e.to_string())
 }
 
+/// Absolute filesystem path for an existing workspace file (for WebView `convertFileSrc` image/video preview).
+pub fn resolve_workspace_existing_file_path(workspace: &str, relative_path: &str) -> Result<String, String> {
+    let workspace_canon = workspace_root_canon(workspace)?;
+    let normalized = resolve_under_workspace(&workspace_canon, relative_path)?;
+    if workspace_write_path_blocked(&normalized) {
+        return Err("禁止读取该路径（敏感文件）".to_string());
+    }
+    if normalized.is_dir() {
+        return Err("路径是目录".to_string());
+    }
+    if !normalized.is_file() {
+        return Err("文件不存在".to_string());
+    }
+    Ok(normalized.to_string_lossy().into_owned())
+}
+
 /// One node in a shallow workspace walk for the IDE file tree (dirs may be skipped entirely).
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkspaceListEntry {
@@ -666,5 +682,21 @@ mod workspace_path_tests {
         std::fs::write(&joined, "x").unwrap();
         let err = resolve_under_workspace(&canon, "../..").unwrap_err();
         assert!(err.contains("超出") || err.contains("范围"), "{}", err);
+    }
+
+    #[test]
+    fn resolve_existing_file_path_returns_absolute() {
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite_resolve_path_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("preview.png"), b"x").unwrap();
+        let ws = tmp.to_string_lossy().into_owned();
+        let got = resolve_workspace_existing_file_path(&ws, "preview.png").unwrap();
+        let p = std::path::Path::new(&got);
+        assert!(p.is_absolute(), "{}", got);
+        assert!(p.is_file(), "{}", got);
     }
 }

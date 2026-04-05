@@ -34,6 +34,8 @@ export const enMessages: Record<string, string> = {
   "ide.editorHintToggleIde":
     "No file tree? Tap ≡ (top-left) to expand the sidebar, or click IDE in the header to enable the layout.",
   "ide.saveOk": "Saved",
+  "ide.previewOnly": "Preview only",
+  "ide.videoUnsupported": "Video playback is not supported in this view",
 
   "session.defaultDisplayName": "Default session",
   "session.title": "Sessions",

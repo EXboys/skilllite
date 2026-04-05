@@ -343,6 +343,20 @@ async fn skilllite_read_workspace_file(
 }
 
 #[tauri::command]
+async fn skilllite_resolve_workspace_file_path(
+    workspace: String,
+    relative_path: String,
+) -> Result<String, String> {
+    let ws = workspace.trim().to_string();
+    let rel = relative_path;
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::resolve_workspace_existing_file_path(&ws, &rel)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn skilllite_list_workspace_entries(
     workspace: String,
 ) -> Result<Vec<skilllite_bridge::WorkspaceListEntry>, String> {
@@ -741,6 +755,7 @@ pub fn run() {
             skilllite_load_memory_summaries,
             skilllite_write_workspace_file,
             skilllite_read_workspace_file,
+            skilllite_resolve_workspace_file_path,
             skilllite_list_workspace_entries,
             skilllite_load_evolution_status,
             skilllite_list_evolution_pending,

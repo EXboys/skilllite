@@ -32,6 +32,8 @@ export const zhMessages: Record<string, string> = {
   "ide.editorPlaceholder": "在左侧选择文件以编辑与保存",
   "ide.editorHintToggleIde": "若看不到文件树，请点左上角 ≡ 展开侧栏，或再点顶栏「IDE」确保已开启。",
   "ide.saveOk": "已保存",
+  "ide.previewOnly": "仅预览",
+  "ide.videoUnsupported": "当前视图无法播放此视频",
 
   "session.defaultDisplayName": "默认会话",
   "session.title": "会话",

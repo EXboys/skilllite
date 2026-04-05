@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import CodeMirror from "@uiw/react-codemirror";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useElementHeightPx } from "../hooks/useElementHeightPx";
 import { EditorView } from "@codemirror/view";
-import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../i18n";
 import {
   readFileCodeMirrorLanguage,
   readFileCodeMirrorTheme,
 } from "../utils/readFileCodeMirror";
+import { MarkdownContent } from "./shared/MarkdownContent";
+import { preferMarkdownPreview } from "../utils/readFileHljs";
+import { ideFileKindFromPath, type IdeEditorFileKind } from "../utils/ideFileKind";
 
 function usePrefersDarkMedia(): boolean {
   return useSyncExternalStore(
@@ -20,6 +23,8 @@ function usePrefersDarkMedia(): boolean {
     () => false
   );
 }
+
+type ViewMode = "edit" | "preview";
 
 interface WorkspaceIdeEditorProps {
   workspace: string;
@@ -34,33 +39,75 @@ export default function WorkspaceIdeEditor({
 }: WorkspaceIdeEditorProps) {
   const { t } = useI18n();
   const prefersDark = usePrefersDarkMedia();
+  const [viewMode, setViewMode] = useState<ViewMode>("edit");
   const [baseline, setBaseline] = useState("");
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [mediaSrc, setMediaSrc] = useState<string | null>(null);
 
   const ws = workspace.trim() || ".";
+  const pathTrim = relativePath?.trim() ?? "";
+  const fileKind: IdeEditorFileKind | null = pathTrim ? ideFileKindFromPath(pathTrim) : null;
+  const isMedia = fileKind === "image" || fileKind === "video";
+
+  useEffect(() => {
+    if (!pathTrim) {
+      setViewMode("edit");
+      return;
+    }
+    setViewMode(ideFileKindFromPath(pathTrim) === "markdown" ? "preview" : "edit");
+  }, [pathTrim]);
 
   useEffect(() => {
     setNotice(null);
     setLoadErr(null);
-    if (!relativePath?.trim()) {
+    setMediaSrc(null);
+    if (!pathTrim) {
       setBaseline("");
       setDraft("");
       setLoading(false);
       return;
     }
-    const path = relativePath.trim();
+
+    const kind = ideFileKindFromPath(pathTrim);
     let cancelled = false;
-    setDraft("");
+
+    if (kind === "image" || kind === "video") {
+      setBaseline("");
+      setDraft("");
+      setLoading(true);
+      void (async () => {
+        try {
+          const abs = await invoke<string>("skilllite_resolve_workspace_file_path", {
+            workspace: ws,
+            relativePath: pathTrim,
+          });
+          if (cancelled) return;
+          setMediaSrc(convertFileSrc(abs));
+          setLoadErr(null);
+        } catch (e) {
+          if (cancelled) return;
+          setMediaSrc(null);
+          setLoadErr(e instanceof Error ? e.message : String(e));
+        } finally {
+          if (!cancelled) setLoading(false);
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setBaseline("");
+    setDraft("");
     setLoading(true);
     void (async () => {
       try {
         const text = await invoke<string>("skilllite_read_workspace_file", {
           workspace: ws,
-          relativePath: path,
+          relativePath: pathTrim,
         });
         if (cancelled) return;
         setBaseline(text);
@@ -78,11 +125,15 @@ export default function WorkspaceIdeEditor({
     return () => {
       cancelled = true;
     };
-  }, [relativePath, ws]);
+  }, [pathTrim, ws]);
 
-  const dirty = relativePath?.trim() ? draft !== baseline : false;
+  const dirty = pathTrim && !isMedia ? draft !== baseline : false;
 
-  const ideMirrorActive = Boolean(relativePath?.trim()) && !loadErr;
+  const ideMirrorActive =
+    Boolean(pathTrim) &&
+    !loadErr &&
+    !isMedia &&
+    (fileKind === "text" || (fileKind === "markdown" && viewMode === "edit"));
   const { ref: ideMirrorHostRef, heightPx: ideMirrorHeightPx } = useElementHeightPx(
     ideMirrorActive,
     200,
@@ -94,17 +145,21 @@ export default function WorkspaceIdeEditor({
       ...readFileCodeMirrorLanguage(relativePath ?? undefined, draft),
       EditorView.lineWrapping,
     ],
-    [prefersDark, relativePath, draft]
+    [prefersDark, relativePath, draft],
+  );
+
+  const markdownPreview = useMemo(
+    () => preferMarkdownPreview(draft, relativePath ?? undefined),
+    [draft, relativePath],
   );
 
   const save = useCallback(async () => {
-    const path = relativePath?.trim();
-    if (!path || !dirty) return;
+    if (isMedia || !pathTrim || !dirty) return;
     setNotice(null);
     try {
       await invoke("skilllite_write_workspace_file", {
         workspace: ws,
-        relativePath: path,
+        relativePath: pathTrim,
         content: draft,
       });
       setBaseline(draft);
@@ -113,9 +168,9 @@ export default function WorkspaceIdeEditor({
     } catch (e) {
       setNotice(e instanceof Error ? e.message : String(e));
     }
-  }, [relativePath, dirty, draft, ws, onSaved, t]);
+  }, [isMedia, pathTrim, dirty, draft, ws, onSaved, t]);
 
-  if (!relativePath?.trim()) {
+  if (!pathTrim) {
     return (
       <div className="h-full min-h-0 flex flex-col items-center justify-center text-center px-6 text-sm text-ink-mute dark:text-ink-dark-mute border-l border-r border-border dark:border-border-dark bg-white/40 dark:bg-paper-dark/40">
         <p className="max-w-sm leading-relaxed">{t("ide.editorPlaceholder")}</p>
@@ -123,6 +178,21 @@ export default function WorkspaceIdeEditor({
       </div>
     );
   }
+
+  const tabBtn = (mode: ViewMode, label: string) => (
+    <button
+      key={mode}
+      type="button"
+      onClick={() => setViewMode(mode)}
+      className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+        viewMode === mode
+          ? "bg-accent/15 text-accent dark:text-blue-300 font-medium"
+          : "text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-white dark:bg-paper-dark border-l border-r border-border dark:border-border-dark">
@@ -133,12 +203,23 @@ export default function WorkspaceIdeEditor({
         >
           {relativePath}
         </h2>
+        {fileKind === "markdown" ? (
+          <div className="flex items-center rounded-lg border border-border/70 dark:border-border-dark/70 p-0.5 bg-ink/[0.02] dark:bg-white/[0.04]">
+            {tabBtn("edit", t("chat.readFileTabEdit"))}
+            {tabBtn("preview", t("chat.readFileTabPreview"))}
+          </div>
+        ) : null}
+        {isMedia ? (
+          <span className="text-[11px] text-ink-mute dark:text-ink-dark-mute shrink-0">
+            {t("ide.previewOnly")}
+          </span>
+        ) : null}
         {loading ? (
           <span className="text-[11px] text-ink-mute dark:text-ink-dark-mute">{t("common.loading")}</span>
         ) : null}
         <button
           type="button"
-          disabled={!dirty || loading || Boolean(loadErr)}
+          disabled={!dirty || loading || Boolean(loadErr) || isMedia}
           onClick={() => void save()}
           className="px-2.5 py-1 text-xs rounded-lg bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-40 disabled:pointer-events-none"
         >
@@ -159,7 +240,40 @@ export default function WorkspaceIdeEditor({
         ref={ideMirrorHostRef}
         className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col"
       >
-        {loadErr ? null : (
+        {loadErr ? null : isMedia && mediaSrc ? (
+          <div className="flex-1 min-h-0 flex items-center justify-center overflow-auto bg-ink/[0.03] dark:bg-black/25 p-3">
+            {fileKind === "image" ? (
+              <img
+                src={mediaSrc}
+                alt=""
+                className="max-w-full max-h-full w-auto h-auto object-contain shadow-sm rounded-md border border-border/50 dark:border-border-dark/50"
+              />
+            ) : (
+              <video
+                src={mediaSrc}
+                controls
+                playsInline
+                className="max-w-full max-h-full w-auto object-contain rounded-md border border-border/50 dark:border-border-dark/50 bg-black/80"
+              >
+                {t("ide.videoUnsupported")}
+              </video>
+            )}
+          </div>
+        ) : null}
+        {!loadErr && !isMedia && fileKind === "markdown" && viewMode === "preview" ? (
+          <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 bg-ink/[0.02] dark:bg-white/[0.03]">
+            {markdownPreview ? (
+              <div className="rounded-lg border border-border/70 dark:border-border-dark/70 bg-white/90 dark:bg-black/20 px-4 py-3 text-sm text-ink dark:text-ink-dark leading-relaxed">
+                <MarkdownContent content={draft} />
+              </div>
+            ) : (
+              <pre className="text-xs font-mono whitespace-pre-wrap break-words text-ink dark:text-ink-dark">
+                {draft}
+              </pre>
+            )}
+          </div>
+        ) : null}
+        {!loadErr && !isMedia && (fileKind === "text" || (fileKind === "markdown" && viewMode === "edit")) ? (
           <CodeMirror
             key={relativePath ?? "ide"}
             value={draft}
@@ -177,7 +291,7 @@ export default function WorkspaceIdeEditor({
             indentWithTab
             spellCheck={false}
           />
-        )}
+        ) : null}
       </div>
     </div>
   );

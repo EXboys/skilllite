@@ -22,7 +22,20 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: tauri: https://asset.localhost; font-src 'self' data:; connect-src ipc: http://ipc.localhost https://ipc.localhost tauri: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*;"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: data: blob: tauri: https://asset.localhost http://asset.localhost; media-src 'self' asset: blob: tauri: https://asset.localhost http://asset.localhost; font-src 'self' data:; connect-src ipc: http://ipc.localhost https://ipc.localhost tauri: http://127.0.0.1:* http://localhost:* ws://127.0.0.1:* ws://localhost:*;",
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": [
+            "$HOME/**",
+            "$DOCUMENT/**",
+            "$DESKTOP/**",
+            "$DOWNLOAD/**",
+            "$TEMP/**"
+          ],
+          "requireLiteralLeadingDot": false
+        }
+      }
     }
   },
   "bundle": {
