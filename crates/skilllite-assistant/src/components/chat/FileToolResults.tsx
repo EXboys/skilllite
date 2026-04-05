@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { MarkdownContent } from "../shared/MarkdownContent";
+import { useIdeFileOpenerStore } from "../../stores/useIdeFileOpenerStore";
 import { parseReadFileToolResult, type ParsedReadFile } from "../../utils/readFileParse";
 import { ReadFileFullscreenModal } from "./ReadFileFullscreenModal";
 import { useI18n } from "../../i18n";
@@ -32,6 +33,7 @@ export function ReadFileToolResultView({
 }) {
   const { t } = useI18n();
   const [fullscreen, setFullscreen] = useState(false);
+  const canOpenInIde = Boolean(sourcePath?.trim());
   const trimmed = result.trim();
   const isBinary = trimmed.startsWith("[Binary file");
   const truncated = readFileResultLooksTruncated(result);
@@ -61,7 +63,14 @@ export function ReadFileToolResultView({
 
   const hljsTooLarge = body.length > HLJS_MAX_CHARS && !isMarkdownBody && body.length > 0;
 
-  const openFull = () => setFullscreen(true);
+  const openViewer = () => {
+    const p = sourcePath?.trim();
+    if (p) {
+      useIdeFileOpenerStore.getState().openFileFromChat(p);
+      return;
+    }
+    setFullscreen(true);
+  };
 
   if (isBinary) {
     return (
@@ -77,10 +86,10 @@ export function ReadFileToolResultView({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={openFull}
+            onClick={openViewer}
             className="text-xs px-2.5 py-1 rounded-md border border-border dark:border-border-dark text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
           >
-            {t("chat.readFileFullView")}
+            {canOpenInIde ? t("chat.readFileOpenInIde") : t("chat.readFileFullView")}
           </button>
           {truncated && (
             <span className="text-[11px] text-amber-700 dark:text-amber-300">
@@ -114,10 +123,10 @@ export function ReadFileToolResultView({
     <div className="flex flex-wrap items-center gap-2">
       <button
         type="button"
-        onClick={openFull}
+        onClick={openViewer}
         className="text-xs px-2.5 py-1 rounded-md border border-border dark:border-border-dark text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5"
       >
-        {t("chat.readFileFullView")}
+        {canOpenInIde ? t("chat.readFileOpenInIde") : t("chat.readFileFullView")}
       </button>
       {truncated && (
         <span className="text-[11px] text-amber-700 dark:text-amber-300">

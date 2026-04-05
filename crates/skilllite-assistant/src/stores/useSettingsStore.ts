@@ -35,6 +35,10 @@ export interface Settings {
   maxToolCallsPerTask?: number;
   /** 会话侧边栏是否折叠 */
   sessionPanelCollapsed?: boolean;
+  /**
+   * 主界面 IDE 三栏：工作区文件树 | 编辑器 | 对话（关闭时恢复「会话 | 对话 | 状态」布局）。
+   */
+  ideLayout?: boolean;
   /** 界面语言 */
   locale?: UiLocale;
   /**

@@ -329,6 +329,30 @@ async fn skilllite_write_workspace_file(
 }
 
 #[tauri::command]
+async fn skilllite_read_workspace_file(
+    workspace: String,
+    relative_path: String,
+) -> Result<String, String> {
+    let ws = workspace.trim().to_string();
+    let rel = relative_path;
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::read_workspace_text_file(&ws, &rel)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn skilllite_list_workspace_entries(
+    workspace: String,
+) -> Result<Vec<skilllite_bridge::WorkspaceListEntry>, String> {
+    let ws = workspace.trim().to_string();
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_workspace_entries(&ws))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn skilllite_load_evolution_status(
     workspace: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
@@ -716,6 +740,8 @@ pub fn run() {
             skilllite_delete_session,
             skilllite_load_memory_summaries,
             skilllite_write_workspace_file,
+            skilllite_read_workspace_file,
+            skilllite_list_workspace_entries,
             skilllite_load_evolution_status,
             skilllite_list_evolution_pending,
             skilllite_read_pending_skill_md,

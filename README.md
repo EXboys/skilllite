@@ -554,6 +554,7 @@ npm run tauri build
 ```
 
 Chat input behavior: `Enter` inserts a new line; submit by clicking the `Send` button.
+Optional **IDE** three-pane layout (toolbar **IDE** or **Settings → Workspace & sandbox → IDE three-pane main window**): workspace file tree, editor, and chat; **Sessions** tab keeps the session list. Heavy folders like `node_modules` / `target` are skipped; sensitive paths match write rules (e.g. `.env` blocked). Turn off IDE layout to bring back the right-hand status panel.
 Pending **execution confirmations** live inside the collapsible **internal steps** timeline (it auto-expands when action is required; you can enable **auto-allow execution confirmations** in **Settings → Agent budget** or under the input on trusted machines).
 For tool outcomes marked as `partial_success` or `failure`, the assistant shows a multi-option recovery prompt, including `【启动进化】` to enqueue a governed capability-evolution backlog proposal.
 

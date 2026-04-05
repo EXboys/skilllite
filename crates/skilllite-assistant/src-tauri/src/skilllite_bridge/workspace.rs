@@ -506,6 +506,35 @@ fn normalize_path_components(path: &std::path::Path) -> std::path::PathBuf {
     components.iter().collect()
 }
 
+/// Canonical workspace root (project root) for path-safe read/write/list.
+fn workspace_root_canon(workspace: &str) -> Result<std::path::PathBuf, String> {
+    let root = super::paths::find_project_root(workspace);
+    root.canonicalize()
+        .map_err(|e| format!("无效工作区: {}", e))
+}
+
+/// Resolve `relative_path` under `workspace_canon` (must stay inside root).
+fn resolve_under_workspace(
+    workspace_canon: &std::path::Path,
+    relative_path: &str,
+) -> Result<std::path::PathBuf, String> {
+    let rel = relative_path.trim();
+    if rel.is_empty() {
+        return Err("路径为空".to_string());
+    }
+    let input = std::path::Path::new(rel);
+    let joined = if input.is_absolute() {
+        input.to_path_buf()
+    } else {
+        workspace_canon.join(input)
+    };
+    let normalized = normalize_path_components(&joined);
+    if !normalized.starts_with(workspace_canon) {
+        return Err("路径超出工作区范围".to_string());
+    }
+    Ok(normalized)
+}
+
 fn workspace_write_path_blocked(path: &std::path::Path) -> bool {
     let s = path.to_string_lossy().to_lowercase();
     if s.ends_with(".env") || s.contains("/.env/") || s.contains("\\.env\\") {
@@ -523,24 +552,119 @@ fn workspace_write_path_blocked(path: &std::path::Path) -> bool {
 /// Write UTF-8 text to a path relative to the workspace root (same discovery as chat / agent).
 /// Blocks obvious sensitive paths (.env, .git/config, .key, .pem).
 pub fn write_workspace_text_file(workspace: &str, relative_path: &str, content: &str) -> Result<(), String> {
-    let rel = relative_path.trim();
-    if rel.is_empty() {
-        return Err("路径为空".to_string());
-    }
-    let root = super::paths::find_project_root(workspace);
-    let workspace_canon = root.canonicalize().map_err(|e| format!("无效工作区: {}", e))?;
-    let input = std::path::Path::new(rel);
-    let joined = if input.is_absolute() {
-        input.to_path_buf()
-    } else {
-        workspace_canon.join(input)
-    };
-    let normalized = normalize_path_components(&joined);
-    if !normalized.starts_with(&workspace_canon) {
-        return Err("路径超出工作区范围".to_string());
-    }
+    let workspace_canon = workspace_root_canon(workspace)?;
+    let normalized = resolve_under_workspace(&workspace_canon, relative_path)?;
     if workspace_write_path_blocked(&normalized) {
         return Err("禁止写入该路径（敏感文件）".to_string());
     }
     skilllite_fs::write_file(&normalized, content).map_err(|e| e.to_string())
+}
+
+/// Read UTF-8 text from a file under the workspace root (same rules as [`write_workspace_text_file`]).
+pub fn read_workspace_text_file(workspace: &str, relative_path: &str) -> Result<String, String> {
+    let workspace_canon = workspace_root_canon(workspace)?;
+    let normalized = resolve_under_workspace(&workspace_canon, relative_path)?;
+    if workspace_write_path_blocked(&normalized) {
+        return Err("禁止读取该路径（敏感文件）".to_string());
+    }
+    if normalized.is_dir() {
+        return Err("路径是目录".to_string());
+    }
+    if !normalized.is_file() {
+        return Err("文件不存在".to_string());
+    }
+    std::fs::read_to_string(&normalized).map_err(|e| e.to_string())
+}
+
+/// One node in a shallow workspace walk for the IDE file tree (dirs may be skipped entirely).
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkspaceListEntry {
+    pub relative_path: String,
+    pub is_dir: bool,
+}
+
+const WORKSPACE_LIST_MAX_DEPTH: usize = 14;
+const WORKSPACE_LIST_MAX_ENTRIES: usize = 5000;
+
+fn skip_ide_walk_dir(name: &str) -> bool {
+    matches!(
+        name,
+        ".git" | "node_modules" | "target" | "dist" | "build" | "__pycache__" | ".venv" | "venv"
+            | ".mypy_cache" | ".tox" | ".gradle" | ".next" | ".nuxt"
+    )
+}
+
+fn walk_workspace_entries(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    depth: usize,
+    out: &mut Vec<WorkspaceListEntry>,
+) -> Result<(), String> {
+    if depth > WORKSPACE_LIST_MAX_DEPTH || out.len() >= WORKSPACE_LIST_MAX_ENTRIES {
+        return Ok(());
+    }
+    let read = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+    let mut entries: Vec<_> = read.filter_map(|e| e.ok()).collect();
+    entries.sort_by_key(|e| e.file_name());
+
+    for e in entries {
+        if out.len() >= WORKSPACE_LIST_MAX_ENTRIES {
+            break;
+        }
+        let path = e.path();
+        let name = e.file_name();
+        let name_s = name.to_string_lossy();
+        if path.is_dir() && skip_ide_walk_dir(name_s.as_ref()) {
+            continue;
+        }
+        let rel = match path.strip_prefix(root) {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+        let rel_str = rel.to_string_lossy().replace('\\', "/");
+        if rel_str.is_empty() || rel_str.ends_with('/') {
+            continue;
+        }
+        if workspace_write_path_blocked(&path) {
+            continue;
+        }
+        let is_dir = path.is_dir();
+        out.push(WorkspaceListEntry {
+            relative_path: rel_str,
+            is_dir,
+        });
+        if is_dir {
+            walk_workspace_entries(root, &path, depth + 1, out)?;
+        }
+    }
+    Ok(())
+}
+
+/// List files and directories under the workspace root for IDE navigation (skips heavy dirs).
+pub fn list_workspace_entries(workspace: &str) -> Result<Vec<WorkspaceListEntry>, String> {
+    let root = workspace_root_canon(workspace)?;
+    let mut out = Vec::new();
+    walk_workspace_entries(&root, &root, 0, &mut out)?;
+    out.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    Ok(out)
+}
+
+#[cfg(test)]
+mod workspace_path_tests {
+    use super::*;
+
+    #[test]
+    fn resolve_rejects_parent_escape() {
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite_ws_test_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let canon = tmp.canonicalize().unwrap();
+        let joined = canon.join("inside.txt");
+        std::fs::write(&joined, "x").unwrap();
+        let err = resolve_under_workspace(&canon, "../..").unwrap_err();
+        assert!(err.contains("超出") || err.contains("范围"), "{}", err);
+    }
 }

@@ -19,6 +19,21 @@ export const enMessages: Record<string, string> = {
   "main.collapsePanel": "Collapse side panel",
   "main.sessionTitleAria": "Session title",
   "main.editSessionTitle": "Click to edit session title",
+  "main.ideLayout": "IDE",
+  "main.ideLayoutHint":
+    "Three-pane layout: workspace files, editor, chat (similar to Cursor)",
+  "main.expandIdeSidebar": "Expand sidebar (files / sessions)",
+  "main.collapseIdeSidebar": "Collapse sidebar",
+
+  "ide.tabFiles": "Files",
+  "ide.tabSessions": "Sessions",
+  "ide.workspaceFiles": "Workspace",
+  "ide.refreshTree": "Refresh",
+  "ide.treeEmpty": "No files or listing failed",
+  "ide.editorPlaceholder": "Pick a file on the left to edit and save",
+  "ide.editorHintToggleIde":
+    "No file tree? Tap ≡ (top-left) to expand the sidebar, or click IDE in the header to enable the layout.",
+  "ide.saveOk": "Saved",
 
   "session.defaultDisplayName": "Default session",
   "session.title": "Sessions",
@@ -129,6 +144,7 @@ export const enMessages: Record<string, string> = {
   "chat.readFilePreviewCodeLimited":
     "Content is very long; code preview shows the first {n} chars only (switch to Edit for full text).",
   "chat.readFileFullView": "Fullscreen view / edit",
+  "chat.readFileOpenInIde": "Open in IDE",
   "chat.readFileFullscreenAria": "read_file fullscreen editor",
   "chat.readFileFullscreenFallbackTitle": "read_file content",
   "chat.readFileCopy": "Copy",
@@ -310,6 +326,9 @@ export const enMessages: Record<string, string> = {
   "settings.workspacePath": "Workspace path",
   "settings.workspaceHintPrefix": "After changing path, the Schedule tab loads ",
   "settings.workspaceHintSuffix": " for that workspace.",
+  "settings.ideLayout": "IDE three-pane main window",
+  "settings.ideLayoutHint":
+    "When on: file tree, editor, and chat; the right status panel is only shown when this is off.",
   "settings.apiBasePlaceholder": "https://api.openai.com/v1",
   "settings.sandboxLevel": "Sandbox level",
   "settings.sandbox.l1.short": "None",

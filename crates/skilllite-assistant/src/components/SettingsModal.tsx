@@ -50,6 +50,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [sandboxLevel, setSandboxLevel] = useState<SandboxLevel>(settings.sandboxLevel ?? 3);
   const [swarmEnabled, setSwarmEnabled] = useState(settings.swarmEnabled ?? false);
   const [swarmUrl, setSwarmUrl] = useState(settings.swarmUrl ?? "");
+  const [ideLayout, setIdeLayout] = useState(settings.ideLayout === true);
   const [autoApproveToolConfirmations, setAutoApproveToolConfirmations] = useState(
     settings.autoApproveToolConfirmations === true
   );
@@ -103,6 +104,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       setSandboxLevel(settings.sandboxLevel ?? 3);
       setSwarmEnabled(settings.swarmEnabled ?? false);
       setSwarmUrl(settings.swarmUrl ?? "");
+      setIdeLayout(settings.ideLayout === true);
       setAutoApproveToolConfirmations(settings.autoApproveToolConfirmations === true);
       setMaxIterationsStr(
         settings.maxIterations != null ? String(settings.maxIterations) : ""
@@ -193,6 +195,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   const handleSave = async () => {
     const shared = {
+      ideLayout,
       sandboxLevel,
       swarmEnabled,
       swarmUrl: swarmUrl.trim(),
@@ -527,6 +530,40 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               </code>
               {t("settings.workspaceHintSuffix")}
             </p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className={labelCls}>{t("settings.ideLayout")}</div>
+                <p className="mt-0.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed max-w-md">
+                  {t("settings.ideLayoutHint")}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={ideLayout}
+                onClick={() => {
+                  const next = !ideLayout;
+                  setIdeLayout(next);
+                  setSettings(
+                    next
+                      ? { ideLayout: true, sessionPanelCollapsed: false }
+                      : { ideLayout: false }
+                  );
+                }}
+                className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors cursor-pointer ${
+                  ideLayout ? "bg-accent" : "bg-gray-300 dark:bg-gray-600"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+                    ideLayout ? "translate-x-4" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
           </div>
 
           {/* ── Sandbox Level ── */}

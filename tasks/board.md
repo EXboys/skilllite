@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-04
+Last updated: 2026-04-05
 
 ## In Progress
 
@@ -16,6 +16,7 @@ Last updated: 2026-04-04
 
 ## Done
 
+- `TASK-2026-022-desktop-ide-layout` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-021-desktop-chat-images` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-020-evo-growth-schedule` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-019-evolution-memory-sharded-kb` - Status: `done` - Owner: `TBD`

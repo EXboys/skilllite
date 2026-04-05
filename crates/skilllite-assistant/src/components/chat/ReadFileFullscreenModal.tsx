@@ -5,6 +5,7 @@ import {
   useMemo,
   useSyncExternalStore,
 } from "react";
+import { useElementHeightPx } from "../../hooks/useElementHeightPx";
 import { createPortal } from "react-dom";
 import CodeMirror from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
@@ -77,6 +78,12 @@ export function ReadFileFullscreenModal({
   const markdownPreview = useMemo(
     () => preferMarkdownPreview(draft, sourcePath),
     [draft, sourcePath],
+  );
+
+  const editMirrorActive = open && viewMode === "edit";
+  const { ref: editMirrorHostRef, heightPx: editMirrorHeightPx } = useElementHeightPx(
+    editMirrorActive,
+    220,
   );
 
   const codePreviewHtml = useMemo(() => {
@@ -218,10 +225,14 @@ export function ReadFileFullscreenModal({
         </div>
       )}
       {viewMode === "edit" ? (
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden px-2 pb-2 pt-1">
+        <div
+          ref={editMirrorHostRef}
+          className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden px-2 pb-2 pt-1"
+        >
           <CodeMirror
+            key={`readfile-fs-${open}-${viewMode}`}
             value={draft}
-            height="100%"
+            height={`${editMirrorHeightPx}px`}
             theme="none"
             extensions={codeMirrorExtensions}
             onChange={(v) => setDraft(v)}
@@ -230,7 +241,7 @@ export function ReadFileFullscreenModal({
               foldGutter: true,
               highlightSelectionMatches: true,
             }}
-            className="h-full min-h-0 overflow-hidden text-sm [&_.cm-editor]:h-full [&_.cm-editor]:outline-none [&_.cm-scroller]:h-full [&_.cm-scroller]:overflow-auto"
+            className="w-full min-h-0 overflow-hidden text-sm [&_.cm-editor]:outline-none [&_.cm-scroller]:overflow-auto"
             indentWithTab
             spellCheck={false}
           />
