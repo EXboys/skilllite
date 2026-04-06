@@ -6,6 +6,7 @@
 
 mod bundled_skills_sync;
 mod chat;
+mod followup_suggestions;
 mod integrations;
 mod paths;
 mod protocol;
@@ -19,6 +20,7 @@ pub use chat::{
     ChatImageAttachment, ChatProcessState, ClarificationState, ClarifyResponse,
     ConfirmationState,
 };
+pub use followup_suggestions::followup_chat_suggestions;
 pub use integrations::*;
 pub use paths::resolve_skilllite_path_app;
 pub(crate) use paths::load_dotenv_for_child;

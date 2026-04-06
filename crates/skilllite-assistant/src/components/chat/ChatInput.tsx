@@ -109,7 +109,11 @@ export function ChatInput({
           <button
             type="button"
             onClick={onSend}
-            disabled={disabled || (!value.trim() && !allowEmptySend)}
+            disabled={
+              disabled ||
+              loading ||
+              (!value.trim() && !allowEmptySend)
+            }
             className="px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             发送

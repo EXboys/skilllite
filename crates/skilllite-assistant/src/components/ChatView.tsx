@@ -74,6 +74,7 @@ import {
   isEvolutionNoMaterialChanges,
 } from "../utils/evolutionDisplay";
 import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
+import { serializeChatMessagesForFollowup } from "../utils/followupSuggestions";
 import { tryParseReadFilePathFromToolArgs } from "../utils/readFileToolMeta";
 
 export default function ChatView() {
@@ -113,9 +114,54 @@ export default function ChatView() {
     }))
   );
 
+  /** 会话切换/删除当前会话前，在清空前由渲染阶段写入，供 effect 里请求「猜你想问」。 */
+  const pendingSessionEndRef = useRef<{ transcript: string } | null>(null);
+  const followupReqIdRef = useRef(0);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  messagesRef.current = messages;
+  const sendInFlightRef = useRef(false);
+  const [followupSuggestions, setFollowupSuggestions] = useState<string[] | null>(
+    null
+  );
+
+  const requestFollowupSuggestions = useCallback(async (transcript: string) => {
+    const text = transcript.trim();
+    if (!text) return;
+    const id = ++followupReqIdRef.current;
+    const s = useSettingsStore.getState().settings;
+    try {
+      const rows = await invoke<string[]>("skilllite_followup_suggestions", {
+        transcript: text,
+        workspace: s.workspace || ".",
+        config: buildAssistantBridgeConfig(s),
+      });
+      if (id !== followupReqIdRef.current) return;
+      const list = Array.isArray(rows)
+        ? rows.map((x) => x.trim()).filter((x) => x.length > 0)
+        : [];
+      setFollowupSuggestions(list.length > 0 ? list.slice(0, 3) : null);
+    } catch {
+      if (id !== followupReqIdRef.current) return;
+      setFollowupSuggestions(null);
+    }
+  }, []);
+
+  const onChatTurnComplete = useCallback(() => {
+    refreshRecentData();
+    notifyRuntimeStatusMayHaveChanged();
+    window.setTimeout(() => {
+      const tr = serializeChatMessagesForFollowup(messagesRef.current);
+      if (tr.trim()) {
+        void requestFollowupSuggestions(tr);
+      }
+    }, 0);
+  }, [refreshRecentData, requestFollowupSuggestions]);
+
   // Synchronous clear: if session key changed without remount (HMR), force-clear in render
   const [activeKey, setActiveKey] = useState(currentSessionKey);
   if (activeKey !== currentSessionKey) {
+    const tr = serializeChatMessagesForFollowup(messages);
+    pendingSessionEndRef.current = tr.trim() ? { transcript: tr } : null;
     setActiveKey(currentSessionKey);
     setMessages([]);
     setPendingImages([]);
@@ -136,10 +182,7 @@ export default function ChatView() {
     addMemoryHint: statusActions.addMemoryHint,
     setLatestOutput: statusActions.setLatestOutput,
     clearPlan: statusActions.clearPlan,
-    onTurnComplete: () => {
-      refreshRecentData();
-      notifyRuntimeStatusMayHaveChanged();
-    },
+    onTurnComplete: onChatTurnComplete,
   });
 
   useEffect(() => {
@@ -296,6 +339,14 @@ export default function ChatView() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSessionKey]);
+
+  useEffect(() => {
+    setFollowupSuggestions(null);
+    const pending = pendingSessionEndRef.current;
+    pendingSessionEndRef.current = null;
+    if (!pending?.transcript.trim()) return;
+    void requestFollowupSuggestions(pending.transcript);
+  }, [currentSessionKey, requestFollowupSuggestions]);
 
   useEffect(() => {
     if (!notice) return;
@@ -553,6 +604,7 @@ export default function ChatView() {
 
   const handleClear = useCallback(async () => {
     if (loading || isClearing) return;
+    const snap = serializeChatMessagesForFollowup(messages);
     setIsClearing(true);
     setNotice(t("chat.clearingNotice"));
     try {
@@ -566,6 +618,11 @@ export default function ChatView() {
       statusActions.clearAll();
       refreshRecentData();
       setNotice(t("chat.clearedNotice"));
+      if (snap.trim()) {
+        void requestFollowupSuggestions(snap);
+      } else {
+        setFollowupSuggestions(null);
+      }
     } catch (err) {
       console.error("[skilllite-assistant] skilllite_clear_transcript failed:", err);
       setError(err instanceof Error ? err.message : String(err));
@@ -576,11 +633,13 @@ export default function ChatView() {
   }, [
     loading,
     isClearing,
+    messages,
     settings.workspace,
     currentSessionKey,
     statusActions,
     refreshRecentData,
     t,
+    requestFollowupSuggestions,
   ]);
 
   const handleStop = useCallback(async () => {
@@ -616,68 +675,75 @@ export default function ChatView() {
       const text = rawText.trim();
       const hasImages = attachments.length > 0;
       if ((!text && !hasImages) || loading || isClearing) return;
-
-      if (text === "/new" || text === "/reset") {
-        setInput("");
-        setSettings({ showStarterPrompts: false });
-        await handleClear();
-        return;
-      }
-
-      setInput("");
-      setPendingImages([]);
-      setError(null);
-      setSettings({ showStarterPrompts: false });
-      statusActions.clearPlan();
-      statusActions.setLatestOutput("");
-      const previewImages: ChatImagePreview[] = attachments.map((p) => ({
-        media_type: p.media_type,
-        preview_url: p.preview_url,
-      }));
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: crypto.randomUUID(),
-          type: "user",
-          content: text,
-          ...(previewImages.length > 0 ? { images: previewImages } : {}),
-        },
-      ]);
-      setLoading(true);
-
-      const config = buildAssistantBridgeConfig(settings);
-      const rpcImages =
-        attachments.length > 0
-          ? attachments.map(({ media_type, data_base64 }) => ({
-              media_type,
-              data_base64,
-            }))
-          : undefined;
+      if (sendInFlightRef.current) return;
+      sendInFlightRef.current = true;
+      setFollowupSuggestions(null);
 
       try {
-        const payload: Record<string, unknown> = {
-          message: text,
-          workspace: settings.workspace || ".",
-          sessionKey: currentSessionKey,
-          config,
-        };
-        if (rpcImages && rpcImages.length > 0) {
-          payload.images = rpcImages;
+        if (text === "/new" || text === "/reset") {
+          setInput("");
+          setSettings({ showStarterPrompts: false });
+          await handleClear();
+          return;
         }
-        await invoke("skilllite_chat_stream", payload);
-      } catch (e) {
-        const errMsg = e instanceof Error ? e.message : String(e);
-        setError(errMsg);
+
+        setInput("");
+        setPendingImages([]);
+        setError(null);
+        setSettings({ showStarterPrompts: false });
+        statusActions.clearPlan();
+        statusActions.setLatestOutput("");
+        const previewImages: ChatImagePreview[] = attachments.map((p) => ({
+          media_type: p.media_type,
+          preview_url: p.preview_url,
+        }));
         setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
-            type: "assistant",
-            content: t("chat.requestFailed", { msg: errMsg }),
+            type: "user",
+            content: text,
+            ...(previewImages.length > 0 ? { images: previewImages } : {}),
           },
         ]);
+        setLoading(true);
+
+        const config = buildAssistantBridgeConfig(settings);
+        const rpcImages =
+          attachments.length > 0
+            ? attachments.map(({ media_type, data_base64 }) => ({
+                media_type,
+                data_base64,
+              }))
+            : undefined;
+
+        try {
+          const payload: Record<string, unknown> = {
+            message: text,
+            workspace: settings.workspace || ".",
+            sessionKey: currentSessionKey,
+            config,
+          };
+          if (rpcImages && rpcImages.length > 0) {
+            payload.images = rpcImages;
+          }
+          await invoke("skilllite_chat_stream", payload);
+        } catch (e) {
+          const errMsg = e instanceof Error ? e.message : String(e);
+          setError(errMsg);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              type: "assistant",
+              content: t("chat.requestFailed", { msg: errMsg }),
+            },
+          ]);
+        } finally {
+          setLoading(false);
+        }
       } finally {
-        setLoading(false);
+        sendInFlightRef.current = false;
       }
     },
     [
@@ -992,6 +1058,26 @@ export default function ChatView() {
         onClarify={handleClarify}
         onEvolutionAction={handleEvolutionAction}
       />
+
+      {followupSuggestions && followupSuggestions.length > 0 && (
+        <div className="mx-3 mt-2 mb-1 rounded-xl border border-border dark:border-border-dark bg-white dark:bg-paper-dark p-3 shadow-sm shrink-0">
+          <p className="text-xs font-medium text-ink-mute dark:text-ink-dark-mute">
+            {t("chat.followupTitle")}
+          </p>
+          <div className="mt-2 flex flex-col gap-2">
+            {followupSuggestions.map((q, i) => (
+              <button
+                key={`${i}-${q.slice(0, 48)}`}
+                type="button"
+                onClick={() => void sendMessage(q, [])}
+                className="w-full text-left rounded-lg border border-border dark:border-border-dark px-3 py-2 text-sm text-ink dark:text-ink-dark hover:border-accent/40 hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="px-4 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm border-t border-red-100 dark:border-red-900/40">

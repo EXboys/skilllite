@@ -109,6 +109,7 @@ export const zhMessages: Record<string, string> = {
   "chat.starterTitle": "配置已完成，先试一个入门操作",
   "chat.starterDesc": "这些操作会直接发给 Agent，帮助你快速完成第一次成功体验。",
   "chat.starterHide": "暂不显示",
+  "chat.followupTitle": "猜你想问",
   "chat.evolutionOpenChangesTab": "打开自进化详情 · 变更对比",
   "chat.evolutionOpenChangesHint":
     "在此对比 rules / examples 等 prompts 快照。记忆写入 memory/evolution/ 时，请在侧栏「记忆」中查看对应文件。",

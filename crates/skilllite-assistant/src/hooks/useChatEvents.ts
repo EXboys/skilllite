@@ -158,6 +158,14 @@ export function useChatEvents({
               { ...last, content: text, streaming: false },
             ];
           }
+          // 避免 agent-rpc 连续两次下发相同全文时重复追加一条 assistant
+          if (
+            last?.type === "assistant" &&
+            !last.streaming &&
+            last.content === text
+          ) {
+            return prev;
+          }
           return [
             ...prev,
             {
@@ -267,6 +275,15 @@ export function useChatEvents({
         if (!isChatHiddenToolName(name)) {
           setMessages((prev) => {
             const last = prev[prev.length - 1];
+            const norm = (n: string) => n.replace(/-/g, "_").toLowerCase();
+            if (
+              last?.type === "tool_result" &&
+              norm(last.name) === norm(name) &&
+              last.result === result &&
+              last.isError === isErr
+            ) {
+              return prev;
+            }
             let sourcePath: string | undefined;
             if (
               name.replace(/-/g, "_") === "read_file" &&
@@ -340,6 +357,7 @@ export function useChatEvents({
       flushScheduled.current = false;
       if (flushTimer !== undefined) clearTimeout(flushTimer);
     };
+    // onTurnComplete 等回调需随渲染更新，否则会用陈旧闭包
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionKey]);
+  }, [sessionKey, onTurnComplete]);
 }

@@ -74,6 +74,15 @@ async fn skilllite_load_transcript(
 }
 
 #[tauri::command]
+async fn skilllite_followup_suggestions(
+    transcript: String,
+    workspace: Option<String>,
+    config: Option<skilllite_bridge::ChatConfigOverrides>,
+) -> Result<Vec<String>, String> {
+    skilllite_bridge::followup_chat_suggestions(transcript, workspace, config).await
+}
+
+#[tauri::command]
 async fn skilllite_clear_transcript(
     app: tauri::AppHandle,
     session_key: Option<String>,
@@ -806,6 +815,7 @@ pub fn run() {
             skilllite_stop,
             skilllite_load_recent,
             skilllite_load_transcript,
+            skilllite_followup_suggestions,
             skilllite_clear_transcript,
             skilllite_read_memory_file,
             skilllite_read_log_file,

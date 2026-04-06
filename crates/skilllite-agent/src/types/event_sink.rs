@@ -24,6 +24,8 @@ pub enum ClarificationResponse {
 pub trait EventSink: Send {
     /// Called at the start of each conversation turn (before any other events).
     fn on_turn_start(&mut self) {}
+    /// Reset streaming UI state before a new LLM request (same user turn may call the model many times).
+    fn reset_streamed_text_for_llm_call(&mut self) {}
     /// Called when the assistant produces text content.
     fn on_text(&mut self, text: &str);
     /// Called when a tool is about to be invoked.
@@ -142,6 +144,10 @@ impl EventSink for TerminalEventSink {
     fn on_turn_start(&mut self) {
         self.execution_section_shown = false;
         self.result_section_shown = false;
+    }
+
+    fn reset_streamed_text_for_llm_call(&mut self) {
+        self.streamed_text = false;
     }
 
     fn on_text(&mut self, text: &str) {
@@ -413,6 +419,9 @@ impl RunModeEventSink {
 impl EventSink for RunModeEventSink {
     fn on_turn_start(&mut self) {
         self.inner.on_turn_start();
+    }
+    fn reset_streamed_text_for_llm_call(&mut self) {
+        self.inner.reset_streamed_text_for_llm_call();
     }
     fn on_text(&mut self, text: &str) {
         self.inner.on_text(text);

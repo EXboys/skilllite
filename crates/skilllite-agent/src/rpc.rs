@@ -89,6 +89,8 @@ struct RpcEventSink {
     turn_id: u64,
     /// Same-turn emitted tool_result keys to suppress duplicates in UI stream.
     emitted_tool_result_keys: HashSet<String>,
+    /// True after `on_text_chunk` in this agent step; suppresses redundant full `on_text` (matches CLI TerminalEventSink).
+    streamed_text: bool,
     /// When set, append resolved confirmation/clarification as `custom_message` for desktop reload.
     transcript_path: Option<PathBuf>,
 }
@@ -104,6 +106,7 @@ impl RpcEventSink {
             confirmation_rx: reader,
             turn_id: 0,
             emitted_tool_result_keys: HashSet::new(),
+            streamed_text: false,
             transcript_path,
         }
     }
@@ -190,13 +193,24 @@ impl EventSink for RpcEventSink {
     fn on_turn_start(&mut self) {
         self.turn_id = self.turn_id.saturating_add(1);
         self.emitted_tool_result_keys.clear();
+        self.streamed_text = false;
+    }
+
+    fn reset_streamed_text_for_llm_call(&mut self) {
+        self.streamed_text = false;
     }
 
     fn on_text(&mut self, text: &str) {
+        if self.streamed_text {
+            // Already sent via `text_chunk` during streaming; avoid duplicate full `text` (e.g. final summary path).
+            self.streamed_text = false;
+            return;
+        }
         self.emit("text", json!({ "text": text }));
     }
 
     fn on_text_chunk(&mut self, chunk: &str) {
+        self.streamed_text = true;
         self.emit("text_chunk", json!({ "text": chunk }));
     }
 

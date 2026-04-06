@@ -41,6 +41,7 @@ pub(super) async fn call_llm_with_recovery(
     event_sink: &mut dyn EventSink,
     context_overflow_retries: &mut usize,
 ) -> Result<LlmCallOutcome> {
+    event_sink.reset_streamed_text_for_llm_call();
     let result = if stream {
         client
             .chat_completion_stream(model, messages, tools, temperature, event_sink)
