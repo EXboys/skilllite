@@ -758,6 +758,12 @@ Scans Skill dependencies for known vulnerabilities using OSV (Open Source Vulner
 - **File Move Protection** (`move_protection.rs`): Prevents malicious file overwrites of critical paths
 - **User Authorization**: Level 3 runs a unified precheck (`SKILL.md` + entry script); if the precheck produces a review report (including medium script findings, SKILL.md alerts, or scan errors), the runner (CLI) or host (agent/MCP) requires explicit consent before execution. `SKILLLITE_AUTO_APPROVE` applies to the same gate for TTY/CLI runs.
 
+### 7. Swarm HTTP API (`skilllite swarm`)
+
+- **Default bind**: `127.0.0.1:<port>` (loopback only). Use `--listen 0.0.0.0:<port>` when other machines must connect.
+- **mDNS**: Registration is skipped when the bind address is loopback-only (LAN mesh requires an all-interfaces listen address).
+- **Authentication**: Optional shared secret `SKILLLITE_SWARM_TOKEN`. When set, `GET /status`, `GET /can-do`, and `POST /task` require `Authorization: Bearer <token>`. Peer forwarding and `delegate_to_swarm` send the same header if the variable is set. If you listen on all interfaces without a token, startup logs a warning.
+
 ---
 
 ## Dependencies

@@ -204,6 +204,14 @@ pub mod evolution {
         "SKILLLITE_EVO_ACCEPTANCE_MAX_ROLLBACK_RATE";
 }
 
+/// P2P swarm HTTP API (`skilllite swarm`) 与 `delegate_to_swarm`
+pub mod swarm {
+    /// 本机或远程 swarm 基址，例如 `http://127.0.0.1:7700`（`delegate_to_swarm` 使用）
+    pub const SKILLLITE_SWARM_URL: &str = "SKILLLITE_SWARM_URL";
+    /// 非空时：swarm HTTP 接口要求 `Authorization: Bearer <token>`；所有节点与调用方须配置相同值
+    pub const SKILLLITE_SWARM_TOKEN: &str = "SKILLLITE_SWARM_TOKEN";
+}
+
 /// A11: 高危工具确认 — 可配置哪些操作需发消息确认
 pub mod high_risk {
     /// SKILLLITE_HIGH_RISK_CONFIRM: 逗号分隔，如 "write_key_path,run_command"；需要网络 skill 单独确认时加上 `network`。

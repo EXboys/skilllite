@@ -59,7 +59,7 @@
 
 ## 5. Swarm（`skilllite swarm`）
 
-- **入口**：CLI 子命令 `skilllite swarm --listen <ADDR>`，长时间运行的 P2P 守护进程。
+- **入口**：CLI 子命令 `skilllite swarm --listen <ADDR>`，长时间运行的 P2P 守护进程。默认监听 `127.0.0.1:7700`（回环）。局域网访问使用 `0.0.0.0:<端口>`；请设置 `SKILLLITE_SWARM_TOKEN`，要求 HTTP 客户端携带 `Authorization: Bearer`。
 - **依赖**：`skilllite-swarm`（mDNS、组网、任务路由）；若与 agent 同开，主 binary 提供 `swarm_executor` 在本地执行 NodeTask。
 - **能力**：节点发现、任务路由、NewSkill Gossip；可选与 `skilllite run --soul` 等 agent 能力配合。
 - **适用**：多机协作、多 Agent 组网、分布式技能发现与执行。

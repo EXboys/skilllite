@@ -621,12 +621,15 @@ pub enum Commands {
     /// Blocks until Ctrl+C.
     ///
     /// Examples:
-    ///   skilllite swarm --listen 0.0.0.0:7700
+    ///   skilllite swarm --listen 127.0.0.1:7700
     ///   skilllite swarm --listen 0.0.0.0:7700 --skills-dir skills
+    ///
+    /// Default bind is loopback only. For LAN peers use `0.0.0.0:PORT` and set `SKILLLITE_SWARM_TOKEN`
+    /// so HTTP clients must send `Authorization: Bearer <token>`.
     #[command(name = "swarm")]
     Swarm {
-        /// Listen address (e.g. 0.0.0.0:7700)
-        #[arg(long, short = 'l', default_value = "0.0.0.0:7700")]
+        /// Listen address (default 127.0.0.1:7700; use 0.0.0.0:PORT for all interfaces)
+        #[arg(long, short = 'l', default_value = "127.0.0.1:7700")]
         listen: String,
 
         /// Skills directory for capability aggregation (default: skills, .skills)

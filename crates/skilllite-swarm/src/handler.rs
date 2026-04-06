@@ -9,7 +9,7 @@ use anyhow::Context;
 use axum::{
     body::Body,
     extract::{Query, State},
-    http::{header, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
@@ -17,6 +17,7 @@ use axum::{
 use bytes::Bytes;
 use futures_util::stream::{self, StreamExt};
 use mdns_sd::ServiceEvent;
+use skilllite_core::config::env_keys::swarm;
 use skilllite_core::protocol::{NodeResult, NodeTask};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -25,19 +26,30 @@ use std::time::Duration;
 use crate::discovery::{parse_capabilities_from_txt, Discovery};
 use crate::routing::{capabilities_match, route_task, RouteTarget, TaskExecutor};
 
-/// Parse listen address "host:port" into (host, port).
+/// Parse listen address `host:port`, `:port`, or `port` into `(host, port)`.
+///
+/// Port-only / `:port` default host is **127.0.0.1** (loopback). Use explicit `0.0.0.0:PORT` for all interfaces.
 fn parse_listen_addr(addr: &str) -> Result<(String, u16)> {
+    let addr = addr.trim();
     let parts: Vec<&str> = addr.splitn(2, ':').collect();
     let (host, port_str) = match parts.as_slice() {
+        ["", p] => ("127.0.0.1", *p),
         [h, p] => (*h, *p),
-        [p] if p.parse::<u16>().is_ok() => ("0.0.0.0", *p),
+        [p] if p.parse::<u16>().is_ok() => ("127.0.0.1", *p),
         _ => bail!(
-            "Invalid listen address: expected host:port or :port, got {}",
+            "Invalid listen address: expected host:port, :port, or port, got {}",
             addr
         ),
     };
     let port: u16 = port_str.parse().context("Invalid port number")?;
     Ok((host.to_string(), port))
+}
+
+fn reqwest_swarm_auth(b: reqwest::RequestBuilder, token: Option<&str>) -> reqwest::RequestBuilder {
+    match token {
+        Some(t) if !t.is_empty() => b.header(header::AUTHORIZATION, format!("Bearer {}", t)),
+        _ => b,
+    }
 }
 
 /// Shared state for the HTTP server.
@@ -50,10 +62,17 @@ struct AppState {
     executor: Option<Arc<dyn TaskExecutor>>,
     /// Current task being executed (for GET /status feedback).
     current_task: Arc<std::sync::Mutex<Option<String>>>,
+    /// When set, all HTTP routes require `Authorization: Bearer <token>`; forwarded peer requests include it.
+    swarm_token: Option<Arc<str>>,
 }
 
 /// GET /status — execution status for client polling (avoids "empty wait" UX).
-async fn handle_status(State(state): State<AppState>) -> impl IntoResponse {
+async fn handle_status(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
+    if let Some(resp) =
+        crate::swarm_auth::reject_if_unauthorized(state.swarm_token.as_deref(), &headers)
+    {
+        return resp;
+    }
     let task_id = state.current_task.lock().map(|g| g.clone()).unwrap_or(None);
     let (status, task_id_val) = match &task_id {
         Some(id) => ("busy", serde_json::Value::String(id.clone())),
@@ -63,6 +82,7 @@ async fn handle_status(State(state): State<AppState>) -> impl IntoResponse {
         StatusCode::OK,
         Json(serde_json::json!({ "status": status, "current_task_id": task_id_val })),
     )
+        .into_response()
 }
 
 #[derive(serde::Deserialize)]
@@ -75,8 +95,14 @@ struct CanDoQuery {
 /// Query: ?required=tag1,tag2. Returns { "can_do": true, "instance_name": "..." } or can_do: false.
 async fn handle_can_do(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(q): Query<CanDoQuery>,
 ) -> impl IntoResponse {
+    if let Some(resp) =
+        crate::swarm_auth::reject_if_unauthorized(state.swarm_token.as_deref(), &headers)
+    {
+        return resp;
+    }
     let required: Vec<String> = q
         .required
         .as_deref()
@@ -93,6 +119,7 @@ async fn handle_can_do(
             "instance_name": state.instance_name,
         })),
     )
+        .into_response()
 }
 
 #[derive(serde::Deserialize, Default)]
@@ -105,9 +132,16 @@ struct TaskQuery {
 /// Add ?stream=1 for NDJSON progress (received → executing → done).
 async fn handle_task(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(query): Query<TaskQuery>,
     Json(task): Json<NodeTask>,
 ) -> impl IntoResponse {
+    if let Some(resp) =
+        crate::swarm_auth::reject_if_unauthorized(state.swarm_token.as_deref(), &headers)
+    {
+        return resp;
+    }
+    let token = state.swarm_token.as_deref();
     let peers = state.peers.lock().map(|p| p.clone()).unwrap_or_default();
 
     // When required_capabilities is empty, optionally infer via LLM (SKILLLITE_SWARM_LLM_ROUTING=1)
@@ -149,9 +183,7 @@ async fn handle_task(
                 peer.addr,
                 urlencoding::encode(&can_do_query)
             );
-            match client
-                .get(&url)
-                .timeout(Duration::from_secs(3))
+            match reqwest_swarm_auth(client.get(&url).timeout(Duration::from_secs(3)), token)
                 .send()
                 .await
             {
@@ -332,12 +364,15 @@ async fn handle_task(
                     total = peers.len(),
                     "Forwarding task to peer"
                 );
-                match client
-                    .post(&url)
-                    .json(&task)
-                    .timeout(Duration::from_secs(120))
-                    .send()
-                    .await
+                match reqwest_swarm_auth(
+                    client
+                        .post(&url)
+                        .json(&task)
+                        .timeout(Duration::from_secs(120)),
+                    token,
+                )
+                .send()
+                .await
                 {
                     Ok(resp) if resp.status().is_success() => {
                         match resp.json::<NodeResult>().await {
@@ -389,11 +424,12 @@ async fn handle_task(
     }
 }
 
-/// Run the swarm daemon: register via mDNS, browse for peers, serve HTTP task API, block until Ctrl+C.
+/// Run the swarm daemon: register via mDNS (unless bind is loopback-only), browse for peers, serve HTTP task API, block until Ctrl+C.
 ///
 /// - `executor`: Optional. When set, local tasks are executed via this; otherwise returns 503.
 /// - Sets `SKILLLITE_SWARM_URL` so agent's delegate_to_swarm can route to this swarm (skill sharing).
 /// - When `skills_dir` is set, loads .env from its parent (project root) so OPENAI_API_KEY is available for LLM routing.
+/// - When `SKILLLITE_SWARM_TOKEN` is set (after dotenv), all HTTP routes require `Authorization: Bearer`; peer forwards include it.
 pub fn serve_swarm(
     listen_addr: &str,
     capability_tags: Vec<String>,
@@ -422,16 +458,38 @@ pub fn serve_swarm(
     }
 
     let (host, port) = parse_listen_addr(listen_addr)?;
+    let bind_addr = format!("{}:{}", host, port);
+    let swarm_token = crate::swarm_auth::swarm_token_from_env().map(Arc::<str>::from);
     let instance_name = uuid::Uuid::new_v4().to_string();
 
     // Enable delegate_to_swarm to route to this node (for skill sharing)
     let swarm_url = format!("http://127.0.0.1:{}", port);
-    if std::env::var("SKILLLITE_SWARM_URL").is_err() {
-        std::env::set_var("SKILLLITE_SWARM_URL", &swarm_url);
+    if std::env::var(swarm::SKILLLITE_SWARM_URL).is_err() {
+        std::env::set_var(swarm::SKILLLITE_SWARM_URL, &swarm_url);
+    }
+
+    let loopback_only =
+        host == "127.0.0.1" || host == "::1" || host.eq_ignore_ascii_case("localhost");
+
+    if host == "0.0.0.0" && swarm_token.is_none() {
+        tracing::warn!(
+            "Swarm listening on all interfaces without SKILLLITE_SWARM_TOKEN: any host that can reach this port may call the HTTP API. Set SKILLLITE_SWARM_TOKEN for Bearer authentication."
+        );
+    }
+    if swarm_token.is_some() {
+        tracing::info!("Swarm HTTP API requires Authorization: Bearer <SKILLLITE_SWARM_TOKEN>.");
     }
 
     let discovery = Discovery::new()?;
-    discovery.register(&instance_name, &host, port, &capability_tags)?;
+    if !loopback_only {
+        discovery.register(&instance_name, &host, port, &capability_tags)?;
+    } else {
+        tracing::info!(
+            port = port,
+            "Swarm bind is loopback-only: skipped mDNS registration. For LAN peer mesh use e.g. --listen 0.0.0.0:{}",
+            port
+        );
+    }
 
     let browse_rx = discovery.browse()?;
     let peers: Arc<std::sync::Mutex<Vec<crate::discovery::PeerInfo>>> =
@@ -500,6 +558,7 @@ pub fn serve_swarm(
         peers,
         executor,
         current_task: Arc::new(std::sync::Mutex::new(None)),
+        swarm_token: swarm_token.clone(),
     };
 
     let app = Router::new()
@@ -510,7 +569,7 @@ pub fn serve_swarm(
 
     let llm_routing = std::env::var("SKILLLITE_SWARM_LLM_ROUTING").as_deref() != Ok("0");
     tracing::info!(
-        listen = %listen_addr,
+        listen = %bind_addr,
         instance = %instance_name,
         llm_routing = llm_routing,
         "Swarm daemon running (mDNS + HTTP). POST /task, GET /status for execution feedback. Ctrl+C to stop."
@@ -527,7 +586,7 @@ pub fn serve_swarm(
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         let std_listener =
-            std::net::TcpListener::bind(listen_addr).context("Failed to bind TCP listener")?;
+            std::net::TcpListener::bind(&bind_addr).context("Failed to bind TCP listener")?;
         let listener = tokio::net::TcpListener::from_std(std_listener)?;
         axum::serve(listener, app).await?;
         Ok::<(), crate::Error>(())
@@ -535,4 +594,30 @@ pub fn serve_swarm(
 
     let _ = discovery.shutdown();
     Ok(())
+}
+
+#[cfg(test)]
+mod listen_addr_tests {
+    use super::parse_listen_addr;
+
+    #[test]
+    fn port_only_defaults_loopback() {
+        let (h, p) = parse_listen_addr("7700").unwrap();
+        assert_eq!(h, "127.0.0.1");
+        assert_eq!(p, 7700);
+    }
+
+    #[test]
+    fn colon_port_defaults_loopback() {
+        let (h, p) = parse_listen_addr(":7700").unwrap();
+        assert_eq!(h, "127.0.0.1");
+        assert_eq!(p, 7700);
+    }
+
+    #[test]
+    fn explicit_all_interfaces_preserved() {
+        let (h, p) = parse_listen_addr("0.0.0.0:7700").unwrap();
+        assert_eq!(h, "0.0.0.0");
+        assert_eq!(p, 7700);
+    }
 }

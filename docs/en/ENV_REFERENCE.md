@@ -106,6 +106,17 @@ When the same variable is set in multiple places, resolution order is (highest â
 
 ---
 
+## P2P Swarm `skilllite swarm` <small>[Optional]</small>
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_SWARM_URL` | string | unset (daemon sets `http://127.0.0.1:<port>` if unset) | Base URL for `delegate_to_swarm` (e.g. `http://192.168.1.10:7700` for a remote node). |
+| `SKILLLITE_SWARM_TOKEN` | string | unset | When non-empty, the swarm HTTP API requires `Authorization: Bearer <token>` on every request (`/task`, `/status`, `/can-do`). All nodes and clients (including `delegate_to_swarm`) must use the **same** value. **Recommended** whenever using `--listen 0.0.0.0:*`. |
+
+**CLI default listen address** is `127.0.0.1:7700` (loopback). Use `--listen 0.0.0.0:7700` only when other hosts must connect; pair with `SKILLLITE_SWARM_TOKEN` in production-like setups.
+
+---
+
 ## Sandbox & Security <small>[Common]</small>
 
 Sandbox-related variables are read through the **config layer** (`SandboxEnvConfig::from_env()`); config accepts `SKILLLITE_*` (recommended) and legacy `SKILLBOX_*`.

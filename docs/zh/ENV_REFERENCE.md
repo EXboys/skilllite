@@ -106,6 +106,17 @@
 
 ---
 
+## P2P Swarm `skilllite swarm` <small>[可选]</small>
+
+| 变量 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `SKILLLITE_SWARM_URL` | string | 未设置（守护进程若未设置则写入 `http://127.0.0.1:<端口>`） | `delegate_to_swarm` 使用的基址（远程节点示例：`http://192.168.1.10:7700`）。 |
+| `SKILLLITE_SWARM_TOKEN` | string | 未设置 | 非空时，swarm 的 HTTP 接口要求所有请求带 `Authorization: Bearer <token>`（`/task`、`/status`、`/can-do`）。各节点与客户端（含 `delegate_to_swarm`）须配置**相同**值。使用 `--listen 0.0.0.0:*` 时**建议**务必设置。 |
+
+**CLI 默认监听**为 `127.0.0.1:7700`（仅本机）。仅当需要他机连接时使用 `--listen 0.0.0.0:7700`；生产类环境请配合 `SKILLLITE_SWARM_TOKEN`。
+
+---
+
 ## 沙箱与安全 <small>[常用]</small>
 
 沙箱相关变量**统一走 config 层**（`SandboxEnvConfig::from_env()`）；config 接受 `SKILLLITE_*`（推荐）与旧名 `SKILLBOX_*`。

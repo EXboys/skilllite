@@ -7,9 +7,10 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 use crate::types::{EventSink, FunctionDef, ToolDefinition};
+use skilllite_core::config::env_keys::swarm;
 use skilllite_core::protocol::{NodeContext, NodeResult, NodeTask};
 
-pub const SWARM_URL_ENV: &str = "SKILLLITE_SWARM_URL";
+pub const SWARM_URL_ENV: &str = swarm::SKILLLITE_SWARM_URL;
 const DELEGATE_TIMEOUT_SECS: u64 = 5;
 
 pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
@@ -17,7 +18,7 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
         tool_type: "function".to_string(),
         function: FunctionDef {
             name: "delegate_to_swarm".to_string(),
-            description: "Delegate a sub-task to the P2P swarm when local capabilities are insufficient. Requires SKILLLITE_SWARM_URL to be set (e.g. http://192.168.1.10:7700). Returns the remote node's result or an error if swarm is unavailable. 5s timeout.".to_string(),
+            description: "Delegate a sub-task to the P2P swarm when local capabilities are insufficient. Requires SKILLLITE_SWARM_URL (e.g. http://127.0.0.1:7700). If the swarm uses SKILLLITE_SWARM_TOKEN, set the same value in the environment so requests send Authorization: Bearer. 5s timeout.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -103,13 +104,19 @@ pub(super) async fn execute_delegate_to_swarm(
     let client = reqwest::Client::new();
     event_sink.on_swarm_progress("submitting task to swarm");
 
-    match client
+    skilllite_core::config::load_dotenv();
+    let mut req = client
         .post(&task_url)
         .json(&task)
-        .timeout(std::time::Duration::from_secs(DELEGATE_TIMEOUT_SECS))
-        .send()
-        .await
-    {
+        .timeout(std::time::Duration::from_secs(DELEGATE_TIMEOUT_SECS));
+    if let Ok(tok) = std::env::var(swarm::SKILLLITE_SWARM_TOKEN) {
+        let t = tok.trim();
+        if !t.is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", t));
+        }
+    }
+
+    match req.send().await {
         Ok(resp) if resp.status().is_success() => match resp.json::<NodeResult>().await {
             Ok(result) => {
                 let summary = if result.response.is_empty() {

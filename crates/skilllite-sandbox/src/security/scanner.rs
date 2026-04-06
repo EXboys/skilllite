@@ -564,11 +564,7 @@ fn entropy_line_likely_benign_transport(line: &str) -> bool {
         let pct_tokens = line
             .as_bytes()
             .windows(3)
-            .filter(|w| {
-                w[0] == b'%'
-                    && w[1].is_ascii_hexdigit()
-                    && w[2].is_ascii_hexdigit()
-            })
+            .filter(|w| w[0] == b'%' && w[1].is_ascii_hexdigit() && w[2].is_ascii_hexdigit())
             .count();
         if pct_tokens >= 4 {
             return true;
@@ -932,9 +928,7 @@ resp = requests.get(URL)
         let s = ScriptScanner::new();
         let r = s.scan_content(&py, Path::new("t.py")).unwrap();
         assert!(
-            r.issues
-                .iter()
-                .any(|i| i.rule_id == "entropy-obfuscation"),
+            r.issues.iter().any(|i| i.rule_id == "entropy-obfuscation"),
             "expected entropy issue, got {:?}",
             r.issues
         );

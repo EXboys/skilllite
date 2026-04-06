@@ -48,7 +48,7 @@ pub enum ProtocolParams {
 
     /// Swarm node (`skilllite swarm --listen <ADDR>`).
     P2p {
-        /// mDNS / Libp2p listen address (e.g. `"0.0.0.0:7700"`).
+        /// HTTP listen address (e.g. `"127.0.0.1:7700"` loopback default; `"0.0.0.0:7700"` for LAN).
         listen_addr: String,
         /// Capability tags advertised to peers.
         capability_tags: Vec<String>,

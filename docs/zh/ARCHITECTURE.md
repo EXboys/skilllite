@@ -756,6 +756,12 @@ SKILLLITE_NO_SANDBOX=false   # 禁用沙箱
 - **文件移动保护** (`move_protection.rs`)：防止恶意文件覆盖关键路径
 - **用户授权**：Level 3 先做统一预检（`SKILL.md` + 入口脚本）；若预检生成需审阅的报告（含中等脚本告警、SKILL.md 告警或扫描失败提示），CLI 由 runner 在 TTY 上征求同意，Agent/MCP 由宿主侧确认；`SKILLLITE_AUTO_APPROVE` 作用于 CLI 侧同一门控。
 
+### 7. Swarm HTTP API（`skilllite swarm`）
+
+- **默认绑定**：`127.0.0.1:<端口>`（仅本机回环）。需他机连接时使用 `--listen 0.0.0.0:<端口>`。
+- **mDNS**：绑定为纯回环时会跳过注册（局域网组网需监听所有接口的地址）。
+- **认证**：可选共享密钥 `SKILLLITE_SWARM_TOKEN`。设置后 `GET /status`、`GET /can-do`、`POST /task` 均要求 `Authorization: Bearer <token>`；节点间转发与 `delegate_to_swarm` 在设置了该变量时会自动携带相同头。若监听 `0.0.0.0` 且未设置 token，启动时会打警告日志。
+
 ---
 
 ## 🔗 依赖关系

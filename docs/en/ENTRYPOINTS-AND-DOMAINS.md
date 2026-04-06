@@ -59,7 +59,7 @@
 
 ## 5. Swarm (`skilllite swarm`)
 
-- **Entry**: CLI subcommand `skilllite swarm --listen <ADDR>`, long-running P2P daemon.
+- **Entry**: CLI subcommand `skilllite swarm --listen <ADDR>`, long-running P2P daemon. Default listen is `127.0.0.1:7700` (loopback). Use `0.0.0.0:<port>` for LAN access; set `SKILLLITE_SWARM_TOKEN` so HTTP clients must send `Authorization: Bearer`.
 - **Dependencies**: `skilllite-swarm` (mDNS, mesh, task routing); when used with agent, main binary provides `swarm_executor` to run NodeTasks locally.
 - **Capabilities**: Node discovery, task routing, NewSkill Gossip; optionally used with agent features like `skilllite run --soul`.
 - **Use case**: Multi-machine collaboration, multi-agent mesh, distributed skill discovery and execution.

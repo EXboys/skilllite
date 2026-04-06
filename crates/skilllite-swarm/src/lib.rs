@@ -10,6 +10,7 @@ pub mod error;
 mod handler;
 mod llm_routing;
 mod routing;
+mod swarm_auth;
 
 pub use discovery::{Discovery, PeerInfo};
 pub use error::{Error, Result};
