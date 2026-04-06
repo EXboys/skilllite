@@ -477,11 +477,15 @@ impl ScriptScanner {
     /// Lines shorter than `MIN_LEN` chars are skipped (too short to be meaningful).
     /// Lines whose Shannon entropy exceeds `THRESHOLD` bits/char are flagged as
     /// `SecuritySeverity::Medium` with issue type `ObfuscatedCode`.
+    ///
+    /// **False-positive controls:** long URLs, `data:` URIs, and percent-encoded query
+    /// strings often score high entropy but are routine in API/HTTP skills; those lines
+    /// are skipped. Pure obfuscation without these shapes is still flagged.
     fn scan_entropy(&self, content: &str, language: &str, issues: &mut Vec<SecurityIssue>) {
         /// Minimum printable characters required before entropy is computed.
-        const MIN_LEN: usize = 20;
+        const MIN_LEN: usize = 22;
         /// Entropy threshold in bits per character (base-2).
-        const THRESHOLD: f64 = 4.5;
+        const THRESHOLD: f64 = 4.6;
         /// Higher threshold for lines with any CJK — mixed code + Chinese strings.
         const THRESHOLD_CJK: f64 = 5.2;
 
@@ -495,6 +499,10 @@ impl ScriptScanner {
 
             // Skip lines with significant CJK (≥15%) — natural language, not obfuscated
             if Self::has_significant_cjk(trimmed, 0.15) {
+                continue;
+            }
+
+            if entropy_line_likely_benign_transport(trimmed) {
                 continue;
             }
 
@@ -521,6 +529,52 @@ impl ScriptScanner {
             }
         }
     }
+}
+
+/// True if `haystack` contains `needle` using ASCII case-insensitive byte comparison.
+fn bytes_contains_ci(haystack: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return false;
+    }
+    haystack
+        .windows(needle.len())
+        .any(|w| w.eq_ignore_ascii_case(needle))
+}
+
+/// Skip entropy on lines that commonly hit high Shannon entropy but are normal in HTTP/API code.
+fn entropy_line_likely_benign_transport(line: &str) -> bool {
+    let b = line.as_bytes();
+    if bytes_contains_ci(b, b"http://")
+        || bytes_contains_ci(b, b"https://")
+        || bytes_contains_ci(b, b"ws://")
+        || bytes_contains_ci(b, b"wss://")
+        || bytes_contains_ci(b, b"ftp://")
+    {
+        return true;
+    }
+    // Inline data URIs (images, small payloads in tests)
+    if bytes_contains_ci(b, b"data:image/")
+        || bytes_contains_ci(b, b"data:application/")
+        || bytes_contains_ci(b, b"data:text/")
+    {
+        return true;
+    }
+    // Percent-encoded query segments (e.g. `city=%E6%B7%B1%E5%9C%B3&key=...`)
+    if line.contains('&') && line.contains('=') {
+        let pct_tokens = line
+            .as_bytes()
+            .windows(3)
+            .filter(|w| {
+                w[0] == b'%'
+                    && w[1].is_ascii_hexdigit()
+                    && w[2].is_ascii_hexdigit()
+            })
+            .count();
+        if pct_tokens >= 4 {
+            return true;
+        }
+    }
+    false
 }
 
 /// Compute Shannon entropy (bits per character) of a string.
@@ -826,5 +880,63 @@ mod shell_command_scan_tests {
     fn benign_ls_is_safe() {
         let r = scan_shell_command("ls -la").expect("scan");
         assert!(r.is_safe, "{:?}", r.issues);
+    }
+}
+
+#[cfg(test)]
+mod entropy_heuristic_tests {
+    use std::path::Path;
+
+    use super::ScriptScanner;
+
+    #[test]
+    fn entropy_skips_long_https_url_line() {
+        let py = r#"
+KEY = "xxxxxxxxxxxxxxxxxxxxxxxx"
+URL = "https://api.weather.example/v1/query?city=%E6%B7%B1%E5%9C%B3&token=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789&fmt=json"
+resp = requests.get(URL)
+"#;
+        let s = ScriptScanner::new();
+        let r = s.scan_content(py, Path::new("t.py")).unwrap();
+        let n = r
+            .issues
+            .iter()
+            .filter(|i| i.rule_id == "entropy-obfuscation")
+            .count();
+        assert_eq!(n, 0, "issues={:?}", r.issues);
+    }
+
+    #[test]
+    fn entropy_skips_percent_encoded_query_without_scheme() {
+        let py = r#"q = "a=1&b=%E4%B8%AD&c=%E6%96%87&d=%E5%AD%97&e=1&f=2""#;
+        let s = ScriptScanner::new();
+        let r = s.scan_content(py, Path::new("t.py")).unwrap();
+        let n = r
+            .issues
+            .iter()
+            .filter(|i| i.rule_id == "entropy-obfuscation")
+            .count();
+        assert_eq!(n, 0, "issues={:?}", r.issues);
+    }
+
+    #[test]
+    fn entropy_still_flags_dense_random_ascii_without_url() {
+        // High per-byte entropy, no URL / data: / percent-encoded query heuristic
+        let inner: String = (0u32..72)
+            .map(|i| {
+                const ALPH: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ0293847561";
+                ALPH[(i as usize) % ALPH.len()] as char
+            })
+            .collect();
+        let py = format!(r#"payload = "{inner}""#);
+        let s = ScriptScanner::new();
+        let r = s.scan_content(&py, Path::new("t.py")).unwrap();
+        assert!(
+            r.issues
+                .iter()
+                .any(|i| i.rule_id == "entropy-obfuscation"),
+            "expected entropy issue, got {:?}",
+            r.issues
+        );
     }
 }
