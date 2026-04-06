@@ -59,6 +59,7 @@ pub mod malicious_packages;
 pub mod policy;
 pub mod rules;
 pub mod scanner;
+pub mod skill_precheck;
 pub mod types;
 
 // Re-export commonly used items for public API
@@ -71,7 +72,13 @@ pub use default_rules::{
 pub use rules::{RulesConfig, SecurityRule, CONFIG_FILE_NAMES};
 #[allow(unused_imports)]
 pub use scanner::{
-    format_scan_result, format_scan_result_compact, format_scan_result_json, ScriptScanner,
+    format_scan_result, format_scan_result_compact, format_scan_result_json, scan_shell_command,
+    ScriptScanner,
 };
 #[allow(unused_imports)]
 pub use types::{ScanResult, SecurityIssue, SecurityIssueType, SecuritySeverity};
+
+pub use skill_precheck::{
+    run_skill_precheck, run_skill_precheck_for_metadata, skill_precheck_display_report,
+    SkillPrecheckSummary, SKILL_PRECHECK_CRITICAL_BLOCKED,
+};

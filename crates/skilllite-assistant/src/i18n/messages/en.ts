@@ -135,7 +135,7 @@ export const enMessages: Record<string, string> = {
   "chat.clearedNotice": "Chat cleared",
   "chat.autoApproveToolConfirmations": "Auto-allow execution confirmations",
   "chat.autoApproveToolConfirmationsHint":
-    "When enabled, pending tool execution confirmations are approved automatically. Only use in trusted environments.",
+    "When enabled, only low-risk confirmations (e.g. routine run_command) are auto-approved. High-risk items still require manual approval. Only use in trusted environments.",
   "chat.timelineNeedsAction": "Action needed",
   "chat.timelineNeedsActionHint":
     "Expand this block to allow/deny execution or pick a clarification option.",

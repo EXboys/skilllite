@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-05
+Last updated: 2026-04-06
 
 ## In Progress
 
@@ -16,6 +16,7 @@ Last updated: 2026-04-05
 
 ## Done
 
+- `TASK-2026-024-auto-confirm-risk-tiers` - Status: `done` - Owner: `airlu`
 - `TASK-2026-023-evolution-memory-rollup` - Status: `done` - Owner: `agent`
 - `TASK-2026-022-desktop-ide-layout` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-021-desktop-chat-images` - Status: `done` - Owner: `maintainer`

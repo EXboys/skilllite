@@ -9,9 +9,10 @@ use std::path::Path;
 
 use super::usage_stats;
 use crate::high_risk;
-use crate::types::{EventSink, ToolResult};
+use crate::types::{ConfirmationRequest, EventSink, RiskTier, ToolResult};
 use skilllite_core::skill::metadata::{self, SkillMetadata};
-use skilllite_sandbox::runner::{ResourceLimits, SandboxConfig, SandboxLevel};
+use skilllite_sandbox::runner::{ResourceLimits, SandboxConfig, SandboxLevel, SandboxRunOptions};
+use skilllite_sandbox::security::SKILL_PRECHECK_CRITICAL_BLOCKED;
 
 use super::loader::sanitize_tool_name;
 use super::security::{compute_skill_hash, run_security_scan};
@@ -98,39 +99,64 @@ fn execute_skill_inner(
                 .get(&sanitize_tool_name(tool_name))
         });
 
-    // For Level 3: security scan + user confirmation
-    // Ported from Python `UnifiedExecutionService.execute_skill` L3 flow
+    // Same entry the sandbox runner will use (multi-script tool → overridden entry_point).
+    let mut metadata_for_run = metadata.clone();
+    if let Some(ep) = multi_script_entry {
+        metadata_for_run.entry_point = ep.clone();
+    }
+
+    // Pre-spawn static precheck (SKILL.md + entry): all sandbox levels. The runner never repeats
+    // this in the agent process (no TTY); we confirm here then pass `skip_skill_precheck`.
     let sandbox_level = SandboxLevel::from_env_or_cli(None);
-    if sandbox_level == SandboxLevel::Level3 {
-        let code_hash = compute_skill_hash(skill_dir, &metadata);
+    let code_hash = compute_skill_hash(skill_dir, &metadata_for_run);
 
-        // Check session-level confirmation cache
-        let already_confirmed = CONFIRMED_SKILLS.with(|cache| {
-            let cache = cache.borrow();
-            cache.get(&skill.name) == Some(&code_hash)
-        });
+    let skip_precheck_ui = sandbox_level == SandboxLevel::Level3
+        && CONFIRMED_SKILLS.with(|cache| cache.borrow().get(&skill.name) == Some(&code_hash));
 
-        if !already_confirmed {
-            // Run security scan on entry point
-            let scan_report = run_security_scan(skill_dir, &metadata);
+    if !skip_precheck_ui {
+        let precheck = run_security_scan(
+            skill_dir,
+            &metadata_for_run,
+            metadata_for_run.network.enabled,
+        );
 
-            let prompt = if let Some(report) = scan_report {
-                format!(
-                    "Skill '{}' security scan results:\n\n{}\n\nAllow execution?",
-                    skill.name, report
-                )
-            } else {
-                format!(
-                    "Skill '{}' wants to execute code (sandbox level 3). Allow?",
-                    skill.name
-                )
-            };
+        if precheck.has_critical_script_issue {
+            let tail = precheck
+                .review_text
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| format!("\n\n{}", s))
+                .unwrap_or_default();
+            bail!("{}{}", SKILL_PRECHECK_CRITICAL_BLOCKED, tail);
+        }
 
-            if !event_sink.on_confirmation_request(&prompt) {
+        if let Some(report) = precheck.review_text.clone() {
+            let prompt = format!(
+                "Skill '{}' security scan results:\n\n{}\n\nAllow execution?",
+                skill.name, report
+            );
+            if !event_sink.on_confirmation_request(&ConfirmationRequest::new(
+                prompt,
+                RiskTier::ConfirmRequired,
+            )) {
                 return Ok("Execution cancelled by user.".to_string());
             }
-
-            // Cache confirmation
+            if sandbox_level == SandboxLevel::Level3 {
+                CONFIRMED_SKILLS.with(|cache| {
+                    cache.borrow_mut().insert(skill.name.clone(), code_hash);
+                });
+            }
+        } else if sandbox_level == SandboxLevel::Level3 {
+            let prompt = format!(
+                "Skill '{}' wants to execute code (sandbox level 3). Allow?",
+                skill.name
+            );
+            if !event_sink.on_confirmation_request(&ConfirmationRequest::new(
+                prompt,
+                RiskTier::ConfirmRequired,
+            )) {
+                return Ok("Execution cancelled by user.".to_string());
+            }
             CONFIRMED_SKILLS.with(|cache| {
                 cache.borrow_mut().insert(skill.name.clone(), code_hash);
             });
@@ -149,7 +175,9 @@ fn execute_skill_inner(
                 "⚠️ 网络访问确认\n\nSkill '{}' 将发起网络请求。\n\n确认执行?",
                 skill.name
             );
-            if !event_sink.on_confirmation_request(&msg) {
+            if !event_sink
+                .on_confirmation_request(&ConfirmationRequest::new(msg, RiskTier::ConfirmRequired))
+            {
                 return Ok("Execution cancelled: network skill not confirmed by user.".to_string());
             }
             CONFIRMED_SKILLS.with(|cache| {
@@ -216,23 +244,19 @@ fn execute_skill_inner(
         let _: Value = serde_json::from_str(&input_json)
             .map_err(|e| crate::Error::validation(format!("Invalid input JSON: {}", e)))?;
 
-        let effective_metadata = if let Some(ref entry) = multi_script_entry {
-            let mut m = metadata.clone();
-            m.entry_point = entry.to_string();
-            m
-        } else {
-            metadata
-        };
-
         let runtime = skilllite_sandbox::env::builder::build_runtime_paths(&env_path);
-        let config = build_sandbox_config(skill_dir, &effective_metadata);
-        let output = skilllite_sandbox::runner::run_in_sandbox_with_limits_and_level(
+        let config = build_sandbox_config(skill_dir, &metadata_for_run);
+        let run_options = SandboxRunOptions {
+            skip_skill_precheck: true,
+        };
+        let output = skilllite_sandbox::runner::run_in_sandbox_with_limits_and_level_opt(
             skill_dir,
             &runtime,
             &config,
             &input_json,
             limits,
             sandbox_level,
+            run_options,
         )?;
         Ok(output)
     }

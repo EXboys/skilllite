@@ -43,7 +43,7 @@
 //! {"event": "swarm_failed", "data": {"message": "timeout, fallback to local execution"}}
 //! {"event": "task_plan", "data": {"tasks": [...]}}
 //! {"event": "task_progress", "data": {"task_id": 1, "completed": true}}
-//! {"event": "confirmation_request", "data": {"prompt": "Execute rm -rf?"}}
+//! {"event": "confirmation_request", "data": {"prompt": "Execute rm -rf?", "risk_tier": "confirm_required"}}
 //! {"event": "clarification_request", "data": {"reason": "no_progress", "message": "...", "suggestions": ["...", "..."]}}
 //! {"event": "done", "data": {"task_id": "...", "response": "...", "task_completed": true, "tool_calls": 3, "new_skill": null}}
 //! {"event": "error", "data": {"message": "..."}}
@@ -119,7 +119,7 @@ impl RpcEventSink {
         }
     }
 
-    fn append_confirmation_transcript(&self, prompt: &str, approved: bool) {
+    fn append_confirmation_transcript(&self, request: &ConfirmationRequest, approved: bool) {
         let Some(path) = &self.transcript_path else {
             return;
         };
@@ -128,7 +128,8 @@ impl RpcEventSink {
             parent_id: None,
             data: json!({
                 "ui_kind": "confirmation",
-                "prompt": prompt,
+                "prompt": request.prompt,
+                "risk_tier": request.risk_tier,
                 "resolved": true,
                 "approved": approved,
             }),
@@ -279,8 +280,11 @@ impl EventSink for RpcEventSink {
         self.emit("swarm_failed", json!({ "message": message }));
     }
 
-    fn on_confirmation_request(&mut self, prompt: &str) -> bool {
-        self.emit("confirmation_request", json!({ "prompt": prompt }));
+    fn on_confirmation_request(&mut self, request: &ConfirmationRequest) -> bool {
+        self.emit(
+            "confirmation_request",
+            json!({ "prompt": request.prompt, "risk_tier": request.risk_tier }),
+        );
 
         if let Ok(mut reader) = self.confirmation_rx.lock() {
             let mut line = String::new();
@@ -292,7 +296,7 @@ impl EventSink for RpcEventSink {
                             .and_then(|p| p.get("approved"))
                             .and_then(|a| a.as_bool())
                             .unwrap_or(false);
-                        self.append_confirmation_transcript(prompt, approved);
+                        self.append_confirmation_transcript(request, approved);
                         return approved;
                     }
                 }

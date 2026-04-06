@@ -325,7 +325,10 @@ pub(super) fn execute_write_file(
                 "⚠️ 关键路径写入确认\n\n路径: {}\n内容预览 (前200字符):\n{}\n{}\n\n确认写入?",
                 path_str, preview, suffix
             );
-            if !sink.on_confirmation_request(&msg) {
+            if !sink.on_confirmation_request(&crate::types::ConfirmationRequest::new(
+                msg,
+                crate::types::RiskTier::ConfirmRequired,
+            )) {
                 return Ok("User cancelled: write to key path not confirmed".to_string());
             }
         }

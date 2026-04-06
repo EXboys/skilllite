@@ -1,5 +1,5 @@
 use crate::error::bail;
-use crate::security::{format_scan_result_compact, ScriptScanner, SecuritySeverity};
+use crate::security::{run_skill_precheck, SKILL_PRECHECK_CRITICAL_BLOCKED};
 use crate::Result;
 use skilllite_core::observability;
 use std::io::{self, IsTerminal, Write};
@@ -117,6 +117,15 @@ impl Default for ResourceLimits {
     }
 }
 
+/// Optional behavior for [`run_in_sandbox_with_limits_and_level_opt`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct SandboxRunOptions {
+    /// When `true`, skip the unified skill precheck (`SKILL.md` + entry [`ScriptScanner`]) before spawn.
+    /// Use when the caller (e.g. agent or MCP Level 3) already ran [`crate::security::run_skill_precheck`]
+    /// with the same policy and obtained consent.
+    pub skip_skill_precheck: bool,
+}
+
 impl ResourceLimits {
     /// Get memory limit in bytes
     pub fn max_memory_bytes(&self) -> u64 {
@@ -148,74 +157,84 @@ impl ResourceLimits {
     }
 }
 
-/// Request user authorization to continue execution despite security issues
-/// Returns true if user authorizes, false otherwise
-fn request_user_authorization(skill_id: &str, issues_count: usize, severity: &str) -> bool {
+/// After the precheck report is printed to stderr, prompt on stdin (TTY only). Caller handles
+/// `SKILLLITE_AUTO_APPROVE` and non-TTY before invoking this.
+fn prompt_skill_precheck_continue(skill_id: &str) -> bool {
     eprintln!();
-    eprintln!("┌─────────────────────────────────────────────────────────────┐");
-    eprintln!("│  🔐 Security Review Required                                │");
-    eprintln!("├─────────────────────────────────────────────────────────────┤");
-    eprintln!("│                                                             │");
-    eprintln!(
-        "│  Found {} {} severity issue(s) that need your attention.",
-        issues_count, severity
-    );
-    eprintln!("│                                                             │");
-    eprintln!("│  These operations are flagged for review:                   │");
-    eprintln!("│    • System module imports or file access                   │");
-    eprintln!("│    • Environment variable access                            │");
-    eprintln!("│    • Network requests or external connections               │");
-    eprintln!("│    • Process execution commands                             │");
-    eprintln!("│                                                             │");
-    eprintln!("│  💡 This is a security prompt, not an error.                │");
-    eprintln!("│     If you trust this script, you can proceed safely.       │");
-    eprintln!("│                                                             │");
-    eprintln!("└─────────────────────────────────────────────────────────────┘");
+    eprintln!("── Skill static precheck ──");
+    eprintln!("Review the report above. This prompt uses the same policy as SKILLLITE_AUTO_APPROVE / TTY checks.");
     eprintln!();
-
-    // Check if auto-approve is enabled via config (SKILLLITE_* / SKILLBOX_*)
-    if skilllite_core::config::SandboxEnvConfig::from_env().auto_approve {
-        tracing::info!(
-            "Auto-approved via SKILLLITE_AUTO_APPROVE (or legacy SKILLBOX_AUTO_APPROVE)"
-        );
-        observability::audit_confirmation_response(skill_id, true, "auto");
-        return true;
-    }
 
     loop {
-        eprint!("  👉 Continue execution? [y/N]: ");
+        eprint!("  Continue execution? [y/N]: ");
         let _ = io::stderr().flush();
 
         let mut input = String::new();
         if io::stdin().read_line(&mut input).is_err() {
-            eprintln!("\n  ⏹️  Input error, cancelling");
+            eprintln!("\n  Input error, cancelling");
+            observability::audit_confirmation_response(skill_id, false, "user");
             return false;
         }
 
         let input = input.trim().to_lowercase();
         match input.as_str() {
             "y" | "yes" => {
-                eprintln!();
-                eprintln!("  ✅ Approved - proceeding with execution...");
-                eprintln!();
+                eprintln!("  Approved — proceeding.");
                 observability::audit_confirmation_response(skill_id, true, "user");
                 return true;
             }
             "n" | "no" | "" => {
-                eprintln!();
-                eprintln!("  ⏹️  Cancelled by user");
-                eprintln!();
+                eprintln!("  Cancelled by user");
                 observability::audit_confirmation_response(skill_id, false, "user");
                 return false;
             }
             _ => {
-                eprintln!("  ⚠️  Please enter 'y' to continue or 'n' to cancel.");
+                eprintln!("  Please enter 'y' to continue or 'n' to cancel.");
             }
         }
     }
 }
 
-/// Run a skill in a sandboxed environment with custom resource limits and security level
+/// Skill precheck gate: `SKILLLITE_AUTO_APPROVE` / non-TTY / stdin consent after stderr report.
+fn skill_precheck_enforce_interactive_consent(skill_id: &str, report: &str) -> Result<()> {
+    let auto_approve = skilllite_core::config::SandboxEnvConfig::from_env().auto_approve;
+
+    if !auto_approve {
+        eprintln!("{}", report);
+    }
+
+    observability::audit_confirmation_requested(skill_id, "", 1, "SKILL_STATIC_PRECHECK");
+    observability::security_scan_high(
+        skill_id,
+        "SKILL_STATIC_PRECHECK",
+        &serde_json::Value::Array(vec![]),
+    );
+
+    let approved = if auto_approve {
+        tracing::info!(
+            "Auto-approved via SKILLLITE_AUTO_APPROVE (or legacy SKILLBOX_AUTO_APPROVE)"
+        );
+        observability::audit_confirmation_response(skill_id, true, "auto");
+        true
+    } else if !io::stdin().is_terminal() {
+        tracing::warn!(
+            "Non-TTY stdin: blocking skill static precheck (set SKILLLITE_AUTO_APPROVE=1 to override)"
+        );
+        observability::audit_confirmation_response(skill_id, false, "non-tty-blocked");
+        false
+    } else {
+        prompt_skill_precheck_continue(skill_id)
+    };
+
+    if !approved {
+        bail!("Script execution blocked: User denied authorization after skill static precheck");
+    }
+    Ok(())
+}
+
+/// Run a skill in a sandboxed environment with custom resource limits and security level.
+///
+/// Equivalent to [`run_in_sandbox_with_limits_and_level_opt`] with default options (full L3 scan in-runner).
 pub fn run_in_sandbox_with_limits_and_level(
     skill_dir: &Path,
     runtime: &RuntimePaths,
@@ -224,6 +243,27 @@ pub fn run_in_sandbox_with_limits_and_level(
     limits: ResourceLimits,
     level: SandboxLevel,
 ) -> Result<String> {
+    run_in_sandbox_with_limits_and_level_opt(
+        skill_dir,
+        runtime,
+        config,
+        input_json,
+        limits,
+        level,
+        SandboxRunOptions::default(),
+    )
+}
+
+/// Run a skill with optional sandbox behavior (e.g. skip duplicate skill precheck when agent pre-gated).
+pub fn run_in_sandbox_with_limits_and_level_opt(
+    skill_dir: &Path,
+    runtime: &RuntimePaths,
+    config: &SandboxConfig,
+    input_json: &str,
+    limits: ResourceLimits,
+    level: SandboxLevel,
+    options: SandboxRunOptions,
+) -> Result<String> {
     tracing::info!(
         level = ?level,
         mode = %match level {
@@ -231,107 +271,25 @@ pub fn run_in_sandbox_with_limits_and_level(
             SandboxLevel::Level2 => "Sandbox isolation only",
             SandboxLevel::Level3 => "Sandbox isolation + static code scanning",
         },
+        skip_skill_precheck = options.skip_skill_precheck,
         "Sandbox execution start"
     );
 
-    // Level 3: Perform static code scanning
-    if level.use_code_scanning() {
-        let script_path = skill_dir.join(&config.entry_point);
-        if script_path.exists() {
-            let scanner = ScriptScanner::new()
-                .allow_network(config.network_enabled)
-                .allow_file_ops(false)
-                .allow_process_exec(false);
-
-            let scan_result = scanner.scan_file(&script_path)?;
-
-            let critical_issues: Vec<_> = scan_result
-                .issues
-                .iter()
-                .filter(|issue| matches!(issue.severity, SecuritySeverity::Critical))
-                .collect();
-            let high_issues: Vec<_> = scan_result
-                .issues
-                .iter()
-                .filter(|issue| matches!(issue.severity, SecuritySeverity::High))
-                .collect();
-
-            if !critical_issues.is_empty() || !high_issues.is_empty() {
-                let auto_approve =
-                    skilllite_core::config::SandboxEnvConfig::from_env().auto_approve;
-
-                if !auto_approve {
-                    eprintln!("{}", format_scan_result_compact(&scan_result));
-                }
-
-                let severity_str = if !critical_issues.is_empty() {
-                    "CRITICAL"
-                } else {
-                    "HIGH"
-                };
-
-                let issues_count = critical_issues.len() + high_issues.len();
-
-                let code_hash = "";
-                observability::audit_confirmation_requested(
-                    &config.name,
-                    code_hash,
-                    issues_count,
-                    severity_str,
-                );
-                let issues_json: Vec<serde_json::Value> = scan_result
-                    .issues
-                    .iter()
-                    .map(|i| {
-                        serde_json::json!({
-                            "rule_id": i.rule_id,
-                            "line_number": i.line_number,
-                            "code_snippet": i.code_snippet,
-                            "description": i.description,
-                        })
-                    })
-                    .collect();
-                observability::security_scan_high(
-                    &config.name,
-                    severity_str,
-                    &serde_json::Value::Array(issues_json),
-                );
-
-                let approved = if auto_approve {
-                    tracing::info!(
-                        "Auto-approved via SKILLLITE_AUTO_APPROVE (agent/daemon already confirmed)"
-                    );
-                    observability::audit_confirmation_response(&config.name, true, "auto");
-                    true
-                } else if !io::stdin().is_terminal() {
-                    tracing::warn!(
-                        "Non-TTY stdin: blocking {} severity issues (set SKILLLITE_AUTO_APPROVE=1 to override)",
-                        severity_str
-                    );
-                    observability::audit_confirmation_response(
-                        &config.name,
-                        false,
-                        "non-tty-blocked",
-                    );
-                    false
-                } else {
-                    request_user_authorization(&config.name, issues_count, severity_str)
-                };
-
-                if !approved {
-                    bail!(
-                        "Script execution blocked: User denied authorization for {} severity issues",
-                        severity_str
-                    );
-                }
-            }
-
-            if !scan_result.issues.is_empty()
-                && critical_issues.is_empty()
-                && high_issues.is_empty()
-            {
-                eprintln!("{}", format_scan_result_compact(&scan_result));
-            }
+    // Pre-spawn static precheck: SKILL.md + entry script (all levels L1–L3). Skip when the caller
+    // already gated (agent desktop, MCP Level 3).
+    if !options.skip_skill_precheck {
+        let summary = run_skill_precheck(skill_dir, &config.entry_point, config.network_enabled);
+        if summary.has_critical_script_issue {
+            let tail = summary
+                .review_text
+                .as_deref()
+                .filter(|s| !s.trim().is_empty())
+                .map(|s| format!("\n\n{}", s))
+                .unwrap_or_default();
+            bail!("{}{}", SKILL_PRECHECK_CRITICAL_BLOCKED, tail);
+        }
+        if let Some(ref report) = summary.review_text {
+            skill_precheck_enforce_interactive_consent(&config.name, report)?;
         }
     }
 
@@ -548,5 +506,11 @@ mod tests {
         let partial = base.with_cli_overrides(None, Some(99));
         assert_eq!(partial.max_memory_mb, 100);
         assert_eq!(partial.timeout_secs, 99);
+    }
+
+    #[test]
+    fn sandbox_run_options_default_does_not_skip_skill_precheck() {
+        let o = SandboxRunOptions::default();
+        assert!(!o.skip_skill_precheck);
     }
 }

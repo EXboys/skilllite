@@ -3,7 +3,7 @@
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::paths::{find_project_root, load_dotenv_for_child, skilllite_chat_root};
 
@@ -262,12 +262,24 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         .and_then(|i| i.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let ui = json!({
-                        "kind": "confirmation",
-                        "prompt": v.get("prompt").cloned().unwrap_or(json!("")),
-                        "resolved": v.get("resolved").and_then(|b| b.as_bool()).unwrap_or(true),
-                        "approved": v.get("approved").and_then(|b| b.as_bool()).unwrap_or(false),
-                    });
+                    let mut ui = serde_json::Map::new();
+                    ui.insert("kind".into(), json!("confirmation"));
+                    ui.insert(
+                        "prompt".into(),
+                        v.get("prompt").cloned().unwrap_or(json!("")),
+                    );
+                    if let Some(rt) = v.get("risk_tier") {
+                        ui.insert("risk_tier".into(), rt.clone());
+                    }
+                    ui.insert(
+                        "resolved".into(),
+                        json!(v.get("resolved").and_then(|b| b.as_bool()).unwrap_or(true)),
+                    );
+                    ui.insert(
+                        "approved".into(),
+                        json!(v.get("approved").and_then(|b| b.as_bool()).unwrap_or(false)),
+                    );
+                    let ui = Value::Object(ui);
                     entries.push(TranscriptEntryRaw {
                         ty: "custom_message".to_string(),
                         id,

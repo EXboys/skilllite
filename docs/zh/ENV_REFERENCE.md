@@ -135,6 +135,8 @@
 - Linux 无 bubblewrap 且仍需**有限**隔离时：可设 `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1`（弱隔离，慎用）
 - Skill 卡住时：`SKILLLITE_LOG_LEVEL=debug` 查看进度
 
+**Skill 执行前静态扫描（实现说明）**：统一预检（`SKILL.md` 供应链启发式 + 入口脚本 `ScriptScanner`）在 `skilllite-sandbox` 中为 `run_skill_precheck` / `SkillPrecheckSummary`。**沙箱级别 1、2、3** 在 CLI / `skilllite exec` 的 runner 里都会在执行技能代码前跑该预检（有报告时依赖 `SKILLLITE_AUTO_APPROVE` / TTY 确认）。Agent 对话路径对**所有级别**先在同进程跑同一预检并经 `EventSink` 确认，再传 `SandboxRunOptions.skip_skill_precheck` 以免 runner 在无 TTY 时误拦。MCP `run_skill` 在 Level 3 使用同一预检并返回 `scan_kind: l3_skill_precheck`（历史 JSON 字段名）+ `scan_id`；Level 1–2 由 runner 执行预检（除非 skip）。**`run_command`** 在拉起 `sh -c` 前还会跑 `scan_shell_command`（面向 shell 的 `ScriptScanner` 阶段：熵、base64、下载/解码/执行链）；有发现则须确认（`confirm_required`）。
+
 ---
 
 ## 资源限制 <small>[高级]</small>
@@ -286,7 +288,7 @@
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLLITE_HIGH_RISK_CONFIRM` | string | `write_key_path,run_command,network` | 逗号分隔：需发消息确认的高危操作。注：.env、.key、.git/config 等配置和密码文件读取已直接拒绝 |
+| `SKILLLITE_HIGH_RISK_CONFIRM` | string | `write_key_path,run_command` | 逗号分隔：需发消息确认的高危操作。**默认不含 `network`**（带网络能力的 skill 不再单独弹网络确认；若需要可在此列表中加入 `network` 或使用 `all` 恢复三项全确认）。通过 `run_command` 读取敏感路径（如 `cat .env`）**始终**需确认，且**不会**因省略 `run_command` 或设为 `none` 而跳过。**`none` 不能绕过 `run_command` 的 L0 / `blocked` 层**：整机级灾难性模式仍会在**子进程创建前**被拒绝，与本变量无关（如 fork bomb、`rm -rf /`、`rm -rf /*`、`sudo rm -rf /`、向块设备的 `dd`、`mkfs.*` 等）。桌面端「自动允许确认」仅对 `risk_tier: low` 生效。 |
 
 ---
 

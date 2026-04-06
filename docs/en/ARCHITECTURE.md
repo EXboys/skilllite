@@ -756,7 +756,7 @@ Scans Skill dependencies for known vulnerabilities using OSV (Open Source Vulner
 
 - **Bash Validator** (`bash_validator.rs`): Detects dangerous bash commands
 - **File Move Protection** (`move_protection.rs`): Prevents malicious file overwrites of critical paths
-- **User Authorization**: Level 3 requires user confirmation when Critical/High severity issues are found before execution
+- **User Authorization**: Level 3 runs a unified precheck (`SKILL.md` + entry script); if the precheck produces a review report (including medium script findings, SKILL.md alerts, or scan errors), the runner (CLI) or host (agent/MCP) requires explicit consent before execution. `SKILLLITE_AUTO_APPROVE` applies to the same gate for TTY/CLI runs.
 
 ---
 

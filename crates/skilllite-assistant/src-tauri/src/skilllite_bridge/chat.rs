@@ -419,6 +419,11 @@ pub fn chat_stream(
             Ok(ev) => {
                 if ev.event == "confirmation_request" {
                     let prompt = ev.data.get("prompt").and_then(|v| v.as_str()).unwrap_or("");
+                    let risk_tier = ev
+                        .data
+                        .get("risk_tier")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("confirm_required");
                     let (confirm_tx, confirm_rx) = mpsc::channel();
                     {
                         let mut guard = confirmation_state
@@ -429,7 +434,7 @@ pub fn chat_stream(
                     }
                     if let Err(e) = window.emit(
                         "skilllite-confirmation-request",
-                        json!({ "prompt": prompt, "session_key": &session }),
+                        json!({ "prompt": prompt, "risk_tier": risk_tier, "session_key": &session }),
                     ) {
                         eprintln!("emit confirmation_request error: {}", e);
                     }

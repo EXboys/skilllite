@@ -135,6 +135,8 @@ Sandbox-related variables are read through the **config layer** (`SandboxEnvConf
 - On Linux without bubblewrap but you still want **limited** isolation: `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1` (weak; use with care)
 - When Skill is stuck: `SKILLLITE_LOG_LEVEL=debug` to view progress
 
+**Skill pre-spawn static scan (implementation note)**: One unified precheck (`SKILL.md` supply-chain heuristics + entry `ScriptScanner`) lives in `skilllite-sandbox` as `run_skill_precheck` / `SkillPrecheckSummary`. It runs **before skill code executes for sandbox levels 1, 2, and 3** inside the CLI/`skilllite exec` runner (with `SKILLLITE_AUTO_APPROVE` / TTY consent when the report is non-empty). The agent chat path runs the same function for **all levels** via `EventSink`, then passes `SandboxRunOptions.skip_skill_precheck` so the runner does not repeat it (avoids non-TTY false blocks). MCP `run_skill` at Level 3 uses the same precheck and returns `scan_kind: l3_skill_precheck` (legacy JSON label) + `scan_id` when review is needed; at Level 1–2 the runner runs the precheck unless skipped. **`run_command`** additionally runs `scan_shell_command` (shell-oriented `ScriptScanner` stages: entropy, base64 heuristics, download/decode/execute chain) before spawning `sh -c`; findings require confirmation (`confirm_required`).
+
 ---
 
 ## Resource Limits <small>[Advanced]</small>
@@ -286,7 +288,7 @@ Under **Settings → Evolution**, in-app overrides let you set check interval, d
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `SKILLLITE_HIGH_RISK_CONFIRM` | string | `write_key_path,run_command,network` | Comma-separated: high-risk ops requiring confirmation. Note: reading .env, .key, .git/config is blocked entirely |
+| `SKILLLITE_HIGH_RISK_CONFIRM` | string | `write_key_path,run_command` | Comma-separated: high-risk ops requiring confirmation. **Default omits `network`** (network-enabled skills no longer prompt separately; add `network` to the list or use `all` to restore the extra network gate). Sensitive reads via `run_command` (e.g. `cat .env`) always require confirmation and are **not** skipped when `run_command` is omitted or set to `none`. **`none` does not bypass the `run_command` blocked (L0) tier**: machine-wide catastrophic patterns are rejected **before** spawn regardless of this variable (e.g. fork bomb, `rm -rf /`, `rm -rf /*`, `sudo rm -rf /`, `dd` to block devices, `mkfs.*`). Desktop **auto-approve** only applies to `risk_tier: low` on `confirmation_request` events. |
 
 ---
 

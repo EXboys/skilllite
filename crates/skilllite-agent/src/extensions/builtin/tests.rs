@@ -1059,10 +1059,42 @@ fn test_run_command_no_truncation_short() {
     assert_eq!(result, short);
 }
 
-// ─── run_command blocks sensitive file read ────────────────────────────────
+// ─── run_command: sensitive read requires confirmation (L1) ───────────────
 
 #[tokio::test]
-async fn test_run_command_blocks_cat_env() {
+async fn test_run_command_sensitive_cat_env_cancelled_when_denied() {
+    use super::run_command;
+    use crate::types::EventSink;
+
+    struct DenyConfirmSink;
+
+    impl EventSink for DenyConfirmSink {
+        fn on_text(&mut self, _text: &str) {}
+        fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+        fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+        fn on_confirmation_request(
+            &mut self,
+            _request: &crate::types::ConfirmationRequest,
+        ) -> bool {
+            false
+        }
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    std::fs::write(workspace.join(".env"), "API_KEY=sk-secret\n").unwrap();
+
+    let mut sink = DenyConfirmSink;
+    let args = serde_json::json!({ "command": "cat .env" });
+    let outcome = run_command::execute_run_command(&args, workspace, &mut sink)
+        .await
+        .unwrap();
+    assert!(!outcome.is_error);
+    assert!(outcome.content.contains("cancelled"));
+}
+
+#[tokio::test]
+async fn test_run_command_sensitive_cat_env_runs_when_approved() {
     use super::run_command;
     use crate::types::SilentEventSink;
 
@@ -1072,11 +1104,15 @@ async fn test_run_command_blocks_cat_env() {
 
     let mut sink = SilentEventSink;
     let args = serde_json::json!({ "command": "cat .env" });
-    let result = run_command::execute_run_command(&args, workspace, &mut sink).await;
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("Blocked"));
-    assert!(err.to_string().contains("sensitive file"));
+    let outcome = run_command::execute_run_command(&args, workspace, &mut sink)
+        .await
+        .unwrap();
+    assert!(!outcome.is_error);
+    assert!(
+        outcome.content.contains("redacted") || outcome.content.contains("[REDACTED]"),
+        "expected redaction in output, got: {}",
+        outcome.content
+    );
 }
 
 #[tokio::test]
@@ -1103,7 +1139,10 @@ async fn test_run_command_streams_output_and_returns_summary() {
         fn on_command_finished(&mut self, success: bool, exit_code: i32, duration_ms: u64) {
             self.finished.push((success, exit_code, duration_ms));
         }
-        fn on_confirmation_request(&mut self, _prompt: &str) -> bool {
+        fn on_confirmation_request(
+            &mut self,
+            _request: &crate::types::ConfirmationRequest,
+        ) -> bool {
             true
         }
     }
@@ -1234,7 +1273,10 @@ fn test_preview_server_emits_started_and_ready_events() {
         fn on_text(&mut self, _text: &str) {}
         fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
         fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
-        fn on_confirmation_request(&mut self, _prompt: &str) -> bool {
+        fn on_confirmation_request(
+            &mut self,
+            _request: &crate::types::ConfirmationRequest,
+        ) -> bool {
             true
         }
         fn on_preview_started(&mut self, path: &str, port: u16) {
@@ -1292,7 +1334,10 @@ async fn test_delegate_to_swarm_emits_failed_only_when_unconfigured() {
         fn on_text(&mut self, _text: &str) {}
         fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
         fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
-        fn on_confirmation_request(&mut self, _prompt: &str) -> bool {
+        fn on_confirmation_request(
+            &mut self,
+            _request: &crate::types::ConfirmationRequest,
+        ) -> bool {
             true
         }
         fn on_swarm_started(&mut self, description: &str) {

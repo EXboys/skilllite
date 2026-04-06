@@ -39,19 +39,28 @@ export function useChatEvents({
   useEffect(() => {
     let dead = false;
 
-    const unlistenConfirm = listen<{ prompt: string; session_key?: string }>(
-      "skilllite-confirmation-request",
-      (ev) => {
-        if (dead) return;
-        const sk = ev.payload.session_key;
-        if (sk == null || sk !== sessionKey) return;
-        const prompt = ev.payload.prompt ?? "";
-        setMessages((prev) => [
-          ...prev,
-          { id: crypto.randomUUID(), type: "confirmation", prompt },
-        ]);
-      }
-    );
+    const unlistenConfirm = listen<{
+      prompt: string;
+      risk_tier?: string;
+      session_key?: string;
+    }>("skilllite-confirmation-request", (ev) => {
+      if (dead) return;
+      const sk = ev.payload.session_key;
+      if (sk == null || sk !== sessionKey) return;
+      const prompt = ev.payload.prompt ?? "";
+      const raw = ev.payload.risk_tier;
+      const riskTier: "low" | "confirm_required" | undefined =
+        raw === "low" || raw === "confirm_required" ? raw : undefined;
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          type: "confirmation",
+          prompt,
+          ...(riskTier != null ? { riskTier } : {}),
+        },
+      ]);
+    });
 
     const unlistenClarify = listen<{
       reason: string;

@@ -2,6 +2,7 @@
 
 use serde_json::{json, Value};
 use std::path::Path;
+use std::time::Instant;
 
 use crate::Error;
 use crate::Result;
@@ -10,9 +11,12 @@ use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::metadata;
 use skilllite_core::skill::trust::TrustDecision;
 use skilllite_sandbox::runner::SandboxLevel;
-use skilllite_sandbox::security::types::SecuritySeverity;
+use skilllite_sandbox::security::types::{
+    ScanResult, SecurityIssue, SecurityIssueType, SecuritySeverity,
+};
+use skilllite_sandbox::security::{run_skill_precheck, SKILL_PRECHECK_CRITICAL_BLOCKED};
 
-use super::scan::{format_scan_response, perform_scan};
+use super::scan::format_l3_skill_precheck_response;
 use super::state::{ConfirmedSkill, McpServer};
 
 /// Handle the `initialize` request.
@@ -290,14 +294,7 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
                     "Execution blocked: Skill trust tier is Deny. Reinstall from trusted source or verify integrity.",
                 ));
             }
-            TrustDecision::RequireConfirm => {
-                if !confirmed {
-                    return Err(Error::msg(format!(
-                        "Execution blocked: Skill requires confirmation (trust tier: {:?}). Pass confirmed=true to run.",
-                        integrity.trust_tier
-                    )));
-                }
-            }
+            TrustDecision::RequireConfirm => {}
             TrustDecision::Allow => {}
         }
     } else if matches!(
@@ -314,11 +311,11 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
     let meta = meta_early;
     let sandbox_level = SandboxLevel::from_env_or_cli(None);
 
-    // Security check for Level 3
+    // Level 3: unified SKILL.md + entry script precheck (same as CLI runner / agent policy).
+    // MCP is non-interactive: never rely on runner stdin; gate here with scan_id + skip runner precheck.
     if sandbox_level == SandboxLevel::Level3 {
         let code_hash = McpServer::compute_skill_hash(&skill_dir, &meta.entry_point);
 
-        // Check session-level confirmation cache
         let already_confirmed = server
             .confirmed_skills
             .get(skill_name)
@@ -326,107 +323,88 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
 
         if !already_confirmed {
             if confirmed {
-                // Verify scan_id
                 let sid = scan_id.ok_or_else(|| {
                     Error::msg(
-                        "scan_id is required when confirmed=true. The skill security scan must be reviewed first.",
+                        "scan_id is required when confirmed=true. Run run_skill once without confirmed to obtain a fresh Level-3 skill precheck.",
                     )
                 })?;
 
-                let issues_count = {
-                    let cached = server.scan_cache.get(sid).ok_or_else(|| {
-                        Error::msg(
-                            "Invalid or expired scan_id. Please review the security report and try again.",
-                        )
-                    })?;
-                    let has_critical = cached
-                        .scan_result
-                        .issues
-                        .iter()
-                        .any(|i| matches!(i.severity, SecuritySeverity::Critical));
-                    if has_critical {
-                        return Err(Error::msg(
-                            "Execution blocked: Critical security issues cannot be overridden.",
-                        ));
-                    }
-                    cached.scan_result.issues.len()
-                };
+                let cached = server.scan_cache.remove(sid).ok_or_else(|| {
+                    Error::msg(
+                        "Invalid or expired scan_id. Run run_skill again to refresh the Level-3 skill precheck.",
+                    )
+                })?;
 
-                // One-time consumption: remove scan_id to prevent replay (F4)
-                server.scan_cache.remove(sid);
+                if !cached.is_l3_skill_precheck {
+                    return Err(Error::msg(
+                        "This scan_id is not a Level-3 skill precheck token. Call run_skill without confirmed to run the unified SKILL.md + entry scan.",
+                    ));
+                }
 
-                // Audit: scan approved
+                let current_hash = McpServer::compute_skill_hash(&skill_dir, &meta.entry_point);
+                if cached.code_hash != current_hash {
+                    return Err(Error::msg(
+                        "Stale scan_id: skill content changed since this precheck was issued.",
+                    ));
+                }
+
+                if cached.l3_script_critical {
+                    return Err(Error::msg(SKILL_PRECHECK_CRITICAL_BLOCKED.to_string()));
+                }
+
                 skilllite_core::observability::audit_confirmation_response(
                     skill_name, true, "user",
                 );
-                skilllite_core::observability::security_scan_approved(
-                    skill_name,
-                    sid,
-                    issues_count,
-                );
+                skilllite_core::observability::security_scan_approved(skill_name, sid, 1);
 
-                // Cache confirmation
                 server
                     .confirmed_skills
                     .insert(skill_name.to_string(), ConfirmedSkill { code_hash });
             } else {
-                // Perform security scan on entry point
-                let entry_path = if !meta.entry_point.is_empty() {
-                    skill_dir.join(&meta.entry_point)
-                } else {
-                    // Multi-script or no entry point — scan SKILL.md content as proxy
-                    skill_dir.join("SKILL.md")
-                };
+                let summary =
+                    run_skill_precheck(&skill_dir, &meta.entry_point, meta.network.enabled);
 
-                if entry_path.exists() {
-                    let code = std::fs::read_to_string(&entry_path).unwrap_or_default();
-                    let language = if entry_path.extension().and_then(|e| e.to_str()) == Some("py")
-                    {
-                        "python"
-                    } else if entry_path.extension().and_then(|e| e.to_str()) == Some("js") {
-                        "javascript"
-                    } else {
-                        "bash"
+                if let Some(report) = summary.review_text {
+                    let scan_token =
+                        McpServer::generate_scan_id(&format!("l3sk:{}:{}", skill_name, code_hash));
+                    let synthetic = ScanResult {
+                        is_safe: false,
+                        issues: vec![SecurityIssue {
+                            rule_id: "l3-skill-precheck".to_string(),
+                            severity: SecuritySeverity::High,
+                            issue_type: SecurityIssueType::SystemAccess,
+                            line_number: 0,
+                            description: "Level-3 skill precheck: see report in this response."
+                                .to_string(),
+                            code_snippet: String::new(),
+                        }],
                     };
-
-                    let (scan_result, new_scan_id, new_code_hash) =
-                        perform_scan(server, language, &code)?;
-
-                    let has_high = scan_result.issues.iter().any(|i| {
-                        matches!(
-                            i.severity,
-                            SecuritySeverity::High | SecuritySeverity::Critical
-                        )
-                    });
-
-                    if has_high {
-                        // Audit: confirmation requested
-                        skilllite_core::observability::audit_confirmation_requested(
-                            skill_name,
-                            &new_code_hash,
-                            scan_result.issues.len(),
-                            "High",
-                        );
-                        skilllite_core::observability::security_scan_high(
-                            skill_name,
-                            "High",
-                            &serde_json::json!(scan_result
-                                .issues
-                                .iter()
-                                .map(|i| {
-                                    serde_json::json!({
-                                        "rule": i.rule_id,
-                                        "severity": format!("{:?}", i.severity),
-                                        "description": i.description,
-                                    })
-                                })
-                                .collect::<Vec<_>>()),
-                        );
-                        return format_scan_response(&scan_result, &new_scan_id, &new_code_hash);
-                    }
+                    server.scan_cache.insert(
+                        scan_token.clone(),
+                        super::state::CachedScan {
+                            scan_result: synthetic,
+                            code_hash: code_hash.clone(),
+                            language: "l3_skill_precheck".to_string(),
+                            code: report.clone(),
+                            created_at: Instant::now(),
+                            is_l3_skill_precheck: true,
+                            l3_script_critical: summary.has_critical_script_issue,
+                        },
+                    );
+                    skilllite_core::observability::audit_confirmation_requested(
+                        skill_name,
+                        &code_hash,
+                        1,
+                        "SKILL_STATIC_PRECHECK",
+                    );
+                    return format_l3_skill_precheck_response(
+                        &report,
+                        summary.has_critical_script_issue,
+                        &scan_token,
+                        &code_hash,
+                    );
                 }
 
-                // No high-severity issues — cache and proceed
                 server
                     .confirmed_skills
                     .insert(skill_name.to_string(), ConfirmedSkill { code_hash });
@@ -444,6 +422,13 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
              Use get_skill_info to see available scripts.",
             skill_name
         ));
+    }
+
+    if block && matches!(integrity.trust_decision, TrustDecision::RequireConfirm) && !confirmed {
+        return Err(Error::msg(format!(
+            "Execution blocked: Skill requires confirmation (trust tier: {:?}). Pass confirmed=true to run.",
+            integrity.trust_tier
+        )));
     }
 
     // Setup environment
@@ -468,13 +453,16 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         network_outbound: meta.network.outbound.clone(),
         uses_playwright: meta.uses_playwright(),
     };
-    let output = skilllite_sandbox::runner::run_in_sandbox_with_limits_and_level(
+    let output = skilllite_sandbox::runner::run_in_sandbox_with_limits_and_level_opt(
         &skill_dir,
         &runtime,
         &config,
         &input_json,
         limits,
         sandbox_level,
+        skilllite_sandbox::runner::SandboxRunOptions {
+            skip_skill_precheck: matches!(sandbox_level, SandboxLevel::Level3),
+        },
     )?;
 
     Ok(output)

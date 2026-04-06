@@ -20,6 +20,32 @@ pub enum ClarificationResponse {
     Stop,
 }
 
+/// Machine-readable severity for confirmation gating (e.g. desktop auto-approve only `Low`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RiskTier {
+    /// Safe to auto-approve when the user enabled auto-confirm (e.g. generic `run_command`).
+    Low,
+    /// Must not be auto-approved; user must explicitly approve.
+    ConfirmRequired,
+}
+
+/// Structured confirmation request (prefer this over parsing `prompt` text in UIs).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ConfirmationRequest {
+    pub prompt: String,
+    pub risk_tier: RiskTier,
+}
+
+impl ConfirmationRequest {
+    pub fn new(prompt: impl Into<String>, risk_tier: RiskTier) -> Self {
+        Self {
+            prompt: prompt.into(),
+            risk_tier,
+        }
+    }
+}
+
 /// Event sink trait for different output targets (CLI, RPC, SDK).
 pub trait EventSink: Send {
     /// Called at the start of each conversation turn (before any other events).
@@ -54,9 +80,9 @@ pub trait EventSink: Send {
     fn on_swarm_finished(&mut self, _summary: &str) {}
     /// Called when swarm delegation fails or falls back.
     fn on_swarm_failed(&mut self, _message: &str) {}
-    /// Called when the agent needs user confirmation (L3 security).
+    /// Called when the agent needs user confirmation (tools, L3 security, etc.).
     /// Returns true if the user approves.
-    fn on_confirmation_request(&mut self, prompt: &str) -> bool;
+    fn on_confirmation_request(&mut self, request: &ConfirmationRequest) -> bool;
     /// Called for streaming text chunks.
     fn on_text_chunk(&mut self, _chunk: &str) {}
     /// Called when a task plan is generated. (Phase 2)
@@ -82,7 +108,7 @@ impl EventSink for SilentEventSink {
     fn on_text(&mut self, _text: &str) {}
     fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
     fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
-    fn on_confirmation_request(&mut self, _prompt: &str) -> bool {
+    fn on_confirmation_request(&mut self, _request: &ConfirmationRequest) -> bool {
         true // Auto-approve for silent operations (memory flush may rarely need run_command)
     }
 }
@@ -300,9 +326,9 @@ impl EventSink for TerminalEventSink {
         self.msg(&format!("  ✗ swarm failed: {}", brief));
     }
 
-    fn on_confirmation_request(&mut self, prompt: &str) -> bool {
+    fn on_confirmation_request(&mut self, request: &ConfirmationRequest) -> bool {
         use std::io::Write;
-        self.msg_opt(prompt);
+        self.msg_opt(&request.prompt);
         eprint!("确认执行? [y/N] ");
         let _ = std::io::stderr().flush();
         let mut input = String::new();
@@ -469,9 +495,9 @@ impl EventSink for RunModeEventSink {
     fn on_swarm_failed(&mut self, message: &str) {
         self.inner.on_swarm_failed(message);
     }
-    fn on_confirmation_request(&mut self, prompt: &str) -> bool {
-        if !prompt.is_empty() {
-            for line in prompt.lines() {
+    fn on_confirmation_request(&mut self, request: &ConfirmationRequest) -> bool {
+        if !request.prompt.is_empty() {
+            for line in request.prompt.lines() {
                 eprintln!("{}", line);
             }
         }

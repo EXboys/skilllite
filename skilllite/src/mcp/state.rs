@@ -16,6 +16,10 @@ pub(super) struct CachedScan {
     #[allow(dead_code)]
     pub code: String,
     pub created_at: Instant,
+    /// `run_skill` Level-3 gate: unified SKILL.md + entry [`ScriptScanner`] precheck.
+    pub is_l3_skill_precheck: bool,
+    /// Entry script contained Critical-severity scanner issues (MCP cannot override).
+    pub l3_script_critical: bool,
 }
 
 /// Session-level confirmation cache: skill_name → code_hash.

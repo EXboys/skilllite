@@ -131,7 +131,7 @@ export const zhMessages: Record<string, string> = {
   "chat.clearedNotice": "已清空对话",
   "chat.autoApproveToolConfirmations": "自动允许执行确认",
   "chat.autoApproveToolConfirmationsHint":
-    "开启后，工具执行前的「执行确认」将自动选择「允许」。请在可信环境中使用。",
+    "开启后，仅对低风险确认（如常规 run_command）自动点「允许」；高风险仍会要求手动确认。请在可信环境中使用。",
   "chat.timelineNeedsAction": "待操作",
   "chat.timelineNeedsActionHint": "请展开本条，点击允许/拒绝或选择澄清选项。",
   "chat.clarifyTitle": "需要你的确认",

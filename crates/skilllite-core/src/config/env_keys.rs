@@ -206,8 +206,8 @@ pub mod evolution {
 
 /// A11: 高危工具确认 — 可配置哪些操作需发消息确认
 pub mod high_risk {
-    /// SKILLLITE_HIGH_RISK_CONFIRM: 逗号分隔，如 "write_key_path,run_command,network"。
-    /// 可选值: write_key_path, run_command, network。默认 "write_key_path,run_command,network"。
+    /// SKILLLITE_HIGH_RISK_CONFIRM: 逗号分隔，如 "write_key_path,run_command"；需要网络 skill 单独确认时加上 `network`。
+    /// 可选值: write_key_path, run_command, network。默认 "write_key_path,run_command"（不含 network）。`all` 表示三项全开。
     /// "none" 表示全部跳过确认；"all" 等同默认。
     pub const SKILLLITE_HIGH_RISK_CONFIRM: &str = "SKILLLITE_HIGH_RISK_CONFIRM";
 }

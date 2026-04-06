@@ -10,7 +10,7 @@ use super::super::{
     get_path_arg, is_key_write_path, is_sensitive_write_path, resolve_within_workspace_or_output,
 };
 use crate::high_risk;
-use crate::types::EventSink;
+use crate::types::{ConfirmationRequest, EventSink, RiskTier};
 
 pub(super) fn execute_search_replace(
     args: &Value,
@@ -61,7 +61,9 @@ pub(super) fn execute_insert_lines(
                 path_str,
                 args.get("line").and_then(|v| v.as_u64()).unwrap_or(0)
             );
-            if !sink.on_confirmation_request(&msg) {
+            if !sink
+                .on_confirmation_request(&ConfirmationRequest::new(msg, RiskTier::ConfirmRequired))
+            {
                 return Ok("User cancelled: edit to key path not confirmed".to_string());
             }
         }
@@ -177,7 +179,9 @@ fn execute_replace_like(
                 "⚠️ 关键路径编辑确认\n\n路径: {}\n操作: search_replace\n替换预览: {}{}\n\n确认执行?",
                 path_str, preview, suffix
             );
-            if !sink.on_confirmation_request(&msg) {
+            if !sink
+                .on_confirmation_request(&ConfirmationRequest::new(msg, RiskTier::ConfirmRequired))
+            {
                 return Ok("User cancelled: edit to key path not confirmed".to_string());
             }
         }

@@ -32,8 +32,8 @@ pub use env_config::{
     LongTextStrategy,
 };
 pub use event_sink::{
-    ClarificationRequest, ClarificationResponse, EventSink, RunModeEventSink, SilentEventSink,
-    TerminalEventSink,
+    ClarificationRequest, ClarificationResponse, ConfirmationRequest, EventSink, RiskTier,
+    RunModeEventSink, SilentEventSink, TerminalEventSink,
 };
 pub use feedback::{
     classify_user_feedback, ExecutionFeedback, FeedbackSignal, SkillAction, TaskCompletionType,

@@ -754,7 +754,7 @@ SKILLLITE_NO_SANDBOX=false   # 禁用沙箱
 
 - **Bash 验证器** (`bash_validator.rs`)：检测危险 bash 命令
 - **文件移动保护** (`move_protection.rs`)：防止恶意文件覆盖关键路径
-- **用户授权**：Level 3 发现 Critical/High 级别问题时，请求用户确认后才执行
+- **用户授权**：Level 3 先做统一预检（`SKILL.md` + 入口脚本）；若预检生成需审阅的报告（含中等脚本告警、SKILL.md 告警或扫描失败提示），CLI 由 runner 在 TTY 上征求同意，Agent/MCP 由宿主侧确认；`SKILLLITE_AUTO_APPROVE` 作用于 CLI 侧同一门控。
 
 ---
 

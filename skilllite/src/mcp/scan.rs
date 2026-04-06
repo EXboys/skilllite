@@ -100,6 +100,8 @@ pub(super) fn perform_scan(
                     language: language.to_string(),
                     code: code.to_string(),
                     created_at: Instant::now(),
+                    is_l3_skill_precheck: false,
+                    l3_script_critical: false,
                 },
             );
             return Ok((err_result, scan_id, code_hash));
@@ -115,6 +117,8 @@ pub(super) fn perform_scan(
             language: language.to_string(),
             code: code.to_string(),
             created_at: Instant::now(),
+            is_l3_skill_precheck: false,
+            l3_script_critical: false,
         },
     );
 
@@ -202,6 +206,43 @@ pub(super) fn format_scan_response(
         "has_high_severity": has_high_severity,
         "has_critical": has_critical,
         "requires_confirmation": has_high_severity && !has_critical,
+    });
+
+    output.push_str(&format!(
+        "\n```json\n{}\n```",
+        serde_json::to_string_pretty(&details)?
+    ));
+
+    Ok(output)
+}
+
+/// MCP response for Level-3 `run_skill` unified precheck (SKILL.md + entry script).
+pub(super) fn format_l3_skill_precheck_response(
+    report: &str,
+    has_critical_script: bool,
+    scan_id: &str,
+    code_hash: &str,
+) -> Result<String> {
+    let mut output = String::new();
+    output.push_str("📋 Level-3 skill precheck (SKILL.md + entry script)\n\n");
+    output.push_str(report);
+    output.push('\n');
+    if has_critical_script {
+        output.push_str(
+            "\n🚫 BLOCKED: Critical issues in the entry script. Execution cannot be approved.\n",
+        );
+    } else {
+        output.push_str(
+            "\n⚠️ User confirmation is required. Call run_skill again with confirmed=true and this scan_id.\n",
+        );
+    }
+
+    let details = json!({
+        "scan_id": scan_id,
+        "code_hash": code_hash,
+        "scan_kind": "l3_skill_precheck",
+        "has_critical": has_critical_script,
+        "requires_confirmation": !has_critical_script,
     });
 
     output.push_str(&format!(

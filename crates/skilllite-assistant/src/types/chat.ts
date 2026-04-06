@@ -40,6 +40,8 @@ export type ChatMessage =
       id: string;
       type: "confirmation";
       prompt: string;
+      /** From agent `confirmation_request.risk_tier`; omit/unknown => treat as confirm_required */
+      riskTier?: "low" | "confirm_required";
       resolved?: boolean;
       approved?: boolean;
     }

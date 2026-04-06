@@ -241,10 +241,14 @@ export default function ChatView() {
             const u = e.ui as Record<string, unknown>;
             const kind = u.kind;
             if (kind === "confirmation") {
+              const rt = u.risk_tier;
+              const riskTier: "low" | "confirm_required" | undefined =
+                rt === "low" || rt === "confirm_required" ? rt : undefined;
               msgs.push({
                 id: e.id,
                 type: "confirmation",
                 prompt: String(u.prompt ?? ""),
+                ...(riskTier != null ? { riskTier } : {}),
                 resolved: Boolean(u.resolved ?? true),
                 approved: u.approved === true,
               });
@@ -499,7 +503,9 @@ export default function ChatView() {
     if (!settings.autoApproveToolConfirmations) return;
     const pending = messages.find(
       (m): m is Extract<ChatMessage, { type: "confirmation" }> =>
-        m.type === "confirmation" && !m.resolved
+        m.type === "confirmation" &&
+        !m.resolved &&
+        m.riskTier === "low"
     );
     if (!pending) return;
     if (autoApproveInFlightRef.current === pending.id) return;
