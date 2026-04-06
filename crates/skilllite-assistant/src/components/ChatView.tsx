@@ -123,6 +123,11 @@ export default function ChatView() {
   const [followupSuggestions, setFollowupSuggestions] = useState<string[] | null>(
     null
   );
+  const [followupPanelDismissed, setFollowupPanelDismissed] = useState(false);
+
+  useEffect(() => {
+    setFollowupPanelDismissed(false);
+  }, [followupSuggestions]);
 
   const requestFollowupSuggestions = useCallback(async (transcript: string) => {
     const text = transcript.trim();
@@ -1059,11 +1064,34 @@ export default function ChatView() {
         onEvolutionAction={handleEvolutionAction}
       />
 
-      {followupSuggestions && followupSuggestions.length > 0 && (
+      {followupSuggestions &&
+        followupSuggestions.length > 0 &&
+        !followupPanelDismissed && (
         <div className="mx-3 mt-2 mb-1 rounded-xl border border-border dark:border-border-dark bg-white dark:bg-paper-dark p-3 shadow-sm shrink-0">
-          <p className="text-xs font-medium text-ink-mute dark:text-ink-dark-mute">
-            {t("chat.followupTitle")}
-          </p>
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-xs font-medium text-ink-mute dark:text-ink-dark-mute">
+              {t("chat.followupTitle")}
+            </p>
+            <button
+              type="button"
+              onClick={() => setFollowupPanelDismissed(true)}
+              className="shrink-0 -mt-0.5 -mr-0.5 rounded-md p-1 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark"
+              aria-label={t("chat.followupClose")}
+              title={t("chat.followupClose")}
+            >
+              <svg
+                className="w-4 h-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                aria-hidden
+              >
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
           <div className="mt-2 flex flex-col gap-2">
             {followupSuggestions.map((q, i) => (
               <button
@@ -1077,7 +1105,7 @@ export default function ChatView() {
             ))}
           </div>
         </div>
-      )}
+        )}
 
       {error && (
         <div className="px-4 py-2.5 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 text-sm border-t border-red-100 dark:border-red-900/40">
