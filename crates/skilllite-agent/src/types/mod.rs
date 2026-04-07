@@ -25,11 +25,11 @@ pub use chat::{
 pub use config::AgentConfig;
 pub use env_config::{
     get_chunk_size, get_compact_planning, get_compaction_keep_recent, get_compaction_threshold,
-    get_extract_top_k, get_head_chunks, get_long_text_strategy, get_map_model,
-    get_max_output_chars, get_max_tokens, get_memory_flush_enabled, get_memory_flush_threshold,
-    get_output_dir, get_read_file_tool_result_max_chars, get_summarize_threshold, get_tail_chunks,
-    get_tool_result_max_chars, get_tool_result_recovery_max_chars, get_user_input_max_chars,
-    LongTextStrategy,
+    get_context_soft_limit_chars, get_extract_top_k, get_head_chunks, get_long_text_strategy,
+    get_map_model, get_max_output_chars, get_max_tokens, get_memory_flush_enabled,
+    get_memory_flush_threshold, get_output_dir, get_read_file_tool_result_max_chars,
+    get_summarize_threshold, get_tail_chunks, get_tool_result_max_chars,
+    get_tool_result_recovery_max_chars, get_user_input_max_chars, LongTextStrategy,
 };
 pub use event_sink::{
     ClarificationRequest, ClarificationResponse, ConfirmationRequest, EventSink, RiskTier,

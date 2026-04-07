@@ -119,6 +119,16 @@ pub fn get_tool_result_recovery_max_chars() -> usize {
     env_usize("SKILLLITE_TOOL_RESULT_RECOVERY_MAX_CHARS", 3000)
 }
 
+/// Soft limit on estimated conversation payload (chars) before the main agent LLM call.
+/// When exceeded, the session shrinks tool results and may run compaction (same path as
+/// `/compact`) even if message count is below `SKILLLITE_COMPACTION_THRESHOLD`.
+///
+/// `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS`. Default `320000` (~80k tokens at ~4 chars/token).
+/// Set to `0` to disable pre-request shrinking.
+pub fn get_context_soft_limit_chars() -> usize {
+    env_usize("SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS", 320_000)
+}
+
 /// Output directory override. `SKILLLITE_OUTPUT_DIR`.
 pub fn get_output_dir() -> Option<String> {
     skilllite_core::config::PathsConfig::from_env().output_dir

@@ -18,7 +18,7 @@ use skilllite_core::config::env_keys::evolution as evo_env_keys;
 use super::agent_loop;
 use super::evolution;
 use super::extensions;
-use super::llm::LlmClient;
+use super::llm::{self, LlmClient};
 use super::long_text;
 use super::skills::LoadedSkill;
 use super::types::*;
@@ -45,6 +45,9 @@ pub struct ChatSession {
     /// A9: periodic evolution timer (every N seconds; not reset per user turn).
     periodic_evolution_handle: Option<tokio::task::JoinHandle<()>>,
     transcript_cache: TranscriptCache,
+    /// Run-scoped artifact store. Defaults to `LocalDirArtifactStore` under `data_root`.
+    /// Users may inject a custom implementation (S3, DB, etc.) via `with_artifact_store`.
+    artifact_store: std::sync::Arc<dyn skilllite_core::artifact_store::ArtifactStore>,
 }
 
 #[derive(Default)]
@@ -74,6 +77,10 @@ impl ChatSession {
     fn new_inner(config: AgentConfig, session_key: &str, skills: Vec<LoadedSkill>) -> Self {
         let data_root = skilllite_executor::chat_root();
         skilllite_evolution::seed::ensure_seed_data(&data_root);
+        let artifact_store: std::sync::Arc<dyn skilllite_core::artifact_store::ArtifactStore> =
+            std::sync::Arc::new(crate::artifact_store::LocalDirArtifactStore::new(
+                &data_root,
+            ));
         Self {
             config,
             session_key: session_key.to_string(),
@@ -82,7 +89,24 @@ impl ChatSession {
             skills,
             periodic_evolution_handle: None,
             transcript_cache: TranscriptCache::default(),
+            artifact_store,
         }
+    }
+
+    /// Replace the default artifact store with a custom implementation.
+    pub fn with_artifact_store(
+        mut self,
+        store: std::sync::Arc<dyn skilllite_core::artifact_store::ArtifactStore>,
+    ) -> Self {
+        self.artifact_store = store;
+        self
+    }
+
+    /// Access the artifact store (e.g. for tool handlers or future subprocess wiring).
+    pub fn artifact_store(
+        &self,
+    ) -> &std::sync::Arc<dyn skilllite_core::artifact_store::ArtifactStore> {
+        &self.artifact_store
     }
 
     /// Path to today's append-only transcript file for this session (same file as `ensure_session`).
@@ -353,6 +377,13 @@ impl ChatSession {
             long_text::maybe_process_user_input(&client, &self.config.model, user_message).await;
 
         let imgs_slice = turn_images.as_deref().filter(|s| !s.is_empty());
+        let user_payload_chars = effective_user_message.len()
+            + imgs_slice
+                .map(|imgs| imgs.iter().map(|im| im.data_base64.len()).sum::<usize>())
+                .unwrap_or(0);
+        self.apply_pre_request_context_budget(&mut history, user_payload_chars)
+            .await?;
+
         self.append_user_message_with_images(&effective_user_message, imgs_slice)?;
 
         event_sink.on_turn_start();
@@ -571,6 +602,58 @@ impl ChatSession {
 
         skilllite_executor::plan::append_plan(&plans_dir, &self.session_key, &plan_json)?;
         tracing::info!("Task plan appended to plans/{}", self.session_key);
+        Ok(())
+    }
+
+    /// If estimated history + this turn's user payload exceeds `get_context_soft_limit_chars()`
+    /// (`SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS`), shrink tool outputs and optionally run LLM compaction
+    /// so the next request is less likely to hit provider input limits.
+    ///
+    /// Disabled when `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS=0`.
+    async fn apply_pre_request_context_budget(
+        &mut self,
+        history: &mut Vec<ChatMessage>,
+        user_payload_chars: usize,
+    ) -> Result<()> {
+        let soft = get_context_soft_limit_chars();
+        if soft == 0 {
+            return Ok(());
+        }
+        let mut budget = llm::estimate_messages_chars(history) + user_payload_chars;
+        if budget <= soft {
+            return Ok(());
+        }
+        tracing::warn!(
+            estimated_chars = budget,
+            soft_limit = soft,
+            history_msgs = history.len(),
+            "Pre-request context over soft limit; shrinking before LLM call"
+        );
+        let recovery_cap = get_tool_result_recovery_max_chars();
+        llm::truncate_tool_messages(history, recovery_cap);
+        budget = llm::estimate_messages_chars(history) + user_payload_chars;
+        if budget <= soft {
+            return Ok(());
+        }
+        let keep = get_compaction_keep_recent();
+        if history.len() > keep {
+            tracing::warn!(
+                estimated_chars = budget,
+                "Still over soft limit after tool shrink; running compaction"
+            );
+            let taken = std::mem::take(history);
+            *history = self.compact_history_inner(taken, 0).await?;
+            budget = llm::estimate_messages_chars(history) + user_payload_chars;
+        }
+        if budget > soft {
+            let emergency = recovery_cap.max(500) / 2;
+            tracing::warn!(
+                estimated_chars = budget,
+                emergency_cap = emergency,
+                "Applying emergency tool truncation to stay under soft limit"
+            );
+            llm::truncate_tool_messages(history, emergency);
+        }
         Ok(())
     }
 

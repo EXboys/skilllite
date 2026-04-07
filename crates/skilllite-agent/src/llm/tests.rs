@@ -213,6 +213,43 @@ fn test_is_context_overflow_error() {
     assert!(!is_context_overflow_error("invalid api key"));
 }
 
+#[test]
+fn test_estimate_messages_chars_sums_content_and_tool_calls() {
+    use crate::types::UserImageAttachment;
+    let msgs = vec![
+        ChatMessage::user("hello"),
+        ChatMessage {
+            role: "assistant".to_string(),
+            content: None,
+            images: None,
+            tool_calls: Some(vec![ToolCall {
+                id: "call-1".to_string(),
+                call_type: "function".to_string(),
+                function: FunctionCall {
+                    name: "read_file".to_string(),
+                    arguments: r#"{"path":"a"}"#.to_string(),
+                },
+            }]),
+            tool_call_id: None,
+            name: None,
+        },
+        ChatMessage {
+            role: "user".to_string(),
+            content: Some("x".to_string()),
+            images: Some(vec![UserImageAttachment {
+                media_type: "image/png".to_string(),
+                data_base64: "abcd".to_string(),
+            }]),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        },
+    ];
+    let n = estimate_messages_chars(&msgs);
+    // "hello" + tool id/type/name/args + "x" + base64
+    assert_eq!(n, 5 + (6 + 8 + 9 + 12) + (1 + 4));
+}
+
 // ─── format_api_error tests ─────────────────────────────────────────────────
 
 #[test]

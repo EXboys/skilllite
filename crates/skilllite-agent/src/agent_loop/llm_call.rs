@@ -67,7 +67,12 @@ pub(super) async fn call_llm_with_recovery(
                     );
                     return Err(e);
                 }
-                let rc = get_tool_result_recovery_max_chars();
+                let base = get_tool_result_recovery_max_chars();
+                let rc = match *context_overflow_retries {
+                    1 => base,
+                    2 => base.max(400) / 2,
+                    _ => base.max(400) / 4,
+                };
                 tracing::warn!(
                     "Context overflow (attempt {}/{}), truncating to {} chars",
                     *context_overflow_retries,

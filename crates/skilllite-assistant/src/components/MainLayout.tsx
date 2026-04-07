@@ -50,8 +50,6 @@ export default function MainLayout() {
   }, []);
   const { settings, setSettings } = useSettingsStore();
   const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
-  const sessions = useSessionStore((s) => s.sessions);
-  const renameSession = useSessionStore((s) => s.renameSession);
   const leftPanelCollapsed = settings.sessionPanelCollapsed ?? false;
   const setLeftPanelCollapsed = (v: boolean) => setSettings({ sessionPanelCollapsed: v });
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
@@ -66,36 +64,6 @@ export default function MainLayout() {
   const [liveIdeChatW, setLiveIdeChatW] = useState<number | null>(null);
   const { refreshRecentData } = useRecentData();
   const showOnboarding = settings.onboardingCompleted === false;
-
-  const currentSession = sessions.find(
-    (s) => s.session_key === currentSessionKey
-  );
-  const currentSessionName =
-    currentSession?.display_name ??
-    (currentSessionKey === "default" ? t("session.defaultDisplayName") : currentSessionKey);
-
-  const [titleEditing, setTitleEditing] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(currentSessionName);
-  const titleInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!titleEditing) setTitleDraft(currentSessionName);
-  }, [currentSessionName, titleEditing]);
-
-  useEffect(() => {
-    if (titleEditing && titleInputRef.current) {
-      titleInputRef.current.focus();
-      titleInputRef.current.select();
-    }
-  }, [titleEditing]);
-
-  const commitSessionTitle = useCallback(async () => {
-    const t = titleDraft.trim();
-    if (t && t !== currentSessionName) {
-      await renameSession(currentSessionKey, t);
-    }
-    setTitleEditing(false);
-  }, [titleDraft, currentSessionName, currentSessionKey, renameSession]);
 
   useEffect(() => {
     refreshRecentData();
@@ -114,14 +82,16 @@ export default function MainLayout() {
     setSettings({ ideLayout: true, sessionPanelCollapsed: false });
   }, [pendingIdeFile, setSettings]);
 
-  const toggleIdeLayout = useCallback(() => {
-    const next = !ideLayout;
-    setSettings(
-      next
-        ? { ideLayout: true, sessionPanelCollapsed: false }
-        : { ideLayout: false }
-    );
-  }, [ideLayout, setSettings]);
+  const setMainLayoutMode = useCallback(
+    (mode: "chat" | "ide") => {
+      if (mode === "ide") {
+        setSettings({ ideLayout: true, sessionPanelCollapsed: false });
+      } else {
+        setSettings({ ideLayout: false });
+      }
+    },
+    [setSettings]
+  );
 
   const ideSidebarW =
     liveIdeSidebarW ?? settings.ideSidebarWidthPx ?? IDE_DEFAULT_SIDEBAR_PX;
@@ -163,7 +133,7 @@ export default function MainLayout() {
     <div className="flex flex-col h-screen bg-surface dark:bg-surface-dark">
       {/* Top bar */}
       <header className="flex items-center justify-between h-12 px-4 border-b border-border dark:border-border-dark bg-white dark:bg-paper-dark shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <button
             type="button"
             onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
@@ -206,50 +176,45 @@ export default function MainLayout() {
           <h1 className="text-base font-semibold tracking-tight text-ink dark:text-ink-dark shrink-0">
             SkillLite
           </h1>
-          {titleEditing ? (
-            <input
-              ref={titleInputRef}
-              type="text"
-              value={titleDraft}
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={() => void commitSessionTitle()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void commitSessionTitle();
-                if (e.key === "Escape") {
-                  setTitleDraft(currentSessionName);
-                  setTitleEditing(false);
-                }
-              }}
-              className="text-sm text-ink dark:text-ink-dark min-w-[8rem] max-w-[min(280px,40vw)] px-1 py-0.5 rounded border border-accent/40 bg-white dark:bg-paper-dark outline-none focus:ring-1 focus:ring-accent"
-              aria-label={t("main.sessionTitleAria")}
-            />
-          ) : (
+          <div
+            className="flex shrink-0 rounded-lg border border-border dark:border-border-dark bg-ink/[0.04] dark:bg-white/[0.06] p-0.5 gap-0.5"
+            role="tablist"
+            aria-label={t("main.modeSwitchAria")}
+          >
             <button
               type="button"
-              onClick={() => setTitleEditing(true)}
-              className="text-sm text-ink-mute dark:text-ink-dark-mute truncate text-left max-w-[min(280px,40vw)] hover:text-ink dark:hover:text-ink-dark rounded px-1 -mx-1 py-0.5 hover:bg-ink/5 dark:hover:bg-white/5 transition-colors"
-              title={t("main.editSessionTitle")}
+              role="tab"
+              aria-selected={!ideLayout}
+              tabIndex={!ideLayout ? 0 : -1}
+              onClick={() => setMainLayoutMode("chat")}
+              className={`px-2.5 py-1 min-h-[1.75rem] text-sm font-medium rounded-md transition-colors ${
+                !ideLayout
+                  ? "bg-white dark:bg-paper-dark text-accent shadow-sm ring-1 ring-black/[0.06] dark:ring-white/10"
+                  : "text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
+              }`}
+              title={t("main.modeChatHint")}
             >
-              — {currentSessionName}
+              {t("main.modeChat")}
             </button>
-          )}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={ideLayout}
+              tabIndex={ideLayout ? 0 : -1}
+              onClick={() => setMainLayoutMode("ide")}
+              className={`px-2.5 py-1 min-h-[1.75rem] text-sm font-medium rounded-md transition-colors ${
+                ideLayout
+                  ? "bg-white dark:bg-paper-dark text-accent shadow-sm ring-1 ring-black/[0.06] dark:ring-white/10"
+                  : "text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
+              }`}
+              title={t("main.ideLayoutHint")}
+            >
+              {t("main.ideLayout")}
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           <LifePulseBadge />
-          <button
-            type="button"
-            onClick={toggleIdeLayout}
-            className={`px-2 py-1.5 text-sm rounded-md transition-colors ${
-              ideLayout
-                ? "text-accent bg-accent/10 dark:bg-accent/15"
-                : "text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent hover:bg-ink/5 dark:hover:bg-white/5"
-            }`}
-            aria-pressed={ideLayout}
-            aria-label={t("main.ideLayoutHint")}
-            title={t("main.ideLayoutHint")}
-          >
-            {t("main.ideLayout")}
-          </button>
           <button
             type="button"
             onClick={() => setSettingsOpen((v) => !v)}

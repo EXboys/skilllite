@@ -187,10 +187,11 @@
 |------|------|--------|------|
 | `SKILLLITE_COMPACTION_THRESHOLD` | int | `16` | 对话历史超过此消息数时触发压缩（约 8 轮） |
 | `SKILLLITE_COMPACTION_KEEP_RECENT` | int | `10` | 压缩后保留的最近消息数 |
+| `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS` | int | `320000` | 每次主 agent 调 LLM 前，若估算的历史 + 本回合用户输入（字符数）超过此值，会先收缩工具输出，并在未达消息条数阈值时也可能触发与 `/compact` 相同的 LLM 摘要。`0` 表示关闭。约按 4 字符/token 对应 ~8 万 token |
 | `SKILLLITE_MEMORY_FLUSH_ENABLED` | bool | `true` | 是否启用 pre-compaction 记忆自动写入（OpenClaw 风格） |
 | `SKILLLITE_MEMORY_FLUSH_THRESHOLD` | int | `12` | 达到此消息数时触发记忆 flush（低于压缩阈值可更早触发） |
 
-**使用场景**：若希望更早触发压缩，可降低 `COMPACTION_THRESHOLD`（如 `12`）；若压缩过于频繁可适当提高。`/compact` 命令可手动触发压缩，不受阈值限制。
+**使用场景**：若希望更早触发压缩，可降低 `COMPACTION_THRESHOLD`（如 `12`）；若压缩过于频繁可适当提高。`/compact` 命令可手动触发压缩，不受阈值限制。若消息不多但工具输出很大仍触发上游「输入 token 超限」，可调低 `CONTEXT_SOFT_LIMIT_CHARS` 以更早收缩，或降低 `SKILLLITE_READ_FILE_TOOL_RESULT_MAX_CHARS` / `SKILLLITE_TOOL_RESULT_MAX_CHARS`。
 
 **记忆自动触发**：启用 `enable_memory` 时，当对话达到 `MEMORY_FLUSH_THRESHOLD`（默认 12 条消息，约 6 轮）会自动运行一次静默 turn，提醒模型将重要内容写入 `memory/YYYY-MM-DD.md`。若记忆触发过少，可降低 `MEMORY_FLUSH_THRESHOLD`（如 `8` 或 `6`）。
 

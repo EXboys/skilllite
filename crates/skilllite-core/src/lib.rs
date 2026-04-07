@@ -1,3 +1,4 @@
+pub mod artifact_store;
 pub mod config;
 pub mod env_spec;
 pub mod error;

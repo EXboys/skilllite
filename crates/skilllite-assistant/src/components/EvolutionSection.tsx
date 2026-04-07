@@ -502,6 +502,28 @@ function reasonMentionsMemoryKnowledge(reason: string | null | undefined): boole
   return /memory knowledge|knowledge update/i.test(reason);
 }
 
+function reasonMentionsPromptChanges(reason: string | null | undefined): boolean {
+  if (!reason) return false;
+  return /\d+\s+prompt changes|prompt changes\b/i.test(reason);
+}
+
+function reasonMentionsSkillChanges(reason: string | null | undefined): boolean {
+  if (!reason) return false;
+  return /\d+\s+skill changes|skill changes\b/i.test(reason);
+}
+
+/**
+ * 进化对比 Tab 只覆盖 chat/prompts；记忆写入 memory/evolution/、技能在待确认列表。
+ * 若日志里仅有 memory/skill 而无 prompt changes，点击行应直达对应入口，避免「可点却无对比」。
+ */
+function evolutionRunRowPrimaryAction(reason: string | null | undefined): "prompt_diff" | "memory" | "review" {
+  const prompt = reasonMentionsPromptChanges(reason);
+  if (prompt) return "prompt_diff";
+  if (reasonMentionsMemoryKnowledge(reason)) return "memory";
+  if (reasonMentionsSkillChanges(reason)) return "review";
+  return "prompt_diff";
+}
+
 function eventIcon(eventType: string): string {
   switch (eventType) {
     case "rule_added":
@@ -1267,7 +1289,9 @@ export function EvolutionDetailBody({
               const txnTrim = e.txn_id?.trim() ?? "";
               const rowOpensDiff =
                 e.event_type === "evolution_run" && txnTrim.length > 0;
-              const showMemoryLink = reasonMentionsMemoryKnowledge(e.reason);
+              const rowPrimary = evolutionRunRowPrimaryAction(e.reason);
+              const showMemoryLink =
+                reasonMentionsMemoryKnowledge(e.reason) && rowPrimary !== "memory";
               return (
                 <li
                   key={`${e.ts}-${e.event_type}-${i}`}
@@ -1280,16 +1304,34 @@ export function EvolutionDetailBody({
                         <button
                           type="button"
                           onClick={() => {
+                            if (rowPrimary === "memory") {
+                              void openDetailWindow("mem");
+                              return;
+                            }
+                            if (rowPrimary === "review") {
+                              setDetailTab("review");
+                              return;
+                            }
                             setDetailTab("changes");
                             setCompareFocusTxn(txnTrim);
                           }}
-                          title={t("evolution.log.rowOpenDiffTitle")}
+                          title={
+                            rowPrimary === "memory"
+                              ? t("evolution.log.rowOpenMemoryTitle")
+                              : rowPrimary === "review"
+                                ? t("evolution.log.rowOpenReviewTitle")
+                                : t("evolution.log.rowOpenDiffTitle")
+                          }
                           className="w-full rounded-lg text-left px-1 py-0.5 -mx-1 transition-colors cursor-pointer hover:bg-ink/[0.06] dark:hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                         >
                           <div className="text-ink-mute dark:text-ink-dark-mute font-mono text-[11px]">
                             {formatTs(e.ts)}
                             <span className="ml-1.5 text-[10px] text-accent font-sans font-medium">
-                              {t("evolution.log.rowOpenDiffBadge")}
+                              {rowPrimary === "memory"
+                                ? t("evolution.log.rowOpenMemoryBadge")
+                                : rowPrimary === "review"
+                                  ? t("evolution.log.rowOpenReviewBadge")
+                                  : t("evolution.log.rowOpenDiffBadge")}
                             </span>
                           </div>
                           <div className="font-medium text-ink dark:text-ink-dark" title={e.event_type}>

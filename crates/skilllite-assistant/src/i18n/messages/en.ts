@@ -17,8 +17,10 @@ export const enMessages: Record<string, string> = {
   "main.collapseSessions": "Collapse session list",
   "main.expandPanel": "Expand side panel",
   "main.collapsePanel": "Collapse side panel",
-  "main.sessionTitleAria": "Session title",
-  "main.editSessionTitle": "Click to edit session title",
+  "main.modeSwitchAria": "Main workspace layout",
+  "main.modeChat": "Chat",
+  "main.modeChatHint":
+    "Session list, full-width chat, and status panel",
   "main.ideLayout": "IDE",
   "main.ideLayoutHint":
     "Three-pane layout: workspace files, editor, chat (similar to Cursor)",
@@ -34,7 +36,7 @@ export const enMessages: Record<string, string> = {
   "ide.treeEmpty": "No files or listing failed",
   "ide.editorPlaceholder": "Pick a file on the left to edit and save",
   "ide.editorHintToggleIde":
-    "No file tree? Tap ≡ (top-left) to expand the sidebar, or click IDE in the header to enable the layout.",
+    "No file tree? Tap ≡ (top-left) to expand the sidebar, or switch to IDE in the header tabs.",
   "ide.saveOk": "Saved",
   "ide.previewOnly": "Preview only",
   "ide.videoUnsupported": "Video playback is not supported in this view",
@@ -263,6 +265,12 @@ export const enMessages: Record<string, string> = {
   "evolution.log.rowOpenDiffTitle":
     "Click to compare prompts snapshots for this run (opens the Diff tab with this txn on the left)",
   "evolution.log.rowOpenDiffBadge": "Open",
+  "evolution.log.rowOpenMemoryTitle":
+    "This run updated memory/evolution/ shards; opens the Memory detail (not prompts diff)",
+  "evolution.log.rowOpenMemoryBadge": "Memory",
+  "evolution.log.rowOpenReviewTitle":
+    "This run included skill changes; switches to Review for pending skills",
+  "evolution.log.rowOpenReviewBadge": "Review",
   "evolution.log.openMemoryPanel": "Open memory (memory/evolution)",
   "evolution.log.noEvents": "No events yet",
   "evolution.log.targetWithId": "Target: {id}",
@@ -302,7 +310,7 @@ export const enMessages: Record<string, string> = {
   "evolution.diff.loadingVersions": "Loading snapshots…",
   "evolution.diff.loadingContent": "Loading content…",
   "evolution.diff.legend":
-    "Order: files whose live text differs from the earliest snapshot are listed first; entries only recorded in the changelog but identical to that snapshot use the neutral card. Pick any two versions; the view shows full text on both sides (unchanged lines are not collapsed). Green = added on the right vs left; red strikethrough = removed from the left. Older snapshots may be pruned.",
+    "Order: files whose live text differs from the earliest snapshot are listed first; entries only recorded in the changelog but identical to that snapshot use the neutral card. Pick any two versions; the view shows full text on both sides (unchanged lines are not collapsed). Green = added on the right vs left; red strikethrough = removed from the left. Older snapshots may be pruned. Memory evolution writes under memory/evolution/ (monthly shards) and does not appear in this prompts diff—open the Memory detail to inspect those files.",
   "evolution.diff.compareColumnLeft": "Left version",
   "evolution.diff.compareColumnRight": "Right version",
   "evolution.diff.sameContent": "No differences (snapshot matches the current file).",

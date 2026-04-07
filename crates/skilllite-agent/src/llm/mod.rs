@@ -314,6 +314,33 @@ pub fn is_context_overflow_error(err_msg: &str) -> bool {
         || lower.contains("max_tokens")
 }
 
+/// Rough total payload size for context budgeting (chars, not tokens).
+///
+/// Sums message text, tool-call arguments, and a small per-image placeholder.
+/// Does not include system prompt or tool definitions added inside the agent loop.
+pub fn estimate_messages_chars(messages: &[ChatMessage]) -> usize {
+    messages.iter().map(message_estimated_chars).sum()
+}
+
+fn message_estimated_chars(m: &ChatMessage) -> usize {
+    let mut n = m.content.as_deref().map(str::len).unwrap_or(0);
+    if let Some(calls) = &m.tool_calls {
+        for c in calls {
+            n = n.saturating_add(c.id.len());
+            n = n.saturating_add(c.call_type.len());
+            n = n.saturating_add(c.function.name.len());
+            n = n.saturating_add(c.function.arguments.len());
+        }
+    }
+    if let Some(imgs) = &m.images {
+        // Vision payloads dominate token usage; base64 length is a usable proxy.
+        for img in imgs {
+            n = n.saturating_add(img.data_base64.len());
+        }
+    }
+    n
+}
+
 /// Truncate all tool result messages in place to reduce context size.
 /// Ported from Python `_truncate_tool_messages_in_place`.
 pub fn truncate_tool_messages(messages: &mut [ChatMessage], max_chars: usize) {
