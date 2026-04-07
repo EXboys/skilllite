@@ -292,6 +292,8 @@ Under **Settings → Evolution**, in-app overrides let you set check interval, d
 
 **Edit audit (Agent built-in tools)**: `search_replace`, `preview_edit`, and `insert_lines` append JSONL lines with events such as `edit_applied`, `edit_previewed`, `edit_failed`, and `edit_inserted`. Each record includes `edit_id` (UUID), top-level `path`, `workspace`, and on failure `reason` / `tool`; each write is followed by `flush` for streaming consumers.
 
+**`skill_invocation` summaries**: `input_summary` / `output_summary` `preview` fields are redacted before write (same family of rules as Agent tools: common JSON keys, `KEY=value` lines, long `sk-…` / `Bearer …` tokens). `preview_redacted` is `true` when any redaction applied to the full string (not only the preview window). `len` remains the original byte length.
+
 **Development & tests**: `skilllite-agent` builtin unit tests set `SKILLLITE_AUDIT_DISABLED=1` at process start so tests do not pollute the default audit path. For other crates or integration tests, set `SKILLLITE_AUDIT_DISABLED=1` explicitly if needed.
 
 ---

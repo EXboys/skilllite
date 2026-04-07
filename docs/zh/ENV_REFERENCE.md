@@ -292,6 +292,8 @@
 
 **Edit 审计（Agent 内置工具）**：`search_replace`、`preview_edit`、`insert_lines` 会写入 JSONL，事件类型包括 `edit_applied`、`edit_previewed`、`edit_failed`、`edit_inserted`。每条记录含 `edit_id`（UUID）、顶层 `path`、`workspace`、失败时的 `reason`/`tool` 等；写入后 `flush`，便于流式消费。
 
+**`skill_invocation` 摘要**：`input_summary` / `output_summary` 中的 `preview` 在落盘前会做与 Agent 工具类似的脱敏（常见 JSON 密钥、`KEY=value`、长 `sk-…` / `Bearer …` 等）；`preview_redacted` 为 `true` 表示全文曾命中脱敏规则（非仅 preview 窗口）。`len` 仍为原始字节长度。
+
 **开发与测试**：`skilllite-agent` 的 builtin 单元测试在启动时自动设置 `SKILLLITE_AUDIT_DISABLED=1`，不向默认审计目录写入。其他 crate 或集成测试若需关闭审计，请显式设置 `SKILLLITE_AUDIT_DISABLED=1`。
 
 ---

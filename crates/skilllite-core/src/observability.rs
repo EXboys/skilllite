@@ -236,15 +236,27 @@ pub fn audit_skill_invocation(
 }
 
 fn input_summary_bytes(input: &str) -> serde_json::Value {
-    let preview: String = input.chars().take(100).collect();
-    let truncated = input.chars().count() > 100;
-    serde_json::json!({"len": input.len(), "preview": if truncated { format!("{}...", preview) } else { preview } })
+    let (redacted, preview_redacted) =
+        crate::audit_preview_redact::redact_audit_preview_text(input);
+    let preview: String = redacted.chars().take(100).collect();
+    let truncated = redacted.chars().count() > 100;
+    serde_json::json!({
+        "len": input.len(),
+        "preview": if truncated { format!("{}...", preview) } else { preview },
+        "preview_redacted": preview_redacted
+    })
 }
 
 fn output_summary_bytes(output: &str) -> serde_json::Value {
-    let preview: String = output.chars().take(100).collect();
-    let truncated = output.chars().count() > 100;
-    serde_json::json!({"len": output.len(), "preview": if truncated { format!("{}...", preview) } else { preview } })
+    let (redacted, preview_redacted) =
+        crate::audit_preview_redact::redact_audit_preview_text(output);
+    let preview: String = redacted.chars().take(100).collect();
+    let truncated = redacted.chars().count() > 100;
+    serde_json::json!({
+        "len": output.len(),
+        "preview": if truncated { format!("{}...", preview) } else { preview },
+        "preview_redacted": preview_redacted
+    })
 }
 
 /// Security event: network blocked
@@ -498,5 +510,39 @@ pub fn security_sandbox_fallback(skill_id: &str, reason: &str) {
             "details": { "reason": reason }
         });
         append_jsonl(&path, &record);
+    }
+}
+
+#[cfg(test)]
+mod summary_tests {
+    use serde_json::Value;
+
+    #[test]
+    fn input_summary_redacts_secret_before_preview() {
+        let input = r#"{"api_key":"sk-abcdefghijklmnopqrstuvwxyz0123456789"}"#;
+        let v = super::input_summary_bytes(input);
+        let obj = v.as_object().expect("object");
+        assert_eq!(
+            obj.get("len").and_then(Value::as_u64),
+            Some(input.len() as u64)
+        );
+        assert_eq!(
+            obj.get("preview_redacted").and_then(Value::as_bool),
+            Some(true)
+        );
+        let preview = obj.get("preview").and_then(Value::as_str).expect("preview");
+        assert!(!preview.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
+        assert!(preview.contains("REDACTED"));
+    }
+
+    #[test]
+    fn output_summary_benign_no_redacted_flag_false() {
+        let out = r#"{"ok":true}"#;
+        let v = super::output_summary_bytes(out);
+        let obj = v.as_object().expect("object");
+        assert_eq!(
+            obj.get("preview_redacted").and_then(Value::as_bool),
+            Some(false)
+        );
     }
 }

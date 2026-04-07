@@ -1,4 +1,5 @@
 pub mod artifact_store;
+pub(crate) mod audit_preview_redact;
 pub mod config;
 pub mod env_spec;
 pub mod error;
