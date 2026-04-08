@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { formatInvokeError } from "../utils/formatInvokeError";
 import { useUiToastStore } from "../stores/useUiToastStore";
@@ -12,6 +12,7 @@ import {
 import { MarkdownContent } from "./shared/MarkdownContent";
 import { groupMemoryFiles, memoryPathUnderTopGroup, sortedMemoryGroupKeys } from "../utils/fileUtils";
 import { useRecentData } from "../hooks/useRecentData";
+import { useDetailMemoryFileCache } from "../hooks/useDetailMemoryFileCache";
 import { EvolutionDetailBody } from "./EvolutionSection";
 import { translate, useI18n } from "../i18n";
 import {
@@ -193,17 +194,40 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const loadGenRef = useRef(0);
+  const hoverPrefetchTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const { getCached, touch, prefetchPath } = useDetailMemoryFileCache(files);
 
   const hasFiles = files.length > 0;
   const hasHints = hints.length > 0;
-  if (!hasFiles && !hasHints) {
-    return (
-      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">{t("detail.noMemory")}</p>
-    );
-  }
 
-  const groups = groupMemoryFiles(files);
-  const groupKeys = sortedMemoryGroupKeys(groups);
+  useEffect(() => {
+    return () => {
+      for (const id of hoverPrefetchTimersRef.current.values()) clearTimeout(id);
+      hoverPrefetchTimersRef.current.clear();
+    };
+  }, []);
+
+  const schedulePrefetchOnHover = useCallback(
+    (path: string) => {
+      if (getCached(path) !== undefined) return;
+      const prev = hoverPrefetchTimersRef.current.get(path);
+      if (prev) clearTimeout(prev);
+      const id = setTimeout(() => {
+        hoverPrefetchTimersRef.current.delete(path);
+        prefetchPath(path);
+      }, 160);
+      hoverPrefetchTimersRef.current.set(path, id);
+    },
+    [getCached, prefetchPath],
+  );
+
+  const cancelHoverPrefetch = useCallback((path: string) => {
+    const id = hoverPrefetchTimersRef.current.get(path);
+    if (id) {
+      clearTimeout(id);
+      hoverPrefetchTimersRef.current.delete(path);
+    }
+  }, []);
 
   const handleFileClick = async (path: string) => {
     if (expandedFile === path) {
@@ -211,6 +235,14 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
       setExpandedFile(null);
       setFileContent(null);
       setLoading(false);
+      return;
+    }
+    const cached = getCached(path);
+    if (cached !== undefined) {
+      loadGenRef.current += 1;
+      setLoading(false);
+      setExpandedFile(path);
+      setFileContent(cached);
       return;
     }
     const myGen = ++loadGenRef.current;
@@ -222,6 +254,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
         relativePath: path,
       });
       if (myGen !== loadGenRef.current) return;
+      touch(path, content);
       setFileContent(content);
     } catch {
       if (myGen !== loadGenRef.current) return;
@@ -230,6 +263,15 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
       if (myGen === loadGenRef.current) setLoading(false);
     }
   };
+
+  if (!hasFiles && !hasHints) {
+    return (
+      <p className="text-sm text-ink-mute dark:text-ink-dark-mute italic">{t("detail.noMemory")}</p>
+    );
+  }
+
+  const groups = groupMemoryFiles(files);
+  const groupKeys = sortedMemoryGroupKeys(groups);
 
   return (
     <div className="space-y-3">
@@ -246,7 +288,9 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
                 <li key={f}>
                   <button
                     type="button"
-                    onClick={() => handleFileClick(f)}
+                    onClick={() => void handleFileClick(f)}
+                    onPointerEnter={() => schedulePrefetchOnHover(f)}
+                    onPointerLeave={() => cancelHoverPrefetch(f)}
                     className="text-sm text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent w-full text-left flex items-center gap-2 py-1 transition-colors"
                     title={f}
                   >
@@ -258,7 +302,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
                     <div className="mt-1.5 mb-2 ml-5 p-3 rounded-lg bg-blue-50/60 dark:bg-zinc-700/25 text-sm text-ink/85 dark:text-zinc-400 overflow-y-auto max-h-80 border border-blue-100 dark:border-zinc-600/40 shadow-sm">
                       {loading ? (
                         <span className="text-ink-mute dark:text-zinc-500">{t("detail.loading")}</span>
-                      ) : fileContent ? (
+                      ) : fileContent !== null ? (
                         fileContent === DETAIL_READ_FAILED ? (
                           <span className="text-red-500 text-sm">{t("detail.readFailed")}</span>
                         ) : (
