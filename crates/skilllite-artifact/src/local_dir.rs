@@ -1,7 +1,9 @@
-//! Default local-directory implementation of `ArtifactStore`.
+//! Local filesystem [`ArtifactStore`](skilllite_core::artifact_store::ArtifactStore).
 
 use skilllite_core::artifact_store::{validate_artifact_key, ArtifactStore, StoreError};
 use std::path::{Path, PathBuf};
+
+use crate::validation::validate_run_id;
 
 /// Local filesystem artifact store.
 ///
@@ -24,12 +26,7 @@ impl LocalDirArtifactStore {
 
     fn artifact_path(&self, run_id: &str, key: &str) -> Result<PathBuf, StoreError> {
         validate_artifact_key(key)?;
-        if run_id.is_empty() || run_id.contains("..") || run_id.contains('/') {
-            return Err(StoreError::InvalidKey {
-                key: run_id.to_string(),
-                reason: "run_id must be non-empty and must not contain '..' or '/'".to_string(),
-            });
-        }
+        validate_run_id(run_id)?;
         Ok(self.base_dir.join("artifacts").join(run_id).join(key))
     }
 }

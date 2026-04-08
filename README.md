@@ -439,6 +439,7 @@ skilllite/                         Dependency Flow
     ├── skilllite-agent/             │     ├── skilllite-sandbox     │
     ├── skilllite-commands/          │     └── skilllite-executor    │
     ├── skilllite-swarm/             ├── skilllite-swarm             │
+    ├── skilllite-artifact/          ├── skilllite-artifact          │
     └── skilllite-assistant/         └───────────┬──────────────────┘
                                           skilllite-core (foundation)
 ```
@@ -453,6 +454,7 @@ skilllite/                         Dependency Flow
 | **skilllite-agent**     | LLM Agent loop — multi-turn chat, tool orchestration, planning                                                                                                                     | Agent        |
 | **skilllite-commands**  | CLI command implementations — wires crates into `skilllite` binary                                                                                                                 | CLI          |
 | **skilllite-swarm**     | P2P mesh — mDNS discovery, peer routing, distributed task dispatch                                                                                                                 | Network      |
+| **skilllite-artifact**  | Run-scoped artifact storage — local dir (agent default), optional HTTP server/client (`skilllite artifact-serve` when `artifact_http` is enabled)                                   | Storage / HTTP |
 | **skilllite-assistant** | Desktop app — Tauri 2 + React, standalone GUI                                                                                                                                      | App          |
 
 
@@ -460,7 +462,7 @@ skilllite/                         Dependency Flow
 
 ### SDK & Integrations
 
-- **python-sdk** (`pip install skilllite`) — Thin bridge (~630 lines of Python), zero runtime deps
+- **python-sdk** (`pip install skilllite`) — Thin bridge (~770 lines of Python under `python-sdk/skilllite/`), zero runtime deps
 - **langchain-skilllite** (`pip install langchain-skilllite`) — LangChain / LangGraph adapter
 
 <details>
@@ -482,6 +484,7 @@ skilllite/                         Dependency Flow
 | `skilllite evolution run`      | Force-trigger evolution cycle                                          |
 | `skilllite mcp`                | Start MCP server (Cursor/Claude Desktop)                               |
 | `skilllite serve`              | Start IPC daemon (stdio JSON-RPC)                                      |
+| `skilllite artifact-serve`     | Run-scoped artifact HTTP server (bind requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`) |
 | `skilllite init-cursor`        | Initialize Cursor IDE integration                                      |
 | `skilllite init-opencode`      | Initialize OpenCode integration                                        |
 | `skilllite clean-env`          | Clean cached runtime environments                                      |
@@ -508,7 +511,7 @@ source ~/.cargo/env
 
 | Package   | Binary                | Command                                                                                            | Description                                  |
 | --------- | --------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| skilllite | **skilllite**         | `cargo build -p skilllite`                                                                         | **Full** (Evolution + Agent + Sandbox + MCP) |
+| skilllite | **skilllite**         | `cargo build -p skilllite`                                                                         | **Full** (Evolution + Agent + Sandbox + MCP; includes `artifact-serve` code, bind requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`) |
 | skilllite | **skilllite**         | `cargo build -p skilllite --features memory_vector`                                                | Full **+ vector memory** search              |
 | skilllite | **skilllite**         | `cargo build -p skilllite --no-default-features`                                                   | Minimal: run/exec/bash/scan only             |
 | skilllite | **skilllite-sandbox** | `cargo build -p skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | Sandbox + MCP only                           |
@@ -524,7 +527,7 @@ source ~/.cargo/env
 | `cargo install --path skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | **skilllite-sandbox** — sandbox + MCP only |
 
 
-**Default features** = `sandbox`, `audit`, `agent`, `swarm`. Vector memory (`memory_vector`) is **not** in default.
+**Default features** = `sandbox`, `audit`, `agent`, `swarm`, `artifact_http`. Vector memory (`memory_vector`) is **not** in default. **`skilllite artifact-serve`** is compiled in but **refuses to bind** unless **`SKILLLITE_ARTIFACT_SERVE_ALLOW=1`** is set (reduces accidental exposure).
 
 </details>
 

@@ -43,7 +43,7 @@ cp .env.example .env
 1. Fork 仓库
 2. 从 `main` 创建分支：`git checkout -b feature/your-feature`
 3. 提交清晰的 commit
-4. 测试：`cd skilllite && cargo test` 和 `cd python-sdk && pytest`
+4. 测试：`cd skilllite && cargo test`；Python SDK 的 artifact 集成测试还需在仓库根执行 `cargo build -p skilllite --bin skilllite`（或设置 `SKILLLITE_ARTIFACT_HTTP_SERVE` 指向 `skilllite` 可执行文件），再 `cd python-sdk && pytest`
 5. 提交 PR 并附上清晰的描述
 
 ### 指南
@@ -71,7 +71,7 @@ cp .env.example .env
 
 ## 安全问题
 
-发现安全漏洞时，**请勿**公开提交 issue。请联系：security@skilllite.dev
+发现安全漏洞时，**请勿**公开提交 issue。请联系：security@skilllite.ai
 
 ## 许可证
 
@@ -112,7 +112,7 @@ skillLite/
 - 骚扰、挑衅或人身攻击
 - 未经许可发布他人私人信息
 
-问题报告：security@skilllite.dev
+问题报告：security@skilllite.ai
 
 ---
 

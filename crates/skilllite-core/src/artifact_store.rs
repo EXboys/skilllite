@@ -1,8 +1,8 @@
 //! Run-scoped artifact storage contract.
 //!
 //! Defines the `ArtifactStore` trait and structured errors.
-//! Framework provides a default local directory implementation in `skilllite-agent`;
-//! users may supply their own (S3, DB, etc.) by implementing the same trait.
+//! Default local directory and optional HTTP server/client implementations live in the `skilllite-artifact` crate;
+//! `skilllite-agent` wires a local store by default. Users may supply their own (S3, DB, etc.) by implementing this trait.
 
 use std::fmt;
 

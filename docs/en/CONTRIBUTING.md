@@ -43,7 +43,7 @@ cp .env.example .env
 1. Fork the repository
 2. Create branch from `main`: `git checkout -b feature/your-feature`
 3. Make changes with clear commits
-4. Test: `cd skilllite && cargo test` and `cd python-sdk && pytest`
+4. Test: `cd skilllite && cargo test`; for Python SDK artifact tests also `cargo build -p skilllite --bin skilllite` from the repo root (or set `SKILLLITE_ARTIFACT_HTTP_SERVE` to your `skilllite` executable), then `cd python-sdk && pytest`
 5. Submit PR with clear description
 
 ### Guidelines
@@ -71,7 +71,7 @@ cp .env.example .env
 
 ## Security
 
-For security vulnerabilities, **DO NOT** open public issues. Contact: security@skilllite.dev
+For security vulnerabilities, **DO NOT** open public issues. Contact: security@skilllite.ai
 
 ## License
 
@@ -112,7 +112,7 @@ We pledge to make participation harassment-free for everyone.
 - Harassment, trolling, or personal attacks
 - Publishing others' private information
 
-Report issues to: security@skilllite.dev
+Report issues to: security@skilllite.ai
 
 ---
 

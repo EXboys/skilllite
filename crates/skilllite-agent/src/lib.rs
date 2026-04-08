@@ -1,4 +1,3 @@
-pub mod artifact_store;
 pub mod error;
 pub use error::{Error, Result};
 

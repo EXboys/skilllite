@@ -61,6 +61,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build skilllite binary (for artifact-serve pytest)
+        working-directory: ${{ github.workspace }}
+        run: cargo build -p skilllite --bin skilllite
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:

@@ -1,5 +1,7 @@
 //! 命令分发：各领域命令的 register 逻辑，新增命令在此模块注册即可。
 
+#[cfg(feature = "artifact_http")]
+mod artifact;
 mod execute;
 mod protocol;
 mod skill;
@@ -12,6 +14,8 @@ pub fn register_all(reg: &mut CommandRegistry) {
     protocol::register(reg);
     execute::register(reg);
     skill::register(reg);
+    #[cfg(feature = "artifact_http")]
+    artifact::register(reg);
     register_ide(reg);
     register_env(reg);
     register_reindex(reg);

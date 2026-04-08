@@ -12,7 +12,7 @@ All commands run from **repository root** (or use `cd skilllite && cargo install
 
 | Binary | Command | What you get |
 |--------|---------|--------------|
-| **skilllite** | `cargo build -p skilllite` | **Full** (Agent + Chat + MCP + sandbox + audit). No vector memory. |
+| **skilllite** | `cargo build -p skilllite` | **Full** (Agent + Chat + MCP + sandbox + audit + `artifact-serve` code). No vector memory; bind requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`. |
 | **skilllite** | `cargo build -p skilllite --features memory_vector` | Full **+ vector memory** search |
 | **skilllite** | `cargo build -p skilllite --no-default-features` | Minimal: run/exec/bash/scan only |
 | **skilllite-sandbox** | `cargo build -p skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | Sandbox + MCP only |
@@ -25,7 +25,7 @@ All commands run from **repository root** (or use `cd skilllite && cargo install
 | `cargo install --path skilllite --features memory_vector` | **skilllite** — full + vector memory |
 | `cargo install --path skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | **skilllite-sandbox** |
 
-Default features = `sandbox`, `audit`, `agent`. `memory_vector` is optional.
+Default features = `sandbox`, `audit`, `agent`, `swarm`, `artifact_http`. `memory_vector` is optional. **`artifact-serve`** binds only when **`SKILLLITE_ARTIFACT_SERVE_ALLOW=1`**.
 
 ### Output paths
 

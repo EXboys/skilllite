@@ -637,6 +637,31 @@ pub enum Commands {
         skills_dir: Option<Vec<String>>,
     },
 
+    /// Serve run-scoped artifact storage over HTTP (OpenAPI v1)
+    ///
+    /// Refuses to **bind** unless **`SKILLLITE_ARTIFACT_SERVE_ALLOW=1`** is set in the environment
+    /// (avoids accidental listeners; the code stays in the default binary).
+    ///
+    /// Prints `SKILLLITE_ARTIFACT_HTTP_ADDR=host:port` to stdout, then blocks.
+    /// Storage layout: `<dir>/artifacts/<run_id>/<key>`.
+    ///
+    /// Examples:
+    ///   SKILLLITE_ARTIFACT_SERVE_ALLOW=1 skilllite artifact-serve --dir /tmp/art
+    ///   SKILLLITE_ARTIFACT_SERVE_ALLOW=1 skilllite artifact-serve --dir ./data --bind 127.0.0.1:8080 --token secret
+    #[cfg(feature = "artifact_http")]
+    #[command(name = "artifact-serve")]
+    ArtifactServe {
+        /// Root directory for artifact files
+        #[arg(long, value_name = "DIR")]
+        dir: std::path::PathBuf,
+        /// Listen address (default picks a free port on loopback)
+        #[arg(long, default_value = "127.0.0.1:0")]
+        bind: String,
+        /// Require `Authorization: Bearer <token>` when set
+        #[arg(long, value_name = "SECRET")]
+        token: Option<String>,
+    },
+
     /// Run MCP (Model Context Protocol) server over stdio
     ///
     /// Implements the standard MCP JSON-RPC 2.0 protocol for IDE integration.

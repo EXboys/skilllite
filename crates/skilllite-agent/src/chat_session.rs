@@ -78,9 +78,7 @@ impl ChatSession {
         let data_root = skilllite_executor::chat_root();
         skilllite_evolution::seed::ensure_seed_data(&data_root);
         let artifact_store: std::sync::Arc<dyn skilllite_core::artifact_store::ArtifactStore> =
-            std::sync::Arc::new(crate::artifact_store::LocalDirArtifactStore::new(
-                &data_root,
-            ));
+            std::sync::Arc::new(skilllite_artifact::LocalDirArtifactStore::new(&data_root));
         Self {
             config,
             session_key: session_key.to_string(),

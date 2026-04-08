@@ -13,7 +13,7 @@ keywords = ["agent", "ai", "sandbox", "llm", "skills"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = ["sandbox", "audit", "agent", "swarm"]
+default = ["sandbox", "audit", "agent", "swarm", "artifact_http"]
 sandbox = []
 audit = ["skilllite-sandbox/audit", "skilllite-commands/audit", "dep:ureq"]
 executor = ["sandbox", "dep:skilllite-executor"]
@@ -24,6 +24,9 @@ sandbox_binary = ["sandbox", "audit"]
 memory_vector = ["executor", "agent", "skilllite-agent/memory_vector"]
 # P2P 组网：mDNS 发现、Swarm 守护进程
 swarm = ["dep:skilllite-swarm"]
+# Run-scoped artifact HTTP (`skilllite artifact-serve`). Compiled in by default; binding requires
+# `SKILLLITE_ARTIFACT_SERVE_ALLOW=1` at runtime (see `dispatch/artifact.rs`). Not in sandbox-only binary.
+artifact_http = ["dep:skilllite-artifact", "dep:tokio"]
 
 [dependencies]
 skilllite-core = { path = "../crates/skilllite-core", version = "0.1.21" }
@@ -32,6 +35,7 @@ skilllite-commands = { path = "../crates/skilllite-commands", version = "0.1.21"
 skilllite-executor = { path = "../crates/skilllite-executor", version = "0.1.21", optional = true }
 skilllite-agent = { path = "../crates/skilllite-agent", version = "0.1.21", optional = true }
 skilllite-swarm = { path = "../crates/skilllite-swarm", version = "0.1.21", optional = true }
+skilllite-artifact = { path = "../crates/skilllite-artifact", version = "0.1.21", optional = true, default-features = false, features = ["local", "server"] }
 
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }
@@ -47,7 +51,7 @@ chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3.10"
 
 # Agent feature deps re-exported for commands that use them directly
-tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "time", "io-util", "process"] }
+tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "time", "io-util", "process", "net"] }
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["json", "stream", "rustls-tls"] }
 rustyline = { version = "14", optional = true }
 uuid = { version = "1", optional = true, features = ["v4"] }

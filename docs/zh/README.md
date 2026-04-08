@@ -389,6 +389,7 @@ skilllite/                         依赖流向
     ├── skilllite-agent/             │     ├── skilllite-sandbox     │
     ├── skilllite-commands/          │     └── skilllite-executor    │
     ├── skilllite-swarm/             ├── skilllite-swarm             │
+    ├── skilllite-artifact/          ├── skilllite-artifact          │
     └── skilllite-assistant/         └───────────┬──────────────────┘
                                           skilllite-core (基础层)
 ```
@@ -402,13 +403,14 @@ skilllite/                         依赖流向
 | **skilllite-agent** | LLM Agent 循环 — 多轮对话、工具编排、任务规划 | Agent |
 | **skilllite-commands** | CLI 命令实现 — 将各 crate 组装进 `skilllite` 二进制 | CLI |
 | **skilllite-swarm** | P2P 集群 — mDNS 发现、节点网格、分布式任务路由 | 网络 |
+| **skilllite-artifact** | 按 run 的 artifact 存储 — 本地目录（agent 默认）、可选 HTTP（主二进制启用 `artifact_http` 时含 `artifact-serve`） | 存储 / HTTP |
 | **skilllite-assistant** | 桌面应用 — Tauri 2 + React，独立 GUI | 应用 |
 
 > **两个可独立交付的二进制**：`skilllite`（完整版：进化 + Agent + 沙箱）和 `skilllite-sandbox`（轻量版：仅沙箱 + MCP，~3.6 MB）。沙箱对 agent 和 evolution crate 零依赖——其他框架（LangChain、AutoGen、CrewAI 等）可通过 CLI、MCP 或 Rust crate 直接嵌入。
 
 ### SDK 与集成
 
-- **python-sdk**（`pip install skilllite`）— 薄桥接层（~600 行），零运行时依赖
+- **python-sdk**（`pip install skilllite`）— 薄桥接层，零 PyPI 运行时依赖；含 `artifact_put` / `artifact_get`（HTTP，标准库）与二进制桥接 API
 - **langchain-skilllite**（`pip install langchain-skilllite`）— LangChain / LangGraph 适配器
 
 <details>
@@ -430,6 +432,7 @@ skilllite/                         依赖流向
 | `skilllite evolution run` | 强制触发进化周期 |
 | `skilllite mcp` | 启动 MCP 服务器（Cursor/Claude Desktop） |
 | `skilllite serve` | 启动 IPC 守护进程（stdio JSON-RPC） |
+| `skilllite artifact-serve` | 按 run 的 artifact HTTP 服务（监听需 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`） |
 | `skilllite init-cursor` | 初始化 Cursor IDE 集成 |
 | `skilllite init-opencode` | 初始化 OpenCode 集成 |
 | `skilllite clean-env` | 清理缓存的运行时环境 |
@@ -454,7 +457,7 @@ source ~/.cargo/env
 
 | 包 | 二进制 | 命令 | 说明 |
 |---|---|---|---|
-| skilllite | **skilllite** | `cargo build -p skilllite` | **完整版**（进化 + Agent + 沙箱 + MCP） |
+| skilllite | **skilllite** | `cargo build -p skilllite` | **完整版**（进化 + Agent + 沙箱 + MCP；含 `artifact-serve` 代码，监听需 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`） |
 | skilllite | **skilllite** | `cargo build -p skilllite --features memory_vector` | 完整版 **+ 向量记忆**搜索 |
 | skilllite | **skilllite** | `cargo build -p skilllite --no-default-features` | 最小版：仅 run/exec/bash/scan |
 | skilllite | **skilllite-sandbox** | `cargo build -p skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | 仅沙箱 + MCP |
@@ -467,7 +470,7 @@ source ~/.cargo/env
 | `cargo install --path skilllite --features memory_vector` | **skilllite** — 完整版 + 向量记忆 |
 | `cargo install --path skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary` | **skilllite-sandbox** — 仅沙箱 + MCP |
 
-**默认 features** = `sandbox`、`audit`、`agent`、`swarm`。向量记忆（`memory_vector`）**不在**默认中。
+**默认 features** = `sandbox`、`audit`、`agent`、`swarm`、`artifact_http`。向量记忆（`memory_vector`）**不在**默认中。**`skilllite artifact-serve`** 默认编入二进制，但**未设置 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1` 时不会监听**，避免误暴露。
 
 </details>
 

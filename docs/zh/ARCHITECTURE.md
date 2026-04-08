@@ -1,6 +1,6 @@
 # SkillLite 项目架构文档
 
-> **说明**：本文档与根目录 `Cargo.toml` 中 `[workspace.package]` 版本一致（当前 **v0.1.21**）。Rust 为 Cargo workspace 多 crate；Python SDK 为薄桥接层（约 630 行），主要导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`。
+> **说明**：本文档与根目录 `Cargo.toml` 中 `[workspace.package]` 版本一致（当前 **v0.1.21**）。Rust 为 Cargo workspace 多 crate；Python SDK 为薄桥接层（`python-sdk/skilllite/` 下约 770 行），导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`、`artifact_put`、`artifact_get` 等。
 >
 > **入口与能力域**：新人可先看 **[入口与能力域一览](./ENTRYPOINTS-AND-DOMAINS.md)**，一页理清 CLI / Python / MCP / Desktop / Swarm 各对应谁、依赖哪些 crate、适用场景。
 
@@ -78,10 +78,12 @@ skillLite/
 │       │   ├── tools.rs
 │       │   ├── handlers.rs
 │       │   └── scan.rs
-│       ├── dispatch/              # 命令分发到 skilllite-commands
+│       ├── dispatch/              # 命令分发到 skilllite-commands（启用 feature 时含 artifact-serve）
 │       │   ├── mod.rs
 │       │   ├── execute.rs
-│       │   └── skill.rs
+│       │   ├── skill.rs
+│       │   ├── artifact.rs
+│       │   └── protocol.rs
 │       └── bin/
 │           └── skilllite-sandbox.rs  # 轻量 binary (仅 sandbox+core)
 │
@@ -153,14 +155,17 @@ skillLite/
 │   │
 │   ├── skilllite-swarm/           # P2P 组网 (mDNS、任务路由，swarm feature)
 │   │
+│   ├── skilllite-artifact/        # ArtifactStore 实现：本地目录（agent 默认）、可选 HTTP 服务端/客户端
+│   │
 │   └── skilllite-assistant/       # Tauri 2 + React 桌面端（不在根 workspace 默认 members，见根 Cargo.toml exclude）
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (薄桥接层)
 │   ├── pyproject.toml             # 包配置 (v0.1.21, 零运行时依赖)
 │   └── skilllite/
-│       ├── __init__.py            # 导出 chat, run_skill, scan_code, execute_code
+│       ├── __init__.py            # 对外导出（核心 API + artifact 辅助）
 │       ├── api.py                 # 核心 API (subprocess 调用 skilllite 二进制)
+│       ├── artifacts.py           # artifact_put / artifact_get（OpenAPI v1 HTTP，标准库 urllib）
 │       ├── binary.py              # 二进制管理 (bundled/PATH 解析)
 │       ├── cli.py                 # CLI 入口 (转发到 binary)
 │       └── ipc.py                 # IPC 客户端
@@ -219,6 +224,7 @@ skilllite (主二进制)
   │           ├── skilllite-sandbox, skilllite-executor
   │           └── skilllite-executor → skilllite-core, skilllite-fs
   ├── skilllite-swarm (swarm feature) → skilllite-core
+  ├── skilllite-artifact → skilllite-core（agent 仅 `local`；主 `skilllite` 二进制默认启用 `artifact_http`，依赖 `local`+`server`）
   └── skilllite-core (根)
 
 执行链：CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
@@ -236,9 +242,19 @@ Core 不依赖上层；Agent 是 Core 的客户。
 | `sandbox_binary` | skilllite-sandbox + skilllite-core | skilllite-sandbox 轻量 binary |
 | `memory_vector` | sqlite-vec | 可选语义搜索 |
 | `swarm` | skilllite-swarm | P2P 组网 |
+| `artifact_http`（默认） | skilllite-artifact（主二进制为 `local` + `server`） | 按 run 作用域的 artifact HTTP（`skilllite artifact-serve`；**监听**需 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`） |
+
+**Artifact 实现（`skilllite-artifact`）**：
+
+- Crate：`skilllite-artifact`（仅依赖 `skilllite-core`）。Feature：`local`（文件系统）、`server`（Axum）、`client`（阻塞 HTTP 客户端）。
+- **`skilllite-agent`** 依赖 `skilllite-artifact` 时使用 `default-features = false, features = ["local"]`，避免 agent crate 默认引入 Axum。
+- **`skilllite` 主二进制**默认启用 `artifact_http`，依赖 `features = ["local", "server"]`，因此 `artifact-serve` 子命令会编入；实际**监听**仍需 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`。
+- OpenAPI（HTTP）：[`docs/openapi/artifact-store-http-v1.yaml`](../openapi/artifact-store-http-v1.yaml)。
+- 集成方可用 `artifact_router` 暴露 `GET`/`PUT`，或由其他语言按同一 OpenAPI 调用。
+- HTTP `PUT` 请求体上限为 **`MAX_ARTIFACT_BODY_BYTES`（64 MiB）**（Axum `DefaultBodyLimit`），超限返回 **413**。crate 提供 `skilllite_artifact::Error` / `skilllite_artifact::Result` 用于 `run_artifact_http_server` 与 `HttpArtifactStore::try_new`（含 `Other(#[from] anyhow::Error)`，符合工作区约定）。
 
 **编译目标**：
-- `cargo build -p skilllite`：全量产品
+- `cargo build -p skilllite`：全量产品（`artifact-serve` 已编入；**监听**需 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`）
 - `cargo build -p skilllite --no-default-features --features sandbox_binary`：skilllite-sandbox 轻量 binary
 
 ### 2. 沙箱模块 (skilllite-sandbox)
@@ -400,7 +416,7 @@ pub enum SecuritySeverity {
 | `llm/` | LLM HTTP 客户端（OpenAI 兼容 API、Claude Native API，流式/非流式） |
 | `chat_session.rs` | 聊天会话管理 |
 | `prompt.rs` | 系统提示词构建 |
-| `skills.rs` | Skill 加载和工具定义生成 |
+| `skills/` | Skill 加载、执行与工具定义生成 |
 | `rpc.rs` | Agent RPC 服务器（JSON-Lines 事件流协议） |
 | `task_planner.rs` | 任务规划器 |
 | `planning_rules.rs` | 规划规则配置 |
@@ -473,18 +489,19 @@ registry.register(memory::tools());
 
 ### 7. Python SDK (python-sdk)
 
-> **说明**：Python SDK 为薄桥接层（约 630 行），零运行时依赖，通过 subprocess 调用 skilllite 二进制完成所有操作。
+> **说明**：Python SDK 为薄桥接层，**零 PyPI 运行时依赖**。沙箱/chat 类 API 通过 subprocess（或 IPC）调用 skilllite 二进制；**Artifact** 使用标准库 `urllib` 访问 HTTP API（`skilllite artifact-serve` 且 **`SKILLLITE_ARTIFACT_SERVE_ALLOW=1`**，或任意兼容实现）。
 
 **模块与职责**：
 
 | 模块 | 职责 |
 |------|------|
 | `api.py` | `scan_code`、`execute_code`、`chat`、`run_skill`，通过 subprocess 调用 skilllite 二进制 |
+| `artifacts.py` | `artifact_put`、`artifact_get` — 按 run 作用域的 Artifact HTTP（OpenAPI v1）客户端 |
 | `binary.py` | 二进制管理：`get_binary`、bundled/PATH 解析 |
 | `cli.py` | CLI 入口，转发到 binary |
 | `ipc.py` | IPC 客户端，与 `skilllite serve` 守护进程通信 |
 
-**导出 API**：`scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`
+**导出 API**：`scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`、`artifact_put`、`artifact_get`、`ArtifactHttpError`、`parse_listen_line`
 
 **程序化 Agent**：使用 `skilllite chat --message` 或 `api.chat()` 调用 Rust Agent 循环。
 
@@ -618,6 +635,7 @@ skilllite list-tools                           # 列出工具定义
 
 # 服务类
 skilllite serve                                # IPC daemon (stdio JSON-RPC)
+skilllite artifact-serve                       # 按 run 的 artifact HTTP（监听需 SKILLLITE_ARTIFACT_SERVE_ALLOW=1）
 skilllite mcp                                  # MCP 协议服务器
 
 # IDE 集成
@@ -866,5 +884,5 @@ Core 不依赖上层；Agent 是 Core 的客户，不是 Core 的一部分
 
 ---
 
-*文档版本: 1.4.1*
-*最后更新: 2026-03-20*
+*文档版本: 1.4.2*
+*最后更新: 2026-04-08*

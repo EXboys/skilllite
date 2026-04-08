@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- **`skilllite-artifact` crate**: Consolidates `LocalDirArtifactStore`, Axum HTTP router, blocking HTTP client, and `run_artifact_http_server` behind features `local` / `server` / `client`. Python SDK adds stdlib `artifact_put` / `artifact_get` plus integration tests; see `docs/openapi/artifact-store-http-v1.yaml`. The crate exposes `skilllite_artifact::Error` / `skilllite_artifact::Result` (with `Other(#[from] anyhow::Error)`) per workspace Rust conventions; `HttpArtifactStore::try_new` now returns `skilllite_artifact::Result<Self>` (**replaces** the previous `BuildError` type). Reference HTTP `PUT` requests are limited to **64 MiB** per body (`DefaultBodyLimit`; HTTP **413** when exceeded; `MAX_ARTIFACT_BODY_BYTES`).
+
+### Changed
+
+- **CLI `artifact-serve`**: Still compiled in the default `skilllite` binary (`artifact_http` remains a default feature), but the command **refuses to bind** unless **`SKILLLITE_ARTIFACT_SERVE_ALLOW=1`** is set. Reduces accidental network exposure; embedders calling `skilllite_artifact::run_artifact_http_server` directly are unchanged.
+
 ---
 
 ## [0.1.21] - 2026-04-05

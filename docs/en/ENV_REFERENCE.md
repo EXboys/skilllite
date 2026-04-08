@@ -117,6 +117,17 @@ When the same variable is set in multiple places, resolution order is (highest â
 
 ---
 
+## Run-scoped artifact HTTP `skilllite artifact-serve` <small>[Optional]</small>
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_ARTIFACT_SERVE_ALLOW` | string | unset | Must be **`1`** for the **`skilllite artifact-serve`** CLI subcommand to **bind** and listen. Without it, the command exits with an error (subcommand stays in the default binary, but no socket is opened). **Embedders** calling `skilllite_artifact::run_artifact_http_server` directly are **not** gated by this variable. |
+| `SKILLLITE_ARTIFACT_HTTP_SERVE` | string | unset | *(Tests / tooling)* When set to a `skilllite` executable path, Python SDK integration tests spawn `artifact-serve` from that binary. |
+
+**Implementation note (not an env var)**: The reference HTTP router (`skilllite_artifact::artifact_router` / `skilllite artifact-serve`) applies Axum **`DefaultBodyLimit`** of **64 MiB** per `PUT`. Oversized bodies receive HTTP **413**; constant `skilllite_artifact::MAX_ARTIFACT_BODY_BYTES`.
+
+---
+
 ## Sandbox & Security <small>[Common]</small>
 
 Sandbox-related variables are read through the **config layer** (`SandboxEnvConfig::from_env()`); config accepts `SKILLLITE_*` (recommended) and legacy `SKILLBOX_*`.

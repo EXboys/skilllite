@@ -1,0 +1,150 @@
+openapi: 3.0.3
+info:
+  title: SkillLite run-scoped artifact store (HTTP)
+  description: |
+    Maps to `skilllite_core::artifact_store::ArtifactStore` (`get` / `put`) for a single run scope.
+    Reference stack: crate `skilllite-artifact` (library); CLI `skilllite artifact-serve` (bind requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`), or embed `run_artifact_http_server` / `artifact_router`.
+    Bearer authentication is optional: when the server is configured with a token, every request must send
+    `Authorization: Bearer <token>`.
+    **PUT body limit**: implementations enforce a maximum request body size (**64 MiB**); larger payloads receive HTTP **413**.
+  version: 1.0.0
+
+servers:
+  - url: http://127.0.0.1:8080
+    description: Local (example)
+
+paths:
+  /v1/runs/{run_id}/artifacts:
+    get:
+      summary: Read artifact bytes
+      operationId: getArtifact
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          description: Run identifier; must be non-empty and must not contain `..` or `/`.
+          schema:
+            type: string
+            minLength: 1
+        - name: key
+          in: query
+          required: true
+          description: Logical artifact key (may contain `/` for grouping). Must satisfy core key rules (no `..`, etc.).
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Artifact exists
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: Invalid run_id or key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          description: Missing or invalid bearer token (only when server requires auth)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "404":
+          description: Artifact not found for this run/key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "502":
+          description: Backend store error (retryable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "500":
+          description: Backend store or internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+    put:
+      summary: Write or overwrite artifact bytes
+      operationId: putArtifact
+      parameters:
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: key
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      requestBody:
+        required: true
+        description: Raw artifact bytes (max **64 MiB** per request in reference implementation).
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "204":
+          description: Stored successfully
+        "413":
+          description: Request body exceeds the configured maximum (64 MiB in reference `artifact_router`)
+        "400":
+          description: Invalid run_id or key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "401":
+          description: Missing or invalid bearer token (only when server requires auth)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "502":
+          description: Backend store error (retryable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+        "500":
+          description: Backend store or internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorBody"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Optional; omit when the server is started without a token.
+
+  schemas:
+    ErrorBody:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Short machine-readable code (e.g. invalid_key, not_found, unauthorized).
+        message:
+          type: string
+          description: Human-readable detail.
+
+# Apply globally in generated clients when your deployment uses bearer auth:
+# security:
+#   - bearerAuth: []

@@ -1,6 +1,6 @@
 # SkillLite Project Architecture
 
-> **Note**: This document matches the root `Cargo.toml` `[workspace.package]` version (currently **v0.1.21**). Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~630 lines) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`.
+> **Note**: This document matches the root `Cargo.toml` `[workspace.package]` version (currently **v0.1.21**). Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~770 lines of Python under `python-sdk/skilllite/`) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`, `artifact_put`, `artifact_get`, and helpers.
 >
 > **Entry points and domains**: For a one-page map of CLI / Python / MCP / Desktop / Swarm (what they are, which crates they use, one-line use case), see [Entry Points and Capability Domains](./ENTRYPOINTS-AND-DOMAINS.md). (中文版：[入口与能力域一览](../zh/ENTRYPOINTS-AND-DOMAINS.md))
 
@@ -80,10 +80,12 @@ skillLite/
 │       │   ├── tools.rs
 │       │   ├── handlers.rs
 │       │   └── scan.rs
-│       ├── dispatch/              # Dispatch to skilllite-commands
+│       ├── dispatch/              # Dispatch to skilllite-commands (+ artifact-serve when feature enabled)
 │       │   ├── mod.rs
 │       │   ├── execute.rs
-│       │   └── skill.rs
+│       │   ├── skill.rs
+│       │   ├── artifact.rs
+│       │   └── protocol.rs
 │       └── bin/
 │           └── skilllite-sandbox.rs  # Lightweight binary (sandbox + core only)
 │
@@ -155,14 +157,17 @@ skillLite/
 │   │
 │   ├── skilllite-swarm/           # P2P (mDNS, task routing; swarm feature)
 │   │
+│   ├── skilllite-artifact/        # ArtifactStore impls: local dir (default for agent), optional HTTP server/client
+│   │
 │   └── skilllite-assistant/       # Tauri 2 + React desktop (not in default workspace members; see root Cargo.toml exclude)
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (thin bridge layer)
 │   ├── pyproject.toml             # Package config (v0.1.21, zero runtime deps)
 │   └── skilllite/
-│       ├── __init__.py            # Exports: chat, run_skill, scan_code, execute_code
+│       ├── __init__.py            # Public exports (API + artifacts helpers)
 │       ├── api.py                 # Core API (subprocess calls to skilllite binary)
+│       ├── artifacts.py           # artifact_put / artifact_get (OpenAPI v1 HTTP client, stdlib urllib)
 │       ├── binary.py              # Binary management (bundled/PATH resolution)
 │       ├── cli.py                 # CLI entry (forwards to binary)
 │       └── ipc.py                 # IPC client
@@ -221,6 +226,7 @@ skilllite (main binary)
   │           ├── skilllite-sandbox, skilllite-executor
   │           └── skilllite-executor → skilllite-core, skilllite-fs
   ├── skilllite-swarm (swarm feature) → skilllite-core
+  ├── skilllite-artifact → skilllite-core (agent: `local` only; main `skilllite` binary: `local` + `server` when `artifact_http` is enabled — default-on)
   └── skilllite-core (root)
 
 Execution chain: CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
@@ -238,9 +244,19 @@ Core doesn't depend on upper layers; Agent is Core's customer.
 | `sandbox_binary` | skilllite-sandbox + skilllite-core | skilllite-sandbox lightweight binary |
 | `memory_vector` | sqlite-vec | Optional semantic search |
 | `swarm` | skilllite-swarm | P2P networking |
+| `artifact_http` (default) | skilllite-artifact (`local` + `server` in main binary) | Run-scoped artifact HTTP (`skilllite artifact-serve`; **bind** gated by `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`) |
+
+**Artifact implementations (`skilllite-artifact`)**:
+
+- Crate: `skilllite-artifact` (depends only on `skilllite-core`). Features: `local` (filesystem store), `server` (Axum), `client` (blocking HTTP).
+- **`skilllite-agent`** depends on `skilllite-artifact` with `default-features = false, features = ["local"]` so the agent crate does not pull Axum into its default build.
+- The **`skilllite`** binary enables `artifact_http` by default and depends on `skilllite-artifact` with `features = ["local", "server"]` so `skilllite artifact-serve` is compiled in; listening still requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`.
+- OpenAPI (HTTP): [`docs/openapi/artifact-store-http-v1.yaml`](../openapi/artifact-store-http-v1.yaml).
+- Embedders can expose `GET`/`PUT` `/v1/runs/{run_id}/artifacts?key=...` via `artifact_router`, or call the same API from other languages.
+- HTTP `PUT` bodies are capped at **`MAX_ARTIFACT_BODY_BYTES` (64 MiB)** via Axum `DefaultBodyLimit`; larger requests get **413**. The crate uses `skilllite_artifact::Error` / `skilllite_artifact::Result` for serve and client construction (`Other(#[from] anyhow::Error)` per workspace conventions).
 
 **Build Targets**:
-- `cargo build -p skilllite`: Full product
+- `cargo build -p skilllite`: Full product (`artifact-serve` is compiled in; **bind** requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`)
 - `cargo build -p skilllite --no-default-features --features sandbox_binary`: skilllite-sandbox lightweight binary
 
 ### 2. Sandbox Module (skilllite-sandbox)
@@ -402,7 +418,7 @@ pub enum SecuritySeverity {
 | `llm/` | LLM HTTP client (OpenAI-compatible API, Claude Native API, streaming/non-streaming) |
 | `chat_session.rs` | Chat session management |
 | `prompt.rs` | System prompt construction |
-| `skills.rs` | Skill loading and tool definition generation |
+| `skills/` | Skill loading, execution, and tool definition generation |
 | `rpc.rs` | Agent RPC server (JSON-Lines event stream protocol) |
 | `task_planner.rs` | Task planner |
 | `planning_rules.rs` | Planning rules configuration |
@@ -475,18 +491,19 @@ Separate from `skilllite-agent::rpc` — the latter is dedicated to Agent Chat s
 
 ### 7. Python SDK (python-sdk)
 
-> **Note**: The Python SDK is a thin bridge layer (~630 lines), zero runtime dependencies, all operations performed via subprocess calls to the skilllite binary.
+> **Note**: The Python SDK is a thin bridge layer, **zero PyPI runtime dependencies**. Sandbox/chat APIs call the skilllite binary via subprocess (or IPC). **Artifact** helpers use stdlib `urllib` against the HTTP API (`skilllite artifact-serve` with **`SKILLLITE_ARTIFACT_SERVE_ALLOW=1`**, or any compatible server).
 
 **Modules:**
 
 | Module | Responsibility |
 |--------|---------------|
 | `api.py` | `scan_code`, `execute_code`, `chat`, `run_skill` via subprocess calls to skilllite binary |
+| `artifacts.py` | `artifact_put`, `artifact_get` — OpenAPI v1 client for run-scoped artifact HTTP |
 | `binary.py` | Binary management: `get_binary`, bundled/PATH resolution |
 | `cli.py` | CLI entry, forwards to binary |
 | `ipc.py` | IPC client, communicates with `skilllite serve` daemon |
 
-**Exported API**: `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`
+**Exported API**: `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`, `artifact_put`, `artifact_get`, `ArtifactHttpError`, `parse_listen_line`
 
 **Programmatic Agent**: Use `skilllite chat --message` or `api.chat()` to invoke the Rust Agent loop.
 
@@ -620,6 +637,7 @@ skilllite list-tools                           # List tool definitions
 
 # Services
 skilllite serve                                # IPC daemon (stdio JSON-RPC)
+skilllite artifact-serve                       # Run-scoped artifact HTTP (bind requires SKILLLITE_ARTIFACT_SERVE_ALLOW=1)
 skilllite mcp                                  # MCP protocol server
 
 # IDE Integration
@@ -868,5 +886,5 @@ Core doesn't depend on upper layers; Agent is Core's customer, not part of Core
 
 ---
 
-*Document version: 1.4.1*
-*Last updated: 2026-03-20*
+*Document version: 1.4.2*
+*Last updated: 2026-04-08*

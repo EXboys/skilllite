@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-07
+Last updated: 2026-04-08 (board/todo cross-links + STATUS reconciliation)
 
 ## In Progress
 
@@ -16,6 +16,9 @@ Last updated: 2026-04-07
 
 ## Done
 
+- `TASK-2026-028-python-sdk-artifact-tests` - Status: `done` - Owner: `airlu`
+- `TASK-2026-027-artifact-crate-unify` - Status: `done` - Owner: `airlu`
+- `TASK-2026-026-artifact-http-api` - Status: `done` - Owner: `airlu`
 - `TASK-2026-025-run-scoped-artifact-store` - Status: `done` - Owner: `airlu`
 - `TASK-2026-024-auto-confirm-risk-tiers` - Status: `done` - Owner: `airlu`
 - `TASK-2026-023-evolution-memory-rollup` - Status: `done` - Owner: `agent`
@@ -43,5 +46,6 @@ Last updated: 2026-04-07
 
 ## Notes
 
-- Source planning remains in `todo/06-OPTIMIZATION.md`.
-- C-end product track remains in `todo/C-END-POSITIONING-AND-GAPS.md`.
+- Strategic / architecture backlog: `todo/README.md` (hub), `todo/06-OPTIMIZATION.md` (index), `todo/ARCHITECTURE-REVIEW-2026-04.md` (full review).
+- Per-task source of truth: `tasks/TASK-.../STATUS.md` (Checkpoints). Keep this board aligned when status changes; do not list the same Task ID under more than one active column (e.g. Ready vs Done).
+- C-end product track: see `todo/C-END-POSITIONING-AND-GAPS.md` when present; otherwise capture gaps in `todo/ARCHITECTURE-REVIEW-2026-04.md` §2.
