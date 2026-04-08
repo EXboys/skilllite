@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.1.22] - 2026-04-08
+
 ### Added
 
 - **`skilllite-artifact` crate**: Consolidates `LocalDirArtifactStore`, Axum HTTP router, blocking HTTP client, and `run_artifact_http_server` behind features `local` / `server` / `client`. Python SDK adds stdlib `artifact_put` / `artifact_get` plus integration tests; see `docs/openapi/artifact-store-http-v1.yaml`. The crate exposes `skilllite_artifact::Error` / `skilllite_artifact::Result` (with `Other(#[from] anyhow::Error)`) per workspace Rust conventions; `HttpArtifactStore::try_new` now returns `skilllite_artifact::Result<Self>` (**replaces** the previous `BuildError` type). Reference HTTP `PUT` requests are limited to **64 MiB** per body (`DefaultBodyLimit`; HTTP **413** when exceeded; `MAX_ARTIFACT_BODY_BYTES`).
@@ -16,6 +20,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - **SkillLite Assistant (desktop)**: IDE **workspace file tree** lists via `skilllite_list_workspace_entries` now returns **`truncated`**, **`max_entries`**, and **`max_depth`** (walk caps unchanged). UI adds **skeleton + indexing hint**, **non-blocking refresh** (new request supersedes stale results), **`useTransition` / `useDeferredValue`** to keep the main thread responsive on large listings, a **truncation notice** when the backend reports caps, and an **entry count** footer.
 - **CLI `artifact-serve`**: Still compiled in the default `skilllite` binary (`artifact_http` remains a default feature), but the command **refuses to bind** unless **`SKILLLITE_ARTIFACT_SERVE_ALLOW=1`** is set. Reduces accidental network exposure; embedders calling `skilllite_artifact::run_artifact_http_server` directly are unchanged.
+
+### Release
+
+- Workspace, Python SDK, and SkillLite Assistant (Tauri) bumped to **0.1.22**; internal crate path dependency pins aligned to **0.1.22**.
 
 ---
 
@@ -293,7 +301,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.21...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.22...HEAD
+[0.1.22]: https://github.com/EXboys/skilllite/releases/tag/v0.1.22
 [0.1.21]: https://github.com/EXboys/skilllite/releases/tag/v0.1.21
 [0.1.20]: https://github.com/EXboys/skilllite/releases/tag/v0.1.20
 [0.1.19]: https://github.com/EXboys/skilllite/releases/tag/v0.1.19
