@@ -33,6 +33,11 @@ export const enMessages: Record<string, string> = {
   "ide.tabSessions": "Sessions",
   "ide.workspaceFiles": "Workspace",
   "ide.refreshTree": "Refresh",
+  "ide.treeIndexing": "Indexing workspace…",
+  "ide.treeUpdating": "Updating tree…",
+  "ide.treeEntryCount": "{n} items listed",
+  "ide.treeTruncatedHint":
+    "Listing stopped at the safety cap ({max} entries, depth {depth}). Some paths may be missing — narrow the workspace or use Refresh after changes.",
   "ide.treeEmpty": "No files or listing failed",
   "ide.editorPlaceholder": "Pick a file on the left to edit and save",
   "ide.editorHintToggleIde":
@@ -95,6 +100,7 @@ export const enMessages: Record<string, string> = {
 
   "chat.stop": "Stop",
   "chat.stopTask": "Stop current task",
+  "chat.send": "Send",
   "chat.inputPlaceholder":
     "Enter to send · Shift+Enter newline · IME: Enter confirms candidates",
   "chat.attachImage": "Image",

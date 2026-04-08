@@ -242,7 +242,7 @@ export default function MainLayout() {
               <>
                 <aside
                   style={{ width: ideSidebarW }}
-                  className="min-w-0 shrink-0 border-r border-border dark:border-border-dark bg-white dark:bg-paper-dark flex flex-col min-h-0"
+                  className="min-w-0 shrink-0 bg-white dark:bg-paper-dark flex flex-col min-h-0"
                 >
                   <div className="shrink-0 flex border-b border-border dark:border-border-dark">
                     <button
@@ -316,7 +316,7 @@ export default function MainLayout() {
             />
             <main
               style={{ width: ideChatW }}
-              className="min-w-0 shrink-0 overflow-hidden border-l border-border dark:border-border-dark bg-white dark:bg-paper-dark"
+              className="min-w-0 shrink-0 overflow-hidden bg-white dark:bg-paper-dark"
             >
               <ChatView key={currentSessionKey} />
             </main>

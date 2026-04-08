@@ -369,7 +369,7 @@ async fn skilllite_resolve_workspace_file_path(
 #[tauri::command]
 async fn skilllite_list_workspace_entries(
     workspace: String,
-) -> Result<Vec<skilllite_bridge::WorkspaceListEntry>, String> {
+) -> Result<skilllite_bridge::WorkspaceListEntriesPayload, String> {
     let ws = workspace.trim().to_string();
     tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_workspace_entries(&ws))
         .await

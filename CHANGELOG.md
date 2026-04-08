@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **SkillLite Assistant (desktop)**: IDE **workspace file tree** lists via `skilllite_list_workspace_entries` now returns **`truncated`**, **`max_entries`**, and **`max_depth`** (walk caps unchanged). UI adds **skeleton + indexing hint**, **non-blocking refresh** (new request supersedes stale results), **`useTransition` / `useDeferredValue`** to keep the main thread responsive on large listings, a **truncation notice** when the backend reports caps, and an **entry count** footer.
 - **CLI `artifact-serve`**: Still compiled in the default `skilllite` binary (`artifact_http` remains a default feature), but the command **refuses to bind** unless **`SKILLLITE_ARTIFACT_SERVE_ALLOW=1`** is set. Reduces accidental network exposure; embedders calling `skilllite_artifact::run_artifact_http_server` directly are unchanged.
 
 ---

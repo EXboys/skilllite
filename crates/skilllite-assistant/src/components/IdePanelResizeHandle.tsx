@@ -11,7 +11,7 @@ type Props = {
 };
 
 /**
- * IDE 三栏之间的纵向分隔条（pointer 拖拽调宽）。
+ * IDE 三栏之间的纵向分隔条：布局上仅占 **1px**，宽命中区用绝对定位叠在两侧，避免负 margin / padding 在 flex 里叠成粗缝。
  */
 export default function IdePanelResizeHandle({
   ariaLabel,
@@ -57,12 +57,14 @@ export default function IdePanelResizeHandle({
   );
 
   return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={ariaLabel}
-      onPointerDown={onPointerDown}
-      className="w-3 shrink-0 z-10 -mx-1 cursor-col-resize hover:bg-accent/10 active:bg-accent/20 select-none touch-none"
-    />
+    <div className="relative w-px min-w-px max-w-px shrink-0 self-stretch z-10 bg-border dark:bg-border-dark hover:bg-accent/45 dark:hover:bg-accent/50">
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={ariaLabel}
+        onPointerDown={onPointerDown}
+        className="absolute inset-y-0 left-1/2 w-5 min-w-5 -translate-x-1/2 cursor-col-resize select-none touch-none"
+      />
+    </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useI18n } from "../../i18n";
 
 interface ChatInputProps {
   value: string;
@@ -25,12 +26,15 @@ export function ChatInput({
   onStop,
   disabled,
   loading,
-  placeholder = "Enter to send · Shift+Enter for newline",
+  placeholder,
   attachmentSlot,
   allowEmptySend = false,
   bare = false,
   footer,
 }: ChatInputProps) {
+  const { t } = useI18n();
+  const resolvedPlaceholder = placeholder ?? t("chat.inputPlaceholder");
+
   /** True while IME composition is active, or until deferred clear after compositionend (WebKit ordering). */
   const imeComposingRef = useRef(false);
   const imeEndClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,7 +96,7 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           onCompositionStart={handleCompositionStart}
           onCompositionEnd={handleCompositionEnd}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           disabled={disabled}
           rows={3}
           className="flex-1 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-4 py-2.5 text-ink dark:text-ink-dark placeholder-ink-mute dark:placeholder-ink-dark-mute focus:ring-2 focus:ring-accent/30 focus:border-accent outline-none disabled:opacity-50 resize-y min-h-[44px] max-h-52"
@@ -102,8 +106,10 @@ export function ChatInput({
             type="button"
             onClick={onStop}
             className="px-4 py-2.5 rounded-lg border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+            aria-label={t("chat.stop")}
+            title={t("chat.stopTask")}
           >
-            停止
+            {t("chat.stop")}
           </button>
         ) : (
           <button
@@ -115,8 +121,9 @@ export function ChatInput({
               (!value.trim() && !allowEmptySend)
             }
             className="px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            aria-label={t("chat.send")}
           >
-            发送
+            {t("chat.send")}
           </button>
         )}
       </div>

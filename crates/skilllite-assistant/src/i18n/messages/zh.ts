@@ -93,6 +93,7 @@ export const zhMessages: Record<string, string> = {
 
   "chat.stop": "停止",
   "chat.stopTask": "停止当前任务",
+  "chat.send": "发送",
   "chat.inputPlaceholder":
     "Enter 发送，Shift+Enter 换行；输入法未上屏时回车用于确认选词",
   "chat.attachImage": "图片",

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { formatInvokeError } from "../utils/formatInvokeError";
 import { useUiToastStore } from "../stores/useUiToastStore";
@@ -98,6 +98,7 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const loadGenRef = useRef(0);
 
   const hasFiles = files.length > 0;
   const hasEntries = entries.length > 0;
@@ -110,19 +111,25 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
 
   const handleFileClick = async (filename: string) => {
     if (expandedFile === filename) {
+      loadGenRef.current += 1;
       setExpandedFile(null);
       setFileContent(null);
+      setLoading(false);
       return;
     }
+    const myGen = ++loadGenRef.current;
     setLoading(true);
     setExpandedFile(filename);
+    setFileContent(null);
     try {
       const content = await invoke<string>("skilllite_read_log_file", { filename });
+      if (myGen !== loadGenRef.current) return;
       setFileContent(content);
     } catch {
+      if (myGen !== loadGenRef.current) return;
       setFileContent(DETAIL_READ_FAILED);
     } finally {
-      setLoading(false);
+      if (myGen === loadGenRef.current) setLoading(false);
     }
   };
 
@@ -185,6 +192,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const loadGenRef = useRef(0);
 
   const hasFiles = files.length > 0;
   const hasHints = hints.length > 0;
@@ -199,21 +207,27 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
 
   const handleFileClick = async (path: string) => {
     if (expandedFile === path) {
+      loadGenRef.current += 1;
       setExpandedFile(null);
       setFileContent(null);
+      setLoading(false);
       return;
     }
+    const myGen = ++loadGenRef.current;
     setLoading(true);
     setExpandedFile(path);
+    setFileContent(null);
     try {
       const content = await invoke<string>("skilllite_read_memory_file", {
         relativePath: path,
       });
+      if (myGen !== loadGenRef.current) return;
       setFileContent(content);
     } catch {
+      if (myGen !== loadGenRef.current) return;
       setFileContent(DETAIL_READ_FAILED);
     } finally {
-      setLoading(false);
+      if (myGen === loadGenRef.current) setLoading(false);
     }
   };
 
@@ -299,6 +313,7 @@ function OutputFileContent({ files, workspace }: { files: string[]; workspace: s
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const loadGenRef = useRef(0);
 
   if (files.length === 0) {
     return (
@@ -311,10 +326,13 @@ function OutputFileContent({ files, workspace }: { files: string[]; workspace: s
 
   const handleFileClick = async (path: string) => {
     if (expandedFile === path) {
+      loadGenRef.current += 1;
       setExpandedFile(null);
       setFileContent(null);
+      setLoading(false);
       return;
     }
+    const myGen = ++loadGenRef.current;
     setLoading(true);
     setExpandedFile(path);
     setFileContent(null);
@@ -325,18 +343,21 @@ function OutputFileContent({ files, workspace }: { files: string[]; workspace: s
           workspace,
         });
         const mime = getImageMime(path) ?? "image/png";
+        if (myGen !== loadGenRef.current) return;
         setFileContent(`data:${mime};base64,${base64}`);
       } else {
         const content = await invoke<string>("skilllite_read_output_file", {
           relativePath: path,
           workspace,
         });
+        if (myGen !== loadGenRef.current) return;
         setFileContent(content);
       }
     } catch {
+      if (myGen !== loadGenRef.current) return;
       setFileContent(DETAIL_READ_FAILED);
     } finally {
-      setLoading(false);
+      if (myGen === loadGenRef.current) setLoading(false);
     }
   };
 

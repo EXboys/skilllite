@@ -601,6 +601,16 @@ pub struct WorkspaceListEntry {
     pub is_dir: bool,
 }
 
+/// Result of [`list_workspace_entries`] for IDE tree (includes cap / depth metadata for UI).
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkspaceListEntriesPayload {
+    pub entries: Vec<WorkspaceListEntry>,
+    /// True if listing stopped early due to entry cap or max depth.
+    pub truncated: bool,
+    pub max_entries: usize,
+    pub max_depth: usize,
+}
+
 const WORKSPACE_LIST_MAX_DEPTH: usize = 14;
 const WORKSPACE_LIST_MAX_ENTRIES: usize = 5000;
 
@@ -617,8 +627,14 @@ fn walk_workspace_entries(
     dir: &std::path::Path,
     depth: usize,
     out: &mut Vec<WorkspaceListEntry>,
+    truncated: &mut bool,
 ) -> Result<(), String> {
-    if depth > WORKSPACE_LIST_MAX_DEPTH || out.len() >= WORKSPACE_LIST_MAX_ENTRIES {
+    if depth > WORKSPACE_LIST_MAX_DEPTH {
+        *truncated = true;
+        return Ok(());
+    }
+    if out.len() >= WORKSPACE_LIST_MAX_ENTRIES {
+        *truncated = true;
         return Ok(());
     }
     let read = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
@@ -627,6 +643,7 @@ fn walk_workspace_entries(
 
     for e in entries {
         if out.len() >= WORKSPACE_LIST_MAX_ENTRIES {
+            *truncated = true;
             break;
         }
         let path = e.path();
@@ -652,19 +669,28 @@ fn walk_workspace_entries(
             is_dir,
         });
         if is_dir {
-            walk_workspace_entries(root, &path, depth + 1, out)?;
+            walk_workspace_entries(root, &path, depth + 1, out, truncated)?;
         }
     }
     Ok(())
 }
 
 /// List files and directories under the workspace root for IDE navigation (skips heavy dirs).
-pub fn list_workspace_entries(workspace: &str) -> Result<Vec<WorkspaceListEntry>, String> {
+pub fn list_workspace_entries(workspace: &str) -> Result<WorkspaceListEntriesPayload, String> {
     let root = workspace_root_canon(workspace)?;
     let mut out = Vec::new();
-    walk_workspace_entries(&root, &root, 0, &mut out)?;
+    let mut truncated = false;
+    walk_workspace_entries(&root, &root, 0, &mut out, &mut truncated)?;
     out.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
-    Ok(out)
+    if out.len() >= WORKSPACE_LIST_MAX_ENTRIES {
+        truncated = true;
+    }
+    Ok(WorkspaceListEntriesPayload {
+        entries: out,
+        truncated,
+        max_entries: WORKSPACE_LIST_MAX_ENTRIES,
+        max_depth: WORKSPACE_LIST_MAX_DEPTH,
+    })
 }
 
 #[cfg(test)]
@@ -684,6 +710,22 @@ mod workspace_path_tests {
         std::fs::write(&joined, "x").unwrap();
         let err = resolve_under_workspace(&canon, "../..").unwrap_err();
         assert!(err.contains("超出") || err.contains("范围"), "{}", err);
+    }
+
+    #[test]
+    fn list_workspace_entries_empty_dir_not_truncated() {
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite_ws_list_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let ws = tmp.to_string_lossy().into_owned();
+        let got = list_workspace_entries(&ws).unwrap();
+        assert!(!got.truncated);
+        assert!(got.entries.is_empty());
+        assert_eq!(got.max_entries, WORKSPACE_LIST_MAX_ENTRIES);
+        assert_eq!(got.max_depth, WORKSPACE_LIST_MAX_DEPTH);
     }
 
     #[test]

@@ -3753,6 +3753,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "skilllite-artifact",
  "skilllite-core",
  "skilllite-evolution",
  "skilllite-executor",
@@ -3762,6 +3763,18 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "skilllite-artifact"
+version = "0.1.21"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "skilllite-core",
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]

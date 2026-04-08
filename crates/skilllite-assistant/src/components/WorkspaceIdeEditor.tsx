@@ -172,7 +172,7 @@ export default function WorkspaceIdeEditor({
 
   if (!pathTrim) {
     return (
-      <div className="h-full min-h-0 flex flex-col items-center justify-center text-center px-6 text-sm text-ink-mute dark:text-ink-dark-mute border-l border-r border-border dark:border-border-dark bg-white/40 dark:bg-paper-dark/40">
+      <div className="h-full min-h-0 flex flex-col items-center justify-center text-center px-6 text-sm text-ink-mute dark:text-ink-dark-mute bg-white/40 dark:bg-paper-dark/40">
         <p className="max-w-sm leading-relaxed">{t("ide.editorPlaceholder")}</p>
         <p className="mt-3 text-[11px] opacity-80">{t("ide.editorHintToggleIde")}</p>
       </div>
@@ -195,7 +195,7 @@ export default function WorkspaceIdeEditor({
   );
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-white dark:bg-paper-dark border-l border-r border-border dark:border-border-dark">
+    <div className="h-full min-h-0 flex flex-col bg-white dark:bg-paper-dark">
       <header className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border dark:border-border-dark">
         <h2
           className="text-xs font-semibold font-mono truncate min-w-0 flex-1 basis-[60%]"
