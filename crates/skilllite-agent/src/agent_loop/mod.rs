@@ -819,6 +819,11 @@ async fn run_with_task_planning(
                 .is_some_and(|c| c.trim().len() > 50);
             if !has_substantial {
                 let mut emitted_final_summary = false;
+                messages.push(ChatMessage::user(
+                    "All planned tasks are structurally complete. Reply with a concise closing summary \
+                     for the user (same language as their request): what was accomplished, key outcomes \
+                     (URLs, files, errors), and optional next steps. Do not call tools.",
+                ));
                 match client
                     .chat_completion_stream(
                         &config.model,

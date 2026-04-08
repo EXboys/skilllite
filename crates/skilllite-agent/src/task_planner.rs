@@ -638,6 +638,7 @@ impl TaskPlanner {
              6. **🚫 EXECUTE BEFORE COMPLETING**: Your first response must be an actual tool call, NOT a completion summary. Call `complete_task` only AFTER the work is done.\n\
              7. **🚫 NO PREMATURE FINISH CLAIMS**: Until `complete_task` is called for the current task, do NOT say the task is completed. If any tasks remain, do NOT say the whole job is finished.\n\
              8. **Multi-task wording**: In multi-task flows, only report the completed task and explicitly continue to the next one, e.g. \"Task 1 is complete; now proceeding to Task 2.\"\n\
+             9. **Closing summary for the user**: When the **entire** task list is done (after the last `complete_task`), always include a brief natural-language wrap-up for the user: what was achieved, key outcomes (URLs, files, errors), and optional follow-ups. Do not leave the user with only raw tool logs unless they explicitly asked for raw output.\n\
              {}{}\n\n\
              ⚠️ **Important**: After completing each task, you MUST call `complete_task(task_id=N, completion_type=\"...\")` so the system can track progress. Text declarations are ignored.",
             execution_prompt,

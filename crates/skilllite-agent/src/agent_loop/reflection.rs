@@ -73,6 +73,23 @@ pub(super) fn reflect_simple(
         return ReflectionOutcome::Complete;
     }
 
+    // After tools succeeded, an empty (or whitespace-only) assistant reply must not end the
+    // session silently — `Some("")` used to hit the Break branch below via `is_some()`.
+    if after_successful_tool_batch
+        && assistant_content
+            .as_ref()
+            .map(|c| c.trim().is_empty())
+            .unwrap_or(true)
+    {
+        return ReflectionOutcome::SoftNudge(
+            "Tools finished successfully, but you did not write a user-facing reply. \
+             Write a concise closing summary now (2–6 sentences in the user's language): what was done, \
+             the concrete outcome (URLs, paths, data, or errors), and optional next steps. \
+             Do not call tools in this reply unless more work is clearly required."
+                .to_string(),
+        );
+    }
+
     // Emit final text before deciding
     if let Some(ref content) = assistant_content {
         event_sink.on_text(content);
@@ -390,6 +407,32 @@ mod tests {
             true,
         );
         assert!(matches!(out, ReflectionOutcome::Complete));
+    }
+
+    #[test]
+    fn test_reflect_simple_soft_nudge_after_successful_tool_batch_empty_text() {
+        let mut no_tool_retries = 0;
+        let mut messages = vec![];
+        let mut sink = SilentEventSink;
+        for content in [Some(String::new()), Some("   ".to_string()), None] {
+            let out = reflect_simple(
+                &content,
+                5,
+                2,
+                &mut no_tool_retries,
+                3,
+                &mut sink,
+                &mut messages,
+                true,
+            );
+            match &out {
+                ReflectionOutcome::SoftNudge(s) => {
+                    assert!(s.contains("closing summary"));
+                    assert!(s.contains("Tools finished successfully"));
+                }
+                _ => panic!("expected SoftNudge, got {:?}", out),
+            }
+        }
     }
 
     #[test]
