@@ -28,9 +28,8 @@ fn llm_from_merged_pairs(pairs: &[(String, String)]) -> Result<(String, String, 
         .ok_or_else(|| "API key not configured".to_string())?;
     let api_base = env_lookup(&map, llm_keys::API_BASE, llm_keys::API_BASE_ALIASES)
         .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
-    let model = env_lookup(&map, llm_keys::MODEL, llm_keys::MODEL_ALIASES).unwrap_or_else(|| {
-        LlmConfig::default_model_for_base(&api_base).to_string()
-    });
+    let model = env_lookup(&map, llm_keys::MODEL, llm_keys::MODEL_ALIASES)
+        .unwrap_or_else(|| LlmConfig::default_model_for_base(&api_base).to_string());
     Ok((api_base, api_key, model))
 }
 
@@ -88,7 +87,7 @@ fn parse_suggestion_lines(raw: &str) -> Vec<String> {
         t = t.trim_end_matches('`').trim();
         let t = t
             .trim_start_matches(|c: char| c.is_ascii_digit())
-            .trim_start_matches(|c: char| matches!(c, '.' | ')' | '、'))
+            .trim_start_matches(['.', ')', '、'])
             .trim();
         let t = t
             .trim_start_matches("- ")

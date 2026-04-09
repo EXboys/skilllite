@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-08 (board/todo cross-links + STATUS reconciliation)
+Last updated: 2026-04-09 (TASK-2026-029 live transcript linkage done)
 
 ## In Progress
 
@@ -16,6 +16,7 @@ Last updated: 2026-04-08 (board/todo cross-links + STATUS reconciliation)
 
 ## Done
 
+- `TASK-2026-029-assistant-tool-call-id-link` - Status: `done` - Owner: `airlu`
 - `TASK-2026-028-python-sdk-artifact-tests` - Status: `done` - Owner: `airlu`
 - `TASK-2026-027-artifact-crate-unify` - Status: `done` - Owner: `airlu`
 - `TASK-2026-026-artifact-http-api` - Status: `done` - Owner: `airlu`

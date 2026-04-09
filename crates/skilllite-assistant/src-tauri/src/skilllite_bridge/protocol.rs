@@ -57,7 +57,10 @@ pub fn make_protocol_warning_event(
     }
 }
 
-pub fn make_protocol_recovered_event(recovered_lines: usize, total_invalid_lines: usize) -> StreamEvent {
+pub fn make_protocol_recovered_event(
+    recovered_lines: usize,
+    total_invalid_lines: usize,
+) -> StreamEvent {
     StreamEvent {
         event: "protocol_recovered".to_string(),
         data: json!({

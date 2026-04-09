@@ -176,7 +176,7 @@ fn collect_md_files(dir: &std::path::Path, base: &std::path::Path, out: &mut Vec
         let p = e.path();
         if p.is_dir() {
             collect_md_files(&p, base, out);
-        } else if p.extension().map_or(false, |e| e == "md") {
+        } else if p.extension().is_some_and(|e| e == "md") {
             if let Ok(rel) = p.strip_prefix(base) {
                 let mtime = p
                     .metadata()
@@ -243,12 +243,11 @@ fn load_log_files(chat_root: &std::path::Path) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(&transcripts_dir) else {
         return vec![];
     };
-    let cutoff = std::time::SystemTime::now()
-        - std::time::Duration::from_secs(3 * 24 * 60 * 60);
+    let cutoff = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 60 * 60);
     let mut out: Vec<FileWithMtime> = Vec::new();
     for e in entries.flatten() {
         let p = e.path();
-        if p.extension().map_or(true, |e| e != "jsonl") {
+        if p.extension().is_none_or(|e| e != "jsonl") {
             continue;
         }
         let mtime = p
@@ -318,7 +317,7 @@ fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
                     e.path()
                         .file_stem()
                         .and_then(|s| s.to_str())
-                        .map_or(false, |n| n.starts_with(session_key))
+                        .is_some_and(|n| n.starts_with(session_key))
                 })
                 .collect();
             candidates.sort_by_key(|e| {
@@ -553,7 +552,11 @@ fn workspace_write_path_blocked(path: &std::path::Path) -> bool {
 
 /// Write UTF-8 text to a path relative to the workspace root (same discovery as chat / agent).
 /// Blocks obvious sensitive paths (.env, .git/config, .key, .pem).
-pub fn write_workspace_text_file(workspace: &str, relative_path: &str, content: &str) -> Result<(), String> {
+pub fn write_workspace_text_file(
+    workspace: &str,
+    relative_path: &str,
+    content: &str,
+) -> Result<(), String> {
     let workspace_canon = workspace_root_canon(workspace)?;
     let normalized = resolve_under_workspace(&workspace_canon, relative_path)?;
     if workspace_write_path_blocked(&normalized) {
@@ -579,7 +582,10 @@ pub fn read_workspace_text_file(workspace: &str, relative_path: &str) -> Result<
 }
 
 /// Absolute filesystem path for an existing workspace file (for WebView `convertFileSrc` image/video preview).
-pub fn resolve_workspace_existing_file_path(workspace: &str, relative_path: &str) -> Result<String, String> {
+pub fn resolve_workspace_existing_file_path(
+    workspace: &str,
+    relative_path: &str,
+) -> Result<String, String> {
     let workspace_canon = workspace_root_canon(workspace)?;
     let normalized = resolve_under_workspace(&workspace_canon, relative_path)?;
     if workspace_write_path_blocked(&normalized) {
@@ -617,8 +623,19 @@ const WORKSPACE_LIST_MAX_ENTRIES: usize = 5000;
 fn skip_ide_walk_dir(name: &str) -> bool {
     matches!(
         name,
-        ".git" | "node_modules" | "target" | "dist" | "build" | "__pycache__" | ".venv" | "venv"
-            | ".mypy_cache" | ".tox" | ".gradle" | ".next" | ".nuxt"
+        ".git"
+            | "node_modules"
+            | "target"
+            | "dist"
+            | "build"
+            | "__pycache__"
+            | ".venv"
+            | "venv"
+            | ".mypy_cache"
+            | ".tox"
+            | ".gradle"
+            | ".next"
+            | ".nuxt"
     )
 }
 
@@ -699,10 +716,7 @@ mod workspace_path_tests {
 
     #[test]
     fn resolve_rejects_parent_escape() {
-        let tmp = std::env::temp_dir().join(format!(
-            "skilllite_ws_test_{}",
-            std::process::id()
-        ));
+        let tmp = std::env::temp_dir().join(format!("skilllite_ws_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let canon = tmp.canonicalize().unwrap();
@@ -714,10 +728,7 @@ mod workspace_path_tests {
 
     #[test]
     fn list_workspace_entries_empty_dir_not_truncated() {
-        let tmp = std::env::temp_dir().join(format!(
-            "skilllite_ws_list_{}",
-            std::process::id()
-        ));
+        let tmp = std::env::temp_dir().join(format!("skilllite_ws_list_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         let ws = tmp.to_string_lossy().into_owned();
@@ -730,10 +741,8 @@ mod workspace_path_tests {
 
     #[test]
     fn resolve_existing_file_path_returns_absolute() {
-        let tmp = std::env::temp_dir().join(format!(
-            "skilllite_resolve_path_{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("skilllite_resolve_path_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::fs::write(tmp.join("preview.png"), b"x").unwrap();

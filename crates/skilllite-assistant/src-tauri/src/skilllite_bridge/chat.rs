@@ -13,8 +13,8 @@ use tauri::{Emitter, Manager, Window};
 use super::bundled_skills_sync;
 use super::paths::{find_project_root, load_dotenv_for_child};
 use super::protocol::{
-    make_protocol_recovered_event, make_protocol_warning_event, parse_stream_event_line, preview_line,
-    StreamEvent, INVALID_LINE_PREVIEW_CHARS, MAX_CONSECUTIVE_INVALID_PROTOCOL_LINES,
+    make_protocol_recovered_event, make_protocol_warning_event, parse_stream_event_line,
+    preview_line, StreamEvent, INVALID_LINE_PREVIEW_CHARS, MAX_CONSECUTIVE_INVALID_PROTOCOL_LINES,
     MAX_TOTAL_INVALID_PROTOCOL_LINES,
 };
 
@@ -147,7 +147,10 @@ pub fn merge_dotenv_with_chat_overrides(
             m.insert(evo_keys::SKILLLITE_EVO_PROFILE.to_string(), t.to_string());
         }
     }
-    if let Some(h) = cfg.evo_cooldown_hours.filter(|h| h.is_finite() && *h >= 0.0) {
+    if let Some(h) = cfg
+        .evo_cooldown_hours
+        .filter(|h| h.is_finite() && *h >= 0.0)
+    {
         m.insert(
             evo_keys::SKILLLITE_EVO_COOLDOWN_HOURS.to_string(),
             format!("{h}"),
@@ -158,10 +161,7 @@ pub fn merge_dotenv_with_chat_overrides(
     if let Some(ref loc) = cfg.ui_locale {
         let t = loc.trim();
         if t == "en" || t == "zh" {
-            m.insert(
-                agent_keys::SKILLLITE_UI_LOCALE.to_string(),
-                t.to_string(),
-            );
+            m.insert(agent_keys::SKILLLITE_UI_LOCALE.to_string(), t.to_string());
         }
     }
 
@@ -202,6 +202,8 @@ fn resolve_skilllite_path(window: &Window) -> (PathBuf, bool) {
 }
 
 /// Run agent_chat via skilllite agent-rpc subprocess, emitting events to the window.
+/// The parameter list mirrors the Tauri command boundary and shared state inputs.
+#[allow(clippy::too_many_arguments)]
 pub fn chat_stream(
     window: Window,
     message: String,
@@ -220,7 +222,7 @@ pub fn chat_stream(
     let workspace_str = workspace_root.to_string_lossy().to_string();
 
     if let Err(e) =
-        bundled_skills_sync::sync_bundled_skills_from_resources(&window.app_handle(), &raw_workspace)
+        bundled_skills_sync::sync_bundled_skills_from_resources(window.app_handle(), &raw_workspace)
     {
         eprintln!("[skilllite-assistant] bundled skills sync failed: {}", e);
     }
@@ -456,7 +458,11 @@ pub fn chat_stream(
                 }
                 if ev.event == "clarification_request" {
                     let reason = ev.data.get("reason").and_then(|v| v.as_str()).unwrap_or("");
-                    let message = ev.data.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                    let message = ev
+                        .data
+                        .get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     let suggestions: Vec<String> = ev
                         .data
                         .get("suggestions")

@@ -11,6 +11,8 @@ use tauri::{
 };
 
 #[tauri::command]
+// Tauri command wiring requires multiple explicit payload/state parameters here.
+#[allow(clippy::too_many_arguments)]
 async fn skilllite_chat_stream(
     window: tauri::Window,
     message: String,
@@ -113,8 +115,7 @@ async fn skilllite_read_memory_file(relative_path: String) -> Result<String, Str
 #[tauri::command]
 async fn skilllite_read_log_file(filename: String) -> Result<String, String> {
     let name = filename.clone();
-    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_log_file(&name))
-        .await
+    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::read_log_file(&name)).await
     {
         Ok(inner) => inner,
         Err(e) => Err(e.to_string()),
@@ -154,10 +155,7 @@ async fn skilllite_read_output_file_base64(
 }
 
 #[tauri::command]
-async fn skilllite_open_directory(
-    module: String,
-    workspace: Option<String>,
-) -> Result<(), String> {
+async fn skilllite_open_directory(module: String, workspace: Option<String>) -> Result<(), String> {
     match tauri::async_runtime::spawn_blocking(move || {
         skilllite_bridge::open_directory(&module, workspace)
     })
@@ -298,10 +296,7 @@ async fn skilllite_create_session(
 }
 
 #[tauri::command]
-async fn skilllite_rename_session(
-    session_key: String,
-    new_name: String,
-) -> Result<(), String> {
+async fn skilllite_rename_session(session_key: String, new_name: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         skilllite_bridge::rename_session(&session_key, &new_name)
     })
@@ -385,25 +380,25 @@ async fn skilllite_load_evolution_status(
     tauri::async_runtime::spawn_blocking(move || {
         skilllite_bridge::load_evolution_status(&ws, config)
     })
-        .await
-        .unwrap_or_else(|e| skilllite_bridge::EvolutionStatusPayload {
-            mode_key: "error".into(),
-            mode_label: format!("任务失败: {}", e),
-            interval_secs: 600,
-            decision_threshold: 10,
-            weighted_signal_sum: 0,
-            weighted_trigger_min: 3,
-            signal_window: 10,
-            evo_profile_key: "default".into(),
-            evo_cooldown_hours: 1.0,
-            unprocessed_decisions: 0,
-            last_run_ts: None,
-            judgement_label: None,
-            judgement_reason: None,
-            recent_events: vec![],
-            pending_skill_count: 0,
-            db_error: Some(e.to_string()),
-        })
+    .await
+    .unwrap_or_else(|e| skilllite_bridge::EvolutionStatusPayload {
+        mode_key: "error".into(),
+        mode_label: format!("任务失败: {}", e),
+        interval_secs: 600,
+        decision_threshold: 10,
+        weighted_signal_sum: 0,
+        weighted_trigger_min: 3,
+        signal_window: 10,
+        evo_profile_key: "default".into(),
+        evo_cooldown_hours: 1.0,
+        unprocessed_decisions: 0,
+        last_run_ts: None,
+        judgement_label: None,
+        judgement_reason: None,
+        recent_events: vec![],
+        pending_skill_count: 0,
+        db_error: Some(e.to_string()),
+    })
 }
 
 #[tauri::command]
@@ -411,9 +406,11 @@ async fn skilllite_list_evolution_pending(
     workspace: Option<String>,
 ) -> Vec<skilllite_bridge::PendingSkillDto> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
-    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_evolution_pending_skills(&ws))
-        .await
-        .unwrap_or_default()
+    tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::list_evolution_pending_skills(&ws)
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -541,8 +538,10 @@ async fn skilllite_list_prompt_snapshot_txns(
     filename: String,
 ) -> Result<Vec<skilllite_bridge::EvolutionSnapshotTxnDto>, String> {
     let f = filename;
-    match tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_prompt_snapshot_txns(&f))
-        .await
+    match tauri::async_runtime::spawn_blocking(move || {
+        skilllite_bridge::list_prompt_snapshot_txns(&f)
+    })
+    .await
     {
         Ok(inner) => inner,
         Err(e) => Err(e.to_string()),
@@ -552,7 +551,8 @@ async fn skilllite_list_prompt_snapshot_txns(
 #[tauri::command]
 async fn skilllite_list_prompt_snapshots_batch(
     filenames: Vec<String>,
-) -> Result<std::collections::HashMap<String, Vec<skilllite_bridge::EvolutionSnapshotTxnDto>>, String> {
+) -> Result<std::collections::HashMap<String, Vec<skilllite_bridge::EvolutionSnapshotTxnDto>>, String>
+{
     let names = filenames;
     match tauri::async_runtime::spawn_blocking(move || {
         skilllite_bridge::list_prompt_snapshots_batch(&names)
@@ -764,7 +764,9 @@ fn assistant_quit_uninstall(
 
 /// Read a user-picked image from disk (after native file dialog) for chat attachments.
 #[tauri::command]
-fn skilllite_read_local_image_b64(path: String) -> Result<skilllite_bridge::ChatImageAttachment, String> {
+fn skilllite_read_local_image_b64(
+    path: String,
+) -> Result<skilllite_bridge::ChatImageAttachment, String> {
     use base64::Engine;
     use std::path::Path;
 

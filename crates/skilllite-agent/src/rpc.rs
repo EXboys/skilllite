@@ -28,8 +28,8 @@
 //! ```json
 //! {"event": "text_chunk", "data": {"text": "Hello"}}
 //! {"event": "text", "data": {"text": "Hello, how can I help?"}}
-//! {"event": "tool_call", "data": {"name": "read_file", "arguments": "{...}"}}
-//! {"event": "tool_result", "data": {"name": "read_file", "result": "...", "is_error": false}}
+//! {"event": "tool_call", "data": {"tool_call_id": "call_123", "name": "read_file", "arguments": "{...}"}}
+//! {"event": "tool_result", "data": {"tool_call_id": "call_123", "name": "read_file", "result": "...", "is_error": false}}
 //! {"event": "command_started", "data": {"command": "echo hello"}}
 //! {"event": "command_output", "data": {"stream": "stdout", "chunk": "line"}}
 //! {"event": "command_finished", "data": {"success": true, "exit_code": 0, "duration_ms": 123}}
@@ -192,6 +192,27 @@ fn build_tool_result_dedupe_key(turn_id: u64, name: &str, result: &str, is_error
     format!("{turn_id}:{name}:{content_hash}:{is_error}")
 }
 
+fn build_tool_call_event_data(tool_call_id: Option<&str>, name: &str, arguments: &str) -> Value {
+    let mut data = json!({ "name": name, "arguments": arguments });
+    if let Some(id) = tool_call_id.filter(|id| !id.is_empty()) {
+        data["tool_call_id"] = json!(id);
+    }
+    data
+}
+
+fn build_tool_result_event_data(
+    tool_call_id: Option<&str>,
+    name: &str,
+    result: &str,
+    is_error: bool,
+) -> Value {
+    let mut data = json!({ "name": name, "result": result, "is_error": is_error });
+    if let Some(id) = tool_call_id.filter(|id| !id.is_empty()) {
+        data["tool_call_id"] = json!(id);
+    }
+    data
+}
+
 impl EventSink for RpcEventSink {
     fn on_turn_start(&mut self) {
         self.turn_id = self.turn_id.saturating_add(1);
@@ -222,6 +243,13 @@ impl EventSink for RpcEventSink {
         self.emit("tool_call", json!({ "name": name, "arguments": arguments }));
     }
 
+    fn on_tool_call_with_id(&mut self, tool_call_id: Option<&str>, name: &str, arguments: &str) {
+        self.emit(
+            "tool_call",
+            build_tool_call_event_data(tool_call_id, name, arguments),
+        );
+    }
+
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool) {
         let key = build_tool_result_dedupe_key(self.turn_id, name, result, is_error);
         if !self.emitted_tool_result_keys.insert(key) {
@@ -230,6 +258,23 @@ impl EventSink for RpcEventSink {
         self.emit(
             "tool_result",
             json!({ "name": name, "result": result, "is_error": is_error }),
+        );
+    }
+
+    fn on_tool_result_with_id(
+        &mut self,
+        tool_call_id: Option<&str>,
+        name: &str,
+        result: &str,
+        is_error: bool,
+    ) {
+        let key = build_tool_result_dedupe_key(self.turn_id, name, result, is_error);
+        if !self.emitted_tool_result_keys.insert(key) {
+            return;
+        }
+        self.emit(
+            "tool_result",
+            build_tool_result_event_data(tool_call_id, name, result, is_error),
         );
     }
 
@@ -649,7 +694,9 @@ async fn handle_agent_chat(
 
 #[cfg(test)]
 mod tests {
-    use super::build_tool_result_dedupe_key;
+    use super::{
+        build_tool_call_event_data, build_tool_result_dedupe_key, build_tool_result_event_data,
+    };
 
     #[test]
     fn dedupe_key_is_stable_for_same_input() {
@@ -667,5 +714,21 @@ mod tests {
         assert_ne!(base, different_turn);
         assert_ne!(base, different_content);
         assert_ne!(base, different_error);
+    }
+
+    #[test]
+    fn tool_event_payloads_include_tool_call_id_when_present() {
+        let call = build_tool_call_event_data(Some("call-123"), "read_file", "{\"path\":\"a\"}");
+        let result = build_tool_result_event_data(Some("call-123"), "read_file", "ok", false);
+        assert_eq!(call["tool_call_id"], "call-123");
+        assert_eq!(result["tool_call_id"], "call-123");
+    }
+
+    #[test]
+    fn tool_event_payloads_omit_empty_tool_call_id() {
+        let call = build_tool_call_event_data(Some(""), "read_file", "{}");
+        let result = build_tool_result_event_data(None, "read_file", "ok", false);
+        assert!(call.get("tool_call_id").is_none());
+        assert!(result.get("tool_call_id").is_none());
     }
 }

@@ -1,8 +1,8 @@
 //! 技能、进化、引导、运行时、Ollama、日程。
 
 use serde::Serialize;
-use std::collections::HashMap;
 use skilllite_core::skill::manifest;
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use tauri::Emitter;
@@ -182,13 +182,8 @@ pub fn remove_skills(workspace: &str, skill_names: &[String]) -> Result<String, 
             .parent()
             .ok_or_else(|| format!("无效技能路径: {}", skill_path.display()))?;
         manifest::remove_skill_entry(skills_parent, &skill_path).map_err(|e| e.to_string())?;
-        fs::remove_dir_all(&skill_path).map_err(|e| {
-            format!(
-                "删除目录失败 {}: {}",
-                skill_path.display(),
-                e
-            )
-        })?;
+        fs::remove_dir_all(&skill_path)
+            .map_err(|e| format!("删除目录失败 {}: {}", skill_path.display(), e))?;
         deleted += 1;
         lines.push(format!("已删除: {}", name));
     }
@@ -362,10 +357,7 @@ impl Drop for EvolutionRunEnvGuard {
     }
 }
 
-fn effective_evolution_interval_secs(
-    workspace: &str,
-    cfg: Option<&ChatConfigOverrides>,
-) -> u64 {
+fn effective_evolution_interval_secs(workspace: &str, cfg: Option<&ChatConfigOverrides>) -> u64 {
     use skilllite_core::config::env_keys::evolution as evo_env;
     if let Some(c) = cfg {
         if let Some(n) = c.evolution_interval_secs.filter(|&n| n > 0) {
@@ -415,10 +407,7 @@ fn effective_evo_profile_key(workspace: &str, cfg: Option<&ChatConfigOverrides>)
 fn effective_evo_cooldown_hours(workspace: &str, cfg: Option<&ChatConfigOverrides>) -> f64 {
     use skilllite_core::config::env_keys::evolution as evo_env;
     if let Some(c) = cfg {
-        if let Some(h) = c
-            .evo_cooldown_hours
-            .filter(|h| h.is_finite() && *h >= 0.0)
-        {
+        if let Some(h) = c.evo_cooldown_hours.filter(|h| h.is_finite() && *h >= 0.0) {
             return h;
         }
     }
@@ -478,11 +467,13 @@ pub fn evolution_growth_due(
     let mut g = last_periodic_spawn_unix
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    skilllite_evolution::growth_schedule::growth_due(&conn, now, &mut *g, &schedule_cfg)
+    skilllite_evolution::growth_schedule::growth_due(&conn, now, &mut g, &schedule_cfg)
         .unwrap_or(false)
 }
 
-fn evolution_mode_labels(mode: &skilllite_evolution::EvolutionMode) -> (&'static str, &'static str) {
+fn evolution_mode_labels(
+    mode: &skilllite_evolution::EvolutionMode,
+) -> (&'static str, &'static str) {
     match mode {
         skilllite_evolution::EvolutionMode::All => ("all", "全部启用"),
         skilllite_evolution::EvolutionMode::PromptsOnly => ("prompts", "仅 Prompts"),
@@ -570,7 +561,8 @@ pub fn load_evolution_status(
             ) {
                 weighted_signal_sum = w;
             }
-            if let Ok(Some(summary)) = skilllite_evolution::feedback::build_latest_judgement(&conn) {
+            if let Ok(Some(summary)) = skilllite_evolution::feedback::build_latest_judgement(&conn)
+            {
                 judgement_label = Some(summary.judgement.label_zh().to_string());
                 judgement_reason = Some(summary.reason);
             }
@@ -671,7 +663,10 @@ pub fn list_evolution_pending_skills(workspace: &str) -> Vec<PendingSkillDto> {
         .collect()
 }
 
-pub fn read_evolution_pending_skill_md(workspace: &str, skill_name: &str) -> Result<String, String> {
+pub fn read_evolution_pending_skill_md(
+    workspace: &str,
+    skill_name: &str,
+) -> Result<String, String> {
     let skills_root = find_project_root(workspace).join(".skills");
     let path = skills_root
         .join("_evolved")
@@ -840,7 +835,10 @@ pub struct EvolutionBacklogRowDto {
     pub note: String,
 }
 
-pub fn load_evolution_backlog(_workspace: &str, limit: usize) -> Result<Vec<EvolutionBacklogRowDto>, String> {
+pub fn load_evolution_backlog(
+    _workspace: &str,
+    limit: usize,
+) -> Result<Vec<EvolutionBacklogRowDto>, String> {
     let chat_root = skilllite_core::paths::chat_root();
     let conn =
         skilllite_evolution::feedback::open_evolution_db(&chat_root).map_err(|e| e.to_string())?;
@@ -900,13 +898,21 @@ pub fn trigger_evolution_run(
         load_dotenv_for_child(workspace).into_iter().collect();
     let mut api_base = env_first_non_empty(
         &env_map,
-        &["SKILLLITE_API_BASE", "OPENAI_API_BASE", "OPENAI_BASE_URL", "BASE_URL"],
+        &[
+            "SKILLLITE_API_BASE",
+            "OPENAI_API_BASE",
+            "OPENAI_BASE_URL",
+            "BASE_URL",
+        ],
     )
     .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.api_base))
     .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
-    let mut api_key = env_first_non_empty(&env_map, &["SKILLLITE_API_KEY", "OPENAI_API_KEY", "API_KEY"])
-        .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.api_key))
-        .unwrap_or_default();
+    let mut api_key = env_first_non_empty(
+        &env_map,
+        &["SKILLLITE_API_KEY", "OPENAI_API_KEY", "API_KEY"],
+    )
+    .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.api_key))
+    .unwrap_or_default();
     let mut model = env_first_non_empty(&env_map, &["SKILLLITE_MODEL", "OPENAI_MODEL", "MODEL"])
         .or_else(|| skilllite_core::config::LlmConfig::try_from_env().map(|c| c.model))
         .unwrap_or_else(|| "gpt-4o".to_string());
@@ -932,13 +938,15 @@ pub fn trigger_evolution_run(
     }
 
     if api_key.trim().is_empty() {
-        return Err("执行 evolution run 失败: 缺少 API key（请配置 SKILLLITE_API_KEY 或 OPENAI_API_KEY）".to_string());
+        return Err(
+            "执行 evolution run 失败: 缺少 API key（请配置 SKILLLITE_API_KEY 或 OPENAI_API_KEY）"
+                .to_string(),
+        );
     }
 
     let dotenv = load_dotenv_for_child(workspace);
     let merged_vec = merge_dotenv_with_chat_overrides(dotenv, overrides.as_ref());
-    let merged_map: std::collections::HashMap<String, String> =
-        merged_vec.into_iter().collect();
+    let merged_map: std::collections::HashMap<String, String> = merged_vec.into_iter().collect();
     let _evo_env_guard = EvolutionRunEnvGuard::push_from_merged(&merged_map);
 
     let llm = skilllite_agent::llm::LlmClient::new(&api_base, &api_key)
@@ -975,8 +983,10 @@ pub fn trigger_evolution_run(
 
     let response = match run_result {
         Ok(skilllite_evolution::EvolutionRunResult::Completed(Some(txn_id))) => {
-            let conn = skilllite_evolution::feedback::open_evolution_db(&skilllite_core::paths::chat_root())
-                .map_err(|e| format!("执行 evolution run 失败: 打开进化数据库失败: {}", e))?;
+            let conn = skilllite_evolution::feedback::open_evolution_db(
+                &skilllite_core::paths::chat_root(),
+            )
+            .map_err(|e| format!("执行 evolution run 失败: 打开进化数据库失败: {}", e))?;
             let changes = skilllite_evolution::query_changes_by_txn(&conn, &txn_id);
             let summary: Vec<String> = skilllite_evolution::format_evolution_changes(&changes);
             if summary.is_empty() {
@@ -991,7 +1001,9 @@ pub fn trigger_evolution_run(
         Ok(skilllite_evolution::EvolutionRunResult::NoScope)
         | Ok(skilllite_evolution::EvolutionRunResult::Completed(None)) => {
             let mut hint = String::from("Evolution: nothing to evolve");
-            if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&skilllite_core::paths::chat_root()) {
+            if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(
+                &skilllite_core::paths::chat_root(),
+            ) {
                 if let Ok((total, with_desc)) =
                     skilllite_evolution::feedback::count_decisions_with_task_desc(&conn)
                 {
@@ -1002,7 +1014,9 @@ pub fn trigger_evolution_run(
                             .query_row("SELECT COUNT(*) FROM decisions", [], |r| r.get(0))
                             .unwrap_or(0);
                         if all_count > 0 {
-                            hint.push_str("\n\n提示: 未进化决策队列为空。已有决策均已标记为已进化。");
+                            hint.push_str(
+                                "\n\n提示: 未进化决策队列为空。已有决策均已标记为已进化。",
+                            );
                             hint.push_str("\n请执行新任务积累新决策后再触发进化。");
                         } else {
                             hint.push_str("\n\n提示: 进化队列为空。请先运行 skilllite run 或 skilllite chat 积累决策。");
@@ -1020,7 +1034,9 @@ pub fn trigger_evolution_run(
         clipped.truncate(480);
         clipped.push('…');
     }
-    if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&skilllite_core::paths::chat_root()) {
+    if let Ok(conn) =
+        skilllite_evolution::feedback::open_evolution_db(&skilllite_core::paths::chat_root())
+    {
         let _ = skilllite_evolution::log_evolution_event(
             &conn,
             &skilllite_core::paths::chat_root(),
@@ -1196,7 +1212,9 @@ fn list_prompt_snapshots_batch_at(
 }
 
 /// 一次请求列出多个 prompt 文件的快照 txn（避免前端 N 路并行 invoke 与 Strict Mode 竞态）。
-pub fn list_prompt_snapshots_batch(filenames: &[String]) -> Result<HashMap<String, Vec<EvolutionSnapshotTxnDto>>, String> {
+pub fn list_prompt_snapshots_batch(
+    filenames: &[String],
+) -> Result<HashMap<String, Vec<EvolutionSnapshotTxnDto>>, String> {
     list_prompt_snapshots_batch_at(&skilllite_core::paths::chat_root(), filenames)
 }
 
@@ -1209,19 +1227,23 @@ pub fn write_chat_prompt_text_file(filename: &str, content: &str) -> Result<(), 
     if !evolution_prompt_filename_allowed(filename) {
         return Err("不支持的 prompt 文件名".to_string());
     }
-    let len = content.as_bytes().len() as u64;
+    let len = content.len() as u64;
     if len > MAX_PROMPT_VERSION_BYTES {
-        return Err(format!(
-            "内容超过 {} 字节上限",
-            MAX_PROMPT_VERSION_BYTES
-        ));
+        return Err(format!("内容超过 {} 字节上限", MAX_PROMPT_VERSION_BYTES));
     }
-    let path = skilllite_core::paths::chat_root().join("prompts").join(filename);
+    let path = skilllite_core::paths::chat_root()
+        .join("prompts")
+        .join(filename);
     skilllite_fs::write_file(&path, content).map_err(|e| e.to_string())
 }
 
-fn evolved_prompt_files_from_changelog(chat_root: &std::path::Path) -> std::collections::HashSet<String> {
-    let changelog = chat_root.join("prompts").join("_versions").join("changelog.jsonl");
+fn evolved_prompt_files_from_changelog(
+    chat_root: &std::path::Path,
+) -> std::collections::HashSet<String> {
+    let changelog = chat_root
+        .join("prompts")
+        .join("_versions")
+        .join("changelog.jsonl");
     let mut evolved = std::collections::HashSet::new();
     if !changelog.exists() {
         return evolved;
@@ -1353,17 +1375,18 @@ mod evolution_prompt_version_tests {
             list[0].modified_unix >= list[1].modified_unix,
             "expect newest txn first"
         );
-        let ids: std::collections::HashSet<&str> =
-            list.iter().map(|t| t.txn_id.as_str()).collect();
+        let ids: std::collections::HashSet<&str> = list.iter().map(|t| t.txn_id.as_str()).collect();
         assert!(ids.contains("evo_20260101_000001"));
         assert!(ids.contains("evo_20260101_000000"));
 
         assert_eq!(
-            read_prompt_snapshot_version_at(&root, "rules.json", PROMPT_VERSION_CURRENT).expect("cur"),
+            read_prompt_snapshot_version_at(&root, "rules.json", PROMPT_VERSION_CURRENT)
+                .expect("cur"),
             "live"
         );
         assert_eq!(
-            read_prompt_snapshot_version_at(&root, "rules.json", "evo_20260101_000000").expect("t0"),
+            read_prompt_snapshot_version_at(&root, "rules.json", "evo_20260101_000000")
+                .expect("t0"),
             "v1"
         );
         let _ = std::fs::remove_dir_all(&root);

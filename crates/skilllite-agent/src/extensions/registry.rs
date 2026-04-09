@@ -370,7 +370,12 @@ impl RegisteredTool {
     }
 
     pub fn render_use_result(&self, event_sink: &mut dyn EventSink, result: &ToolResult) {
-        event_sink.on_tool_result(self.name(), &result.content, result.is_error);
+        event_sink.on_tool_result_with_id(
+            Some(&result.tool_call_id),
+            self.name(),
+            &result.content,
+            result.is_error,
+        );
     }
 
     pub fn execution_profile(&self) -> ToolExecutionProfile {
@@ -835,7 +840,12 @@ impl<'a> ExtensionRegistry<'a> {
         if let Some(registered) = self.tools_by_name.get(tool_name) {
             registered.render_use_result(event_sink, result);
         } else {
-            event_sink.on_tool_result(tool_name, &result.content, result.is_error);
+            event_sink.on_tool_result_with_id(
+                Some(&result.tool_call_id),
+                tool_name,
+                &result.content,
+                result.is_error,
+            );
         }
     }
 

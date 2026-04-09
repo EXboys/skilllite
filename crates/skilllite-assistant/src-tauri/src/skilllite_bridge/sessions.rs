@@ -82,7 +82,11 @@ pub fn list_sessions() -> Vec<SessionInfo> {
             let display_name = val
                 .get("display_name")
                 .and_then(|d| d.as_str())
-                .unwrap_or(if key == "default" { "默认会话" } else { key })
+                .unwrap_or(if key == "default" {
+                    "默认会话"
+                } else {
+                    key
+                })
                 .to_string();
             let updated_at = val
                 .get("updated_at")
@@ -269,10 +273,8 @@ mod tests {
 
     #[test]
     fn list_transcript_paths_sorts_dated_files() {
-        let tmp = std::env::temp_dir().join(format!(
-            "skilllite-transcript-test-{}",
-            std::process::id()
-        ));
+        let tmp =
+            std::env::temp_dir().join(format!("skilllite-transcript-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(&tmp).unwrap();
         std::fs::write(tmp.join("s1-2026-01-01.jsonl"), "").unwrap();

@@ -66,8 +66,22 @@ pub trait EventSink: Send {
     }
     /// Called when a tool is about to be invoked.
     fn on_tool_call(&mut self, name: &str, arguments: &str);
+    /// Called when a tool is about to be invoked with an optional stable call id.
+    fn on_tool_call_with_id(&mut self, _tool_call_id: Option<&str>, name: &str, arguments: &str) {
+        self.on_tool_call(name, arguments);
+    }
     /// Called when a tool returns a result.
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool);
+    /// Called when a tool returns a result with an optional stable call id.
+    fn on_tool_result_with_id(
+        &mut self,
+        _tool_call_id: Option<&str>,
+        name: &str,
+        result: &str,
+        is_error: bool,
+    ) {
+        self.on_tool_result(name, result, is_error);
+    }
     /// Called when a command tool starts execution.
     fn on_command_started(&mut self, _command: &str) {}
     /// Called when a command tool emits incremental stdout/stderr output.
@@ -120,7 +134,17 @@ impl EventSink for SilentEventSink {
     fn emit_assistant_visible(&mut self, _text: &str) {}
     fn on_text(&mut self, _text: &str) {}
     fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+    fn on_tool_call_with_id(&mut self, _tool_call_id: Option<&str>, _name: &str, _arguments: &str) {
+    }
     fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+    fn on_tool_result_with_id(
+        &mut self,
+        _tool_call_id: Option<&str>,
+        _name: &str,
+        _result: &str,
+        _is_error: bool,
+    ) {
+    }
     fn on_confirmation_request(&mut self, _request: &ConfirmationRequest) -> bool {
         true // Auto-approve for silent operations (memory flush may rarely need run_command)
     }
@@ -486,8 +510,22 @@ impl EventSink for RunModeEventSink {
     fn on_tool_call(&mut self, name: &str, arguments: &str) {
         self.inner.on_tool_call(name, arguments);
     }
+    fn on_tool_call_with_id(&mut self, tool_call_id: Option<&str>, name: &str, arguments: &str) {
+        self.inner
+            .on_tool_call_with_id(tool_call_id, name, arguments);
+    }
     fn on_tool_result(&mut self, name: &str, result: &str, is_error: bool) {
         self.inner.on_tool_result(name, result, is_error);
+    }
+    fn on_tool_result_with_id(
+        &mut self,
+        tool_call_id: Option<&str>,
+        name: &str,
+        result: &str,
+        is_error: bool,
+    ) {
+        self.inner
+            .on_tool_result_with_id(tool_call_id, name, result, is_error);
     }
     fn on_command_started(&mut self, command: &str) {
         self.inner.on_command_started(command);

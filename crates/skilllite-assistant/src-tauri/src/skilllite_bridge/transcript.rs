@@ -31,6 +31,8 @@ pub struct TranscriptMessage {
     pub role: String,
     pub content: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_error: Option<bool>,
@@ -96,6 +98,7 @@ struct TranscriptEntryRaw {
     id: String,
     role: String,
     content: String,
+    tool_call_id: Option<String>,
     summary: Option<String>,
     name: Option<String>,
     is_error: Option<bool>,
@@ -168,10 +171,14 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
     }
     let transcripts_dir = chat_root.join("transcripts");
     let paths = list_transcript_paths(&transcripts_dir, session_key);
+    load_transcript_from_paths(&paths)
+}
+
+fn load_transcript_from_paths(paths: &[PathBuf]) -> Vec<TranscriptMessage> {
     let mut entries: Vec<TranscriptEntryRaw> = Vec::new();
 
     for path in paths {
-        let Ok(file) = std::fs::File::open(&path) else {
+        let Ok(file) = std::fs::File::open(path) else {
             continue;
         };
         let reader = BufReader::new(file);
@@ -215,6 +222,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         .to_string(),
                     role,
                     content,
+                    tool_call_id: None,
                     summary: None,
                     name: None,
                     is_error: None,
@@ -233,6 +241,10 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     .and_then(|a| a.as_str())
                     .unwrap_or("")
                     .to_string();
+                let tool_call_id = v
+                    .get("tool_call_id")
+                    .and_then(|i| i.as_str())
+                    .map(str::to_string);
                 entries.push(TranscriptEntryRaw {
                     ty,
                     id: v
@@ -242,6 +254,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         .to_string(),
                     role: "tool_call".to_string(),
                     content: arguments,
+                    tool_call_id,
                     summary: None,
                     name: Some(name),
                     is_error: None,
@@ -260,10 +273,11 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     .and_then(|r| r.as_str())
                     .unwrap_or("")
                     .to_string();
-                let is_error = v
-                    .get("is_error")
-                    .and_then(|e| e.as_bool())
-                    .unwrap_or(false);
+                let is_error = v.get("is_error").and_then(|e| e.as_bool()).unwrap_or(false);
+                let tool_call_id = v
+                    .get("tool_call_id")
+                    .and_then(|i| i.as_str())
+                    .map(str::to_string);
                 entries.push(TranscriptEntryRaw {
                     ty,
                     id: v
@@ -273,6 +287,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         .to_string(),
                     role: "tool_result".to_string(),
                     content: result,
+                    tool_call_id,
                     summary: None,
                     name: Some(name),
                     is_error: Some(is_error),
@@ -286,6 +301,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     id: String::new(),
                     role: String::new(),
                     content: String::new(),
+                    tool_call_id: None,
                     summary: v.get("summary").and_then(|s| s.as_str()).map(String::from),
                     name: None,
                     is_error: None,
@@ -294,10 +310,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     llm_usage: None,
                 });
             } else if ty == "custom_message" {
-                let ui_kind = v
-                    .get("ui_kind")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("");
+                let ui_kind = v.get("ui_kind").and_then(|x| x.as_str()).unwrap_or("");
                 if ui_kind == "confirmation" {
                     let id = v
                         .get("id")
@@ -327,6 +340,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         id,
                         role: "skilllite_ui".to_string(),
                         content: String::new(),
+                        tool_call_id: None,
                         summary: None,
                         name: None,
                         is_error: None,
@@ -340,10 +354,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         .and_then(|i| i.as_str())
                         .unwrap_or("")
                         .to_string();
-                    let suggestions = v
-                        .get("suggestions")
-                        .cloned()
-                        .unwrap_or_else(|| json!([]));
+                    let suggestions = v.get("suggestions").cloned().unwrap_or_else(|| json!([]));
                     let ui = json!({
                         "kind": "clarification",
                         "reason": v.get("reason").cloned().unwrap_or(json!("")),
@@ -358,6 +369,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         id,
                         role: "skilllite_ui".to_string(),
                         content: String::new(),
+                        tool_call_id: None,
                         summary: None,
                         name: None,
                         is_error: None,
@@ -405,6 +417,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 id,
                 role: "skilllite_ui".to_string(),
                 content: String::new(),
+                tool_call_id: None,
                 ui: e.ui.clone(),
                 ..Default::default()
             });
@@ -441,6 +454,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
             id,
             role: e.role.clone(),
             content: e.content.clone(),
+            tool_call_id: e.tool_call_id.clone(),
             name: e.name.clone(),
             is_error: e.is_error,
             images,
@@ -458,7 +472,7 @@ pub fn clear_transcript(
 ) -> Result<(), String> {
     let workspace_root = find_project_root(workspace);
 
-    let mut cmd = std::process::Command::new(&skilllite_path);
+    let mut cmd = std::process::Command::new(skilllite_path);
     cmd.args([
         "clear-session",
         "--session-key",
@@ -489,4 +503,50 @@ pub fn clear_transcript(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{load_transcript_from_paths, TranscriptMessage};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_test_dir(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!("skilllite-assistant-{name}-{nanos}"))
+    }
+
+    fn tool_row<'a>(messages: &'a [TranscriptMessage], role: &str) -> &'a TranscriptMessage {
+        messages
+            .iter()
+            .find(|m| m.role == role)
+            .expect("expected transcript row")
+    }
+
+    #[test]
+    fn load_transcript_restores_tool_call_ids() {
+        let dir = unique_test_dir("transcript-tool-call-id");
+        fs::create_dir_all(&dir).expect("create temp dir");
+        let path = dir.join("default-2026-04-09.jsonl");
+        fs::write(
+            &path,
+            concat!(
+                "{\"type\":\"tool_call\",\"id\":\"call-row\",\"tool_call_id\":\"call-123\",\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"/tmp/a.txt\\\"}\"}\n",
+                "{\"type\":\"tool_result\",\"id\":\"result-row\",\"tool_call_id\":\"call-123\",\"name\":\"read_file\",\"result\":\"ok\",\"is_error\":false}\n"
+            ),
+        )
+        .expect("write transcript");
+
+        let messages = load_transcript_from_paths(&[path]);
+        let tool_call = tool_row(&messages, "tool_call");
+        let tool_result = tool_row(&messages, "tool_result");
+        assert_eq!(tool_call.tool_call_id.as_deref(), Some("call-123"));
+        assert_eq!(tool_result.tool_call_id.as_deref(), Some("call-123"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }

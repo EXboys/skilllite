@@ -26,6 +26,18 @@ import type {
 const MAX_CHAT_IMAGES = 6;
 const MAX_IMAGE_FILE_BYTES = 5 * 1024 * 1024;
 
+type TranscriptEntryDto = {
+  id: string;
+  role: string;
+  content: string;
+  tool_call_id?: string;
+  name?: string;
+  is_error?: boolean;
+  ui?: Record<string, unknown> | null;
+  images?: ChatImagePreview[];
+  llm_usage?: unknown;
+};
+
 type PendingImage = {
   id: string;
   media_type: string;
@@ -238,24 +250,13 @@ export default function ChatView() {
       if (cancelled) return;
 
       try {
-        const entries = await invoke<
-          Array<{
-            id: string;
-            role: string;
-            content: string;
-            name?: string;
-            is_error?: boolean;
-            ui?: Record<string, unknown> | null;
-            images?: ChatImagePreview[];
-            llm_usage?: unknown;
-          }>
-        >("skilllite_load_transcript", {
+        const entries = await invoke<TranscriptEntryDto[]>("skilllite_load_transcript", {
           sessionKey: currentSessionKey,
         });
         if (cancelled) return;
         if (!entries || entries.length === 0) return;
         const msgs: ChatMessage[] = [];
-        let pendingReadFilePath: string | null = null;
+        const readFilePathByToolCallId = new Map<string, string>();
         for (const e of entries) {
           if (e.role === "skilllite_ui" && e.ui && typeof e.ui === "object") {
             const u = e.ui as Record<string, unknown>;
@@ -304,26 +305,28 @@ export default function ChatView() {
           }
           if (e.role === "tool_call") {
             const name = e.name ?? "";
-            pendingReadFilePath =
-              name.replace(/-/g, "_") === "read_file"
-                ? tryParseReadFilePathFromToolArgs(e.content)
-                : null;
+            const toolCallId = e.tool_call_id?.trim();
+            if (name.replace(/-/g, "_") === "read_file" && toolCallId) {
+              const path = tryParseReadFilePathFromToolArgs(e.content);
+              if (path) readFilePathByToolCallId.set(toolCallId, path);
+            }
             if (isChatHiddenToolName(name)) continue;
             msgs.push({
               id: e.id,
               type: "tool_call" as const,
               name,
               args: e.content,
+              ...(toolCallId ? { toolCallId } : {}),
             });
             continue;
           }
           if (e.role === "tool_result") {
             const name = e.name ?? "";
+            const toolCallId = e.tool_call_id?.trim();
             const sourcePath =
-              name.replace(/-/g, "_") === "read_file"
-                ? pendingReadFilePath ?? undefined
+              name.replace(/-/g, "_") === "read_file" && toolCallId
+                ? readFilePathByToolCallId.get(toolCallId)
                 : undefined;
-            pendingReadFilePath = null;
             if (isChatHiddenToolName(name)) continue;
             msgs.push({
               id: e.id,
@@ -331,6 +334,7 @@ export default function ChatView() {
               name,
               result: e.content,
               isError: e.is_error ?? false,
+              ...(toolCallId ? { toolCallId } : {}),
               sourcePath,
             });
             continue;

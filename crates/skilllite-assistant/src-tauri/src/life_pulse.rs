@@ -80,7 +80,11 @@ impl LifePulseState {
             alive: self.alive.load(Ordering::Relaxed),
             growth_running: self.growth_running.load(Ordering::Relaxed),
             rhythm_running: self.rhythm_running.load(Ordering::Relaxed),
-            workspace: self.workspace.lock().unwrap_or_else(|e| e.into_inner()).clone(),
+            workspace: self
+                .workspace
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone(),
         }
     }
 
@@ -245,15 +249,9 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                 }
 
                 let dotenv = skilllite_bridge::load_dotenv_for_child(&workspace);
-                let overrides = s
-                    .llm_overrides
-                    .lock()
-                    .ok()
-                    .and_then(|g| g.clone());
-                let child_env = skilllite_bridge::merge_dotenv_with_chat_overrides(
-                    dotenv,
-                    overrides.as_ref(),
-                );
+                let overrides = s.llm_overrides.lock().ok().and_then(|g| g.clone());
+                let child_env =
+                    skilllite_bridge::merge_dotenv_with_chat_overrides(dotenv, overrides.as_ref());
 
                 // ── Growth ──
                 if !s.growth_running.load(Ordering::Relaxed)

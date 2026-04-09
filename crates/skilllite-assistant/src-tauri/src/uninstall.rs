@@ -40,7 +40,8 @@ pub fn collect_uninstall_info(app: &tauri::AppHandle) -> Result<UninstallInfo, S
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
-    let macos_app_bundle_path = resolve_macos_app_bundle(&exe).map(|p| p.to_string_lossy().to_string());
+    let macos_app_bundle_path =
+        resolve_macos_app_bundle(&exe).map(|p| p.to_string_lossy().to_string());
 
     let tauri_app_data_dir = app
         .path()
@@ -86,13 +87,15 @@ fn remove_dir_all_logged(path: &Path) -> Result<(), String> {
     if !path.exists() {
         return Ok(());
     }
-    std::fs::remove_dir_all(path)
-        .map_err(|e| format!("无法删除 {}: {}", path.display(), e))
+    std::fs::remove_dir_all(path).map_err(|e| format!("无法删除 {}: {}", path.display(), e))
 }
 
 /// 删除 Tauri 应用数据目录与（可选）SkillLite `chat/` 树（会话、transcript 等）。
 /// 不删除 `~/.skilllite/bin` 等 CLI 工具链，除非用户另行处理。
-pub fn remove_local_user_data(app: &tauri::AppHandle, include_skilllite_chat: bool) -> Result<(), String> {
+pub fn remove_local_user_data(
+    app: &tauri::AppHandle,
+    include_skilllite_chat: bool,
+) -> Result<(), String> {
     let app_data = app.path().app_data_dir().map_err(|e| e.to_string())?;
     remove_dir_all_logged(&app_data)?;
 
@@ -185,12 +188,11 @@ mod tests {
 
     #[test]
     fn resolve_macos_bundle_from_exe() {
-        let exe = PathBuf::from("/Applications/SkillLite Assistant.app/Contents/MacOS/skilllite-assistant");
-        let b = resolve_macos_app_bundle(&exe).expect("bundle");
-        assert_eq!(
-            b,
-            PathBuf::from("/Applications/SkillLite Assistant.app")
+        let exe = PathBuf::from(
+            "/Applications/SkillLite Assistant.app/Contents/MacOS/skilllite-assistant",
         );
+        let b = resolve_macos_app_bundle(&exe).expect("bundle");
+        assert_eq!(b, PathBuf::from("/Applications/SkillLite Assistant.app"));
     }
 
     #[test]

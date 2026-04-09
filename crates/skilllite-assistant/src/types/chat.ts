@@ -40,13 +40,20 @@ export type ChatMessage =
       turnLlmUsage?: TurnLlmUsage;
     }
   | { id: string; type: "plan"; tasks: TaskItem[] }
-  | { id: string; type: "tool_call"; name: string; args: string }
+  | {
+      id: string;
+      type: "tool_call";
+      name: string;
+      args: string;
+      toolCallId?: string;
+    }
   | {
       id: string;
       type: "tool_result";
       name: string;
       result: string;
       isError: boolean;
+      toolCallId?: string;
       /** 来自同轮 read_file 工具调用的 path（用于全屏保存） */
       sourcePath?: string;
     }

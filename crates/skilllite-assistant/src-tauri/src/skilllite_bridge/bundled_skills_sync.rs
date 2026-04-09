@@ -103,10 +103,7 @@ fn parse_semver_loose(s: &str) -> Option<Version> {
     if core.is_empty() {
         return None;
     }
-    let mut parts: Vec<u64> = core
-        .split('.')
-        .filter_map(|p| p.parse().ok())
-        .collect();
+    let mut parts: Vec<u64> = core.split('.').filter_map(|p| p.parse().ok()).collect();
     while parts.len() < 3 {
         parts.push(0);
     }
@@ -115,7 +112,10 @@ fn parse_semver_loose(s: &str) -> Option<Version> {
 }
 
 /// Replace existing workspace skill only when bundled version parses and is strictly greater.
-fn bundled_is_newer_than_workspace(bundled_ver: &Option<String>, workspace_ver: &Option<String>) -> bool {
+fn bundled_is_newer_than_workspace(
+    bundled_ver: &Option<String>,
+    workspace_ver: &Option<String>,
+) -> bool {
     let Some(b_raw) = bundled_ver else {
         return false;
     };
@@ -133,12 +133,16 @@ fn replace_skill_dir(src: &Path, dst: &Path) -> Result<(), String> {
     if dst.exists() {
         fs::remove_dir_all(dst).map_err(|e| format!("remove {}: {}", dst.display(), e))?;
     }
-    copy_dir_recursive(src, dst).map_err(|e| format!("copy {} -> {}: {}", src.display(), dst.display(), e))?;
+    copy_dir_recursive(src, dst)
+        .map_err(|e| format!("copy {} -> {}: {}", src.display(), dst.display(), e))?;
     Ok(())
 }
 
 /// Sync bundled skills into `workspace/.skills/`. No-op if no bundled container exists.
-pub fn sync_bundled_skills_from_resources(app: &AppHandle, workspace_raw: &str) -> Result<(), String> {
+pub fn sync_bundled_skills_from_resources(
+    app: &AppHandle,
+    workspace_raw: &str,
+) -> Result<(), String> {
     let Some(bundled_root) = bundled_skills_container(app) else {
         return Ok(());
     };
@@ -180,7 +184,7 @@ pub fn sync_bundled_skills_from_resources(app: &AppHandle, workspace_raw: &str) 
         let bundled_ver = read_declared_version(src);
 
         if !dst.exists() {
-            copy_dir_recursive(&src, &dst).map_err(|e| {
+            copy_dir_recursive(src, &dst).map_err(|e| {
                 format!(
                     "copy bundled skill {} -> {}: {}",
                     src.display(),
@@ -242,7 +246,13 @@ mod tests {
             &Some("1.0.0".into()),
             &Some("1.0.0".into())
         ));
-        assert!(bundled_is_newer_than_workspace(&Some("1.0.0".into()), &None));
-        assert!(!bundled_is_newer_than_workspace(&None, &Some("1.0.0".into())));
+        assert!(bundled_is_newer_than_workspace(
+            &Some("1.0.0".into()),
+            &None
+        ));
+        assert!(!bundled_is_newer_than_workspace(
+            &None,
+            &Some("1.0.0".into())
+        ));
     }
 }

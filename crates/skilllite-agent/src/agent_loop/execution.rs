@@ -343,7 +343,7 @@ pub(super) async fn execute_tool_batch_planning(
     for tc in tool_calls {
         let tool_name = &tc.function.name;
         let arguments = &tc.function.arguments;
-        event_sink.on_tool_call(tool_name, arguments);
+        event_sink.on_tool_call_with_id(Some(&tc.id), tool_name, arguments);
         append_tool_call_to_transcript(session_key, &tc.id, tool_name, arguments);
 
         let is_planning_control =
@@ -371,7 +371,12 @@ pub(super) async fn execute_tool_batch_planning(
                 false,
                 None,
             );
-            event_sink.on_tool_result(tool_name, &result.content, false);
+            event_sink.on_tool_result_with_id(
+                Some(&result.tool_call_id),
+                tool_name,
+                &result.content,
+                false,
+            );
             messages.push(ChatMessage::tool_result(
                 &result.tool_call_id,
                 &result.content,
@@ -535,7 +540,7 @@ pub(super) async fn execute_tool_batch_simple(
     for tc in tool_calls {
         let tool_name = &tc.function.name;
         let arguments = &tc.function.arguments;
-        event_sink.on_tool_call(tool_name, arguments);
+        event_sink.on_tool_call_with_id(Some(&tc.id), tool_name, arguments);
         append_tool_call_to_transcript(session_key, &tc.id, tool_name, arguments);
 
         let start_time = Instant::now();

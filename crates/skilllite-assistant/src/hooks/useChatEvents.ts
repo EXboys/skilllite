@@ -46,6 +46,7 @@ export function useChatEvents({
 }: UseChatEventsParams) {
   useEffect(() => {
     let dead = false;
+    const readFilePathByToolCallId = new Map<string, string>();
 
     const unlistenConfirm = listen<{
       prompt: string;
@@ -302,6 +303,11 @@ export function useChatEvents({
       } else if (event === "tool_call") {
         const name = (data?.name as string) ?? "";
         const args = (data?.arguments as string) ?? "";
+        const toolCallIdRaw = data?.tool_call_id;
+        const toolCallId =
+          typeof toolCallIdRaw === "string" && toolCallIdRaw.trim().length > 0
+            ? toolCallIdRaw.trim()
+            : undefined;
         addLog({
           type: "tool_call" as const, name,
           text: args.length > 300 ? args.slice(0, 300) + "…" : args,
@@ -309,16 +315,31 @@ export function useChatEvents({
         if (["memory_write", "memory_search", "memory_list"].includes(name)) {
           addMemoryHint(`${name}: ${args.slice(0, 40)}…`);
         }
+        if (name.replace(/-/g, "_") === "read_file" && toolCallId) {
+          const path = tryParseReadFilePathFromToolArgs(args);
+          if (path) readFilePathByToolCallId.set(toolCallId, path);
+        }
         if (!isChatHiddenToolName(name)) {
           setMessages((prev) => [
             ...prev,
-            { id: crypto.randomUUID(), type: "tool_call", name, args },
+            {
+              id: crypto.randomUUID(),
+              type: "tool_call",
+              name,
+              args,
+              ...(toolCallId ? { toolCallId } : {}),
+            },
           ]);
         }
       } else if (event === "tool_result") {
         const name = (data?.name as string) ?? "";
         const isErr = (data?.is_error as boolean) ?? false;
         const result = (data?.result as string) ?? "";
+        const toolCallIdRaw = data?.tool_call_id;
+        const toolCallId =
+          typeof toolCallIdRaw === "string" && toolCallIdRaw.trim().length > 0
+            ? toolCallIdRaw.trim()
+            : undefined;
         addLog({
           type: "tool_result" as const, name,
           text: result.length > 1200 ? result.slice(0, 1200) + "…" : result,
@@ -326,7 +347,6 @@ export function useChatEvents({
         });
         if (!isChatHiddenToolName(name)) {
           setMessages((prev) => {
-            const last = prev[prev.length - 1];
             const norm = (n: string) => n.replace(/-/g, "_").toLowerCase();
             const nn = norm(name);
             if (
@@ -334,6 +354,7 @@ export function useChatEvents({
                 (m) =>
                   m.type === "tool_result" &&
                   norm(m.name) === nn &&
+                  (m.toolCallId ?? "") === (toolCallId ?? "") &&
                   m.result === result &&
                   m.isError === isErr
               )
@@ -341,13 +362,8 @@ export function useChatEvents({
               return prev;
             }
             let sourcePath: string | undefined;
-            if (
-              name.replace(/-/g, "_") === "read_file" &&
-              last?.type === "tool_call" &&
-              last.name.replace(/-/g, "_") === "read_file"
-            ) {
-              const p = tryParseReadFilePathFromToolArgs(last.args);
-              if (p) sourcePath = p;
+            if (name.replace(/-/g, "_") === "read_file" && toolCallId) {
+              sourcePath = readFilePathByToolCallId.get(toolCallId);
             }
             return [
               ...prev,
@@ -357,6 +373,7 @@ export function useChatEvents({
                 name,
                 result,
                 isError: isErr,
+                ...(toolCallId ? { toolCallId } : {}),
                 sourcePath,
               },
             ];
@@ -434,6 +451,7 @@ export function useChatEvents({
       unlisten.then((fn) => fn());
       pendingChunks.current = "";
       flushScheduled.current = false;
+      readFilePathByToolCallId.clear();
       if (flushTimer !== undefined) clearTimeout(flushTimer);
     };
     // onTurnComplete 等回调需随渲染更新，否则会用陈旧闭包
