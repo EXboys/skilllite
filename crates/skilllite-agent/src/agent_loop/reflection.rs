@@ -394,15 +394,7 @@ mod tests {
         let mut no_tool_retries = 0;
         let mut messages = vec![];
         let content = Some("已清空记忆目录，请核实。".to_string());
-        let out = reflect_simple(
-            &content,
-            5,
-            2,
-            &mut no_tool_retries,
-            3,
-            &mut messages,
-            true,
-        );
+        let out = reflect_simple(&content, 5, 2, &mut no_tool_retries, 3, &mut messages, true);
         assert!(matches!(out, ReflectionOutcome::Complete));
     }
 
@@ -411,15 +403,7 @@ mod tests {
         let mut no_tool_retries = 0;
         let mut messages = vec![];
         for content in [Some(String::new()), Some("   ".to_string()), None] {
-            let out = reflect_simple(
-                &content,
-                5,
-                2,
-                &mut no_tool_retries,
-                3,
-                &mut messages,
-                true,
-            );
+            let out = reflect_simple(&content, 5, 2, &mut no_tool_retries, 3, &mut messages, true);
             match &out {
                 ReflectionOutcome::SoftNudge(s) => {
                     assert!(s.contains("closing summary"));
