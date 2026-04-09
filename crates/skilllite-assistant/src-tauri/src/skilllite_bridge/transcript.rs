@@ -14,8 +14,18 @@ pub struct TranscriptImagePreview {
     pub preview_url: String,
 }
 
-/// Single message entry for frontend display.
+/// Token totals for one agent turn (from transcript `message.llm_usage` on assistant rows).
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct TranscriptLlmUsagePayload {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+    pub responses_with_usage: u32,
+    pub responses_without_usage: u32,
+}
+
+/// Single message entry for frontend display.
+#[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct TranscriptMessage {
     pub id: String,
     pub role: String,
@@ -29,6 +39,9 @@ pub struct TranscriptMessage {
     /// Desktop-only rows restored from `custom_message` (confirmation / clarification).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ui: Option<serde_json::Value>,
+    /// Present on restored `assistant` messages when the agent persisted turn usage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_usage: Option<TranscriptLlmUsagePayload>,
 }
 
 /// List transcript file paths for session, sorted by date (legacy first, then YYYY-MM-DD).
@@ -88,6 +101,30 @@ struct TranscriptEntryRaw {
     is_error: Option<bool>,
     ui: Option<serde_json::Value>,
     images: Option<Vec<TranscriptImageRaw>>,
+    llm_usage: Option<serde_json::Value>,
+}
+
+fn parse_llm_usage_payload(v: &serde_json::Value) -> Option<TranscriptLlmUsagePayload> {
+    let p = v.get("prompt_tokens")?.as_u64()?;
+    let c = v.get("completion_tokens")?.as_u64()?;
+    let t = v.get("total_tokens")?.as_u64()?;
+    let rw = v
+        .get("responses_with_usage")
+        .and_then(|x| x.as_u64())
+        .unwrap_or(0)
+        .min(u64::from(u32::MAX)) as u32;
+    let rwo = v
+        .get("responses_without_usage")
+        .and_then(|x| x.as_u64())
+        .unwrap_or(0)
+        .min(u64::from(u32::MAX)) as u32;
+    Some(TranscriptLlmUsagePayload {
+        prompt_tokens: p,
+        completion_tokens: c,
+        total_tokens: t,
+        responses_with_usage: rw,
+        responses_without_usage: rwo,
+    })
 }
 
 fn parse_message_images(v: &serde_json::Value) -> Option<Vec<TranscriptImageRaw>> {
@@ -168,6 +205,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     .unwrap_or("")
                     .to_string();
                 let images = parse_message_images(&v);
+                let llm_usage = v.get("llm_usage").cloned();
                 entries.push(TranscriptEntryRaw {
                     ty,
                     id: v
@@ -182,6 +220,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     is_error: None,
                     ui: None,
                     images,
+                    llm_usage,
                 });
             } else if ty == "tool_call" {
                 let name = v
@@ -208,6 +247,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     is_error: None,
                     ui: None,
                     images: None,
+                    llm_usage: None,
                 });
             } else if ty == "tool_result" {
                 let name = v
@@ -238,6 +278,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     is_error: Some(is_error),
                     ui: None,
                     images: None,
+                    llm_usage: None,
                 });
             } else if ty == "compaction" {
                 entries.push(TranscriptEntryRaw {
@@ -250,6 +291,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                     is_error: None,
                     ui: None,
                     images: None,
+                    llm_usage: None,
                 });
             } else if ty == "custom_message" {
                 let ui_kind = v
@@ -290,6 +332,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         is_error: None,
                         ui: Some(ui),
                         images: None,
+                        llm_usage: None,
                     });
                 } else if ui_kind == "clarification" {
                     let id = v
@@ -320,6 +363,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                         is_error: None,
                         ui: Some(ui),
                         images: None,
+                        llm_usage: None,
                     });
                 }
             }
@@ -339,10 +383,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 id: "compaction".to_string(),
                 role: "assistant".to_string(),
                 content: format!("[此前对话已压缩]\n\n{}", summary),
-                name: None,
-                is_error: None,
-                images: None,
-                ui: None,
+                ..Default::default()
             });
         }
     }
@@ -364,10 +405,8 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 id,
                 role: "skilllite_ui".to_string(),
                 content: String::new(),
-                name: None,
-                is_error: None,
-                images: None,
                 ui: e.ui.clone(),
+                ..Default::default()
             });
             continue;
         }
@@ -397,6 +436,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
                 Some(v)
             }
         });
+        let llm_usage = e.llm_usage.as_ref().and_then(parse_llm_usage_payload);
         messages.push(TranscriptMessage {
             id,
             role: e.role.clone(),
@@ -405,6 +445,7 @@ pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
             is_error: e.is_error,
             images,
             ui: None,
+            llm_usage,
         });
     }
     messages

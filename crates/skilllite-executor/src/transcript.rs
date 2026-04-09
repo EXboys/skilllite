@@ -10,6 +10,16 @@ use crate::error::Result;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
+/// Cumulative LLM token usage for one agent turn (matches agent `feedback.llm_usage` / `done.llm_usage`).
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct TranscriptLlmUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+    pub responses_with_usage: u32,
+    pub responses_without_usage: u32,
+}
+
 /// Image attachment for a user `message` transcript row (vision / multimodal).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TranscriptImage {
@@ -43,6 +53,9 @@ pub enum TranscriptEntry {
         tool_calls: Option<serde_json::Value>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         images: Option<Vec<TranscriptImage>>,
+        /// Present on `assistant` rows when the agent run reported token totals for that turn.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        llm_usage: Option<TranscriptLlmUsage>,
     },
     /// Tool call request - independent entry for complete traceability (aligned with OpenAI Agents SDK tracing)
     ToolCall {

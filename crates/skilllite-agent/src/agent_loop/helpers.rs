@@ -16,7 +16,7 @@ use super::super::long_text;
 use super::super::prompt;
 use super::super::skills::{self, LoadedSkill};
 use super::super::task_planner::TaskPlanner;
-use super::super::types::*;
+use super::super::types::{safe_truncate, *};
 
 /// Unwrap double-encoded JSON: some models (especially DeepSeek in long contexts)
 /// wrap arguments in extra quotes, producing `Value::String` instead of `Value::Object`.
@@ -663,6 +663,109 @@ pub(super) async fn extract_goal_boundaries_hybrid(
     }
 }
 
+/// `complete_task` returns a JSON ack (often >80 chars). It must not be used as the user-facing
+/// tool summary — the real answer is in earlier tool rows (e.g. `weather`).
+fn is_complete_task_tool_result_body(s: &str) -> bool {
+    let t = s.trim();
+    if !t.starts_with('{') {
+        return false;
+    }
+    let Ok(v) = serde_json::from_str::<Value>(t) else {
+        return false;
+    };
+    let Some(obj) = v.as_object() else {
+        return false;
+    };
+    obj.contains_key("task_id")
+        && obj.contains_key("completion_type")
+        && obj.get("success").and_then(|x| x.as_bool()).is_some()
+}
+
+fn tool_body_usable_for_user_summary(s: &str) -> bool {
+    !s.trim().is_empty() && !is_complete_task_tool_result_body(s)
+}
+
+/// True when the message list ends with one or more `role == "tool"` rows and at least one
+/// of those trailing tool results has at least `min_chars` non-whitespace characters.
+///
+/// Used after a planning-mode tool batch: the model's assistant prose alongside tool calls is
+/// often suppressed, so `assistant_content` is empty even though the user already has a rich
+/// answer in tool output (e.g. weather JSON). Without this check we would almost always schedule
+/// `pending_closing_user_reply`, causing an extra LLM turn and a duplicate assistant bubble.
+///
+/// Bodies that look like `complete_task` results are ignored — they are not user answers.
+pub(super) fn latest_trailing_tool_results_include_substantive_output(
+    messages: &[ChatMessage],
+    min_chars: usize,
+) -> bool {
+    for m in messages.iter().rev() {
+        if m.role != "tool" {
+            break;
+        }
+        if let Some(c) = m.content.as_ref() {
+            if tool_body_usable_for_user_summary(c) && c.trim().len() >= min_chars {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+const TOOL_FALLBACK_PICK_MIN_CHARS: usize = 80;
+/// Cap for tool-derived user-visible summaries (RPC + transcript).
+pub(super) const TRAILING_TOOL_SUMMARY_MAX_BYTES: usize = 12 * 1024;
+
+/// Picks one trailing `role=tool` body for user-visible summary: prefer the first (from the end)
+/// with at least `min_chars` non-whitespace characters, else the first non-empty trailing tool.
+/// Returns `None` if there is no qualifying tool message.
+pub(super) fn pick_substantive_trailing_tool_content(
+    messages: &[ChatMessage],
+    min_chars: usize,
+    max_bytes: usize,
+) -> Option<String> {
+    let mut trailing_tool_texts: Vec<&str> = Vec::new();
+    for m in messages.iter().rev() {
+        if m.role != "tool" {
+            break;
+        }
+        if let Some(c) = m.content.as_ref() {
+            let t = c.trim();
+            if tool_body_usable_for_user_summary(t) {
+                trailing_tool_texts.push(t);
+            }
+        }
+    }
+    let picked = trailing_tool_texts
+        .iter()
+        .copied()
+        .find(|t| t.len() >= min_chars)
+        .or_else(|| trailing_tool_texts.first().copied())?;
+    Some(safe_truncate(picked, max_bytes).to_string())
+}
+
+fn final_response_from_assistant_or_tools(messages: &[ChatMessage]) -> String {
+    if let Some(s) = messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "assistant")
+        .and_then(|m| m.content.as_ref())
+        .map(|c| c.trim())
+        .filter(|t| !t.is_empty())
+    {
+        return s.to_string();
+    }
+
+    if let Some(s) = pick_substantive_trailing_tool_content(
+        messages,
+        TOOL_FALLBACK_PICK_MIN_CHARS,
+        TRAILING_TOOL_SUMMARY_MAX_BYTES,
+    ) {
+        return s;
+    }
+
+    "[Agent completed without text response]".to_string()
+}
+
 /// Build the final `AgentResult` from the message history.
 pub(super) fn build_agent_result(
     messages: Vec<ChatMessage>,
@@ -679,12 +782,7 @@ pub(super) fn build_agent_result(
             completed, total
         )
     } else {
-        messages
-            .iter()
-            .rev()
-            .find(|m| m.role == "assistant" && m.content.is_some())
-            .and_then(|m| m.content.clone())
-            .unwrap_or_else(|| "[Agent completed without text response]".to_string())
+        final_response_from_assistant_or_tools(&messages)
     };
 
     AgentResult {
@@ -999,6 +1097,103 @@ mod tests {
             r.content
         );
         assert!(!planner.task_list.is_empty());
+    }
+
+    #[test]
+    fn latest_trailing_tool_results_detects_substantive_weather_like_output() {
+        let long_body: String = (0..120).map(|_| "x").collect();
+        let msgs = vec![
+            ChatMessage::user("深圳天气"),
+            ChatMessage::assistant("ignored"),
+            ChatMessage::tool_result("call_1", &long_body),
+        ];
+        assert!(latest_trailing_tool_results_include_substantive_output(&msgs, 80));
+        let short = vec![
+            ChatMessage::user("x"),
+            ChatMessage::tool_result("c", "short"),
+        ];
+        assert!(!latest_trailing_tool_results_include_substantive_output(&short, 80));
+        let multi = vec![
+            ChatMessage::user("u"),
+            ChatMessage::assistant("a"),
+            ChatMessage::tool_result("c2", "{\"ok\":true}"),
+            ChatMessage::tool_result("c1", &long_body),
+        ];
+        assert!(latest_trailing_tool_results_include_substantive_output(&multi, 80));
+    }
+
+    #[test]
+    fn pick_substantive_trailing_tool_prefers_long_result_before_short_tail() {
+        let long_body: String = (0..100).map(|_| "z").collect();
+        let done = r#"{"success": true, "task_id": 1, "completion_type": "success", "message": "Task 1 marked as completed"}"#;
+        let msgs = vec![
+            ChatMessage::user("u"),
+            ChatMessage::assistant("a"),
+            ChatMessage::tool_result("weather", &long_body),
+            ChatMessage::tool_result("done", done),
+        ];
+        let picked = pick_substantive_trailing_tool_content(&msgs, 80, TRAILING_TOOL_SUMMARY_MAX_BYTES)
+            .expect("pick");
+        assert_eq!(picked.len(), long_body.len());
+    }
+
+    #[test]
+    fn pick_skips_complete_task_json_when_it_is_last_tool_message() {
+        let weather = format!(
+            "{}{}",
+            "城市：深圳市\n温度：27°C\n湿度：70%\n",
+            "x".repeat(80)
+        );
+        let done = r#"{"success": true, "task_id": 1, "completion_type": "success", "message": "Task 1 marked as completed"}"#;
+        let msgs = vec![
+            ChatMessage::user("u"),
+            ChatMessage::assistant("a"),
+            ChatMessage::tool_result("w", &weather),
+            ChatMessage::tool_result("c", done),
+        ];
+        let picked = pick_substantive_trailing_tool_content(&msgs, 80, TRAILING_TOOL_SUMMARY_MAX_BYTES)
+            .expect("pick");
+        assert!(picked.contains("城市"));
+        assert!(!picked.contains("completion_type"));
+    }
+
+    #[test]
+    fn latest_trailing_does_not_treat_complete_task_json_as_substantive() {
+        let done = r#"{"success": true, "task_id": 1, "completion_type": "success", "message": "Task 1 marked as completed"}"#;
+        let msgs = vec![
+            ChatMessage::user("u"),
+            ChatMessage::tool_result("c", done),
+        ];
+        assert!(!latest_trailing_tool_results_include_substantive_output(&msgs, 80));
+    }
+
+    #[test]
+    fn build_agent_result_falls_back_to_substantive_trailing_tool_output() {
+        let weather_like: String = (0..120).map(|_| "y").collect();
+        let messages = vec![
+            ChatMessage::user("深圳天气"),
+            ChatMessage::assistant_with_tool_calls(None, vec![]),
+            ChatMessage::tool_result("w", &weather_like),
+            ChatMessage::tool_result("c", r#"{"success":true}"#),
+        ];
+        let plan = vec![Task {
+            id: 1,
+            description: "查天气".into(),
+            tool_hint: Some("weather".into()),
+            completed: true,
+        }];
+        let out = build_agent_result(
+            messages,
+            1,
+            3,
+            plan,
+            ExecutionFeedback {
+                task_completed: true,
+                ..ExecutionFeedback::default()
+            },
+        );
+        assert_eq!(out.response.len(), weather_like.len());
+        assert!(out.response.starts_with("yyy"));
     }
 
     #[test]

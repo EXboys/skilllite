@@ -667,7 +667,7 @@ impl TaskPlanner {
     /// Returns `false` when the task list is empty: an empty plan means the LLM
     /// decided no explicit tasks were needed, which is *not* the same as having
     /// finished a set of tasks.  Treating an empty list as "all done" causes
-    /// `run_with_task_planning` to fire the "final summary" branch immediately
+    /// `run_with_task_planning` to treat the plan as finished immediately (closing reply / break)
     /// after the first batch of tool calls, ending the loop prematurely.
     pub fn all_completed(&self) -> bool {
         !self.task_list.is_empty() && self.task_list.iter().all(|t| t.completed)

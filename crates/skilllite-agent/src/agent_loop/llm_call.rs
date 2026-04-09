@@ -6,9 +6,9 @@
 
 use crate::Result;
 
-use super::super::llm::{self, ChatCompletionResponse, LlmClient};
+use super::super::llm::{self, llm_usage_report_from_usage, ChatCompletionResponse, LlmClient};
 use super::super::types::{
-    get_tool_result_recovery_max_chars, ChatMessage, EventSink, LlmUsageReport, LlmUsageTotals,
+    get_tool_result_recovery_max_chars, ChatMessage, EventSink, LlmUsageTotals,
     ToolDefinition,
 };
 
@@ -66,9 +66,7 @@ pub(super) async fn call_llm_with_recovery(
     match result {
         Ok(resp) => {
             *context_overflow_retries = 0;
-            let report = resp.usage.as_ref().map(|u| {
-                LlmUsageReport::from_counts(u.prompt_tokens, u.completion_tokens, u.total_tokens)
-            });
+            let report = resp.usage.as_ref().map(llm_usage_report_from_usage);
             event_sink.on_llm_usage(report);
             Ok(LlmCallOutcome::Response(resp))
         }

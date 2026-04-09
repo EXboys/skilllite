@@ -20,6 +20,7 @@ import { InputPlanStrip } from "./chat/InputPlanStrip";
 import type {
   ChatImagePreview,
   ChatMessage,
+  TurnLlmUsage,
 } from "../types/chat";
 
 const MAX_CHAT_IMAGES = 6;
@@ -62,6 +63,24 @@ function readFileAsDataUrl(file: File): Promise<string> {
     r.onerror = () => reject(r.error);
     r.readAsDataURL(file);
   });
+}
+
+/** Restore `turnLlmUsage` from transcript `message.llm_usage` (Rust / Tauri payload). */
+function parseTranscriptLlmUsage(raw: unknown): TurnLlmUsage | undefined {
+  if (raw == null || typeof raw !== "object") return undefined;
+  const o = raw as Record<string, unknown>;
+  const p = typeof o.prompt_tokens === "number" ? o.prompt_tokens : Number(o.prompt_tokens);
+  const c =
+    typeof o.completion_tokens === "number" ? o.completion_tokens : Number(o.completion_tokens);
+  const t = typeof o.total_tokens === "number" ? o.total_tokens : Number(o.total_tokens);
+  if (!Number.isFinite(p) || p < 0 || !Number.isFinite(c) || c < 0 || !Number.isFinite(t) || t < 0) {
+    return undefined;
+  }
+  return {
+    prompt_tokens: Math.floor(p),
+    completion_tokens: Math.floor(c),
+    total_tokens: Math.floor(t),
+  };
 }
 import { isChatHiddenToolName } from "../utils/chatNoise";
 import { notifyRuntimeStatusMayHaveChanged } from "../utils/runtimeStatusRefresh";
@@ -228,6 +247,7 @@ export default function ChatView() {
             is_error?: boolean;
             ui?: Record<string, unknown> | null;
             images?: ChatImagePreview[];
+            llm_usage?: unknown;
           }>
         >("skilllite_load_transcript", {
           sessionKey: currentSessionKey,
@@ -325,10 +345,13 @@ export default function ChatView() {
               images: uiImages,
             });
           } else {
+            const turnLlm =
+              role === "assistant" ? parseTranscriptLlmUsage(e.llm_usage) : undefined;
             msgs.push({
               id: e.id,
               type: role,
               content: e.content,
+              ...(turnLlm != null ? { turnLlmUsage: turnLlm } : {}),
             });
           }
         }
@@ -1073,20 +1096,20 @@ export default function ChatView() {
       {followupSuggestions &&
         followupSuggestions.length > 0 &&
         !followupPanelDismissed && (
-        <div className="mx-3 mt-2 mb-1 rounded-xl border border-border dark:border-border-dark bg-white dark:bg-paper-dark p-3 shadow-sm shrink-0">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-medium text-ink-mute dark:text-ink-dark-mute">
+        <div className="mx-3 mt-1.5 mb-0.5 rounded-lg border border-border dark:border-border-dark bg-white dark:bg-paper-dark px-2 py-1.5 shadow-sm shrink-0">
+          <div className="flex items-start justify-between gap-1.5">
+            <p className="text-[11px] font-medium leading-tight text-ink-mute dark:text-ink-dark-mute">
               {t("chat.followupTitle")}
             </p>
             <button
               type="button"
               onClick={() => setFollowupPanelDismissed(true)}
-              className="shrink-0 -mt-0.5 -mr-0.5 rounded-md p-1 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark"
+              className="shrink-0 -mt-0.5 -mr-0.5 rounded p-0.5 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark"
               aria-label={t("chat.followupClose")}
               title={t("chat.followupClose")}
             >
               <svg
-                className="w-4 h-4"
+                className="w-3.5 h-3.5"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -1098,13 +1121,13 @@ export default function ChatView() {
               </svg>
             </button>
           </div>
-          <div className="mt-2 flex flex-col gap-2">
+          <div className="mt-1.5 flex flex-col gap-1">
             {followupSuggestions.map((q, i) => (
               <button
                 key={`${i}-${q.slice(0, 48)}`}
                 type="button"
                 onClick={() => void sendMessage(q, [])}
-                className="w-full text-left rounded-lg border border-border dark:border-border-dark px-3 py-2 text-sm text-ink dark:text-ink-dark hover:border-accent/40 hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors"
+                className="w-full text-left rounded-md border border-border dark:border-border-dark px-2 py-1.5 text-xs leading-snug text-ink dark:text-ink-dark hover:border-accent/40 hover:bg-accent/5 dark:hover:bg-accent/10 transition-colors"
               >
                 {q}
               </button>

@@ -412,7 +412,7 @@ impl ChatSession {
         // so order matches the UI (tool_call → optional confirmation custom_message → tool_result).
 
         // Append assistant response to transcript
-        self.append_message("assistant", &result.response)?;
+        self.append_assistant_message(&result.response, &result.feedback.llm_usage)?;
 
         // EVO-1: Record execution decision (async-safe, <1ms with WAL).
         // Only record meaningful turns (at least 1 tool call).
@@ -521,17 +521,29 @@ impl ChatSession {
         }
     }
 
-    /// Append a message entry to the transcript (no images).
-    fn append_message(&self, role: &str, content: &str) -> Result<()> {
+    /// Append the final assistant reply with per-turn LLM usage (for UI + reload).
+    fn append_assistant_message(
+        &self,
+        content: &str,
+        usage: &crate::types::LlmUsageTotals,
+    ) -> Result<()> {
         let transcripts_dir = self.data_root.join("transcripts");
         let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let llm_usage = Some(transcript::TranscriptLlmUsage {
+            prompt_tokens: usage.prompt_tokens,
+            completion_tokens: usage.completion_tokens,
+            total_tokens: usage.total_tokens,
+            responses_with_usage: usage.responses_with_usage,
+            responses_without_usage: usage.responses_without_usage,
+        });
         let entry = transcript::TranscriptEntry::Message {
             id: uuid::Uuid::new_v4().to_string(),
             parent_id: None,
-            role: role.to_string(),
+            role: "assistant".to_string(),
             content: Some(content.to_string()),
             tool_calls: None,
             images: None,
+            llm_usage,
         };
         Ok(transcript::append_entry(&t_path, &entry)?)
     }
@@ -555,6 +567,7 @@ impl ChatSession {
             },
             tool_calls: None,
             images: images.map(|s| s.to_vec()),
+            llm_usage: None,
         };
         Ok(transcript::append_entry(&t_path, &entry)?)
     }
@@ -1299,6 +1312,7 @@ fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<Ch
             role,
             content,
             images,
+            llm_usage: _,
             ..
         } => {
             if role == "user" {
@@ -1346,6 +1360,7 @@ mod history_window_tests {
             content: Some(content.to_string()),
             tool_calls: None,
             images: None,
+            llm_usage: None,
         }
     }
 

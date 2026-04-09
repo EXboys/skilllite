@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { ChatMessage, StreamEventPayload } from "../types/chat";
+import type { ChatMessage, StreamEventPayload, TurnLlmUsage } from "../types/chat";
 import type { LogEntry } from "../stores/useStatusStore";
 import { useStatusStore } from "../stores/useStatusStore";
 import { isChatHiddenToolName } from "../utils/chatNoise";
@@ -198,17 +198,8 @@ export function useChatEvents({
         const remainder = pendingChunks.current;
         pendingChunks.current = "";
         flushScheduled.current = false;
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.type === "assistant" && last?.streaming) {
-            const finalContent = last.content + remainder;
-            setLatestOutput(finalContent);
-            return [...prev.slice(0, -1), { ...last, content: finalContent, streaming: false }];
-          }
-          return prev;
-        });
-        setLoading(false);
         const usageRaw = data?.llm_usage;
+        let turnUsage: TurnLlmUsage | null = null;
         if (usageRaw && typeof usageRaw === "object") {
           const u = usageRaw as Record<string, unknown>;
           const p = nonNegInt(u.prompt_tokens);
@@ -216,8 +207,42 @@ export function useChatEvents({
           const t = nonNegInt(u.total_tokens);
           if (p !== null && c !== null && t !== null) {
             useStatusStore.getState().addLlmUsageFromTurn(usageRaw);
+            turnUsage = {
+              prompt_tokens: p,
+              completion_tokens: c,
+              total_tokens: t,
+            };
           }
         }
+        setMessages((prev) => {
+          let next: ChatMessage[];
+          const last = prev[prev.length - 1];
+          if (last?.type === "assistant" && last?.streaming) {
+            const finalContent = last.content + remainder;
+            setLatestOutput(finalContent);
+            next = [
+              ...prev.slice(0, -1),
+              { ...last, content: finalContent, streaming: false },
+            ];
+          } else {
+            next = [...prev];
+          }
+          if (turnUsage != null) {
+            for (let i = next.length - 1; i >= 0; i--) {
+              const m = next[i];
+              if (m.type === "assistant") {
+                next = [
+                  ...next.slice(0, i),
+                  { ...m, turnLlmUsage: turnUsage },
+                  ...next.slice(i + 1),
+                ];
+                break;
+              }
+            }
+          }
+          return next;
+        });
+        setLoading(false);
         clearPlan?.();
         onTurnComplete?.();
       } else if (event === "error") {
@@ -303,11 +328,15 @@ export function useChatEvents({
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             const norm = (n: string) => n.replace(/-/g, "_").toLowerCase();
+            const nn = norm(name);
             if (
-              last?.type === "tool_result" &&
-              norm(last.name) === norm(name) &&
-              last.result === result &&
-              last.isError === isErr
+              prev.some(
+                (m) =>
+                  m.type === "tool_result" &&
+                  norm(m.name) === nn &&
+                  m.result === result &&
+                  m.isError === isErr
+              )
             ) {
               return prev;
             }

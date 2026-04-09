@@ -55,6 +55,13 @@ pub trait EventSink: Send {
     fn reset_streamed_text_for_llm_call(&mut self) {}
     /// Called when the assistant produces text content.
     fn on_text(&mut self, text: &str);
+    /// **Agent loop only:** user-visible assistant prose after an LLM completion (reflection, suppressed-stream
+    /// tool-call captions, synthetic fallbacks). Do not call [`EventSink::on_text`] directly from
+    /// `agent_loop` / `reflection` for this purpose — implementations dedupe streaming vs full body in
+    /// [`EventSink::on_text`] (RPC and terminal sinks skip a second full body when chunks were already sent).
+    fn emit_assistant_visible(&mut self, text: &str) {
+        self.on_text(text);
+    }
     /// Called when a tool is about to be invoked.
     fn on_tool_call(&mut self, name: &str, arguments: &str);
     /// Called when a tool returns a result.
@@ -108,6 +115,7 @@ pub trait EventSink: Send {
 pub struct SilentEventSink;
 
 impl EventSink for SilentEventSink {
+    fn emit_assistant_visible(&mut self, _text: &str) {}
     fn on_text(&mut self, _text: &str) {}
     fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
     fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
@@ -464,6 +472,9 @@ impl EventSink for RunModeEventSink {
     fn reset_streamed_text_for_llm_call(&mut self) {
         self.inner.reset_streamed_text_for_llm_call();
     }
+    fn emit_assistant_visible(&mut self, text: &str) {
+        self.inner.emit_assistant_visible(text);
+    }
     fn on_text(&mut self, text: &str) {
         self.inner.on_text(text);
     }
@@ -537,5 +548,76 @@ impl EventSink for RunModeEventSink {
     }
     fn on_llm_usage(&mut self, usage: Option<LlmUsageReport>) {
         self.inner.on_llm_usage(usage);
+    }
+}
+
+#[cfg(test)]
+mod emit_assistant_visible_tests {
+    use super::*;
+
+    struct CountOnText(u32);
+
+    impl EventSink for CountOnText {
+        fn on_text(&mut self, _text: &str) {
+            self.0 += 1;
+        }
+        fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+        fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+        fn on_confirmation_request(&mut self, _request: &ConfirmationRequest) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn default_emit_assistant_visible_delegates_to_on_text() {
+        let mut s = CountOnText(0);
+        s.emit_assistant_visible("hi");
+        assert_eq!(s.0, 1);
+    }
+
+    #[test]
+    fn silent_sink_emit_assistant_visible_is_noop() {
+        let mut s = SilentEventSink;
+        s.emit_assistant_visible("ignored");
+        // No panic; no observable on_text (SilentEventSink overrides emit)
+    }
+
+    /// Same streaming-vs-full dedupe contract as [`TerminalEventSink`] / RPC sink.
+    struct StreamDedupingSink {
+        streamed_text: bool,
+        full_text_emits: u32,
+    }
+
+    impl EventSink for StreamDedupingSink {
+        fn reset_streamed_text_for_llm_call(&mut self) {
+            self.streamed_text = false;
+        }
+        fn on_text(&mut self, _text: &str) {
+            if self.streamed_text {
+                self.streamed_text = false;
+                return;
+            }
+            self.full_text_emits += 1;
+        }
+        fn on_text_chunk(&mut self, _chunk: &str) {
+            self.streamed_text = true;
+        }
+        fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+        fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+        fn on_confirmation_request(&mut self, _request: &ConfirmationRequest) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn emit_assistant_visible_after_chunk_does_not_emit_full_text_again() {
+        let mut s = StreamDedupingSink {
+            streamed_text: false,
+            full_text_emits: 0,
+        };
+        s.reset_streamed_text_for_llm_call();
+        s.on_text_chunk("already shown");
+        s.emit_assistant_visible("duplicate body");
+        assert_eq!(s.full_text_emits, 0);
     }
 }

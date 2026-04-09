@@ -123,6 +123,8 @@ export const enMessages: Record<string, string> = {
   "chat.starterHide": "Don’t show again",
   "chat.followupTitle": "You might ask next",
   "chat.followupClose": "Close suggestions",
+  "chat.turnLlmUsage":
+    "This turn · in {inTok} · out {outTok} · total {totalTok} tokens (API-reported)",
   "chat.evolutionOpenChangesTab": "Open evolution detail · Diff",
   "chat.evolutionOpenChangesHint":
     "Compare prompts snapshots (rules, examples, …). For memory/evolution/ shards, use the Memory side panel.",

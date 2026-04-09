@@ -2,6 +2,9 @@
 //!
 //! Handles every "no tool calls returned" scenario in the agent loop,
 //! deciding whether to nudge the LLM, accept completion claims, or stop.
+//!
+//! User-visible assistant prose is emitted only via [`crate::types::EventSink::emit_assistant_visible`]
+//! (never [`crate::types::EventSink::on_text`] directly here).
 
 use super::super::task_planner::TaskPlanner;
 use super::super::types::*;
@@ -68,7 +71,7 @@ pub(super) fn reflect_simple(
             .is_some_and(|c| !c.trim().is_empty())
     {
         if let Some(ref content) = assistant_content {
-            event_sink.on_text(content);
+            event_sink.emit_assistant_visible(content);
         }
         return ReflectionOutcome::Complete;
     }
@@ -92,7 +95,7 @@ pub(super) fn reflect_simple(
 
     // Emit final text before deciding
     if let Some(ref content) = assistant_content {
-        event_sink.on_text(content);
+        event_sink.emit_assistant_visible(content);
     }
 
     *no_tool_retries += 1;
@@ -133,9 +136,9 @@ pub(super) fn reflect_planning(
                 .as_ref()
                 .is_some_and(|c| !c.trim().is_empty())
         {
-            if let Some(ref content) = assistant_content {
-                event_sink.on_text(content);
-            }
+            // Do not `emit_assistant_visible` here: the model will usually answer again after
+            // `complete_task` with streaming enabled, and a prior emit would duplicate the user-visible
+            // summary (two assistant bubbles). The summary remains in `messages` for the next LLM turn.
             if let Some(ct) = planner.current_task() {
                 let msg = format!(
                     "Tools ran successfully for the current step, but the plan is not updated yet. \
@@ -182,8 +185,13 @@ pub(super) fn reflect_planning(
     // Without the is_empty check, empty-plan text gets popped from history
     // and the response is lost on reload ("Agent completed without text response").
     if planner.all_completed() || planner.is_empty() {
-        if let Some(ref content) = assistant_content {
-            event_sink.on_text(content);
+        // When `suppress_stream` is false, this LLM turn used streaming (`text_chunk`); the full
+        // assistant body is already on the wire. Emitting `on_text` here duplicates the same
+        // content for sinks that do not suppress (and can race RpcEventSink's `streamed_text`).
+        if suppress_stream {
+            if let Some(ref content) = assistant_content {
+                event_sink.emit_assistant_visible(content);
+            }
         }
         return ReflectionOutcome::Break;
     }
@@ -218,7 +226,7 @@ pub(super) fn reflect_planning(
 mod tests {
     use super::*;
     use crate::task_planner::TaskPlanner;
-    use crate::types::{ChatMessage, SilentEventSink, Task};
+    use crate::types::{ChatMessage, ConfirmationRequest, SilentEventSink, Task};
 
     fn planner_with_tasks(tasks: Vec<Task>) -> TaskPlanner {
         let mut planner = TaskPlanner::new(None, None, None);
@@ -469,5 +477,47 @@ mod tests {
             1,
             "assistant summary must not be popped on soft-nudge path"
         );
+    }
+
+    /// Ensures planning-mode soft-nudge does not push a user-visible assistant line; the next
+    /// model turn (often streaming) should own the sole visible summary.
+    struct CountAssistantVisible(u32);
+
+    impl EventSink for CountAssistantVisible {
+        fn emit_assistant_visible(&mut self, _text: &str) {
+            self.0 += 1;
+        }
+        fn on_text(&mut self, _text: &str) {}
+        fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+        fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+        fn on_confirmation_request(&mut self, _request: &ConfirmationRequest) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn test_reflect_planning_soft_nudge_does_not_emit_assistant_visible() {
+        let mut planner = planner_with_tasks(vec![Task {
+            id: 7,
+            description: "Step".to_string(),
+            tool_hint: Some("weather".to_string()),
+            completed: false,
+        }]);
+        let mut consecutive_no_tool = 0;
+        let mut messages = vec![ChatMessage::assistant("Summary text")];
+        let mut sink = CountAssistantVisible(0);
+        let content = Some("Summary text".to_string());
+        let out = reflect_planning(
+            &content,
+            true,
+            &mut planner,
+            &mut consecutive_no_tool,
+            3,
+            &mut sink,
+            &mut messages,
+            true,
+        );
+        assert!(matches!(out, ReflectionOutcome::SoftNudge(_)));
+        assert_eq!(sink.0, 0, "soft-nudge path must not emit visible assistant text");
     }
 }

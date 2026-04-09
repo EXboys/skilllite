@@ -204,6 +204,11 @@ impl LlmClient {
             "messages": messages_json,
             "stream": true,
         });
+        // OpenAI / many proxies omit usage unless this is set; without it, completion_tokens
+        // on the final chunk can be wrong or missing. Some vendors reject unknown fields.
+        if !is_minimax(&self.api_base) {
+            body["stream_options"] = json!({ "include_usage": true });
+        }
 
         if let Some(temp) = temperature {
             body["temperature"] = json!(temp);

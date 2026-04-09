@@ -206,6 +206,7 @@ impl EventSink for RpcEventSink {
     fn on_text(&mut self, text: &str) {
         if self.streamed_text {
             // Already sent via `text_chunk` during streaming; avoid duplicate full `text` (e.g. final summary path).
+            // Agent loop uses `emit_assistant_visible` → this method, so reflection cannot double-send after chunks.
             self.streamed_text = false;
             return;
         }

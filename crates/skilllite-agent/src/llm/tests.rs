@@ -205,6 +205,43 @@ fn test_convert_claude_response_with_tool_use() {
 }
 
 #[test]
+fn llm_usage_report_fixes_streaming_placeholder_completion() {
+    let u = Usage {
+        prompt_tokens: 3514,
+        completion_tokens: 1,
+        total_tokens: 3590,
+    };
+    let r = llm_usage_report_from_usage(&u);
+    assert_eq!(r.prompt_tokens, 3514);
+    assert_eq!(r.completion_tokens, 76);
+    assert_eq!(r.total_tokens, 3590);
+}
+
+#[test]
+fn llm_usage_report_unchanged_when_consistent() {
+    let u = Usage {
+        prompt_tokens: 100,
+        completion_tokens: 50,
+        total_tokens: 150,
+    };
+    let r = llm_usage_report_from_usage(&u);
+    assert_eq!(r.completion_tokens, 50);
+    assert_eq!(r.total_tokens, 150);
+}
+
+#[test]
+fn llm_usage_report_does_not_inflate_suspicious_total() {
+    // Large gap but completion already plausible — do not trust inflated total.
+    let u = Usage {
+        prompt_tokens: 10,
+        completion_tokens: 50,
+        total_tokens: 1000,
+    };
+    let r = llm_usage_report_from_usage(&u);
+    assert_eq!(r.completion_tokens, 50);
+}
+
+#[test]
 fn test_is_context_overflow_error() {
     assert!(is_context_overflow_error("context_length_exceeded"));
     assert!(is_context_overflow_error("Maximum context length exceeded"));

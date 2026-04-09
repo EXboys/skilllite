@@ -5,6 +5,13 @@ export interface TaskItem {
   completed?: boolean;
 }
 
+/** One chat turn's cumulative LLM usage (from agent-rpc `done.llm_usage`). */
+export interface TurnLlmUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
 /** User-attached image for vision (matches agent-rpc `images[]`). */
 export interface ChatImageAttachment {
   media_type: string;
@@ -24,7 +31,14 @@ export type ChatMessage =
       content: string;
       images?: ChatImagePreview[];
     }
-  | { id: string; type: "assistant"; content: string; streaming?: boolean }
+  | {
+      id: string;
+      type: "assistant";
+      content: string;
+      streaming?: boolean;
+      /** 本回合累计 token（来自 `done` 或 transcript 落盘）；展示在气泡底部 */
+      turnLlmUsage?: TurnLlmUsage;
+    }
   | { id: string; type: "plan"; tasks: TaskItem[] }
   | { id: string; type: "tool_call"; name: string; args: string }
   | {

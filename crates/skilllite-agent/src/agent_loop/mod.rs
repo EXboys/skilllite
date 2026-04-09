@@ -1,7 +1,7 @@
 //! Core agent loop: LLM ↔ tool execution cycle.
 //!
 //! Phase 1: simple loop (no task planning).
-//! Phase 2: task-planning-aware loop + run_command + LLM summarization.
+//! Phase 2: task-planning-aware loop + run_command + closing user reply (same LLM path as the main loop).
 //!
 //! Ported from Python `AgenticLoop._run_openai`. Single implementation
 //! that works for both CLI and RPC via the `EventSink` trait.
@@ -13,6 +13,10 @@
 //!   - `helpers`        — shared low-level utilities (tool execution, result processing, …)
 //!   - `clarification`  — reusable clarification-request pattern
 //!   - `llm_call`       — LLM call dispatch with context-overflow recovery
+//!
+//! **Assistant text to the user:** after each LLM completion, use [`crate::types::EventSink::emit_assistant_visible`]
+//! from this module and `reflection` (not [`crate::types::EventSink::on_text`]). Streaming still uses `on_text_chunk`;
+//! RPC/terminal sinks dedupe a redundant full body in [`crate::types::EventSink::on_text`].
 
 mod clarification;
 mod execution;
@@ -41,7 +45,10 @@ use execution::{
     execute_tool_batch_planning, execute_tool_batch_simple,
     should_suppress_planning_assistant_text, ExecutionState,
 };
-use helpers::build_agent_result;
+use helpers::{
+    build_agent_result, latest_trailing_tool_results_include_substantive_output,
+    pick_substantive_trailing_tool_content, TRAILING_TOOL_SUMMARY_MAX_BYTES,
+};
 use llm_call::{call_llm_with_recovery, LlmCallOutcome};
 use planning::{
     build_task_focus_message, maybe_save_checkpoint, run_planning_phase, PlanningResult,
@@ -154,6 +161,22 @@ fn build_final_summary_fallback(
     lines.push("如果你希望我继续，请补充下一步目标或细化要求。".to_string());
     lines.join("\n")
 }
+
+/// User message injected before the **closing** LLM turn in task-planning mode when the
+/// completing tool batch did not include user-visible assistant text (`has_substantial` false).
+/// The closing turn uses the same `call_llm_with_recovery` path with `tools=None`.
+///
+/// `has_substantial` also treats trailing `role=tool` results as substantial when long enough
+/// (see [`latest_trailing_tool_results_include_substantive_output`]) so read-only skills do not
+/// force an extra summarization round after every structurally completed plan.
+const SUBSTANTIVE_TOOL_OUTPUT_MIN_CHARS: usize = 80;
+
+const CLOSING_SUMMARY_USER_MESSAGE: &str = "All planned tasks are structurally complete. Write the final reply to the user in the same language as their request.\n\
+\n\
+You MUST incorporate concrete details from the most recent tool results in the conversation above (numbers, temperatures, names, URLs, file paths, or error messages as applicable). \
+Do NOT reply with only a generic acknowledgement that you are done.\n\
+\n\
+Do not call tools.";
 
 /// Run the agent loop.
 ///
@@ -597,8 +620,12 @@ async fn run_with_task_planning(
         Some(all_tools.as_slice())
     };
 
+    // After the last tool batch marks every task complete, we may need one more LLM turn
+    // with no tools so the user sees a grounded summary (same loop as the main agent step).
+    let mut pending_closing_user_reply = false;
+
     loop {
-        if state.iterations >= effective_max {
+        if !pending_closing_user_reply && state.iterations >= effective_max {
             tracing::warn!(
                 "Agent loop reached effective max iterations ({})",
                 effective_max
@@ -621,12 +648,18 @@ async fn run_with_task_planning(
         // Prevents premature summary text from leaking via streaming
         let suppress_stream = !planner.all_completed() && planner.current_task().is_some();
 
+        let tools_for_llm = if pending_closing_user_reply {
+            None
+        } else {
+            tools_ref
+        };
+
         // ── LLM call (with context-overflow recovery) ─────────────────────
         let response = match call_llm_with_recovery(
             &client,
             &config.model,
             &mut messages,
-            tools_ref,
+            tools_for_llm,
             config.temperature,
             !suppress_stream,
             event_sink,
@@ -647,6 +680,20 @@ async fn run_with_task_planning(
         let mut assistant_content = choice.message.content;
         let tool_calls = choice.message.tool_calls;
         let has_tool_calls = tool_calls.as_ref().is_some_and(|tc| !tc.is_empty());
+
+        if pending_closing_user_reply && has_tool_calls {
+            tracing::warn!(
+                "Closing user-reply turn returned tool calls; re-prompting for plain text only"
+            );
+            messages.push(ChatMessage::user(
+                "This step requires a plain-text final answer only (no tool calls). \
+                 Summarize the most recent tool results for the user in the same language as their request; \
+                 include concrete numbers, names, URLs, or errors from those results. \
+                 Do not respond with only a generic acknowledgement.",
+            ));
+            continue;
+        }
+
         let suppressed_planning_text =
             should_suppress_planning_assistant_text(&planner, has_tool_calls)
                 && assistant_content
@@ -668,7 +715,7 @@ async fn run_with_task_planning(
 
         if suppress_stream && has_tool_calls {
             if let Some(ref content) = assistant_content {
-                event_sink.on_text(content);
+                event_sink.emit_assistant_visible(content);
             }
         }
 
@@ -705,6 +752,32 @@ async fn run_with_task_planning(
                 }
                 ReflectionOutcome::Break => {
                     after_successful_tool_batch = false;
+                    if pending_closing_user_reply {
+                        pending_closing_user_reply = false;
+                        while messages.last().is_some_and(|m| {
+                            m.role == "assistant"
+                                && m
+                                    .content
+                                    .as_deref()
+                                    .map(|c| c.trim().is_empty())
+                                    .unwrap_or(true)
+                        }) {
+                            messages.pop();
+                        }
+                        let has_closing_text = messages.last().is_some_and(|m| {
+                            m.role == "assistant"
+                                && m.content.as_deref().is_some_and(|c| !c.trim().is_empty())
+                        });
+                        if !has_closing_text {
+                            let fallback = build_final_summary_fallback(
+                                &planner.task_list,
+                                &messages,
+                                user_message,
+                            );
+                            event_sink.emit_assistant_visible(&fallback);
+                            messages.push(ChatMessage::assistant(&fallback));
+                        }
+                    }
                     // Empty plan: reflect_planning already treated text-only as normal completion
                     // (see `planner.is_empty()` branch). `all_completed()` is false for [], so we
                     // must not open clarification here — otherwise chit-chat loops on try_clarify.
@@ -825,57 +898,30 @@ async fn run_with_task_planning(
 
         // ── Post-tool completion check ─────────────────────────────────────────
         if planner.all_completed() {
-            tracing::info!("All tasks completed, ending iteration");
-            let has_substantial = assistant_content
+            tracing::info!("All tasks completed, scheduling closing user reply if needed");
+            let assistant_substantial = assistant_content
                 .as_ref()
                 .is_some_and(|c| c.trim().len() > 50);
+            let tool_substantial = latest_trailing_tool_results_include_substantive_output(
+                &messages,
+                SUBSTANTIVE_TOOL_OUTPUT_MIN_CHARS,
+            );
+            let has_substantial = assistant_substantial || tool_substantial;
             if !has_substantial {
-                let mut emitted_final_summary = false;
-                messages.push(ChatMessage::user(
-                    "All planned tasks are structurally complete. Reply with a concise closing summary \
-                     for the user (same language as their request): what was accomplished, key outcomes \
-                     (URLs, files, errors), and optional next steps. Do not call tools.",
-                ));
-                match client
-                    .chat_completion_stream(
-                        &config.model,
-                        &messages,
-                        None,
-                        config.temperature,
-                        event_sink,
-                        Some(&mut state.llm_usage_totals),
-                    )
-                    .await
-                {
-                    Ok(resp) => {
-                        let report = resp.usage.as_ref().map(|u| {
-                            LlmUsageReport::from_counts(
-                                u.prompt_tokens,
-                                u.completion_tokens,
-                                u.total_tokens,
-                            )
-                        });
-                        event_sink.on_llm_usage(report);
-                        if let Some(ch) = resp.choices.into_iter().next() {
-                            if let Some(ref content) = ch.message.content {
-                                if !content.trim().is_empty() {
-                                    event_sink.on_text(content);
-                                    messages.push(ChatMessage::assistant(content));
-                                    emitted_final_summary = true;
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!("Final summary generation failed after completion: {}", e);
-                    }
-                }
-
-                if !emitted_final_summary {
-                    let fallback =
-                        build_final_summary_fallback(&planner.task_list, &messages, user_message);
-                    event_sink.on_text(&fallback);
-                    messages.push(ChatMessage::assistant(&fallback));
+                messages.push(ChatMessage::user(CLOSING_SUMMARY_USER_MESSAGE));
+                pending_closing_user_reply = true;
+                continue;
+            }
+            // Skipping the closing LLM means no streaming `text` events; the UI only had tool
+            // chips until now. Emit one assistant line from the substantive tool payload.
+            if tool_substantial && !assistant_substantial {
+                if let Some(text) = pick_substantive_trailing_tool_content(
+                    &messages,
+                    SUBSTANTIVE_TOOL_OUTPUT_MIN_CHARS,
+                    TRAILING_TOOL_SUMMARY_MAX_BYTES,
+                ) {
+                    event_sink.emit_assistant_visible(&text);
+                    messages.push(ChatMessage::assistant(&text));
                 }
             }
             break;
@@ -1024,6 +1070,18 @@ mod tests {
         assert!(
             total_at_limit < base_chunk.saturating_add(extension),
             "same total should be under raised ceiling until more tools run"
+        );
+    }
+
+    #[test]
+    fn closing_summary_user_message_requires_grounding_and_no_tools() {
+        assert!(
+            super::CLOSING_SUMMARY_USER_MESSAGE.contains("tool results"),
+            "closing instruction should anchor the model to prior tool output"
+        );
+        assert!(
+            super::CLOSING_SUMMARY_USER_MESSAGE.contains("Do not call tools"),
+            "closing turn must forbid further tool calls"
         );
     }
 

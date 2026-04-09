@@ -266,11 +266,32 @@ pub struct Usage {
     pub total_tokens: u64,
 }
 
+/// Map API `usage` into a report for aggregation and UI.
+///
+/// Some OpenAI-compatible streaming gateways return a bogus tiny `completion_tokens`
+/// (often `1`) while `total_tokens` and `prompt_tokens` are consistent; in that case
+/// derive completion from `total_tokens - prompt_tokens` when it is clearly a fix-up.
+pub(crate) fn llm_usage_report_from_usage(u: &Usage) -> LlmUsageReport {
+    let p = u.prompt_tokens;
+    let mut c = u.completion_tokens;
+    let t = u.total_tokens;
+    let sum_pc = p.saturating_add(c);
+    let gap = t.saturating_sub(sum_pc);
+    // Conservative: only repair when completion is suspiciously small and totals show slack.
+    if c <= 8 && gap > 0 && t > p {
+        let derived = t - p;
+        if derived < p && derived > c {
+            c = derived;
+        }
+    }
+    let coerced = p.saturating_add(c);
+    let total = t.max(coerced);
+    LlmUsageReport::from_counts(p, c, total)
+}
+
 fn record_llm_usage_totals(out: Option<&mut LlmUsageTotals>, usage: &Option<Usage>) {
     if let Some(totals) = out {
-        let report = usage.as_ref().map(|u| {
-            LlmUsageReport::from_counts(u.prompt_tokens, u.completion_tokens, u.total_tokens)
-        });
+        let report = usage.as_ref().map(llm_usage_report_from_usage);
         totals.record(report);
     }
 }

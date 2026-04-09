@@ -190,6 +190,7 @@ function MessageBubbleInner({
   }
 
   if (message.type === "assistant") {
+    const u = message.turnLlmUsage;
     return (
       <div className="flex justify-start">
         <div className={bubbleAssistant}>
@@ -199,6 +200,19 @@ function MessageBubbleInner({
           />
           {message.streaming && (
             <span className="inline-block w-2 h-4 ml-1 bg-accent animate-pulse align-middle rounded-sm" />
+          )}
+          {u && !message.streaming && (
+            <div
+              className="mt-2.5 pt-2 border-t border-border/55 dark:border-border-dark/55 text-[11px] leading-snug tabular-nums text-ink-mute dark:text-ink-dark-mute"
+              role="status"
+              aria-live="polite"
+            >
+              {t("chat.turnLlmUsage", {
+                inTok: u.prompt_tokens.toLocaleString(),
+                outTok: u.completion_tokens.toLocaleString(),
+                totalTok: u.total_tokens.toLocaleString(),
+              })}
+            </div>
           )}
         </div>
       </div>

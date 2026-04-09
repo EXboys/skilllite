@@ -114,6 +114,8 @@ export const zhMessages: Record<string, string> = {
   "chat.starterHide": "暂不显示",
   "chat.followupTitle": "猜你想问",
   "chat.followupClose": "关闭推荐",
+  "chat.turnLlmUsage":
+    "本回合用量 · 输入 {inTok} · 输出 {outTok} · 合计 {totalTok} tokens（API 报告）",
   "chat.evolutionOpenChangesTab": "打开自进化详情 · 变更对比",
   "chat.evolutionOpenChangesHint":
     "在此对比 rules / examples 等 prompts 快照。记忆写入 memory/evolution/ 时，请在侧栏「记忆」中查看对应文件。",
