@@ -772,6 +772,7 @@ impl ChatSession {
                 &[ChatMessage::user(&summary_prompt)],
                 None,
                 Some(0.3),
+                None,
             )
             .await
         {
@@ -925,6 +926,7 @@ impl ChatSession {
                 &[ChatMessage::user(&summary_prompt)],
                 None,
                 Some(0.3),
+                None,
             )
             .await
         {

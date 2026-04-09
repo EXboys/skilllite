@@ -14,6 +14,7 @@ mod config;
 mod env_config;
 mod event_sink;
 mod feedback;
+mod llm_usage;
 mod string_utils;
 mod task;
 
@@ -39,5 +40,6 @@ pub use feedback::{
     classify_user_feedback, ExecutionFeedback, FeedbackSignal, SkillAction, TaskCompletionType,
     ToolExecDetail,
 };
+pub use llm_usage::{LlmUsageReport, LlmUsageTotals};
 pub use string_utils::{chunk_str, safe_slice_from, safe_truncate};
 pub use task::{PlanningRule, SourceEntry, SourceRegistry, Task};

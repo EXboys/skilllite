@@ -86,6 +86,7 @@ function LogList({ entries }: { entries: LogEntry[] }) {
           {e.type === "swarm_progress" && "…"}
           {e.type === "swarm_finished" && "■"}
           {e.type === "swarm_failed" && "✗"}
+          {e.type === "llm_usage" && "∑"}
           {e.name && <span className="font-medium">{e.name}: </span>}
           <span className="break-words">{e.text}</span>
         </li>

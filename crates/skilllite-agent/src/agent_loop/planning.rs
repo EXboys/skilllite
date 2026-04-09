@@ -43,6 +43,7 @@ pub(super) async fn run_planning_phase(
     session_key: Option<&str>,
     client: &LlmClient,
     workspace: &Path,
+    llm_usage_totals: &mut LlmUsageTotals,
 ) -> Result<PlanningResult> {
     let chat_root = skilllite_executor::chat_root();
 
@@ -78,7 +79,9 @@ pub(super) async fn run_planning_phase(
 
     // A5: Goal boundaries — hybrid (regex + optional LLM) in run mode
     let effective_boundaries = if session_key == Some("run") {
-        match extract_goal_boundaries_hybrid(client, &config.model, user_message).await {
+        match extract_goal_boundaries_hybrid(client, &config.model, user_message, Some(llm_usage_totals))
+            .await
+        {
             Ok(gb) => Some(gb),
             Err(e) => {
                 tracing::warn!("Goal boundaries extraction failed: {}, using regex only", e);
@@ -89,7 +92,13 @@ pub(super) async fn run_planning_phase(
         config.goal_boundaries.clone()
     };
     let effective_contract = if session_key == Some("run") {
-        Some(extract_goal_contract_hybrid(client, &config.model, user_message).await)
+        Some(extract_goal_contract_hybrid(
+            client,
+            &config.model,
+            user_message,
+            Some(llm_usage_totals),
+        )
+        .await)
     } else {
         None
     };
@@ -105,6 +114,7 @@ pub(super) async fn run_planning_phase(
             effective_boundaries.as_ref(),
             effective_contract.as_ref(),
             soul.as_ref(),
+            Some(llm_usage_totals),
         )
         .await?;
 

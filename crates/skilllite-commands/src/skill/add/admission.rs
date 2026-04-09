@@ -161,7 +161,7 @@ Rules:
     let resp = rt.block_on(async {
         let inner = tokio::time::timeout(
             std::time::Duration::from_secs(15),
-            client.chat_completion(&config.model, &messages, None, Some(0.1)),
+            client.chat_completion(&config.model, &messages, None, Some(0.1), None),
         )
         .await
         .map_err(|_| crate::Error::validation("LLM request timed out (15s)"))?;

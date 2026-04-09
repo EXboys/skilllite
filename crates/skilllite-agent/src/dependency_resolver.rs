@@ -23,7 +23,7 @@ mod llm_resolver {
         async fn extract_packages(&self, model: &str, prompt: &str) -> Option<String> {
             let messages = vec![ChatMessage::user(prompt)];
             let resp = self
-                .chat_completion(model, &messages, None, Some(0.0))
+                .chat_completion(model, &messages, None, Some(0.0), None)
                 .await
                 .ok()?;
             let text = resp.choices.first()?.message.content.as_ref()?.clone();

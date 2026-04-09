@@ -43,9 +43,11 @@
 //! {"event": "swarm_failed", "data": {"message": "timeout, fallback to local execution"}}
 //! {"event": "task_plan", "data": {"tasks": [...]}}
 //! {"event": "task_progress", "data": {"task_id": 1, "completed": true}}
+//! {"event": "llm_usage", "data": {"prompt_tokens": 1200, "completion_tokens": 80, "total_tokens": 1280}}
+//! {"event": "llm_usage", "data": {"reported": false}}
 //! {"event": "confirmation_request", "data": {"prompt": "Execute rm -rf?", "risk_tier": "confirm_required"}}
 //! {"event": "clarification_request", "data": {"reason": "no_progress", "message": "...", "suggestions": ["...", "..."]}}
-//! {"event": "done", "data": {"task_id": "...", "response": "...", "task_completed": true, "tool_calls": 3, "new_skill": null}}
+//! {"event": "done", "data": {"task_id": "...", "response": "...", "task_completed": true, "tool_calls": 3, "new_skill": null, "completion_type": "success", "llm_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "responses_with_usage": 0, "responses_without_usage": 0}}}
 //! {"event": "error", "data": {"message": "..."}}
 //! ```
 //!
@@ -357,6 +359,20 @@ impl EventSink for RpcEventSink {
             json!({ "task_id": task_id, "completed": completed, "tasks": tasks }),
         );
     }
+
+    fn on_llm_usage(&mut self, usage: Option<LlmUsageReport>) {
+        match usage {
+            Some(u) => self.emit(
+                "llm_usage",
+                json!({
+                    "prompt_tokens": u.prompt_tokens,
+                    "completion_tokens": u.completion_tokens,
+                    "total_tokens": u.total_tokens,
+                }),
+            ),
+            None => self.emit("llm_usage", json!({ "reported": false })),
+        }
+    }
 }
 
 // ─── RPC Server ─────────────────────────────────────────────────────────────
@@ -614,6 +630,10 @@ async fn handle_agent_chat(
                     serde_json::Value::String(
                         agent_result.feedback.completion_type.as_str().to_string(),
                     ),
+                );
+                obj.insert(
+                    "llm_usage".to_string(),
+                    serde_json::to_value(agent_result.feedback.llm_usage).unwrap_or(json!({})),
                 );
             }
             emit_event(&writer, "done", data);

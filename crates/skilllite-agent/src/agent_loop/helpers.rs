@@ -475,6 +475,7 @@ pub(super) async fn extract_goal_boundaries_llm(
     client: &LlmClient,
     model: &str,
     goal: &str,
+    usage_totals: Option<&mut LlmUsageTotals>,
 ) -> Result<GoalBoundaries> {
     const PROMPT: &str = r#"Extract goal boundaries from the user's goal. Return JSON only:
 {"scope": "...", "exclusions": "...", "completion_conditions": "..."}
@@ -486,7 +487,7 @@ Use null for any field you cannot infer. Output only valid JSON, no markdown, no
     let messages = vec![ChatMessage::system(PROMPT), ChatMessage::user(goal)];
 
     let resp = client
-        .chat_completion(model, &messages, None, Some(0.2))
+        .chat_completion(model, &messages, None, Some(0.2), usage_totals)
         .await?;
 
     let raw = resp
@@ -595,6 +596,7 @@ pub(super) async fn extract_goal_contract_llm(
     client: &LlmClient,
     model: &str,
     goal: &str,
+    usage_totals: Option<&mut LlmUsageTotals>,
 ) -> Result<GoalContract> {
     const PROMPT: &str = r#"Extract an executable goal contract from user goal text. Return JSON only:
 {"goal":"...","acceptance":"...","constraints":"...","deadline":"...","risk_level":"low|medium|high|critical"}
@@ -604,7 +606,7 @@ pub(super) async fn extract_goal_contract_llm(
 
     let messages = vec![ChatMessage::system(PROMPT), ChatMessage::user(goal)];
     let resp = client
-        .chat_completion(model, &messages, None, Some(0.2))
+        .chat_completion(model, &messages, None, Some(0.2), usage_totals)
         .await?;
 
     let raw = resp
@@ -623,8 +625,9 @@ pub(super) async fn extract_goal_contract_hybrid(
     client: &LlmClient,
     model: &str,
     goal: &str,
+    usage_totals: Option<&mut LlmUsageTotals>,
 ) -> GoalContract {
-    match extract_goal_contract_llm(client, model, goal).await {
+    match extract_goal_contract_llm(client, model, goal, usage_totals).await {
         Ok(c) if !c.is_empty() => c,
         Ok(_) => {
             tracing::info!("Goal contract LLM extraction empty, fallback to regex extraction");
@@ -646,6 +649,7 @@ pub(super) async fn extract_goal_boundaries_hybrid(
     client: &LlmClient,
     model: &str,
     goal: &str,
+    usage_totals: Option<&mut LlmUsageTotals>,
 ) -> Result<GoalBoundaries> {
     let regex_result = goal_boundaries::extract_goal_boundaries(goal);
     if !regex_result.is_empty() {
@@ -653,7 +657,7 @@ pub(super) async fn extract_goal_boundaries_hybrid(
     }
     if std::env::var("SKILLLITE_GOAL_LLM_EXTRACT").as_deref() == Ok("1") {
         tracing::info!("Goal boundaries regex empty, trying LLM extraction");
-        extract_goal_boundaries_llm(client, model, goal).await
+        extract_goal_boundaries_llm(client, model, goal, usage_totals).await
     } else {
         Ok(regex_result)
     }

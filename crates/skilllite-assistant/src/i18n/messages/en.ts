@@ -335,6 +335,11 @@ export const enMessages: Record<string, string> = {
   "evolution.manualEdit.revert": "Revert unsaved",
   "evolution.manualEdit.saveOk": "Saved",
 
+  "status.llmUsageLogLine": "Call: in {inTok} + out {outTok} ≈ {totalTok} tokens",
+  "status.llmUsageNotReportedLog": "Call: provider did not report token usage",
+  "status.llmUsageMonthTitle": "LLM tokens ({month})",
+  "status.llmUsageMonthSummary": "This month: in {inTok} · out {outTok} · total {totalTok} tokens",
+  "status.llmUsageMonthHint": "Totals use your system calendar month and persist locally. Per-call lines appear under Logs below.",
   "status.noLogs": "No logs yet",
   "status.moreFiles": "+ {n} files",
   "status.noOutput": "No output files yet",

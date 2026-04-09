@@ -1,5 +1,6 @@
 //! EVO-1: Execution feedback types for evolution engine.
 
+use super::llm_usage::LlmUsageTotals;
 use serde::{Deserialize, Serialize};
 
 /// Task completion classification from model-reported structured completion.
@@ -39,6 +40,8 @@ pub struct ExecutionFeedback {
     pub rules_used: Vec<String>,
     /// Per-tool execution details.
     pub tools_detail: Vec<ToolExecDetail>,
+    /// Sum of API-reported token usage across LLM calls in this run (when provided by the provider).
+    pub llm_usage: LlmUsageTotals,
 }
 
 /// Per-tool execution outcome.

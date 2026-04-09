@@ -1,5 +1,6 @@
 //! Event sink trait and implementations for different output targets.
 
+use super::llm_usage::LlmUsageReport;
 use super::string_utils::safe_truncate;
 use super::task::Task;
 
@@ -90,6 +91,8 @@ pub trait EventSink: Send {
     /// Called when a task's status changes. (Phase 2)
     /// `tasks` contains the full updated task list for progress rendering.
     fn on_task_progress(&mut self, _task_id: u32, _completed: bool, _tasks: &[Task]) {}
+    /// Called after a chat completion returns API-reported token usage (if any).
+    fn on_llm_usage(&mut self, _usage: Option<LlmUsageReport>) {}
     /// Called when the agent is about to stop and wants user clarification.
     /// Returns `Continue(hint)` to keep going or `Stop` to terminate.
     fn on_clarification_request(
@@ -425,6 +428,18 @@ impl EventSink for TerminalEventSink {
             }
         }
     }
+
+    fn on_llm_usage(&mut self, usage: Option<LlmUsageReport>) {
+        match usage {
+            Some(u) => tracing::debug!(
+                prompt_tokens = u.prompt_tokens,
+                completion_tokens = u.completion_tokens,
+                total_tokens = u.total_tokens,
+                "LLM usage (per completion)"
+            ),
+            None => tracing::debug!("LLM usage not reported for this completion"),
+        }
+    }
 }
 
 /// Event sink for unattended run mode: same output as TerminalEventSink,
@@ -519,5 +534,8 @@ impl EventSink for RunModeEventSink {
     }
     fn on_task_progress(&mut self, task_id: u32, completed: bool, tasks: &[Task]) {
         self.inner.on_task_progress(task_id, completed, tasks);
+    }
+    fn on_llm_usage(&mut self, usage: Option<LlmUsageReport>) {
+        self.inner.on_llm_usage(usage);
     }
 }

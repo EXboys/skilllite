@@ -28,10 +28,45 @@ export interface LogEntry {
     | "plan"
     | "progress"
     | "warning"
-    | "error";
+    | "error"
+    | "llm_usage";
   name?: string;
   text: string;
   isError?: boolean;
+}
+
+/** Local calendar month key and cumulative API-reported tokens (from agent `done` payloads). */
+export interface LlmUsageMonthTotals {
+  monthKey: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+function monthKeyLocal(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  return `${y}-${m.toString().padStart(2, "0")}`;
+}
+
+function initialLlmUsageMonth(): LlmUsageMonthTotals {
+  return {
+    monthKey: monthKeyLocal(),
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  };
+}
+
+function parseNonNegInt(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0) {
+    return Math.floor(v);
+  }
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    if (Number.isFinite(n) && n >= 0) return Math.floor(n);
+  }
+  return null;
 }
 
 interface StatusState {
@@ -42,12 +77,18 @@ interface StatusState {
   memoryFiles: string[];
   outputFiles: string[];
   latestOutput: string;
+  /** Cumulative LLM token usage for the current local calendar month (persisted). */
+  llmUsageMonth: LlmUsageMonthTotals;
   clearPlan: () => void;
   setLatestOutput: (text: string) => void;
   addTaskPlan: (tasks: TaskItem[]) => void;
   updateTaskProgress: (taskId: number, completed: boolean) => void;
   addLog: (entry: Omit<LogEntry, "id" | "time">) => void;
   addMemoryHint: (hint: string) => void;
+  /** Merge one agent-turn `llm_usage` object (from `done` event) into the active month. */
+  addLlmUsageFromTurn: (raw: unknown) => void;
+  /** If the calendar month changed since last persist, reset counters (no chat yet this month). */
+  rollLlmUsageMonthIfNeeded: () => void;
   /** 仅同步文件列表；计划条只来自当前轮次的流式事件，不从磁盘 / persist 恢复 */
   setRecentData: (data: {
     memoryFiles?: string[];
@@ -75,6 +116,7 @@ export const useStatusStore = create<StatusState>()(
       memoryFiles: [],
       outputFiles: [],
       latestOutput: "",
+      llmUsageMonth: initialLlmUsageMonth(),
 
       clearPlan: () => set({ tasks: [] }),
 
@@ -115,6 +157,48 @@ export const useStatusStore = create<StatusState>()(
           memoryHints: [...s.memoryHints.slice(-19), hint],
         })),
 
+      addLlmUsageFromTurn: (raw) =>
+        set((s) => {
+          const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+          if (!o) return s;
+          const p = parseNonNegInt(o.prompt_tokens);
+          const c = parseNonNegInt(o.completion_tokens);
+          const t = parseNonNegInt(o.total_tokens);
+          if (p === null || c === null || t === null) return s;
+          const mk = monthKeyLocal();
+          let base = s.llmUsageMonth;
+          if (base.monthKey !== mk) {
+            base = {
+              monthKey: mk,
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            };
+          }
+          return {
+            llmUsageMonth: {
+              monthKey: mk,
+              prompt_tokens: base.prompt_tokens + p,
+              completion_tokens: base.completion_tokens + c,
+              total_tokens: base.total_tokens + t,
+            },
+          };
+        }),
+
+      rollLlmUsageMonthIfNeeded: () =>
+        set((s) => {
+          const mk = monthKeyLocal();
+          if (s.llmUsageMonth.monthKey === mk) return s;
+          return {
+            llmUsageMonth: {
+              monthKey: mk,
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            },
+          };
+        }),
+
       setRecentData: (data) =>
         set((s) => ({
           memoryFiles: data.memoryFiles ?? s.memoryFiles,
@@ -123,19 +207,32 @@ export const useStatusStore = create<StatusState>()(
         })),
 
       clearAll: () =>
-        set({ tasks: [], logEntries: [], logFiles: [], memoryHints: [], memoryFiles: [], outputFiles: [], latestOutput: "" }),
+        set({
+          tasks: [],
+          logEntries: [],
+          logFiles: [],
+          memoryHints: [],
+          memoryFiles: [],
+          outputFiles: [],
+          latestOutput: "",
+        }),
     }),
     {
       name: STATUS_STORE_PERSIST_KEY,
       partialize: (s) => ({
         logEntries: s.logEntries,
         memoryHints: s.memoryHints,
+        llmUsageMonth: s.llmUsageMonth,
       }),
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...(persistedState as Partial<StatusState>),
-        tasks: [],
-      }),
+      merge: (persistedState, currentState) => {
+        const p = persistedState as Partial<StatusState>;
+        return {
+          ...currentState,
+          ...p,
+          tasks: [],
+          llmUsageMonth: p.llmUsageMonth ?? currentState.llmUsageMonth,
+        };
+      },
     }
   )
 );

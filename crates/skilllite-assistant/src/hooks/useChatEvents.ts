@@ -2,9 +2,17 @@ import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { ChatMessage, StreamEventPayload } from "../types/chat";
 import type { LogEntry } from "../stores/useStatusStore";
+import { useStatusStore } from "../stores/useStatusStore";
 import { isChatHiddenToolName } from "../utils/chatNoise";
 import { tryParseReadFilePathFromToolArgs } from "../utils/readFileToolMeta";
 import { humanizeApiError } from "../utils/humanizeApiError";
+import { translate } from "../i18n";
+
+function nonNegInt(v: unknown): number | null {
+  const x = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(x) || x < 0) return null;
+  return Math.floor(x);
+}
 
 const STREAM_THROTTLE_MS = 80;
 
@@ -200,6 +208,16 @@ export function useChatEvents({
           return prev;
         });
         setLoading(false);
+        const usageRaw = data?.llm_usage;
+        if (usageRaw && typeof usageRaw === "object") {
+          const u = usageRaw as Record<string, unknown>;
+          const p = nonNegInt(u.prompt_tokens);
+          const c = nonNegInt(u.completion_tokens);
+          const t = nonNegInt(u.total_tokens);
+          if (p !== null && c !== null && t !== null) {
+            useStatusStore.getState().addLlmUsageFromTurn(usageRaw);
+          }
+        }
         clearPlan?.();
         onTurnComplete?.();
       } else if (event === "error") {
@@ -354,6 +372,29 @@ export function useChatEvents({
       } else if (event === "swarm_failed") {
         const message = (data?.message as string) ?? "";
         addLog({ type: "swarm_failed" as const, name: "delegate_to_swarm", text: message.length > 240 ? message.slice(0, 240) + "…" : message, isError: true });
+      } else if (event === "llm_usage") {
+        if ((data?.reported as boolean) === false) {
+          addLog({
+            type: "llm_usage",
+            name: "LLM",
+            text: translate("status.llmUsageNotReportedLog"),
+          });
+          return;
+        }
+        const p = nonNegInt(data?.prompt_tokens);
+        const c = nonNegInt(data?.completion_tokens);
+        const t = nonNegInt(data?.total_tokens);
+        if (p !== null && c !== null && t !== null) {
+          addLog({
+            type: "llm_usage",
+            name: "LLM",
+            text: translate("status.llmUsageLogLine", {
+              inTok: p,
+              outTok: c,
+              totalTok: t,
+            }),
+          });
+        }
       }
     });
 

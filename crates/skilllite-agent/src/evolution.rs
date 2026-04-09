@@ -36,7 +36,7 @@ impl EvolutionLlm for EvolutionLlmAdapter<'_> {
 
         let response = self
             .llm
-            .chat_completion(model, &chat_messages, None, Some(temperature))
+            .chat_completion(model, &chat_messages, None, Some(temperature), None)
             .await
             .map_err(anyhow::Error::from)?;
 
@@ -144,6 +144,7 @@ mod tests {
                 tool: "read_file".to_string(),
                 success: true,
             }],
+            llm_usage: Default::default(),
         };
 
         let input = execution_feedback_to_decision_input(&feedback);
@@ -178,6 +179,7 @@ mod tests {
                     success: false,
                 },
             ],
+            llm_usage: Default::default(),
         };
 
         let input = execution_feedback_to_decision_input(&feedback);
@@ -203,6 +205,7 @@ mod tests {
             task_description: Some("conflict task".to_string()),
             rules_used: vec![],
             tools_detail: vec![],
+            llm_usage: Default::default(),
         };
         let input = execution_feedback_to_decision_input(&feedback);
         assert_eq!(input.completion_type_reported, "success");

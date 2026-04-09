@@ -140,6 +140,8 @@ pub(super) struct ExecutionState {
     /// Reset when a different tool/error combination occurs or a tool succeeds.
     last_failure_sig: Option<(String, String)>,
     pub repeated_failure_count: usize,
+    /// Cumulative LLM token usage (API-reported) for this agent run.
+    pub llm_usage_totals: LlmUsageTotals,
 }
 
 const REPEATED_FAILURE_THRESHOLD: usize = 2;
@@ -164,6 +166,7 @@ impl ExecutionState {
             completion_type: TaskCompletionType::Success,
             last_failure_sig: None,
             repeated_failure_count: 0,
+            llm_usage_totals: LlmUsageTotals::default(),
         }
     }
 

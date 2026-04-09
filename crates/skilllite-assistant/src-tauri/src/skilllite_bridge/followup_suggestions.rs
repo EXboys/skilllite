@@ -98,7 +98,7 @@ pub async fn followup_chat_suggestions(
     ];
 
     let resp = client
-        .chat_completion(&model, &messages, None, Some(0.4))
+        .chat_completion(&model, &messages, None, Some(0.4), None)
         .await
         .map_err(|e| e.to_string())?;
 

@@ -7,7 +7,10 @@
 use crate::Result;
 
 use super::super::llm::{self, ChatCompletionResponse, LlmClient};
-use super::super::types::*;
+use super::super::types::{
+    get_tool_result_recovery_max_chars, ChatMessage, EventSink, LlmUsageReport, LlmUsageTotals,
+    ToolDefinition,
+};
 
 /// Maximum number of context overflow recovery retries before giving up.
 const MAX_CONTEXT_OVERFLOW_RETRIES: usize = 3;
@@ -40,21 +43,33 @@ pub(super) async fn call_llm_with_recovery(
     stream: bool,
     event_sink: &mut dyn EventSink,
     context_overflow_retries: &mut usize,
+    usage_totals: Option<&mut LlmUsageTotals>,
 ) -> Result<LlmCallOutcome> {
     event_sink.reset_streamed_text_for_llm_call();
     let result = if stream {
         client
-            .chat_completion_stream(model, messages, tools, temperature, event_sink)
+            .chat_completion_stream(
+                model,
+                messages,
+                tools,
+                temperature,
+                event_sink,
+                usage_totals,
+            )
             .await
     } else {
         client
-            .chat_completion(model, messages, tools, temperature)
+            .chat_completion(model, messages, tools, temperature, usage_totals)
             .await
     };
 
     match result {
         Ok(resp) => {
             *context_overflow_retries = 0;
+            let report = resp.usage.as_ref().map(|u| {
+                LlmUsageReport::from_counts(u.prompt_tokens, u.completion_tokens, u.total_tokens)
+            });
+            event_sink.on_llm_usage(report);
             Ok(LlmCallOutcome::Response(resp))
         }
         Err(e) => {

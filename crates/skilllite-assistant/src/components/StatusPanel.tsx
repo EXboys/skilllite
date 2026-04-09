@@ -58,6 +58,7 @@ function LogList({ entries, limit }: { entries: LogEntry[]; limit?: number }) {
           {e.type === "swarm_progress" && "…"}
           {e.type === "swarm_finished" && "■"}
           {e.type === "swarm_failed" && "✗"}
+          {e.type === "llm_usage" && "∑"}
           {e.name && <span className="font-medium">{e.name}: </span>}
           <span className="block min-w-0 break-words text-left line-clamp-4">{e.text}</span>
         </li>
@@ -790,9 +791,14 @@ export function LifePulseBadge() {
 export default function StatusPanel() {
   const { t } = useI18n();
   const [tab, setTab] = useState<StatusPanelTab>("evolution");
-  const { logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();
+  const { logEntries, logFiles, memoryHints, memoryFiles, outputFiles, llmUsageMonth, rollLlmUsageMonthIfNeeded } =
+    useStatusStore();
   const { settings } = useSettingsStore();
   const workspace = settings.workspace?.trim() || ".";
+
+  useEffect(() => {
+    rollLlmUsageMonthIfNeeded();
+  }, [rollLlmUsageMonthIfNeeded]);
 
   const openDir = (module: string) => () => {
     invoke("skilllite_open_directory", { module, workspace }).catch((err) => {
@@ -879,6 +885,23 @@ export default function StatusPanel() {
             hasMore={memHasMore || memoryFiles.length > 0}
           >
             <MemoryPreview files={memoryFiles} hints={memoryHints} limit={PREVIEW_LIMIT} />
+          </SummarySection>
+
+          <SummarySection
+            title={t("status.llmUsageMonthTitle", { month: llmUsageMonth.monthKey })}
+            onClickMore={() => openDetailWindow("log")}
+            hasMore
+          >
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute tabular-nums leading-relaxed">
+              {t("status.llmUsageMonthSummary", {
+                inTok: llmUsageMonth.prompt_tokens.toLocaleString(),
+                outTok: llmUsageMonth.completion_tokens.toLocaleString(),
+                totalTok: llmUsageMonth.total_tokens.toLocaleString(),
+              })}
+            </p>
+            <p className="text-[10px] text-ink-mute/80 dark:text-ink-dark-mute/80 mt-1">
+              {t("status.llmUsageMonthHint")}
+            </p>
           </SummarySection>
 
           <SummarySection

@@ -316,6 +316,11 @@ export const zhMessages: Record<string, string> = {
   "evolution.manualEdit.revert": "还原未保存",
   "evolution.manualEdit.saveOk": "已保存",
 
+  "status.llmUsageLogLine": "单次：输入 {inTok} + 输出 {outTok} ≈ 合计 {totalTok} tokens",
+  "status.llmUsageNotReportedLog": "单次：本接口未返回 token 用量",
+  "status.llmUsageMonthTitle": "本月 LLM（{month}）",
+  "status.llmUsageMonthSummary": "累计 输入 {inTok} · 输出 {outTok} · 合计 {totalTok} tokens",
+  "status.llmUsageMonthHint": "按本机自然月累计，保存在本地。每次调用的明细见下方「日志」。",
   "status.noLogs": "暂无日志",
   "status.moreFiles": "+ {n} 个文件",
   "status.noOutput": "暂无输出文件",

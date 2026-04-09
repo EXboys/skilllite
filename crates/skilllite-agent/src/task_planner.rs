@@ -199,6 +199,7 @@ impl TaskPlanner {
         goal_boundaries: Option<&GoalBoundaries>,
         goal_contract: Option<&GoalContract>,
         soul: Option<&Soul>,
+        usage_totals: Option<&mut LlmUsageTotals>,
     ) -> Result<Vec<Task>> {
         self.available_rules = self.filter_rules_by_available_skills(&self.rules, skills);
         self.matched_rule_ids = filter_rules_for_user_message(&self.available_rules, user_message)
@@ -296,7 +297,7 @@ impl TaskPlanner {
         ];
 
         match client
-            .chat_completion(model, &messages, None, Some(0.3))
+            .chat_completion(model, &messages, None, Some(0.3), usage_totals)
             .await
         {
             Ok(resp) => {

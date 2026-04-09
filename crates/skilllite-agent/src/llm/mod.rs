@@ -14,7 +14,10 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use super::types::{safe_truncate, ChatMessage, EventSink, ToolCall, ToolDefinition, ToolFormat};
+use super::types::{
+    safe_truncate, ChatMessage, EventSink, LlmUsageReport, LlmUsageTotals, ToolCall,
+    ToolDefinition, ToolFormat,
+};
 
 mod claude;
 mod openai;
@@ -75,24 +78,30 @@ impl LlmClient {
     }
 
     /// Non-streaming chat completion call (auto-routes based on model/api_base).
+    ///
+    /// When `usage_totals` is `Some`, successful responses merge API-reported `usage`
+    /// into the accumulator (or count a missing `usage` for that response).
     pub async fn chat_completion(
         &self,
         model: &str,
         messages: &[ChatMessage],
         tools: Option<&[ToolDefinition]>,
         temperature: Option<f64>,
+        usage_totals: Option<&mut LlmUsageTotals>,
     ) -> Result<ChatCompletionResponse> {
         let format = detect_tool_format(model, &self.api_base);
-        match format {
+        let resp = match format {
             ToolFormat::Claude => {
                 self.claude_chat_completion(model, messages, tools, temperature)
-                    .await
+                    .await?
             }
             ToolFormat::OpenAI => {
                 self.openai_chat_completion(model, messages, tools, temperature)
-                    .await
+                    .await?
             }
-        }
+        };
+        record_llm_usage_totals(usage_totals, &resp.usage);
+        Ok(resp)
     }
 
     /// Streaming chat completion call (auto-routes based on model/api_base).
@@ -103,18 +112,21 @@ impl LlmClient {
         tools: Option<&[ToolDefinition]>,
         temperature: Option<f64>,
         event_sink: &mut dyn EventSink,
+        usage_totals: Option<&mut LlmUsageTotals>,
     ) -> Result<ChatCompletionResponse> {
         let format = detect_tool_format(model, &self.api_base);
-        match format {
+        let resp = match format {
             ToolFormat::Claude => {
                 self.claude_chat_completion_stream(model, messages, tools, temperature, event_sink)
-                    .await
+                    .await?
             }
             ToolFormat::OpenAI => {
                 self.openai_chat_completion_stream(model, messages, tools, temperature, event_sink)
-                    .await
+                    .await?
             }
-        }
+        };
+        record_llm_usage_totals(usage_totals, &resp.usage);
+        Ok(resp)
     }
 
     /// Embed text(s) using OpenAI-compatible /embeddings API.
@@ -252,6 +264,15 @@ pub struct Usage {
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
     pub total_tokens: u64,
+}
+
+fn record_llm_usage_totals(out: Option<&mut LlmUsageTotals>, usage: &Option<Usage>) {
+    if let Some(totals) = out {
+        let report = usage.as_ref().map(|u| {
+            LlmUsageReport::from_counts(u.prompt_tokens, u.completion_tokens, u.total_tokens)
+        });
+        totals.record(report);
+    }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

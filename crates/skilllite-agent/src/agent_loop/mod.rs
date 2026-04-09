@@ -305,6 +305,7 @@ async fn run_simple_loop(
             true,
             event_sink,
             &mut state.context_overflow_retries,
+            Some(&mut state.llm_usage_totals),
         )
         .await?
         {
@@ -489,7 +490,16 @@ async fn run_simple_loop(
         task_description: Some(user_message.to_string()),
         rules_used: state.rules_used,
         tools_detail: state.tools_detail,
+        llm_usage: state.llm_usage_totals,
     };
+    tracing::info!(
+        prompt_tokens = feedback.llm_usage.prompt_tokens,
+        completion_tokens = feedback.llm_usage.completion_tokens,
+        total_tokens = feedback.llm_usage.total_tokens,
+        responses_with_usage = feedback.llm_usage.responses_with_usage,
+        responses_without_usage = feedback.llm_usage.responses_without_usage,
+        "Agent run LLM token totals (simple loop)"
+    );
     Ok(build_agent_result(
         messages,
         state.total_tool_calls,
@@ -542,6 +552,8 @@ async fn run_with_task_planning(
     };
     let all_tools = registry.all_tool_definitions();
 
+    let mut state = ExecutionState::new();
+
     // ── Planning phase ─────────────────────────────────────────────────────
     let PlanningResult {
         mut planner,
@@ -559,10 +571,9 @@ async fn run_with_task_planning(
         session_key,
         &client,
         workspace,
+        &mut state.llm_usage_totals,
     )
     .await?;
-
-    let mut state = ExecutionState::new();
     let mut documented_skills: HashSet<String> = HashSet::new();
     let mut consecutive_no_tool = 0usize;
     let max_no_tool_retries = 3;
@@ -620,6 +631,7 @@ async fn run_with_task_planning(
             !suppress_stream,
             event_sink,
             &mut state.context_overflow_retries,
+            Some(&mut state.llm_usage_totals),
         )
         .await?
         {
@@ -831,10 +843,19 @@ async fn run_with_task_planning(
                         None,
                         config.temperature,
                         event_sink,
+                        Some(&mut state.llm_usage_totals),
                     )
                     .await
                 {
                     Ok(resp) => {
+                        let report = resp.usage.as_ref().map(|u| {
+                            LlmUsageReport::from_counts(
+                                u.prompt_tokens,
+                                u.completion_tokens,
+                                u.total_tokens,
+                            )
+                        });
+                        event_sink.on_llm_usage(report);
                         if let Some(ch) = resp.choices.into_iter().next() {
                             if let Some(ref content) = ch.message.content {
                                 if !content.trim().is_empty() {
@@ -939,7 +960,17 @@ async fn run_with_task_planning(
         task_description: Some(user_message.to_string()),
         rules_used: planner.matched_rule_ids().to_vec(),
         tools_detail: state.tools_detail,
+        llm_usage: state.llm_usage_totals,
     };
+
+    tracing::info!(
+        prompt_tokens = feedback.llm_usage.prompt_tokens,
+        completion_tokens = feedback.llm_usage.completion_tokens,
+        total_tokens = feedback.llm_usage.total_tokens,
+        responses_with_usage = feedback.llm_usage.responses_with_usage,
+        responses_without_usage = feedback.llm_usage.responses_without_usage,
+        "Agent run LLM token totals (task planning)"
+    );
 
     Ok(build_agent_result(
         messages,

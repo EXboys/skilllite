@@ -265,7 +265,7 @@ async fn summarize_single_chunk(client: &LlmClient, model: &str, chunk: &str) ->
 
     let messages = vec![ChatMessage::user(&prompt)];
     let resp = client
-        .chat_completion(model, &messages, None, Some(0.3))
+        .chat_completion(model, &messages, None, Some(0.3), None)
         .await?;
 
     let text = resp
@@ -290,7 +290,7 @@ async fn merge_summaries(client: &LlmClient, model: &str, combined: &str) -> Res
 
     let messages = vec![ChatMessage::user(&prompt)];
     let resp = client
-        .chat_completion(model, &messages, None, Some(0.3))
+        .chat_completion(model, &messages, None, Some(0.3), None)
         .await?;
 
     let text = resp
