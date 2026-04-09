@@ -97,8 +97,15 @@ function LogFilePreview({ files, entries, limit = 3 }: { files: string[]; entrie
           )}
         </ul>
       )}
-      {hasEntries && !hasFiles && (
-        <LogList entries={entries} limit={limit} />
+      {hasEntries && (
+        <div className={hasFiles ? "pt-2 border-t border-border/50 dark:border-border-dark/50" : ""}>
+          {hasFiles && (
+            <div className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute mb-1">
+              {t("detail.liveLog")}
+            </div>
+          )}
+          <LogList entries={entries} limit={limit} />
+        </div>
       )}
     </div>
   );
@@ -828,6 +835,25 @@ export default function StatusPanel() {
 
   return (
     <div className="box-border w-full min-w-0 max-w-full p-4 text-sm break-words">
+      <section
+        className="mb-3 rounded-lg border border-border/70 dark:border-border-dark/70 bg-ink/[0.02] dark:bg-white/[0.03] px-2.5 py-2"
+        aria-label={t("status.llmUsageBannerAria")}
+      >
+        <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+          {t("status.llmUsageBannerTitle", { month: llmUsageMonth.monthKey })}
+        </div>
+        <p className="text-xs text-ink dark:text-ink-dark tabular-nums mt-1 leading-snug">
+          {t("status.llmUsageMonthSummary", {
+            inTok: llmUsageMonth.prompt_tokens.toLocaleString(),
+            outTok: llmUsageMonth.completion_tokens.toLocaleString(),
+            totalTok: llmUsageMonth.total_tokens.toLocaleString(),
+          })}
+        </p>
+        <p className="text-[10px] text-ink-mute/90 dark:text-ink-dark-mute/90 mt-1 leading-snug">
+          {t("status.llmUsageBannerHint")}
+        </p>
+      </section>
+
       <div
         role="tablist"
         aria-label={t("status.panelAria")}

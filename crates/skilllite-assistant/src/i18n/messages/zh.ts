@@ -321,6 +321,10 @@ export const zhMessages: Record<string, string> = {
   "status.llmUsageMonthTitle": "本月 LLM（{month}）",
   "status.llmUsageMonthSummary": "累计 输入 {inTok} · 输出 {outTok} · 合计 {totalTok} tokens",
   "status.llmUsageMonthHint": "按本机自然月累计，保存在本地。每次调用的明细见下方「日志」。",
+  "status.llmUsageBannerTitle": "本月 LLM · {month}",
+  "status.llmUsageBannerHint":
+    "用量来自 agent-rpc；请使用已包含 llm_usage 的新版 skilllite CLI（PATH 或应用内置）。单次明细：运行档案 → 日志 → 实时日志。",
+  "status.llmUsageBannerAria": "本月 LLM token 用量",
   "status.noLogs": "暂无日志",
   "status.moreFiles": "+ {n} 个文件",
   "status.noOutput": "暂无输出文件",

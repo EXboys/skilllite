@@ -340,6 +340,10 @@ export const enMessages: Record<string, string> = {
   "status.llmUsageMonthTitle": "LLM tokens ({month})",
   "status.llmUsageMonthSummary": "This month: in {inTok} · out {outTok} · total {totalTok} tokens",
   "status.llmUsageMonthHint": "Totals use your system calendar month and persist locally. Per-call lines appear under Logs below.",
+  "status.llmUsageBannerTitle": "LLM tokens · {month}",
+  "status.llmUsageBannerHint":
+    "Counts come from agent-rpc usage fields; use an up-to-date skilllite CLI (PATH or app-bundled). Per-call lines: Activity → Logs → Live log.",
+  "status.llmUsageBannerAria": "LLM token usage this month",
   "status.noLogs": "No logs yet",
   "status.moreFiles": "+ {n} files",
   "status.noOutput": "No output files yet",
