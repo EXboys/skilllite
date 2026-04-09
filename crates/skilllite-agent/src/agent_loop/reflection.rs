@@ -3,8 +3,9 @@
 //! Handles every "no tool calls returned" scenario in the agent loop,
 //! deciding whether to nudge the LLM, accept completion claims, or stop.
 //!
-//! User-visible assistant prose is emitted only via [`crate::types::EventSink::emit_assistant_visible`]
-//! (never [`crate::types::EventSink::on_text`] directly here).
+//! `reflect_simple` does NOT emit text (the simple loop always streams via `text_chunk`).
+//! `reflect_planning` emits via [`crate::types::EventSink::emit_assistant_visible`] only
+//! when streaming was suppressed (`suppress_stream=true`).
 
 use super::super::task_planner::TaskPlanner;
 use super::super::types::*;
@@ -39,7 +40,6 @@ pub(super) fn reflect_simple(
     iterations: usize,
     no_tool_retries: &mut usize,
     max_no_tool_retries: usize,
-    event_sink: &mut dyn EventSink,
     messages: &mut Vec<ChatMessage>,
     after_successful_tool_batch: bool,
 ) -> ReflectionOutcome {
@@ -65,14 +65,13 @@ pub(super) fn reflect_simple(
 
     // After tools actually ran and succeeded, a text-only reply is usually a normal wrap-up — do not
     // route to `try_clarify` (which used to happen because `assistant_content.is_some()` forced Break).
+    // Note: simple loop always uses streaming, so the text was already delivered via `text_chunk`
+    // events. Do NOT call `emit_assistant_visible` here — the `done` event will finalize it.
     if after_successful_tool_batch
         && assistant_content
             .as_ref()
             .is_some_and(|c| !c.trim().is_empty())
     {
-        if let Some(ref content) = assistant_content {
-            event_sink.emit_assistant_visible(content);
-        }
         return ReflectionOutcome::Complete;
     }
 
@@ -93,10 +92,8 @@ pub(super) fn reflect_simple(
         );
     }
 
-    // Emit final text before deciding
-    if let Some(ref content) = assistant_content {
-        event_sink.emit_assistant_visible(content);
-    }
+    // Simple loop always uses streaming — text was already delivered via `text_chunk`.
+    // Do NOT call `emit_assistant_visible` here; `done` finalizes the streaming message.
 
     *no_tool_retries += 1;
     if *no_tool_retries >= max_no_tool_retries || assistant_content.is_some() {
@@ -241,7 +238,6 @@ mod tests {
             ChatMessage::user("Do something"),
             ChatMessage::assistant("I will do it"),
         ];
-        let mut sink = SilentEventSink;
         let content = Some("I will do it".to_string());
 
         let out = reflect_simple(
@@ -250,7 +246,6 @@ mod tests {
             1,
             &mut no_tool_retries,
             3,
-            &mut sink,
             &mut messages,
             false,
         );
@@ -270,7 +265,6 @@ mod tests {
     fn test_reflect_simple_break_when_has_content() {
         let mut no_tool_retries = 1;
         let mut messages = vec![];
-        let mut sink = SilentEventSink;
         let content = Some("Here is the result".to_string());
 
         let out = reflect_simple(
@@ -279,7 +273,6 @@ mod tests {
             2,
             &mut no_tool_retries,
             3,
-            &mut sink,
             &mut messages,
             false,
         );
@@ -292,7 +285,6 @@ mod tests {
     fn test_reflect_simple_break_when_max_retries() {
         let mut no_tool_retries = 2;
         let mut messages = vec![];
-        let mut sink = SilentEventSink;
         let content = None;
 
         let out = reflect_simple(
@@ -301,7 +293,6 @@ mod tests {
             3,
             &mut no_tool_retries,
             3,
-            &mut sink,
             &mut messages,
             false,
         );
@@ -402,7 +393,6 @@ mod tests {
     fn test_reflect_simple_complete_after_successful_tool_batch_with_text() {
         let mut no_tool_retries = 0;
         let mut messages = vec![];
-        let mut sink = SilentEventSink;
         let content = Some("已清空记忆目录，请核实。".to_string());
         let out = reflect_simple(
             &content,
@@ -410,7 +400,6 @@ mod tests {
             2,
             &mut no_tool_retries,
             3,
-            &mut sink,
             &mut messages,
             true,
         );
@@ -421,7 +410,6 @@ mod tests {
     fn test_reflect_simple_soft_nudge_after_successful_tool_batch_empty_text() {
         let mut no_tool_retries = 0;
         let mut messages = vec![];
-        let mut sink = SilentEventSink;
         for content in [Some(String::new()), Some("   ".to_string()), None] {
             let out = reflect_simple(
                 &content,
@@ -429,7 +417,6 @@ mod tests {
                 2,
                 &mut no_tool_retries,
                 3,
-                &mut sink,
                 &mut messages,
                 true,
             );

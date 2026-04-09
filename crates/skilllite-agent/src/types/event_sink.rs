@@ -59,6 +59,8 @@ pub trait EventSink: Send {
     /// tool-call captions, synthetic fallbacks). Do not call [`EventSink::on_text`] directly from
     /// `agent_loop` / `reflection` for this purpose — implementations dedupe streaming vs full body in
     /// [`EventSink::on_text`] (RPC and terminal sinks skip a second full body when chunks were already sent).
+    ///
+    /// Callers MUST only invoke this for text that was NOT already sent via streaming (`text_chunk`).
     fn emit_assistant_visible(&mut self, text: &str) {
         self.on_text(text);
     }

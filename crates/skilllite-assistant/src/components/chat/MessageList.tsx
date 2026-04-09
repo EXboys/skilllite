@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo } from "react";
+import { useRef, useEffect, useMemo, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { MessageBubble } from "./MessageBubble";
 import { SystemTimelineGroup } from "./SystemTimelineGroup";
@@ -45,6 +45,10 @@ interface MessageListProps {
   onConfirm: (id: string, approved: boolean) => void;
   onClarify?: (id: string, action: string, hint?: string) => void;
   onEvolutionAction?: (id: string, option: string) => void;
+  /** Rendered after the last message inside the scroll area (e.g. follow-up suggestions). */
+  tailSlot?: ReactNode;
+  /** When this string changes to a non-empty value, scroll the list end into view. */
+  tailScrollSignal?: string;
 }
 
 export function MessageList({
@@ -54,6 +58,8 @@ export function MessageList({
   onConfirm,
   onClarify,
   onEvolutionAction,
+  tailSlot,
+  tailScrollSignal,
 }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -86,6 +92,13 @@ export function MessageList({
     // virtualizer intentionally omitted: identity changes would retrigger every frame
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length, lastMsg?.id, lastContentLen, segments.length, useVirtual]);
+
+  useEffect(() => {
+    if (!tailScrollSignal) return;
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
+  }, [tailScrollSignal]);
 
   const showLoadingIndicator =
     loading && (messages.length === 0 || messages[messages.length - 1]?.type === "user");
@@ -168,6 +181,7 @@ export function MessageList({
             </div>
           </div>
         )}
+        {tailSlot}
         <div ref={messagesEndRef} />
       </div>
     );
@@ -209,6 +223,7 @@ export function MessageList({
           </div>
         </div>
       )}
+      {tailSlot}
       <div ref={messagesEndRef} />
     </div>
   );

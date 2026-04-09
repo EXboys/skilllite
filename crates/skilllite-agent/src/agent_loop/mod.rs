@@ -362,7 +362,6 @@ async fn run_simple_loop(
                 state.iterations,
                 &mut no_tool_retries,
                 max_no_tool_retries,
-                event_sink,
                 &mut messages,
                 after_successful_tool_batch,
             ) {
@@ -981,6 +980,15 @@ async fn run_with_task_planning(
             }
             break;
         }
+    }
+
+    // When the loop exits without all tasks completed, the user may have received no visible
+    // assistant text (all intermediate text was popped/suppressed by reflection). Emit a fallback
+    // summary derived from tool results so the UI always shows something.
+    if !planner.all_completed() && state.total_tool_calls > 0 {
+        let fallback = build_final_summary_fallback(&planner.task_list, &messages, user_message);
+        event_sink.emit_assistant_visible(&fallback);
+        messages.push(ChatMessage::assistant(&fallback));
     }
 
     let effective_completion_type = if planner.all_completed() {
