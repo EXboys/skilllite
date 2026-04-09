@@ -134,13 +134,8 @@ Example output: [{"id":"csdn_article","priority":88,"keywords":["csdn","CSDN","c
     ];
 
     let rt = tokio::runtime::Runtime::new().context("tokio runtime")?;
-    let resp = rt.block_on(client.chat_completion(
-        &config.model,
-        &messages,
-        None,
-        Some(0.2),
-        None,
-    ))?;
+    let resp =
+        rt.block_on(client.chat_completion(&config.model, &messages, None, Some(0.2), None))?;
 
     let raw = resp
         .choices

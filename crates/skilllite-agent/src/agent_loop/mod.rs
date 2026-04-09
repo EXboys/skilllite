@@ -756,8 +756,7 @@ async fn run_with_task_planning(
                         pending_closing_user_reply = false;
                         while messages.last().is_some_and(|m| {
                             m.role == "assistant"
-                                && m
-                                    .content
+                                && m.content
                                     .as_deref()
                                     .map(|c| c.trim().is_empty())
                                     .unwrap_or(true)

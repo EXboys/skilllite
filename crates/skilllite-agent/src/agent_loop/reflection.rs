@@ -518,6 +518,9 @@ mod tests {
             true,
         );
         assert!(matches!(out, ReflectionOutcome::SoftNudge(_)));
-        assert_eq!(sink.0, 0, "soft-nudge path must not emit visible assistant text");
+        assert_eq!(
+            sink.0, 0,
+            "soft-nudge path must not emit visible assistant text"
+        );
     }
 }

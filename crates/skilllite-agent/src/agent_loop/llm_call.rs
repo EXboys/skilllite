@@ -8,8 +8,7 @@ use crate::Result;
 
 use super::super::llm::{self, llm_usage_report_from_usage, ChatCompletionResponse, LlmClient};
 use super::super::types::{
-    get_tool_result_recovery_max_chars, ChatMessage, EventSink, LlmUsageTotals,
-    ToolDefinition,
+    get_tool_result_recovery_max_chars, ChatMessage, EventSink, LlmUsageTotals, ToolDefinition,
 };
 
 /// Maximum number of context overflow recovery retries before giving up.

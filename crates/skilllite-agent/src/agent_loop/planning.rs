@@ -79,8 +79,13 @@ pub(super) async fn run_planning_phase(
 
     // A5: Goal boundaries — hybrid (regex + optional LLM) in run mode
     let effective_boundaries = if session_key == Some("run") {
-        match extract_goal_boundaries_hybrid(client, &config.model, user_message, Some(llm_usage_totals))
-            .await
+        match extract_goal_boundaries_hybrid(
+            client,
+            &config.model,
+            user_message,
+            Some(llm_usage_totals),
+        )
+        .await
         {
             Ok(gb) => Some(gb),
             Err(e) => {
@@ -92,13 +97,15 @@ pub(super) async fn run_planning_phase(
         config.goal_boundaries.clone()
     };
     let effective_contract = if session_key == Some("run") {
-        Some(extract_goal_contract_hybrid(
-            client,
-            &config.model,
-            user_message,
-            Some(llm_usage_totals),
+        Some(
+            extract_goal_contract_hybrid(
+                client,
+                &config.model,
+                user_message,
+                Some(llm_usage_totals),
+            )
+            .await,
         )
-        .await)
     } else {
         None
     };

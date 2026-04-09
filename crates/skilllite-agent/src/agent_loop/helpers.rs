@@ -1107,19 +1107,25 @@ mod tests {
             ChatMessage::assistant("ignored"),
             ChatMessage::tool_result("call_1", &long_body),
         ];
-        assert!(latest_trailing_tool_results_include_substantive_output(&msgs, 80));
+        assert!(latest_trailing_tool_results_include_substantive_output(
+            &msgs, 80
+        ));
         let short = vec![
             ChatMessage::user("x"),
             ChatMessage::tool_result("c", "short"),
         ];
-        assert!(!latest_trailing_tool_results_include_substantive_output(&short, 80));
+        assert!(!latest_trailing_tool_results_include_substantive_output(
+            &short, 80
+        ));
         let multi = vec![
             ChatMessage::user("u"),
             ChatMessage::assistant("a"),
             ChatMessage::tool_result("c2", "{\"ok\":true}"),
             ChatMessage::tool_result("c1", &long_body),
         ];
-        assert!(latest_trailing_tool_results_include_substantive_output(&multi, 80));
+        assert!(latest_trailing_tool_results_include_substantive_output(
+            &multi, 80
+        ));
     }
 
     #[test]
@@ -1132,8 +1138,9 @@ mod tests {
             ChatMessage::tool_result("weather", &long_body),
             ChatMessage::tool_result("done", done),
         ];
-        let picked = pick_substantive_trailing_tool_content(&msgs, 80, TRAILING_TOOL_SUMMARY_MAX_BYTES)
-            .expect("pick");
+        let picked =
+            pick_substantive_trailing_tool_content(&msgs, 80, TRAILING_TOOL_SUMMARY_MAX_BYTES)
+                .expect("pick");
         assert_eq!(picked.len(), long_body.len());
     }
 
@@ -1151,8 +1158,9 @@ mod tests {
             ChatMessage::tool_result("w", &weather),
             ChatMessage::tool_result("c", done),
         ];
-        let picked = pick_substantive_trailing_tool_content(&msgs, 80, TRAILING_TOOL_SUMMARY_MAX_BYTES)
-            .expect("pick");
+        let picked =
+            pick_substantive_trailing_tool_content(&msgs, 80, TRAILING_TOOL_SUMMARY_MAX_BYTES)
+                .expect("pick");
         assert!(picked.contains("城市"));
         assert!(!picked.contains("completion_type"));
     }
@@ -1160,11 +1168,10 @@ mod tests {
     #[test]
     fn latest_trailing_does_not_treat_complete_task_json_as_substantive() {
         let done = r#"{"success": true, "task_id": 1, "completion_type": "success", "message": "Task 1 marked as completed"}"#;
-        let msgs = vec![
-            ChatMessage::user("u"),
-            ChatMessage::tool_result("c", done),
-        ];
-        assert!(!latest_trailing_tool_results_include_substantive_output(&msgs, 80));
+        let msgs = vec![ChatMessage::user("u"), ChatMessage::tool_result("c", done)];
+        assert!(!latest_trailing_tool_results_include_substantive_output(
+            &msgs, 80
+        ));
     }
 
     #[test]
