@@ -378,10 +378,10 @@ export default function MainLayout() {
                 )}
               </aside>
             </div>
-          </>
-        )}
-        <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+            </>
+          )}
       </div>
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
       {showOnboarding && <OnboardingModal />}
     </div>
   );

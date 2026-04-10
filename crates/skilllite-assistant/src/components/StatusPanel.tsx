@@ -798,7 +798,7 @@ export function LifePulseBadge() {
 export default function StatusPanel() {
   const { t } = useI18n();
   const [tab, setTab] = useState<StatusPanelTab>("evolution");
-  const { logEntries, logFiles, memoryHints, memoryFiles, outputFiles, llmUsageMonth, rollLlmUsageMonthIfNeeded } =
+  const { logEntries, logFiles, memoryHints, memoryFiles, outputFiles, rollLlmUsageMonthIfNeeded } =
     useStatusStore();
   const { settings } = useSettingsStore();
   const workspace = settings.workspace?.trim() || ".";
@@ -835,25 +835,6 @@ export default function StatusPanel() {
 
   return (
     <div className="box-border w-full min-w-0 max-w-full p-4 text-sm break-words">
-      <section
-        className="mb-3 rounded-lg border border-border/70 dark:border-border-dark/70 bg-ink/[0.02] dark:bg-white/[0.03] px-2.5 py-2"
-        aria-label={t("status.llmUsageBannerAria")}
-      >
-        <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
-          {t("status.llmUsageBannerTitle", { month: llmUsageMonth.monthKey })}
-        </div>
-        <p className="text-xs text-ink dark:text-ink-dark tabular-nums mt-1 leading-snug">
-          {t("status.llmUsageMonthSummary", {
-            inTok: llmUsageMonth.prompt_tokens.toLocaleString(),
-            outTok: llmUsageMonth.completion_tokens.toLocaleString(),
-            totalTok: llmUsageMonth.total_tokens.toLocaleString(),
-          })}
-        </p>
-        <p className="text-[10px] text-ink-mute/90 dark:text-ink-dark-mute/90 mt-1 leading-snug">
-          {t("status.llmUsageBannerHint")}
-        </p>
-      </section>
-
       <div
         role="tablist"
         aria-label={t("status.panelAria")}
@@ -911,23 +892,6 @@ export default function StatusPanel() {
             hasMore={memHasMore || memoryFiles.length > 0}
           >
             <MemoryPreview files={memoryFiles} hints={memoryHints} limit={PREVIEW_LIMIT} />
-          </SummarySection>
-
-          <SummarySection
-            title={t("status.llmUsageMonthTitle", { month: llmUsageMonth.monthKey })}
-            onClickMore={() => openDetailWindow("log")}
-            hasMore
-          >
-            <p className="text-xs text-ink-mute dark:text-ink-dark-mute tabular-nums leading-relaxed">
-              {t("status.llmUsageMonthSummary", {
-                inTok: llmUsageMonth.prompt_tokens.toLocaleString(),
-                outTok: llmUsageMonth.completion_tokens.toLocaleString(),
-                totalTok: llmUsageMonth.total_tokens.toLocaleString(),
-              })}
-            </p>
-            <p className="text-[10px] text-ink-mute/80 dark:text-ink-dark-mute/80 mt-1">
-              {t("status.llmUsageMonthHint")}
-            </p>
           </SummarySection>
 
           <SummarySection

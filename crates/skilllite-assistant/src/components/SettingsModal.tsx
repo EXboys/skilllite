@@ -13,6 +13,7 @@ import {
   validateScheduleForm,
 } from "../utils/scheduleForm";
 import { useI18n } from "../i18n";
+import { useStatusStore } from "../stores/useStatusStore";
 
 interface OllamaProbeResult {
   available: boolean;
@@ -151,6 +152,13 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  const llmUsageMonth = useStatusStore((s) => s.llmUsageMonth);
+  const rollLlmUsageMonthIfNeeded = useStatusStore((s) => s.rollLlmUsageMonthIfNeeded);
+  useEffect(() => {
+    if (!open) return;
+    rollLlmUsageMonthIfNeeded();
+  }, [open, rollLlmUsageMonthIfNeeded]);
 
   useEffect(() => {
     if (open) {
@@ -339,21 +347,29 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
         .map((m) => ({ value: m, label: m }))
     : [];
 
+  if (!open) {
+    return null;
+  }
+
   return (
-    <aside
-      className={`relative z-20 flex h-full min-h-0 shrink-0 flex-col border-l border-border dark:border-border-dark bg-white dark:bg-paper-dark transition-[width] duration-200 ease-out motion-reduce:transition-none ${
-        open
-          ? "w-[min(400px,38vw)] min-w-[260px] border-border dark:border-border-dark"
-          : "w-0 min-w-0 overflow-hidden border-transparent"
-      }`}
-      aria-hidden={!open}
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-ink/50 dark:bg-black/60 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="settings-modal-title"
+      onClick={onClose}
     >
-      {open ? (
-      <div className="flex h-full min-h-0 w-[min(400px,38vw)] min-w-[260px] flex-col">
+      <div
+        className="relative flex max-h-[min(90vh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-border dark:border-border-dark bg-white dark:bg-paper-dark shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Fixed header + tabs */}
-        <div className="px-4 pt-4 pb-0 border-b border-border dark:border-border-dark shrink-0">
+        <div className="shrink-0 border-b border-border dark:border-border-dark px-4 pb-0 pt-4">
           <div className="flex items-center justify-between gap-2 pb-2">
-            <h2 className="text-base font-semibold text-ink dark:text-ink-dark">
+            <h2
+              id="settings-modal-title"
+              className="text-base font-semibold text-ink dark:text-ink-dark"
+            >
               {t("settings.title")}
             </h2>
             <button
@@ -387,7 +403,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 space-y-4 min-h-0">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-3">
 
           {activeTab === "llm" && (
           <div className="space-y-4">
@@ -557,6 +573,25 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               )}
             </>
           )}
+
+          <section
+            className="rounded-lg border border-border/70 dark:border-border-dark/70 bg-ink/[0.02] dark:bg-white/[0.03] px-2.5 py-2"
+            aria-label={t("status.llmUsageBannerAria")}
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+              {t("status.llmUsageBannerTitle", { month: llmUsageMonth.monthKey })}
+            </div>
+            <p className="mt-1 text-xs tabular-nums leading-snug text-ink dark:text-ink-dark">
+              {t("status.llmUsageMonthSummary", {
+                inTok: llmUsageMonth.prompt_tokens.toLocaleString(),
+                outTok: llmUsageMonth.completion_tokens.toLocaleString(),
+                totalTok: llmUsageMonth.total_tokens.toLocaleString(),
+              })}
+            </p>
+            <p className="mt-1 text-[10px] leading-snug text-ink-mute/90 dark:text-ink-dark-mute/90">
+              {t("status.llmUsageBannerHint")}
+            </p>
+          </section>
           </div>
           )}
 
@@ -1038,7 +1073,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
         </div>
 
         {/* Fixed footer */}
-        <div className="px-4 py-3 border-t border-border dark:border-border-dark flex justify-end gap-2 shrink-0 bg-white dark:bg-paper-dark">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-border dark:border-border-dark bg-white dark:bg-paper-dark px-4 py-3">
           <button
             type="button"
             onClick={onClose}
@@ -1055,7 +1090,6 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           </button>
         </div>
       </div>
-      ) : null}
-    </aside>
+    </div>
   );
 }
