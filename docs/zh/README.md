@@ -440,6 +440,7 @@ skilllite/                         依赖流向
 
 > 说明：在默认 `skills` 模式下，若 `skills/` 不存在但 `.skills/` 存在，SkillLite 会自动回退到 `.skills/`。
 > 当 `skills/<name>` 与 `.skills/<name>` 同时存在时，命令会输出同名冲突告警，便于定位问题。
+> 工作区技能发现还支持 `.agents/skills/` 与 `.claude/skills/` 作为规范搜索根目录。
 
 </details>
 

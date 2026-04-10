@@ -1,7 +1,10 @@
 //! 技能、进化、引导、运行时、Ollama、日程。
 
 use serde::Serialize;
-use skilllite_core::skill::manifest;
+use skilllite_core::skill::{
+    discovery::{discover_skill_instances_in_workspace, resolve_skills_dir_with_legacy_fallback},
+    manifest,
+};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -42,89 +45,42 @@ fn skill_has_scripts(path: &std::path::Path) -> bool {
     false
 }
 
-/// Collect skill (dir_path, name) from a root dir, same shape as evolution validate (including _evolved/_pending).
-fn collect_skill_dirs(root: &std::path::Path) -> Vec<(PathBuf, String)> {
-    if !root.exists() || !root.is_dir() {
-        return Vec::new();
-    }
-    let mut dirs = Vec::new();
-    for e in std::fs::read_dir(root)
-        .ok()
+fn discover_scripted_skill_instances(root: &std::path::Path) -> Vec<(PathBuf, String)> {
+    discover_skill_instances_in_workspace(root, None)
         .into_iter()
-        .flatten()
-        .filter_map(|e| e.ok())
-    {
-        let path = e.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let name = e.file_name().to_string_lossy().into_owned();
-        if name.starts_with('_') {
-            if name == "_evolved" || name == "_pending" {
-                for e2 in std::fs::read_dir(&path)
-                    .ok()
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|e| e.ok())
-                {
-                    let p2 = e2.path();
-                    let sub = e2.file_name().to_string_lossy().into_owned();
-                    if !p2.is_dir() {
-                        continue;
-                    }
-                    if p2.join("SKILL.md").exists() && skill_has_scripts(&p2) {
-                        dirs.push((p2, sub));
-                    } else if sub == "_pending" {
-                        for e3 in std::fs::read_dir(&p2)
-                            .ok()
-                            .into_iter()
-                            .flatten()
-                            .filter_map(|e| e.ok())
-                        {
-                            let p3 = e3.path();
-                            if p3.is_dir() && p3.join("SKILL.md").exists() && skill_has_scripts(&p3)
-                            {
-                                dirs.push((p3, e3.file_name().to_string_lossy().into_owned()));
-                            }
-                        }
-                    }
-                }
-            } else if path.join("SKILL.md").exists() && skill_has_scripts(&path) {
-                dirs.push((path, name));
-            }
-            continue;
-        }
-        if path.join("SKILL.md").exists() && skill_has_scripts(&path) {
-            dirs.push((path, name));
-        }
-    }
-    dirs
+        .filter(|skill| skill_has_scripts(&skill.path))
+        .map(|skill| (skill.path, skill.name))
+        .collect()
 }
 
-/// List skill names in workspace (for repair UI). Uses same logic as evolution: .skills and skills, incl. _evolved/_pending.
+fn resolve_workspace_skills_root(workspace: &str) -> PathBuf {
+    let root = find_project_root(workspace);
+    resolve_skills_dir_with_legacy_fallback(&root, "skills").effective_path
+}
+
+fn existing_workspace_skills_root(workspace: &str) -> Option<PathBuf> {
+    let skills_root = resolve_workspace_skills_root(workspace);
+    skills_root.is_dir().then_some(skills_root)
+}
+
+/// List skill names in workspace (for repair UI) using core-owned discovery.
 pub fn list_skill_names(workspace: &str) -> Vec<String> {
     let root = find_project_root(workspace);
     let mut names = std::collections::HashSet::new();
-    for skills_sub in [".skills", "skills"] {
-        let dir = root.join(skills_sub);
-        for (_, name) in collect_skill_dirs(&dir) {
-            names.insert(name);
-        }
+    for (_, name) in discover_scripted_skill_instances(&root) {
+        names.insert(name);
     }
     let mut v: Vec<String> = names.into_iter().collect();
     v.sort();
     v
 }
 
-/// Resolve skill directory path by name (searches .skills and skills, incl. _evolved/_pending). Returns None if not found.
+/// Resolve skill directory path by name using core-owned discovery.
 fn find_skill_dir(workspace: &str, skill_name: &str) -> Option<std::path::PathBuf> {
     let root = find_project_root(workspace);
-    for skills_sub in [".skills", "skills"] {
-        let dir = root.join(skills_sub);
-        for (path, name) in collect_skill_dirs(&dir) {
-            if name == skill_name {
-                return Some(path);
-            }
+    for (path, name) in discover_scripted_skill_instances(&root) {
+        if name == skill_name {
+            return Some(path);
         }
     }
     None
@@ -161,7 +117,7 @@ pub fn open_skill_directory(workspace: &str, skill_name: &str) -> Result<(), Str
     Ok(())
 }
 
-/// Remove installed skills from `.skills` or `skills` under the workspace (same discovery as list/open).
+/// Remove installed skills under the workspace (same discovery as list/open).
 /// Updates `.skilllite-manifest.json` when present. `skill_names` must be non-empty.
 pub fn remove_skills(workspace: &str, skill_names: &[String]) -> Result<String, String> {
     if skill_names.is_empty() {
@@ -236,7 +192,7 @@ pub fn repair_skills(
     Ok(combined)
 }
 
-/// Run `skilllite add <source>` in the workspace. Installs to workspace .skills (creates if needed).
+/// Run `skilllite add <source>` in the workspace using the canonical resolved skills dir.
 /// Source: owner/repo, owner/repo@skill-name, https://github.com/..., or local path.
 pub fn add_skill(
     workspace: &str,
@@ -245,6 +201,7 @@ pub fn add_skill(
     skilllite_path: &std::path::Path,
 ) -> Result<String, String> {
     let root = find_project_root(workspace);
+    let skills_root = resolve_workspace_skills_root(workspace);
     let source = source.trim();
     if source.is_empty() {
         return Err("请填写来源，例如：owner/repo 或 owner/repo@skill-name".to_string());
@@ -254,7 +211,7 @@ pub fn add_skill(
     cmd.arg("add")
         .arg(source)
         .arg("--skills-dir")
-        .arg(".skills");
+        .arg(&skills_root);
     if force {
         cmd.arg("--force");
     }
@@ -536,8 +493,7 @@ pub fn load_evolution_status(
 
     let chat_root = skilllite_core::paths::chat_root();
     let mut pending_skill_count = 0;
-    let skills_root = find_project_root(workspace).join(".skills");
-    if skills_root.is_dir() {
+    if let Some(skills_root) = existing_workspace_skills_root(workspace) {
         pending_skill_count =
             skilllite_evolution::skill_synth::list_pending_skills_with_review(&skills_root).len();
     }
@@ -639,10 +595,9 @@ fn truncate_utf8(s: &str, max: usize) -> String {
 }
 
 pub fn list_evolution_pending_skills(workspace: &str) -> Vec<PendingSkillDto> {
-    let skills_root = find_project_root(workspace).join(".skills");
-    if !skills_root.is_dir() {
+    let Some(skills_root) = existing_workspace_skills_root(workspace) else {
         return Vec::new();
-    }
+    };
     skilllite_evolution::skill_synth::list_pending_skills_with_review(&skills_root)
         .into_iter()
         .map(|(name, needs_review)| {
@@ -667,7 +622,7 @@ pub fn read_evolution_pending_skill_md(
     workspace: &str,
     skill_name: &str,
 ) -> Result<String, String> {
-    let skills_root = find_project_root(workspace).join(".skills");
+    let skills_root = resolve_workspace_skills_root(workspace);
     let path = skills_root
         .join("_evolved")
         .join("_pending")
@@ -680,7 +635,7 @@ pub fn read_evolution_pending_skill_md(
 }
 
 pub fn evolution_confirm_pending_skill(workspace: &str, skill_name: &str) -> Result<(), String> {
-    let skills_root = find_project_root(workspace).join(".skills");
+    let skills_root = resolve_workspace_skills_root(workspace);
     skilllite_evolution::skill_synth::confirm_pending_skill(&skills_root, skill_name)
         .map_err(|e| e.to_string())?;
     let chat_root = skilllite_core::paths::chat_root();
@@ -698,7 +653,7 @@ pub fn evolution_confirm_pending_skill(workspace: &str, skill_name: &str) -> Res
 }
 
 pub fn evolution_reject_pending_skill(workspace: &str, skill_name: &str) -> Result<(), String> {
-    let skills_root = find_project_root(workspace).join(".skills");
+    let skills_root = resolve_workspace_skills_root(workspace);
     skilllite_evolution::skill_synth::reject_pending_skill(&skills_root, skill_name)
         .map_err(|e| e.to_string())
 }
@@ -893,7 +848,6 @@ pub fn trigger_evolution_run(
         None
     }
 
-    let root = find_project_root(workspace);
     let env_map: std::collections::HashMap<String, String> =
         load_dotenv_for_child(workspace).into_iter().collect();
     let mut api_base = env_first_non_empty(
@@ -952,13 +906,7 @@ pub fn trigger_evolution_run(
     let llm = skilllite_agent::llm::LlmClient::new(&api_base, &api_key)
         .map_err(|e| format!("执行 evolution run 失败: 初始化 LLM 客户端失败: {}", e))?;
     let adapter = skilllite_agent::evolution::EvolutionLlmAdapter { llm: &llm };
-    let skills_root = if root.join(".skills").is_dir() {
-        Some(root.join(".skills"))
-    } else if root.join("skills").is_dir() {
-        Some(root.join("skills"))
-    } else {
-        None
-    };
+    let skills_root = existing_workspace_skills_root(workspace);
 
     let prev_force = std::env::var("SKILLLITE_EVO_FORCE_PROPOSAL_ID").ok();
     match proposal_id {
@@ -1328,6 +1276,67 @@ pub fn load_evolution_diffs(_workspace: &str) -> Vec<EvolutionFileDiffDto> {
         });
     }
     result
+}
+
+#[cfg(test)]
+mod skill_discovery_tests {
+    use super::*;
+
+    fn temp_test_dir(prefix: &str) -> std::path::PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("duration")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "skilllite_assistant_{}_{}_{}",
+            prefix,
+            std::process::id(),
+            unique
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn list_skill_names_uses_core_discovery_roots() {
+        let tmp = temp_test_dir("skill_roots");
+        let nested_skill = tmp.join(".claude").join("skills").join("nested-skill");
+        std::fs::create_dir_all(nested_skill.join("scripts")).expect("nested scripts");
+        std::fs::write(nested_skill.join("SKILL.md"), "name: nested-skill\n").expect("nested md");
+        std::fs::write(
+            nested_skill.join("scripts").join("run.sh"),
+            "#!/usr/bin/env bash\necho ok\n",
+        )
+        .expect("nested script");
+
+        let evolved_skill = tmp.join(".skills").join("_evolved").join("evolved-skill");
+        std::fs::create_dir_all(evolved_skill.join("scripts")).expect("evolved scripts");
+        std::fs::write(evolved_skill.join("SKILL.md"), "name: evolved-skill\n").expect("evolved md");
+        std::fs::write(
+            evolved_skill.join("scripts").join("run.py"),
+            "print('ok')\n",
+        )
+        .expect("evolved script");
+
+        let names = list_skill_names(nested_skill.to_string_lossy().as_ref());
+        assert_eq!(names, vec!["evolved-skill", "nested-skill"]);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn resolve_workspace_skills_root_keeps_legacy_fallback() {
+        let tmp = temp_test_dir("legacy_fallback");
+        let legacy = tmp.join(".skills");
+        std::fs::create_dir_all(&legacy).expect("legacy root");
+
+        let resolved = resolve_workspace_skills_root(tmp.to_string_lossy().as_ref());
+        assert_eq!(
+            resolved.canonicalize().expect("resolved canonical"),
+            legacy.canonicalize().expect("legacy canonical")
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
 
 #[cfg(test)]

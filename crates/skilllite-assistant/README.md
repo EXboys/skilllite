@@ -37,7 +37,7 @@ npm run tauri:build
 ## 环境与 Skills
 
 - **API Key**：在项目根目录或 workspace 的 `.env` 中设置 `OPENAI_API_KEY`
-- **Skills**：会自动从 workspace 向上查找 `.skills` 或 `skills` 目录
+- **Skills**：会自动从 workspace 向上查找 `skills`、`.skills`、`.agents/skills`、`.claude/skills`；默认技能根目录解析与 `skilllite-core::skill::discovery` 保持一致（含 `skills -> .skills` 兼容回退）
 - **skilllite**：需已安装（`pip install skilllite` 或 `cargo install --path skilllite`）
 - **Level 3 确认**：Skill 执行前会弹出安全扫描确认弹窗，点击「允许」继续执行
 - **IDE 三栏**：顶栏 **IDE** 或 **设置 → 工作区与沙箱 → IDE 三栏主界面** 可切换为「工作区文件树 | 编辑器 | 对话」；**左右两条竖向分隔线可拖拽**调宽（宽度会记住）。左侧 **会话** 标签仍打开原会话列表。大目录会跳过 `node_modules`、`target` 等；**工作区文件树**首次列出时有骨架屏与「正在索引」提示，刷新可在加载中再次点击（以最新一次结果为准，避免陈旧列表覆盖）；命中列举条数/深度上限时界面会提示**已截断**并显示已列出项数；敏感路径与写入规则一致（如 `.env` 不可读/写）。关闭 IDE 布局后恢复右侧状态栏。**中间栏**：Markdown（`.md` / `.mdx` / `.mdc` 等）默认 **预览**，可切 **编辑** 并保存；常见 **图片**（如 png / jpg / webp / svg）与 **视频**（如 mp4 / webm / mov）为 **仅预览**（内嵌播放，不在此写回二进制）。图片/视频依赖 Tauri **`assetProtocol`**（见 `src-tauri/tauri.conf.json`）；修改该配置后需 **重启** `tauri dev` 或重新打包应用。若仍无法显示，请确认文件路径落在 `assetProtocol.scope.allow` 所允许的前缀下（默认可访问用户主目录、文档、桌面、下载、临时目录等）。聊天里 **`read_file` 工具结果**默认以约 **5 行可滚动**预览展示；**点击预览**与 **「在 IDE 中打开」** 相同（有路径时开启 IDE 并在中间栏打开该文件；无路径时打开「全屏查看 / 编辑」）。**`list_directory`** 结果为同样高度的可滚动树预览。

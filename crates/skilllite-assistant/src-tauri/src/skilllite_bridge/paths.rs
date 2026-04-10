@@ -3,22 +3,30 @@
 use std::path::{Path, PathBuf};
 use tauri::Manager;
 
-/// Find project root (dir containing .skills or skills) by walking up from start path.
+fn has_known_skill_root(dir: &Path) -> bool {
+    skilllite_core::skill::discovery::SKILL_SEARCH_DIRS
+        .iter()
+        .copied()
+        .filter(|entry| *entry != ".")
+        .any(|entry| dir.join(entry).is_dir())
+}
+
+/// Find project root (dir containing any supported skill root) by walking up from start path.
 pub(crate) fn find_project_root(start: &str) -> PathBuf {
     let mut dir = Path::new(start)
         .canonicalize()
         .unwrap_or_else(|_| Path::new(start).to_path_buf());
+    let original = dir.clone();
+    let mut best_match = None;
     for _ in 0..10 {
-        if dir.join(".skills").is_dir() || dir.join("skills").is_dir() {
-            return dir;
+        if has_known_skill_root(&dir) {
+            best_match = Some(dir.clone());
         }
         if !dir.pop() {
             break;
         }
     }
-    Path::new(start)
-        .canonicalize()
-        .unwrap_or_else(|_| Path::new(start).to_path_buf())
+    best_match.unwrap_or(original)
 }
 
 /// Load .env from workspace and parents for subprocess env.
@@ -138,5 +146,30 @@ mod tests {
         assert!(validate_transcript_log_filename("x/y").is_err());
         #[cfg(windows)]
         assert!(validate_transcript_log_filename("C:evil").is_err());
+    }
+
+    #[test]
+    fn find_project_root_accepts_nested_skill_roots() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("duration")
+            .as_nanos();
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite_assistant_paths_{}_{}",
+            std::process::id(),
+            unique
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let nested = tmp.join(".agents").join("skills");
+        std::fs::create_dir_all(&nested).expect("nested skills");
+        let child = nested.join("demo-skill");
+        std::fs::create_dir_all(&child).expect("child skill");
+
+        let resolved = find_project_root(child.to_string_lossy().as_ref());
+        assert_eq!(
+            resolved.canonicalize().expect("resolved canonical"),
+            tmp.canonicalize().expect("tmp canonical")
+        );
+        let _ = std::fs::remove_dir_all(&resolved);
     }
 }

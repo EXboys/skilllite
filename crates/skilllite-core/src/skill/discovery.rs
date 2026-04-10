@@ -21,6 +21,13 @@ pub struct SkillsDirResolution {
     pub conflicting_skill_names: Vec<String>,
 }
 
+/// Concrete skill instance discovered in a workspace.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillInstance {
+    pub name: String,
+    pub path: PathBuf,
+}
+
 impl SkillsDirResolution {
     /// Build a user-facing warning when duplicate skill names exist in both
     /// `skills/` and `.skills/`.
@@ -180,6 +187,75 @@ pub fn discover_skills_in_workspace(
     candidates
 }
 
+/// Discover concrete skill directories visible from a workspace, including:
+/// - regular skills from canonical search roots
+/// - evolved skills under `<skills-root>/_evolved/*`
+/// - pending evolved skills under `<skills-root>/_evolved/_pending/*`
+///
+/// Deduplicates by canonical path and returns entries sorted by path.
+pub fn discover_skill_instances_in_workspace(
+    workspace: &Path,
+    search_dirs: Option<&[&str]>,
+) -> Vec<SkillInstance> {
+    let mut result = Vec::new();
+    let mut seen = HashSet::new();
+
+    for path in discover_skills_in_workspace(workspace, search_dirs) {
+        push_skill_instance(&path, &mut seen, &mut result);
+    }
+
+    let parent_dirs = discover_skill_dirs_for_loading(workspace, search_dirs);
+    for parent in parent_dirs {
+        let parent = PathBuf::from(parent);
+        collect_skill_instances_under(&parent.join("_evolved"), &mut seen, &mut result);
+        collect_skill_instances_under(
+            &parent.join("_evolved").join("_pending"),
+            &mut seen,
+            &mut result,
+        );
+    }
+
+    result.sort_by(|a, b| a.path.cmp(&b.path));
+    result
+}
+
+fn collect_skill_instances_under(
+    root: &Path,
+    seen: &mut HashSet<PathBuf>,
+    result: &mut Vec<SkillInstance>,
+) {
+    if !root.is_dir() {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(root) else {
+        return;
+    };
+    let mut children: Vec<_> = entries.flatten().collect();
+    children.sort_by_key(|e| e.file_name());
+    for entry in children {
+        push_skill_instance(&entry.path(), seen, result);
+    }
+}
+
+fn push_skill_instance(path: &Path, seen: &mut HashSet<PathBuf>, result: &mut Vec<SkillInstance>) {
+    if !path.is_dir() || !path.join("SKILL.md").exists() {
+        return;
+    }
+    let Ok(real) = path.canonicalize() else {
+        return;
+    };
+    if !seen.insert(real) {
+        return;
+    }
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
+    result.push(SkillInstance {
+        name: name.to_string(),
+        path: path.to_path_buf(),
+    });
+}
+
 /// Discover skill directories for `load_skills`, as `Vec<String>`.
 ///
 /// Returns parent dirs (e.g. `.skills`, `skills`) so `load_skills` can:
@@ -240,6 +316,63 @@ mod tests {
         let found = discover_skill_dirs_for_loading(tmp.path(), Some(&[".skills", "skills"]));
         assert_eq!(found.len(), 1);
         assert!(found[0].ends_with(".skills"));
+    }
+
+    #[test]
+    fn test_discover_skill_instances_in_workspace_includes_evolved_and_pending() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills_dir = tmp.path().join(".skills");
+        fs::create_dir_all(skills_dir.join("regular")).unwrap();
+        fs::create_dir_all(skills_dir.join("_evolved").join("evolved")).unwrap();
+        fs::create_dir_all(skills_dir.join("_evolved").join("_pending").join("pending")).unwrap();
+        fs::write(
+            skills_dir.join("regular").join("SKILL.md"),
+            "name: regular\n",
+        )
+        .unwrap();
+        fs::write(
+            skills_dir.join("_evolved").join("evolved").join("SKILL.md"),
+            "name: evolved\n",
+        )
+        .unwrap();
+        fs::write(
+            skills_dir
+                .join("_evolved")
+                .join("_pending")
+                .join("pending")
+                .join("SKILL.md"),
+            "name: pending\n",
+        )
+        .unwrap();
+
+        let found = discover_skill_instances_in_workspace(tmp.path(), Some(&[".skills"]));
+        let mut names: Vec<_> = found.into_iter().map(|skill| skill.name).collect();
+        names.sort();
+        assert_eq!(
+            names,
+            vec![
+                "evolved".to_string(),
+                "pending".to_string(),
+                "regular".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn test_discover_skill_instances_in_workspace_supports_nested_skill_roots() {
+        let tmp = tempfile::tempdir().unwrap();
+        let claude_skill = tmp
+            .path()
+            .join(".claude")
+            .join("skills")
+            .join("assistant-skill");
+        fs::create_dir_all(&claude_skill).unwrap();
+        fs::write(claude_skill.join("SKILL.md"), "name: assistant-skill\n").unwrap();
+
+        let found = discover_skill_instances_in_workspace(tmp.path(), None);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "assistant-skill");
+        assert!(found[0].path.ends_with(".claude/skills/assistant-skill"));
     }
 
     #[test]

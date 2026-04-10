@@ -1,6 +1,7 @@
-//! Sync skills shipped under Tauri `resources/bundled-skills/.skills/` into the workspace `.skills/`.
+//! Sync skills shipped under Tauri `resources/bundled-skills/.skills/` into the
+//! workspace's canonical resolved skills directory.
 //!
-//! - Empty `.skills` (missing, or no skill subdirs with SKILL.md): create and copy all bundled skills.
+//! - Empty resolved skills root (missing, or no skill subdirs with SKILL.md): create and copy all bundled skills.
 //! - Otherwise: merge — copy missing skills; replace existing only when bundled `metadata.version` is
 //!   greater than the workspace copy (semver-like, loose parse). Bundled skill without version never
 //!   overwrites an existing directory.
@@ -9,7 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use semver::Version;
-use skilllite_core::skill::metadata::parse_skill_metadata;
+use skilllite_core::skill::{
+    discovery::resolve_skills_dir_with_legacy_fallback, metadata::parse_skill_metadata,
+};
 use tauri::{AppHandle, Manager};
 
 /// `resource_dir()/bundled-skills/.skills/` — populated by `scripts/prebuild-skilllite.sh`.
@@ -138,7 +141,7 @@ fn replace_skill_dir(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Sync bundled skills into `workspace/.skills/`. No-op if no bundled container exists.
+/// Sync bundled skills into the workspace's canonical resolved skills dir.
 pub fn sync_bundled_skills_from_resources(
     app: &AppHandle,
     workspace_raw: &str,
@@ -151,8 +154,11 @@ pub fn sync_bundled_skills_from_resources(
         return Ok(());
     }
 
-    let skills_target = super::paths::find_project_root(workspace_raw).join(".skills");
-    fs::create_dir_all(&skills_target).map_err(|e| format!("create .skills: {}", e))?;
+    let workspace_root = super::paths::find_project_root(workspace_raw);
+    let skills_target = resolve_skills_dir_with_legacy_fallback(&workspace_root, "skills")
+        .effective_path;
+    fs::create_dir_all(&skills_target)
+        .map_err(|e| format!("create {}: {}", skills_target.display(), e))?;
 
     let empty_or_missing = !skills_dir_has_any_skill(&skills_target);
 

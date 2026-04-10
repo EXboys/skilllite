@@ -492,6 +492,7 @@ skilllite/                         Dependency Flow
 
 > Note: for default `skills` mode, if `skills/` is missing and `.skills/` exists, SkillLite automatically falls back to `.skills/`.
 > When both `skills/<name>` and `.skills/<name>` exist, commands print a duplicate-name warning to improve observability.
+> Workspace skill discovery also supports `.agents/skills/` and `.claude/skills/` as canonical search roots.
 
 </details>
 
