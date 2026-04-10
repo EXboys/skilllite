@@ -119,15 +119,23 @@ pub fn signal_burst_due(conn: &Connection, cfg: &GrowthScheduleConfig) -> Result
     Ok(need_signal || need_sweep)
 }
 
+/// Result of [`growth_due`]: whether an autorun tick is due and whether only the periodic arm fired.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct GrowthDueOutcome {
+    pub due: bool,
+    /// `true` when [`Self::due`] and the tick is explained solely by the periodic interval (no signal or sweep arm).
+    pub periodic_only: bool,
+}
+
 /// Full A9 due check including periodic arm. Updates `last_periodic_spawn_unix` when the periodic arm fires.
 pub fn growth_due(
     conn: &Connection,
     now_unix: i64,
     last_periodic_spawn_unix: &mut Option<i64>,
     cfg: &GrowthScheduleConfig,
-) -> Result<bool> {
+) -> Result<GrowthDueOutcome> {
     if !min_run_gap_satisfied(conn, cfg.min_run_gap_secs)? {
-        return Ok(false);
+        return Ok(GrowthDueOutcome::default());
     }
 
     let weighted = weighted_unprocessed_signal_sum(conn, cfg.signal_window)?;
@@ -148,12 +156,16 @@ pub fn growth_due(
     let need_periodic = now_unix.saturating_sub(last_ts) >= cfg.interval_secs as i64;
 
     if !need_signal && !need_sweep && !need_periodic {
-        return Ok(false);
+        return Ok(GrowthDueOutcome::default());
     }
     if need_periodic {
         *last_periodic_spawn_unix = Some(now_unix);
     }
-    Ok(true)
+    let periodic_only = need_periodic && !need_signal && !need_sweep;
+    Ok(GrowthDueOutcome {
+        due: true,
+        periodic_only,
+    })
 }
 
 #[cfg(test)]
@@ -203,12 +215,40 @@ mod tests {
             raw_unprocessed_threshold: 99,
         };
         let t0 = 1_000_000i64;
-        assert!(!growth_due(&conn, t0, &mut last, &cfg).unwrap());
+        assert!(!growth_due(&conn, t0, &mut last, &cfg).unwrap().due);
         assert_eq!(last, Some(t0));
 
-        assert!(!growth_due(&conn, t0 + 30, &mut last, &cfg).unwrap());
-        assert!(growth_due(&conn, t0 + 70, &mut last, &cfg).unwrap());
+        assert!(!growth_due(&conn, t0 + 30, &mut last, &cfg).unwrap().due);
+        let o = growth_due(&conn, t0 + 70, &mut last, &cfg).unwrap();
+        assert!(o.due);
+        assert!(o.periodic_only);
         assert_eq!(last, Some(t0 + 70));
+    }
+
+    #[test]
+    fn growth_due_signal_arm_is_not_periodic_only() {
+        let conn = open_mem();
+        for _ in 0..3 {
+            conn.execute(
+                "INSERT INTO decisions (evolved, total_tools, failed_tools, feedback)
+                 VALUES (0, 2, 0, 'neutral')",
+                [],
+            )
+            .unwrap();
+        }
+        let mut last = Some(1_000_000i64);
+        let cfg = GrowthScheduleConfig {
+            interval_secs: 60,
+            weighted_min: 3,
+            signal_window: 10,
+            sweep_interval_secs: 86_400,
+            min_run_gap_secs: 0,
+            raw_unprocessed_threshold: 99,
+        };
+        let t = 2_000_000i64;
+        let o = growth_due(&conn, t, &mut last, &cfg).unwrap();
+        assert!(o.due);
+        assert!(!o.periodic_only);
     }
 
     #[test]

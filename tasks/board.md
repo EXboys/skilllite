@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-10 (TASK-2026-030 assistant skill discovery unification done)
+Last updated: 2026-04-10 (TASK-2026-032 evolution learner tunables done)
 
 ## In Progress
 
@@ -16,6 +16,8 @@ Last updated: 2026-04-10 (TASK-2026-030 assistant skill discovery unification do
 
 ## Done
 
+- `TASK-2026-032-evo-output-rate-learners` - Status: `done` - Owner: `airlu`
+- `TASK-2026-031-evo-periodic-preflight-noscope` - Status: `done` - Owner: `airlu`
 - `TASK-2026-030-assistant-skill-discovery-unify` - Status: `done` - Owner: `airlu`
 - `TASK-2026-029-assistant-tool-call-id-link` - Status: `done` - Owner: `airlu`
 - `TASK-2026-028-python-sdk-artifact-tests` - Status: `done` - Owner: `airlu`

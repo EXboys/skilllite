@@ -21,6 +21,30 @@ use super::{
 };
 use crate::high_risk;
 
+/// Block a common LLM mistake: `write_file` with `users/<x>/output/...` under the workspace.
+/// Those files are not under the real output dir (`SKILLLITE_OUTPUT_DIR` / `<workspace>/output`),
+/// so the desktop **Output** panel lists nothing. Deliverables must use `write_output`.
+fn reject_misplaced_output_style_write_file_path(path_str: &str) -> Result<()> {
+    let normalized = path_str.replace('\\', "/");
+    let trimmed = normalized.trim().trim_start_matches("./");
+    if trimmed.starts_with('/') {
+        return Ok(());
+    }
+    let parts: Vec<&str> = trimmed.split('/').filter(|s| !s.is_empty()).collect();
+    if parts.len() >= 4
+        && parts[0].eq_ignore_ascii_case("users")
+        && parts[2].eq_ignore_ascii_case("output")
+    {
+        bail!(
+            "Blocked path '{}': generated deliverables must use **write_output** (file_path = filename only, or a path relative to the output directory) so they appear in the app Output panel. \
+             Use **write_file** only for normal project source files (e.g. src/, docs/ when editing the repo). \
+             Do not invent users/.../output/... under the workspace.",
+            path_str
+        );
+    }
+    Ok(())
+}
+
 pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
@@ -52,7 +76,9 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "write_file".to_string(),
-                description: "Write content to a file. Creates parent directories if needed. Blocks writes to sensitive files (.env, .key, .git/config). Use append: true to append to existing file instead of overwriting.".to_string(),
+                description: "Write content to a file under the workspace (source, config, docs you are editing). Creates parent directories if needed. Blocks sensitive paths (.env, .key, .git/config). \
+For **deliverables** the user should open from the app (reports, tutorials, exports, generated markdown/HTML, screenshots paths in configs): you MUST use **write_output**, not write_file — otherwise files are easy to \"lose\" (not listed in the Output panel). \
+With write_file, use normal project-relative paths (e.g. src/, docs/); do not invent nested paths like users/.../output/.... Use append: true to append instead of overwriting.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -316,6 +342,8 @@ pub(super) fn execute_write_file(
         );
     }
 
+    reject_misplaced_output_style_write_file_path(&path_str)?;
+
     // A11: 关键路径确认
     if high_risk::confirm_write_key_path() && is_key_write_path(&path_str) {
         if let Some(sink) = event_sink {
@@ -396,5 +424,27 @@ pub(super) fn execute_file_exists(args: &Value, workspace: &Path) -> Result<Stri
         skilllite_fs::PathKind::NotFound => Ok(format!("{}: does not exist", path_str)),
         skilllite_fs::PathKind::Dir => Ok(format!("{}: directory", path_str)),
         skilllite_fs::PathKind::File(size) => Ok(format!("{}: file ({} bytes)", path_str, size)),
+    }
+}
+
+#[cfg(test)]
+mod misplaced_output_path_tests {
+    use super::reject_misplaced_output_style_write_file_path;
+
+    #[test]
+    fn blocks_users_segment_output_pattern() {
+        assert!(
+            reject_misplaced_output_style_write_file_path("users/z/output/tutorial.md").is_err()
+        );
+    }
+
+    #[test]
+    fn allows_output_root_relative() {
+        assert!(reject_misplaced_output_style_write_file_path("output/note.md").is_ok());
+    }
+
+    #[test]
+    fn allows_src_paths() {
+        assert!(reject_misplaced_output_style_write_file_path("src/lib.rs").is_ok());
     }
 }

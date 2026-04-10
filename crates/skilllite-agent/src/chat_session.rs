@@ -1252,7 +1252,7 @@ pub fn spawn_periodic_evolution(
                 .as_secs() as i64;
             let mut cfg = skilllite_evolution::growth_schedule::GrowthScheduleConfig::from_env();
             cfg.interval_secs = interval_secs;
-            let due = skilllite_evolution::feedback::open_evolution_db(&data_root)
+            let outcome = skilllite_evolution::feedback::open_evolution_db(&data_root)
                 .ok()
                 .and_then(|conn| {
                     let mut anchor = A9_LAST_PERIODIC_GROWTH_UNIX
@@ -1261,9 +1261,29 @@ pub fn spawn_periodic_evolution(
                     skilllite_evolution::growth_schedule::growth_due(&conn, now, &mut anchor, &cfg)
                         .ok()
                 })
-                .unwrap_or(false);
-            if !due {
+                .unwrap_or_default();
+            if !outcome.due {
                 continue;
+            }
+            if outcome.periodic_only {
+                let would = skilllite_evolution::feedback::open_evolution_db(&data_root)
+                    .ok()
+                    .and_then(|conn| {
+                        skilllite_evolution::would_have_evolution_proposals(
+                            &conn,
+                            skilllite_evolution::EvolutionMode::from_env(),
+                            false,
+                        )
+                        .ok()
+                    })
+                    .unwrap_or(true);
+                if !would {
+                    tracing::debug!(
+                        "Periodic evolution tick skipped: no proposals (periodic-only preflight; interval base {}s)",
+                        interval_secs
+                    );
+                    continue;
+                }
             }
             tracing::debug!(
                 "Periodic evolution tick: A9 growth_due true (interval base {}s)",

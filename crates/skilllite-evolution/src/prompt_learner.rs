@@ -7,6 +7,7 @@ use crate::Result;
 use rusqlite::{params, Connection};
 use tokio::task::block_in_place;
 
+use skilllite_core::config::env_keys::evolution as evo_keys;
 use skilllite_core::planning::PlanningRule;
 
 use crate::feedback::compute_effectiveness;
@@ -38,6 +39,22 @@ fn default_evolved_origin() -> String {
     "evolved".to_string()
 }
 
+fn prompt_example_min_tools() -> i64 {
+    std::env::var(evo_keys::SKILLLITE_EVO_PROMPT_EXAMPLE_MIN_TOOLS)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2)
+        .clamp(1, 20)
+}
+
+fn prompt_rule_summary_limit() -> i64 {
+    std::env::var(evo_keys::SKILLLITE_EVO_PROMPT_RULE_SUMMARY_LIMIT)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10)
+        .clamp(1, 50)
+}
+
 pub async fn evolve_prompts<L: EvolutionLlm>(
     chat_root: &Path,
     llm: &L,
@@ -50,14 +67,20 @@ pub async fn evolve_prompts<L: EvolutionLlm>(
     let (retired, extract_data, example_data) = block_in_place(|| {
         let conn = crate::feedback::open_evolution_db(chat_root)?;
         let retired = retire_low_effectiveness_rules_with_conn(chat_root, txn_id, &conn)?;
-        let successful = query_decisions_summary(&conn, true)?;
-        let failed = query_decisions_summary(&conn, false)?;
-        let example_candidate = conn.query_row(
+        let rule_limit = prompt_rule_summary_limit();
+        let successful = query_decisions_summary(&conn, true, rule_limit)?;
+        let failed = query_decisions_summary(&conn, false, rule_limit)?;
+        let min_tools = prompt_example_min_tools();
+        let example_sql = format!(
             "SELECT task_description, tools_detail, elapsed_ms
              FROM decisions
              WHERE evolved = 0 AND task_completed = 1 AND replans = 0
-                   AND failed_tools = 0 AND total_tools >= 3
+                   AND failed_tools = 0 AND total_tools >= {}
              ORDER BY total_tools DESC LIMIT 1",
+            min_tools
+        );
+        let example_candidate = conn.query_row(
+            &example_sql,
             [],
             |row| {
                 Ok((
@@ -547,7 +570,7 @@ pub fn update_reusable_status(conn: &Connection, chat_root: &Path) -> Result<()>
     Ok(())
 }
 
-fn query_decisions_summary(conn: &Connection, successful: bool) -> Result<String> {
+fn query_decisions_summary(conn: &Connection, successful: bool, limit: i64) -> Result<String> {
     let condition = if successful {
         "evolved = 0 AND task_completed = 1 AND replans = 0 AND failed_tools = 0"
     } else {
@@ -557,8 +580,8 @@ fn query_decisions_summary(conn: &Connection, successful: bool) -> Result<String
     let sql = format!(
         "SELECT task_description, total_tools, failed_tools, replans, elapsed_ms
          FROM decisions WHERE {} AND task_description IS NOT NULL
-         ORDER BY ts DESC LIMIT 10",
-        condition
+         ORDER BY ts DESC LIMIT {}",
+        condition, limit
     );
 
     let mut stmt = conn.prepare(&sql)?;

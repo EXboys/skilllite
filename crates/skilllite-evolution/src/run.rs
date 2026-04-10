@@ -6,7 +6,7 @@ use rusqlite::{params, Connection};
 
 use crate::audit::{log_evolution_event, mark_decisions_evolved};
 use crate::changelog::append_changelog;
-use crate::config::EvolutionMode;
+use crate::config::{EvolutionMode, SkillAction};
 use crate::external_learner;
 use crate::feedback;
 use crate::llm::EvolutionLlm;
@@ -16,8 +16,8 @@ use crate::rollback::check_auto_rollback;
 use crate::run_state::{finish_evolution, try_start_evolution, EvolutionRunResult};
 use crate::scope::{
     auto_link_acceptance_status, build_evolution_proposals, coordinate_proposals,
-    load_backlog_proposal_by_id, recover_forced_proposal_by_authorization_log, set_backlog_status,
-    CoordinatorDecision,
+    describe_empty_evolution_proposals, load_backlog_proposal_by_id,
+    recover_forced_proposal_by_authorization_log, set_backlog_status, CoordinatorDecision,
 };
 use crate::skill_synth;
 use crate::snapshots::{create_extended_snapshot, versions_dir};
@@ -116,12 +116,13 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             }
         }
     } else {
-        let proposals = build_evolution_proposals(&conn, EvolutionMode::from_env(), force)?;
+        let mode = EvolutionMode::from_env();
+        let proposals = build_evolution_proposals(&conn, mode.clone(), force)?;
         if proposals.is_empty() {
-            try_log_evolution_run_outcome(
-                chat_root,
+            let reason = describe_empty_evolution_proposals(&conn, &mode, force).unwrap_or(
                 "NoScope: no proposals built (thresholds, cooldown, evolution mode, or daily cap)",
             );
+            try_log_evolution_run_outcome(chat_root, reason);
             return Ok(EvolutionRunResult::NoScope);
         }
         coordinate_proposals(&conn, proposals, force)?
@@ -177,6 +178,14 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             &proposal,
         )? {
             tracing::info!("{}", note);
+            let _ = log_evolution_event(
+                &conn,
+                chat_root,
+                "evolution_shallow_skip",
+                &proposal.proposal_id,
+                note,
+                "",
+            );
             try_log_evolution_run_outcome(chat_root, note);
             let _ = log_evolution_event(&conn, chat_root, "evolution_run_outcome", "run", note, "");
             let _ = set_backlog_status(&conn, &proposal.proposal_id, "executed", "not_met", note);
@@ -185,6 +194,28 @@ async fn run_evolution_inner<L: EvolutionLlm>(
     }
 
     let txn_id = format!("evo_{}", chrono::Utc::now().format("%Y%m%d_%H%M%S"));
+    let skill_action_label = match scope.skill_action {
+        SkillAction::None => "none",
+        SkillAction::Generate => "generate",
+        SkillAction::Refine => "refine",
+    };
+    let scope_payload = serde_json::json!({
+        "prompts": scope.prompts,
+        "memory": scope.memory,
+        "skills": scope.skills,
+        "skill_action": skill_action_label,
+        "proposal_source": proposal.source.as_str(),
+        "proposal_id": proposal.proposal_id,
+        "force": force,
+    });
+    let _ = log_evolution_event(
+        &conn,
+        chat_root,
+        "evolution_run_scope",
+        &txn_id,
+        &scope_payload.to_string(),
+        &txn_id,
+    );
     tracing::info!(
         "Starting evolution txn={} proposal={} source={} (prompts={}, memory={}, skills={})",
         txn_id,

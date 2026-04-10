@@ -7,6 +7,8 @@
 
 use std::path::Path;
 
+use skilllite_core::config::env_keys::evolution as evo_keys;
+
 use crate::error::bail;
 use crate::Result;
 use rusqlite::Connection;
@@ -22,8 +24,23 @@ use crate::EvolutionMessage;
 const MEMORY_KNOWLEDGE_PROMPT: &str =
     include_str!("seed/evolution_prompts/memory_knowledge_extraction.seed.md");
 
-const RECENT_DAYS: &str = "-7 days";
-const DECISION_LIMIT: i64 = 15;
+fn memory_recent_days_sql() -> String {
+    let d = std::env::var(evo_keys::SKILLLITE_EVO_MEMORY_RECENT_DAYS)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(7)
+        .clamp(1, 90);
+    format!("-{d} days")
+}
+
+fn memory_decision_limit() -> i64 {
+    std::env::var(evo_keys::SKILLLITE_EVO_MEMORY_DECISION_LIMIT)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(15)
+        .clamp(1, 100)
+}
+
 /// 已有知识摘要最大字符数，供 LLM 去重参考，避免重复抽取
 const EXISTING_KNOWLEDGE_CAP: usize = 3500;
 
@@ -488,12 +505,14 @@ pub async fn evolve_memory<L: EvolutionLlm>(
 }
 
 fn query_decisions_for_memory(conn: &Connection) -> Result<String> {
+    let recent = memory_recent_days_sql();
+    let limit = memory_decision_limit();
     let sql = format!(
         "SELECT task_description, total_tools, failed_tools, replans, elapsed_ms, tools_detail, task_completed
          FROM decisions
          WHERE ts >= datetime('now', '{}') AND task_description IS NOT NULL
          ORDER BY ts DESC LIMIT {}",
-        RECENT_DAYS, DECISION_LIMIT
+        recent, limit
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows: Vec<String> = stmt

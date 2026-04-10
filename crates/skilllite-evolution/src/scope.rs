@@ -411,6 +411,63 @@ pub(crate) fn build_evolution_proposals(
     Ok(proposals)
 }
 
+/// True when [`build_evolution_proposals`] would return a non-empty list (same env/mode semantics).
+pub fn would_have_evolution_proposals(
+    conn: &Connection,
+    mode: EvolutionMode,
+    force: bool,
+) -> Result<bool> {
+    Ok(!build_evolution_proposals(conn, mode, force)?.is_empty())
+}
+
+/// Stable English reason for audit / UI when [`build_evolution_proposals`] returns an empty list.
+pub fn describe_empty_evolution_proposals(
+    conn: &Connection,
+    mode: &EvolutionMode,
+    force: bool,
+) -> Result<&'static str> {
+    if mode.is_disabled() {
+        return Ok("NoScope: evolution disabled (SKILLLITE_EVOLUTION)");
+    }
+
+    if !force {
+        let today_evolutions: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM evolution_log
+                 WHERE date(ts) = date('now') AND type = 'evolution_run'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        let max_per_day: i64 = std::env::var(evo_keys::SKILLLITE_MAX_EVOLUTIONS_PER_DAY)
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20);
+        if today_evolutions >= max_per_day {
+            return Ok("NoScope: daily evolution cap reached (SKILLLITE_MAX_EVOLUTIONS_PER_DAY)");
+        }
+
+        let thresholds = EvolutionThresholds::from_env();
+        let last_evo_hours: f64 = conn
+            .query_row(
+                "SELECT COALESCE(
+                    (julianday('now') - julianday(MAX(ts))) * 24,
+                    999.0
+                ) FROM evolution_log WHERE type = 'evolution_run'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(999.0);
+        if last_evo_hours < thresholds.cooldown_hours {
+            return Ok(
+                "NoScope: cooldown active since last evolution_run (SKILLLITE_EVO_COOLDOWN_HOURS)",
+            );
+        }
+    }
+
+    Ok("NoScope: passive and active scopes idle (thresholds; SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS)")
+}
+
 fn upsert_backlog_proposal(
     conn: &Connection,
     proposal: &EvolutionProposal,
@@ -1125,4 +1182,33 @@ fn should_evolve_impl(
     }
 
     Ok(scope)
+}
+
+#[cfg(test)]
+mod describe_empty_proposals_tests {
+    use super::*;
+    use crate::feedback;
+    use rusqlite::Connection;
+
+    fn open_mem() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        feedback::ensure_evolution_tables(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn describe_empty_when_mode_disabled() {
+        let conn = open_mem();
+        let mode = EvolutionMode::Disabled;
+        assert_eq!(
+            describe_empty_evolution_proposals(&conn, &mode, false).unwrap(),
+            "NoScope: evolution disabled (SKILLLITE_EVOLUTION)"
+        );
+    }
+
+    #[test]
+    fn would_have_false_when_disabled() {
+        let conn = open_mem();
+        assert!(!would_have_evolution_proposals(&conn, EvolutionMode::Disabled, false).unwrap());
+    }
 }

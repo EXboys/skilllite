@@ -266,6 +266,9 @@ export const zhMessages: Record<string, string> = {
   "evolution.log.noEvents": "暂无事件记录",
   "evolution.log.targetWithId": "对象：{id}",
   "evolution.log.type.evolution_run_outcome": "调度结果",
+  "evolution.log.type.evolution_run_scope": "进化范围快照",
+  "evolution.log.type.evolution_shallow_skip": "浅层预检跳过",
+  "evolution.log.type.rule_extraction_parse_failed": "规则抽取解析失败",
   "evolution.log.type.evolution_run": "进化运行",
   "evolution.log.type.evolution_proposal": "提案调度",
   "evolution.log.type.evolution_proposal_denied": "提案被拒",
@@ -284,6 +287,12 @@ export const zhMessages: Record<string, string> = {
   "evolution.log.type.skill_retired": "技能已归档",
   "evolution.log.reason.noScopeNoProposals":
     "本轮未生成提案（阈值、冷却、进化模式或已达当日上限等）",
+  "evolution.log.reason.noScopeEvolutionDisabled": "进化已禁用（SKILLLITE_EVOLUTION）",
+  "evolution.log.reason.noScopeDailyCap": "已达当日进化次数上限（SKILLLITE_MAX_EVOLUTIONS_PER_DAY）",
+  "evolution.log.reason.noScopeCooldown":
+    "距上次进化运行仍在冷却期内（SKILLLITE_EVO_COOLDOWN_HOURS）",
+  "evolution.log.reason.noScopePassiveActiveIdle":
+    "被动阈值未满足且主动队列稳定成功决策不足（见 SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS 与各 meaningful 阈值）",
   "evolution.log.reason.skippedBusy": "已有另一轮进化在执行，本轮已跳过",
   "evolution.log.reason.noScopeCoordinatorBusy": "协调器正忙，请稍后重试",
   "evolution.log.reason.errorWithDetail": "错误：{detail}",

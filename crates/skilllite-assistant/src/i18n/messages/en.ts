@@ -283,6 +283,9 @@ export const enMessages: Record<string, string> = {
   "evolution.log.noEvents": "No events yet",
   "evolution.log.targetWithId": "Target: {id}",
   "evolution.log.type.evolution_run_outcome": "Run outcome",
+  "evolution.log.type.evolution_run_scope": "Evolution scope snapshot",
+  "evolution.log.type.evolution_shallow_skip": "Shallow preflight skip",
+  "evolution.log.type.rule_extraction_parse_failed": "Rule extraction parse failed",
   "evolution.log.type.evolution_run": "Evolution run",
   "evolution.log.type.evolution_proposal": "Proposal update",
   "evolution.log.type.evolution_proposal_denied": "Proposal denied",
@@ -301,6 +304,14 @@ export const enMessages: Record<string, string> = {
   "evolution.log.type.skill_retired": "Skill retired",
   "evolution.log.reason.noScopeNoProposals":
     "No proposal this round (thresholds, cooldown, evolution mode, or daily cap)",
+  "evolution.log.reason.noScopeEvolutionDisabled":
+    "Evolution disabled (SKILLLITE_EVOLUTION)",
+  "evolution.log.reason.noScopeDailyCap":
+    "Daily evolution cap reached (SKILLLITE_MAX_EVOLUTIONS_PER_DAY)",
+  "evolution.log.reason.noScopeCooldown":
+    "Still in cooldown since last evolution_run (SKILLLITE_EVO_COOLDOWN_HOURS)",
+  "evolution.log.reason.noScopePassiveActiveIdle":
+    "Passive thresholds not met and active stable-decision backlog below minimum (see SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS and meaningful thresholds)",
   "evolution.log.reason.skippedBusy": "Another evolution run was in progress; skipped",
   "evolution.log.reason.noScopeCoordinatorBusy": "Evolution coordinator busy; retry later",
   "evolution.log.reason.errorWithDetail": "Error: {detail}",

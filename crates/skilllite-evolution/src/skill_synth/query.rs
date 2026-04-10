@@ -1,11 +1,34 @@
 //! DB 查询：decisions 表中模式、执行记录等
 
+use skilllite_core::config::env_keys::evolution as evo_keys;
+
 use crate::Result;
 use rusqlite::{params, Connection};
 
-/// Returns the SQL condition for recent decisions: last 100 records within 7 days
-pub(super) fn recent_decisions_condition() -> (&'static str, i64) {
-    ("ts >= datetime('now', '-7 days')", 100)
+/// Returns `(recent_ts_condition, row_limit)` for skill-synth decision queries (env-tunable).
+pub(super) fn recent_decisions_condition() -> (String, i64) {
+    let days = std::env::var(evo_keys::SKILLLITE_EVO_SKILL_QUERY_RECENT_DAYS)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(7)
+        .clamp(1, 90);
+    let limit = std::env::var(evo_keys::SKILLLITE_EVO_SKILL_QUERY_DECISION_LIMIT)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(100)
+        .clamp(1, 500);
+    (
+        format!("ts >= datetime('now', '-{} days')", days),
+        limit,
+    )
+}
+
+fn skill_failure_sample_limit() -> i64 {
+    std::env::var(evo_keys::SKILLLITE_EVO_SKILL_FAILURE_SAMPLE_LIMIT)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5)
+        .clamp(1, 50)
 }
 
 /// Query patterns that repeat but have LOW success rate (for failure-driven skill generation).
@@ -172,12 +195,15 @@ pub(super) fn query_pattern_executions(
 
 pub(super) fn query_skill_failures(conn: &Connection, skill_name: &str) -> Result<String> {
     let tool_pattern = format!("%{}%", skill_name);
-    let mut stmt = conn.prepare(
+    let lim = skill_failure_sample_limit();
+    let sql = format!(
         "SELECT task_description, tools_detail, feedback
          FROM decisions
          WHERE failed_tools > 0 AND tools_detail LIKE ?1
-         ORDER BY ts DESC LIMIT 5",
-    )?;
+         ORDER BY ts DESC LIMIT {}",
+        lim
+    );
+    let mut stmt = conn.prepare(&sql)?;
 
     let rows: Vec<String> = stmt
         .query_map(params![tool_pattern], |row| {

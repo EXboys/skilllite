@@ -150,8 +150,10 @@ pub fn build_system_prompt(
         concat!(
             "\n\nIMPORTANT — Default location for generated content:\n",
             "Deliverables (reports, videos, images, exported files, screenshots, rendered output) MUST go to the output directory by default.\n",
+            "Use **write_output** with file_path = the filename (or a path relative to the output dir only). The desktop app lists those files under Output; **write_file** does not.\n",
             "Use $SKILLLITE_OUTPUT_DIR for that path (absolute path: {}). If unset, use \"{}/output\" relative to workspace.\n",
-            "When calling tools or writing build/render config, pass this path so outputs land there. Only write deliverables to the workspace when the user explicitly asks.",
+            "Use **write_file** only for normal project files (e.g. editing src/, docs/ in the repo). Never invent workspace paths like users/.../output/... for deliverables — they are hard for the user to find.\n",
+            "When calling tools or writing build/render config, pass this path so outputs land there. Only write deliverables elsewhere when the user explicitly asks.",
         ),
         output_dir,
         workspace

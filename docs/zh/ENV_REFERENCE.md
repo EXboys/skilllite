@@ -265,7 +265,25 @@
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT` | int | `3` | 重复模式判定：同一模式出现次数 ≥ 此值且成功率达标才计为重复模式 |
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE` | float | `0.8` | 重复模式判定：成功率 ≥ 此值（0~1） |
 
+**Learner 输入窗口**（提高 rules / examples / memory / skills **召回**时可调；默认与历史行为一致）：
+
+| 变量 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `SKILLLITE_EVO_PROMPT_EXAMPLE_MIN_TOOLS` | int | `2` | Prompt 进化：生成 **示例** 的候选决策最少工具调用数；设为 `1` 覆盖更轻任务，设为 `3` 偏质量 |
+| `SKILLLITE_EVO_PROMPT_RULE_SUMMARY_LIMIT` | int | `10` | Prompt 进化：规则抽取时成功/失败两侧各取最近多少条带 `task_description` 的决策 |
+| `SKILLLITE_EVO_MEMORY_RECENT_DAYS` | int | `7` | Memory 进化：决策查询回溯天数 |
+| `SKILLLITE_EVO_MEMORY_DECISION_LIMIT` | int | `15` | Memory 进化：上述窗口内最多多少条决策进入抽取 prompt |
+| `SKILLLITE_EVO_SKILL_QUERY_RECENT_DAYS` | int | `7` | 技能合成 SQL：模式/失败查询的回溯天数 |
+| `SKILLLITE_EVO_SKILL_QUERY_DECISION_LIMIT` | int | `100` | 技能合成 SQL：上述窗口内扫描行数上限 |
+| `SKILLLITE_EVO_SKILL_FAILURE_SAMPLE_LIMIT` | int | `5` | 单技能失败上下文采样条数上限 |
+
+**进化审计补充类型**：`evolution_run_scope`（每轮进入全量 learner 前的范围 JSON）、`evolution_shallow_skip`（浅层预检跳过）、`rule_extraction_parse_failed`（规则抽取解析失败，便于排查长期无规则产出）。
+
 **进化触发策略（A9）**：由 `growth_schedule` 判定「到期」，满足 **任一** 即可：**周期**（`SKILLLITE_EVOLUTION_INTERVAL_SECS`，默认 10 分钟）、**加权信号**（窗口内加权和 ≥ `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN`，默认 3）、**原始积压**（未处理行数 ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`，默认 10）、**清扫**（长期无 `evolution_run` 且加权和 ≥ 1）。可用 `SKILLLITE_EVO_MIN_RUN_GAP_SEC` 限制连续自动运行间隔。**`ChatSession`** 在进程内跑定时与回合后触发；**桌面助手**由 **Life Pulse** 合并工作区与界面环境后 spawn `skilllite evolution run`。对话内 **不再** 因 partial_success / failure 弹出「启动进化」气泡；调度与右侧「自进化」面板一致。
+
+**「调度结果」≠ 进化失败**：A9「到期」只表示到了检查点；是否 **构建出提案** 由被动/主动阈值与冷却、当日上限等决定（见上表与各 `SKILLLITE_EVO_*`）。**仅周期臂**到期且当前 **不会有任何提案** 时，Agent 定时器与桌面 Life Pulse 会 **跳过** 本次运行，不再写入一条「未生成提案」类 `evolution_run_outcome`；**信号臂或清扫臂**仍照常尝试 `evolution run`（若仍无提案，日志会给出更细的原因码）。旧日志可能仍为泛化英文/中文说明。
+
+**希望进化更积极（配置备忘）**：`SKILLLITE_EVO_PROFILE=demo`（冷却更短、阈值更低）；或保留 default 时单独设 `SKILLLITE_EVO_COOLDOWN_HOURS=0.25`、`SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS=4`（示例）并视情况下调 `SKILLLITE_EVO_MEANINGFUL_THRESHOLD_*`。多跑 **带工具且成功** 的对话以积累 `evolved=0` 的稳定决策，便于 **主动** 提案出现。
 
 **SkillLite Assistant（桌面）**：自进化详情里队列行的 **立即执行** 与聊天共用 **设置** 中的 API Key、模型与接口地址（`api_base`）。**Life Pulse** 在启动 `skilllite evolution run` / `skilllite schedule tick` 子进程时，会把工作区 `.env` 与当前 **设置** 里同步到后端的 LLM 相关项合并后注入子进程环境（与对话子进程规则一致），**一般无需再单独写 `.env` 里的 Key**；若你希望完全脱离应用、仅用命令行在同一工作区跑进化，仍可依赖 `.env` 或系统环境变量。
 

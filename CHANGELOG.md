@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Evolution (A9)**: When **only the periodic** growth arm is due and **no proposals** would be built, **ChatSession** and **SkillLite Assistant Life Pulse** now **skip** spawning `run_evolution` / `skilllite evolution run`, avoiding noisy `evolution_run_outcome` rows. Signal/sweep arms unchanged. Empty-proposal audit reasons are **more specific** (disabled / daily cap / cooldown / passive+active idle); EN/ZH evolution panel copy maps the new strings.
+- **Evolution learners (recall + observability)**: New env-tuned windows — `SKILLLITE_EVO_PROMPT_EXAMPLE_MIN_TOOLS` (default **`2`**, higher recall than the legacy hardcoded **`3`** for example candidates), `SKILLLITE_EVO_PROMPT_RULE_SUMMARY_LIMIT`, `SKILLLITE_EVO_MEMORY_RECENT_DAYS`, `SKILLLITE_EVO_MEMORY_DECISION_LIMIT`, `SKILLLITE_EVO_SKILL_QUERY_RECENT_DAYS`, `SKILLLITE_EVO_SKILL_QUERY_DECISION_LIMIT`, `SKILLLITE_EVO_SKILL_FAILURE_SAMPLE_LIMIT` (remaining defaults match prior hardcoded behavior). Audit log adds **`evolution_run_scope`** (JSON scope per txn), **`evolution_shallow_skip`**, and documents **`rule_extraction_parse_failed`** in EN/ZH `ENV_REFERENCE.md`; assistant i18n labels the new types.
+
 ### Fixed
 
 - **Agent (RPC / desktop chat)**: After a **streamed** LLM completion, `emit_assistant_visible` (e.g. **tool-result summary** when the model did not write a long user-facing reply) was routed through `on_text`, which **dropped** the payload as a presumed duplicate of streamed chunks. Users saw tool output in the timeline but **no final assistant `text` event**. `RpcEventSink` and `TerminalEventSink` now override `emit_assistant_visible` to **always emit**, clearing the streaming dedupe flag first.

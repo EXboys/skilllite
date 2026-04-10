@@ -191,6 +191,27 @@ pub mod evolution {
     /// 重复模式判定：成功率 ≥ 此值（0~1）。默认 0.8。
     pub const SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE: &str =
         "SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE";
+
+    // ── Learner input windows (advanced; raise recall for rules/examples/memory/skills) ─────────
+    /// Prompt learner: min `total_tools` for **example** generation candidate rows. Default `2`; set `1` or `3` to tune recall vs. signal strength.
+    pub const SKILLLITE_EVO_PROMPT_EXAMPLE_MIN_TOOLS: &str =
+        "SKILLLITE_EVO_PROMPT_EXAMPLE_MIN_TOOLS";
+    /// Prompt learner: max recent decisions per success/fail bucket for **rule extraction** summaries. Default `10`.
+    pub const SKILLLITE_EVO_PROMPT_RULE_SUMMARY_LIMIT: &str =
+        "SKILLLITE_EVO_PROMPT_RULE_SUMMARY_LIMIT";
+    /// Memory learner: lookback window in days for decision rows fed to extraction. Default `7`.
+    pub const SKILLLITE_EVO_MEMORY_RECENT_DAYS: &str = "SKILLLITE_EVO_MEMORY_RECENT_DAYS";
+    /// Memory learner: max decision rows in that window for the extraction prompt. Default `15`.
+    pub const SKILLLITE_EVO_MEMORY_DECISION_LIMIT: &str = "SKILLLITE_EVO_MEMORY_DECISION_LIMIT";
+    /// Skill synth DB queries: lookback days for pattern / failure queries. Default `7`.
+    pub const SKILLLITE_EVO_SKILL_QUERY_RECENT_DAYS: &str = "SKILLLITE_EVO_SKILL_QUERY_RECENT_DAYS";
+    /// Skill synth DB queries: row cap for recent decision scans (patterns, failures). Default `100`.
+    pub const SKILLLITE_EVO_SKILL_QUERY_DECISION_LIMIT: &str =
+        "SKILLLITE_EVO_SKILL_QUERY_DECISION_LIMIT";
+    /// Skill synth: max rows when sampling per-skill failure context. Default `5`.
+    pub const SKILLLITE_EVO_SKILL_FAILURE_SAMPLE_LIMIT: &str =
+        "SKILLLITE_EVO_SKILL_FAILURE_SAMPLE_LIMIT";
+
     /// Acceptance window size (days) for auto-linking backlog acceptance status. Default 3.
     pub const SKILLLITE_EVO_ACCEPTANCE_WINDOW_DAYS: &str = "SKILLLITE_EVO_ACCEPTANCE_WINDOW_DAYS";
     /// Acceptance threshold: minimum first_success_rate in window. Default 0.70.

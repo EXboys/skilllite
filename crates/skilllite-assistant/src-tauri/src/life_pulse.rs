@@ -43,7 +43,7 @@ pub struct LifePulseState {
     workspace: Arc<Mutex<String>>,
     /// LLM-related overrides from the assistant UI (persisted in the webview); merged into child env.
     llm_overrides: Arc<Mutex<Option<skilllite_bridge::ChatConfigOverrides>>>,
-    /// Last unix time the **periodic** growth arm fired (`evolution_growth_due`).
+    /// Last unix time the **periodic** growth arm advanced (`evolution_growth_due` / `growth_due`).
     last_periodic_growth_unix: Arc<Mutex<Option<i64>>>,
 }
 

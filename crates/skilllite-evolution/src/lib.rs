@@ -39,7 +39,7 @@ pub use gatekeeper::{
 };
 pub use growth_schedule::{
     growth_due, seconds_since_last_evolution_run, signal_burst_due,
-    weighted_unprocessed_signal_sum, GrowthScheduleConfig,
+    weighted_unprocessed_signal_sum, GrowthDueOutcome, GrowthScheduleConfig,
 };
 pub use lifecycle::on_shutdown;
 pub use llm::{strip_think_blocks, EvolutionLlm, EvolutionMessage};
@@ -47,8 +47,9 @@ pub use rollback::check_auto_rollback;
 pub use run::{format_evolution_changes, query_changes_by_txn, run_evolution};
 pub use run_state::{finish_evolution, try_start_evolution, EvolutionRunResult};
 pub use scope::{
-    enqueue_user_capability_evolution, should_evolve, should_evolve_with_mode, EvolutionProposal,
-    EvolutionScope, ProposalRiskLevel, ProposalSource,
+    describe_empty_evolution_proposals, enqueue_user_capability_evolution, should_evolve,
+    should_evolve_with_mode, would_have_evolution_proposals, EvolutionProposal, EvolutionScope,
+    ProposalRiskLevel, ProposalSource,
 };
 pub use snapshots::{create_snapshot, restore_snapshot};
 

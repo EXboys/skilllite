@@ -140,6 +140,27 @@ export function evolutionLogReasonForDisplay(
   ) {
     return translate("evolution.log.reason.noScopeNoProposals", undefined, locale);
   }
+  if (r === "NoScope: evolution disabled (SKILLLITE_EVOLUTION)") {
+    return translate("evolution.log.reason.noScopeEvolutionDisabled", undefined, locale);
+  }
+  if (
+    r ===
+    "NoScope: daily evolution cap reached (SKILLLITE_MAX_EVOLUTIONS_PER_DAY)"
+  ) {
+    return translate("evolution.log.reason.noScopeDailyCap", undefined, locale);
+  }
+  if (
+    r ===
+    "NoScope: cooldown active since last evolution_run (SKILLLITE_EVO_COOLDOWN_HOURS)"
+  ) {
+    return translate("evolution.log.reason.noScopeCooldown", undefined, locale);
+  }
+  if (
+    r ===
+    "NoScope: passive and active scopes idle (thresholds; SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS)"
+  ) {
+    return translate("evolution.log.reason.noScopePassiveActiveIdle", undefined, locale);
+  }
   if (r === "SkippedBusy: another evolution run held the global mutex") {
     return translate("evolution.log.reason.skippedBusy", undefined, locale);
   }

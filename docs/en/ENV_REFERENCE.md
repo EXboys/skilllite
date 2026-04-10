@@ -265,7 +265,25 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_COUNT` | int | `3` | Repeated pattern: same pattern count ≥ this and success rate met |
 | `SKILLLITE_EVO_REPEATED_PATTERN_MIN_SUCCESS_RATE` | float | `0.8` | Repeated pattern: min success rate (0–1) |
 
+**Learner input windows** (tune for higher recall of rules/examples/memory/skills; defaults match historical behavior):
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_EVO_PROMPT_EXAMPLE_MIN_TOOLS` | int | `2` | Prompt evolution: min `total_tools` for **example** generation candidates; `1` for lighter tasks, `3` for stricter signal |
+| `SKILLLITE_EVO_PROMPT_RULE_SUMMARY_LIMIT` | int | `10` | Prompt evolution: max recent decisions per success/fail bucket for **rule extraction** summaries |
+| `SKILLLITE_EVO_MEMORY_RECENT_DAYS` | int | `7` | Memory evolution: decision query lookback (days) |
+| `SKILLLITE_EVO_MEMORY_DECISION_LIMIT` | int | `15` | Memory evolution: max rows from that window in the extraction prompt |
+| `SKILLLITE_EVO_SKILL_QUERY_RECENT_DAYS` | int | `7` | Skill synth SQL: lookback days for pattern/failure queries |
+| `SKILLLITE_EVO_SKILL_QUERY_DECISION_LIMIT` | int | `100` | Skill synth SQL: max rows scanned in that window |
+| `SKILLLITE_EVO_SKILL_FAILURE_SAMPLE_LIMIT` | int | `5` | Max failure-context rows sampled per skill |
+
+**Extra evolution audit event types**: `evolution_run_scope` (scope JSON before full learners), `evolution_shallow_skip` (shallow preflight skip), `rule_extraction_parse_failed` (rule JSON parse failure).
+
 **Evolution triggers (A9)**: Growth scheduling (`skilllite-evolution::growth_schedule`) marks a run **due** when **any** of: **periodic** interval elapsed (`SKILLLITE_EVOLUTION_INTERVAL_SECS`, default 10 min), **weighted signals** over a sliding window (≥ `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN`, default 3), **raw backlog** (unprocessed rows ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`, default 10), or **sweep** (long idle + weighted ≥ 1). **`SKILLLITE_EVO_MIN_RUN_GAP_SEC`** can throttle consecutive autoruns. **`ChatSession`** (`skilllite chat` / `agent-rpc` subprocess) runs timers in-process; **SkillLite Assistant** spawns `skilllite evolution run` from **Life Pulse** with merged workspace + UI env. In-chat **P7 “authorize evolution” bubbles** after partial_success/failure are **not** shown; scheduling aligns with the evolution panel, not inline chat prompts.
+
+**“Run outcome” is not “evolution failed”**: A9 **due** only means a check fired; **whether proposals are built** depends on passive/active thresholds, cooldown, daily cap, etc. When **only the periodic arm** is due and **no proposals would be built**, the agent timer and desktop Life Pulse **skip** that tick (no subprocess, no `evolution_run_outcome` spam). **Signal or sweep arms** still attempt `evolution run`; if proposals are still empty, logs include a more specific reason code. Older rows may still show the generic message.
+
+**More aggressive evolution (quick presets)**: `SKILLLITE_EVO_PROFILE=demo`, or keep default and lower `SKILLLITE_EVO_COOLDOWN_HOURS` (e.g. `0.25`), `SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS` (e.g. `4`), and `SKILLLITE_EVO_MEANINGFUL_THRESHOLD_*` as needed. Run more **tool-heavy successful** turns to refill `evolved=0` stable decisions for **active** proposals.
 
 **SkillLite Assistant (desktop)**: **Run now** on a backlog row in the evolution detail view uses the same **Settings** API key, model, and base URL as chat. **Life Pulse** merges workspace `.env` with the same **Settings** snapshot pushed from the UI into the child environment for `skilllite evolution run` and `skilllite schedule tick`, matching the chat subprocess rules—you usually **do not** need a project `.env` API key for background evolution. For pure CLI use outside the app, keep using `.env` or shell env as before.
 
