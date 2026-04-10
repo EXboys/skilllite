@@ -17,10 +17,7 @@ pub(super) fn recent_decisions_condition() -> (String, i64) {
         .and_then(|v| v.parse().ok())
         .unwrap_or(100)
         .clamp(1, 500);
-    (
-        format!("ts >= datetime('now', '-{} days')", days),
-        limit,
-    )
+    (format!("ts >= datetime('now', '-{} days')", days), limit)
 }
 
 fn skill_failure_sample_limit() -> i64 {

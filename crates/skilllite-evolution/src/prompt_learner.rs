@@ -79,17 +79,13 @@ pub async fn evolve_prompts<L: EvolutionLlm>(
              ORDER BY total_tools DESC LIMIT 1",
             min_tools
         );
-        let example_candidate = conn.query_row(
-            &example_sql,
-            [],
-            |row| {
-                Ok((
-                    row.get::<_, Option<String>>(0)?,
-                    row.get::<_, Option<String>>(1)?,
-                    row.get::<_, i64>(2)?,
-                ))
-            },
-        );
+        let example_candidate = conn.query_row(&example_sql, [], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        });
         let example_data = example_candidate.ok();
         Ok::<_, anyhow::Error>((retired, (successful, failed), example_data))
     })?;
