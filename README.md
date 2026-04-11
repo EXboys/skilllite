@@ -25,7 +25,7 @@
 
 **A lightweight secure Self-evolution engine built in Rust, featuring a built-in native system-level sandbox, zero dependencies, and fully local execution.**
 
-Workspace and CLI binary versions are defined in the root `Cargo.toml` under `[workspace.package]` (kept in sync with the PyPI `skilllite` package).
+We built the most secure skill sandbox in the ecosystem (20/20 security score). Then we realized: the real value isn't just safe execution — it's safe **evolution**.
 
 AI Agents need to evolve — learning better prompts, accumulating memory, and generating new skills from experience. But self-evolution is inherently risky: evolved code can be malicious, evolved rules can jailbreak. **SkillLite solves this with a single binary**: an immutable security core constrains all evolution, so your Agent gets smarter without compromising safety. Zero dependencies, local-first, LLM-agnostic.
 
@@ -62,7 +62,6 @@ AI Agents need to evolve — learning better prompts, accumulating memory, and g
 └──────────────────────────────────────────────────────────────┘
 ```
 
-We built the most secure skill sandbox in the ecosystem (20/20 security score). Then we realized: the real value isn't just safe execution — it's safe **evolution**.
 
 **Why two layers, not one?** Evolution without safety is reckless — evolved skills could exfiltrate data or consume unbounded resources. Safety without evolution is static — the Agent never improves. SkillLite welds them together: the evolution engine produces new prompts, memory, and skills; the sandbox layer ensures every evolved artifact passes L3 security scanning + OS-level isolation before execution. Evolution is auditable, rollbackable, and never modifies the core binary.
 
