@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import remarkGfmWebKitSafe from "../../utils/remarkGfmWebKitSafe";
 
 /** Shared Markdown components for consistent rendering across ChatView, DetailWindowView, etc. */
 const markdownComponents = {
@@ -101,7 +101,7 @@ export function MarkdownContent({ content, className = "" }: MarkdownContentProp
 
   return (
     <div className={`markdown-content text-sm leading-relaxed break-words ${className}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfmWebKitSafe]} components={components}>
         {content}
       </ReactMarkdown>
     </div>
