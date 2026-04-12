@@ -18,6 +18,7 @@ This directory defines short, enforceable rules that should be injected by task 
 - `testing-policy.md`: minimum required test set by change type.
 - `docs-sync.md`: EN/ZH documentation sync requirements.
 - `structured-signal-first.md`: generic core behavior must prefer structured runtime signals; regex/text only fallback.
+- `capability-gap-evolution.md`: when tools are insufficient, prefer small bounded scripts and a simple promotion path (`artifacts/` / `scratch/` → `scripts/` or Skill).
 
 ## Injection Strategy (Task Type -> Specs)
 
@@ -28,13 +29,13 @@ This directory defines short, enforceable rules that should be injected by task 
 - `sandbox` or `security` task:
   - Inject: `verification-integrity.md`, `task-artifact-language.md`, `security-nonnegotiables.md`, `rust-conventions.md`, `testing-policy.md`, `docs-sync.md`
 - `agent` / `commands` / `mcp` behavior task:
-  - Inject: `verification-integrity.md`, `task-artifact-language.md`, `architecture-boundaries.md`, `structured-signal-first.md`, `rust-conventions.md`, `testing-policy.md`, `docs-sync.md`
+  - Inject: `verification-integrity.md`, `task-artifact-language.md`, `architecture-boundaries.md`, `structured-signal-first.md`, `capability-gap-evolution.md`, `rust-conventions.md`, `testing-policy.md`, `docs-sync.md`
 - `python-sdk` task:
   - Inject: `verification-integrity.md`, `task-artifact-language.md`, `testing-policy.md`, `docs-sync.md`
 - `docs-only` task:
   - Inject: `verification-integrity.md`, `task-artifact-language.md`, `docs-sync.md`
 - `mixed/refactor` task:
-  - Inject all eight specs
+  - Inject every file listed under **Specs** above (full set, including `capability-gap-evolution.md`)
 
 ## Deterministic Selection Rules
 
@@ -51,7 +52,8 @@ This directory defines short, enforceable rules that should be injected by task 
 6. If two or more rules match, inject all matched specs (do not down-select to one).
 7. For any generic outcome/completion classification (agent loop, planning control, evolution trigger):
    include `structured-signal-first.md`.
-8. For complex/open-domain user scenarios, default to LLM semantic classification; regex/text rules are fallback-only.
+8. For `agent` / `commands` / `mcp` task types (or when adding behavior in those areas), include `capability-gap-evolution.md`.
+9. For complex/open-domain user scenarios, default to LLM semantic classification; regex/text rules are fallback-only.
 
 ## Prompt Header Template (for agents)
 
