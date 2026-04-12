@@ -628,6 +628,8 @@ mod cwd_trust_tests {
     #[cfg(unix)]
     #[test]
     fn unix_projectish_dir_is_trusted() {
-        assert!(!super::cwd_is_untrusted_for_relative_skills(Path::new("/tmp")));
+        assert!(!super::cwd_is_untrusted_for_relative_skills(Path::new(
+            "/tmp"
+        )));
     }
 }
