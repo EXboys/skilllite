@@ -8,7 +8,9 @@
  * Trade-off: raw `user@domain` / `https://…` in prose are not auto-linked; explicit
  * `[text](url)` and `<https://…>` still work.
  */
-import type { Options as RemarkGfmOptions } from "remark-gfm";
+import type { ToMarkdownOptions as FootnoteToMarkdownOptions } from "mdast-util-gfm-footnote";
+import type { Options as TableOptions } from "mdast-util-gfm-table";
+import type { Options as StrikethroughOptions } from "micromark-extension-gfm-strikethrough";
 import type { Processor } from "unified";
 import { gfmFootnoteFromMarkdown, gfmFootnoteToMarkdown } from "mdast-util-gfm-footnote";
 import {
@@ -26,6 +28,11 @@ import { gfmTable } from "micromark-extension-gfm-table";
 import { gfmTaskListItem } from "micromark-extension-gfm-task-list-item";
 import { combineExtensions } from "micromark-util-combine-extensions";
 
+/** Same knobs as `remark-gfm` (strikethrough + footnote + table serialization), without depending on that package. */
+export type RemarkGfmWebKitSafeOptions = StrikethroughOptions &
+  FootnoteToMarkdownOptions &
+  TableOptions;
+
 const emptyOpts = {} as const;
 
 /** Keys written by remark plugins onto `processor.data()` (not in unified’s narrow `Data` type). */
@@ -37,7 +44,7 @@ type GfmPluginData = {
 
 export default function remarkGfmWebKitSafe(
   this: Processor,
-  options?: RemarkGfmOptions | null | undefined
+  options?: RemarkGfmWebKitSafeOptions | null | undefined
 ): undefined {
   const self = this;
   const settings = options ?? emptyOpts;

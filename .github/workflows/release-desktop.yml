@@ -136,6 +136,11 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
 
+      # beforeBuildCommand runs `npm run build`; catch accidental reintroduction of remark-gfm autolink regex
+      - name: Verify frontend bundle (WKWebView-safe)
+        working-directory: crates/skilllite-assistant
+        run: node scripts/verify-no-lookbehind-in-dist.mjs
+
       - name: Verify .app bundle exists (macOS)
         if: runner.os == 'macOS'
         run: |

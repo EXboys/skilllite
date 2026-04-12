@@ -23,6 +23,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.1.25] - 2026-04-12
+
+### Fixed
+
+- **SkillLite Assistant (desktop / CI)**: Dropped the **`remark-gfm`** dependency so production bundles cannot include **`mdast-util-gfm-autolink-literal`** (RegExp with `(?<=` + Unicode properties breaks older **WKWebView**). Options are typed from **footnote / table / strikethrough** packages only. **release-desktop** runs **`scripts/verify-no-lookbehind-in-dist.mjs`** after every Tauri build.
+
+### Release
+
+- Workspace, Python SDK, and SkillLite Assistant (Tauri) bumped to **0.1.25**.
+
+---
+
 ## [0.1.24] - 2026-04-12
 
 ### Release
@@ -334,7 +346,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.24...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.25...HEAD
+[0.1.25]: https://github.com/EXboys/skilllite/releases/tag/v0.1.25
 [0.1.24]: https://github.com/EXboys/skilllite/releases/tag/v0.1.24
 [0.1.23]: https://github.com/EXboys/skilllite/releases/tag/v0.1.23
 [0.1.22]: https://github.com/EXboys/skilllite/releases/tag/v0.1.22

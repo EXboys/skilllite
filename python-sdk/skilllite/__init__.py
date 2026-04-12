@@ -12,7 +12,7 @@ from .api import chat, execute_code, run_skill, scan_code
 from .artifacts import ArtifactHttpError, artifact_get, artifact_put, parse_listen_line
 from .binary import get_binary
 
-__version__ = "0.1.24"
+__version__ = "0.1.25"
 __all__ = [
     "scan_code",
     "execute_code",
