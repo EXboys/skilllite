@@ -15,8 +15,8 @@ default = []
 memory_vector = ["dep:sqlite-vec", "dep:zerocopy"]
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core", version = "0.1.23" }
-skilllite-fs = { path = "../skilllite-fs", version = "0.1.23" }
+skilllite-core = { path = "../skilllite-core", version = "0.1.24" }
+skilllite-fs = { path = "../skilllite-fs", version = "0.1.24" }
 anyhow = "1.0"
 thiserror.workspace = true
 serde = { version = "1", features = ["derive"] }

@@ -23,6 +23,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.1.24] - 2026-04-12
+
+### Release
+
+- **Version-only bump** to **0.1.24**: PyPI (and similar indexes) do not allow replacing already-uploaded artifacts for **0.1.23**; publishing fixed wheels/sdist requires a new version number. Workspace, Python SDK, and SkillLite Assistant (Tauri) pins aligned to **0.1.24**.
+
+---
+
 ## [0.1.23] - 2026-04-12
 
 ### Fixed
@@ -326,7 +334,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.23...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.24...HEAD
+[0.1.24]: https://github.com/EXboys/skilllite/releases/tag/v0.1.24
 [0.1.23]: https://github.com/EXboys/skilllite/releases/tag/v0.1.23
 [0.1.22]: https://github.com/EXboys/skilllite/releases/tag/v0.1.22
 [0.1.21]: https://github.com/EXboys/skilllite/releases/tag/v0.1.21
