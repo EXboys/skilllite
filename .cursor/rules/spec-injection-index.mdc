@@ -5,6 +5,8 @@ alwaysApply: true
 
 # Spec Injection Router
 
+`spec/` + `tasks/` apply to **developing this repo**, not to end-user or shipped-app runtime configuration (see **Repository scope** in `spec/README.md`).
+
 Before implementation, load `spec/README.md` and choose injected specs using its mapping and deterministic rules.
 
 ## Required Workflow

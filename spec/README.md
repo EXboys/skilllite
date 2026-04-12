@@ -2,6 +2,12 @@
 
 This directory defines short, enforceable rules that should be injected by task type.
 
+## Repository scope (read this first)
+
+- **`spec/`** and the companion **`tasks/`** workflow exist for **engineering this repository**: contributors and agents changing SkillLite code, docs, tests, and release surfaces **in this workspace**.
+- They are **not** the canonical model for **post-shipping or in-product configuration** (end-user machines, packaged app preferences, customer deployment policy, or “how operators configure a running SkillLite install”). Those belong to product/runtime documentation and whatever config paths the shipped software defines.
+- If work touches **user-visible install or runtime behavior**, still follow the relevant specs (for example `docs-sync.md`); do not reinterpret `tasks/TASK-.../` as end-user config storage.
+
 ## Specs
 
 - `verification-integrity.md`: **highest-priority** — anti-hallucination and anti-false-positive rules. Injected for ALL task types unconditionally.

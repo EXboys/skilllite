@@ -2,6 +2,10 @@
 
 This directory turns long-form TODO documents into executable task units with lifecycle tracking.
 
+## Scope
+
+`tasks/` tracks **work on this SkillLite repository** (delivery, review, validation). It is **not** where end-user or shipped-application runtime configuration lives. For that distinction, see **Repository scope** in `spec/README.md`.
+
 ## Goals
 
 - Replace "one giant TODO file" with small, independently shippable tasks.
