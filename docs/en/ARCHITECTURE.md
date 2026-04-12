@@ -1,6 +1,6 @@
 # SkillLite Project Architecture
 
-> **Note**: This document matches the root `Cargo.toml` `[workspace.package]` version (currently **v0.1.22**). Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~770 lines of Python under `python-sdk/skilllite/`) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`, `artifact_put`, `artifact_get`, and helpers.
+> **Note**: This document matches the root `Cargo.toml` `[workspace.package]` version (currently **v0.1.23**). Rust uses a Cargo workspace with modules split into separate crates; the Python SDK is a thin bridge layer (~770 lines of Python under `python-sdk/skilllite/`) exporting `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`, `artifact_put`, `artifact_get`, and helpers.
 >
 > **Entry points and domains**: For a one-page map of CLI / Python / MCP / Desktop / Swarm (what they are, which crates they use, one-line use case), see [Entry Points and Capability Domains](./ENTRYPOINTS-AND-DOMAINS.md). (中文版：[入口与能力域一览](../zh/ENTRYPOINTS-AND-DOMAINS.md))
 
@@ -163,7 +163,7 @@ skillLite/
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (thin bridge layer)
-│   ├── pyproject.toml             # Package config (v0.1.22, zero runtime deps)
+│   ├── pyproject.toml             # Package config (v0.1.23, zero runtime deps)
 │   └── skilllite/
 │       ├── __init__.py            # Public exports (API + artifacts helpers)
 │       ├── api.py                 # Core API (subprocess calls to skilllite binary)

@@ -1,6 +1,6 @@
 # SkillLite 项目架构文档
 
-> **说明**：本文档与根目录 `Cargo.toml` 中 `[workspace.package]` 版本一致（当前 **v0.1.22**）。Rust 为 Cargo workspace 多 crate；Python SDK 为薄桥接层（`python-sdk/skilllite/` 下约 770 行），导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`、`artifact_put`、`artifact_get` 等。
+> **说明**：本文档与根目录 `Cargo.toml` 中 `[workspace.package]` 版本一致（当前 **v0.1.23**）。Rust 为 Cargo workspace 多 crate；Python SDK 为薄桥接层（`python-sdk/skilllite/` 下约 770 行），导出 `scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`、`artifact_put`、`artifact_get` 等。
 >
 > **入口与能力域**：新人可先看 **[入口与能力域一览](./ENTRYPOINTS-AND-DOMAINS.md)**，一页理清 CLI / Python / MCP / Desktop / Swarm 各对应谁、依赖哪些 crate、适用场景。
 
@@ -161,7 +161,7 @@ skillLite/
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (薄桥接层)
-│   ├── pyproject.toml             # 包配置 (v0.1.22, 零运行时依赖)
+│   ├── pyproject.toml             # 包配置 (v0.1.23, 零运行时依赖)
 │   └── skilllite/
 │       ├── __init__.py            # 对外导出（核心 API + artifact 辅助）
 │       ├── api.py                 # 核心 API (subprocess 调用 skilllite 二进制)

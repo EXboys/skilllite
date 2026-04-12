@@ -23,6 +23,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ---
 
+## [0.1.23] - 2026-04-12
+
+### Fixed
+
+- **SkillLite Assistant (desktop / onboarding)**: First-run health check reported **「模型来源 / 尚未填写 API Key」** even when the user had entered a key. The webview invoked `skilllite_health_check` with **`api_key`**, but Tauri maps Rust `api_key` ↔ **`apiKey`** in JSON; the key was dropped server-side. The UI now sends **`apiKey`**; the command deserializes **`apiKey`** (and accepts legacy **`api_key`** via serde alias).
+
+### Release
+
+- Workspace, Python SDK, and SkillLite Assistant (Tauri) bumped to **0.1.23**; internal crate path dependency pins aligned to **0.1.23**.
+
+---
+
 ## [0.1.22] - 2026-04-08
 
 ### Added
@@ -314,7 +326,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.22...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.23...HEAD
+[0.1.23]: https://github.com/EXboys/skilllite/releases/tag/v0.1.23
 [0.1.22]: https://github.com/EXboys/skilllite/releases/tag/v0.1.22
 [0.1.21]: https://github.com/EXboys/skilllite/releases/tag/v0.1.21
 [0.1.20]: https://github.com/EXboys/skilllite/releases/tag/v0.1.20
