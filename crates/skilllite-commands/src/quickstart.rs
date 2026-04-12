@@ -56,6 +56,7 @@ const PROVIDERS: &[LlmProvider] = &[
 
 /// `skilllite quickstart`
 pub fn cmd_quickstart(skills_dir: &str) -> Result<()> {
+    crate::init::reject_relative_skills_dir_when_cwd_root(skills_dir)?;
     let skills_path = crate::init::resolve_path_with_legacy_fallback(skills_dir);
 
     eprintln!("🚀 SkillLite Quickstart");

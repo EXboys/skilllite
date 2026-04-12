@@ -605,7 +605,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 type="text"
                 value={workspace}
                 onChange={(e) => setWorkspace(e.target.value)}
-                placeholder="."
+                placeholder={t("settings.workspacePathPlaceholder")}
                 className={`flex-1 min-w-0 ${inputCls}`}
               />
               <button
@@ -622,6 +622,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 .skilllite/schedule.json
               </code>
               {t("settings.workspaceHintSuffix")}
+            </p>
+            <p className="mt-1 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+              {t("settings.workspaceDefaultNote")}
             </p>
           </div>
 

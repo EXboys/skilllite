@@ -75,7 +75,8 @@ const defaultSettings: Settings = {
   provider: "api",
   apiKey: "",
   model: "gpt-4o",
-  workspace: ".",
+  /** 空串表示尚未解析；桌面端启动后会落为 `Documents/SkillLite` 等绝对路径 */
+  workspace: "",
   apiBase: "",
   locale: "zh",
   onboardingCompleted: false,

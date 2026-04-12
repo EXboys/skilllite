@@ -15,6 +15,7 @@ import { useIdeFileOpenerStore } from "../stores/useIdeFileOpenerStore";
 import { useSessionStore } from "../stores/useSessionStore";
 import { useUiToastStore } from "../stores/useUiToastStore";
 import { useI18n } from "../i18n";
+import { useEnsureDefaultWorkspace } from "../hooks/useEnsureDefaultWorkspace";
 
 const IDE_MIN_EDITOR_PX = 160;
 const IDE_DEFAULT_SIDEBAR_PX = 220;
@@ -49,6 +50,7 @@ export default function MainLayout() {
     };
   }, []);
   const { settings, setSettings } = useSettingsStore();
+  useEnsureDefaultWorkspace();
   const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
   const leftPanelCollapsed = settings.sessionPanelCollapsed ?? false;
   const setLeftPanelCollapsed = (v: boolean) => setSettings({ sessionPanelCollapsed: v });

@@ -434,6 +434,9 @@ export const enMessages: Record<string, string> = {
   "settings.workspacePath": "Workspace path",
   "settings.workspaceHintPrefix": "After changing path, the Schedule tab loads ",
   "settings.workspaceHintSuffix": " for that workspace.",
+  "settings.workspaceDefaultNote":
+    "On first launch we use Documents/SkillLite (writable). Point to your repo root when working on a project so .env and skills resolve correctly.",
+  "settings.workspacePathPlaceholder": "e.g. /Users/you/Documents/SkillLite",
   "settings.uninstall.title": "Uninstall & data",
   "settings.uninstall.introPrimary":
     "Remove the app only, or wipe local assistant data first (UI settings, sessions, transcripts).",

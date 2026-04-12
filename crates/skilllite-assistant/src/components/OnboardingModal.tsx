@@ -268,7 +268,6 @@ export default function OnboardingModal() {
           onClick={() =>
             setSettings({
               onboardingCompleted: true,
-              workspace: ".",
               showStarterPrompts: false,
             })
           }

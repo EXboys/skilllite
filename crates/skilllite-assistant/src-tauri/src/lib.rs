@@ -272,6 +272,11 @@ async fn skilllite_remove_skills(
 }
 
 #[tauri::command]
+fn skilllite_default_workspace() -> Result<String, String> {
+    skilllite_bridge::default_writable_workspace_dir()
+}
+
+#[tauri::command]
 async fn skilllite_init_workspace(app: tauri::AppHandle, dir: String) -> Result<(), String> {
     let path = skilllite_bridge::resolve_skilllite_path_app(&app);
     tauri::async_runtime::spawn_blocking(move || skilllite_bridge::init_workspace(&dir, &path))
@@ -834,6 +839,7 @@ pub fn run() {
             skilllite_repair_skills,
             skilllite_add_skill,
             skilllite_remove_skills,
+            skilllite_default_workspace,
             skilllite_init_workspace,
             skilllite_probe_ollama,
             skilllite_runtime_status,

@@ -22,7 +22,7 @@ pub use chat::{
 pub use followup_suggestions::followup_chat_suggestions;
 pub use integrations::*;
 pub(crate) use paths::load_dotenv_for_child;
-pub use paths::resolve_skilllite_path_app;
+pub use paths::{default_writable_workspace_dir, resolve_skilllite_path_app};
 pub use sessions::*;
 pub use transcript::{clear_transcript, load_transcript, TranscriptMessage};
 pub use workspace::*;

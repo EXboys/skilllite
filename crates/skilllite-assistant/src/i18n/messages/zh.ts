@@ -414,6 +414,9 @@ export const zhMessages: Record<string, string> = {
   "settings.workspacePath": "工作区路径",
   "settings.workspaceHintPrefix": "修改路径后，「定时任务」页会按新路径加载 ",
   "settings.workspaceHintSuffix": "。",
+  "settings.workspaceDefaultNote":
+    "首次打开会自动使用「文档/SkillLite」（可写）。开发时请改为你的项目根目录，以便读取 .env 与 skills。",
+  "settings.workspacePathPlaceholder": "例如 /Users/你/Documents/SkillLite",
   "settings.uninstall.title": "卸载与数据",
   "settings.uninstall.introPrimary":
     "可只移除本程序；若不再需要本地记录，也可在卸载前一并删除助手数据（界面设置、会话与 transcript 等）。",

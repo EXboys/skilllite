@@ -11,11 +11,25 @@ fn has_known_skill_root(dir: &Path) -> bool {
         .any(|entry| dir.join(entry).is_dir())
 }
 
+/// Prefer `Documents/SkillLite` over `"."` so GUI apps (cwd often `/`) do not resolve to `/`.
+fn inferred_default_workspace_root() -> PathBuf {
+    dirs::document_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(std::env::temp_dir)
+        .join("SkillLite")
+}
+
 /// Find project root (dir containing any supported skill root) by walking up from start path.
 pub(crate) fn find_project_root(start: &str) -> PathBuf {
-    let mut dir = Path::new(start)
+    let t = start.trim();
+    let start_path = if t.is_empty() || t == "." {
+        inferred_default_workspace_root()
+    } else {
+        PathBuf::from(t)
+    };
+    let mut dir = start_path
         .canonicalize()
-        .unwrap_or_else(|_| Path::new(start).to_path_buf());
+        .unwrap_or_else(|_| start_path.clone());
     let original = dir.clone();
     let mut best_match = None;
     for _ in 0..10 {
@@ -30,8 +44,15 @@ pub(crate) fn find_project_root(start: &str) -> PathBuf {
 }
 
 /// Load .env from workspace and parents for subprocess env.
+/// Treats `""` / `"."` like [`find_project_root`] so GUI cwd (`/` or `System32`) does not break lookup.
 pub(crate) fn load_dotenv_for_child(workspace: &str) -> Vec<(String, String)> {
-    skilllite_core::config::parse_dotenv_walking_up(Path::new(workspace), 5)
+    let t = workspace.trim();
+    let base = if t.is_empty() || t == "." {
+        inferred_default_workspace_root()
+    } else {
+        PathBuf::from(t)
+    };
+    skilllite_core::config::parse_dotenv_walking_up(&base, 5)
 }
 
 pub(crate) fn skilllite_chat_root() -> PathBuf {
@@ -124,6 +145,19 @@ pub fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> PathBuf {
         exe_name
     );
     PathBuf::from(exe_name)
+}
+
+/// Default workspace for first-run / GUI: `Documents/SkillLite` (created if missing).
+/// Avoids `"."` which resolves against the app process cwd (often `/` on macOS) and causes
+/// permission errors on `/skills` and similar.
+pub fn default_writable_workspace_dir() -> Result<String, String> {
+    let base = dirs::document_dir()
+        .or_else(dirs::home_dir)
+        .ok_or_else(|| "无法解析用户文档或主目录".to_string())?;
+    let dir = base.join("SkillLite");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建默认工作区: {}", e))?;
+    let abs = std::fs::canonicalize(&dir).unwrap_or(dir);
+    Ok(abs.to_string_lossy().to_string())
 }
 
 #[cfg(test)]

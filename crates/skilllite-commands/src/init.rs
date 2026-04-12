@@ -20,6 +20,71 @@ use skilllite_core::skill::dependency_resolver;
 use skilllite_core::skill::discovery;
 use skilllite_core::skill::metadata;
 
+/// True when `cwd` is a typical GUI / launcher default (not a project dir). Relative `skills_dir`
+/// would resolve under it and often hit permission errors or wrong location.
+fn cwd_is_untrusted_for_relative_skills(cwd: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        return cwd == Path::new("/");
+    }
+    #[cfg(windows)]
+    {
+        return windows_cwd_untrusted_for_relative_skills(cwd);
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = cwd;
+        false
+    }
+}
+
+#[cfg(windows)]
+fn windows_cwd_untrusted_for_relative_skills(cwd: &Path) -> bool {
+    let lower = cwd.to_string_lossy().to_ascii_lowercase();
+    // Double-clicked / service-style defaults — not a repo root.
+    if lower.contains("\\windows\\system32") {
+        return true;
+    }
+    if lower.contains("\\program files\\")
+        || lower.ends_with("\\program files")
+        || lower.contains("\\program files (x86)\\")
+        || lower.ends_with("\\program files (x86)")
+    {
+        return true;
+    }
+    if let Ok(sr) = std::env::var("SYSTEMROOT") {
+        let sr = Path::new(&sr);
+        if let (Ok(c), Ok(s)) = (cwd.canonicalize(), sr.canonicalize()) {
+            let sys32 = s.join("System32");
+            if let Ok(s32) = sys32.canonicalize() {
+                if c == s32 || c.starts_with(&s32) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// When the process cwd is untrusted (e.g. `/` on macOS GUI, `System32` on Windows) and
+/// `skills_dir` is relative, resolving `skills` would land in a bad path (read-only or wrong tree).
+pub(crate) fn reject_relative_skills_dir_when_cwd_root(skills_dir: &str) -> Result<()> {
+    if Path::new(skills_dir).is_absolute() {
+        return Ok(());
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if cwd_is_untrusted_for_relative_skills(&cwd) {
+        bail!(
+            "当前工作目录 {:?} 不适合解析相对 skills 路径 {:?}（将写入 {}）。\
+             请先在项目目录下打开终端再执行，或使用：skilllite init -s <skills 目录的绝对路径>",
+            cwd,
+            skills_dir,
+            cwd.join(skills_dir).display()
+        );
+    }
+    Ok(())
+}
+
 /// `skilllite init`
 pub fn cmd_init(
     skills_dir: &str,
@@ -29,6 +94,7 @@ pub fn cmd_init(
     force: bool,
     use_llm: bool,
 ) -> Result<()> {
+    reject_relative_skills_dir_when_cwd_root(skills_dir)?;
     let skills_path = resolve_path_with_legacy_fallback(skills_dir);
 
     eprintln!("🚀 Initializing SkillLite project...");
@@ -547,4 +613,21 @@ fn print_summary(skills_path: &Path, skills: &[String]) {
     eprintln!("   3. Start chat:    skilllite chat");
     eprintln!("   4. Or quickstart: skilllite quickstart");
     eprintln!("{}", "═".repeat(50));
+}
+
+#[cfg(test)]
+mod cwd_trust_tests {
+    use std::path::Path;
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_root_is_untrusted_for_relative_skills() {
+        assert!(super::cwd_is_untrusted_for_relative_skills(Path::new("/")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unix_projectish_dir_is_trusted() {
+        assert!(!super::cwd_is_untrusted_for_relative_skills(Path::new("/tmp")));
+    }
 }

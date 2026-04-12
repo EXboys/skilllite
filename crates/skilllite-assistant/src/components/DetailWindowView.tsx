@@ -21,6 +21,7 @@ import {
   parseDetailModuleFromHash,
 } from "../utils/detailWindow";
 import { SETTINGS_STORE_PERSIST_KEY, useSettingsStore } from "../stores/useSettingsStore";
+import { useEnsureDefaultWorkspace } from "../hooks/useEnsureDefaultWorkspace";
 
 /** 读取失败时在 state 中使用的哨兵，避免把某语言文案写死进比较逻辑 */
 const DETAIL_READ_FAILED = "__DETAIL_READ_FAILED__";
@@ -472,6 +473,7 @@ function OutputFileContent({ files, workspace }: { files: string[]; workspace: s
 
 export default function DetailWindowView() {
   const { t } = useI18n();
+  useEnsureDefaultWorkspace();
   const [module, setModule] = useState<DetailModule | null>(null);
   const { refreshRecentData } = useRecentData();
   const { tasks, logEntries, logFiles, memoryHints, memoryFiles, outputFiles } = useStatusStore();

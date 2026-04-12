@@ -12,6 +12,7 @@ use crate::Result;
 
 /// `skilllite reindex`
 pub fn cmd_reindex(skills_dir: &str, verbose: bool, rebuild_manifest: bool) -> Result<()> {
+    crate::init::reject_relative_skills_dir_when_cwd_root(skills_dir)?;
     let skills_path = crate::init::resolve_path_with_legacy_fallback(skills_dir);
 
     if !skills_path.exists() {

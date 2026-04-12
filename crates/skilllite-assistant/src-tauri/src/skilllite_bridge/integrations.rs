@@ -1629,12 +1629,27 @@ fn check_data_dir() -> HealthCheckItem {
 
 /// Run `skilllite init` in the given directory. Creates .skills and example content.
 pub fn init_workspace(dir: &str, skilllite_path: &std::path::Path) -> Result<(), String> {
-    let path = std::path::Path::new(dir);
+    let trimmed = dir.trim();
+    if trimmed.is_empty() {
+        return Err("工作区路径为空".to_string());
+    }
+    let path = std::path::Path::new(trimmed);
+    if !path.is_absolute() {
+        return Err(
+            "初始化技能需要工作区的绝对路径。请在「设置 → 工作区」点击「浏览」选择项目文件夹；\
+             不要将路径设为「.」或相对路径。（桌面应用进程的工作目录常为 /，使用「.」会在 /skills 创建目录并失败。）"
+                .to_string(),
+        );
+    }
     if !path.is_dir() {
         return Err("目录不存在".to_string());
     }
+    let path = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if path == std::path::Path::new("/") {
+        return Err("不能使用根目录 / 作为工作区".to_string());
+    }
     let mut cmd = std::process::Command::new(skilllite_path);
-    cmd.arg("init").current_dir(path);
+    cmd.arg("init").current_dir(&path);
     let output = cmd
         .output()
         .map_err(|e| format!("执行 skilllite init 失败: {}", e))?;
