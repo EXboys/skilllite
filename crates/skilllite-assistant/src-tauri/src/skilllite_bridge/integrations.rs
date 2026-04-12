@@ -1478,6 +1478,16 @@ pub enum OnboardingProvider {
     Ollama,
 }
 
+/// 反序列化时接受 `apiKey`（Tauri 与 Rust `api_key` 的约定映射）以及历史误用的 `api_key`。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OnboardingHealthCheckInput {
+    pub workspace: String,
+    pub provider: OnboardingProvider,
+    #[serde(default, alias = "api_key")]
+    pub api_key: Option<String>,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct HealthCheckItem {
     pub ok: bool,
@@ -1801,4 +1811,24 @@ pub fn write_schedule_json(workspace: &str, json: &str) -> Result<(), String> {
     let file: skilllite_core::schedule::ScheduleFile =
         serde_json::from_str(json).map_err(|e| format!("schedule.json: {}", e))?;
     skilllite_core::schedule::save_schedule(Path::new(workspace), &file)
+}
+
+#[cfg(test)]
+mod onboarding_health_check_input_tests {
+    use super::OnboardingHealthCheckInput;
+
+    #[test]
+    fn deserializes_api_key_camel_case() {
+        let j = r#"{"workspace":"/tmp/ws","provider":"api","apiKey":"sk-test"}"#;
+        let v: OnboardingHealthCheckInput = serde_json::from_str(j).unwrap();
+        assert_eq!(v.workspace, "/tmp/ws");
+        assert_eq!(v.api_key.as_deref(), Some("sk-test"));
+    }
+
+    #[test]
+    fn deserializes_api_key_snake_case_alias() {
+        let j = r#"{"workspace":"/tmp/ws","provider":"api","api_key":"sk-legacy"}"#;
+        let v: OnboardingHealthCheckInput = serde_json::from_str(j).unwrap();
+        assert_eq!(v.api_key.as_deref(), Some("sk-legacy"));
+    }
 }

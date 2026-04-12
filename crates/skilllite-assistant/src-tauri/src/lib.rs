@@ -669,11 +669,12 @@ async fn skilllite_write_schedule(workspace: String, json: String) -> Result<(),
 #[tauri::command]
 async fn skilllite_health_check(
     app: tauri::AppHandle,
-    workspace: String,
-    provider: skilllite_bridge::OnboardingProvider,
-    api_key: Option<String>,
+    input: skilllite_bridge::OnboardingHealthCheckInput,
 ) -> skilllite_bridge::OnboardingHealthCheckResult {
     let path = skilllite_bridge::resolve_skilllite_path_app(&app);
+    let workspace = input.workspace.trim().to_string();
+    let provider = input.provider;
+    let api_key = input.api_key;
     tauri::async_runtime::spawn_blocking(move || {
         skilllite_bridge::run_onboarding_health_check(
             &path,
