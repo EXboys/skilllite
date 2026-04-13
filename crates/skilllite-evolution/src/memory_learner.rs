@@ -504,6 +504,20 @@ pub async fn evolve_memory<L: EvolutionLlm>(
     )])
 }
 
+/// Row ids fed into memory knowledge extraction (same filter as `query_decisions_for_memory`).
+pub(crate) fn decision_ids_read_for_memory_evolution(conn: &Connection) -> Result<Vec<i64>> {
+    let recent = memory_recent_days_sql();
+    let limit = memory_decision_limit();
+    let sql = format!(
+        "SELECT id FROM decisions
+         WHERE ts >= datetime('now', '{recent}') AND task_description IS NOT NULL
+         ORDER BY ts DESC LIMIT {limit}"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
 fn query_decisions_for_memory(conn: &Connection) -> Result<String> {
     let recent = memory_recent_days_sql();
     let limit = memory_decision_limit();

@@ -4,7 +4,7 @@ use std::path::Path;
 
 use rusqlite::{params, Connection};
 
-use crate::audit::{log_evolution_event, mark_decisions_evolved};
+use crate::audit::{decision_ids_to_mark_after_run, log_evolution_event, mark_decisions_evolved};
 use crate::changelog::append_changelog;
 use crate::config::{EvolutionMode, SkillAction};
 use crate::external_learner;
@@ -335,7 +335,12 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             }
         }
 
-        mark_decisions_evolved(&conn, &scope.decision_ids)?;
+        let mut ids_to_mark = decision_ids_to_mark_after_run(&conn, &scope, force)?;
+        if ids_to_mark.is_empty() && !all_changes.is_empty() {
+            // Fallback: learners produced file/skill changes but id collection missed (e.g. refine-only paths).
+            ids_to_mark.clone_from(&scope.decision_ids);
+        }
+        mark_decisions_evolved(&conn, &ids_to_mark)?;
         let _ = feedback::update_daily_metrics(&conn);
         let auto_rolled_back = check_auto_rollback(&conn, chat_root, skills_root)?;
         if auto_rolled_back {

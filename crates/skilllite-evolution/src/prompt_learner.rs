@@ -566,6 +566,62 @@ pub fn update_reusable_status(conn: &Connection, chat_root: &Path) -> Result<()>
     Ok(())
 }
 
+/// Row ids whose text is loaded for rule extraction / example generation (subset of a proposal window).
+pub(crate) fn decision_ids_read_for_prompt_evolution(conn: &Connection) -> Result<Vec<i64>> {
+    use std::collections::HashSet;
+
+    let mut seen: HashSet<i64> = HashSet::new();
+    let mut out: Vec<i64> = Vec::new();
+    let rule_limit = prompt_rule_summary_limit();
+    let push_ids = |conn: &Connection,
+                    cond: &str,
+                    lim: i64,
+                    seen: &mut HashSet<i64>,
+                    out: &mut Vec<i64>|
+     -> Result<()> {
+        let sql = format!(
+            "SELECT id FROM decisions WHERE {cond} AND task_description IS NOT NULL ORDER BY ts DESC LIMIT {lim}"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+        for r in rows.filter_map(|x| x.ok()) {
+            if seen.insert(r) {
+                out.push(r);
+            }
+        }
+        Ok(())
+    };
+
+    push_ids(
+        conn,
+        "evolved = 0 AND task_completed = 1 AND replans = 0 AND failed_tools = 0",
+        rule_limit,
+        &mut seen,
+        &mut out,
+    )?;
+    push_ids(
+        conn,
+        "evolved = 0 AND (replans > 0 OR failed_tools > 0)",
+        rule_limit,
+        &mut seen,
+        &mut out,
+    )?;
+
+    let min_tools = prompt_example_min_tools();
+    let example_sql = format!(
+        "SELECT id FROM decisions WHERE evolved = 0 AND task_completed = 1 AND replans = 0
+               AND failed_tools = 0 AND total_tools >= {min_tools} AND task_description IS NOT NULL
+         ORDER BY total_tools DESC LIMIT 1"
+    );
+    if let Ok(id) = conn.query_row(&example_sql, [], |row| row.get::<_, i64>(0)) {
+        if seen.insert(id) {
+            out.push(id);
+        }
+    }
+
+    Ok(out)
+}
+
 fn query_decisions_summary(conn: &Connection, successful: bool, limit: i64) -> Result<String> {
     let condition = if successful {
         "evolved = 0 AND task_completed = 1 AND replans = 0 AND failed_tools = 0"

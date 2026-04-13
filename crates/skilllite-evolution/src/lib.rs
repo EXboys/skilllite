@@ -31,7 +31,7 @@ pub mod snapshots;
 
 pub use error::{Error, Result};
 
-pub use audit::{log_evolution_event, mark_decisions_evolved};
+pub use audit::{decision_ids_to_mark_after_run, log_evolution_event, mark_decisions_evolved};
 pub use changelog::append_changelog;
 pub use config::{EvolutionMode, EvolutionProfile, EvolutionThresholds, SkillAction};
 pub use gatekeeper::{

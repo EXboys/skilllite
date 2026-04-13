@@ -28,6 +28,8 @@ mod validate;
 use std::collections::HashSet;
 use std::path::Path;
 
+use rusqlite::Connection;
+
 use crate::error::bail;
 use crate::Result;
 use tokio::task::block_in_place;
@@ -180,6 +182,30 @@ pub async fn evolve_skills<L: EvolutionLlm>(
     });
 
     Ok(changes)
+}
+
+/// Decision ids whose rows are read for skill generation inputs (repeated successes + recent failures).
+pub(crate) fn decision_ids_read_for_skill_evolution(
+    conn: &Connection,
+    try_generate: bool,
+    force: bool,
+) -> Result<Vec<i64>> {
+    if !try_generate {
+        return Ok(Vec::new());
+    }
+    let min_pattern_count: u32 = std::env::var("SKILLLITE_MIN_PATTERN_COUNT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(if force { 2 } else { 3 });
+    let mut acc: HashSet<i64> = HashSet::new();
+    let (_, pattern_descs) = query::query_repeated_patterns(conn, min_pattern_count)?;
+    for id in query::query_pattern_execution_ids(conn, &pattern_descs)? {
+        acc.insert(id);
+    }
+    for id in query::query_failed_execution_ids(conn)? {
+        acc.insert(id);
+    }
+    Ok(acc.into_iter().collect())
 }
 
 // ─── A10: Pending skill confirmation ─────────────────────────────────────────

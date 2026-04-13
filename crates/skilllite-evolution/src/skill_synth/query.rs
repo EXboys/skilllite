@@ -95,6 +95,47 @@ pub(super) fn query_failed_executions(conn: &Connection) -> Result<String> {
     Ok(rows.join("\n"))
 }
 
+/// Recent failed execution row ids (same filter as `query_failed_executions`).
+pub(super) fn query_failed_execution_ids(conn: &Connection) -> Result<Vec<i64>> {
+    let (recent_cond, recent_limit) = recent_decisions_condition();
+    let sql = format!(
+        "SELECT id FROM decisions
+         WHERE {recent_cond} AND (task_completed = 0 OR failed_tools > 0) AND task_description IS NOT NULL
+         ORDER BY ts DESC LIMIT {recent_limit}"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+/// Successful execution row ids for the given task descriptions (aligned with `query_pattern_executions`).
+pub(super) fn query_pattern_execution_ids(
+    conn: &Connection,
+    task_descriptions: &[String],
+) -> Result<Vec<i64>> {
+    if task_descriptions.is_empty() {
+        return Ok(Vec::new());
+    }
+    let placeholders = task_descriptions
+        .iter()
+        .enumerate()
+        .map(|(i, _)| format!("?{}", i + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let (recent_cond, recent_limit) = recent_decisions_condition();
+    let sql = format!(
+        "SELECT id FROM decisions
+         WHERE {recent_cond} AND task_completed = 1 AND task_description IN ({placeholders})
+         ORDER BY ts DESC LIMIT {recent_limit}"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(
+        rusqlite::params_from_iter(task_descriptions.iter()),
+        |row| row.get::<_, i64>(0),
+    )?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
 /// Returns `(display_string, task_desc_list)`.
 /// `display_string` is the human-readable summary sent to the LLM prompt.
 /// `task_desc_list` is the raw task descriptions used to filter matching executions.
