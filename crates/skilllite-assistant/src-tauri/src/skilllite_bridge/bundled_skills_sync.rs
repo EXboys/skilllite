@@ -155,8 +155,8 @@ pub fn sync_bundled_skills_from_resources(
     }
 
     let workspace_root = super::paths::find_project_root(workspace_raw);
-    let skills_target = resolve_skills_dir_with_legacy_fallback(&workspace_root, "skills")
-        .effective_path;
+    let skills_target =
+        resolve_skills_dir_with_legacy_fallback(&workspace_root, "skills").effective_path;
     fs::create_dir_all(&skills_target)
         .map_err(|e| format!("create {}: {}", skills_target.display(), e))?;
 

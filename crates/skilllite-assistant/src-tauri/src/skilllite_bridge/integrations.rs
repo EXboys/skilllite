@@ -606,13 +606,10 @@ pub fn load_evolution_status(
                 skilllite_evolution::would_have_evolution_proposals(&conn, mode.clone(), false)
                     .unwrap_or(false);
             if !would_have_evolution_proposals {
-                empty_proposals_reason = skilllite_evolution::describe_empty_evolution_proposals(
-                    &conn,
-                    &mode,
-                    false,
-                )
-                .ok()
-                .map(str::to_string);
+                empty_proposals_reason =
+                    skilllite_evolution::describe_empty_evolution_proposals(&conn, &mode, false)
+                        .ok()
+                        .map(str::to_string);
             }
 
             if let Ok(mut stmt) = conn.prepare(
@@ -1401,7 +1398,8 @@ mod skill_discovery_tests {
 
         let evolved_skill = tmp.join(".skills").join("_evolved").join("evolved-skill");
         std::fs::create_dir_all(evolved_skill.join("scripts")).expect("evolved scripts");
-        std::fs::write(evolved_skill.join("SKILL.md"), "name: evolved-skill\n").expect("evolved md");
+        std::fs::write(evolved_skill.join("SKILL.md"), "name: evolved-skill\n")
+            .expect("evolved md");
         std::fs::write(
             evolved_skill.join("scripts").join("run.py"),
             "print('ok')\n",

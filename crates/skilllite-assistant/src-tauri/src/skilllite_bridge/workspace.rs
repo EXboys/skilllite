@@ -578,7 +578,9 @@ pub fn read_workspace_text_file(workspace: &str, relative_path: &str) -> Result<
     if !normalized.is_file() {
         return Err("文件不存在".to_string());
     }
-    std::fs::read_to_string(&normalized).map_err(|e| e.to_string())
+    let bytes = std::fs::read(&normalized).map_err(|e| e.to_string())?;
+    String::from_utf8(bytes)
+        .map_err(|_| "该文件不是 UTF-8 文本（可能为二进制），无法在 IDE 中按文本编辑。".to_string())
 }
 
 /// Absolute filesystem path for an existing workspace file (for WebView `convertFileSrc` image/video preview).
@@ -639,6 +641,11 @@ fn skip_ide_walk_dir(name: &str) -> bool {
     )
 }
 
+/// macOS / Windows junk files: not useful in the IDE tree and often non-UTF8 if opened as text.
+fn skip_ide_list_file(name: &str) -> bool {
+    matches!(name, ".DS_Store" | "Thumbs.db")
+}
+
 fn walk_workspace_entries(
     root: &std::path::Path,
     dir: &std::path::Path,
@@ -675,6 +682,9 @@ fn walk_workspace_entries(
         };
         let rel_str = rel.to_string_lossy().replace('\\', "/");
         if rel_str.is_empty() || rel_str.ends_with('/') {
+            continue;
+        }
+        if path.is_file() && skip_ide_list_file(name_s.as_ref()) {
             continue;
         }
         if workspace_write_path_blocked(&path) {
@@ -751,5 +761,53 @@ mod workspace_path_tests {
         let p = std::path::Path::new(&got);
         assert!(p.is_absolute(), "{}", got);
         assert!(p.is_file(), "{}", got);
+    }
+
+    #[test]
+    fn list_workspace_entries_omits_ds_store_and_thumbs_db() {
+        let tmp = std::env::temp_dir().join(format!("skilllite_ws_junk_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join(".DS_Store"), [0u8, 1, 2, 255]).unwrap();
+        std::fs::write(tmp.join("Thumbs.db"), [1u8, 2, 3]).unwrap();
+        std::fs::write(tmp.join("readme.txt"), "ok").unwrap();
+        let ws = tmp.to_string_lossy().into_owned();
+        let got = list_workspace_entries(&ws).unwrap();
+        let paths: Vec<_> = got
+            .entries
+            .iter()
+            .map(|e| e.relative_path.as_str())
+            .collect();
+        assert!(paths.contains(&"readme.txt"), "{:?}", paths);
+        assert!(
+            !paths.iter().any(|p| p.ends_with(".DS_Store")),
+            "unexpected: {:?}",
+            paths
+        );
+        assert!(
+            !paths.iter().any(|p| p.ends_with("Thumbs.db")),
+            "unexpected: {:?}",
+            paths
+        );
+    }
+
+    #[test]
+    fn read_workspace_text_file_invalid_utf8_returns_stable_message() {
+        let tmp = std::env::temp_dir().join(format!("skilllite_ws_utf8_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("bad.bin"), [0xC0u8, 0xAF]).unwrap();
+        let ws = tmp.to_string_lossy().into_owned();
+        let err = read_workspace_text_file(&ws, "bad.bin").unwrap_err();
+        assert!(
+            err.contains("UTF-8") || err.contains("utf-8"),
+            "unexpected: {}",
+            err
+        );
+        assert!(
+            !err.to_lowercase().contains("stream"),
+            "should not leak raw std message: {}",
+            err
+        );
     }
 }
