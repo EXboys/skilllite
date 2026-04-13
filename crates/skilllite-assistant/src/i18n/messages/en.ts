@@ -268,6 +268,8 @@ export const enMessages: Record<string, string> = {
     "Power users can also set the same keys via environment variables for the workspace (see docs). Set SKILLLITE_EVOLUTION_SNAPSHOT_KEEP=0 to keep all prompt snapshots; SKILLLITE_EVOLUTION=0 disables evolution.",
   "evolution.summary.profile": "Threshold preset",
   "evolution.summary.cooldown": "Passive cooldown",
+  "evolution.summary.lastEvolutionAttempt":
+    "Last logged evolution execution (material or no-output)",
 
   "evolution.log.sectionRecent": "Recent evolution events",
   "evolution.log.rowOpenDiffTitle":
@@ -286,7 +288,8 @@ export const enMessages: Record<string, string> = {
   "evolution.log.type.evolution_run_scope": "Evolution scope snapshot",
   "evolution.log.type.evolution_shallow_skip": "Shallow preflight skip",
   "evolution.log.type.rule_extraction_parse_failed": "Rule extraction parse failed",
-  "evolution.log.type.evolution_run": "Evolution run",
+  "evolution.log.type.evolution_run": "Evolution run (material)",
+  "evolution.log.type.evolution_run_noop": "Evolution run (no output)",
   "evolution.log.type.evolution_proposal": "Proposal update",
   "evolution.log.type.evolution_proposal_denied": "Proposal denied",
   "evolution.log.type.evolution_proposal_missing": "Proposal missing",

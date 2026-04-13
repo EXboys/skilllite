@@ -225,13 +225,13 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `SKILLLITE_EVOLUTION` | string | `1` | Evolution mode: `1`/`true` all enabled, `0`/`false` disabled, `prompts`/`memory`/`skills` for specific dimensions only |
-| `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | Daily evolution cap |
+| `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | Daily evolution cap (counts `evolution_log` rows `evolution_run` **and** `evolution_run_noop`; scheduler-only `evolution_run_outcome` rows do not count) |
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `600` | **A9** Periodic trigger interval (seconds). Default 10 min; each tick may spawn `evolution run` when growth scheduling says “due” |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** OR-trigger: when raw unprocessed decision rows (`evolved = 0`, any tool count) ≥ this value, growth is due |
 | `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN` | int | `3` | **A9** Weighted sum over the latest `SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW` meaningful unprocessed decisions (`total_tools ≥ 1`); weight 2 if `feedback = neg` or `failed_tools > 0`, else 1. Growth is due when sum ≥ this |
 | `SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW` | int | `10` | **A9** How many latest meaningful unprocessed decisions participate in the weighted sum |
-| `SKILLLITE_EVO_SWEEP_INTERVAL_SECS` | int | `86400` | **A9** If no `evolution_run` log for this many seconds and weighted sum ≥ 1, growth is due (low-priority catch-up) |
-| `SKILLLITE_EVO_MIN_RUN_GAP_SEC` | int | `0` | **A9** Minimum seconds since last `evolution_run` before another autorun; `0` disables |
+| `SKILLLITE_EVO_SWEEP_INTERVAL_SECS` | int | `86400` | **A9** If no **material** `evolution_run` log (`type = evolution_run`, not `evolution_run_noop`) for this many seconds and weighted sum ≥ 1, growth is due (low-priority catch-up) |
+| `SKILLLITE_EVO_MIN_RUN_GAP_SEC` | int | `0` | **A9** Minimum seconds since last **material** `evolution_run` before another autorun; `0` disables (`evolution_run_noop` does not satisfy the gap) |
 | `SKILLLITE_EVO_SHALLOW_PREFLIGHT` | bool | `1` | **Run** When `1`, skip snapshot + learners if weighted/unprocessed backlog is empty and skills dir / external learning do not require work (reduces periodic **NoOp** cost; may defer one tick of prompt **rule retirement**). Set `0` to disable |
 | `SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS` | int | `10` | Minimum count of stable successful unprocessed decisions before **active** evolution proposals are built (separate from A9 growth spawn) |
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | Max number of evolution txn snapshot dirs under `chat/prompts/_versions/` (oldest removed first by directory name). **`0` = never prune** — keeps full local prompt history without Git; disk use grows with runs |
@@ -253,7 +253,7 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `1` | Cooldown (hours) after last evolution; no trigger within this window |
+| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `1` | Cooldown (hours) after last **material** evolution (`evolution_run`); `evolution_run_noop` does not reset this clock |
 | `SKILLLITE_EVO_RECENT_DAYS` | int | `7` | Time window (days) for decision statistics |
 | `SKILLLITE_EVO_RECENT_LIMIT` | int | `100` | Max number of decisions to consider in the window |
 | `SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS` | int | `2` | Min tool calls per decision to count as "meaningful" |
@@ -277,9 +277,9 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 | `SKILLLITE_EVO_SKILL_QUERY_DECISION_LIMIT` | int | `100` | Skill synth SQL: max rows scanned in that window |
 | `SKILLLITE_EVO_SKILL_FAILURE_SAMPLE_LIMIT` | int | `5` | Max failure-context rows sampled per skill |
 
-**Extra evolution audit event types**: `evolution_run_scope` (scope JSON before full learners), `evolution_shallow_skip` (shallow preflight skip), `rule_extraction_parse_failed` (rule JSON parse failure).
+**Extra evolution audit event types**: `evolution_run_scope` (scope JSON before full learners), `evolution_shallow_skip` (shallow preflight skip), `rule_extraction_parse_failed` (rule JSON parse failure), `evolution_run_noop` (execution finished with no changelog rows — timeline + daily cap; passive cooldown still uses **material** `evolution_run` only).
 
-**Evolution triggers (A9)**: Growth scheduling (`skilllite-evolution::growth_schedule`) marks a run **due** when **any** of: **periodic** interval elapsed (`SKILLLITE_EVOLUTION_INTERVAL_SECS`, default 10 min), **weighted signals** over a sliding window (≥ `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN`, default 3), **raw backlog** (unprocessed rows ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`, default 10), or **sweep** (long idle + weighted ≥ 1). **`SKILLLITE_EVO_MIN_RUN_GAP_SEC`** can throttle consecutive autoruns. **`ChatSession`** (`skilllite chat` / `agent-rpc` subprocess) runs timers in-process; **SkillLite Assistant** spawns `skilllite evolution run` from **Life Pulse** with merged workspace + UI env. In-chat **P7 “authorize evolution” bubbles** after partial_success/failure are **not** shown; scheduling aligns with the evolution panel, not inline chat prompts.
+**Evolution triggers (A9)**: Growth scheduling (`skilllite-evolution::growth_schedule`) marks a run **due** when **any** of: **periodic** interval elapsed (`SKILLLITE_EVOLUTION_INTERVAL_SECS`, default 10 min), **weighted signals** over a sliding window (≥ `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN`, default 3), **raw backlog** (unprocessed rows ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`, default 10), or **sweep** (long idle since last **material** `evolution_run` + weighted ≥ 1). **`SKILLLITE_EVO_MIN_RUN_GAP_SEC`** can throttle consecutive autoruns (also material-run keyed). **`ChatSession`** (`skilllite chat` / `agent-rpc` subprocess) runs timers in-process; **SkillLite Assistant** spawns `skilllite evolution run` from **Life Pulse** with merged workspace + UI env. In-chat **P7 “authorize evolution” bubbles** after partial_success/failure are **not** shown; scheduling aligns with the evolution panel, not inline chat prompts.
 
 **“Run outcome” is not “evolution failed”**: A9 **due** only means a check fired; **whether proposals are built** depends on passive/active thresholds, cooldown, daily cap, etc. When **only the periodic arm** is due and **no proposals would be built**, the agent timer and desktop Life Pulse **skip** that tick (no subprocess, no `evolution_run_outcome` spam). **Signal or sweep arms** still attempt `evolution run`; if proposals are still empty, logs include a more specific reason code. Older rows may still show the generic message.
 

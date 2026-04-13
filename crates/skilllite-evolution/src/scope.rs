@@ -7,6 +7,7 @@ use skilllite_core::config::env_keys::evolution as evo_keys;
 
 use crate::config::{EvolutionMode, EvolutionThresholds, SkillAction};
 use crate::error::bail;
+use crate::feedback::{EVOLUTION_LOG_TYPE_RUN_MATERIAL, EVOLUTION_LOG_TYPE_RUN_NOOP};
 use crate::Result;
 
 // ─── Evolution scope ──────────────────────────────────────────────────────────
@@ -434,8 +435,9 @@ pub fn describe_empty_evolution_proposals(
         let today_evolutions: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM evolution_log
-                 WHERE date(ts) = date('now') AND type = 'evolution_run'",
-                [],
+                 WHERE date(ts) = date('now')
+                   AND (type = ?1 OR type = ?2)",
+                params![EVOLUTION_LOG_TYPE_RUN_MATERIAL, EVOLUTION_LOG_TYPE_RUN_NOOP],
                 |row| row.get(0),
             )
             .unwrap_or(0);
@@ -453,8 +455,8 @@ pub fn describe_empty_evolution_proposals(
                 "SELECT COALESCE(
                     (julianday('now') - julianday(MAX(ts))) * 24,
                     999.0
-                ) FROM evolution_log WHERE type = 'evolution_run'",
-                [],
+                ) FROM evolution_log WHERE type = ?1",
+                params![EVOLUTION_LOG_TYPE_RUN_MATERIAL],
                 |row| row.get(0),
             )
             .unwrap_or(999.0);
@@ -1049,13 +1051,15 @@ fn should_evolve_impl(
 
     let thresholds = EvolutionThresholds::from_env();
 
-    // Only count real evolution runs for the daily cap. Scheduler "pings" that log
-    // `evolution_run_outcome` (e.g. NoScope) must not consume the budget or they block forever.
+    // Count material runs and no-output runs for the daily cap (real execution attempts).
+    // Scheduler-only rows such as `evolution_run_outcome` (NoScope / SkippedBusy) must not
+    // consume the budget or passive evolution never opens.
     let today_evolutions: i64 = conn
         .query_row(
             "SELECT COUNT(*) FROM evolution_log
-             WHERE date(ts) = date('now') AND type = 'evolution_run'",
-            [],
+             WHERE date(ts) = date('now')
+               AND (type = ?1 OR type = ?2)",
+            params![EVOLUTION_LOG_TYPE_RUN_MATERIAL, EVOLUTION_LOG_TYPE_RUN_NOOP],
             |row| row.get(0),
         )
         .unwrap_or(0);
@@ -1068,16 +1072,16 @@ fn should_evolve_impl(
     }
 
     if !force {
-        // Cooldown is time since the last *completed evolution run*, not since the last
-        // `evolution_run_outcome` row (NoScope / SkippedBusy would otherwise reset cooldown
-        // every scheduler tick and passive evolution never opens).
+        // Cooldown is time since the last *material* evolution run (`evolution_run`), not
+        // `evolution_run_noop`, and not `evolution_run_outcome` (NoScope / SkippedBusy would
+        // otherwise reset cooldown every scheduler tick and passive evolution never opens).
         let last_evo_hours: f64 = conn
             .query_row(
                 "SELECT COALESCE(
                     (julianday('now') - julianday(MAX(ts))) * 24,
                     999.0
-                ) FROM evolution_log WHERE type = 'evolution_run'",
-                [],
+                ) FROM evolution_log WHERE type = ?1",
+                params![EVOLUTION_LOG_TYPE_RUN_MATERIAL],
                 |row| row.get(0),
             )
             .unwrap_or(999.0);
@@ -1187,8 +1191,8 @@ fn should_evolve_impl(
 #[cfg(test)]
 mod describe_empty_proposals_tests {
     use super::*;
-    use crate::feedback;
-    use rusqlite::Connection;
+    use crate::feedback::{self, EVOLUTION_LOG_TYPE_RUN_MATERIAL, EVOLUTION_LOG_TYPE_RUN_NOOP};
+    use rusqlite::{params, Connection};
 
     fn open_mem() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -1210,5 +1214,32 @@ mod describe_empty_proposals_tests {
     fn would_have_false_when_disabled() {
         let conn = open_mem();
         assert!(!would_have_evolution_proposals(&conn, EvolutionMode::Disabled, false).unwrap());
+    }
+
+    #[test]
+    fn daily_cap_count_includes_material_and_noop() {
+        let conn = open_mem();
+        conn.execute(
+            "INSERT INTO evolution_log (ts, type, target_id, reason, version)
+             VALUES (datetime('now'), ?1, 'run', 'a', 'v1')",
+            [EVOLUTION_LOG_TYPE_RUN_MATERIAL],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO evolution_log (ts, type, target_id, reason, version)
+             VALUES (datetime('now'), ?1, 'run', 'b', 'v2')",
+            [EVOLUTION_LOG_TYPE_RUN_NOOP],
+        )
+        .unwrap();
+        let c: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM evolution_log
+                 WHERE date(ts) = date('now')
+                   AND (type = ?1 OR type = ?2)",
+                params![EVOLUTION_LOG_TYPE_RUN_MATERIAL, EVOLUTION_LOG_TYPE_RUN_NOOP],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(c, 2);
     }
 }

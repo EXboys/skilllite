@@ -225,13 +225,13 @@
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `SKILLLITE_EVOLUTION` | string | `1` | 进化模式：`1`/`true` 全部启用，`0`/`false` 禁用，`prompts`/`memory`/`skills` 仅启用对应维度 |
-| `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | 每日进化次数上限 |
+| `SKILLLITE_MAX_EVOLUTIONS_PER_DAY` | int | `20` | 每日进化次数上限（计入 `evolution_log` 中 `evolution_run` 与 `evolution_run_noop`；仅调度的 `evolution_run_outcome` 不计入） |
 | `SKILLLITE_EVOLUTION_INTERVAL_SECS` | int | `600` | **A9** 周期性检查间隔（秒）。默认 10 分钟；每次 tick 在调度判定「到期」时才 spawn `evolution run` |
 | `SKILLLITE_EVOLUTION_DECISION_THRESHOLD` | int | `10` | **A9** OR 条件：原始未进化决策行数（`evolved = 0`，含零 tool 行）≥ 此值则到期 |
 | `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN` | int | `3` | **A9** 滑动窗口内「有意义」未进化决策的加权和阈值；失败/负反馈计 2，其余计 1 |
 | `SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW` | int | `10` | **A9** 参与加权和的最近多少条有意义未进化决策 |
-| `SKILLLITE_EVO_SWEEP_INTERVAL_SECS` | int | `86400` | **A9** 若距上次 `evolution_run` 超过此秒数且加权和 ≥ 1，则到期（低优先级补跑） |
-| `SKILLLITE_EVO_MIN_RUN_GAP_SEC` | int | `0` | **A9** 两次自动进化运行之间的最短间隔（秒）；`0` 表示不限制 |
+| `SKILLLITE_EVO_SWEEP_INTERVAL_SECS` | int | `86400` | **A9** 若距上次 **有产出** 的 `evolution_run`（`type = evolution_run`，不含 `evolution_run_noop`）超过此秒数且加权和 ≥ 1，则到期（低优先级补跑） |
+| `SKILLLITE_EVO_MIN_RUN_GAP_SEC` | int | `0` | **A9** 两次自动进化之间的最短间隔（秒），按上次 **有产出** 的 `evolution_run` 计算；`0` 表示不限制（`evolution_run_noop` 不计入间隔） |
 | `SKILLLITE_EVO_SHALLOW_PREFLIGHT` | bool | `1` | **运行** 为 `1` 时，若加权/未处理积压为空且技能目录与外部学习无需工作，则跳过快照与各 learner（减轻周期空跑；可能推迟一轮仅依赖「零积压 tick」的 **规则 retire**）。`0` 关闭 |
 | `SKILLLITE_EVO_ACTIVE_MIN_STABLE_DECISIONS` | int | `10` | 构建 **active** 进化提案前，至少需要多少条稳定成功且未进化的决策（与 A9 是否 spawn 分开） |
 | `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` | int | `10` | 每次进化后备份目录 `chat/prompts/_versions/<txn>/` 最多保留几个（按目录名排序删最旧）。设为 **`0` 表示不删除**，可长期本地溯源 prompt 版本，无需 Git；磁盘占用会随进化次数增长 |
@@ -253,7 +253,7 @@
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `1` | 上次进化后冷却时间（小时），此时间内不再次触发 |
+| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `1` | 距上次 **有产出** 进化（`evolution_run`）的冷却（小时）；`evolution_run_noop` 不重置该时钟 |
 | `SKILLLITE_EVO_RECENT_DAYS` | int | `7` | 统计决策的时间窗口（天） |
 | `SKILLLITE_EVO_RECENT_LIMIT` | int | `100` | 时间窗口内最多取多少条决策参与统计 |
 | `SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS` | int | `2` | 单条决策至少多少 tool 调用才计入「有意义」条数 |
@@ -277,9 +277,9 @@
 | `SKILLLITE_EVO_SKILL_QUERY_DECISION_LIMIT` | int | `100` | 技能合成 SQL：上述窗口内扫描行数上限 |
 | `SKILLLITE_EVO_SKILL_FAILURE_SAMPLE_LIMIT` | int | `5` | 单技能失败上下文采样条数上限 |
 
-**进化审计补充类型**：`evolution_run_scope`（每轮进入全量 learner 前的范围 JSON）、`evolution_shallow_skip`（浅层预检跳过）、`rule_extraction_parse_failed`（规则抽取解析失败，便于排查长期无规则产出）。
+**进化审计补充类型**：`evolution_run_scope`（每轮进入全量 learner 前的范围 JSON）、`evolution_shallow_skip`（浅层预检跳过）、`rule_extraction_parse_failed`（规则抽取解析失败，便于排查长期无规则产出）、`evolution_run_noop`（本轮已执行但无 changelog 产出——占时间线与当日上限；**被动冷却**仍以 **有产出** 的 `evolution_run` 为准）。
 
-**进化触发策略（A9）**：由 `growth_schedule` 判定「到期」，满足 **任一** 即可：**周期**（`SKILLLITE_EVOLUTION_INTERVAL_SECS`，默认 10 分钟）、**加权信号**（窗口内加权和 ≥ `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN`，默认 3）、**原始积压**（未处理行数 ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`，默认 10）、**清扫**（长期无 `evolution_run` 且加权和 ≥ 1）。可用 `SKILLLITE_EVO_MIN_RUN_GAP_SEC` 限制连续自动运行间隔。**`ChatSession`** 在进程内跑定时与回合后触发；**桌面助手**由 **Life Pulse** 合并工作区与界面环境后 spawn `skilllite evolution run`。对话内 **不再** 因 partial_success / failure 弹出「启动进化」气泡；调度与右侧「自进化」面板一致。
+**进化触发策略（A9）**：由 `growth_schedule` 判定「到期」，满足 **任一** 即可：**周期**（`SKILLLITE_EVOLUTION_INTERVAL_SECS`，默认 10 分钟）、**加权信号**（窗口内加权和 ≥ `SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN`，默认 3）、**原始积压**（未处理行数 ≥ `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`，默认 10）、**清扫**（长期无 **有产出** 的 `evolution_run` 且加权和 ≥ 1）。`SKILLLITE_EVO_MIN_RUN_GAP_SEC` 亦按 **有产出** 的 `evolution_run` 计算间隔。**`ChatSession`** 在进程内跑定时与回合后触发；**桌面助手**由 **Life Pulse** 合并工作区与界面环境后 spawn `skilllite evolution run`。对话内 **不再** 因 partial_success / failure 弹出「启动进化」气泡；调度与右侧「自进化」面板一致。
 
 **「调度结果」≠ 进化失败**：A9「到期」只表示到了检查点；是否 **构建出提案** 由被动/主动阈值与冷却、当日上限等决定（见上表与各 `SKILLLITE_EVO_*`）。**仅周期臂**到期且当前 **不会有任何提案** 时，Agent 定时器与桌面 Life Pulse 会 **跳过** 本次运行，不再写入一条「未生成提案」类 `evolution_run_outcome`；**信号臂或清扫臂**仍照常尝试 `evolution run`（若仍无提案，日志会给出更细的原因码）。旧日志可能仍为泛化英文/中文说明。
 

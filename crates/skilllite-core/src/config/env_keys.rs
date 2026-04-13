@@ -127,9 +127,9 @@ pub mod evolution {
     pub const SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN: &str = "SKILLLITE_EVO_TRIGGER_WEIGHTED_MIN";
     /// A9: Sliding window size for weighted trigger (default 10).
     pub const SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW: &str = "SKILLLITE_EVO_TRIGGER_SIGNAL_WINDOW";
-    /// A9: If no `evolution_run` for this many seconds and weighted sum ≥ 1, allow sweep trigger (default 86400).
+    /// A9: If no **material** `evolution_run` (`evolution_log.type = evolution_run`, not `evolution_run_noop`) for this many seconds and weighted sum ≥ 1, allow sweep trigger (default 86400).
     pub const SKILLLITE_EVO_SWEEP_INTERVAL_SECS: &str = "SKILLLITE_EVO_SWEEP_INTERVAL_SECS";
-    /// A9: Minimum seconds since last `evolution_run` before another autorun (0 = disabled).
+    /// A9: Minimum seconds since last **material** `evolution_run` before another autorun (0 = disabled; `evolution_run_noop` ignored).
     pub const SKILLLITE_EVO_MIN_RUN_GAP_SEC: &str = "SKILLLITE_EVO_MIN_RUN_GAP_SEC";
     /// Skip snapshot + learners when there is no decision backlog (default on). Set `0` to disable.
     pub const SKILLLITE_EVO_SHALLOW_PREFLIGHT: &str = "SKILLLITE_EVO_SHALLOW_PREFLIGHT";

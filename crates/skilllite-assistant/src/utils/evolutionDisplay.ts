@@ -12,7 +12,7 @@ export const EVOLUTION_NO_SKILL_HEADLINE =
 const PATTERN_EXPLAIN_LINE =
   "技能进化依赖决策库中的重复模式与安全校验；无模式或未通过校验就不会有文件变更。";
 
-/** Backend `evolution_run` log reason when prompts/skills produced no on-disk delta (Chinese). */
+/** Backend log reason when prompts/skills produced no on-disk delta (Chinese); applies to `evolution_run` and legacy rows; `evolution_run_noop` uses the same wording. */
 const RUN_NO_FILE_DELTA_CN = "进化运行完成，无新规则/技能产出";
 
 /** True when `reason` is the known “ran but no rules/skills on disk” summary from the engine. */

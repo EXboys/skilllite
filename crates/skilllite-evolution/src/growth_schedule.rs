@@ -2,10 +2,10 @@
 //!
 //! Shared by desktop Life Pulse and agent-side triggers so behavior stays consistent.
 
-use rusqlite::Connection;
+use rusqlite::{params, Connection};
 use skilllite_core::config::env_keys::evolution as evo_keys;
 
-use crate::feedback;
+use crate::feedback::{self, EVOLUTION_LOG_TYPE_RUN_MATERIAL};
 use crate::Result;
 
 /// Parsed A9 trigger configuration (env-driven).
@@ -17,9 +17,9 @@ pub struct GrowthScheduleConfig {
     pub weighted_min: i64,
     /// How many latest unprocessed meaningful decisions participate in the weighted sum.
     pub signal_window: i64,
-    /// If no `evolution_run` for this many seconds and weighted sum ≥ 1, allow a low-priority sweep trigger.
+    /// If no material `evolution_run` for this many seconds and weighted sum ≥ 1, allow a low-priority sweep trigger.
     pub sweep_interval_secs: u64,
-    /// Minimum seconds since last `evolution_log` row `type = evolution_run` before another autorun (0 = off).
+    /// Minimum seconds since last material `evolution_log` row (`type = evolution_run`) before another autorun (0 = off).
     pub min_run_gap_secs: u64,
     /// OR arm: raw `evolved = 0` count ≥ this also triggers (includes zero-tool rows).
     pub raw_unprocessed_threshold: i64,
@@ -58,12 +58,12 @@ impl GrowthScheduleConfig {
     }
 }
 
-/// Seconds since the latest `evolution_run` log row, if any.
+/// Seconds since the latest material `evolution_run` log row, if any (`evolution_run_noop` ignored).
 pub fn seconds_since_last_evolution_run(conn: &Connection) -> Result<Option<i64>> {
     let row = conn.query_row(
         "SELECT CAST((julianday('now') - julianday(MAX(ts))) * 86400 AS INTEGER)
-         FROM evolution_log WHERE type = 'evolution_run'",
-        [],
+         FROM evolution_log WHERE type = ?1",
+        params![EVOLUTION_LOG_TYPE_RUN_MATERIAL],
         |r| r.get::<_, Option<i64>>(0),
     );
     match row {
@@ -171,7 +171,8 @@ pub fn growth_due(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusqlite::Connection;
+    use crate::feedback::EVOLUTION_LOG_TYPE_RUN_MATERIAL;
+    use rusqlite::{params, Connection};
 
     fn open_mem() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
@@ -272,5 +273,33 @@ mod tests {
             .unwrap();
         }
         assert!(signal_burst_due(&conn, &cfg).unwrap());
+    }
+
+    #[test]
+    fn max_ts_material_run_ignores_noop_rows() {
+        let conn = open_mem();
+        conn.execute(
+            "INSERT INTO evolution_log (ts, type, target_id, reason, version)
+             VALUES ('2020-01-01T00:00:00Z', 'evolution_run', 'run', 'm', 't1')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO evolution_log (ts, type, target_id, reason, version)
+             VALUES ('2030-01-01T00:00:00Z', 'evolution_run_noop', 'run', 'n', 't2')",
+            [],
+        )
+        .unwrap();
+        let max: String = conn
+            .query_row(
+                "SELECT MAX(ts) FROM evolution_log WHERE type = ?1",
+                params![EVOLUTION_LOG_TYPE_RUN_MATERIAL],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            max.starts_with("2020-01-01"),
+            "expected older material ts, got {max:?}"
+        );
     }
 }

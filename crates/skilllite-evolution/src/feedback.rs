@@ -5,6 +5,13 @@ use rusqlite::{params, Connection};
 use std::fs;
 use std::path::Path;
 
+/// `evolution_log.type` when the run produced changelog material. Drives passive cooldown and
+/// A9 sweep / min-gap “last material run” clocks (`SKILLLITE_EVO_COOLDOWN_HOURS`, etc.).
+pub const EVOLUTION_LOG_TYPE_RUN_MATERIAL: &str = "evolution_run";
+/// `evolution_log.type` when execution finished with no changelog rows (timeline + daily cap).
+/// Does **not** advance passive cooldown or material-only “last run” timers.
+pub const EVOLUTION_LOG_TYPE_RUN_NOOP: &str = "evolution_run_noop";
+
 // ─── Decision input (agent converts ExecutionFeedback to this) ─────────────────
 
 /// Input for recording a decision. The agent converts its ExecutionFeedback to this.

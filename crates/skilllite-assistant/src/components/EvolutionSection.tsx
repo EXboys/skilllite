@@ -542,6 +542,7 @@ function eventIcon(eventType: string): string {
     case "evolution_judgement":
       return "🧭";
     case "evolution_run":
+    case "evolution_run_noop":
       return "◆";
     case "auto_rollback":
       return "⚠";
@@ -1148,7 +1149,9 @@ export function EvolutionDetailBody({
                     : "—"}
                 </li>
                 <li>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">上次 evolution_run：</span>
+                  <span className="text-ink-mute dark:text-ink-dark-mute">
+                    {t("evolution.summary.lastEvolutionAttempt")}
+                  </span>
                   {s.last_run_ts ? formatTs(s.last_run_ts) : "暂无记录"}
                 </li>
                 <li className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
@@ -1287,8 +1290,9 @@ export function EvolutionDetailBody({
             {s.recent_events.map((e, i) => {
               const reasonShown = evolutionLogReasonForDisplay(e.reason ?? null, locale);
               const softenRunNoOutput =
-                e.event_type === "evolution_run" &&
-                isEvolutionRunCompletedNoFileDeltaReason(e.reason ?? null);
+                (e.event_type === "evolution_run" &&
+                  isEvolutionRunCompletedNoFileDeltaReason(e.reason ?? null)) ||
+                e.event_type === "evolution_run_noop";
               const rawReason = (e.reason ?? "").trim();
               const softenJudgement =
                 e.event_type === "evolution_judgement" &&
@@ -1300,7 +1304,9 @@ export function EvolutionDetailBody({
               const targetShown = evolutionLogTargetLine(e.target_id, locale);
               const txnTrim = e.txn_id?.trim() ?? "";
               const rowOpensDiff =
-                e.event_type === "evolution_run" && txnTrim.length > 0;
+                (e.event_type === "evolution_run" ||
+                  e.event_type === "evolution_run_noop") &&
+                txnTrim.length > 0;
               const rowPrimary = evolutionRunRowPrimaryAction(e.reason);
               const showMemoryLink =
                 reasonMentionsMemoryKnowledge(e.reason) && rowPrimary !== "memory";

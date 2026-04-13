@@ -254,6 +254,7 @@ export const zhMessages: Record<string, string> = {
     "进阶用户也可在工作区通过环境变量配置同名项（详见文档）。若想保留全部 prompt 快照，可将 SKILLLITE_EVOLUTION_SNAPSHOT_KEEP 设为 0；将 SKILLLITE_EVOLUTION 设为 0 可关闭进化。",
   "evolution.summary.profile": "阈值预设",
   "evolution.summary.cooldown": "被动冷却",
+  "evolution.summary.lastEvolutionAttempt": "上次记录的进化执行（含无产出尝试）",
 
   "evolution.log.sectionRecent": "最近进化事件",
   "evolution.log.rowOpenDiffTitle": "点击查看本轮 prompts 快照对比（将切换到「变更对比」并选中该 txn）",
@@ -269,7 +270,8 @@ export const zhMessages: Record<string, string> = {
   "evolution.log.type.evolution_run_scope": "进化范围快照",
   "evolution.log.type.evolution_shallow_skip": "浅层预检跳过",
   "evolution.log.type.rule_extraction_parse_failed": "规则抽取解析失败",
-  "evolution.log.type.evolution_run": "进化运行",
+  "evolution.log.type.evolution_run": "进化运行（有产出）",
+  "evolution.log.type.evolution_run_noop": "进化运行（无产出）",
   "evolution.log.type.evolution_proposal": "提案调度",
   "evolution.log.type.evolution_proposal_denied": "提案被拒",
   "evolution.log.type.evolution_proposal_missing": "提案缺失",

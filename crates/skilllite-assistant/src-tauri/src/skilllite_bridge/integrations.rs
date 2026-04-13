@@ -542,9 +542,13 @@ pub fn load_evolution_status(
                 judgement_label = Some(summary.judgement.label_zh().to_string());
                 judgement_reason = Some(summary.reason);
             }
-            if let Ok(mut stmt) = conn.prepare(
-                "SELECT ts FROM evolution_log WHERE type = 'evolution_run' ORDER BY ts DESC LIMIT 1",
-            ) {
+            // Last UI "attempt" timestamp: material run or no-output run (constants are fixed literals).
+            let last_attempt_sql = format!(
+                "SELECT ts FROM evolution_log WHERE type IN ('{}', '{}') ORDER BY ts DESC LIMIT 1",
+                skilllite_evolution::feedback::EVOLUTION_LOG_TYPE_RUN_MATERIAL,
+                skilllite_evolution::feedback::EVOLUTION_LOG_TYPE_RUN_NOOP,
+            );
+            if let Ok(mut stmt) = conn.prepare(&last_attempt_sql) {
                 if let Ok(mut rows) = stmt.query([]) {
                     if let Ok(Some(row)) = rows.next() {
                         last_run_ts = row.get(0).ok();

@@ -393,7 +393,14 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             } else {
                 format!("方向: {}；进化运行完成，无新规则/技能产出", dir)
             };
-            let _ = log_evolution_event(&conn, chat_root, "evolution_run", "run", &reason, &txn_id);
+            let _ = log_evolution_event(
+                &conn,
+                chat_root,
+                feedback::EVOLUTION_LOG_TYPE_RUN_NOOP,
+                "run",
+                &reason,
+                &txn_id,
+            );
             let _ = set_backlog_status(
                 &conn,
                 &proposal.proposal_id,
@@ -411,7 +418,14 @@ async fn run_evolution_inner<L: EvolutionLlm>(
             format!("方向: {}；{}", dir, reason_parts.join("; "))
         };
         // 记录本轮进化运行（含方向），便于前端时间线统一展示
-        let _ = log_evolution_event(&conn, chat_root, "evolution_run", "run", &reason, &txn_id);
+        let _ = log_evolution_event(
+            &conn,
+            chat_root,
+            feedback::EVOLUTION_LOG_TYPE_RUN_MATERIAL,
+            "run",
+            &reason,
+            &txn_id,
+        );
 
         // 只记录内容真正发生变化的文件：用快照与当前版本逐一对比。
         // snapshot_files 是进化前备份的全量清单，但实际修改的往往只是其中一部分
