@@ -380,30 +380,15 @@ async fn skilllite_list_workspace_entries(
 async fn skilllite_load_evolution_status(
     workspace: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
-) -> skilllite_bridge::EvolutionStatusPayload {
+    life_pulse: tauri::State<'_, life_pulse::LifePulseState>,
+) -> Result<skilllite_bridge::EvolutionStatusPayload, String> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
+    let periodic_anchor_unix = life_pulse.periodic_anchor_unix();
     tauri::async_runtime::spawn_blocking(move || {
-        skilllite_bridge::load_evolution_status(&ws, config)
+        skilllite_bridge::load_evolution_status(&ws, config, periodic_anchor_unix)
     })
     .await
-    .unwrap_or_else(|e| skilllite_bridge::EvolutionStatusPayload {
-        mode_key: "error".into(),
-        mode_label: format!("任务失败: {}", e),
-        interval_secs: 600,
-        decision_threshold: 10,
-        weighted_signal_sum: 0,
-        weighted_trigger_min: 3,
-        signal_window: 10,
-        evo_profile_key: "default".into(),
-        evo_cooldown_hours: 1.0,
-        unprocessed_decisions: 0,
-        last_run_ts: None,
-        judgement_label: None,
-        judgement_reason: None,
-        recent_events: vec![],
-        pending_skill_count: 0,
-        db_error: Some(e.to_string()),
-    })
+    .map_err(|e| format!("{}", e))
 }
 
 #[tauri::command]

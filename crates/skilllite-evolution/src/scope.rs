@@ -1188,6 +1188,184 @@ fn should_evolve_impl(
     Ok(scope)
 }
 
+/// Passive-side gates + window stats for UI (read-only).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PassiveScheduleDiagnostics {
+    pub evolution_disabled: bool,
+    pub daily_runs_today: i64,
+    pub daily_cap: i64,
+    pub daily_cap_blocked: bool,
+    /// Hours since latest material `evolution_run` (same clock as passive cooldown).
+    pub hours_since_last_material_run: Option<f64>,
+    pub cooldown_hours: f64,
+    pub cooldown_blocked: bool,
+    /// Documents which `evolution_log` rows advance passive cooldown (material `evolution_run` only).
+    pub passive_cooldown_uses_log_types: String,
+    pub meaningful: i64,
+    pub failures: i64,
+    pub replans: i64,
+    pub repeated_patterns: i64,
+    pub recent_days: i64,
+    pub recent_decision_sample_limit: i64,
+    pub arm_prompts: bool,
+    pub arm_memory: bool,
+    pub arm_skills: bool,
+    pub skills_skill_action: Option<String>,
+}
+
+/// Snapshot of passive evolution gates and per-arm open state (mirrors `should_evolve_impl` thresholds).
+pub fn passive_schedule_diagnostics(
+    conn: &Connection,
+    mode: &EvolutionMode,
+) -> Result<PassiveScheduleDiagnostics> {
+    const COOLDOWN_TYPES: &str =
+        "evolution_log.type = 'evolution_run' (material runs only; evolution_run_noop ignored)";
+    if mode.is_disabled() {
+        return Ok(PassiveScheduleDiagnostics {
+            evolution_disabled: true,
+            daily_runs_today: 0,
+            daily_cap: 0,
+            daily_cap_blocked: false,
+            hours_since_last_material_run: None,
+            cooldown_hours: 0.0,
+            cooldown_blocked: false,
+            passive_cooldown_uses_log_types: COOLDOWN_TYPES.to_string(),
+            meaningful: 0,
+            failures: 0,
+            replans: 0,
+            repeated_patterns: 0,
+            recent_days: 0,
+            recent_decision_sample_limit: 0,
+            arm_prompts: false,
+            arm_memory: false,
+            arm_skills: false,
+            skills_skill_action: None,
+        });
+    }
+
+    let thresholds = EvolutionThresholds::from_env();
+
+    let today_evolutions: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM evolution_log
+             WHERE date(ts) = date('now')
+               AND (type = ?1 OR type = ?2)",
+            params![EVOLUTION_LOG_TYPE_RUN_MATERIAL, EVOLUTION_LOG_TYPE_RUN_NOOP],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+    let max_per_day: i64 = std::env::var(evo_keys::SKILLLITE_MAX_EVOLUTIONS_PER_DAY)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(20);
+    let daily_cap_blocked = today_evolutions >= max_per_day;
+
+    let last_evo_hours: f64 = conn
+        .query_row(
+            "SELECT COALESCE(
+                (julianday('now') - julianday(MAX(ts))) * 24,
+                999.0
+            ) FROM evolution_log WHERE type = ?1",
+            params![EVOLUTION_LOG_TYPE_RUN_MATERIAL],
+            |row| row.get(0),
+        )
+        .unwrap_or(999.0);
+    let cooldown_blocked = last_evo_hours < thresholds.cooldown_hours;
+    let hours_since_last_material_run = if last_evo_hours >= 999.0 {
+        None
+    } else {
+        Some(last_evo_hours)
+    };
+
+    let recent_condition = format!("ts >= datetime('now', '-{} days')", thresholds.recent_days);
+    let recent_limit = thresholds.recent_limit;
+
+    let (meaningful, failures, replans): (i64, i64, i64) = conn.query_row(
+        &format!(
+            "SELECT
+                COUNT(CASE WHEN total_tools >= {} THEN 1 END),
+                COUNT(CASE WHEN failed_tools > 0 THEN 1 END),
+                COUNT(CASE WHEN replans > 0 THEN 1 END)
+             FROM decisions WHERE {}",
+            thresholds.meaningful_min_tools, recent_condition
+        ),
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    )?;
+
+    let repeated_patterns: i64 = conn
+        .query_row(
+            &format!(
+                "SELECT COUNT(*) FROM (
+                SELECT COALESCE(NULLIF(tool_sequence_key, ''), task_description) AS pattern_key,
+                       COUNT(*) AS cnt,
+                       SUM(CASE WHEN task_completed = 1 THEN 1 ELSE 0 END) AS successes
+                FROM decisions
+                WHERE {} AND (tool_sequence_key IS NOT NULL OR task_description IS NOT NULL)
+                  AND total_tools >= 1
+                GROUP BY pattern_key
+                HAVING cnt >= {} AND CAST(successes AS REAL) / cnt >= {}
+            )",
+                recent_condition,
+                thresholds.repeated_pattern_min_count,
+                thresholds.repeated_pattern_min_success_rate
+            ),
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or(0);
+
+    let mut arm_prompts = false;
+    let mut arm_memory = false;
+    let mut arm_skills = false;
+    let mut skills_skill_action: Option<String> = None;
+
+    if !daily_cap_blocked && !cooldown_blocked {
+        if mode.skills_enabled()
+            && meaningful >= thresholds.meaningful_threshold_skills
+            && (failures > 0 || repeated_patterns > 0)
+        {
+            arm_skills = true;
+            skills_skill_action = Some(if repeated_patterns > 0 {
+                "generate".to_string()
+            } else {
+                "refine".to_string()
+            });
+        }
+        if mode.memory_enabled() && meaningful >= thresholds.meaningful_threshold_memory {
+            arm_memory = true;
+        }
+        if mode.prompts_enabled()
+            && meaningful >= thresholds.meaningful_threshold_prompts
+            && (failures >= thresholds.failures_min_prompts
+                || replans >= thresholds.replans_min_prompts)
+        {
+            arm_prompts = true;
+        }
+    }
+
+    Ok(PassiveScheduleDiagnostics {
+        evolution_disabled: false,
+        daily_runs_today: today_evolutions,
+        daily_cap: max_per_day,
+        daily_cap_blocked,
+        hours_since_last_material_run,
+        cooldown_hours: thresholds.cooldown_hours,
+        cooldown_blocked,
+        passive_cooldown_uses_log_types: COOLDOWN_TYPES.to_string(),
+        meaningful,
+        failures,
+        replans,
+        repeated_patterns,
+        recent_days: thresholds.recent_days,
+        recent_decision_sample_limit: recent_limit,
+        arm_prompts,
+        arm_memory,
+        arm_skills,
+        skills_skill_action,
+    })
+}
+
 #[cfg(test)]
 mod describe_empty_proposals_tests {
     use super::*;
@@ -1214,6 +1392,14 @@ mod describe_empty_proposals_tests {
     fn would_have_false_when_disabled() {
         let conn = open_mem();
         assert!(!would_have_evolution_proposals(&conn, EvolutionMode::Disabled, false).unwrap());
+    }
+
+    #[test]
+    fn passive_diagnostics_disabled_mode() {
+        let conn = open_mem();
+        let d = passive_schedule_diagnostics(&conn, &EvolutionMode::Disabled).unwrap();
+        assert!(d.evolution_disabled);
+        assert!(!d.arm_prompts && !d.arm_memory && !d.arm_skills);
     }
 
     #[test]

@@ -256,6 +256,49 @@ export const zhMessages: Record<string, string> = {
   "evolution.summary.cooldown": "被动冷却",
   "evolution.summary.lastEvolutionAttempt": "上次记录的进化执行（含无产出尝试）",
 
+  "evolution.diagnostics.titleShort": "调度快照",
+  "evolution.diagnostics.kMaterial": "有产出 ",
+  "evolution.diagnostics.a9Fire": "将调度",
+  "evolution.diagnostics.a9Idle": "不调度",
+  "evolution.diagnostics.gapSeg": "限{secs}s{st}",
+  "evolution.diagnostics.lblSweep": "扫",
+  "evolution.diagnostics.lblPeriodic": "周",
+  "evolution.diagnostics.badgePeriodicOnly": "·仅周期",
+  "evolution.diagnostics.kPassive": "被动",
+  "evolution.diagnostics.tryYes": "本轮会尝试",
+  "evolution.diagnostics.tryNo": "本轮先不动",
+  "evolution.diagnostics.skillExtraGenerate": "（偏：新建技能草稿）",
+  "evolution.diagnostics.skillExtraRefine": "（偏：打磨已有技能）",
+  "evolution.diagnostics.passiveDailyPlain":
+    "今天已经跑过 {n} / {cap} 次「完整进化尝试」（含无产出）；{hint}",
+  "evolution.diagnostics.hintDailyOk": "还没碰到今日上限。",
+  "evolution.diagnostics.hintDailyBlocked": "已到今日上限，明天再来或调高上限。",
+  "evolution.diagnostics.passiveCoolPlain":
+    "距上一次「真的改动了规则/记忆/技能文件」的进化，已经过了 {since} 小时；系统要求至少隔 {need} 小时再来一轮 → {hint}",
+  "evolution.diagnostics.hintCoolOk": "间隔够了，不会因为「等时间」挡你。",
+  "evolution.diagnostics.hintCoolWait": "还在冷却里，这段时间里下面三块通常都会先关着。",
+  "evolution.diagnostics.passiveCoolNone":
+    "还没有过一次「留下文件改动」的进化记录；等有第一次之后，才会按上面的间隔开始算冷却。",
+  "evolution.diagnostics.passiveStatsPlain":
+    "近 {days} 天里：对话里「工具用得够多」的约 {m} 条，有明显失败的约 {f} 条，能看出「重复用法模式」的约 {rp} 组（这些数用来判断要不要开进化）。",
+  "evolution.diagnostics.passiveArmsPlain":
+    "按当前规则，三块会不会动：① 提示词里的规则/示例 — {prompts}；② 长期记忆 — {memory}；③ 技能 — {skills}{skillExtra}",
+  "evolution.diagnostics.kProposals": "提案",
+  "evolution.diagnostics.proposalsYes": "会",
+  "evolution.diagnostics.proposalsNo": "不会",
+  "evolution.diagnostics.resultHeading": "实际结果",
+  "evolution.diagnostics.insight.cooldown":
+    "还在被动冷却里：离上次「真的改过文件」的进化还不够久，所以暂时不会有新提案；看上面「距上一次…」那一行变成「间隔够了」就会恢复。",
+  "evolution.diagnostics.insight.dailyCap": "今天自动进化尝试次数已到上限，明天再来，或在设置/环境里调高当日上限。",
+  "evolution.diagnostics.insight.idle":
+    "门槛没到：最近对话里的信号还不够让规则/记忆/技能里任一条开工，很常见，多跑几轮带工具的对话即可。",
+  "evolution.diagnostics.insight.disabled": "进化总开关是关的，不会做自动学习与改文件。",
+  "evolution.diagnostics.insight.wouldButA9Idle":
+    "本来可以组出提案，但这会儿定时或信号还没到点，所以还不会自动拉起检查。",
+  "evolution.diagnostics.insight.wouldRunSoon": "条件到了，桌面心跳可能会自动跑一轮进化检查。",
+  "evolution.diagnostics.insight.generic": "暂时不会有新提案，具体原因见上一行。",
+  "evolution.diagnostics.insight.unknown": "原因暂不好归类，可对照设置里的自进化说明或文档。",
+
   "evolution.log.sectionRecent": "最近进化事件",
   "evolution.log.rowOpenDiffTitle": "点击查看本轮 prompts 快照对比（将切换到「变更对比」并选中该 txn）",
   "evolution.log.rowOpenDiffBadge": "可点",

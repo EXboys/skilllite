@@ -32,6 +32,51 @@ export interface EvolutionLogEntryDto {
   txn_id?: string | null;
 }
 
+/** Mirrors `skilllite_evolution::GrowthDueDiagnostics` JSON. */
+export interface GrowthDueDiagnostics {
+  min_run_gap_secs: number;
+  min_run_gap_blocked: boolean;
+  seconds_since_last_material_run: number | null;
+  weighted_signal_sum: number;
+  weighted_trigger_min: number;
+  signal_window: number;
+  raw_unprocessed_decisions: number;
+  raw_unprocessed_threshold: number;
+  weighted_arm_met: boolean;
+  raw_arm_met: boolean;
+  arm_signal: boolean;
+  sweep_interval_secs: number;
+  arm_sweep: boolean;
+  interval_secs: number;
+  periodic_anchor_unix: number | null;
+  periodic_elapsed_secs: number;
+  arm_periodic: boolean;
+  growth_tick_would_be_due: boolean;
+  periodic_only: boolean;
+}
+
+/** Mirrors `skilllite_evolution::PassiveScheduleDiagnostics` JSON. */
+export interface PassiveScheduleDiagnostics {
+  evolution_disabled: boolean;
+  daily_runs_today: number;
+  daily_cap: number;
+  daily_cap_blocked: boolean;
+  hours_since_last_material_run: number | null;
+  cooldown_hours: number;
+  cooldown_blocked: boolean;
+  passive_cooldown_uses_log_types: string;
+  meaningful: number;
+  failures: number;
+  replans: number;
+  repeated_patterns: number;
+  recent_days: number;
+  recent_decision_sample_limit: number;
+  arm_prompts: boolean;
+  arm_memory: boolean;
+  arm_skills: boolean;
+  skills_skill_action: string | null;
+}
+
 export interface EvolutionStatusPayload {
   mode_key: string;
   mode_label: string;
@@ -45,10 +90,15 @@ export interface EvolutionStatusPayload {
   evo_cooldown_hours: number;
   unprocessed_decisions: number;
   last_run_ts: string | null;
+  last_material_run_ts?: string | null;
   judgement_label: string | null;
   judgement_reason: string | null;
   recent_events: EvolutionLogEntryDto[];
   pending_skill_count: number;
+  a9?: GrowthDueDiagnostics | null;
+  passive?: PassiveScheduleDiagnostics | null;
+  would_have_evolution_proposals?: boolean;
+  empty_proposals_reason?: string | null;
   db_error: string | null;
 }
 
@@ -479,6 +529,71 @@ function formatInterval(secs: number): string {
     return `每 ${secs / 60} 分钟`;
   }
   return `每 ${secs} 秒`;
+}
+
+/** Compact duration for diagnostics (locale-neutral numbers). */
+function formatDurationSecs(secs: number): string {
+  if (!Number.isFinite(secs) || secs < 0) return "—";
+  if (secs < 60) return `${secs}s`;
+  if (secs < 3600) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return s > 0 ? `${m}m${s}s` : `${m}m`;
+  }
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return m > 0 ? `${h}h${m}m` : `${h}h`;
+}
+
+function dxMark(on: boolean): string {
+  return on ? "✓" : "×";
+}
+
+function passiveTryWord(on: boolean, t: (k: string) => string): string {
+  return on ? t("evolution.diagnostics.tryYes") : t("evolution.diagnostics.tryNo");
+}
+
+function passiveSkillExtra(p: PassiveScheduleDiagnostics, t: (k: string) => string): string {
+  if (!p.arm_skills) return "";
+  if (p.skills_skill_action === "generate") {
+    return t("evolution.diagnostics.skillExtraGenerate");
+  }
+  if (p.skills_skill_action === "refine") {
+    return t("evolution.diagnostics.skillExtraRefine");
+  }
+  return "";
+}
+
+/** One i18n key for a beginner-facing sentence under 「实际结果」. */
+function evolutionBeginnerInsightKey(s: EvolutionStatusPayload): string {
+  if (s.mode_key === "disabled") {
+    return "evolution.diagnostics.insight.disabled";
+  }
+  const would = s.would_have_evolution_proposals === true;
+  const a9due = s.a9?.growth_tick_would_be_due === true;
+  if (would && a9due) {
+    return "evolution.diagnostics.insight.wouldRunSoon";
+  }
+  if (would && !a9due) {
+    return "evolution.diagnostics.insight.wouldButA9Idle";
+  }
+  const r = (s.empty_proposals_reason ?? "").trim();
+  if (r.includes("daily evolution cap")) {
+    return "evolution.diagnostics.insight.dailyCap";
+  }
+  if (r.includes("cooldown active")) {
+    return "evolution.diagnostics.insight.cooldown";
+  }
+  if (r.includes("passive and active scopes idle")) {
+    return "evolution.diagnostics.insight.idle";
+  }
+  if (r.includes("evolution disabled")) {
+    return "evolution.diagnostics.insight.disabled";
+  }
+  if (r.length > 0) {
+    return "evolution.diagnostics.insight.generic";
+  }
+  return "evolution.diagnostics.insight.unknown";
 }
 
 function formatTs(ts: string): string {
@@ -1114,6 +1229,7 @@ export function EvolutionDetailBody({
           className="space-y-6"
         >
           {s && (
+            <>
             <section className="space-y-2">
               <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">调度与配置</h2>
               <ul className="text-xs text-ink dark:text-ink-dark space-y-1.5 bg-gray-50/80 dark:bg-surface-dark/50 rounded-lg p-3 border border-border/50 dark:border-border-dark/50">
@@ -1162,6 +1278,131 @@ export function EvolutionDetailBody({
                 </li>
               </ul>
             </section>
+            {(s.a9 || s.passive) && (
+              <section className="space-y-1.5 rounded-lg border border-border/50 dark:border-border-dark/50 bg-gray-50/80 dark:bg-surface-dark/50 p-3">
+                <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">
+                  {t("evolution.diagnostics.titleShort")}
+                </h2>
+                {s.last_material_run_ts != null && s.last_material_run_ts !== "" && (
+                  <p className="text-xs text-ink dark:text-ink-dark tabular-nums">
+                    <span className="text-ink-mute dark:text-ink-dark-mute">
+                      {t("evolution.diagnostics.kMaterial")}
+                    </span>
+                    {formatTs(s.last_material_run_ts)}
+                  </p>
+                )}
+                {s.a9 && (
+                  <p className="text-xs text-ink dark:text-ink-dark leading-snug tabular-nums">
+                    <span className="font-semibold text-accent">A9</span>{" "}
+                    {s.a9.growth_tick_would_be_due
+                      ? t("evolution.diagnostics.a9Fire")
+                      : t("evolution.diagnostics.a9Idle")}
+                    {s.a9.min_run_gap_secs > 0 ? (
+                      <>
+                        {" · "}
+                        <span
+                          className={
+                            s.a9.min_run_gap_blocked
+                              ? "text-amber-700 dark:text-amber-400"
+                              : "text-ink-mute dark:text-ink-dark-mute"
+                          }
+                        >
+                          {t("evolution.diagnostics.gapSeg", {
+                            secs: s.a9.min_run_gap_secs,
+                            st: dxMark(!s.a9.min_run_gap_blocked),
+                          })}
+                        </span>
+                      </>
+                    ) : null}
+                    {" · "}
+                    Σ{s.a9.weighted_signal_sum}/{s.a9.weighted_trigger_min} · {s.a9.raw_unprocessed_decisions}/
+                    {s.a9.raw_unprocessed_threshold}
+                    {" · "}
+                    {t("evolution.diagnostics.lblSweep")}
+                    {dxMark(s.a9.arm_sweep)}
+                    {" · "}
+                    {t("evolution.diagnostics.lblPeriodic")}
+                    {dxMark(s.a9.arm_periodic)} {formatDurationSecs(s.a9.periodic_elapsed_secs)}/
+                    {formatDurationSecs(s.a9.interval_secs)}
+                    {s.a9.growth_tick_would_be_due && s.a9.periodic_only ? (
+                      <span className="text-ink-mute dark:text-ink-dark-mute">
+                        {" "}
+                        {t("evolution.diagnostics.badgePeriodicOnly")}
+                      </span>
+                    ) : null}
+                  </p>
+                )}
+                {s.passive && (
+                  <div className="text-xs text-ink dark:text-ink-dark leading-relaxed space-y-1">
+                    <p className="font-semibold text-accent">
+                      {t("evolution.diagnostics.kPassive")}
+                    </p>
+                    <p className="text-ink-mute dark:text-ink-dark-mute">
+                      {t("evolution.diagnostics.passiveDailyPlain", {
+                        n: s.passive.daily_runs_today,
+                        cap: s.passive.daily_cap,
+                        hint: s.passive.daily_cap_blocked
+                          ? t("evolution.diagnostics.hintDailyBlocked")
+                          : t("evolution.diagnostics.hintDailyOk"),
+                      })}
+                    </p>
+                    <p className="text-ink-mute dark:text-ink-dark-mute">
+                      {s.passive.hours_since_last_material_run != null
+                        ? t("evolution.diagnostics.passiveCoolPlain", {
+                            since: s.passive.hours_since_last_material_run.toFixed(1),
+                            need: s.passive.cooldown_hours,
+                            hint: s.passive.cooldown_blocked
+                              ? t("evolution.diagnostics.hintCoolWait")
+                              : t("evolution.diagnostics.hintCoolOk"),
+                          })
+                        : t("evolution.diagnostics.passiveCoolNone")}
+                    </p>
+                    <p className="text-ink-mute dark:text-ink-dark-mute">
+                      {t("evolution.diagnostics.passiveStatsPlain", {
+                        days: s.passive.recent_days,
+                        m: s.passive.meaningful,
+                        f: s.passive.failures,
+                        rp: s.passive.repeated_patterns,
+                      })}
+                    </p>
+                    <p className="text-ink dark:text-ink-dark">
+                      {t("evolution.diagnostics.passiveArmsPlain", {
+                        prompts: passiveTryWord(s.passive.arm_prompts, t),
+                        memory: passiveTryWord(s.passive.arm_memory, t),
+                        skills: passiveTryWord(s.passive.arm_skills, t),
+                        skillExtra: passiveSkillExtra(s.passive, t),
+                      })}
+                    </p>
+                  </div>
+                )}
+                {typeof s.would_have_evolution_proposals === "boolean" && (
+                  <p className="text-xs text-ink dark:text-ink-dark leading-snug">
+                    <span className="font-semibold text-accent">
+                      {t("evolution.diagnostics.kProposals")}
+                    </span>{" "}
+                    {s.would_have_evolution_proposals
+                      ? t("evolution.diagnostics.proposalsYes")
+                      : t("evolution.diagnostics.proposalsNo")}
+                    {!s.would_have_evolution_proposals && s.empty_proposals_reason ? (
+                      <span className="text-ink-mute dark:text-ink-dark-mute">
+                        {" — "}
+                        {evolutionLogReasonForDisplay(s.empty_proposals_reason, locale) ??
+                          s.empty_proposals_reason}
+                      </span>
+                    ) : null}
+                  </p>
+                )}
+                <div className="mt-2 rounded-md bg-ink/[0.04] dark:bg-white/[0.06] px-2.5 py-2">
+                  <p className="text-[11px] font-semibold text-ink dark:text-ink-dark">
+                    {t("evolution.diagnostics.resultHeading")}
+                  </p>
+                  <p className="text-xs text-ink dark:text-ink-dark leading-relaxed mt-0.5">
+                    {t(evolutionBeginnerInsightKey(s))}
+                  </p>
+                </div>
+              </section>
+            )}
+            </>
           )}
 
       <section className="space-y-3">

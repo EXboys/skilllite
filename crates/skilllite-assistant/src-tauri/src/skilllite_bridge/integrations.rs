@@ -488,17 +488,35 @@ pub struct EvolutionStatusPayload {
     pub evo_cooldown_hours: f64,
     pub unprocessed_decisions: i64,
     pub last_run_ts: Option<String>,
+    /// Latest material `evolution_run` timestamp (passive cooldown / A9 sweep clock).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_material_run_ts: Option<String>,
     pub judgement_label: Option<String>,
     pub judgement_reason: Option<String>,
     pub recent_events: Vec<EvolutionLogEntryDto>,
     pub pending_skill_count: usize,
+    /// Read-only A9 arm breakdown (Life Pulse periodic anchor when available).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub a9: Option<skilllite_evolution::GrowthDueDiagnostics>,
+    /// Passive gates + per-arm open state (same thresholds as `should_evolve_impl`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub passive: Option<skilllite_evolution::PassiveScheduleDiagnostics>,
+    /// Whether `build_evolution_proposals` would be non-empty for this workspace mode.
+    pub would_have_evolution_proposals: bool,
+    /// When [`Self::would_have_evolution_proposals`] is false: stable engine reason (English).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty_proposals_reason: Option<String>,
     pub db_error: Option<String>,
 }
 
 /// Evolution feedback DB + schedule hints for the assistant UI.
+///
+/// `periodic_anchor_unix`: last time the desktop **periodic** arm advanced (`LifePulseState`); pass
+/// `None` when unavailable (e.g. first launch — periodic elapsed is reported from “now”).
 pub fn load_evolution_status(
     workspace: &str,
     cfg: Option<ChatConfigOverrides>,
+    periodic_anchor_unix: Option<i64>,
 ) -> EvolutionStatusPayload {
     let mode = evolution_mode_from_workspace(workspace);
     let (mode_key, mode_label) = evolution_mode_labels(&mode);
@@ -523,8 +541,13 @@ pub fn load_evolution_status(
     let mut weighted_signal_sum = 0i64;
     let mut recent_events = Vec::new();
     let mut last_run_ts = None;
+    let mut last_material_run_ts = None;
     let mut judgement_label = None;
     let mut judgement_reason = None;
+    let mut a9 = None;
+    let mut passive = None;
+    let mut would_have_evolution_proposals = false;
+    let mut empty_proposals_reason: Option<String> = None;
 
     match skilllite_evolution::feedback::open_evolution_db(&chat_root) {
         Ok(conn) => {
@@ -555,6 +578,43 @@ pub fn load_evolution_status(
                     }
                 }
             }
+            let last_mat_sql = format!(
+                "SELECT ts FROM evolution_log WHERE type = '{}' ORDER BY ts DESC LIMIT 1",
+                skilllite_evolution::feedback::EVOLUTION_LOG_TYPE_RUN_MATERIAL,
+            );
+            if let Ok(mut stmt) = conn.prepare(&last_mat_sql) {
+                if let Ok(mut rows) = stmt.query([]) {
+                    if let Ok(Some(row)) = rows.next() {
+                        last_material_run_ts = row.get(0).ok();
+                    }
+                }
+            }
+
+            let now_unix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+            a9 = skilllite_evolution::inspect_growth_due(
+                &conn,
+                now_unix,
+                periodic_anchor_unix,
+                &schedule_cfg,
+            )
+            .ok();
+            passive = skilllite_evolution::passive_schedule_diagnostics(&conn, &mode).ok();
+            would_have_evolution_proposals =
+                skilllite_evolution::would_have_evolution_proposals(&conn, mode.clone(), false)
+                    .unwrap_or(false);
+            if !would_have_evolution_proposals {
+                empty_proposals_reason = skilllite_evolution::describe_empty_evolution_proposals(
+                    &conn,
+                    &mode,
+                    false,
+                )
+                .ok()
+                .map(str::to_string);
+            }
+
             if let Ok(mut stmt) = conn.prepare(
                 "SELECT ts, type, target_id, reason, version FROM evolution_log ORDER BY ts DESC LIMIT 25",
             ) {
@@ -592,10 +652,15 @@ pub fn load_evolution_status(
         evo_cooldown_hours,
         unprocessed_decisions,
         last_run_ts,
+        last_material_run_ts,
         judgement_label,
         judgement_reason,
         recent_events,
         pending_skill_count,
+        a9,
+        passive,
+        would_have_evolution_proposals,
+        empty_proposals_reason,
         db_error,
     }
 }

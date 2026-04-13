@@ -271,6 +271,52 @@ export const enMessages: Record<string, string> = {
   "evolution.summary.lastEvolutionAttempt":
     "Last logged evolution execution (material or no-output)",
 
+  "evolution.diagnostics.titleShort": "Schedule snapshot",
+  "evolution.diagnostics.kMaterial": "Material ",
+  "evolution.diagnostics.a9Fire": "due",
+  "evolution.diagnostics.a9Idle": "not scheduling",
+  "evolution.diagnostics.gapSeg": "gap {secs}s {st}",
+  "evolution.diagnostics.lblSweep": "sw",
+  "evolution.diagnostics.lblPeriodic": "per",
+  "evolution.diagnostics.badgePeriodicOnly": "·periodic-only",
+  "evolution.diagnostics.kPassive": "Passive",
+  "evolution.diagnostics.tryYes": "may run this round",
+  "evolution.diagnostics.tryNo": "held this round",
+  "evolution.diagnostics.skillExtraGenerate": " (bias: new skill draft)",
+  "evolution.diagnostics.skillExtraRefine": " (bias: refine existing skill)",
+  "evolution.diagnostics.passiveDailyPlain":
+    "Today’s full evolution attempts (including no-output runs): {n} / {cap}. {hint}",
+  "evolution.diagnostics.hintDailyOk": "Still under the daily cap.",
+  "evolution.diagnostics.hintDailyBlocked": "Daily cap reached—try tomorrow or raise the cap.",
+  "evolution.diagnostics.passiveCoolPlain":
+    "Hours since the last evolution that changed prompts/memory/skill files on disk: {since} h; minimum gap required: {need} h → {hint}",
+  "evolution.diagnostics.hintCoolOk": "Gap satisfied—time alone won’t block you.",
+  "evolution.diagnostics.hintCoolWait": "Still in cooldown—usually all three areas stay off until this clears.",
+  "evolution.diagnostics.passiveCoolNone":
+    "No material run yet; the cooldown clock starts after the first run that writes real changes.",
+  "evolution.diagnostics.passiveStatsPlain":
+    "In the last ~{days} days: about {m} “busy enough” chats, {f} with clear failures, {rp} repeated usage patterns (used to decide whether to evolve).",
+  "evolution.diagnostics.passiveArmsPlain":
+    "If gates pass, three areas: ① rules/examples — {prompts}; ② long-term memory — {memory}; ③ skills — {skills}{skillExtra}",
+  "evolution.diagnostics.kProposals": "Proposals",
+  "evolution.diagnostics.proposalsYes": "yes",
+  "evolution.diagnostics.proposalsNo": "no",
+  "evolution.diagnostics.resultHeading": "What this means",
+  "evolution.diagnostics.insight.cooldown":
+    "Passive cooldown: not enough time since the last run that changed files on disk, so no new proposals yet. When the “hours since…” line says the gap is satisfied, it resumes.",
+  "evolution.diagnostics.insight.dailyCap":
+    "Daily evolution attempt cap reached for today. Try again tomorrow or raise the cap in settings/env.",
+  "evolution.diagnostics.insight.idle":
+    "Thresholds not met yet: recent signals are not enough to open prompts/memory/skills arms. This is normal—keep using tools in chats.",
+  "evolution.diagnostics.insight.disabled": "Evolution is turned off, so nothing will auto-learn or change files.",
+  "evolution.diagnostics.insight.wouldButA9Idle":
+    "Proposals could be built, but the periodic/signal window has not fired yet, so no automatic check run this moment.",
+  "evolution.diagnostics.insight.wouldRunSoon":
+    "Conditions look ready; the desktop heartbeat may spawn an evolution check soon.",
+  "evolution.diagnostics.insight.generic": "No proposals for now—see the line above for the exact reason.",
+  "evolution.diagnostics.insight.unknown":
+    "Hard to classify from here; check Evolution settings or the docs for SKILLLITE_EVO_* keys.",
+
   "evolution.log.sectionRecent": "Recent evolution events",
   "evolution.log.rowOpenDiffTitle":
     "Click to compare prompts snapshots for this run (opens the Diff tab with this txn on the left)",

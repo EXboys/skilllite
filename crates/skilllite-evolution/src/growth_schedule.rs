@@ -119,6 +119,86 @@ pub fn signal_burst_due(conn: &Connection, cfg: &GrowthScheduleConfig) -> Result
     Ok(need_signal || need_sweep)
 }
 
+/// Read-only A9 breakdown for UI / ops (does **not** advance the periodic anchor).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GrowthDueDiagnostics {
+    pub min_run_gap_secs: u64,
+    pub min_run_gap_blocked: bool,
+    /// Seconds since latest material `evolution_run` (`None` if never).
+    pub seconds_since_last_material_run: Option<i64>,
+    pub weighted_signal_sum: i64,
+    pub weighted_trigger_min: i64,
+    pub signal_window: i64,
+    pub raw_unprocessed_decisions: i64,
+    pub raw_unprocessed_threshold: i64,
+    pub weighted_arm_met: bool,
+    pub raw_arm_met: bool,
+    /// True when weighted **or** raw backlog arm would fire (same as internal `need_signal`).
+    pub arm_signal: bool,
+    pub sweep_interval_secs: u64,
+    pub arm_sweep: bool,
+    pub interval_secs: u64,
+    /// Anchor used for periodic elapsed (`None` → treated as `now_unix` for first-tick semantics).
+    pub periodic_anchor_unix: Option<i64>,
+    pub periodic_elapsed_secs: i64,
+    pub arm_periodic: bool,
+    /// True when any arm would be true **and** min run-gap is satisfied (matches `growth_due` pre-mutex).
+    pub growth_tick_would_be_due: bool,
+    /// Same as [`GrowthDueOutcome::periodic_only`] when `growth_tick_would_be_due`.
+    pub periodic_only: bool,
+}
+
+/// Inspect A9 arms without mutating [`growth_due`]'s periodic anchor.
+///
+/// `last_periodic_anchor_unix` should match the desktop Life Pulse mutex (or `None` on first run).
+pub fn inspect_growth_due(
+    conn: &Connection,
+    now_unix: i64,
+    last_periodic_anchor_unix: Option<i64>,
+    cfg: &GrowthScheduleConfig,
+) -> Result<GrowthDueDiagnostics> {
+    let min_run_gap_blocked = !min_run_gap_satisfied(conn, cfg.min_run_gap_secs)?;
+    let seconds_since_last_material_run = seconds_since_last_evolution_run(conn)?;
+    let weighted_signal_sum = weighted_unprocessed_signal_sum(conn, cfg.signal_window)?;
+    let raw_unprocessed_decisions = feedback::count_unprocessed_decisions(conn)?;
+    let weighted_arm_met = weighted_signal_sum >= cfg.weighted_min;
+    let raw_arm_met = raw_unprocessed_decisions >= cfg.raw_unprocessed_threshold;
+    let arm_signal = weighted_arm_met || raw_arm_met;
+    let arm_sweep = match seconds_since_last_material_run {
+        None => false,
+        Some(secs_since) => {
+            secs_since >= cfg.sweep_interval_secs as i64 && weighted_signal_sum >= 1
+        }
+    };
+    let anchor_eff = last_periodic_anchor_unix.unwrap_or(now_unix);
+    let periodic_elapsed_secs = now_unix.saturating_sub(anchor_eff);
+    let arm_periodic = periodic_elapsed_secs >= cfg.interval_secs as i64;
+    let growth_tick_would_be_due =
+        !min_run_gap_blocked && (arm_signal || arm_sweep || arm_periodic);
+    let periodic_only = growth_tick_would_be_due && arm_periodic && !arm_signal && !arm_sweep;
+    Ok(GrowthDueDiagnostics {
+        min_run_gap_secs: cfg.min_run_gap_secs,
+        min_run_gap_blocked,
+        seconds_since_last_material_run,
+        weighted_signal_sum,
+        weighted_trigger_min: cfg.weighted_min,
+        signal_window: cfg.signal_window,
+        raw_unprocessed_decisions,
+        raw_unprocessed_threshold: cfg.raw_unprocessed_threshold,
+        weighted_arm_met,
+        raw_arm_met,
+        arm_signal,
+        sweep_interval_secs: cfg.sweep_interval_secs,
+        arm_sweep,
+        interval_secs: cfg.interval_secs,
+        periodic_anchor_unix: last_periodic_anchor_unix,
+        periodic_elapsed_secs,
+        arm_periodic,
+        growth_tick_would_be_due,
+        periodic_only,
+    })
+}
+
 /// Result of [`growth_due`]: whether an autorun tick is due and whether only the periodic arm fired.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct GrowthDueOutcome {
@@ -273,6 +353,34 @@ mod tests {
             .unwrap();
         }
         assert!(signal_burst_due(&conn, &cfg).unwrap());
+    }
+
+    #[test]
+    fn inspect_min_run_gap_blocks_all_arms() {
+        let conn = open_mem();
+        conn.execute(
+            "INSERT INTO evolution_log (ts, type, target_id, reason, version)
+             VALUES (datetime('now'), 'evolution_run', 'run', 'm', 't1')",
+            [],
+        )
+        .unwrap();
+        let cfg = GrowthScheduleConfig {
+            interval_secs: 1,
+            weighted_min: 1,
+            signal_window: 10,
+            sweep_interval_secs: 86_400,
+            min_run_gap_secs: 9_999_999,
+            raw_unprocessed_threshold: 1,
+        };
+        conn.execute(
+            "INSERT INTO decisions (evolved, total_tools, failed_tools, feedback)
+             VALUES (0, 2, 0, 'neutral')",
+            [],
+        )
+        .unwrap();
+        let d = inspect_growth_due(&conn, 2_000_000, Some(1_999_990), &cfg).unwrap();
+        assert!(d.min_run_gap_blocked);
+        assert!(!d.growth_tick_would_be_due);
     }
 
     #[test]

@@ -74,6 +74,15 @@ pub struct LifePulseStatus {
 }
 
 impl LifePulseState {
+    /// For evolution status UI: periodic arm anchor (same mutex as `evolution_growth_due`).
+    #[must_use]
+    pub fn periodic_anchor_unix(&self) -> Option<i64> {
+        self.last_periodic_growth_unix
+            .lock()
+            .ok()
+            .and_then(|guard| *guard)
+    }
+
     pub fn status(&self) -> LifePulseStatus {
         LifePulseStatus {
             enabled: self.enabled.load(Ordering::Relaxed),

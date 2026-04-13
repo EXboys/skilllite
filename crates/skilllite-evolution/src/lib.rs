@@ -38,8 +38,8 @@ pub use gatekeeper::{
     gatekeeper_l1_path, gatekeeper_l1_template_integrity, gatekeeper_l2_size, gatekeeper_l3_content,
 };
 pub use growth_schedule::{
-    growth_due, seconds_since_last_evolution_run, signal_burst_due,
-    weighted_unprocessed_signal_sum, GrowthDueOutcome, GrowthScheduleConfig,
+    growth_due, inspect_growth_due, seconds_since_last_evolution_run, signal_burst_due,
+    weighted_unprocessed_signal_sum, GrowthDueDiagnostics, GrowthDueOutcome, GrowthScheduleConfig,
 };
 pub use lifecycle::on_shutdown;
 pub use llm::{strip_think_blocks, EvolutionLlm, EvolutionMessage};
@@ -47,8 +47,9 @@ pub use rollback::check_auto_rollback;
 pub use run::{format_evolution_changes, query_changes_by_txn, run_evolution};
 pub use run_state::{finish_evolution, try_start_evolution, EvolutionRunResult};
 pub use scope::{
-    describe_empty_evolution_proposals, enqueue_user_capability_evolution, should_evolve,
-    should_evolve_with_mode, would_have_evolution_proposals, EvolutionProposal, EvolutionScope,
+    describe_empty_evolution_proposals, enqueue_user_capability_evolution,
+    passive_schedule_diagnostics, should_evolve, should_evolve_with_mode,
+    would_have_evolution_proposals, EvolutionProposal, EvolutionScope, PassiveScheduleDiagnostics,
     ProposalRiskLevel, ProposalSource,
 };
 pub use snapshots::{create_snapshot, restore_snapshot};
