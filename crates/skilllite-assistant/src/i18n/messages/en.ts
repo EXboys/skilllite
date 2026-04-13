@@ -319,6 +319,14 @@ export const enMessages: Record<string, string> = {
     "Proposal {id} ({source}) queued; waiting for execution gate",
   "evolution.log.reason.proposalDenied":
     "Proposal {id} ({source}) denied by policy runtime",
+  "evolution.log.reason.runCompletedNoFileDelta":
+    "Run finished normally: no new on-disk prompt rules or skills were written. This is common when there is not enough repeated signal, nothing to merge this round, or safety checks did not approve a change—it does not mean evolution is broken.",
+  "evolution.log.reason.runCompletedNoFileDeltaWithDirection":
+    "Scope: {direction}. Finished normally: no new on-disk prompt rules or skills (still often expected).",
+  "evolution.log.reason.judgementMetricsNoChange":
+    "Metrics moved little in the short window—keeping observation is fine.",
+  "evolution.log.reason.judgementNoBaseline":
+    "No baseline to compare yet—keeping observation is fine.",
 
   "evolution.diff.versionLeft": "Left version",
   "evolution.diff.versionRight": "Right version",

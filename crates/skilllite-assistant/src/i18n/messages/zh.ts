@@ -298,6 +298,12 @@ export const zhMessages: Record<string, string> = {
   "evolution.log.reason.errorWithDetail": "错误：{detail}",
   "evolution.log.reason.proposalQueued": "提案 {id}（{source}）已入队，等待放行后执行",
   "evolution.log.reason.proposalDenied": "提案 {id}（{source}）被策略运行时拒绝",
+  "evolution.log.reason.runCompletedNoFileDelta":
+    "本轮已正常跑完：未写入新的提示词规则或技能文件。常见情况——重复样本不足、本轮无可合并条目或安全校验未通过时就会如此，不代表进化坏了。",
+  "evolution.log.reason.runCompletedNoFileDeltaWithDirection":
+    "本轮范围：{direction}。已正常跑完：未写入新的提示词规则或技能文件（同上，多为正常）。",
+  "evolution.log.reason.judgementMetricsNoChange": "短期指标变化不大，先继续观察即可。",
+  "evolution.log.reason.judgementNoBaseline": "尚无基线对比数据，先继续观察即可。",
 
   "evolution.diff.versionLeft": "左侧版本",
   "evolution.diff.versionRight": "右侧版本",

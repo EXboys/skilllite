@@ -11,6 +11,7 @@ import {
   evolutionLogEventTypeLabel,
   evolutionLogReasonForDisplay,
   evolutionLogTargetLine,
+  isEvolutionRunCompletedNoFileDeltaReason,
   prependNoMaterialHelpIfNeeded,
 } from "../utils/evolutionDisplay";
 import {
@@ -1285,6 +1286,17 @@ export function EvolutionDetailBody({
           <ul className="space-y-2 text-xs">
             {s.recent_events.map((e, i) => {
               const reasonShown = evolutionLogReasonForDisplay(e.reason ?? null, locale);
+              const softenRunNoOutput =
+                e.event_type === "evolution_run" &&
+                isEvolutionRunCompletedNoFileDeltaReason(e.reason ?? null);
+              const rawReason = (e.reason ?? "").trim();
+              const softenJudgement =
+                e.event_type === "evolution_judgement" &&
+                (rawReason === "指标无显著变化" || rawReason === "无基线数据，继续观察");
+              const reasonRowClass =
+                softenRunNoOutput || softenJudgement
+                  ? "text-ink-mute/70 dark:text-ink-dark-mute/70 mt-0.5 whitespace-pre-wrap break-words"
+                  : "text-ink-mute dark:text-ink-dark-mute mt-0.5 whitespace-pre-wrap break-words";
               const targetShown = evolutionLogTargetLine(e.target_id, locale);
               const txnTrim = e.txn_id?.trim() ?? "";
               const rowOpensDiff =
@@ -1346,7 +1358,7 @@ export function EvolutionDetailBody({
                             txn: {txnTrim}
                           </div>
                           {reasonShown && (
-                            <p className="text-ink-mute dark:text-ink-dark-mute mt-0.5 whitespace-pre-wrap break-words">
+                            <p className={reasonRowClass}>
                               {reasonShown.length > 280 ? `${reasonShown.slice(0, 280)}…` : reasonShown}
                             </p>
                           )}
@@ -1370,7 +1382,7 @@ export function EvolutionDetailBody({
                             </div>
                           ) : null}
                           {reasonShown && (
-                            <p className="text-ink-mute dark:text-ink-dark-mute mt-0.5 whitespace-pre-wrap break-words">
+                            <p className={reasonRowClass}>
                               {reasonShown.length > 280 ? `${reasonShown.slice(0, 280)}…` : reasonShown}
                             </p>
                           )}

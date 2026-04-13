@@ -7,9 +7,21 @@ import { translate, type Locale } from "../i18n/translate";
  */
 
 /** One-line summary for compact UI (e.g. chat progress). */
-export const EVOLUTION_NO_SKILL_HEADLINE = "已执行，本轮未生成可落盘技能";
+export const EVOLUTION_NO_SKILL_HEADLINE =
+  "本轮已跑完，未生成可落盘技能（多为正常，不代表故障）";
 const PATTERN_EXPLAIN_LINE =
-  "当前技能进化依赖决策库中的重复模式，单次缺口不会自动合成技能。";
+  "技能进化依赖决策库中的重复模式与安全校验；无模式或未通过校验就不会有文件变更。";
+
+/** Backend `evolution_run` log reason when prompts/skills produced no on-disk delta (Chinese). */
+const RUN_NO_FILE_DELTA_CN = "进化运行完成，无新规则/技能产出";
+
+/** True when `reason` is the known “ran but no rules/skills on disk” summary from the engine. */
+export function isEvolutionRunCompletedNoFileDeltaReason(
+  reason: string | null | undefined
+): boolean {
+  if (reason == null || !reason.trim()) return false;
+  return reason.includes(RUN_NO_FILE_DELTA_CN);
+}
 
 const NO_MATERIAL_NOTE_RE = /no\s+material\s+changes/i;
 
@@ -133,6 +145,27 @@ export function evolutionLogReasonForDisplay(
 ): string | undefined {
   if (reason == null || !reason.trim()) return undefined;
   const r = reason.trim();
+
+  if (r.includes(RUN_NO_FILE_DELTA_CN)) {
+    const m = r.match(
+      /^方向:\s*([^；]+)；进化运行完成，无新规则\/技能产出$/
+    );
+    if (m) {
+      return translate(
+        "evolution.log.reason.runCompletedNoFileDeltaWithDirection",
+        { direction: m[1].trim() },
+        locale
+      );
+    }
+    return translate("evolution.log.reason.runCompletedNoFileDelta", undefined, locale);
+  }
+
+  if (r === "指标无显著变化") {
+    return translate("evolution.log.reason.judgementMetricsNoChange", undefined, locale);
+  }
+  if (r === "无基线数据，继续观察") {
+    return translate("evolution.log.reason.judgementNoBaseline", undefined, locale);
+  }
 
   if (
     r ===
