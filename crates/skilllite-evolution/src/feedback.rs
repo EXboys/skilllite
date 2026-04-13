@@ -711,10 +711,10 @@ mod tests {
         let conn = setup_conn();
         conn.execute_batch(
             "INSERT INTO decisions (ts, task_completed, feedback) VALUES
-             ('2026-03-14 09:00:00', 1, 'pos'),
-             ('2026-03-14 10:00:00', 0, 'neg'),
-             ('2026-03-14 11:00:00', 1, 'neutral'),
-             ('2026-03-14 12:00:00', 1, 'pos');
+             (datetime('now', '-5 days'), 1, 'pos'),
+             (datetime('now', '-4 days'), 0, 'neg'),
+             (datetime('now', '-3 days'), 1, 'neutral'),
+             (datetime('now', '-2 days'), 1, 'pos');
              INSERT INTO decision_rules (decision_id, rule_id) VALUES
              (1, 'test-rule'), (2, 'test-rule'), (3, 'test-rule'), (4, 'test-rule');",
         )
@@ -730,8 +730,8 @@ mod tests {
         let conn = setup_conn();
         conn.execute_batch(
             "INSERT INTO decisions (ts, task_completed, feedback) VALUES
-             ('2026-03-14 09:00:00', 1, 'pos'),
-             ('2026-03-14 10:00:00', 1, 'neutral');
+             (datetime('now', '-2 days'), 1, 'pos'),
+             (datetime('now', '-1 days'), 1, 'neutral');
              INSERT INTO decision_rules (decision_id, rule_id) VALUES
              (1, 'test-rule-2'), (2, 'test-rule-2');",
         )
