@@ -122,9 +122,13 @@ When the same variable is set in multiple places, resolution order is (highest �
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `SKILLLITE_ARTIFACT_SERVE_ALLOW` | string | unset | Must be **`1`** for the **`skilllite artifact-serve`** CLI subcommand to **bind** and listen. Without it, the command exits with an error (subcommand stays in the default binary, but no socket is opened). **Embedders** calling `skilllite_artifact::run_artifact_http_server` directly are **not** gated by this variable. |
+| `SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH` | string | unset | When **`1`** / `true` / `yes`, `skilllite_artifact::run_artifact_http_server` **refuses to start** unless a non-empty bearer token is supplied (even on loopback). |
+| `SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH` | string | unset | When **`1`** / `true` / `yes`, allows binding on a **non-loopback** address **without** a bearer token (logs a **high-severity warning**). Default is **refuse** (fail-closed) to avoid accidental `0.0.0.0` exposure without `Authorization`. |
 | `SKILLLITE_ARTIFACT_HTTP_SERVE` | string | unset | *(Tests / tooling)* When set to a `skilllite` executable path, Python SDK integration tests spawn `artifact-serve` from that binary. |
 
 **Implementation note (not an env var)**: The reference HTTP router (`skilllite_artifact::artifact_router` / `skilllite artifact-serve`) applies Axum **`DefaultBodyLimit`** of **64 MiB** per `PUT`. Oversized bodies receive HTTP **413**; constant `skilllite_artifact::MAX_ARTIFACT_BODY_BYTES`.
+
+**Startup note**: `run_artifact_http_server` always applies bind/auth checks: no token on loopback → **warning** only; no token on non-loopback → **error** unless `SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1`. If you mount `artifact_router` directly, enforce equivalent bind/token policy at your HTTP entrypoint.
 
 ---
 

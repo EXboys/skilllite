@@ -253,6 +253,7 @@ Core doesn't depend on upper layers; Agent is Core's customer.
 - The **`skilllite`** binary enables `artifact_http` by default and depends on `skilllite-artifact` with `features = ["local", "server"]` so `skilllite artifact-serve` is compiled in; listening still requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`.
 - OpenAPI (HTTP): [`docs/openapi/artifact-store-http-v1.yaml`](../openapi/artifact-store-http-v1.yaml).
 - Embedders can expose `GET`/`PUT` `/v1/runs/{run_id}/artifacts?key=...` via `artifact_router`, or call the same API from other languages.
+- `run_artifact_http_server` refuses **non-loopback** binds without a bearer token unless `SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1` (emits a high-severity warning); loopback-without-token only **warns**. Optional `SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH=1` requires a token even on loopback — see [`ENV_REFERENCE.md`](./ENV_REFERENCE.md).
 - HTTP `PUT` bodies are capped at **`MAX_ARTIFACT_BODY_BYTES` (64 MiB)** via Axum `DefaultBodyLimit`; larger requests get **413**. The crate uses `skilllite_artifact::Error` / `skilllite_artifact::Result` for serve and client construction (`Other(#[from] anyhow::Error)` per workspace conventions).
 
 **Build Targets**:

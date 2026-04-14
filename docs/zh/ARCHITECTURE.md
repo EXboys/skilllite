@@ -251,6 +251,7 @@ Core 不依赖上层；Agent 是 Core 的客户。
 - **`skilllite` 主二进制**默认启用 `artifact_http`，依赖 `features = ["local", "server"]`，因此 `artifact-serve` 子命令会编入；实际**监听**仍需 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`。
 - OpenAPI（HTTP）：[`docs/openapi/artifact-store-http-v1.yaml`](../openapi/artifact-store-http-v1.yaml)。
 - 集成方可用 `artifact_router` 暴露 `GET`/`PUT`，或由其他语言按同一 OpenAPI 调用。
+- `run_artifact_http_server` 在未配置 bearer 时：**非回环**绑定默认**拒绝**，除非 `SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1`（仍会打高噪声警告）；**仅回环**则**警告**后继续。可选 `SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH=1` 强制回环也必须带 token — 见 [`ENV_REFERENCE.md`](./ENV_REFERENCE.md)。
 - HTTP `PUT` 请求体上限为 **`MAX_ARTIFACT_BODY_BYTES`（64 MiB）**（Axum `DefaultBodyLimit`），超限返回 **413**。crate 提供 `skilllite_artifact::Error` / `skilllite_artifact::Result` 用于 `run_artifact_http_server` 与 `HttpArtifactStore::try_new`（含 `Other(#[from] anyhow::Error)`，符合工作区约定）。
 
 **编译目标**：

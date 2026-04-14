@@ -122,9 +122,13 @@
 | 变量 | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `SKILLLITE_ARTIFACT_SERVE_ALLOW` | string | 未设置 | 必须为 **`1`** 时，**`skilllite artifact-serve`** 子命令才会**监听**端口；否则直接报错退出（默认二进制仍带子命令，但不打开套接字）。**直接调用** `skilllite_artifact::run_artifact_http_server` 的嵌入方**不受**此变量限制。 |
+| `SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH` | string | 未设置 | 为 **`1`** / `true` / `yes` 时，`skilllite_artifact::run_artifact_http_server` **未提供非空 bearer token 则拒绝启动**（即使在回环地址上）。 |
+| `SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH` | string | 未设置 | 为 **`1`** / `true` / `yes` 时，允许在**非回环**地址上**无** bearer 启动监听（会打**高噪声警告**）。默认**拒绝**，避免误用 `0.0.0.0` 且未配置 `Authorization` 的事故配置。 |
 | `SKILLLITE_ARTIFACT_HTTP_SERVE` | string | 未设置 | *（测试/工具）* 指向 `skilllite` 可执行文件路径时，Python SDK 集成测试从该二进制启动 `artifact-serve`。 |
 
 **实现说明（非环境变量）**：参考 HTTP 路由（`skilllite_artifact::artifact_router` / `skilllite artifact-serve`）对单次 `PUT` 使用 Axum **`DefaultBodyLimit`**，上限 **64 MiB**；超出返回 HTTP **413**；常量 `skilllite_artifact::MAX_ARTIFACT_BODY_BYTES`。
+
+**启动策略**：`run_artifact_http_server` 一律做绑定/鉴权检查：无 token + 回环 → 仅**警告**；无 token + 非回环 → **报错**，除非设置 `SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1`。若仅挂载 `artifact_router`，请在 HTTP 入口自行落实等价的监听地址与鉴权策略。
 
 ---
 

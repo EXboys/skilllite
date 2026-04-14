@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **Artifact HTTP** (`skilllite_artifact::run_artifact_http_server`, including `skilllite artifact-serve`): Refuses to bind on a **non-loopback** address when no bearer token is configured, unless **`SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1`** (logs a loud warning). Loopback binds without a token still start but emit a **warning**. Optional **`SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH=1`** requires a non-empty token even on loopback. Empty `--token` values are treated as unset.
+
 ---
 
 ## [0.1.26] - 2026-04-14

@@ -3,7 +3,7 @@
 //! - **`local`** (default): [`LocalDirArtifactStore`] — filesystem layout `<base>/artifacts/<run_id>/<key>`.
 //! - **`server`**: Axum [`artifact_router`] — see `docs/openapi/artifact-store-http-v1.yaml`.
 //! - **`client`**: blocking HTTP [`HttpArtifactStore`].
-//! - **Serve API** (`local` + `server`): [`run_artifact_http_server`] — `skilllite artifact-serve` (CLI requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1` to bind) or embedders calling this API directly.
+//! - **Serve API** (`local` + `server`): [`run_artifact_http_server`] — `skilllite artifact-serve` (CLI requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1` to bind) or embedders calling this API directly. Startup refuses **non-loopback** binds without a bearer unless `SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1`; loopback-without-token logs a **warning**. Optional `SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH=1` requires a token even on loopback.
 //!
 //! The [`ArtifactStore`] trait and key validation live in `skilllite-core`. For a minimal agent build,
 //! depend on `skilllite-artifact` with `default-features = false, features = ["local"]` to avoid HTTP crates.
@@ -48,4 +48,7 @@ pub use server::{
 pub use client::HttpArtifactStore;
 
 #[cfg(all(feature = "server", feature = "local"))]
-pub use serve::run_artifact_http_server;
+pub use serve::{
+    run_artifact_http_server, ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH_ENV,
+    ARTIFACT_HTTP_REQUIRE_AUTH_ENV,
+};

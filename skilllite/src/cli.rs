@@ -642,6 +642,10 @@ pub enum Commands {
     /// Refuses to **bind** unless **`SKILLLITE_ARTIFACT_SERVE_ALLOW=1`** is set in the environment
     /// (avoids accidental listeners; the code stays in the default binary).
     ///
+    /// Without `--token`, **non-loopback** `--bind` addresses are refused unless
+    /// **`SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1`** (unsafe). Loopback binds without a token log a **warning**.
+    /// Set **`SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH=1`** to require a token even on loopback.
+    ///
     /// Prints `SKILLLITE_ARTIFACT_HTTP_ADDR=host:port` to stdout, then blocks.
     /// Storage layout: `<dir>/artifacts/<run_id>/<key>`.
     ///
