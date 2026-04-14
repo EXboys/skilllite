@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.1.26] - 2026-04-14
+
 ### Changed
 
 - **SkillLite Assistant (evolution panel)**: `skilllite_load_evolution_status` now returns structured **A9** (`inspect_growth_due`) and **passive** (`passive_schedule_diagnostics`) snapshots plus `last_material_run_ts`, `would_have_evolution_proposals`, and `empty_proposals_reason` (desktop Life Pulse periodic anchor wired in). Detail tab shows a **Schedule diagnostics** block (EN/ZH i18n).
@@ -22,6 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Agent (task planning)**: After a successful tool batch, when the model answered in prose but had not yet called `complete_task`, the planner soft-nudge path no longer emits that prose to the UI immediately. This avoids a duplicate assistant bubble when the next turn streams the final user-facing summary.
 - **Agent (task planning)**: When all planned tasks complete in the same tool batch, the loop used to treat `assistant_content` as “insubstantial” whenever tool-call turns suppressed free-form assistant text—so it almost always scheduled an extra **closing** LLM turn. That second turn produced a second user-visible summary (often redundant or garbled). The loop now treats **trailing tool results** as substantial when long enough (e.g. weather payloads) and **skips** the closing round in that case. When skipping, the agent **emits one `emit_assistant_visible`** line derived from that tool payload so the desktop/RPC UI shows an assistant bubble (not only the tool chip). `build_agent_result` / transcript use the same fallback when there is no non-empty assistant message.
 - **Agent (task planning)**: Tool-derived user summaries **exclude** `complete_task` JSON acks (they often appear *after* skills like `weather` and are >80 chars). Picking those acks produced useless assistant text; the picker now prefers earlier substantive tool bodies.
+
+### Release
+
+- Workspace, Python SDK, and SkillLite Assistant (Tauri) bumped to **0.1.26**.
 
 ---
 
@@ -348,7 +356,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.25...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.26...HEAD
+[0.1.26]: https://github.com/EXboys/skilllite/releases/tag/v0.1.26
 [0.1.25]: https://github.com/EXboys/skilllite/releases/tag/v0.1.25
 [0.1.24]: https://github.com/EXboys/skilllite/releases/tag/v0.1.24
 [0.1.23]: https://github.com/EXboys/skilllite/releases/tag/v0.1.23
