@@ -344,9 +344,30 @@ fn test_format_api_error_unknown_status() {
     let result = format_api_error(reqwest::StatusCode::IM_A_TEAPOT, body, "LLM");
     assert!(result.contains("something weird"), "{result}");
     assert!(
+        result.contains("HTTP 418"),
+        "should use numeric HTTP label: {result}"
+    );
+    assert!(
         !result.contains("API Key"),
         "no hint for unknown status: {result}"
     );
+}
+
+#[test]
+fn test_format_api_error_529_upstream_overload_label() {
+    let status = reqwest::StatusCode::from_u16(529).expect("valid code");
+    let body = r#"{"message":"The server cluster is currently under high load."}"#;
+    let result = format_api_error(status, body, "LLM");
+    assert!(result.contains("HTTP 529"), "{result}");
+    assert!(
+        !result.to_lowercase().contains("unknown status"),
+        "should not show http crate unknown label: {result}"
+    );
+    assert!(
+        result.contains("集群负载") || result.contains("几分钟"),
+        "{result}"
+    );
+    assert!(result.contains("high load"), "{result}");
 }
 
 #[test]

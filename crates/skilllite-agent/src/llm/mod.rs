@@ -305,21 +305,25 @@ fn record_llm_usage_totals(out: Option<&mut LlmUsageTotals>, usage: &Option<Usag
 /// human-readable hint based on the HTTP status code.
 pub(crate) fn format_api_error(status: reqwest::StatusCode, body: &str, provider: &str) -> String {
     let detail = extract_error_detail(body);
+    let code = status.as_u16();
+    // 非 IANA 标准码（如 MiniMax 529）用 `Display` 会变成 `529 <unknown status code>`，易误解为客户端问题。
+    let status_label = format!("HTTP {code}");
 
-    let hint = match status.as_u16() {
+    let hint = match code {
         401 => "API Key 无效或已过期，请在设置中检查 Key 是否正确",
         402 => "账户余额不足或付费套餐已过期",
         403 => "API Key 权限不足，请确认 Key 有权访问所选模型",
         404 => "API 端点不存在，请检查 API Base URL 和模型名称是否正确",
         429 => "请求频率超限 (Rate Limit)，请稍后重试",
+        529 => "上游集群负载过高（MiniMax 等常见），请隔几分钟再试或临时换其它模型",
         500..=599 => "模型服务端错误，请稍后重试",
         _ => "",
     };
 
     if hint.is_empty() {
-        format!("{} API 错误 ({}): {}", provider, status, detail)
+        format!("{provider} API 错误 ({status_label}): {detail}")
     } else {
-        format!("{} API 错误 ({}): {} — {}", provider, status, hint, detail)
+        format!("{provider} API 错误 ({status_label}): {hint} — {detail}")
     }
 }
 
