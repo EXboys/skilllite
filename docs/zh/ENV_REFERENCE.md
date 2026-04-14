@@ -157,7 +157,7 @@
 - Linux 无 bubblewrap 且仍需**有限**隔离时：可设 `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1`（弱隔离，慎用）
 - Skill 卡住时：`SKILLLITE_LOG_LEVEL=debug` 查看进度
 
-**Skill 执行前静态扫描（实现说明）**：统一预检（`SKILL.md` 供应链启发式 + 入口脚本 `ScriptScanner`）在 `skilllite-sandbox` 中为 `run_skill_precheck` / `SkillPrecheckSummary`。**沙箱级别 1、2、3** 在 CLI / `skilllite exec` 的 runner 里都会在执行技能代码前跑该预检（有报告时依赖 `SKILLLITE_AUTO_APPROVE` / TTY 确认）。Agent 对话路径对**所有级别**先在同进程跑同一预检并经 `EventSink` 确认，再传 `SandboxRunOptions.skip_skill_precheck` 以免 runner 在无 TTY 时误拦。MCP `run_skill` 在 Level 3 使用同一预检并返回 `scan_kind: l3_skill_precheck`（历史 JSON 字段名）+ `scan_id`；Level 1–2 由 runner 执行预检（除非 skip）。**`run_command`** 在拉起 `sh -c` 前还会跑 `scan_shell_command`（面向 shell 的 `ScriptScanner` 阶段：熵、base64、下载/解码/执行链）；有发现则须确认（`confirm_required`）。
+**Skill 执行前静态扫描（实现说明）**：统一预检（`SKILL.md` 供应链启发式 + 入口脚本 `ScriptScanner`）在 `skilllite-sandbox` 中为 `run_skill_precheck` / `SkillPrecheckSummary`。**沙箱级别 1、2、3** 在 CLI / `skilllite exec` 的 runner 里都会在执行技能代码前跑该预检（有报告时依赖 `SKILLLITE_AUTO_APPROVE` / TTY 确认）。Agent 对话路径对**所有级别**先在同进程跑同一预检并经 `EventSink` 确认，再传 `SandboxRunOptions.skip_skill_precheck` 以免 runner 在无 TTY 时误拦。MCP `run_skill` 在 Level 3 使用同一预检并返回 `scan_kind: l3_skill_precheck`（历史 JSON 字段名）+ `scan_id`；Level 1–2 由 runner 执行预检（除非 skip）。**`run_command`** 在拉起平台 shell 前还会跑 `scan_shell_command`（面向 shell 的 `ScriptScanner` 阶段：熵、base64、下载/解码/执行链）：Unix/macOS 为 `sh -c`，Windows 为 `%ComSpec% /C`（一般为 `cmd.exe`）；有发现则须确认（`confirm_required`）。
 
 ---
 

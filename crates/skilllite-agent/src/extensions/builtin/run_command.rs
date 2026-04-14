@@ -26,7 +26,7 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
         tool_type: "function".to_string(),
         function: FunctionDef {
             name: "run_command".to_string(),
-            description: "Execute a shell command in the workspace directory. A static shell scan (same engine family as skill L3 checks) runs before spawn; findings require confirmation. Reading sensitive paths (.env, .key, .pem, .git/config) via shell requires explicit confirmation. Regex-based dangerous patterns (rm -rf, curl|bash, etc.) add warnings. Timeout: 300 seconds.".to_string(),
+            description: "Execute a shell command in the workspace directory. Uses the platform shell: Unix/macOS runs `sh -c`; Windows runs `%ComSpec% /C` (normally cmd.exe). A static shell scan (same engine family as skill L3 checks) runs before spawn; findings require confirmation. Reading sensitive paths (.env, .key, .pem, .git/config) via shell requires explicit confirmation. Regex-based dangerous patterns (rm -rf, curl|bash, etc.) add warnings. Timeout: 300 seconds.".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -261,6 +261,20 @@ pub(super) async fn execute_run_command(
 
     // Do not inherit stdin: GUI / RPC parents often leave stdin open as a pipe with no EOF,
     // which makes `read()` in child scripts (e.g. `sys.stdin.read()`) block until timeout.
+    #[cfg(windows)]
+    let mut child = {
+        let comspec = std::env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into());
+        Command::new(comspec)
+            .arg("/C")
+            .arg(cmd)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .current_dir(workspace)
+            .spawn()
+            .with_context(|| format!("Failed to spawn command: {}", cmd))?
+    };
+    #[cfg(not(windows))]
     let mut child = Command::new("sh")
         .arg("-c")
         .arg(cmd)

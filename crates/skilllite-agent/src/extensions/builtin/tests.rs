@@ -1085,7 +1085,12 @@ async fn test_run_command_sensitive_cat_env_cancelled_when_denied() {
     std::fs::write(workspace.join(".env"), "API_KEY=sk-secret\n").unwrap();
 
     let mut sink = DenyConfirmSink;
-    let args = serde_json::json!({ "command": "cat .env" });
+    let read_env = if cfg!(windows) {
+        "type .env"
+    } else {
+        "cat .env"
+    };
+    let args = serde_json::json!({ "command": read_env });
     let outcome = run_command::execute_run_command(&args, workspace, &mut sink)
         .await
         .unwrap();
@@ -1103,7 +1108,12 @@ async fn test_run_command_sensitive_cat_env_runs_when_approved() {
     std::fs::write(workspace.join(".env"), "API_KEY=sk-secret\n").unwrap();
 
     let mut sink = SilentEventSink;
-    let args = serde_json::json!({ "command": "cat .env" });
+    let read_env = if cfg!(windows) {
+        "type .env"
+    } else {
+        "cat .env"
+    };
+    let args = serde_json::json!({ "command": read_env });
     let outcome = run_command::execute_run_command(&args, workspace, &mut sink)
         .await
         .unwrap();
@@ -1149,9 +1159,12 @@ async fn test_run_command_streams_output_and_returns_summary() {
 
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path();
-    let args = serde_json::json!({
-        "command": "printf 'hello\\n'; printf 'warn\\n' 1>&2"
-    });
+    let stream_cmd = if cfg!(windows) {
+        "powershell -NoProfile -NonInteractive -Command \"[Console]::Out.WriteLine('hello'); [Console]::Error.WriteLine('warn')\""
+    } else {
+        "printf 'hello\\n'; printf 'warn\\n' 1>&2"
+    };
+    let args = serde_json::json!({ "command": stream_cmd });
     let mut sink = CaptureSink {
         started: Vec::new(),
         outputs: Vec::new(),
@@ -1164,7 +1177,7 @@ async fn test_run_command_streams_output_and_returns_summary() {
     let result = outcome.content;
 
     assert_eq!(sink.started.len(), 1);
-    assert_eq!(sink.started[0], "printf 'hello\\n'; printf 'warn\\n' 1>&2");
+    assert_eq!(sink.started[0], stream_cmd);
     assert!(sink
         .outputs
         .iter()
@@ -1190,9 +1203,12 @@ async fn test_run_command_success_preview_is_compact() {
 
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path();
-    let args = serde_json::json!({
-        "command": "printf 'line1\\nline2\\nline3\\nline4\\n'"
-    });
+    let preview_cmd = if cfg!(windows) {
+        "powershell -NoProfile -NonInteractive -Command \"Write-Output 'line1'; Write-Output 'line2'; Write-Output 'line3'; Write-Output 'line4'\""
+    } else {
+        "printf 'line1\\nline2\\nline3\\nline4\\n'"
+    };
+    let args = serde_json::json!({ "command": preview_cmd });
     let mut sink = SilentEventSink;
 
     let outcome = run_command::execute_run_command(&args, workspace, &mut sink)
@@ -1226,10 +1242,12 @@ async fn test_execute_async_builtin_run_command_marks_nonzero_exit_as_error() {
 
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path();
-    let arguments = serde_json::json!({
-        "command": "echo ok && false"
-    })
-    .to_string();
+    let fail_cmd = if cfg!(windows) {
+        "echo ok & exit /b 1"
+    } else {
+        "echo ok && false"
+    };
+    let arguments = serde_json::json!({ "command": fail_cmd }).to_string();
     let mut sink = SilentEventSink;
 
     let result = execute_async_builtin_tool("run_command", &arguments, workspace, &mut sink).await;
