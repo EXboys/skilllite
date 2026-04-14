@@ -6,6 +6,7 @@ use skilllite_agent::llm::LlmClient;
 use skilllite_agent::types::ChatMessage;
 use skilllite_core::config::env_keys::llm as llm_keys;
 use skilllite_core::config::LlmConfig;
+use skilllite_evolution::strip_think_blocks;
 
 use super::chat::{merge_dotenv_with_chat_overrides, ChatConfigOverrides};
 use super::paths::load_dotenv_for_child;
@@ -72,6 +73,28 @@ fn followup_language_clause(last_user: Option<&str>) -> &'static str {
             "\n\n【Language — mandatory】Match the natural language of the user's last message in the transcript above (not the assistant's). If it is Chinese, use Chinese; if English, use English."
         }
     }
+}
+
+/// Remove `<think>…</think>` segments (MiniMax M2.x, DeepSeek, Qwen3, etc.).
+/// `strip_think_blocks` alone only keeps text after the **last** closing tag, which breaks multi-block
+/// layouts; paired removal runs first so each follow-up line comes from visible content only.
+fn strip_redacted_thinking_blocks(mut s: String) -> String {
+    while let Some(start) = s.find("<think>") {
+        if let Some(end) = s.find("</think>") {
+            let end_tag_end = end + "</think>".len();
+            s.replace_range(start..end_tag_end, "");
+        } else {
+            s.truncate(start);
+            break;
+        }
+    }
+    s
+}
+
+/// Normalize assistant completion text before splitting into follow-up lines.
+fn sanitize_followup_raw(raw: &str) -> String {
+    let s = strip_redacted_thinking_blocks(raw.trim().to_string());
+    strip_think_blocks(&s).trim().to_string()
 }
 
 fn parse_suggestion_lines(raw: &str) -> Vec<String> {
@@ -144,19 +167,23 @@ pub async fn followup_chat_suggestions(
         .await
         .map_err(|e| e.to_string())?;
 
-    let text = resp
+    let raw = resp
         .choices
         .first()
         .and_then(|c| c.message.content.as_deref())
         .unwrap_or("")
         .trim();
 
-    Ok(parse_suggestion_lines(text))
+    let text = sanitize_followup_raw(raw);
+    Ok(parse_suggestion_lines(&text))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{followup_language_clause, last_user_message_text, parse_suggestion_lines};
+    use super::{
+        followup_language_clause, last_user_message_text, parse_suggestion_lines,
+        sanitize_followup_raw,
+    };
 
     #[test]
     fn parses_numbered_and_bullets() {
@@ -185,5 +212,24 @@ mod tests {
     fn language_clause_ascii_mandates_english() {
         let s = followup_language_clause(Some("Write unit tests for this module"));
         assert!(s.contains("English"));
+    }
+
+    #[test]
+    fn sanitize_strips_redacted_thinking_before_three_lines() {
+        let raw = "<think>\nstep1\nstep2\n</think>\n如何写测试？\n如何跑 CI？\n如何 mock 网络？\n";
+        let cleaned = sanitize_followup_raw(raw);
+        let v = parse_suggestion_lines(&cleaned);
+        assert_eq!(v.len(), 3);
+        assert_eq!(v[0], "如何写测试？");
+        assert_eq!(v[1], "如何跑 CI？");
+        assert_eq!(v[2], "如何 mock 网络？");
+    }
+
+    #[test]
+    fn sanitize_strips_multiple_redacted_blocks() {
+        let raw = "<think>a</think>\nOne?\n<think>b</think>\nTwo?\nThree?\n";
+        let cleaned = sanitize_followup_raw(raw);
+        let v = parse_suggestion_lines(&cleaned);
+        assert_eq!(v, vec!["One?", "Two?", "Three?"]);
     }
 }
