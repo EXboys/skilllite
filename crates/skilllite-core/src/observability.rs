@@ -49,7 +49,10 @@ pub fn init_tracing(mode: TracingMode) {
                 tracing_subscriber::fmt::layer()
                     .json()
                     .with_target(true)
-                    .with_thread_ids(false),
+                    .with_thread_ids(false)
+                    // tracing-subscriber defaults fmt output to stdout; keep stderr so
+                    // machine-readable CLI lines (e.g. artifact-serve listen addr) stay clean on stdout.
+                    .with_writer(std::io::stderr),
             )
             .try_init()
     } else {
@@ -58,7 +61,8 @@ pub fn init_tracing(mode: TracingMode) {
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_target(true)
-                    .with_thread_ids(false),
+                    .with_thread_ids(false)
+                    .with_writer(std::io::stderr),
             )
             .try_init()
     };

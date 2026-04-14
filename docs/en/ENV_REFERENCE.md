@@ -319,6 +319,8 @@ Under **Settings → Evolution**, in-app overrides let you set check interval, d
 | `SKILLLITE_AUDIT_ALERT_FAILURE_RATIO` | float | `0.5` | Alert: failure rate ≥ this (0–1) with invocations ≥ previous row |
 | `SKILLLITE_AUDIT_ALERT_EDIT_UNIQUE_PATHS` | int | `80` | Alert: distinct paths in `edit_*` events exceed this in the window |
 
+**Rust tracing (`SKILLLITE_LOG_LEVEL` / `SKILLLITE_LOG_JSON`)**: The shared CLI initializer writes formatted tracing to **stderr**, leaving **stdout** for machine-readable protocol lines where a command uses it (for example `SKILLLITE_ARTIFACT_HTTP_ADDR=…` from `artifact-serve`).
+
 **P1 denylist files** (merged with `SKILLLITE_SKILL_DENYLIST`, one `name` per line, `#` comments): `~/.skilllite/skill-denylist.txt`, `{data_root}/.skilllite/skill-denylist.txt`, and `./.skilllite/skill-denylist.txt` from the current working directory. **Unblock**: remove the name from those files or from the env var (re-read on each execution; no process restart required).
 
 **P1 audit analysis**: `skilllite audit-report [--dir DIR] [--hours N] [--json] [--alert] [--webhook URL]` — aggregates `audit_*.jsonl` for per-skill invocation counts, failure rates, and `edit_*` path distribution; `--alert` emits to stderr and tracing (target `skilllite::audit`), optionally POSTs to the webhook.

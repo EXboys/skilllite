@@ -319,6 +319,8 @@
 | `SKILLLITE_AUDIT_ALERT_FAILURE_RATIO` | float | `0.5` | 告警：失败率 ≥ 此值（0–1）且调用次数 ≥ 上一项时触发 |
 | `SKILLLITE_AUDIT_ALERT_EDIT_UNIQUE_PATHS` | int | `80` | 告警：时间窗内 `edit_*` 事件触及的不重复路径数超过此值 |
 
+**Rust tracing（`SKILLLITE_LOG_LEVEL` / `SKILLLITE_LOG_JSON`）**：共享 CLI 初始化器将格式化 tracing 写到 **stderr**，**stdout** 留给需要机器可读行的子命令（例如 `artifact-serve` 输出的 `SKILLLITE_ARTIFACT_HTTP_ADDR=…`）。
+
 **P1 denylist 文件**（与 `SKILLLITE_SKILL_DENYLIST` 合并，每行一个 `name`，`#` 为注释）：`~/.skilllite/skill-denylist.txt`、`{data_root}/.skilllite/skill-denylist.txt`、当前工作目录下 `.skilllite/skill-denylist.txt`。**解禁**：从上述文件或环境变量中移除对应名称即可（每次执行前重新读取，无需重启进程）。
 
 **P1 审计分析**：`skilllite audit-report [--dir DIR] [--hours N] [--json] [--alert] [--webhook URL]` — 汇总 `audit_*.jsonl` 在时间窗内的各 Skill 调用次数、失败率、`edit_*` 路径分布；`--alert` 在命中规则时输出到 stderr 与 `tracing`（target `skilllite::audit`），并可 POST 到 webhook。
