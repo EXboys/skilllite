@@ -100,27 +100,12 @@ jobs:
           echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> $GITHUB_ENV
           echo "Signing identity configured (identity not logged)."
 
-      # macOS：用 App Store Connect API 密钥做公证时，把 .p8 内容写回为临时文件（不填 APPLE_ID/APPLE_PASSWORD 时用）
-      # 注意：if 条件中不能使用 secrets，故在脚本内判断是否跳过
-      - name: Prepare Apple API key for notarization (macOS)
-        if: runner.os == 'macOS'
-        working-directory: crates/skilllite-assistant
-        env:
-          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
-        run: |
-          if [ -z "$APPLE_API_KEY_P8" ]; then echo "APPLE_API_KEY_P8 not set, skipping"; exit 0; fi
-          echo "$APPLE_API_KEY_P8" > authkey.p8
-          echo "APPLE_API_KEY_PATH=${{ github.workspace }}/crates/skilllite-assistant/authkey.p8" >> $GITHUB_ENV
+      # macOS 公证：不在 tauri build 内跑（失败会整步失败）。签名+打包见下一步；公证见「Notarize macOS app」。
 
       - name: Build Tauri app (skilllite binary bundled via beforeBuildCommand)
         working-directory: crates/skilllite-assistant
         shell: bash
         run: |
-          [ -z "$APPLE_ID" ] && unset APPLE_ID
-          [ -z "$APPLE_PASSWORD" ] && unset APPLE_PASSWORD
-          [ -z "$APPLE_API_KEY" ] && unset APPLE_API_KEY
-          [ -z "$APPLE_API_ISSUER" ] && unset APPLE_API_ISSUER
-          [ -z "$APPLE_API_KEY_PATH" ] && unset APPLE_API_KEY_PATH
           if [ "$RUNNER_OS" = "macOS" ]; then
             npm run tauri:build -- --bundles app
           else
@@ -128,13 +113,9 @@ jobs:
           fi
         env:
           CI: true
+          # 仅签名所需；勿注入 APPLE_ID / APPLE_API_* / APPLE_API_KEY_PATH，否则会触发 Tauri 内置公证并可能阻断构建。
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
 
       # beforeBuildCommand runs `npm run build`; catch accidental reintroduction of remark-gfm autolink regex
       - name: Verify frontend bundle (WKWebView-safe)
@@ -149,6 +130,70 @@ jobs:
           ls -la "$APP_DIR" || echo "WARNING: $APP_DIR does not exist"
           echo "--- Checking .app structure ---"
           ls -la "$APP_DIR/SkillLite Assistant.app/Contents/" 2>/dev/null || echo "WARNING: .app not found at expected path"
+
+      # API Key（.p8）或 Apple ID + app 专用密码 + Team ID；失败不阻断 job（DMG 仍为已签名 .app，可能未 stapler）。
+      - name: Notarize macOS app (best effort)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.workspace }}"
+          KEY_PATH="$REPO/crates/skilllite-assistant/authkey.p8"
+          APP_PATH="$REPO/crates/skilllite-assistant/src-tauri/target/release/bundle/macos/SkillLite Assistant.app"
+          ZIP_PATH=""
+          cleanup() {
+            rm -f "$KEY_PATH"
+            if [ -n "${ZIP_PATH}" ] && [ -f "${ZIP_PATH}" ]; then rm -f "${ZIP_PATH}"; fi
+          }
+          trap cleanup EXIT
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: .app not found at $APP_PATH"
+            exit 1
+          fi
+
+          ZIP_PATH="$(mktemp "${RUNNER_TEMP:-/tmp}/skilllite-notarize.XXXXXX")"
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+
+          submit_ok=0
+          if [ -n "${APPLE_API_KEY_P8:-}" ] && [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ]; then
+            printf '%s' "$APPLE_API_KEY_P8" > "$KEY_PATH"
+            chmod 600 "$KEY_PATH"
+            if xcrun notarytool submit "$ZIP_PATH" \
+              --key "$KEY_PATH" \
+              --key-id "$APPLE_API_KEY" \
+              --issuer "$APPLE_API_ISSUER" \
+              --wait; then
+              submit_ok=1
+            fi
+            rm -f "$KEY_PATH"
+          elif [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
+            if xcrun notarytool submit "$ZIP_PATH" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait; then
+              submit_ok=1
+            fi
+          else
+            echo "Notarization credentials incomplete (API key trio or APPLE_ID+APPLE_PASSWORD+APPLE_TEAM_ID), skipping."
+            exit 0
+          fi
+
+          if [ "$submit_ok" -ne 1 ]; then
+            echo "::warning::Notarization failed. Continuing with signed-only app (no stapler)."
+            exit 1
+          fi
+
+          xcrun stapler staple "$APP_PATH"
+          echo "Notarization and stapling completed."
 
       - name: Create DMG with create-dmg (macOS)
         if: runner.os == 'macOS'
