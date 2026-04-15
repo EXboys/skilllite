@@ -164,7 +164,7 @@ pub mod evolution {
     pub const SKILLLITE_EVO_PROFILE: &str = "SKILLLITE_EVO_PROFILE";
 
     // ── 5.2 进化触发条件（高级，可单独覆盖；未设时由 EVO_PROFILE 或默认值决定）────────────
-    /// 上次进化后冷却时间（小时），此时间内不再次触发。默认 1。
+    /// 上次进化后冷却时间（小时），此时间内不再次触发。默认 0.5。
     pub const SKILLLITE_EVO_COOLDOWN_HOURS: &str = "SKILLLITE_EVO_COOLDOWN_HOURS";
     /// 统计决策的时间窗口（天）。默认 7。
     pub const SKILLLITE_EVO_RECENT_DAYS: &str = "SKILLLITE_EVO_RECENT_DAYS";

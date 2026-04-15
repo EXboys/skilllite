@@ -162,6 +162,7 @@ pub fn repair_skills(
     let root = find_project_root(workspace);
 
     let mut cmd = std::process::Command::new(skilllite_path);
+    crate::windows_spawn::hide_child_console(&mut cmd);
     cmd.arg("evolution").arg("repair-skills");
     for name in skill_names {
         cmd.arg(name);
@@ -208,6 +209,7 @@ pub fn add_skill(
     }
 
     let mut cmd = std::process::Command::new(skilllite_path);
+    crate::windows_spawn::hide_child_console(&mut cmd);
     cmd.arg("add")
         .arg(source)
         .arg("--skills-dir")
@@ -774,6 +776,7 @@ pub fn authorize_capability_evolution(
     std::thread::spawn(move || {
         let root = find_project_root(&workspace_owned);
         let mut cmd = std::process::Command::new(&skilllite_path_owned);
+        crate::windows_spawn::hide_child_console(&mut cmd);
         cmd.arg("evolution")
             .arg("run")
             .arg("--json")
@@ -1598,7 +1601,9 @@ fn check_bundled_skilllite(skilllite_path: &std::path::Path) -> HealthCheckItem 
         };
     }
 
-    match std::process::Command::new(skilllite_path)
+    let mut version_cmd = std::process::Command::new(skilllite_path);
+    crate::windows_spawn::hide_child_console(&mut version_cmd);
+    match version_cmd
         .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -1716,6 +1721,7 @@ pub fn init_workspace(dir: &str, skilllite_path: &std::path::Path) -> Result<(),
         return Err("不能使用根目录 / 作为工作区".to_string());
     }
     let mut cmd = std::process::Command::new(skilllite_path);
+    crate::windows_spawn::hide_child_console(&mut cmd);
     cmd.arg("init").current_dir(&path);
     let output = cmd
         .output()

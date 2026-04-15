@@ -171,7 +171,9 @@ fn spawn_growth(
     let env: Vec<(String, String)> = env_pairs.to_vec();
     std::thread::spawn(move || {
         emit(&app, "growth-started", None);
-        let result = Command::new(&path)
+        let mut growth_cmd = Command::new(&path);
+        crate::windows_spawn::hide_child_console(&mut growth_cmd);
+        let result = growth_cmd
             .args(["evolution", "run"])
             .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .stdout(std::process::Stdio::piped())
@@ -200,7 +202,9 @@ fn spawn_rhythm(
     let env: Vec<(String, String)> = env_pairs.to_vec();
     std::thread::spawn(move || {
         emit(&app, "rhythm-started", None);
-        let result = Command::new(&path)
+        let mut rhythm_cmd = Command::new(&path);
+        crate::windows_spawn::hide_child_console(&mut rhythm_cmd);
+        let result = rhythm_cmd
             .args(["schedule", "tick"])
             .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .stdout(std::process::Stdio::piped())

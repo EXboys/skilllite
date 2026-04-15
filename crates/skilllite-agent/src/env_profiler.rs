@@ -90,7 +90,14 @@ fn first_non_empty_line(s: &str) -> Option<String> {
 }
 
 fn probe_tool(tool: &str) -> ToolProbe {
-    match Command::new(tool).arg("--version").output() {
+    let mut c = Command::new(tool);
+    c.arg("--version");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        c.creation_flags(0x0800_0000);
+    }
+    match c.output() {
         Ok(output) => {
             let raw = if !output.stdout.is_empty() {
                 String::from_utf8_lossy(&output.stdout).to_string()

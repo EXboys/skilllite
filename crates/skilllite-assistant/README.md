@@ -28,6 +28,8 @@ npm run tauri:build
 
 桌面应用通过 `skilllite agent-rpc` 子进程调用，需确保 `~/.skilllite/bin` 在 PATH 中（如 `export PATH="$HOME/.skilllite/bin:$PATH"`）。
 
+**Windows**：上述子进程及运行时探测等后台命令在创建时带有「无控制台窗口」标志，避免在图形界面下反复弹出空的命令提示符窗口；若仍看到窗口，多为用户主动打开的外壳或第三方工具。
+
 如需单独预装 skilllite：`npm run prebuild:tauri`
 
 ## 卸载与数据

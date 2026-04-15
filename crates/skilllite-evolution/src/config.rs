@@ -88,7 +88,7 @@ pub struct EvolutionThresholds {
 impl Default for EvolutionThresholds {
     fn default() -> Self {
         Self {
-            cooldown_hours: 1.0,
+            cooldown_hours: 0.5,
             recent_days: 7,
             recent_limit: 100,
             meaningful_min_tools: 2,

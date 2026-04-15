@@ -38,6 +38,7 @@
 
 use anyhow::Context;
 
+use crate::common::hide_child_console;
 use crate::error::bail;
 use crate::Result;
 use serde::Serialize;
@@ -277,6 +278,7 @@ fn display_path_with_tilde(path: &Path) -> String {
 /// 解析当前候选正在使用的 Python 可执行文件绝对路径（含 Windows `py -3` 场景）。
 fn resolve_system_python_executable(c: &PythonProbeCandidate) -> Option<PathBuf> {
     let mut cmd = Command::new(&c.program);
+    hide_child_console(&mut cmd);
     cmd.args(&c.args)
         .args(["-c", "import sys; print(sys.executable)"]);
     let out = cmd.output().ok()?;
@@ -317,6 +319,7 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
         let mut system_hit: Option<(String, PathBuf)> = None;
         for c in python_probe_candidates() {
             let mut cmd = Command::new(&c.program);
+            hide_child_console(&mut cmd);
             cmd.args(&c.args).arg("--version");
             let Ok(out) = cmd.output() else {
                 continue;
@@ -385,7 +388,9 @@ pub fn probe_runtime_for_ui(cache_override: Option<&str>) -> RuntimeUiSnapshot {
 
     let node = {
         if let Some(path) = which_node() {
-            let ver = Command::new(&path)
+            let mut ver_cmd = Command::new(&path);
+            hide_child_console(&mut ver_cmd);
+            let ver = ver_cmd
                 .arg("--version")
                 .output()
                 .ok()
@@ -636,7 +641,9 @@ pub fn get_runtime_dir(override_cache_dir: Option<&str>) -> Option<PathBuf> {
 /// Returns system Node path if present and version >= MIN_NODE_MAJOR; otherwise None.
 pub fn which_node() -> Option<PathBuf> {
     let path = which::which("node").ok()?;
-    let out = Command::new(&path).arg("--version").output().ok()?;
+    let mut cmd = Command::new(&path);
+    hide_child_console(&mut cmd);
+    let out = cmd.arg("--version").output().ok()?;
     if !out.status.success() {
         return None;
     }
@@ -651,7 +658,9 @@ pub fn which_node() -> Option<PathBuf> {
 /// Returns system npm path if present (and node is usable); otherwise None.
 pub fn which_npm() -> Option<PathBuf> {
     which_node()?;
-    let out = Command::new("npm").arg("--version").output().ok()?;
+    let mut cmd = Command::new("npm");
+    hide_child_console(&mut cmd);
+    let out = cmd.arg("--version").output().ok()?;
     if out.status.success() {
         which::which("npm").ok()
     } else {

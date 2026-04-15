@@ -257,7 +257,7 @@ Planning rules are defined in `planning_rules.rs`; no external JSON config neede
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
-| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `1` | Cooldown (hours) after last **material** evolution (`evolution_run`); `evolution_run_noop` does not reset this clock |
+| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `0.5` | Cooldown (hours) after last **material** evolution (`evolution_run`); `evolution_run_noop` does not reset this clock |
 | `SKILLLITE_EVO_RECENT_DAYS` | int | `7` | Time window (days) for decision statistics |
 | `SKILLLITE_EVO_RECENT_LIMIT` | int | `100` | Max number of decisions to consider in the window |
 | `SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS` | int | `2` | Min tool calls per decision to count as "meaningful" |

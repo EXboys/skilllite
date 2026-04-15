@@ -15,7 +15,7 @@
 use crate::error::bail;
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::RuntimeResolver;
-use crate::{common::apply_standard_execution_env, common::pipe_stdio};
+use crate::{common::apply_standard_execution_env, common::hide_child_console, common::pipe_stdio};
 use anyhow::Context;
 
 use crate::Result;
@@ -95,7 +95,9 @@ enum Wsl2Status {
 }
 
 fn check_wsl2_status() -> Wsl2Status {
-    let wsl_ok = Command::new("wsl")
+    let mut wsl_status = Command::new("wsl");
+    hide_child_console(&mut wsl_status);
+    let wsl_ok = wsl_status
         .args(["--status"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -107,7 +109,9 @@ fn check_wsl2_status() -> Wsl2Status {
         return Wsl2Status::NotAvailable;
     }
 
-    let skilllite_ok = Command::new("wsl")
+    let mut wsl_which = Command::new("wsl");
+    hide_child_console(&mut wsl_which);
+    let skilllite_ok = wsl_which
         .args(["-e", "which", "skilllite"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
@@ -172,7 +176,9 @@ fn execute_via_wsl2(
     }
 
     // Use stdin pipe for input_json (avoids shell escaping & CLI length limits)
-    let mut child = Command::new("wsl")
+    let mut wsl_cmd = Command::new("wsl");
+    hide_child_console(&mut wsl_cmd);
+    let mut child = wsl_cmd
         .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -262,6 +268,7 @@ fn execute_with_native_isolation(
 
     let entry_point = skill_dir.join(&config.entry_point);
     let mut cmd = Command::new(&resolved.interpreter);
+    hide_child_console(&mut cmd);
     cmd.arg(&entry_point);
     cmd.current_dir(skill_dir);
 
@@ -436,6 +443,7 @@ pub fn execute_simple_with_limits(
     std::fs::write(&input_file, input_json)?;
 
     let mut cmd = Command::new(&resolved.interpreter);
+    hide_child_console(&mut cmd);
     cmd.arg(&entry_point)
         .current_dir(skill_dir)
         .env("SKILL_INPUT_FILE", &input_file)
@@ -516,7 +524,9 @@ fn execute_bash_via_wsl(
     input_json: &str,
     _limits: ResourceLimits,
 ) -> Result<ExecutionResult> {
-    let mut child = Command::new("wsl")
+    let mut wsl_bash = Command::new("wsl");
+    hide_child_console(&mut wsl_bash);
+    let mut child = wsl_bash
         .args(["-e", "bash", wsl_script_path])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

@@ -473,6 +473,7 @@ pub fn clear_transcript(
     let workspace_root = find_project_root(workspace);
 
     let mut cmd = std::process::Command::new(skilllite_path);
+    crate::windows_spawn::hide_child_console(&mut cmd);
     cmd.args([
         "clear-session",
         "--session-key",

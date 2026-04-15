@@ -7,6 +7,7 @@ use std::process::{Command, Stdio};
 use crate::error::bail;
 use crate::Result;
 
+use skilllite_sandbox::common::hide_child_console;
 use skilllite_sandbox::env::builder;
 
 use super::SkillMeta;
@@ -389,6 +390,8 @@ pub(super) fn test_skill_invoke(
         return Ok((false, "unsupported entry point".to_string()));
     };
 
+    hide_child_console(&mut run_cmd);
+
     let script_arg = script_path.to_string_lossy().into_owned();
     let mut child = run_cmd
         .arg(&script_arg)
@@ -443,6 +446,7 @@ pub(super) fn test_skill_invoke(
             } else {
                 return Ok((false, trace));
             };
+            hide_child_console(&mut help_cmd);
             let help_output = help_cmd
                 .arg(&script_arg)
                 .arg("--help")

@@ -137,8 +137,9 @@ fn schedule_macos_bundle_removal(bundle: &Path) -> Result<(), String> {
 /// 打开 Windows「应用和功能」以便卸载本应用。
 #[cfg(target_os = "windows")]
 fn open_windows_apps_settings() -> Result<(), String> {
-    Command::new("cmd")
-        .args(["/C", "start", "", "ms-settings:appsfeatures"])
+    let mut cmd = Command::new("cmd");
+    crate::windows_spawn::hide_child_console(&mut cmd);
+    cmd.args(["/C", "start", "", "ms-settings:appsfeatures"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

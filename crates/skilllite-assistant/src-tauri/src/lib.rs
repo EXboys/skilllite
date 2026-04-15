@@ -3,6 +3,7 @@
 mod life_pulse;
 mod skilllite_bridge;
 mod uninstall;
+mod windows_spawn;
 
 use tauri::{
     menu::{Menu, MenuItem},

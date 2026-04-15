@@ -507,6 +507,8 @@ npm run tauri build
 默认系统/规划/执行提示词倾向于在缺少专用技能时仍通过**脚本、`run_command`、小技能**等方式推进浏览器/桌面类需求，而不是一句「做不到」结束。客户端升级若提高 prompt **种子版本**，下次启动时可能用新模板**覆盖** `~/.skilllite/chat/prompts/` 下与新版不一致的文件（含从旧版官方模板升级的情况）；若你改过这些文件，请先**自行备份**。
 **卸载**：**设置 → 工作区与沙箱** 底部可选择仅卸载应用或一并删除本机助手数据（详见助手 README）。
 
+**Windows**：后台子进程（内置引擎自检、Life Pulse、运行时探测、以及代理里通过 `run_command` 拉起的 shell）使用无控制台窗口方式创建，正常使用时不应再反复闪现空的「命令提示符」黑框。
+
 详见 [crates/skilllite-assistant/README.md](../../crates/skilllite-assistant/README.md)。
 
 </details>

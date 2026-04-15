@@ -257,7 +257,7 @@
 
 | 变量 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `1` | 距上次 **有产出** 进化（`evolution_run`）的冷却（小时）；`evolution_run_noop` 不重置该时钟 |
+| `SKILLLITE_EVO_COOLDOWN_HOURS` | float | `0.5` | 距上次 **有产出** 进化（`evolution_run`）的冷却（小时）；`evolution_run_noop` 不重置该时钟 |
 | `SKILLLITE_EVO_RECENT_DAYS` | int | `7` | 统计决策的时间窗口（天） |
 | `SKILLLITE_EVO_RECENT_LIMIT` | int | `100` | 时间窗口内最多取多少条决策参与统计 |
 | `SKILLLITE_EVO_MEANINGFUL_MIN_TOOLS` | int | `2` | 单条决策至少多少 tool 调用才计入「有意义」条数 |

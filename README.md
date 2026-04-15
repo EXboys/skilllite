@@ -563,6 +563,8 @@ For tool outcomes marked as `partial_success` or `failure`, the assistant shows 
 Default agent prompts bias toward **implementing** missing capabilities (scripts, `run_command`, small skills) instead of flatly refusing browser/desktop-style requests when no dedicated skill exists. App upgrades that bump the prompt **seed version** may **overwrite** `~/.skilllite/chat/prompts/*.md` when the on-disk file differs from the new bundled template (including upgrades from older stock); **back up** those files if you customized them.
 **Uninstall**: **Settings → Workspace & sandbox** includes **Uninstall & data** (remove the app only or wipe local assistant data; see the assistant README).
 
+**Windows**: background subprocesses (bundled engine checks, Life Pulse, runtime probes, and agent `run_command` shells) are started with `CREATE_NO_WINDOW`, so you should not see empty Command Prompt windows flashing during normal use.
+
 See [crates/skilllite-assistant/README.md](./crates/skilllite-assistant/README.md).
 
 </details>

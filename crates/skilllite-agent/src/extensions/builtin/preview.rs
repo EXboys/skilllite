@@ -184,17 +184,24 @@ fn build_preview_url(port: u16, filename: Option<&str>) -> String {
 }
 
 fn open_browser(url: &str) {
-    let _ = if cfg!(target_os = "macos") {
-        std::process::Command::new("open").arg(url).spawn()
-    } else if cfg!(target_os = "linux") {
-        std::process::Command::new("xdg-open").arg(url).spawn()
-    } else if cfg!(target_os = "windows") {
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+
+    #[cfg(target_os = "linux")]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+
+    #[cfg(target_os = "windows")]
+    let _ = {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
         std::process::Command::new("cmd")
             .args(["/C", "start", url])
+            .creation_flags(CREATE_NO_WINDOW)
             .spawn()
-    } else {
-        std::process::Command::new("true").spawn()
     };
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    let _ = std::process::Command::new("true").spawn();
 }
 
 fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {

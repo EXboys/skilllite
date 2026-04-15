@@ -263,15 +263,18 @@ pub(super) async fn execute_run_command(
     // which makes `read()` in child scripts (e.g. `sys.stdin.read()`) block until timeout.
     #[cfg(windows)]
     let mut child = {
+        use std::os::windows::process::CommandExt;
         let comspec = std::env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into());
-        Command::new(comspec)
+        let mut c = Command::new(comspec)
             .arg("/C")
             .arg(cmd)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
-            .current_dir(workspace)
-            .spawn()
+            .current_dir(workspace);
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.as_std_mut().creation_flags(CREATE_NO_WINDOW);
+        c.spawn()
             .with_context(|| format!("Failed to spawn command: {}", cmd))?
     };
     #[cfg(not(windows))]

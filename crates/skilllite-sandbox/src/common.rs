@@ -119,7 +119,9 @@ pub fn get_process_memory(pid: u32) -> Option<u64> {
 
     // Use tasklist to get memory info
     // Format: tasklist /FI "PID eq <pid>" /FO CSV /NH
-    let output = Command::new("tasklist")
+    let mut cmd = Command::new("tasklist");
+    hide_child_console(&mut cmd);
+    let output = cmd
         .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
         .output()
         .ok()?;
@@ -564,6 +566,17 @@ pub fn pipe_stdio(cmd: &mut Command) {
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 }
+
+/// On Windows, avoid allocating a visible console when spawning CLI children from a GUI parent.
+#[cfg(target_os = "windows")]
+pub fn hide_child_console(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn hide_child_console(_cmd: &mut Command) {}
 
 // ============================================================
 // Script Arguments Helper

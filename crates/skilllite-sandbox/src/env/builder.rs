@@ -14,6 +14,7 @@ use skilllite_core::EnvSpec;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::common::hide_child_console;
 use crate::env::runtime_deps::{self, RuntimeConfirmDownloadFn, RuntimeProgressFn};
 use crate::runner::RuntimePaths;
 
@@ -175,6 +176,7 @@ fn ensure_python_env(
 
         let python = resolve_python(cache_dir, progress, confirm_download)?;
         let mut cmd = Command::new(&python.program);
+        hide_child_console(&mut cmd);
         cmd.args(&python.args).arg("-m").arg("venv").arg(env_path);
         cmd.current_dir(skill_dir);
         let out = cmd.output().context("Create venv")?;
@@ -186,10 +188,12 @@ fn ensure_python_env(
             let pip = pip_path_in_env(env_path);
             let mut cmd = if pip.file_name().map(|n| n == "python").unwrap_or(false) {
                 let mut c = Command::new(&pip);
+                hide_child_console(&mut c);
                 c.arg("-m").arg("pip").arg("install");
                 c
             } else {
                 let mut c = Command::new(&pip);
+                hide_child_console(&mut c);
                 c.arg("install");
                 c
             };
@@ -262,7 +266,9 @@ fn ensure_node_env(
             if lock.exists() {
                 let _ = std::fs::copy(&lock, env_path.join("package-lock.json"));
             }
-            let out = Command::new(&_npm_path)
+            let mut npm_cmd = Command::new(&_npm_path);
+            hide_child_console(&mut npm_cmd);
+            let out = npm_cmd
                 .args(["install", "--omit=dev"])
                 .current_dir(env_path)
                 .output()
@@ -367,7 +373,9 @@ fn install_playwright_browsers_for_python(skill_dir: &Path, env_path: &Path) -> 
         bail!("playwright browser install skipped: python env missing");
     }
 
-    let out = Command::new(&python)
+    let mut py_play = Command::new(&python);
+    hide_child_console(&mut py_play);
+    let out = py_play
         .args(["-m", "playwright", "install", "chromium"])
         .current_dir(skill_dir)
         .output()
@@ -394,14 +402,17 @@ fn install_playwright_browsers_for_node(env_path: &Path) -> Result<()> {
 
     let mut cmd = if unix_cli.exists() {
         let mut cmd = Command::new(unix_cli);
+        hide_child_console(&mut cmd);
         cmd.args(["install", "chromium"]);
         cmd
     } else if windows_cli.exists() {
         let mut cmd = Command::new(windows_cli);
+        hide_child_console(&mut cmd);
         cmd.args(["install", "chromium"]);
         cmd
     } else {
         let mut cmd = Command::new("npm");
+        hide_child_console(&mut cmd);
         cmd.args(["exec", "--", "playwright", "install", "chromium"]);
         cmd
     };
@@ -441,6 +452,7 @@ struct PythonCommand {
 fn which_python() -> Result<PythonCommand> {
     for candidate in python_command_candidates() {
         let mut cmd = Command::new(&candidate.program);
+        hide_child_console(&mut cmd);
         cmd.args(&candidate.args).arg("--version");
         let out = cmd.output();
         if let Ok(ref o) = out {
@@ -459,10 +471,9 @@ fn resolve_python(
     confirm_download: RuntimeConfirmDownloadFn,
 ) -> Result<PythonCommand> {
     if let Ok(cmd) = which_python() {
-        let out = Command::new(&cmd.program)
-            .args(&cmd.args)
-            .arg("--version")
-            .output();
+        let mut ver_cmd = Command::new(&cmd.program);
+        hide_child_console(&mut ver_cmd);
+        let out = ver_cmd.args(&cmd.args).arg("--version").output();
         if let Ok(ref o) = out {
             if let Some(ver) = std::str::from_utf8(&o.stdout)
                 .or_else(|_| std::str::from_utf8(&o.stderr))

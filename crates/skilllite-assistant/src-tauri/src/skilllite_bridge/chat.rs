@@ -246,6 +246,8 @@ pub fn chat_stream(
     cmd.env("SKILLLITE_QUIET", "1");
     cmd.env("SKILLLITE_LOG_JSON", "0");
 
+    crate::windows_spawn::hide_child_console(&mut cmd);
+
     let mut child = cmd.spawn().map_err(|e| {
         if is_bundled {
             format!("Failed to spawn bundled skilllite: {}", e)
