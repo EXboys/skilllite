@@ -265,8 +265,9 @@ pub(super) async fn execute_run_command(
     let mut child = {
         use std::os::windows::process::CommandExt;
         let comspec = std::env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into());
-        let mut c = Command::new(comspec)
-            .arg("/C")
+        // Builder methods return `&mut Command`; chain on a temporary would borrow a dropped value.
+        let mut c = Command::new(comspec);
+        c.arg("/C")
             .arg(cmd)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
