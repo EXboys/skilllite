@@ -25,13 +25,13 @@
 
 ### Pick your path
 
-One repository ships **several entry points**. Start with the guide that matches your goal (same anchor IDs in EN/ZH pages):
+One repository ships **several entry points**. Each row links to the **English** hub; **[中文](./docs/zh/START_PATHS.md)** is linked at the top of that page if you prefer it.
 
 | Goal | First stop |
-|------|----------------|
-| **Desktop GUI** — local assistant, skills, optional IDE layout | [Path 1 — Desktop](./docs/en/START_PATHS.md#path-1-desktop) · [路径 1 — 桌面](./docs/zh/START_PATHS.md#path-1-desktop) |
-| **Sandbox / MCP** — isolated skills in Cursor, OpenCode, or your own stack | [Path 2 — Sandbox & MCP](./docs/en/START_PATHS.md#path-2-sandbox-mcp) · [路径 2 — 沙箱与 MCP](./docs/zh/START_PATHS.md#path-2-sandbox-mcp) |
-| **Full stack** — `skilllite` CLI, Python SDK, evolution | [Path 3 — Full stack](./docs/en/START_PATHS.md#path-3-fullstack) · [路径 3 — 全栈](./docs/zh/START_PATHS.md#path-3-fullstack) |
+|------|------------|
+| **Desktop GUI** — local assistant, skills, optional IDE layout | [Path 1 — Desktop](./docs/en/START_PATHS.md#path-1-desktop) |
+| **Sandbox / MCP** — isolated skills in Cursor, OpenCode, or your own stack | [Path 2 — Sandbox & MCP](./docs/en/START_PATHS.md#path-2-sandbox-mcp) |
+| **Full stack** — `skilllite` CLI, Python SDK, evolution | [Path 3 — Full stack](./docs/en/START_PATHS.md#path-3-fullstack) |
 
 ---
 
