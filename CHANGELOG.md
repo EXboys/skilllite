@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Documentation
 
 - **Onboarding / mental model**: Added [Pick your path](docs/en/START_PATHS.md) / [选择你的路径](docs/zh/START_PATHS.md) (desktop vs sandbox/MCP vs full stack). Root `README.md` now surfaces a short triage table and links the page from the documentation strip and the docs index.
+- **README / 中文 README**: Removed the **framework-by-framework self-evolving agent** comparison table (hard to keep fair as the market moves). Replaced with a short **“evolution without lowering the safety bar”** positioning. Expanded the **Desktop Assistant** `<details>` block with installers, `START_PATHS`, in-app **Settings** tabs, and a screenshot (`docs/images/assistant-settings-model-api.png`).
 
 ### Changed
 

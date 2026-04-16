@@ -91,24 +91,9 @@ We built the most secure skill sandbox in the ecosystem (20/20 security score). 
 
 ---
 
-## 🧬 Intelligence: Self-Evolving Agent Comparison
+## 🧬 Intelligence: evolution without lowering the safety bar
 
-Most agent frameworks are **static** — they execute the same logic on every run. SkillLite is the only engine where the Agent **autonomously improves** its prompts, memory, and skills after each task, constrained by a security sandbox.
-
-
-| Capability                         | SkillLite       | AutoGen  | CrewAI    | LangGraph | OpenClaw  | Claude Code   |
-| ---------------------------------- | --------------- | -------- | --------- | --------- | --------- | ------------- |
-| **Self-evolving prompts**          | ✅               | —        | —         | —         | ✅ Foundry | —             |
-| **Self-evolving memory**           | ✅               | —        | ⚠️ Manual | ⚠️ Manual | partial   | —             |
-| **Self-evolving skills**           | ✅               | —        | —         | —         | ✅         | —             |
-| **Security-constrained evolution** | ✅               | —        | —         | —         | —         | —             |
-| **Built-in sandbox**               | ✅ OS-native     | —        | —         | —         | —         | ✅ OS-native   |
-| **Local-first / privacy**          | ✅               | ✅        | ✅         | ✅         | ⚠️ Cloud  | ✅             |
-| **Zero dependencies**              | ✅ Single binary | ❌ Python | ❌ Python  | ❌ Python  | ❌         | ❌ Node.js     |
-| **LLM agnostic**                   | ✅               | ✅        | ✅         | ✅         | ✅         | ❌ Claude only |
-
-
-> Other frameworks can add evolution with custom code, but none **enforce security constraints on evolved artifacts** — SkillLite's evolved skills pass the same L3 scan + OS sandbox as manually installed ones.
+Many products now advertise **self-adapting** or **self-evolving** agents. SkillLite’s stance is narrower and easier to keep accurate over time: **prompts, memory, and skills may evolve**, but they stay behind the **same immutable core and full-chain sandbox** as everything else — install-time scan, pre-execution gates, OS-level isolation, and governance (thresholds, backlog, rollback). Evolved artifacts are **not exempt**: they pass the **same L3 checks + sandbox** as manually installed skills.
 
 ---
 
@@ -557,6 +542,12 @@ The `init-opencode` command automatically detects the best way to start the MCP 
 
 <details>
 <summary>Desktop Assistant (skilllite-assistant)</summary>
+
+**SkillLite Assistant** is the native **desktop app** (Tauri 2 + React) on top of the same **`skilllite`** engine (`agent-rpc`). **Installers** (dmg / msi / AppImage) ship on [GitHub Releases](https://github.com/EXboys/skilllite/releases) (desktop builds may appear shortly after the main release artifacts). First-time orientation: [Pick your path → Desktop](./docs/en/START_PATHS.md#path-1-desktop).
+
+**Settings** (gear icon): **Model & API** (UI language, provider, API key, model, optional base URL, token stats), **Workspace & sandbox**, **Agent budget**, **Evolution**, **Schedule**.
+
+![SkillLite Assistant — Settings, Model & API tab](./docs/images/assistant-settings-model-api.png)
 
 Tauri 2 + React Desktop, located at `crates/skilllite-assistant/`:
 
