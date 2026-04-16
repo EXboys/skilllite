@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Documentation
+
+- **Onboarding / mental model**: Added [Pick your path](docs/en/START_PATHS.md) / [选择你的路径](docs/zh/START_PATHS.md) (desktop vs sandbox/MCP vs full stack). Root `README.md` now surfaces a short triage table and links the page from the documentation strip and the docs index.
+
 ### Changed
 
 - **Evolution defaults**: `EvolutionThresholds` passive cooldown (`SKILLLITE_EVO_COOLDOWN_HOURS` when unset) is now **0.5** hours (30 minutes) instead of **1** hour, so default installs retry passive proposals sooner while staying less aggressive than `SKILLLITE_EVO_PROFILE=demo` (**0.25** h).

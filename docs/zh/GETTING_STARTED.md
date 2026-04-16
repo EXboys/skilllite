@@ -1,5 +1,7 @@
 # 快速入门
 
+> **不知道从哪开始？** 本文是 **全栈** 路径（pip + `skilllite` CLI + Python）。若优先 **桌面应用** 或 **只要沙箱/MCP**，先看 [选择你的路径](./START_PATHS.md)。
+
 ## 安装
 
 ### 1. 安装 Python SDK

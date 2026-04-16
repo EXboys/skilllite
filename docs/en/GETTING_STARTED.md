@@ -1,5 +1,7 @@
 # Getting Started
 
+> **Unsure where to begin?** This page is the **full-stack** path (pip + `skilllite` CLI + Python). If you want the **desktop app** or **sandbox/MCP only** first, read [Pick your path](./START_PATHS.md).
+
 ## Installation
 
 ### 1. Install Python SDK

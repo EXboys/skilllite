@@ -17,9 +17,21 @@
 
 | English | 中文 |
 |---------|------|
-| **[📗 English Docs](./README.md)** · [Getting Started](./docs/en/GETTING_STARTED.md) · [Architecture](./docs/en/ARCHITECTURE.md) · [Env Reference](./docs/en/ENV_REFERENCE.md) · [Contributing](./docs/en/CONTRIBUTING.md) | **[📘 中文文档](./docs/zh/README.md)** · [入门指南](./docs/zh/GETTING_STARTED.md) · [架构说明](./docs/zh/ARCHITECTURE.md) · [环境变量](./docs/zh/ENV_REFERENCE.md) · [贡献指南](./docs/zh/CONTRIBUTING.md) |
+| **[📗 English Docs](./README.md)** · [Pick your path](./docs/en/START_PATHS.md) · [Getting Started](./docs/en/GETTING_STARTED.md) · [Architecture](./docs/en/ARCHITECTURE.md) · [Env Reference](./docs/en/ENV_REFERENCE.md) · [Contributing](./docs/en/CONTRIBUTING.md) | **[📘 中文文档](./docs/zh/README.md)** · [选择你的路径](./docs/zh/START_PATHS.md) · [入门指南](./docs/zh/GETTING_STARTED.md) · [架构说明](./docs/zh/ARCHITECTURE.md) · [环境变量](./docs/zh/ENV_REFERENCE.md) · [贡献指南](./docs/zh/CONTRIBUTING.md) |
 
 </div>
+
+---
+
+### Pick your path
+
+One repository ships **several entry points**. Start with the guide that matches your goal (same anchor IDs in EN/ZH pages):
+
+| Goal | First stop |
+|------|----------------|
+| **Desktop GUI** — local assistant, skills, optional IDE layout | [Path 1 — Desktop](./docs/en/START_PATHS.md#path-1-desktop) · [路径 1 — 桌面](./docs/zh/START_PATHS.md#path-1-desktop) |
+| **Sandbox / MCP** — isolated skills in Cursor, OpenCode, or your own stack | [Path 2 — Sandbox & MCP](./docs/en/START_PATHS.md#path-2-sandbox-mcp) · [路径 2 — 沙箱与 MCP](./docs/zh/START_PATHS.md#path-2-sandbox-mcp) |
+| **Full stack** — `skilllite` CLI, Python SDK, evolution | [Path 3 — Full stack](./docs/en/START_PATHS.md#path-3-fullstack) · [路径 3 — 全栈](./docs/zh/START_PATHS.md#path-3-fullstack) |
 
 ---
 
@@ -583,6 +595,7 @@ MIT — See [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) for third-party
 
 ## 📚 Documentation
 
+- [Pick your path](./docs/en/START_PATHS.md) — Desktop vs sandbox/MCP vs full stack (start here if unsure)
 - [Getting Started](./docs/en/GETTING_STARTED.md) — Installation and quick start guide
 - [Changelog](./CHANGELOG.md) — Version history and upgrade notes
 - [Environment Variables Reference](./docs/en/ENV_REFERENCE.md) — Complete env var documentation
