@@ -545,7 +545,6 @@ The `init-opencode` command automatically detects the best way to start the MCP 
 
 **SkillLite Assistant** is the native **desktop app** (Tauri 2 + React) on top of the same **`skilllite`** engine (`agent-rpc`). **Installers** (dmg / msi / AppImage) ship on [GitHub Releases](https://github.com/EXboys/skilllite/releases) (desktop builds may appear shortly after the main release artifacts). First-time orientation: [Pick your path → Desktop](./docs/en/START_PATHS.md#path-1-desktop).
 
-**Settings** (gear icon): **Model & API** (UI language, provider, API key, model, optional base URL, token stats), **Workspace & sandbox**, **Agent budget**, **Evolution**, **Schedule**.
 
 ![SkillLite Assistant — Settings, Model & API tab](./docs/images/assistant-settings-model-api.png)
 
