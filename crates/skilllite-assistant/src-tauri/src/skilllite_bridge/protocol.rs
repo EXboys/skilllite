@@ -1,4 +1,6 @@
 //! agent-rpc JSON-Lines 协议解析与协议级诊断事件（与 `skilllite agent-rpc` 子进程 stdout 对齐）。
+//!
+//! 同类「可测试契约」还包括桌面侧 prompt 路径白名单：见 [`crate::skilllite_bridge::integrations::prompt_artifact`]。
 
 use serde::Serialize;
 use serde_json::json;

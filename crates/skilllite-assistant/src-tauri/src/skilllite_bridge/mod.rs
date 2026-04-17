@@ -2,7 +2,7 @@
 //!
 //! 子模块划分：`protocol`（agent-rpc 行协议）、`paths`（工作区与路径校验）、`chat`（对话子进程）、
 //! `transcript`（历史记录）、`sessions`（sessions.json）、`workspace`（最近文件与按路径读文件）、
-//! `integrations`（技能/进化/引导/运行时/Ollama/日程）。
+//! `integrations`（按域拆分：`skill_rpc` / `prompt_artifact` / `evolution_ui` / `desktop_services`）。
 
 mod bundled_skills_sync;
 mod chat;
