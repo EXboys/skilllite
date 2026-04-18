@@ -137,6 +137,10 @@ export const zhMessages: Record<string, string> = {
   "chat.autoApproveToolConfirmations": "自动允许执行确认",
   "chat.autoApproveToolConfirmationsHint":
     "开启后，仅对低风险确认（如常规 run_command）自动点「允许」；高风险仍会要求手动确认。请在可信环境中使用。",
+  "chat.modelQuickSwitch": "当前模型",
+  "chat.modelQuickSwitchPlaceholder": "选择已保存的配置…",
+  "chat.modelQuickSwitchSectionSaved": "已保存",
+  "chat.modelQuickSwitchAddNew": "【新增】",
   "chat.timelineNeedsAction": "待操作",
   "chat.timelineNeedsActionHint": "请展开本条，点击允许/拒绝或选择澄清选项。",
   "chat.clarifyTitle": "需要你的确认",
@@ -448,6 +452,8 @@ export const zhMessages: Record<string, string> = {
   "settings.providerOllama": "本地 Ollama",
   "settings.apiKey": "API Key",
   "settings.apiKeyHint": "sk-…（留空则尝试使用本机或工作区里已配置的密钥）",
+  "settings.llmProfilesAutoHint":
+    "点击「保存」时，会把当前模型、API Base 与 Key 合并进本地列表；在模型下拉中切换时，若列表里已有同模型记录，会自动填入对应 Key 与地址；若没有，会清空 Key 并尽量套用该模型的预设 Base（便于仅用工作区 .env 提供密钥）。",
   "settings.model": "模型",
   "settings.modelPlaceholder": "选择模型",
   "settings.apiBase": "API Base URL（可选）",

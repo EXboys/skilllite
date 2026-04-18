@@ -9,6 +9,15 @@ export type Provider = "api" | "ollama";
 /** 沙箱安全等级：1=无沙箱, 2=基础隔离, 3=完全沙箱(默认) */
 export type SandboxLevel = 1 | 2 | 3;
 
+/** 已保存的一套 LLM 连接信息（本地持久化，用于多模型切换与复用 Key）。 */
+export interface LlmSavedProfile {
+  id: string;
+  provider: Provider;
+  model: string;
+  apiBase: string;
+  apiKey: string;
+}
+
 export interface Settings {
   provider: Provider;
   apiKey: string;
@@ -71,6 +80,8 @@ export interface Settings {
    * 覆盖 `SKILLLITE_EVO_COOLDOWN_HOURS`（被动提案冷却，小时）。不设则沿用工作区已合并配置 / 内置默认。
    */
   evoCooldownHours?: number;
+  /** 多模型/API 端点已保存配置（在设置保存或完成引导时自动合并）。 */
+  llmProfiles?: LlmSavedProfile[];
 }
 
 /** localStorage 键名；详情窗口与主窗口同步设置时需与此一致 */

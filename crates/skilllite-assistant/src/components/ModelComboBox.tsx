@@ -95,8 +95,9 @@ export default function ModelComboBox({
               key={p.value}
               type="button"
               onClick={() => {
-                onChange(p.value);
+                // Preset first so parents can sync apiBase refs before model onChange runs.
                 onPresetSelect?.(p);
+                onChange(p.value);
                 setDropdownOpen(false);
               }}
               className={`w-full text-left px-3 py-2 text-sm transition-colors ${

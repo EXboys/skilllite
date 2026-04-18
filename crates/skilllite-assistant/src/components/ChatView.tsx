@@ -14,6 +14,12 @@ import { useStatusStore } from "../stores/useStatusStore";
 import { useSessionStore } from "../stores/useSessionStore";
 import { useChatEvents } from "../hooks/useChatEvents";
 import { useRecentData } from "../hooks/useRecentData";
+import {
+  formatProfileShortLabel,
+  listProfilesForQuickSwitch,
+  matchActiveProfileId,
+} from "../utils/llmProfiles";
+import { useAssistantChrome } from "../contexts/AssistantChromeContext";
 import { MessageList } from "./chat/MessageList";
 import { ChatInput } from "./chat/ChatInput";
 import { InputPlanStrip } from "./chat/InputPlanStrip";
@@ -130,6 +136,9 @@ export default function ChatView() {
   const evolutionPollTimersRef = useRef<Map<string, number>>(new Map());
   const evolutionLastStatusRef = useRef<Map<string, string>>(new Map());
   const { settings, setSettings } = useSettingsStore();
+  const { openSettingsToTab } = useAssistantChrome();
+  const [modelQuickOpen, setModelQuickOpen] = useState(false);
+  const modelQuickRef = useRef<HTMLDivElement>(null);
   const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
   const planTasks = useStatusStore((s) => s.tasks);
   const { refreshRecentData } = useRecentData();
@@ -918,6 +927,48 @@ export default function ChatView() {
   const showStarterPrompts =
     settings.showStarterPrompts === true && messages.length === 0 && !loading && !isClearing;
 
+  const quickSwitchProfiles = useMemo(
+    () => listProfilesForQuickSwitch(settings.llmProfiles),
+    [settings.llmProfiles]
+  );
+  const activeProfileId = useMemo(
+    () =>
+      matchActiveProfileId(settings.llmProfiles, {
+        provider: settings.provider,
+        model: settings.model,
+        apiBase: settings.apiBase,
+        apiKey: settings.apiKey,
+      }),
+    [
+      settings.llmProfiles,
+      settings.provider,
+      settings.model,
+      settings.apiBase,
+      settings.apiKey,
+    ]
+  );
+
+  const modelQuickTriggerLabel = useMemo(() => {
+    if (activeProfileId) {
+      const p = settings.llmProfiles?.find((x) => x.id === activeProfileId);
+      if (p) return formatProfileShortLabel(p);
+    }
+    const m = settings.model?.trim();
+    if (m) return m;
+    return t("chat.modelQuickSwitch");
+  }, [activeProfileId, settings.llmProfiles, settings.model, t]);
+
+  useEffect(() => {
+    if (!modelQuickOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (modelQuickRef.current && !modelQuickRef.current.contains(e.target as Node)) {
+        setModelQuickOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [modelQuickOpen]);
+
   const chatInputAttachmentSlot = (
     <div className="flex flex-wrap items-end gap-2">
       <input
@@ -959,20 +1010,99 @@ export default function ChatView() {
     </div>
   );
 
+  const chipBtnCls =
+    "text-xs px-2.5 py-1 rounded-lg border border-border dark:border-border-dark text-ink-mute dark:text-ink-dark-mute hover:bg-ink/[0.04] dark:hover:bg-white/[0.06] transition-colors disabled:opacity-50";
+
   const chatInputFooter = (
-    <label className="flex items-center gap-2 text-xs text-ink-mute dark:text-ink-dark-mute cursor-pointer select-none">
-      <input
-        type="checkbox"
-        className="rounded border-border dark:border-border-dark text-accent focus:ring-accent/30"
-        checked={settings.autoApproveToolConfirmations === true}
-        onChange={(e) =>
-          setSettings({ autoApproveToolConfirmations: e.target.checked })
-        }
-      />
-      <span title={t("chat.autoApproveToolConfirmationsHint")}>
-        {t("chat.autoApproveToolConfirmations")}
-      </span>
-    </label>
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between w-full min-w-0">
+      <div ref={modelQuickRef} className="relative flex min-w-0 shrink max-w-full sm:max-w-[18rem]">
+        <button
+          type="button"
+          disabled={loading || isClearing}
+          onClick={() => setModelQuickOpen((o) => !o)}
+          className={`${chipBtnCls} flex w-full min-w-0 items-center justify-between gap-1.5 text-left text-ink dark:text-ink-dark`}
+          aria-expanded={modelQuickOpen}
+          aria-haspopup="listbox"
+          aria-label={t("chat.modelQuickSwitch")}
+          title={t("chat.modelQuickSwitch")}
+        >
+          <span className="truncate font-medium">{modelQuickTriggerLabel}</span>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            className={`shrink-0 opacity-60 transition-transform ${modelQuickOpen ? "rotate-180" : ""}`}
+            aria-hidden
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        {modelQuickOpen && (
+          <div
+            className="absolute bottom-full left-0 z-40 mb-1 w-full min-w-[11rem] max-w-[min(100vw-2rem,20rem)] rounded-lg border border-border dark:border-border-dark bg-white dark:bg-paper-dark py-1 shadow-lg"
+            role="listbox"
+            aria-label={t("chat.modelQuickSwitch")}
+          >
+            {quickSwitchProfiles.length > 0 ? (
+              <>
+                <p className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                  {t("chat.modelQuickSwitchSectionSaved")}
+                </p>
+                {quickSwitchProfiles.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="option"
+                    className="flex w-full items-center px-2.5 py-1.5 text-left text-xs text-ink dark:text-ink-dark hover:bg-ink/[0.04] dark:hover:bg-white/[0.06]"
+                    onClick={() => {
+                      setSettings({
+                        provider: p.provider,
+                        model: p.model,
+                        apiBase: p.apiBase,
+                        apiKey: p.apiKey,
+                      });
+                      setModelQuickOpen(false);
+                    }}
+                  >
+                    {formatProfileShortLabel(p)}
+                  </button>
+                ))}
+                <div className="my-1 h-px bg-border dark:bg-border-dark" />
+              </>
+            ) : null}
+            <button
+              type="button"
+              role="option"
+              className="flex w-full items-center px-2.5 py-1.5 text-left text-xs font-medium text-accent hover:bg-accent/5 dark:hover:bg-accent/10"
+              onClick={() => {
+                setModelQuickOpen(false);
+                openSettingsToTab("llm");
+              }}
+            >
+              {t("chat.modelQuickSwitchAddNew")}
+            </button>
+          </div>
+        )}
+      </div>
+      <label className="flex items-center gap-2 text-xs text-ink-mute dark:text-ink-dark-mute cursor-pointer select-none sm:shrink-0 sm:ml-auto">
+        <input
+          type="checkbox"
+          className="rounded border-border dark:border-border-dark text-accent focus:ring-accent/30"
+          checked={settings.autoApproveToolConfirmations === true}
+          onChange={(e) =>
+            setSettings({ autoApproveToolConfirmations: e.target.checked })
+          }
+        />
+        <span title={t("chat.autoApproveToolConfirmationsHint")}>
+          {t("chat.autoApproveToolConfirmations")}
+        </span>
+      </label>
+    </div>
   );
 
   const chatInputProps = {

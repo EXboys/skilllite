@@ -7,10 +7,15 @@ import SessionSidebar from "./SessionSidebar";
 import WorkspaceFileTree from "./WorkspaceFileTree";
 import WorkspaceIdeEditor from "./WorkspaceIdeEditor";
 import SettingsModal from "./SettingsModal";
+import {
+  AssistantChromeProvider,
+  type AssistantSettingsTabId,
+} from "../contexts/AssistantChromeContext";
 import OnboardingModal from "./OnboardingModal";
 import IdePanelResizeHandle from "./IdePanelResizeHandle";
 import { useRecentData } from "../hooks/useRecentData";
 import { useSettingsStore } from "../stores/useSettingsStore";
+import { persistCurrentLlmAsProfile } from "../utils/llmProfiles";
 import { useIdeFileOpenerStore } from "../stores/useIdeFileOpenerStore";
 import { useSessionStore } from "../stores/useSessionStore";
 import { useUiToastStore } from "../stores/useUiToastStore";
@@ -51,11 +56,43 @@ export default function MainLayout() {
   }, []);
   const { settings, setSettings } = useSettingsStore();
   useEnsureDefaultWorkspace();
+
+  /** 升级后已有 Key 但尚无 `llmProfiles` 时补一条，聊天区「已保存模型」下拉才会出现。 */
+  useEffect(() => {
+    const bootstrapProfiles = () => {
+      const { settings: s, setSettings: patch } = useSettingsStore.getState();
+      if ((s.llmProfiles?.length ?? 0) > 0) return;
+      const next = persistCurrentLlmAsProfile(s.llmProfiles, {
+        provider: s.provider,
+        model: s.model,
+        apiBase: s.apiBase,
+        apiKey: s.apiKey,
+      });
+      if (next.length > 0) {
+        patch({ llmProfiles: next });
+      }
+    };
+    const unsub = useSettingsStore.persist.onFinishHydration(() => {
+      bootstrapProfiles();
+    });
+    if (useSettingsStore.persist.hasHydrated()) {
+      bootstrapProfiles();
+    }
+    return unsub;
+  }, []);
+
   const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
   const leftPanelCollapsed = settings.sessionPanelCollapsed ?? false;
   const setLeftPanelCollapsed = (v: boolean) => setSettings({ sessionPanelCollapsed: v });
   const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] =
+    useState<AssistantSettingsTabId | null>(null);
+
+  const handleOpenSettingsToTab = useCallback((tab: AssistantSettingsTabId) => {
+    setSettingsInitialTab(tab);
+    setSettingsOpen(true);
+  }, []);
   const ideLayout = settings.ideLayout === true;
   type IdeLeftTab = "files" | "sessions";
   const [ideLeftTab, setIdeLeftTab] = useState<IdeLeftTab>("files");
@@ -132,6 +169,7 @@ export default function MainLayout() {
   );
 
   return (
+    <AssistantChromeProvider onOpenSettingsToTab={handleOpenSettingsToTab}>
     <div className="flex flex-col h-screen bg-surface dark:bg-surface-dark">
       {/* Top bar */}
       <header className="flex items-center justify-between h-12 px-4 border-b border-border dark:border-border-dark bg-white dark:bg-paper-dark shrink-0">
@@ -219,7 +257,10 @@ export default function MainLayout() {
           <LifePulseBadge />
           <button
             type="button"
-            onClick={() => setSettingsOpen((v) => !v)}
+            onClick={() => {
+              setSettingsInitialTab(null);
+              setSettingsOpen((v) => !v);
+            }}
             className={`px-2 py-1.5 text-sm rounded-md transition-colors ${
               settingsOpen
                 ? "text-accent bg-accent/10 dark:bg-accent/15"
@@ -383,8 +424,16 @@ export default function MainLayout() {
             </>
           )}
       </div>
-      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <SettingsModal
+        open={settingsOpen}
+        initialTabId={settingsInitialTab ?? undefined}
+        onClose={() => {
+          setSettingsOpen(false);
+          setSettingsInitialTab(null);
+        }}
+      />
       {showOnboarding && <OnboardingModal />}
     </div>
+    </AssistantChromeProvider>
   );
 }

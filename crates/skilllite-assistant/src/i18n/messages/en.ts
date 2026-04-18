@@ -146,6 +146,10 @@ export const enMessages: Record<string, string> = {
   "chat.autoApproveToolConfirmations": "Auto-allow execution confirmations",
   "chat.autoApproveToolConfirmationsHint":
     "When enabled, only low-risk confirmations (e.g. routine run_command) are auto-approved. High-risk items still require manual approval. Only use in trusted environments.",
+  "chat.modelQuickSwitch": "Model",
+  "chat.modelQuickSwitchPlaceholder": "Choose a saved profile…",
+  "chat.modelQuickSwitchSectionSaved": "Saved",
+  "chat.modelQuickSwitchAddNew": "【新增】",
   "chat.timelineNeedsAction": "Action needed",
   "chat.timelineNeedsActionHint":
     "Expand this block to allow/deny execution or pick a clarification option.",
@@ -475,6 +479,8 @@ export const enMessages: Record<string, string> = {
   "settings.providerOllama": "Local Ollama",
   "settings.apiKey": "API key",
   "settings.apiKeyHint": "sk-… (leave empty to use a key already configured on this machine or workspace)",
+  "settings.llmProfilesAutoHint":
+    "Saving merges the current model, API base, and key into a local list. Changing the model dropdown fills from a matching saved entry when one exists; otherwise the key field clears and the preset base for that model is applied when available (so workspace .env can supply the secret).",
   "settings.model": "Model",
   "settings.modelPlaceholder": "Choose model",
   "settings.apiBase": "API base URL (optional)",

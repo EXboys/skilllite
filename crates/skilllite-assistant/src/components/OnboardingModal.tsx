@@ -3,7 +3,8 @@ import { open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore, type SandboxLevel } from "../stores/useSettingsStore";
 import ModelComboBox from "./ModelComboBox";
-import { API_MODEL_PRESETS } from "../utils/modelPresets";
+import { API_MODEL_PRESETS, presetApiBaseForModelId } from "../utils/modelPresets";
+import { findSavedProfileForModel, persistCurrentLlmAsProfile } from "../utils/llmProfiles";
 import { useI18n } from "../i18n";
 
 type Step = "mode" | "config" | "workspace" | "sandbox" | "health" | "success";
@@ -43,6 +44,8 @@ export default function OnboardingModal() {
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("gpt-4o");
   const [apiBase, setApiBase] = useState("");
+  const apiBaseReuseRef = useRef("");
+  apiBaseReuseRef.current = apiBase;
   const [workspace, setWorkspace] = useState("");
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [ollamaModel, setOllamaModel] = useState<string | null>(null);
@@ -125,22 +128,39 @@ export default function OnboardingModal() {
       onboardingCompleted: true as const,
       showStarterPrompts: true as const,
     };
+    const prevProfiles = useSettingsStore.getState().settings.llmProfiles;
     if (mode === "ollama") {
+      const m = ollamaModel || "llama3.2";
       setSettings({
         provider: "ollama",
         apiKey: "ollama",
         apiBase: "http://localhost:11434/v1",
-        model: ollamaModel || "llama3.2",
+        model: m,
         workspace: ws,
+        llmProfiles: persistCurrentLlmAsProfile(prevProfiles, {
+          provider: "ollama",
+          model: m,
+          apiBase: "http://localhost:11434/v1",
+          apiKey: "ollama",
+        }),
         ...shared,
       });
     } else {
+      const m = model.trim() || "gpt-4o";
+      const ab = apiBase.trim();
+      const key = apiKey.trim();
       setSettings({
         provider: "api",
-        apiKey: apiKey.trim(),
-        model: model.trim() || "gpt-4o",
+        apiKey: key,
+        model: m,
         workspace: ws,
-        apiBase: apiBase.trim(),
+        apiBase: ab,
+        llmProfiles: persistCurrentLlmAsProfile(prevProfiles, {
+          provider: "api",
+          model: m,
+          apiBase: ab,
+          apiKey: key,
+        }),
         ...shared,
       });
     }
@@ -150,20 +170,37 @@ export default function OnboardingModal() {
   const persistAllButNotCompleted = () => {
     const ws = workspace.trim() || ".";
     const shared = { sandboxLevel, workspace: ws };
+    const prevProfiles = useSettingsStore.getState().settings.llmProfiles;
     if (mode === "ollama") {
+      const m = ollamaModel || "llama3.2";
       setSettings({
         provider: "ollama",
         apiKey: "ollama",
         apiBase: "http://localhost:11434/v1",
-        model: ollamaModel || "llama3.2",
+        model: m,
+        llmProfiles: persistCurrentLlmAsProfile(prevProfiles, {
+          provider: "ollama",
+          model: m,
+          apiBase: "http://localhost:11434/v1",
+          apiKey: "ollama",
+        }),
         ...shared,
       });
     } else if (mode === "api") {
+      const m = model.trim() || "gpt-4o";
+      const ab = apiBase.trim();
+      const key = apiKey.trim();
       setSettings({
         provider: "api",
-        apiKey: apiKey.trim(),
-        model: model.trim() || "gpt-4o",
-        apiBase: apiBase.trim(),
+        apiKey: key,
+        model: m,
+        apiBase: ab,
+        llmProfiles: persistCurrentLlmAsProfile(prevProfiles, {
+          provider: "api",
+          model: m,
+          apiBase: ab,
+          apiKey: key,
+        }),
         ...shared,
       });
     }
@@ -171,19 +208,36 @@ export default function OnboardingModal() {
 
   /** 离开「API / Ollama 配置」时立即写入本地存储，避免仅走完健康检查才保存导致 Key 丢失 */
   const persistLlmAndGoToWorkspace = () => {
+    const prevProfiles = useSettingsStore.getState().settings.llmProfiles;
     if (mode === "api") {
+      const m = model.trim() || "gpt-4o";
+      const ab = apiBase.trim();
+      const key = apiKey.trim();
       setSettings({
         provider: "api",
-        apiKey: apiKey.trim(),
-        model: model.trim() || "gpt-4o",
-        apiBase: apiBase.trim(),
+        apiKey: key,
+        model: m,
+        apiBase: ab,
+        llmProfiles: persistCurrentLlmAsProfile(prevProfiles, {
+          provider: "api",
+          model: m,
+          apiBase: ab,
+          apiKey: key,
+        }),
       });
     } else if (mode === "ollama") {
+      const m = ollamaModel || "llama3.2";
       setSettings({
         provider: "ollama",
         apiKey: "ollama",
         apiBase: "http://localhost:11434/v1",
-        model: ollamaModel || "llama3.2",
+        model: m,
+        llmProfiles: persistCurrentLlmAsProfile(prevProfiles, {
+          provider: "ollama",
+          model: m,
+          apiBase: "http://localhost:11434/v1",
+          apiKey: "ollama",
+        }),
       });
     }
     setStep("workspace");
@@ -331,6 +385,48 @@ export default function OnboardingModal() {
             <div className="space-y-3 mb-4">
               <div>
                 <label className="block text-xs text-ink-mute dark:text-ink-dark-mute mb-1">
+                  {t("settings.model")}
+                </label>
+                <ModelComboBox
+                  value={model}
+                  onChange={(next) => {
+                    setModel(next);
+                    const profiles = useSettingsStore.getState().settings.llmProfiles;
+                    const p = findSavedProfileForModel(
+                      profiles,
+                      "api",
+                      next,
+                      apiBaseReuseRef.current
+                    );
+                    if (p) {
+                      setApiKey(p.apiKey);
+                      setApiBase(p.apiBase);
+                      apiBaseReuseRef.current = p.apiBase;
+                    } else {
+                      setApiKey("");
+                      const presetBase = presetApiBaseForModelId(next);
+                      if (presetBase) {
+                        setApiBase(presetBase);
+                        apiBaseReuseRef.current = presetBase;
+                      } else {
+                        setApiBase("");
+                        apiBaseReuseRef.current = "";
+                      }
+                    }
+                  }}
+                  onPresetSelect={(preset) => {
+                    if (preset.apiBase) {
+                      apiBaseReuseRef.current = preset.apiBase;
+                      setApiBase(preset.apiBase);
+                    }
+                  }}
+                  presets={API_MODEL_PRESETS}
+                  placeholder={t("settings.modelPlaceholder")}
+                  inputCls={inputClsOnboarding}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-ink-mute dark:text-ink-dark-mute mb-1">
                   {t("settings.apiKey")}
                 </label>
                 <input
@@ -339,21 +435,6 @@ export default function OnboardingModal() {
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder={t("onboarding.apiKeySaveHint")}
                   className={inputClsOnboarding}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-ink-mute dark:text-ink-dark-mute mb-1">
-                  {t("settings.model")}
-                </label>
-                <ModelComboBox
-                  value={model}
-                  onChange={setModel}
-                  onPresetSelect={(preset) => {
-                    if (preset.apiBase) setApiBase(preset.apiBase);
-                  }}
-                  presets={API_MODEL_PRESETS}
-                  placeholder={t("settings.modelPlaceholder")}
-                  inputCls={inputClsOnboarding}
                 />
               </div>
               <div>

@@ -42,3 +42,8 @@ export const API_MODEL_PRESETS: ModelPreset[] = [
   { value: "MiniMax-M2.5", label: "MiniMax M2.5", apiBase: "https://api.minimax.io/v1" },
   { value: "MiniMax-M2.7", label: "MiniMax M2.7", apiBase: "https://api.minimax.io/v1" },
 ];
+
+/** 内置预设中该 `model` 的默认 API Base；自定义模型名不在列表中则返回 `undefined`。 */
+export function presetApiBaseForModelId(modelId: string): string | undefined {
+  return API_MODEL_PRESETS.find((p) => p.value === modelId)?.apiBase;
+}

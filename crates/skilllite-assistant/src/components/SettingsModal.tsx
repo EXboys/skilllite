@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { ask, message, open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore, type Provider, type SandboxLevel } from "../stores/useSettingsStore";
 import ScheduleEditor from "./ScheduleEditor";
 import ModelComboBox from "./ModelComboBox";
-import { API_MODEL_PRESETS } from "../utils/modelPresets";
+import { API_MODEL_PRESETS, presetApiBaseForModelId } from "../utils/modelPresets";
+import {
+  findSavedProfileForModel,
+  persistCurrentLlmAsProfile,
+} from "../utils/llmProfiles";
 import {
   type ScheduleForm,
   emptyScheduleForm,
@@ -14,6 +18,7 @@ import {
 } from "../utils/scheduleForm";
 import { useI18n } from "../i18n";
 import { useStatusStore } from "../stores/useStatusStore";
+import type { AssistantSettingsTabId } from "../contexts/AssistantChromeContext";
 
 interface OllamaProbeResult {
   available: boolean;
@@ -35,11 +40,17 @@ interface AssistantUninstallInfo {
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
+  /** 打开时默认切到的设置标签（缺省为「模型与 API」） */
+  initialTabId?: AssistantSettingsTabId;
 }
 
-type SettingsTabId = "llm" | "workspace" | "agent" | "evolution" | "schedule";
+type SettingsTabId = AssistantSettingsTabId;
 
-export default function SettingsModal({ open, onClose }: SettingsModalProps) {
+export default function SettingsModal({
+  open,
+  onClose,
+  initialTabId,
+}: SettingsModalProps) {
   const { t, locale, setLocale } = useI18n();
   const settingsTabs = useMemo(
     () =>
@@ -58,6 +69,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   const [model, setModel] = useState(settings.model);
   const [workspace, setWorkspace] = useState(settings.workspace);
   const [apiBase, setApiBase] = useState(settings.apiBase);
+  /** 与 `ModelComboBox` 内「先 preset 再 onChange」顺序配合，用于按 apiBase 命中已保存 Key。 */
+  const apiBaseReuseRef = useRef(settings.apiBase);
+  apiBaseReuseRef.current = apiBase;
 
   const [sandboxLevel, setSandboxLevel] = useState<SandboxLevel>(settings.sandboxLevel ?? 3);
   const [swarmEnabled, setSwarmEnabled] = useState(settings.swarmEnabled ?? false);
@@ -161,6 +175,11 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     rollLlmUsageMonthIfNeeded();
   }, [open, rollLlmUsageMonthIfNeeded]);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+    setActiveTab(initialTabId ?? "llm");
+  }, [open, initialTabId]);
+
   useEffect(() => {
     if (open) {
       setProvider(settings.provider || "api");
@@ -193,9 +212,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       setEvoProfileChoice(settings.evoProfile ?? "inherit");
       setEvoCooldownStr(settings.evoCooldownHours != null ? String(settings.evoCooldownHours) : "");
       setOllamaProbe(null);
-      setActiveTab("llm");
       setScheduleLoadError(null);
       setScheduleData(null);
+      apiBaseReuseRef.current = settings.apiBase ?? "";
     }
   }, [open, settings]);
 
@@ -272,6 +291,52 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     return n;
   };
 
+  const handleApiModelChange = useCallback(
+    (next: string) => {
+      setModel(next);
+      if (provider !== "api") return;
+      const p = findSavedProfileForModel(
+        settings.llmProfiles,
+        "api",
+        next,
+        apiBaseReuseRef.current
+      );
+      if (p) {
+        setApiKey(p.apiKey);
+        setApiBase(p.apiBase);
+        apiBaseReuseRef.current = p.apiBase;
+      } else {
+        // 无已保存项时勿沿用上一模型的 Key/Base（避免 Minimax 显示在 Gemini 等仅用 .env 的配置上）
+        setApiKey("");
+        const presetBase = presetApiBaseForModelId(next);
+        if (presetBase) {
+          setApiBase(presetBase);
+          apiBaseReuseRef.current = presetBase;
+        } else {
+          setApiBase("");
+          apiBaseReuseRef.current = "";
+        }
+      }
+    },
+    [provider, settings.llmProfiles]
+  );
+
+  const handleOllamaModelChange = useCallback(
+    (next: string) => {
+      setModel(next);
+      if (provider !== "ollama") return;
+      const p = findSavedProfileForModel(settings.llmProfiles, "ollama", next);
+      if (p) {
+        setApiKey(p.apiKey);
+        setApiBase(p.apiBase);
+      } else {
+        setApiKey("ollama");
+        setApiBase("http://localhost:11434/v1");
+      }
+    },
+    [provider, settings.llmProfiles]
+  );
+
   const handleSave = async () => {
     const shared = {
       ideLayout,
@@ -289,21 +354,39 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       evoCooldownHours: parseCooldownHoursField(evoCooldownStr),
     };
     if (provider === "ollama") {
+      const m = model.trim() || "llama3.2";
+      const llmProfiles = persistCurrentLlmAsProfile(settings.llmProfiles, {
+        provider: "ollama",
+        model: m,
+        apiBase: "http://localhost:11434/v1",
+        apiKey: "ollama",
+      });
       setSettings({
         provider: "ollama",
         apiKey: "ollama",
         apiBase: "http://localhost:11434/v1",
-        model: model.trim() || "llama3.2",
+        model: m,
         workspace: workspace.trim() || ".",
+        llmProfiles,
         ...shared,
       });
     } else {
+      const m = model.trim() || "gpt-4o";
+      const ab = apiBase.trim();
+      const key = apiKey.trim();
+      const llmProfiles = persistCurrentLlmAsProfile(settings.llmProfiles, {
+        provider: "api",
+        model: m,
+        apiBase: ab,
+        apiKey: key,
+      });
       setSettings({
         provider: "api",
-        apiKey: apiKey.trim(),
-        model: model.trim() || "gpt-4o",
+        apiKey: key,
+        model: m,
         workspace: workspace.trim() || ".",
-        apiBase: apiBase.trim(),
+        apiBase: ab,
+        llmProfiles,
         ...shared,
       });
     }
@@ -481,6 +564,25 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           {provider === "api" && (
             <>
               <div>
+                <label className={labelCls}>{t("settings.model")}</label>
+                <ModelComboBox
+                  value={model}
+                  onChange={handleApiModelChange}
+                  onPresetSelect={(preset) => {
+                    if (preset.apiBase) {
+                      apiBaseReuseRef.current = preset.apiBase;
+                      setApiBase(preset.apiBase);
+                    }
+                  }}
+                  presets={API_MODEL_PRESETS}
+                  placeholder={t("settings.modelPlaceholder")}
+                  inputCls={inputCls}
+                />
+              </div>
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute -mt-1">
+                {t("settings.llmProfilesAutoHint")}
+              </p>
+              <div>
                 <label className={labelCls}>{t("settings.apiKey")}</label>
                 <input
                   type="password"
@@ -488,21 +590,6 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder={t("settings.apiKeyHint")}
                   className={inputCls}
-                />
-              </div>
-              <div>
-                <label className={labelCls}>{t("settings.model")}</label>
-                <ModelComboBox
-                  value={model}
-                  onChange={setModel}
-                  onPresetSelect={(preset) => {
-                    if (preset.apiBase) {
-                      setApiBase(preset.apiBase);
-                    }
-                  }}
-                  presets={API_MODEL_PRESETS}
-                  placeholder={t("settings.modelPlaceholder")}
-                  inputCls={inputCls}
                 />
               </div>
               <div>
@@ -539,7 +626,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                       <label className={labelCls}>{t("settings.model")}</label>
                       <ModelComboBox
                         value={model}
-                        onChange={setModel}
+                        onChange={handleOllamaModelChange}
                         presets={ollamaModelPresets}
                         placeholder={t("settings.modelPlaceholder")}
                         inputCls={inputCls}
