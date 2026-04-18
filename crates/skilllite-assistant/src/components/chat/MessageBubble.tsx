@@ -14,6 +14,7 @@ import {
   plannerNudgeCurrentTaskHint,
   splitPlannerBoilerplate,
 } from "../../utils/plannerNudgeUi";
+import { sanitizeLlmVisibleChatText } from "../../utils/sanitizeLlmVisibleChatText";
 import { useI18n } from "../../i18n";
 import { openDetailWindow } from "../../utils/detailWindow";
 
@@ -191,11 +192,12 @@ function MessageBubbleInner({
 
   if (message.type === "assistant") {
     const u = message.turnLlmUsage;
+    const assistantBody = sanitizeLlmVisibleChatText(message.content);
     return (
       <div className="flex justify-start">
         <div className={bubbleAssistant}>
           <ChatMarkdownWithPlannerFold
-            content={message.content}
+            content={assistantBody}
             streaming={message.streaming}
           />
           {message.streaming && (

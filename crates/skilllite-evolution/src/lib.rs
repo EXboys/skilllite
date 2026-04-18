@@ -42,7 +42,7 @@ pub use growth_schedule::{
     weighted_unprocessed_signal_sum, GrowthDueDiagnostics, GrowthDueOutcome, GrowthScheduleConfig,
 };
 pub use lifecycle::on_shutdown;
-pub use llm::{strip_think_blocks, EvolutionLlm, EvolutionMessage};
+pub use llm::{sanitize_visible_llm_text, strip_think_blocks, EvolutionLlm, EvolutionMessage};
 pub use rollback::check_auto_rollback;
 pub use run::{format_evolution_changes, query_changes_by_txn, run_evolution};
 pub use run_state::{finish_evolution, try_start_evolution, EvolutionRunResult};

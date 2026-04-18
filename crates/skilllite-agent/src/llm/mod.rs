@@ -13,6 +13,7 @@ use crate::Result;
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use skilllite_evolution::sanitize_visible_llm_text;
 
 use super::types::{
     safe_truncate, ChatMessage, EventSink, LlmUsageReport, LlmUsageTotals, ToolCall,
@@ -21,6 +22,17 @@ use super::types::{
 
 mod claude;
 mod openai;
+
+fn sanitize_assistant_choice_content(mut resp: ChatCompletionResponse) -> ChatCompletionResponse {
+    for choice in &mut resp.choices {
+        let Some(c) = choice.message.content.as_ref() else {
+            continue;
+        };
+        let t = sanitize_visible_llm_text(c);
+        choice.message.content = if t.is_empty() { None } else { Some(t) };
+    }
+    resp
+}
 
 /// Normalize image MIME for OpenAI / Claude vision payloads.
 pub(crate) fn normalize_vision_media_type(mt: &str) -> Result<&'static str> {
@@ -101,7 +113,7 @@ impl LlmClient {
             }
         };
         record_llm_usage_totals(usage_totals, &resp.usage);
-        Ok(resp)
+        Ok(sanitize_assistant_choice_content(resp))
     }
 
     /// Streaming chat completion call (auto-routes based on model/api_base).
@@ -126,7 +138,7 @@ impl LlmClient {
             }
         };
         record_llm_usage_totals(usage_totals, &resp.usage);
-        Ok(resp)
+        Ok(sanitize_assistant_choice_content(resp))
     }
 
     /// Embed text(s) using OpenAI-compatible /embeddings API.

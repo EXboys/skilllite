@@ -6,7 +6,7 @@ use skilllite_agent::llm::LlmClient;
 use skilllite_agent::types::ChatMessage;
 use skilllite_core::config::env_keys::llm as llm_keys;
 use skilllite_core::config::LlmConfig;
-use skilllite_evolution::strip_think_blocks;
+use skilllite_evolution::sanitize_visible_llm_text;
 
 use super::chat::{merge_dotenv_with_chat_overrides, ChatConfigOverrides};
 use super::paths::load_dotenv_for_child;
@@ -75,26 +75,37 @@ fn followup_language_clause(last_user: Option<&str>) -> &'static str {
     }
 }
 
-/// Remove `<think>…</think>` segments (MiniMax M2.x, DeepSeek, Qwen3, etc.).
-/// `strip_think_blocks` alone only keeps text after the **last** closing tag, which breaks multi-block
-/// layouts; paired removal runs first so each follow-up line comes from visible content only.
-fn strip_redacted_thinking_blocks(mut s: String) -> String {
-    while let Some(start) = s.find("<think>") {
-        if let Some(end) = s.find("</think>") {
-            let end_tag_end = end + "</think>".len();
-            s.replace_range(start..end_tag_end, "");
-        } else {
-            s.truncate(start);
-            break;
-        }
+/// Lines that are clearly planning / prompt echo, not user-facing follow-up questions.
+fn is_meta_followup_line(t: &str) -> bool {
+    let lower = t.to_ascii_lowercase();
+    let ascii_meta = [
+        "the user's last message",
+        "user's last message",
+        "i need to generate",
+        "generate exactly 3",
+        "write all 3 follow-up",
+        "follow-up questions in",
+        "mandatory language",
+    ];
+    if ascii_meta.iter().any(|n| lower.contains(n)) {
+        return true;
     }
-    s
+    let cjk_meta = [
+        "用户最后的消息",
+        "所以我需要",
+        "最后一条用户消息",
+        "三条后续提问",
+        "必须与该条用户消息",
+        "禁止仅用英文",
+        "用户已经:",
+        "这是在要求",
+    ];
+    cjk_meta.iter().any(|n| t.contains(n))
 }
 
 /// Normalize assistant completion text before splitting into follow-up lines.
 fn sanitize_followup_raw(raw: &str) -> String {
-    let s = strip_redacted_thinking_blocks(raw.trim().to_string());
-    strip_think_blocks(&s).trim().to_string()
+    sanitize_visible_llm_text(raw)
 }
 
 fn parse_suggestion_lines(raw: &str) -> Vec<String> {
@@ -117,7 +128,7 @@ fn parse_suggestion_lines(raw: &str) -> Vec<String> {
             .trim_start_matches("• ")
             .trim_start_matches("* ")
             .trim();
-        if !t.is_empty() {
+        if !t.is_empty() && !is_meta_followup_line(t) {
             out.push(t.to_string());
         }
         if out.len() >= 3 {
@@ -181,8 +192,8 @@ pub async fn followup_chat_suggestions(
 #[cfg(test)]
 mod tests {
     use super::{
-        followup_language_clause, last_user_message_text, parse_suggestion_lines,
-        sanitize_followup_raw,
+        followup_language_clause, is_meta_followup_line, last_user_message_text,
+        parse_suggestion_lines, sanitize_followup_raw,
     };
 
     #[test]
@@ -231,5 +242,43 @@ mod tests {
         let cleaned = sanitize_followup_raw(raw);
         let v = parse_suggestion_lines(&cleaned);
         assert_eq!(v, vec!["One?", "Two?", "Three?"]);
+    }
+
+    #[test]
+    fn sanitize_strips_bracket_fenced_thinking() {
+        let raw = concat!(
+            "<thinking>",
+            "plan only\n",
+            "</thinking>",
+            "\n",
+            "如何导出？\n",
+            "如何换模型？\n",
+            "如何关闭面板？\n"
+        );
+        let cleaned = sanitize_followup_raw(raw);
+        let v = parse_suggestion_lines(&cleaned);
+        assert_eq!(v, vec!["如何导出？", "如何换模型？", "如何关闭面板？"]);
+    }
+
+    #[test]
+    fn parse_skips_meta_then_takes_three_questions() {
+        let raw = "用户最后的消息是中文。\n所以我需要用简体中文生成 3 个问题。\n如何导出会话？\n如何关闭猜你想问？\n如何换模型？\n";
+        let v = parse_suggestion_lines(raw);
+        assert_eq!(v.len(), 3);
+        assert_eq!(v[0], "如何导出会话？");
+    }
+
+    #[test]
+    fn parse_skips_meta_lines() {
+        let raw = "The user's last message is in Chinese.\n所以我需要用中文写三条。\n下一步做什么？\n如何重试？\n还有别的吗？\n";
+        let v = parse_suggestion_lines(raw);
+        assert_eq!(v, vec!["下一步做什么？", "如何重试？", "还有别的吗？"]);
+    }
+
+    #[test]
+    fn meta_detector_covers_common_leaks() {
+        assert!(is_meta_followup_line("The user's last message is: hello"));
+        assert!(is_meta_followup_line("用户最后的消息是中文。"));
+        assert!(!is_meta_followup_line("如何把今天的待办导出？"));
     }
 }
