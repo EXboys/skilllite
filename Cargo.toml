@@ -6,7 +6,7 @@ exclude = ["crates/skilllite-assistant", "crates/crates"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.26"
+version = "0.1.27"
 edition = "2021"
 authors = ["EX <boyex345@gmail.com>"]
 license = "MIT"

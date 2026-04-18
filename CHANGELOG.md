@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.1.27] - 2026-04-18
+
 ### Documentation
 
 - **Onboarding / mental model**: Added [Pick your path](docs/en/START_PATHS.md) / [选择你的路径](docs/zh/START_PATHS.md) (desktop vs sandbox/MCP vs full stack). Root `README.md` now surfaces a short triage table and links the page from the documentation strip and the docs index.
@@ -19,6 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Agent**: default `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS` (when unset) lowered from **320000** to **250000** (`docs/en|zh/ENV_REFERENCE.md` aligned).
 - **Evolution defaults**: `EvolutionThresholds` passive cooldown (`SKILLLITE_EVO_COOLDOWN_HOURS` when unset) is now **0.5** hours (30 minutes) instead of **1** hour, so default installs retry passive proposals sooner while staying less aggressive than `SKILLLITE_EVO_PROFILE=demo` (**0.25** h).
 - **Artifact HTTP** (`skilllite_artifact::run_artifact_http_server`, including `skilllite artifact-serve`): Refuses to bind on a **non-loopback** address when no bearer token is configured, unless **`SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1`** (logs a loud warning). Loopback binds without a token still start but emit a **warning**. Optional **`SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH=1`** requires a non-empty token even on loopback. Empty `--token` values are treated as unset.
+
+### Release
+
+- Workspace, Python SDK, and SkillLite Assistant (Tauri) bumped to **0.1.27**. GitHub Actions: **`release.yml`** publishes CLI/sandbox binaries and PyPI artifacts; **`release-desktop.yml`** uploads **dmg / msi / AppImage** to the **same** Release for the tag.
 
 ---
 
@@ -368,7 +376,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.26...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.27...HEAD
+[0.1.27]: https://github.com/EXboys/skilllite/releases/tag/v0.1.27
 [0.1.26]: https://github.com/EXboys/skilllite/releases/tag/v0.1.26
 [0.1.25]: https://github.com/EXboys/skilllite/releases/tag/v0.1.25
 [0.1.24]: https://github.com/EXboys/skilllite/releases/tag/v0.1.24
