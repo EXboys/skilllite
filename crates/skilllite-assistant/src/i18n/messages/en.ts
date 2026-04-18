@@ -543,6 +543,10 @@ export const enMessages: Record<string, string> = {
   "settings.defaultPlaceholder15": "default 15",
   "settings.agentBudgetHint":
     "Empty = use built-in or workspace-saved defaults (SKILLLITE_MAX_ITERATIONS, SKILLLITE_MAX_TOOL_CALLS_PER_TASK).",
+  "settings.contextSoftLimitChars": "Context soft limit (chars)",
+  "settings.contextSoftLimitCharsHint":
+    "Empty = use built-in or workspace .env (SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS). 0 disables pre-request shrinking. Example: 250000.",
+  "settings.defaultPlaceholder250k": "default 250000",
   "settings.scheduleIntro":
     "While the app runs, due scheduled jobs run via Life Pulse (~30s). Config is .skilllite/schedule.json, shared with CLI skilllite schedule tick. Set SKILLLITE_SCHEDULE_ENABLED=1 to run for real.",
   "settings.scheduleLoading": "Loading schedule…",

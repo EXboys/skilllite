@@ -33,6 +33,11 @@ export interface Settings {
    * 覆盖 SKILLLITE_MAX_TOOL_CALLS_PER_TASK（单任务内工具调用深度等）。未设置时沿用环境变量 / 默认 15。
    */
   maxToolCallsPerTask?: number;
+  /**
+   * 覆盖 SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS（主 agent 调 LLM 前估算上下文软上限，字符数；`0` 关闭预请求收缩）。
+   * 未设置时沿用环境变量 / 内置默认。
+   */
+  contextSoftLimitChars?: number;
   /** 会话侧边栏是否折叠 */
   sessionPanelCollapsed?: boolean;
   /**

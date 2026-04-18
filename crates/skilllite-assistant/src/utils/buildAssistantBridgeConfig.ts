@@ -19,6 +19,15 @@ export function buildAssistantBridgeConfig(settings: Settings): Record<string, u
   if (settings.maxToolCallsPerTask != null && settings.maxToolCallsPerTask > 0) {
     config.max_tool_calls_per_task = settings.maxToolCallsPerTask;
   }
+  if (
+    settings.contextSoftLimitChars != null &&
+    Number.isFinite(settings.contextSoftLimitChars)
+  ) {
+    const n = Math.trunc(settings.contextSoftLimitChars);
+    if (n >= 0) {
+      config.context_soft_limit_chars = n;
+    }
+  }
   if (settings.evolutionIntervalSecs != null && settings.evolutionIntervalSecs > 0) {
     config.evolution_interval_secs = settings.evolutionIntervalSecs;
   }

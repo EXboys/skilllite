@@ -68,6 +68,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   );
   const [maxIterationsStr, setMaxIterationsStr] = useState("");
   const [maxToolCallsPerTaskStr, setMaxToolCallsPerTaskStr] = useState("");
+  const [contextSoftLimitStr, setContextSoftLimitStr] = useState("");
   const [evolutionIntervalStr, setEvolutionIntervalStr] = useState("");
   const [evolutionDecisionStr, setEvolutionDecisionStr] = useState("");
   const [evoProfileChoice, setEvoProfileChoice] = useState<"inherit" | "demo" | "conservative">(
@@ -178,6 +179,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       setMaxToolCallsPerTaskStr(
         settings.maxToolCallsPerTask != null ? String(settings.maxToolCallsPerTask) : ""
       );
+      setContextSoftLimitStr(
+        settings.contextSoftLimitChars != null ? String(settings.contextSoftLimitChars) : ""
+      );
       setEvolutionIntervalStr(
         settings.evolutionIntervalSecs != null ? String(settings.evolutionIntervalSecs) : ""
       );
@@ -243,6 +247,15 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     return n;
   };
 
+  /** 非负整数；空为沿用默认；0 表示关闭 `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS` 预收缩。 */
+  const parseContextSoftLimitChars = (s: string): number | undefined => {
+    const trimmed = s.trim();
+    if (!trimmed) return undefined;
+    const n = parseInt(trimmed, 10);
+    if (!Number.isFinite(n) || n < 0) return undefined;
+    return n;
+  };
+
   const parseEvolutionIntervalSecs = (s: string): number | undefined => {
     const trimmed = s.trim();
     if (!trimmed) return undefined;
@@ -268,6 +281,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       autoApproveToolConfirmations,
       maxIterations: parsePositiveIntField(maxIterationsStr),
       maxToolCallsPerTask: parsePositiveIntField(maxToolCallsPerTaskStr),
+      contextSoftLimitChars: parseContextSoftLimitChars(contextSoftLimitStr),
       evolutionIntervalSecs: parseEvolutionIntervalSecs(evolutionIntervalStr),
       evolutionDecisionThreshold: parsePositiveIntField(evolutionDecisionStr),
       evoProfile:
@@ -887,6 +901,21 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             <p className="mt-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
               {t("settings.agentBudgetHint")}
             </p>
+            <div className="mt-3">
+              <label className={labelCls}>{t("settings.contextSoftLimitChars")}</label>
+              <input
+                type="number"
+                min={0}
+                inputMode="numeric"
+                value={contextSoftLimitStr}
+                onChange={(e) => setContextSoftLimitStr(e.target.value)}
+                placeholder={t("settings.defaultPlaceholder250k")}
+                className={inputCls}
+              />
+              <p className="mt-1.5 text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                {t("settings.contextSoftLimitCharsHint")}
+              </p>
+            </div>
           </div>
 
           <div className="rounded-lg border border-border/60 dark:border-border-dark/50 bg-gray-50/80 dark:bg-surface-dark/35 px-3 py-2.5">

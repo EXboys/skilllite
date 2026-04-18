@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **SkillLite Assistant (settings)**: Agent tab adds **context soft limit** (`SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS`) override — merged into the `agent-rpc` child env with the same semantics as CLI (empty = inherit; `0` disables pre-request shrinking).
+- **Agent**: default `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS` (when unset) lowered from **320000** to **250000** (`docs/en|zh/ENV_REFERENCE.md` aligned).
 - **Evolution defaults**: `EvolutionThresholds` passive cooldown (`SKILLLITE_EVO_COOLDOWN_HOURS` when unset) is now **0.5** hours (30 minutes) instead of **1** hour, so default installs retry passive proposals sooner while staying less aggressive than `SKILLLITE_EVO_PROFILE=demo` (**0.25** h).
 - **Artifact HTTP** (`skilllite_artifact::run_artifact_http_server`, including `skilllite artifact-serve`): Refuses to bind on a **non-loopback** address when no bearer token is configured, unless **`SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1`** (logs a loud warning). Loopback binds without a token still start but emit a **warning**. Optional **`SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH=1`** requires a non-empty token even on loopback. Empty `--token` values are treated as unset.
 

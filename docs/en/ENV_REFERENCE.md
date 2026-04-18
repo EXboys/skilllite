@@ -206,7 +206,7 @@ Sandbox resource limits are read through **config** (`SandboxEnvConfig`); legacy
 | `SKILLLITE_MEMORY_FLUSH_ENABLED` | bool | `true` | Enable pre-compaction memory flush (OpenClaw-style) |
 | `SKILLLITE_MEMORY_FLUSH_THRESHOLD` | int | `12` | Trigger memory flush at this message count (lower = more frequent) |
 
-**Usage**: Lower `COMPACTION_THRESHOLD` (e.g. `12`) for more frequent compaction; raise it if compaction triggers too often. The `/compact` command manually triggers compaction regardless of threshold. If you still hit provider input-token limits with few messages but large tool output, rely on `CONTEXT_SOFT_LIMIT_CHARS` (lower the value to shrink earlier) or lower `SKILLLITE_READ_FILE_TOOL_RESULT_MAX_CHARS` / `SKILLLITE_TOOL_RESULT_MAX_CHARS`.
+**Usage**: Lower `COMPACTION_THRESHOLD` (e.g. `12`) for more frequent compaction; raise it if compaction triggers too often. The `/compact` command manually triggers compaction regardless of threshold. If you still hit provider input-token limits with few messages but large tool output, rely on `CONTEXT_SOFT_LIMIT_CHARS` (lower the value to shrink earlier) or lower `SKILLLITE_READ_FILE_TOOL_RESULT_MAX_CHARS` / `SKILLLITE_TOOL_RESULT_MAX_CHARS`. **SkillLite Assistant**: **Settings → Agent → Context soft limit** overrides this for the chat / follow-up / evolution child env (same merge order as other UI overrides).
 
 **Memory auto-flush**: When `enable_memory` is on, a silent turn runs at `MEMORY_FLUSH_THRESHOLD` (default 12 messages, ~6 turns) to prompt the model to write durable memories to `memory/YYYY-MM-DD.md`. Lower `MEMORY_FLUSH_THRESHOLD` (e.g. `8` or `6`) for more frequent memory triggers.
 

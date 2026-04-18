@@ -55,6 +55,8 @@ pub struct ChatConfigOverrides {
     pub swarm_url: Option<String>,
     pub max_iterations: Option<u32>,
     pub max_tool_calls_per_task: Option<u32>,
+    /// 覆盖 `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS`（预请求上下文软上限；`0` 表示关闭收缩）。
+    pub context_soft_limit_chars: Option<u32>,
     /// 覆盖 `SKILLLITE_EVOLUTION_INTERVAL_SECS`（Life Pulse / 状态展示）。
     pub evolution_interval_secs: Option<u64>,
     /// 覆盖 `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`。
@@ -124,6 +126,12 @@ pub fn merge_dotenv_with_chat_overrides(
     if let Some(n) = cfg.max_tool_calls_per_task.filter(|&n| n > 0) {
         m.insert(
             "SKILLLITE_MAX_TOOL_CALLS_PER_TASK".to_string(),
+            n.to_string(),
+        );
+    }
+    if let Some(n) = cfg.context_soft_limit_chars {
+        m.insert(
+            "SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS".to_string(),
             n.to_string(),
         );
     }
@@ -310,6 +318,9 @@ pub fn chat_stream(
         }
         if let Some(n) = cfg.max_tool_calls_per_task.filter(|&n| n > 0) {
             config_json.insert("max_tool_calls_per_task".to_string(), json!(n));
+        }
+        if let Some(n) = cfg.context_soft_limit_chars {
+            config_json.insert("context_soft_limit_chars".to_string(), json!(n));
         }
     }
 

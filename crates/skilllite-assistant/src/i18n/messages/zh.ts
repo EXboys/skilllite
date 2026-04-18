@@ -517,6 +517,10 @@ export const zhMessages: Record<string, string> = {
   "settings.defaultPlaceholder15": "默认 15",
   "settings.agentBudgetHint":
     "留空则沿用内置或工作区里保存的默认上限（对应 SKILLLITE_MAX_ITERATIONS、SKILLLITE_MAX_TOOL_CALLS_PER_TASK）。",
+  "settings.contextSoftLimitChars": "上下文软上限（字符）",
+  "settings.contextSoftLimitCharsHint":
+    "留空则沿用内置或工作区 .env（SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS）。填 0 表示关闭预请求收缩。示例：250000。",
+  "settings.defaultPlaceholder250k": "默认 250000",
   "settings.scheduleIntro":
     "应用运行期间会自动检查并执行到期的定时任务（Life Pulse 心跳驱动，约 30 秒一次）。配置保存在 .skilllite/schedule.json，与 CLI skilllite schedule tick 共用。执行需在环境中设置 SKILLLITE_SCHEDULE_ENABLED=1。",
   "settings.scheduleLoading": "正在加载定时配置…",
