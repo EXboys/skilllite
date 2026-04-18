@@ -193,6 +193,37 @@ function MessageBubbleInner({
   if (message.type === "assistant") {
     const u = message.turnLlmUsage;
     const assistantBody = sanitizeLlmVisibleChatText(message.content);
+    const bodyEmpty = !message.streaming && assistantBody.trim().length === 0;
+    if (bodyEmpty && u == null) {
+      return null;
+    }
+    /**
+     * 当本轮没有「可见正文」(常见于 MiniMax / 推理模型只产出 thinking)，
+     * 不再渲染整个 assistant 气泡壳——避免「看上去主 AI 没回复但下面挂着 token 行」的错觉。
+     * 用量仍展示，但用一条无气泡的细条，明确读作「整轮用量」而不是「这条回复」。
+     */
+    if (bodyEmpty && u != null) {
+      return (
+        <div className="flex justify-start">
+          <div
+            className="mr-4 inline-block max-w-[min(85%,36rem)] rounded-md border border-border/55 dark:border-border-dark/55 bg-ink/[0.025] dark:bg-white/[0.04] px-2.5 py-1 text-[11px] leading-snug tabular-nums text-ink-mute dark:text-ink-dark-mute"
+            role="status"
+            aria-live="polite"
+            title={t("chat.turnLlmUsage", {
+              inTok: u.prompt_tokens.toLocaleString(),
+              outTok: u.completion_tokens.toLocaleString(),
+              totalTok: u.total_tokens.toLocaleString(),
+            })}
+          >
+            {t("chat.turnLlmUsage", {
+              inTok: u.prompt_tokens.toLocaleString(),
+              outTok: u.completion_tokens.toLocaleString(),
+              totalTok: u.total_tokens.toLocaleString(),
+            })}
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex justify-start">
         <div className={bubbleAssistant}>

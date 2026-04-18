@@ -12,7 +12,8 @@ export function serializeChatMessagesForFollowup(messages: ChatMessage[]): strin
     if (m.type === "user") {
       const c = m.content.trim();
       if (c) parts.push(`User: ${c}`);
-    } else if (m.type === "assistant" && !m.streaming) {
+    } else if (m.type === "assistant") {
+      // 含流式未落盘标记但最后一条已有正文时也应纳入（避免 onTurnComplete 早于 React 提交时漏掉本轮回复）
       const c = m.content.trim();
       if (c) {
         const slice =

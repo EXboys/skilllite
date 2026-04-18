@@ -6,7 +6,47 @@ import { useStatusStore } from "../stores/useStatusStore";
 import { isChatHiddenToolName } from "../utils/chatNoise";
 import { tryParseReadFilePathFromToolArgs } from "../utils/readFileToolMeta";
 import { humanizeApiError } from "../utils/humanizeApiError";
+import { sanitizeLlmVisibleChatText } from "../utils/sanitizeLlmVisibleChatText";
 import { translate } from "../i18n";
+
+/** 工具结果文本里这种结构（complete_task ack）不能当作给用户看的回退正文。 */
+function isCompleteTaskAckJson(text: string): boolean {
+  const t = text.trim();
+  if (!t.startsWith("{")) return false;
+  try {
+    const obj = JSON.parse(t) as Record<string, unknown>;
+    return (
+      typeof obj.task_id !== "undefined" &&
+      typeof obj.completion_type !== "undefined" &&
+      typeof obj.success === "boolean"
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** 在最近若干条消息里挑一条「主答案」级的工具结果文本（按 helpers.rs 的策略简化）。 */
+function pickTrailingToolFallback(messages: ChatMessage[]): string | null {
+  const MIN_CHARS = 80;
+  const MAX_BYTES = 12 * 1024;
+  let candidate: string | null = null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.type === "user" || m.type === "assistant") break;
+    if (m.type !== "tool_result") continue;
+    if (m.isError) continue;
+    const body = (m.result || "").trim();
+    if (!body || isCompleteTaskAckJson(body)) continue;
+    if (body.length >= MIN_CHARS) {
+      return body.length > MAX_BYTES ? body.slice(0, MAX_BYTES) : body;
+    }
+    if (candidate == null) candidate = body;
+  }
+  if (candidate && candidate.length > MAX_BYTES) {
+    return candidate.slice(0, MAX_BYTES);
+  }
+  return candidate;
+}
 
 function nonNegInt(v: unknown): number | null {
   const x = typeof v === "number" ? v : Number(v);
@@ -15,6 +55,13 @@ function nonNegInt(v: unknown): number | null {
 }
 
 const STREAM_THROTTLE_MS = 80;
+
+/** 在 React 提交本轮 `setMessages` 之后再跑回调，避免依赖 ref 时出现「猜你想问」早于正文。 */
+function afterReactPaint(fn: () => void) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(fn);
+  });
+}
 
 interface UseChatEventsParams {
   sessionKey: string;
@@ -165,6 +212,7 @@ export function useChatEvents({
         setLoading(false);
       } else if (event === "text") {
         const text = (data?.text as string) ?? "";
+        if (text.trim() === "") return;
         pendingChunks.current = "";
         flushScheduled.current = false;
         setLatestOutput(text);
@@ -228,6 +276,34 @@ export function useChatEvents({
           } else {
             next = [...prev];
           }
+          /**
+           * 桌面兜底：如果本轮结束时最后一条 assistant **可见正文为空**（常见于
+           * MiniMax / 推理模型把答案塞进 `reasoning_*` 而 `content` 为空，或被
+           * `sanitizeLlmVisibleChatText` 清光），但前面有大段 `tool_result`，
+           * 用工具结果填进去，避免「只有内部步骤 + token 行」的空回复观感。
+           * Rust 引擎 `emit_assistant_visible` 已会做同样的回退；这里是 UI 侧的
+           * 第二道防线，确保旧引擎也不会出现空气泡。
+           */
+          const tail = next[next.length - 1];
+          const tailEmpty =
+            tail?.type === "assistant" &&
+            !tail.streaming &&
+            sanitizeLlmVisibleChatText(tail.content || "").trim().length === 0;
+          if (tailEmpty) {
+            const fallback = pickTrailingToolFallback(next.slice(0, -1));
+            if (fallback) {
+              setLatestOutput(fallback);
+              next = [
+                ...next.slice(0, -1),
+                { ...tail, content: fallback },
+              ];
+            } else if (next.length >= 2) {
+              const prevTool = next[next.length - 2];
+              if (prevTool?.type === "tool_result") {
+                next = next.slice(0, -1);
+              }
+            }
+          }
           if (turnUsage != null) {
             for (let i = next.length - 1; i >= 0; i--) {
               const m = next[i];
@@ -245,7 +321,7 @@ export function useChatEvents({
         });
         setLoading(false);
         clearPlan?.();
-        onTurnComplete?.();
+        afterReactPaint(() => onTurnComplete?.());
       } else if (event === "error") {
         const raw = (data?.message as string) ?? "Unknown error";
         const friendly = humanizeApiError(raw);
@@ -258,7 +334,7 @@ export function useChatEvents({
         setLoading(false);
         addLog({ type: "error" as const, text: raw, isError: true });
         clearPlan?.();
-        onTurnComplete?.();
+        afterReactPaint(() => onTurnComplete?.());
       } else if (event === "protocol_warning") {
         const msg = (data?.message as string) ?? "检测到 agent-rpc 协议流异常，正在自动恢复";
         const totalInvalid = (data?.total_invalid_lines as number) ?? 0;

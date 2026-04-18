@@ -14,6 +14,58 @@ use super::{
     normalize_vision_media_type, ChatCompletionResponse, Choice, ChoiceMessage, LlmClient,
 };
 
+/// Extract user-visible text fragments from one OpenAI-style `choices[].delta` object.
+///
+/// Most vendors stream plain strings in `delta.content`. Some (e.g. MiniMax M2 with
+/// `reasoning_split`) stream incremental assistant text under `delta.reasoning_details[].text`
+/// while `delta.content` stays empty — we must forward those chunks or the desktop UI shows
+/// an empty assistant bubble despite non-zero completion tokens.
+fn openai_stream_text_chunks_from_delta(delta: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    match delta.get("content") {
+        Some(Value::String(s)) => {
+            if !s.is_empty() {
+                out.push(s.clone());
+            }
+        }
+        Some(Value::Array(parts)) => {
+            for p in parts {
+                if let Some(t) = p.get("text").and_then(|v| v.as_str()) {
+                    if !t.is_empty() {
+                        out.push(t.to_string());
+                    }
+                }
+            }
+        }
+        Some(Value::Null) | None => {}
+        Some(_) => {}
+    }
+    if let Some(details) = delta.get("reasoning_details").and_then(|v| v.as_array()) {
+        for d in details {
+            if let Some(piece) = reasoning_detail_text_piece(d) {
+                out.push(piece);
+            }
+        }
+    }
+    out
+}
+
+/// `reasoning_details[]` entries may use `text` as a string or a small object (`value`, nested `text`).
+fn reasoning_detail_text_piece(d: &Value) -> Option<String> {
+    let t = d.get("text")?;
+    if let Some(s) = t.as_str() {
+        return (!s.is_empty()).then(|| s.to_string());
+    }
+    let obj = t.as_object()?;
+    if let Some(s) = obj.get("value").and_then(|v| v.as_str()) {
+        return (!s.is_empty()).then(|| s.to_string());
+    }
+    obj.get("text")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
 fn messages_contain_user_images(messages: &[ChatMessage]) -> bool {
     messages
         .iter()
@@ -322,11 +374,11 @@ impl LlmClient {
                             reasoning_content.push_str(rc);
                         }
 
-                        // Stream text content to user immediately.
-                        // Matches Python SDK: stream_callback(delta.content)
-                        if let Some(text) = delta.get("content").and_then(|v| v.as_str()) {
-                            content.push_str(text);
-                            event_sink.on_text_chunk(text);
+                        // Stream visible text: `delta.content` (string or text parts array) and
+                        // MiniMax-style `delta.reasoning_details[].text` (incremental).
+                        for piece in openai_stream_text_chunks_from_delta(delta) {
+                            content.push_str(&piece);
+                            event_sink.on_text_chunk(&piece);
                         }
 
                         // Accumulate tool calls silently (deltas arrive by index)
@@ -406,6 +458,66 @@ impl LlmClient {
             }],
             usage,
         })
+    }
+}
+
+#[cfg(test)]
+mod openai_stream_delta_tests {
+    use super::openai_stream_text_chunks_from_delta;
+    use serde_json::json;
+
+    #[test]
+    fn delta_string_content_emits_one_chunk() {
+        let delta = json!({ "content": "Hello" });
+        assert_eq!(
+            openai_stream_text_chunks_from_delta(&delta),
+            vec!["Hello".to_string()]
+        );
+    }
+
+    #[test]
+    fn delta_content_array_collects_text_parts() {
+        let delta = json!({
+            "content": [
+                {"type": "text", "text": "第一段"},
+                {"type": "text", "text": "第二段"}
+            ]
+        });
+        assert_eq!(
+            openai_stream_text_chunks_from_delta(&delta),
+            vec!["第一段".to_string(), "第二段".to_string()]
+        );
+    }
+
+    #[test]
+    fn minimax_style_reasoning_details_incremental_concat() {
+        let d1 = json!({ "reasoning_details": [{"text": "用户"}] });
+        let d2 = json!({ "reasoning_details": [{"text": "问天气。"}] });
+        assert_eq!(openai_stream_text_chunks_from_delta(&d1), vec!["用户"]);
+        assert_eq!(openai_stream_text_chunks_from_delta(&d2), vec!["问天气。"]);
+    }
+
+    #[test]
+    fn delta_prefers_content_then_reasoning_details_order() {
+        let delta = json!({
+            "content": "A",
+            "reasoning_details": [{"text": "B"}]
+        });
+        assert_eq!(
+            openai_stream_text_chunks_from_delta(&delta),
+            vec!["A".to_string(), "B".to_string()]
+        );
+    }
+
+    #[test]
+    fn delta_reasoning_details_accepts_text_object_with_value_field() {
+        let delta = json!({
+            "reasoning_details": [{"text": {"value": "增量正文"}}]
+        });
+        assert_eq!(
+            openai_stream_text_chunks_from_delta(&delta),
+            vec!["增量正文".to_string()]
+        );
     }
 }
 

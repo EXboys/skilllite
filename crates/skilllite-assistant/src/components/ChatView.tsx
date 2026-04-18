@@ -165,6 +165,19 @@ export default function ChatView() {
   );
   const [followupPanelDismissed, setFollowupPanelDismissed] = useState(false);
 
+  /** 丢弃尚未返回的「猜你想问」请求，避免晚到的结果盖在新一轮对话上。 */
+  const invalidateFollowupInFlight = useCallback(() => {
+    followupReqIdRef.current += 1;
+  }, []);
+
+  const showFollowupPanel = useMemo(() => {
+    if (!followupSuggestions?.length || followupPanelDismissed || loading) {
+      return false;
+    }
+    const last = messages[messages.length - 1];
+    return last?.type === "assistant" && !last.streaming;
+  }, [followupSuggestions, followupPanelDismissed, loading, messages]);
+
   useEffect(() => {
     setFollowupPanelDismissed(false);
   }, [followupSuggestions]);
@@ -194,12 +207,10 @@ export default function ChatView() {
   const onChatTurnComplete = useCallback(() => {
     refreshRecentData();
     notifyRuntimeStatusMayHaveChanged();
-    window.setTimeout(() => {
-      const tr = serializeChatMessagesForFollowup(messagesRef.current);
-      if (tr.trim()) {
-        void requestFollowupSuggestions(tr);
-      }
-    }, 0);
+    const tr = serializeChatMessagesForFollowup(messagesRef.current);
+    if (tr.trim()) {
+      void requestFollowupSuggestions(tr);
+    }
   }, [refreshRecentData, requestFollowupSuggestions]);
 
   // Synchronous clear: if session key changed without remount (HMR), force-clear in render
@@ -386,12 +397,13 @@ export default function ChatView() {
   }, [currentSessionKey]);
 
   useEffect(() => {
+    invalidateFollowupInFlight();
     setFollowupSuggestions(null);
     const pending = pendingSessionEndRef.current;
     pendingSessionEndRef.current = null;
     if (!pending?.transcript.trim()) return;
     void requestFollowupSuggestions(pending.transcript);
-  }, [currentSessionKey, requestFollowupSuggestions]);
+  }, [currentSessionKey, invalidateFollowupInFlight, requestFollowupSuggestions]);
 
   useEffect(() => {
     if (!notice) return;
@@ -668,6 +680,7 @@ export default function ChatView() {
       if (snap.trim()) {
         void requestFollowupSuggestions(snap);
       } else {
+        invalidateFollowupInFlight();
         setFollowupSuggestions(null);
       }
     } catch (err) {
@@ -687,6 +700,7 @@ export default function ChatView() {
     refreshRecentData,
     t,
     requestFollowupSuggestions,
+    invalidateFollowupInFlight,
   ]);
 
   const handleStop = useCallback(async () => {
@@ -724,6 +738,7 @@ export default function ChatView() {
       if ((!text && !hasImages) || loading || isClearing) return;
       if (sendInFlightRef.current) return;
       sendInFlightRef.current = true;
+      invalidateFollowupInFlight();
       setFollowupSuggestions(null);
 
       try {
@@ -811,6 +826,7 @@ export default function ChatView() {
       currentSessionKey,
       statusActions,
       t,
+      invalidateFollowupInFlight,
     ]
   );
 
@@ -1226,9 +1242,7 @@ export default function ChatView() {
         onClarify={handleClarify}
         onEvolutionAction={handleEvolutionAction}
         tailSlot={
-          followupSuggestions &&
-          followupSuggestions.length > 0 &&
-          !followupPanelDismissed ? (
+          showFollowupPanel && followupSuggestions ? (
             <div className="mt-2 rounded-lg border border-border dark:border-border-dark bg-white dark:bg-paper-dark px-2 py-1.5">
               <div className="flex items-start justify-between gap-1.5">
                 <p className="text-[11px] font-medium leading-tight text-ink-mute dark:text-ink-dark-mute">
@@ -1270,9 +1284,7 @@ export default function ChatView() {
           ) : null
         }
         tailScrollSignal={
-          followupSuggestions &&
-          followupSuggestions.length > 0 &&
-          !followupPanelDismissed
+          showFollowupPanel && followupSuggestions
             ? followupSuggestions.join("\u0001")
             : ""
         }

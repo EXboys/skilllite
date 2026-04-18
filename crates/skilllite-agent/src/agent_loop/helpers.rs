@@ -17,6 +17,7 @@ use super::super::prompt;
 use super::super::skills::{self, LoadedSkill};
 use super::super::task_planner::TaskPlanner;
 use super::super::types::{safe_truncate, *};
+use skilllite_evolution::sanitize_visible_llm_text;
 
 /// Unwrap double-encoded JSON: some models (especially DeepSeek in long contexts)
 /// wrap arguments in extra quotes, producing `Value::String` instead of `Value::Object`.
@@ -685,6 +686,17 @@ fn tool_body_usable_for_user_summary(s: &str) -> bool {
     !s.trim().is_empty() && !is_complete_task_tool_result_body(s)
 }
 
+/// True when raw assistant prose is “substantial” **after** the same visibility pass as the UI
+/// ([`sanitize_visible_llm_text`]). Uses raw `len()` caused false positives: long CoT / thinking
+/// wrappers count as “substantial” while the chat bubble is empty, so we skip emitting the
+/// tool-result fallback (`emit_assistant_visible`) after `all_completed`.
+pub(super) fn assistant_visible_substantial(raw: Option<&str>, min_visible_chars: usize) -> bool {
+    let Some(c) = raw else {
+        return false;
+    };
+    sanitize_visible_llm_text(c).trim().len() > min_visible_chars
+}
+
 /// True when the message list ends with one or more `role == "tool"` rows and at least one
 /// of those trailing tool results has at least `min_chars` non-whitespace characters.
 ///
@@ -1126,6 +1138,17 @@ mod tests {
         assert!(latest_trailing_tool_results_include_substantive_output(
             &multi, 80
         ));
+    }
+
+    #[test]
+    fn assistant_visible_substantial_rejects_thinking_wrappers_for_fallback_gate() {
+        let raw = format!("<thinking>{}</thinking>", "x".repeat(60));
+        assert!(
+            !super::assistant_visible_substantial(Some(&raw), 50),
+            "long stripped-only body must not block tool-result fallback emit"
+        );
+        let plain: String = (0..51).map(|_| "n").collect();
+        assert!(super::assistant_visible_substantial(Some(&plain), 50));
     }
 
     #[test]

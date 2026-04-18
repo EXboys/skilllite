@@ -46,7 +46,8 @@ use execution::{
     should_suppress_planning_assistant_text, ExecutionState,
 };
 use helpers::{
-    build_agent_result, latest_trailing_tool_results_include_substantive_output,
+    assistant_visible_substantial, build_agent_result,
+    latest_trailing_tool_results_include_substantive_output,
     pick_substantive_trailing_tool_content, TRAILING_TOOL_SUMMARY_MAX_BYTES,
 };
 use llm_call::{call_llm_with_recovery, LlmCallOutcome};
@@ -897,9 +898,8 @@ async fn run_with_task_planning(
         // ── Post-tool completion check ─────────────────────────────────────────
         if planner.all_completed() {
             tracing::info!("All tasks completed, scheduling closing user reply if needed");
-            let assistant_substantial = assistant_content
-                .as_ref()
-                .is_some_and(|c| c.trim().len() > 50);
+            let assistant_substantial =
+                assistant_visible_substantial(assistant_content.as_deref(), 50);
             let tool_substantial = latest_trailing_tool_results_include_substantive_output(
                 &messages,
                 SUBSTANTIVE_TOOL_OUTPUT_MIN_CHARS,
