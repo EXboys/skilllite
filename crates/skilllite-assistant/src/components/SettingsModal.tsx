@@ -1097,7 +1097,10 @@ export default function SettingsModal({
                 </div>
 
                 {uninstallInfo ? (
-                  <details className="group border-b border-border/70 dark:border-border-dark/80 bg-white/40 dark:bg-black/10">
+                  <details
+                    open
+                    className="group border-b border-border/70 dark:border-border-dark/80 bg-white/40 dark:bg-black/10"
+                  >
                     <summary className="px-3.5 py-2.5 cursor-pointer select-none list-none flex items-center justify-between gap-2 text-xs font-medium text-ink dark:text-ink-dark-mute hover:bg-black/[0.03] dark:hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
                       <span>{t("settings.uninstall.pathsSummary")}</span>
                       <svg
@@ -1150,11 +1153,11 @@ export default function SettingsModal({
                   </div>
                 ) : null}
 
-                <div className="px-3.5 py-3 space-y-2 bg-white/80 dark:bg-black/25">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
-                    {t("settings.uninstall.actionsHeading")}
-                  </p>
-                  <div className="flex flex-col gap-2">
+                <div className="px-3.5 py-3 space-y-4 bg-white/80 dark:bg-black/25">
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                      {t("settings.uninstall.locateHeading")}
+                    </p>
                     <button
                       type="button"
                       disabled={!uninstallInfo}
@@ -1171,41 +1174,131 @@ export default function SettingsModal({
                           }
                         })();
                       }}
-                      className="w-full text-left rounded-lg border border-border dark:border-border-dark px-3 py-2.5 transition-colors hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-40 disabled:pointer-events-none"
+                      className="group flex w-full items-center gap-3 rounded-xl border-2 border-border dark:border-border-dark bg-white dark:bg-black/20 px-3 py-2.5 text-left shadow-sm outline-none transition-all hover:border-ink/22 dark:hover:border-white/28 hover:shadow-md active:scale-[0.995] focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-paper-dark disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none"
                     >
-                      <span className="block text-sm font-medium text-ink dark:text-ink-dark-mute">
-                        {t("settings.uninstall.reveal")}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] text-ink-mute dark:text-ink-dark-mute leading-snug">
-                        {t("settings.uninstall.revealSub")}
-                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className="block text-sm font-semibold text-ink dark:text-ink-dark">
+                          {t("settings.uninstall.reveal")}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] text-ink-mute dark:text-ink-dark-mute leading-snug">
+                          {t("settings.uninstall.revealSub")}
+                        </span>
+                      </div>
+                      <svg
+                        className="h-4 w-4 shrink-0 text-ink-mute transition-colors group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        aria-hidden
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5l7 7-7 7"
+                        />
+                      </svg>
                     </button>
-                    <button
-                      type="button"
-                      disabled={!uninstallInfo}
-                      onClick={() => void runQuitUninstall(false)}
-                      className="w-full text-left rounded-lg border border-border dark:border-border-dark px-3 py-2.5 transition-colors hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-40 disabled:pointer-events-none"
-                    >
-                      <span className="block text-sm font-medium text-ink dark:text-ink-dark-mute">
-                        {t("settings.uninstall.quitAppOnly")}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] text-ink-mute dark:text-ink-dark-mute leading-snug">
-                        {t("settings.uninstall.quitAppOnlySub")}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={!uninstallInfo}
-                      onClick={() => void runQuitUninstall(true)}
-                      className="w-full text-left rounded-lg border border-red-300/90 dark:border-red-900/55 bg-red-50/40 dark:bg-red-950/20 px-3 py-2.5 transition-colors hover:bg-red-50 dark:hover:bg-red-950/35 disabled:opacity-40 disabled:pointer-events-none"
-                    >
-                      <span className="block text-sm font-medium text-red-800 dark:text-red-300">
-                        {t("settings.uninstall.quitWithData")}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] text-red-700/85 dark:text-red-300/80 leading-snug">
-                        {t("settings.uninstall.quitWithDataSub")}
-                      </span>
-                    </button>
+                  </div>
+
+                  <div className="space-y-2 rounded-xl border border-dashed border-amber-300/90 bg-amber-50/40 p-2.5 dark:border-amber-800/50 dark:bg-amber-950/20">
+                    <p className="px-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-950/90 dark:text-amber-200/95">
+                      {t("settings.uninstall.uninstallHeading")}
+                    </p>
+                    <div className="flex flex-col gap-2.5">
+                      <button
+                        type="button"
+                        disabled={!uninstallInfo}
+                        onClick={() => void runQuitUninstall(false)}
+                        className="group flex w-full items-center gap-3 rounded-xl border-2 border-amber-800/25 bg-amber-600 px-3 py-2.5 text-left text-white shadow-md outline-none transition-all hover:border-amber-950/35 hover:bg-amber-700 active:scale-[0.995] focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 dark:border-amber-400/30 dark:bg-amber-600 dark:hover:bg-amber-500 dark:focus-visible:ring-amber-400/80 dark:focus-visible:ring-offset-paper-dark disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-black/15 dark:bg-black/20">
+                          <svg
+                            className="h-5 w-5 text-white"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                            <polyline points="16 17 21 12 16 7" />
+                            <line x1="21" x2="9" y1="12" y2="12" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-white">
+                            {t("settings.uninstall.quitAppOnly")}
+                          </span>
+                          <span className="mt-0.5 block text-[10px] text-amber-100/95 leading-snug">
+                            {t("settings.uninstall.quitAppOnlySub")}
+                          </span>
+                        </div>
+                        <svg
+                          className="h-4 w-4 shrink-0 text-white/75 transition-colors group-hover:text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          aria-hidden
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!uninstallInfo}
+                        onClick={() => void runQuitUninstall(true)}
+                        className="group flex w-full items-center gap-3 rounded-xl border-2 border-red-900/20 bg-red-600 px-3 py-2.5 text-left text-white shadow-md outline-none transition-all hover:border-red-950/30 hover:bg-red-700 active:scale-[0.995] focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 dark:border-red-400/25 dark:bg-red-700 dark:hover:bg-red-600 dark:focus-visible:ring-red-500/70 dark:focus-visible:ring-offset-paper-dark disabled:pointer-events-none disabled:opacity-40 disabled:shadow-none"
+                      >
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-black/15 dark:bg-black/25">
+                          <svg
+                            className="h-5 w-5 text-white"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <path d="M3 6h18" />
+                            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                            <line x1="10" x2="10" y1="11" y2="17" />
+                            <line x1="14" x2="14" y1="11" y2="17" />
+                          </svg>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-white">
+                            {t("settings.uninstall.quitWithData")}
+                          </span>
+                          <span className="mt-0.5 block text-[10px] text-red-100/95 leading-snug">
+                            {t("settings.uninstall.quitWithDataSub")}
+                          </span>
+                        </div>
+                        <svg
+                          className="h-4 w-4 shrink-0 text-white/75 transition-colors group-hover:text-white"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          aria-hidden
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
