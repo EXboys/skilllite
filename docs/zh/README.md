@@ -482,7 +482,7 @@ opencode
 
 **SkillLite Assistant** 是本机 **桌面应用**（Tauri 2 + React），底层仍是同一套 **`skilllite`** 引擎（`agent-rpc`）。**安装包**（dmg / msi / AppImage）见 [GitHub Releases](https://github.com/EXboys/skilllite/releases)（桌面构建可能比主产物稍晚出现）。首次分流说明：[选择你的路径 → 桌面](./START_PATHS.md#path-1-desktop)。
 
-**设置**（齿轮）：**模型与 API**（界面语言、服务商、API Key、模型、可选 Base URL、Token 统计等）、**工作区与沙箱**、**Agent 预算**、**自进化**、**计划任务**。
+**设置**（齿轮）：**模型与 API**（界面语言、服务商、API Key、模型、可选 Base URL、Token 统计等）、**工作区与沙箱**、**Agent 预算**、**自进化**、**定时任务**、**卸载与数据**。
 
 ![SkillLite Assistant — 设置「模型与 API」](../images/assistant-settings-model-api.png)
 
@@ -502,7 +502,7 @@ npm run tauri build
 任务计划、工具调用、**工具回复**与待处理的**执行确认**均位于可折叠的**内部步骤**时间线中（需要操作时会自动展开；在可信环境可在**设置 → Agent 预算**或输入框下开启**自动允许执行确认**）。
 当工具结果被标记为 `partial_success` 或 `failure` 时，助手会弹出多选恢复项，其中包含 `【启动进化】`，用于将能力补齐请求写入受治理的进化 backlog。
 默认系统/规划/执行提示词倾向于在缺少专用技能时仍通过**脚本、`run_command`、小技能**等方式推进浏览器/桌面类需求，而不是一句「做不到」结束。客户端升级若提高 prompt **种子版本**，下次启动时可能用新模板**覆盖** `~/.skilllite/chat/prompts/` 下与新版不一致的文件（含从旧版官方模板升级的情况）；若你改过这些文件，请先**自行备份**。
-**卸载**：**设置 → 工作区与沙箱** 底部可选择仅卸载应用或一并删除本机助手数据（详见助手 README）。
+**卸载**：**设置 → 卸载与数据** 可选择仅卸载应用或一并删除本机助手数据（详见助手 README）。
 
 **Windows**：后台子进程（内置引擎自检、Life Pulse、运行时探测、以及代理里通过 `run_command` 拉起的 shell）使用无控制台窗口方式创建，正常使用时不应再反复闪现空的「命令提示符」黑框。
 

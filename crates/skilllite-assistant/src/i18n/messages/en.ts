@@ -472,6 +472,7 @@ export const enMessages: Record<string, string> = {
   "settings.tab.agent": "Agent budget",
   "settings.tab.evolution": "Evolution",
   "settings.tab.schedule": "Schedule",
+  "settings.tab.uninstall": "Uninstall & data",
   "settings.evolutionIntro":
     "These values drive background evolution scheduling (same rules as chat, periodic checks, and manual runs). Anything you fill in here overrides workspace-saved defaults. Click Save to apply.",
   "settings.providerMode": "Provider",

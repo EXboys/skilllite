@@ -5,7 +5,8 @@ export type AssistantSettingsTabId =
   | "workspace"
   | "agent"
   | "evolution"
-  | "schedule";
+  | "schedule"
+  | "uninstall";
 
 type AssistantChromeValue = {
   openSettingsToTab: (tab: AssistantSettingsTabId) => void;

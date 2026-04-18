@@ -445,6 +445,7 @@ export const zhMessages: Record<string, string> = {
   "settings.tab.agent": "Agent 预算",
   "settings.tab.evolution": "自进化",
   "settings.tab.schedule": "定时任务",
+  "settings.tab.uninstall": "卸载与数据",
   "settings.evolutionIntro":
     "以下项会用于后台进化调度（与聊天、定时检查、手动触发共用同一套规则）。在这里填写的值会覆盖工作区里仅通过配置文件保存的同名项。点「保存」后生效。",
   "settings.providerMode": "使用方式",
