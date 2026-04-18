@@ -1096,55 +1096,6 @@ export default function SettingsModal({
                   </div>
                 </div>
 
-                {uninstallInfo ? (
-                  <details
-                    open
-                    className="group border-b border-border/70 dark:border-border-dark/80 bg-white/40 dark:bg-black/10"
-                  >
-                    <summary className="px-3.5 py-2.5 cursor-pointer select-none list-none flex items-center justify-between gap-2 text-xs font-medium text-ink dark:text-ink-dark-mute hover:bg-black/[0.03] dark:hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
-                      <span>{t("settings.uninstall.pathsSummary")}</span>
-                      <svg
-                        className="w-3.5 h-3.5 shrink-0 text-ink-mute dark:text-ink-dark-mute transition-transform group-open:rotate-180"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        aria-hidden
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
-                    </summary>
-                    <div className="px-3.5 pb-3.5 space-y-2.5">
-                      <div>
-                        <div className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
-                          {t("settings.uninstall.pathAppData")}
-                        </div>
-                        <div className="mt-1 rounded-md bg-black/[0.05] dark:bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-mono text-ink/90 dark:text-ink-dark-mute/95 break-all leading-snug">
-                          {uninstallInfo.tauriAppDataDir}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
-                          {t("settings.uninstall.pathChat")}
-                        </div>
-                        <div className="mt-1 rounded-md bg-black/[0.05] dark:bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-mono text-ink/90 dark:text-ink-dark-mute/95 break-all leading-snug">
-                          {uninstallInfo.skillliteChatRoot}
-                        </div>
-                      </div>
-                    </div>
-                  </details>
-                ) : (
-                  <div className="px-3.5 py-2.5 border-b border-border/70 dark:border-border-dark/80 bg-white/40 dark:bg-black/10">
-                    <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">
-                      {t("settings.uninstall.loadFailed")}
-                    </p>
-                  </div>
-                )}
-
                 {uninstallInfo?.isDevBuild ? (
                   <div className="px-3.5 py-2 border-b border-amber-200/70 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/25">
                     <p className="text-[11px] text-amber-950 dark:text-amber-100/90 leading-relaxed">
@@ -1301,6 +1252,55 @@ export default function SettingsModal({
                     </div>
                   </div>
                 </div>
+
+                {uninstallInfo ? (
+                  <details
+                    open
+                    className="group border-t border-border/70 dark:border-border-dark/80 bg-white/40 dark:bg-black/10"
+                  >
+                    <summary className="px-3.5 py-2.5 cursor-pointer select-none list-none flex items-center justify-between gap-2 text-xs font-medium text-ink dark:text-ink-dark-mute hover:bg-black/[0.03] dark:hover:bg-white/[0.04] [&::-webkit-details-marker]:hidden">
+                      <span>{t("settings.uninstall.pathsSummary")}</span>
+                      <svg
+                        className="w-3.5 h-3.5 shrink-0 text-ink-mute dark:text-ink-dark-mute transition-transform group-open:rotate-180"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        aria-hidden
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      </svg>
+                    </summary>
+                    <div className="px-3.5 pb-3.5 space-y-2.5">
+                      <div>
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                          {t("settings.uninstall.pathAppData")}
+                        </div>
+                        <div className="mt-1 rounded-md bg-black/[0.05] dark:bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-mono text-ink/90 dark:text-ink-dark-mute/95 break-all leading-snug">
+                          {uninstallInfo.tauriAppDataDir}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-medium uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                          {t("settings.uninstall.pathChat")}
+                        </div>
+                        <div className="mt-1 rounded-md bg-black/[0.05] dark:bg-white/[0.06] px-2.5 py-1.5 text-[11px] font-mono text-ink/90 dark:text-ink-dark-mute/95 break-all leading-snug">
+                          {uninstallInfo.skillliteChatRoot}
+                        </div>
+                      </div>
+                    </div>
+                  </details>
+                ) : (
+                  <div className="px-3.5 py-2.5 border-t border-border/70 dark:border-border-dark/80 bg-white/40 dark:bg-black/10">
+                    <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">
+                      {t("settings.uninstall.loadFailed")}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
