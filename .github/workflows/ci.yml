@@ -20,6 +20,14 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.18.6
+
+      - name: Check workspace crate layering (cargo-deny)
+        run: cargo deny check bans
+
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:

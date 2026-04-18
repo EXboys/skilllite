@@ -57,6 +57,7 @@ cp .env.example .env
 ### Rust
 - Follow standard Rust conventions
 - Run `cargo fmt` and `cargo clippy`
+- Run `cargo deny check bans` from the repo root before submitting (install: `cargo install cargo-deny --locked --version 0.18.6`, or match `.github/workflows/ci.yml`). This enforces crate layering in `deny.toml`.
 
 ### Python
 - Follow PEP 8

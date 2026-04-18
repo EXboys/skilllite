@@ -28,6 +28,7 @@ Scope: any task that changes Rust workspace layout, crate dependencies, or entry
 
 ## Quick Verify
 
+- `cargo deny check bans` (enforces workspace `skilllite-*` dependency direction via root `deny.toml`)
 - `cargo check --workspace`
 - `cargo clippy --all-targets`
 - `cargo test`

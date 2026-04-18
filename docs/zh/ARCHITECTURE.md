@@ -232,6 +232,8 @@ skilllite (主二进制)
 Core 不依赖上层；Agent 是 Core 的客户。
 ```
 
+**CI / 本地检查**：仓库根目录 `deny.toml` 使用 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) 的 `bans` 规则，限制各 `skilllite-*` 工作区 crate 之间**直接依赖**的方向（规则与 `spec/architecture-boundaries.md` 一致）。在仓库根执行 `cargo deny check bans`；CI 在 PR 上也会跑该步骤。
+
 **Feature Flags**：
 
 | Feature | 包含 crate | 编译目标 |

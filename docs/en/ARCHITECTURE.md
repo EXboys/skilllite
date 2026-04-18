@@ -234,6 +234,8 @@ Execution chain: CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent �
 Core doesn't depend on upper layers; Agent is Core's customer.
 ```
 
+**CI / local guard**: Root `deny.toml` configures [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) `bans` so only allowed workspace crates may *directly* depend on each upper-layer `skilllite-*` crate (see `spec/architecture-boundaries.md`). Run `cargo deny check bans` from the repo root (CI runs this on every PR).
+
 **Feature Flags**:
 
 | Feature | Included Crate | Build Target |

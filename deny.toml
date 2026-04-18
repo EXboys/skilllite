@@ -1,0 +1,35 @@
+# cargo-deny — dependency policy for the SkillLite workspace.
+# Run: `cargo deny check bans` (see `.github/workflows/ci.yml`).
+#
+# Layering rules match `spec/architecture-boundaries.md`:
+# entry (skilllite) -> commands -> agent -> executor -> sandbox -> core.
+# Workspace path crates `skilllite-*` must not be pulled from the wrong layer.
+
+[graph]
+# Resolve the same feature set CI builds with (full agent / artifact / swarm graph).
+all-features = true
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+allow-wildcard-paths = true
+workspace-default-features = "warn"
+
+# Only the listed workspace crates may *directly* depend on the denied crate.
+# This blocks lower layers from depending on upper layers (e.g. core -> agent).
+# Package names match Cargo.toml `name =` for each member.
+deny = [
+  { crate = "skilllite-agent", wrappers = ["skilllite", "skilllite-commands"], reason = "spec/architecture-boundaries.md — agent is above core/sandbox/executor" },
+  { crate = "skilllite-commands", wrappers = ["skilllite"], reason = "spec/architecture-boundaries.md — commands are entry-adjacent; agent must not depend on commands" },
+  { crate = "skilllite-executor", wrappers = ["skilllite", "skilllite-agent"], reason = "spec/architecture-boundaries.md — executor sits below agent" },
+  { crate = "skilllite-evolution", wrappers = ["skilllite-agent", "skilllite-commands"], reason = "evolution is orchestration; not a foundation crate (skilllite binary depends via commands)" },
+  { crate = "skilllite-artifact", wrappers = ["skilllite", "skilllite-agent"], reason = "artifact store is agent/entry concern" },
+  { crate = "skilllite-swarm", wrappers = ["skilllite"], reason = "swarm is optional entry feature" },
+  { crate = "skilllite-sandbox", wrappers = ["skilllite", "skilllite-agent", "skilllite-commands", "skilllite-evolution"], reason = "spec/architecture-boundaries.md — sandbox above core, below agent/commands/evolution" },
+]
+
+[bans.workspace-dependencies]
+# Most path deps omit `workspace = true` by design; do not fail on that.
+duplicates = "allow"
+include-path-dependencies = false
+unused = "allow"
