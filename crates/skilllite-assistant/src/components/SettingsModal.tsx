@@ -763,27 +763,45 @@ export default function SettingsModal({
             </div>
           </div>
 
-          {/* ── Sandbox Level ── */}
+          {/* ── Sandbox Level（独立选项卡，避免与输入框同形态的整框分段条） ── */}
           <div>
-            <label className={labelCls}>{t("settings.sandboxLevel")}</label>
-            <div className="flex rounded-lg border border-border dark:border-border-dark overflow-hidden">
-              {([1, 2, 3] as const).map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  onClick={() => setSandboxLevel(level)}
-                  className={`flex-1 py-1.5 text-sm font-medium transition-colors ${
-                    sandboxLevel === level
-                      ? "bg-accent text-white"
-                      : "bg-gray-50 dark:bg-surface-dark text-ink-mute dark:text-ink-dark-mute hover:bg-gray-100 dark:hover:bg-white/5"
-                  }`}
-                >
-                  L{level}
-                </button>
-              ))}
+            <label id="settings-sandbox-level-label" className={labelCls}>
+              {t("settings.sandboxLevel")}
+            </label>
+            <div
+              className="flex flex-col gap-2 sm:flex-row sm:items-stretch"
+              role="radiogroup"
+              aria-labelledby="settings-sandbox-level-label"
+            >
+              {([1, 2, 3] as const).map((level) => {
+                const selected = sandboxLevel === level;
+                const sk = `l${level}` as "l1" | "l2" | "l3";
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => setSandboxLevel(level)}
+                    className={`flex-1 rounded-xl border-2 px-3 py-2.5 text-left transition-all outline-none focus-visible:ring-2 focus-visible:ring-accent/45 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-paper-dark ${
+                      selected
+                        ? "border-accent bg-accent/10 shadow-sm dark:bg-accent/[0.14]"
+                        : "border-border dark:border-border-dark bg-white dark:bg-black/20 hover:border-ink/20 dark:hover:border-white/25"
+                    }`}
+                  >
+                    <span
+                      className={`text-sm font-semibold block ${
+                        selected ? "text-accent" : "text-ink dark:text-ink-dark"
+                      }`}
+                    >
+                      L{level} · {t(`settings.sandbox.${sk}.short`)}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
-            <p className="mt-1 text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-              {t(`settings.sandbox.${sbKey}.short`)} — {t(`settings.sandbox.${sbKey}.desc`)}
+            <p className="mt-2 text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+              {t(`settings.sandbox.${sbKey}.desc`)}
             </p>
           </div>
 
