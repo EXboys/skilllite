@@ -123,10 +123,10 @@ pub fn get_tool_result_recovery_max_chars() -> usize {
 /// When exceeded, the session shrinks tool results and may run compaction (same path as
 /// `/compact`) even if message count is below `SKILLLITE_COMPACTION_THRESHOLD`.
 ///
-/// `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS`. Default `320000` (~80k tokens at ~4 chars/token).
+/// `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS`. Default `250000` (~62k tokens at ~4 chars/token).
 /// Set to `0` to disable pre-request shrinking.
 pub fn get_context_soft_limit_chars() -> usize {
-    env_usize("SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS", 320_000)
+    env_usize("SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS", 250_000)
 }
 
 /// Output directory override. `SKILLLITE_OUTPUT_DIR`.

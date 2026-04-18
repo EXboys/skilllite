@@ -202,7 +202,7 @@ Sandbox resource limits are read through **config** (`SandboxEnvConfig`); legacy
 |----------|------|---------|-------------|
 | `SKILLLITE_COMPACTION_THRESHOLD` | int | `16` | Compact conversation history when message count exceeds this (~8 turns) |
 | `SKILLLITE_COMPACTION_KEEP_RECENT` | int | `10` | Number of recent messages to keep after compaction |
-| `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS` | int | `320000` | Before each agent LLM call, if estimated history + user payload (chars) exceeds this, shrink tool results and may run compaction even below the message-count threshold. `0` disables. Roughly ~80k tokens at ~4 chars/token |
+| `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS` | int | `250000` | Before each agent LLM call, if estimated history + user payload (chars) exceeds this, shrink tool results and may run compaction even below the message-count threshold. `0` disables. Roughly ~62k tokens at ~4 chars/token |
 | `SKILLLITE_MEMORY_FLUSH_ENABLED` | bool | `true` | Enable pre-compaction memory flush (OpenClaw-style) |
 | `SKILLLITE_MEMORY_FLUSH_THRESHOLD` | int | `12` | Trigger memory flush at this message count (lower = more frequent) |
 

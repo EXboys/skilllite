@@ -202,7 +202,7 @@
 |------|------|--------|------|
 | `SKILLLITE_COMPACTION_THRESHOLD` | int | `16` | 对话历史超过此消息数时触发压缩（约 8 轮） |
 | `SKILLLITE_COMPACTION_KEEP_RECENT` | int | `10` | 压缩后保留的最近消息数 |
-| `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS` | int | `320000` | 每次主 agent 调 LLM 前，若估算的历史 + 本回合用户输入（字符数）超过此值，会先收缩工具输出，并在未达消息条数阈值时也可能触发与 `/compact` 相同的 LLM 摘要。`0` 表示关闭。约按 4 字符/token 对应 ~8 万 token |
+| `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS` | int | `250000` | 每次主 agent 调 LLM 前，若估算的历史 + 本回合用户输入（字符数）超过此值，会先收缩工具输出，并在未达消息条数阈值时也可能触发与 `/compact` 相同的 LLM 摘要。`0` 表示关闭。约按 4 字符/token 对应 ~6.2 万 token |
 | `SKILLLITE_MEMORY_FLUSH_ENABLED` | bool | `true` | 是否启用 pre-compaction 记忆自动写入（OpenClaw 风格） |
 | `SKILLLITE_MEMORY_FLUSH_THRESHOLD` | int | `12` | 达到此消息数时触发记忆 flush（低于压缩阈值可更早触发） |
 
