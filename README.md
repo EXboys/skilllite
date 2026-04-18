@@ -578,6 +578,8 @@ See [crates/skilllite-assistant/README.md](./crates/skilllite-assistant/README.m
 
 SkillLite's sandbox hardening experience was contributed to [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw) via [issue #4812](https://github.com/zeroclaw-labs/zeroclaw/issues/4812) and adopted in [PR #4821](https://github.com/zeroclaw-labs/zeroclaw/pull/4821), improving its native sandbox security posture (seccomp, capability dropping, fail-closed backend selection).
 
+Lockdown networking for MCP-style stacks was contributed to [ai-jail](https://github.com/akitaonrails/ai-jail) in [PR #16](https://github.com/akitaonrails/ai-jail/pull/16): repeatable `--allow-tcp-port` / config `allow_tcp_ports` can permit outbound TCP to listed ports while staying in lockdown (Landlock V4 `ConnectTcp` rules when the network namespace is shared), with behavior unchanged when no ports are configured.
+
 ---
 
 ## 📄 License

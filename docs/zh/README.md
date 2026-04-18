@@ -516,6 +516,8 @@ npm run tauri build
 
 SkillLite 的沙箱加固经验与方案已贡献至 [ZeroClaw](https://github.com/zeroclaw-labs/zeroclaw)（[issue #4812](https://github.com/zeroclaw-labs/zeroclaw/issues/4812)），并被采纳合并（[PR #4821](https://github.com/zeroclaw-labs/zeroclaw/pull/4821)），提升了其原生沙箱的安全性（seccomp、权限收敛、后端不可用时的失败关闭策略）。
 
+面向 MCP 等需在严格 lockdown 下仍做受控外连的场景，同类能力已合入 [ai-jail](https://github.com/akitaonrails/ai-jail)（[PR #16](https://github.com/akitaonrails/ai-jail/pull/16)）：可通过可重复的 `--allow-tcp-port` 或配置项 `allow_tcp_ports` 仅放行列出端口的出站 TCP；在共享网络栈时用 Landlock V4 约束 `ConnectTcp`；未配置端口时行为与原先 full lockdown 一致。
+
 ---
 
 ## 📄 License
