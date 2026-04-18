@@ -56,9 +56,11 @@ pub trait EventSink: Send {
     /// Called when the assistant produces text content.
     fn on_text(&mut self, text: &str);
     /// **Agent loop only:** user-visible assistant prose after an LLM completion (reflection, suppressed-stream
-    /// tool-call captions, synthetic fallbacks). Do not call [`EventSink::on_text`] directly from
-    /// `agent_loop` / `reflection` for this purpose — implementations dedupe streaming vs full body in
-    /// [`EventSink::on_text`] (RPC and terminal sinks skip a second full body when chunks were already sent).
+    /// tool-call captions, synthetic fallbacks). Prefer this over calling [`EventSink::on_text`] directly from
+    /// `agent_loop` / `reflection`: [`EventSink::on_text`] may suppress a trailing full body when `text_chunk`
+    /// already streamed the same completion, but tool-derived fallbacks are **new** content and must still be
+    /// delivered — the RPC event sink and [`TerminalEventSink`] reset that flag before
+    /// delegating to `on_text`.
     ///
     /// Callers MUST only invoke this for text that was NOT already sent via streaming (`text_chunk`).
     fn emit_assistant_visible(&mut self, text: &str) {
@@ -211,6 +213,11 @@ impl EventSink for TerminalEventSink {
 
     fn reset_streamed_text_for_llm_call(&mut self) {
         self.streamed_text = false;
+    }
+
+    fn emit_assistant_visible(&mut self, text: &str) {
+        self.streamed_text = false;
+        self.on_text(text);
     }
 
     fn on_text(&mut self, text: &str) {
@@ -622,7 +629,7 @@ mod emit_assistant_visible_tests {
         // No panic; no observable on_text (SilentEventSink overrides emit)
     }
 
-    /// Same streaming-vs-full dedupe contract as [`TerminalEventSink`] / RPC sink.
+    /// Same streaming-vs-full dedupe contract as [`TerminalEventSink`] / [`crate::rpc::RpcEventSink`].
     struct StreamDedupingSink {
         streamed_text: bool,
         full_text_emits: u32,
@@ -631,6 +638,10 @@ mod emit_assistant_visible_tests {
     impl EventSink for StreamDedupingSink {
         fn reset_streamed_text_for_llm_call(&mut self) {
             self.streamed_text = false;
+        }
+        fn emit_assistant_visible(&mut self, text: &str) {
+            self.streamed_text = false;
+            self.on_text(text);
         }
         fn on_text(&mut self, _text: &str) {
             if self.streamed_text {
@@ -650,14 +661,26 @@ mod emit_assistant_visible_tests {
     }
 
     #[test]
-    fn emit_assistant_visible_after_chunk_does_not_emit_full_text_again() {
+    fn on_text_after_chunk_still_suppressed_as_duplicate_completion() {
         let mut s = StreamDedupingSink {
             streamed_text: false,
             full_text_emits: 0,
         };
         s.reset_streamed_text_for_llm_call();
         s.on_text_chunk("already shown");
-        s.emit_assistant_visible("duplicate body");
+        s.on_text("duplicate body");
         assert_eq!(s.full_text_emits, 0);
+    }
+
+    #[test]
+    fn emit_assistant_visible_after_chunk_emits_synthetic_tool_fallback() {
+        let mut s = StreamDedupingSink {
+            streamed_text: false,
+            full_text_emits: 0,
+        };
+        s.reset_streamed_text_for_llm_call();
+        s.on_text_chunk("already shown");
+        s.emit_assistant_visible("{\"city\":\"深圳\"}");
+        assert_eq!(s.full_text_emits, 1);
     }
 }

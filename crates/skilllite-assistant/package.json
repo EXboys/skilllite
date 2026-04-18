@@ -2,6 +2,7 @@
   "name": "skilllite-assistant",
   "private": true,
   "version": "0.1.26",
+  "description": "Tauri desktop UI. Vite: single config file vite.config.ts (see README § Vite 配置); do not add a parallel vite.config.js.",
   "type": "module",
   "scripts": {
     "dev": "vite",

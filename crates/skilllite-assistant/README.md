@@ -4,6 +4,13 @@ Tauri 2 + React 18 + TypeScript + Vite 桌面应用脚手架。
 
 **所有 npm 命令必须在当前目录（`crates/skilllite-assistant`）下执行**，仓库根目录没有 `package.json`。
 
+## Vite 配置
+
+- **唯一配置源**：根目录仅维护 `vite.config.ts`。`tsconfig.node.json` 的 `include` 已指向该文件，供 `tsc -b` 类型检查 Vite 配置。
+- **请勿**在本 crate 根目录再添加与 `vite.config.ts` 并行的 `vite.config.js`（或其它同名不同扩展的重复配置），否则易出现「改了一处忘另一处」或与 **Vite 配置文件解析顺序** 冲突。若工具链曾生成过 `vite.config.js`，本目录 `.gitignore` 已忽略该文件名，避免误提交。
+- **解析顺序（官方行为）**：Vite 在工程根（此处即本 crate 根）按内置顺序查找 `vite.config.*`（含 `.ts`、`.mts`、`.js`、`.mjs` 等）；同目录存在多份候选时，以先匹配到的为准。约定以 **`vite.config.ts` 为准**，其余扩展名不作为第二份真源。
+- *English:* Keep a single Vite config file: `vite.config.ts` only; see [Vite config](https://vite.dev/config/) for how `vite.config.*` is resolved.
+
 ## 开发
 
 ```bash

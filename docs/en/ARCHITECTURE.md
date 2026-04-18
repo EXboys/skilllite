@@ -160,6 +160,7 @@ skillLite/
 │   ├── skilllite-artifact/        # ArtifactStore impls: local dir (default for agent), optional HTTP server/client
 │   │
 │   └── skilllite-assistant/       # Tauri 2 + React desktop (not in default workspace members; see root Cargo.toml exclude)
+│       ├── vite.config.ts         # sole Vite config (do not duplicate vite.config.js; see crate README)
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (thin bridge layer)

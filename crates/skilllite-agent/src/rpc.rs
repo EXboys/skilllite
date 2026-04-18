@@ -224,6 +224,15 @@ impl EventSink for RpcEventSink {
         self.streamed_text = false;
     }
 
+    fn emit_assistant_visible(&mut self, text: &str) {
+        // Tool-derived fallbacks / synthetic captions are not duplicates of the streamed LLM body.
+        // After `text_chunk`, `on_text` intentionally drops one trailing full body to avoid echoing
+        // the same completion twice — but `emit_assistant_visible` must still deliver new content
+        // (e.g. substantive weather JSON) to the desktop UI.
+        self.streamed_text = false;
+        self.on_text(text);
+    }
+
     fn on_text(&mut self, text: &str) {
         if self.streamed_text {
             // Already sent via `text_chunk` during streaming; avoid duplicate full `text`.

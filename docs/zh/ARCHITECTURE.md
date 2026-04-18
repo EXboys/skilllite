@@ -158,6 +158,7 @@ skillLite/
 │   ├── skilllite-artifact/        # ArtifactStore 实现：本地目录（agent 默认）、可选 HTTP 服务端/客户端
 │   │
 │   └── skilllite-assistant/       # Tauri 2 + React 桌面端（不在根 workspace 默认 members，见根 Cargo.toml exclude）
+│       ├── vite.config.ts         # 唯一 Vite 配置（勿再并列 vite.config.js；见该 crate README）
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (薄桥接层)
