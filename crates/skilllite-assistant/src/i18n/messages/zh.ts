@@ -453,7 +453,7 @@ export const zhMessages: Record<string, string> = {
   "settings.apiKey": "API Key",
   "settings.apiKeyHint": "sk-…（留空则尝试使用本机或工作区里已配置的密钥）",
   "settings.llmProfilesAutoHint":
-    "点击「保存」时，会把当前模型、API Base 与 Key 合并进本地列表；在模型下拉中切换时，若列表里已有同模型记录，会自动填入对应 Key 与地址；若没有，会清空 Key 并尽量套用该模型的预设 Base（便于仅用工作区 .env 提供密钥）。",
+    "保存后会记住每个模型的 Key 与 Base，切换模型时自动填入。",
   "settings.model": "模型",
   "settings.modelPlaceholder": "选择模型",
   "settings.apiBase": "API Base URL（可选）",

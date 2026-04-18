@@ -480,7 +480,7 @@ export const enMessages: Record<string, string> = {
   "settings.apiKey": "API key",
   "settings.apiKeyHint": "sk-… (leave empty to use a key already configured on this machine or workspace)",
   "settings.llmProfilesAutoHint":
-    "Saving merges the current model, API base, and key into a local list. Changing the model dropdown fills from a matching saved entry when one exists; otherwise the key field clears and the preset base for that model is applied when available (so workspace .env can supply the secret).",
+    "Saved keys and bases are remembered per model and auto-filled when switching.",
   "settings.model": "Model",
   "settings.modelPlaceholder": "Choose model",
   "settings.apiBase": "API base URL (optional)",
