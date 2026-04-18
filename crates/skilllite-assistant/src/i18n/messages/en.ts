@@ -217,6 +217,7 @@ export const enMessages: Record<string, string> = {
   "lifePulse.rhythmDone": "Task finished",
   "lifePulse.rhythmError": "Task hit an issue",
   "lifePulse.rhythmSkipped": "Nothing due",
+  "lifePulse.heartbeatError": "Heartbeat thread failed to start (scheduled evolution/rhythm inactive)",
   "lifePulse.sleeping": "Sleeping",
   "lifePulse.chatting": "Chatting with you",
   "lifePulse.growing": "Leveling up quietly",

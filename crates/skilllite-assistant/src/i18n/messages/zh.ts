@@ -204,6 +204,7 @@ export const zhMessages: Record<string, string> = {
   "lifePulse.rhythmDone": "任务完成",
   "lifePulse.rhythmError": "任务遇到阻碍",
   "lifePulse.rhythmSkipped": "暂无待办",
+  "lifePulse.heartbeatError": "心跳线程未能启动（定时进化/节奏已停用）",
   "lifePulse.sleeping": "沉睡中",
   "lifePulse.chatting": "跟你聊着呢",
   "lifePulse.growing": "偷偷变强中",

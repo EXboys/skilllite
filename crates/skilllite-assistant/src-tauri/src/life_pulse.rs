@@ -227,7 +227,8 @@ fn spawn_rhythm(
 
 pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHandle) {
     let s = state.clone();
-    let handle = std::thread::Builder::new()
+    let app_on_spawn_failure = app.clone();
+    match std::thread::Builder::new()
         .name("life-pulse".into())
         .spawn(move || {
             s.alive.store(true, Ordering::SeqCst);
@@ -299,11 +300,23 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
             }
 
             eprintln!("[life-pulse] heartbeat stopped");
-        })
-        .expect("failed to spawn life-pulse thread");
-
-    if let Ok(mut guard) = state.thread_handle.lock() {
-        *guard = Some(handle);
+        }) {
+        Ok(handle) => {
+            if let Ok(mut guard) = state.thread_handle.lock() {
+                *guard = Some(handle);
+            }
+        }
+        Err(e) => {
+            eprintln!(
+                "[life-pulse] failed to spawn heartbeat thread (growth/rhythm timers inactive): {}",
+                e
+            );
+            emit(
+                &app_on_spawn_failure,
+                "heartbeat-error",
+                Some(format!("failed to spawn heartbeat thread: {}", e)),
+            );
+        }
     }
 }
 

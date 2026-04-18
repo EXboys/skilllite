@@ -36,6 +36,7 @@ const PULSE_I18N_KEYS: Record<string, string> = {
   "rhythm-done": "lifePulse.rhythmDone",
   "rhythm-error": "lifePulse.rhythmError",
   "rhythm-skipped": "lifePulse.rhythmSkipped",
+  "heartbeat-error": "lifePulse.heartbeatError",
   heartbeat: "",
 };
 
