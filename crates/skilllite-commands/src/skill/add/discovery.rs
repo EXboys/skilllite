@@ -121,7 +121,7 @@ const COPY_EXCLUDE_FILES: &[&str] = &[".DS_Store", "Thumbs.db"];
 
 const COPY_EXCLUDE_EXTENSIONS: &[&str] = &["pyc", "pyo"];
 
-pub(super) fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
+pub(in crate::skill) fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
     if dest.exists() {
         fs::remove_dir_all(dest)
             .with_context(|| format!("Failed to remove existing skill: {}", dest.display()))?;
@@ -173,7 +173,7 @@ fn copy_dir_filtered(src: &Path, dest: &Path) -> Result<()> {
 
 // ─── Dependency Installation ────────────────────────────────────────────────
 
-pub(super) fn install_skill_deps(skills_dir: &Path, installed: &[String]) -> Vec<String> {
+pub(in crate::skill) fn install_skill_deps(skills_dir: &Path, installed: &[String]) -> Vec<String> {
     let mut messages = Vec::new();
     for name in installed {
         let skill_path = skills_dir.join(name);

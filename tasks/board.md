@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-10 (TASK-2026-032 evolution learner tunables done)
+Last updated: 2026-04-18 (TASK-2026-033 OpenClaw skills import CLI done)
 
 ## In Progress
 
@@ -16,6 +16,7 @@ Last updated: 2026-04-10 (TASK-2026-032 evolution learner tunables done)
 
 ## Done
 
+- `TASK-2026-033-openclaw-import-skills` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-032-evo-output-rate-learners` - Status: `done` - Owner: `airlu`
 - `TASK-2026-031-evo-periodic-preflight-noscope` - Status: `done` - Owner: `airlu`
 - `TASK-2026-030-assistant-skill-discovery-unify` - Status: `done` - Owner: `airlu`

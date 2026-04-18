@@ -109,4 +109,32 @@ pub fn register(reg: &mut CommandRegistry) {
             None
         }
     });
+
+    reg.register(|cmd| {
+        if let Commands::ImportOpenclawSkills {
+            workspace,
+            openclaw_dir,
+            skills_dir,
+            skill_conflict,
+            dry_run,
+            force,
+            scan_offline,
+        } = cmd
+        {
+            Some(
+                skilllite_commands::skill::cmd_import_openclaw_skills(
+                    workspace,
+                    openclaw_dir.as_deref(),
+                    skills_dir,
+                    skill_conflict,
+                    *dry_run,
+                    *force,
+                    *scan_offline,
+                )
+                .map_err(Into::into),
+            )
+        } else {
+            None
+        }
+    });
 }

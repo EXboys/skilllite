@@ -366,6 +366,46 @@ pub enum Commands {
         strict: bool,
     },
 
+    /// Import skills from OpenClaw-style directories (workspace skills/, ~/.openclaw/skills, ~/.agents/skills, …).
+    ///
+    /// Examples:
+    ///
+    ///   skilllite import-openclaw-skills --dry-run
+    ///
+    ///   skilllite import-openclaw-skills --skill-conflict overwrite
+    ///
+    ///   skilllite import-openclaw-skills -w /path/to/project --openclaw-dir ~/.openclaw
+    #[command(name = "import-openclaw-skills", visible_alias = "import-openclaw")]
+    ImportOpenclawSkills {
+        /// Project root used to resolve `workspace/`, `workspace-main/`, etc. (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+
+        /// OpenClaw home directory (default: ~/.openclaw). Used for `skills/` under that path.
+        #[arg(long, value_name = "DIR")]
+        openclaw_dir: Option<String>,
+
+        /// Destination skills directory (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
+        skills_dir: String,
+
+        /// When the destination already has this skill name: skip | overwrite | rename (adds -imported suffix)
+        #[arg(long, default_value = "skip")]
+        skill_conflict: String,
+
+        /// Show what would be copied without writing files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Install skills flagged suspicious by admission scan (default: skip them)
+        #[arg(long, short)]
+        force: bool,
+
+        /// Offline admission scan only (no LLM / network dependency audit)
+        #[arg(long)]
+        scan_offline: bool,
+    },
+
     /// Initialize Cursor IDE integration (.cursor/mcp.json + rules)
     #[command(name = "init-cursor")]
     InitCursor {

@@ -16,11 +16,13 @@ mod admission;
 mod discovery;
 mod source;
 
-use admission::{scan_candidate_skills, AdmissionRisk};
-use discovery::{copy_skill, discover_skills, install_skill_deps};
-use source::{clone_repo, fetch_from_clawhub, parse_source};
+pub(in crate::skill) use admission::{
+    scan_candidate_skills, scan_candidate_skills_fast, AdmissionRisk,
+};
+pub(in crate::skill) use discovery::{copy_skill, install_skill_deps};
 
-pub(in crate::skill) use admission::scan_candidate_skills_fast;
+use discovery::discover_skills;
+use source::{clone_repo, fetch_from_clawhub, parse_source};
 
 pub fn cmd_add(
     source: &str,

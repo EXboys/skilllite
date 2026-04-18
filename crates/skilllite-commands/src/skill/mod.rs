@@ -5,12 +5,14 @@
 
 mod add;
 mod common;
+mod import_openclaw;
 mod list;
 mod remove;
 mod show;
 mod verify;
 
 pub use add::{cmd_add, update_skill_from_source};
+pub use import_openclaw::cmd_import_openclaw_skills;
 pub use list::cmd_list;
 pub use remove::cmd_remove;
 pub use show::cmd_show;

@@ -272,6 +272,7 @@ print(result["text"])
 skilllite add owner/repo                    # 添加 GitHub 仓库中的所有 skills
 skilllite add owner/repo@skill-name         # 按名称添加指定 skill
 skilllite add ./local-path                  # 从本地目录添加
+skilllite import-openclaw-skills            # 从 OpenClaw 风格目录导入（workspace/skills、~/.openclaw/skills 等）
 skilllite list                              # 列出所有已安装 skills
 skilllite remove <skill-name>               # 移除已安装的 skill
 ```
@@ -411,6 +412,7 @@ skilllite/                         依赖流向
 | `skilllite quickstart` | 零配置：检测 LLM、配置 skills、启动对话 |
 | `skilllite chat` | 交互式 Agent 对话（或 `--message` 单次对话） |
 | `skilllite add owner/repo` | 从 GitHub 添加 skills |
+| `skilllite import-openclaw-skills` | 从 OpenClaw 风格路径复制 skills 到 `skills/`（可用 `--dry-run`、`--skill-conflict`） |
 | `skilllite remove <name>` | 移除已安装的 skill |
 | `skilllite list` | 列出已安装 skills |
 | `skilllite show <name>` | 显示 skill 详情 |

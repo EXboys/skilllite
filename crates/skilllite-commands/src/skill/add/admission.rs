@@ -214,7 +214,7 @@ fn llm_admission_assess(
     bail!("LLM scan unavailable: binary built without `agent` feature")
 }
 
-pub(super) fn scan_candidate_skills(
+pub(in crate::skill) fn scan_candidate_skills(
     candidates: &[(String, PathBuf)],
     scan_offline: bool,
 ) -> Vec<SkillScanReport> {
