@@ -157,6 +157,12 @@ pub struct SkillMetadata {
     /// `metadata.capabilities` (array nested under the `metadata:` key, for backward compat).
     /// Example SKILL.md: `capabilities: ["python", "web", "ml"]`
     pub capabilities: Vec<String>,
+
+    /// Structured OpenClaw / ClawHub `install[]` declarations, when present.
+    /// `None` means no OpenClaw install block was declared (or it was unusable).
+    /// `node` → npm packages, `uv` → pip packages; `brew` / `go` are recorded but
+    /// not auto-installed (would require host package managers).
+    pub openclaw_installs: Option<super::openclaw_metadata::OpenClawInstalls>,
 }
 
 impl SkillMetadata {
@@ -372,44 +378,6 @@ pub fn parse_skill_metadata(skill_dir: &Path) -> Result<SkillMetadata> {
     extract_yaml_front_matter_with_detection(&content, skill_dir)
 }
 
-/// Merge OpenClaw metadata.openclaw.requires into compatibility string.
-/// Enables format compatibility with OpenClaw/ClawHub skills.
-fn merge_openclaw_requires(
-    compat: Option<&str>,
-    metadata: Option<&serde_json::Value>,
-) -> Option<String> {
-    let openclaw = metadata
-        .and_then(|m| m.get("openclaw"))
-        .and_then(|o| o.get("requires"));
-    let Some(openclaw) = openclaw else {
-        return compat.map(String::from);
-    };
-
-    let mut adds = Vec::new();
-    if let Some(bins) = openclaw.get("bins").and_then(|v| v.as_array()) {
-        let s: Vec<_> = bins.iter().filter_map(|b| b.as_str()).collect();
-        if !s.is_empty() {
-            adds.push(format!("Requires bins: {}", s.join(", ")));
-        }
-    }
-    if let Some(env) = openclaw.get("env").and_then(|v| v.as_array()) {
-        let s: Vec<_> = env.iter().filter_map(|e| e.as_str()).collect();
-        if !s.is_empty() {
-            adds.push(format!("Requires env: {}", s.join(", ")));
-        }
-    }
-    if adds.is_empty() {
-        return compat.map(String::from);
-    }
-    let base = compat.unwrap_or("");
-    let merged = if base.is_empty() {
-        adds.join(". ")
-    } else {
-        format!("{}. {}", base, adds.join(". "))
-    };
-    Some(merged)
-}
-
 /// Infer capability tags from official Agent Skills fields (compatibility, name, description).
 /// Enables P2P routing without requiring custom `capabilities` field.
 /// Keywords are matched case-insensitively.
@@ -513,8 +481,8 @@ fn extract_yaml_front_matter_impl(
         }
     }
 
-    // Merge OpenClaw metadata.openclaw.requires into compatibility (format compatibility)
-    let compatibility = merge_openclaw_requires(
+    // Merge OpenClaw / ClawHub metadata (openclaw, clawdbot, clawdis aliases) into compatibility.
+    let compatibility = super::openclaw_metadata::merge_into_compatibility(
         front_matter.compatibility.as_deref(),
         front_matter.metadata.as_ref(),
     );
@@ -557,6 +525,9 @@ fn extract_yaml_front_matter_impl(
             })
     };
 
+    let openclaw_installs =
+        super::openclaw_metadata::extract_installs(front_matter.metadata.as_ref());
+
     let metadata = SkillMetadata {
         name: front_matter.name.clone(),
         entry_point,
@@ -574,6 +545,7 @@ fn extract_yaml_front_matter_impl(
         allowed_tools: front_matter.allowed_tools.clone(),
         requires_elevated_permissions: requires_elevated,
         capabilities,
+        openclaw_installs,
     };
 
     // Validate required fields
@@ -896,7 +868,9 @@ metadata:
         assert_eq!(metadata.name, "nano-banana-pro");
         assert_eq!(
             metadata.compatibility.as_deref(),
-            Some("Requires bins: uv. Requires env: GEMINI_API_KEY")
+            Some(
+                "Requires bins: uv. Requires env: GEMINI_API_KEY. Requires config: browser.enabled. Primary credential env: GEMINI_API_KEY"
+            )
         );
     }
 

@@ -574,6 +574,37 @@ fn detect_entry_point(skill_dir: &Path) -> Option<String> {
 
 Standalone dependency resolver supporting automatic parsing and installation of Python/Node dependencies from SKILL.md and compatibility fields.
 
+#### 9.5 OpenClaw / ClawHub Compatibility (`openclaw_metadata.rs`)
+
+SkillLite parses the OpenClaw / ClawHub `metadata` extension as documented in
+[clawhub/skill-format.md](https://github.com/openclaw/clawhub/blob/main/docs/skill-format.md).
+The aliases `metadata.openclaw`, `metadata.clawdbot`, and `metadata.clawdis`
+are all recognised; when more than one is present, the first block carrying
+merge-relevant fields wins, with `openclaw` preferred over later aliases.
+
+The following fields are folded into the existing `compatibility` text so
+that language / network / capability inference downstream works unchanged:
+
+- `requires.bins`, `requires.anyBins`, `requires.env`, `requires.config`
+- `primaryEnv`, `os`, `skillKey`, `always`
+- `install[]` (rendered as a human-readable summary, e.g.
+  `OpenClaw declared installs: brew:jq; node:typescript`)
+
+Additionally, `install[]` is exposed as a structured field on
+`SkillMetadata.openclaw_installs` and is consumed by
+`deps::detect_dependencies` and the evolution `env_helper`:
+
+| Install `kind`    | SkillLite handling                                           |
+|-------------------|--------------------------------------------------------------|
+| `node`            | Added to npm packages list (installed via existing pipeline) |
+| `uv`              | Added to pip packages list (installed via existing pipeline) |
+| `brew`, `go`      | Recorded in compatibility text and logged at `info`; **not** auto-installed |
+| Anything else     | Logged at `warn`; **not** installed                          |
+
+`brew` / `go` and unknown kinds are intentionally not executed because the
+SkillLite sandbox does not include host package managers; running them would
+mutate host state outside the security boundary.
+
 ---
 
 ## Execution Flow

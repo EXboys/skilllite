@@ -267,6 +267,7 @@ mod tests {
             allowed_tools: None,
             requires_elevated_permissions: false,
             capabilities: Vec::new(),
+            openclaw_installs: None,
         };
         let tools = (0..tool_count)
             .map(|i| ToolDefinition {

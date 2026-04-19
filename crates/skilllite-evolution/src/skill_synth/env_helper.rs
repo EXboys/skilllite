@@ -30,6 +30,15 @@ pub(super) fn ensure_skill_deps_and_env(skill_dir: &Path) -> Option<PathBuf> {
             }
         }
     }
+    // Structured OpenClaw install[] fallback: when resolution above produced nothing,
+    // honor `metadata.openclaw.install` declarations directly (node/uv kinds only).
+    if meta.resolved_packages.is_none() {
+        if let Ok(info) = skilllite_core::skill::deps::detect_dependencies(skill_dir, &meta) {
+            if !info.packages.is_empty() {
+                meta.resolved_packages = Some(info.packages);
+            }
+        }
+    }
     let env_spec = EnvSpec::from_metadata(skill_dir, &meta);
     env_builder::ensure_environment(skill_dir, &env_spec, None, None, None).ok()
 }

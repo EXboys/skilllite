@@ -132,6 +132,7 @@ mod tests {
             allowed_tools: None,
             requires_elevated_permissions: false,
             capabilities: Vec::new(),
+            openclaw_installs: None,
         };
         LoadedSkill {
             name: name.to_string(),

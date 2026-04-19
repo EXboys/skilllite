@@ -46,6 +46,48 @@ pub fn detect_dependencies(_skill_dir: &Path, metadata: &SkillMetadata) -> Resul
         parse_compatibility_for_packages(metadata.compatibility.as_deref())
     };
 
+    // Priority 2b: Structured OpenClaw `metadata.openclaw.install[]` (node/uv).
+    // Preferred over compatibility-text parsing per `structured-signal-first` spec.
+    if packages.is_empty() {
+        if let Some(installs) = metadata.openclaw_installs.as_ref() {
+            if !installs.system_bins.is_empty() {
+                tracing::info!(
+                    skill = %metadata.name,
+                    bins = ?installs.system_bins,
+                    "OpenClaw install: brew/go kinds are recorded but NOT auto-installed",
+                );
+            }
+            if !installs.unsupported_kinds.is_empty() {
+                tracing::warn!(
+                    skill = %metadata.name,
+                    kinds = ?installs.unsupported_kinds,
+                    "OpenClaw install: unsupported kinds skipped",
+                );
+            }
+
+            let prefer_python = language == "python"
+                || (language != "node" && installs.node_packages.is_empty());
+            if prefer_python && !installs.python_packages.is_empty() {
+                let pkgs = installs.python_packages.clone();
+                let hash = compute_packages_hash(&pkgs);
+                return Ok(DependencyInfo {
+                    dep_type: DependencyType::Python,
+                    packages: pkgs,
+                    content_hash: hash,
+                });
+            }
+            if !installs.node_packages.is_empty() {
+                let pkgs = installs.node_packages.clone();
+                let hash = compute_packages_hash(&pkgs);
+                return Ok(DependencyInfo {
+                    dep_type: DependencyType::Node,
+                    packages: pkgs,
+                    content_hash: hash,
+                });
+            }
+        }
+    }
+
     // Priority 3: For bash-tool skills, infer CLI packages from allowed-tools
     // Command prefix is assumed to be the npm package name (e.g. "agent-browser" -> npm:agent-browser)
     if packages.is_empty() {
@@ -349,5 +391,76 @@ mod tests {
         assert!(packages.contains(&"openai".to_string()));
         assert!(packages.contains(&"@anthropic-ai/sdk".to_string()));
         assert!(packages.contains(&"@playwright/test".to_string()));
+    }
+
+    fn skill_meta_with_installs(
+        language: Option<&str>,
+        installs: crate::skill::openclaw_metadata::OpenClawInstalls,
+    ) -> SkillMetadata {
+        SkillMetadata {
+            name: "t".into(),
+            entry_point: String::new(),
+            language: language.map(String::from),
+            description: None,
+            version: None,
+            compatibility: None,
+            network: crate::skill::metadata::NetworkPolicy::default(),
+            resolved_packages: None,
+            allowed_tools: None,
+            requires_elevated_permissions: false,
+            capabilities: vec![],
+            openclaw_installs: Some(installs),
+        }
+    }
+
+    #[test]
+    fn test_detect_dependencies_uses_openclaw_node_install() {
+        let installs = crate::skill::openclaw_metadata::OpenClawInstalls {
+            node_packages: vec!["typescript".into()],
+            ..Default::default()
+        };
+        let meta = skill_meta_with_installs(Some("node"), installs);
+        let info = detect_dependencies(Path::new("/tmp/none"), &meta).expect("detect");
+        assert_eq!(info.dep_type, DependencyType::Node);
+        assert_eq!(info.packages, vec!["typescript".to_string()]);
+        assert!(!info.content_hash.is_empty());
+    }
+
+    #[test]
+    fn test_detect_dependencies_uses_openclaw_uv_install_for_python() {
+        let installs = crate::skill::openclaw_metadata::OpenClawInstalls {
+            python_packages: vec!["httpx".into()],
+            ..Default::default()
+        };
+        let meta = skill_meta_with_installs(Some("python"), installs);
+        let info = detect_dependencies(Path::new("/tmp/none"), &meta).expect("detect");
+        assert_eq!(info.dep_type, DependencyType::Python);
+        assert_eq!(info.packages, vec!["httpx".to_string()]);
+    }
+
+    #[test]
+    fn test_detect_dependencies_brew_only_install_yields_none() {
+        let installs = crate::skill::openclaw_metadata::OpenClawInstalls {
+            system_bins: vec!["jq".into()],
+            ..Default::default()
+        };
+        let meta = skill_meta_with_installs(None, installs);
+        let info = detect_dependencies(Path::new("/tmp/none"), &meta).expect("detect");
+        assert_eq!(info.dep_type, DependencyType::None);
+        assert!(info.packages.is_empty());
+    }
+
+    #[test]
+    fn test_detect_dependencies_compatibility_takes_priority_over_install() {
+        let installs = crate::skill::openclaw_metadata::OpenClawInstalls {
+            node_packages: vec!["typescript".into()],
+            ..Default::default()
+        };
+        let mut meta = skill_meta_with_installs(Some("python"), installs);
+        meta.compatibility = Some("Requires Python 3.x with pandas".to_string());
+        let info = detect_dependencies(Path::new("/tmp/none"), &meta).expect("detect");
+        assert_eq!(info.dep_type, DependencyType::Python);
+        assert!(info.packages.contains(&"pandas".to_string()));
+        assert!(!info.packages.contains(&"typescript".to_string()));
     }
 }

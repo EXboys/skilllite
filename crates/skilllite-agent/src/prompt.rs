@@ -563,6 +563,7 @@ mod tests {
                 allowed_tools: None,
                 requires_elevated_permissions: false,
                 capabilities: vec![],
+                openclaw_installs: None,
             },
             tool_definitions: vec![ToolDefinition {
                 tool_type: "function".to_string(),
@@ -696,6 +697,7 @@ mod tests {
                 allowed_tools: None,
                 requires_elevated_permissions: false,
                 capabilities: vec![],
+                openclaw_installs: None,
             },
             tool_definitions: vec![ToolDefinition {
                 tool_type: "function".to_string(),

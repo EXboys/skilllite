@@ -3,6 +3,7 @@ pub mod dependency_resolver;
 pub mod deps;
 pub mod discovery;
 pub mod manifest;
+pub mod openclaw_metadata;
 pub mod metadata;
 pub mod schema;
 pub mod skill_md_security;

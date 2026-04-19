@@ -572,6 +572,34 @@ fn detect_entry_point(skill_dir: &Path) -> Option<String> {
 
 独立的依赖解析器，支持从 SKILL.md 和 compatibility 字段自动解析、安装 Python/Node 依赖。
 
+#### 9.5 OpenClaw / ClawHub 兼容 (`openclaw_metadata.rs`)
+
+SkillLite 按 [clawhub/skill-format.md](https://github.com/openclaw/clawhub/blob/main/docs/skill-format.md)
+解析 OpenClaw / ClawHub 的 `metadata` 扩展。别名 `metadata.openclaw`、
+`metadata.clawdbot`、`metadata.clawdis` 均被识别；当同时出现时，**优先使用
+带有可合并字段的第一个块**，其中 `openclaw` 优先于后续别名。
+
+下列字段会被合并进既有的 `compatibility` 文本，使下游的语言 / 网络 / 能力
+推断逻辑无需改动即可继续工作：
+
+- `requires.bins`、`requires.anyBins`、`requires.env`、`requires.config`
+- `primaryEnv`、`os`、`skillKey`、`always`
+- `install[]`（以人类可读摘要形式渲染，例如
+  `OpenClaw declared installs: brew:jq; node:typescript`）
+
+此外，`install[]` 还被结构化暴露在 `SkillMetadata.openclaw_installs`，
+由 `deps::detect_dependencies` 和演化路径的 `env_helper` 直接消费：
+
+| Install `kind`    | SkillLite 处理方式                                              |
+|-------------------|-----------------------------------------------------------------|
+| `node`            | 加入 npm 包列表（沿用既有安装管线）                              |
+| `uv`              | 加入 pip 包列表（沿用既有安装管线）                              |
+| `brew`、`go`      | 写入 `compatibility` 文本并以 `info` 级别记录；**不自动安装**     |
+| 其它 `kind`       | 以 `warn` 级别记录；**不自动安装**                                |
+
+`brew` / `go` 与未知 `kind` 故意不执行：SkillLite 沙箱内不包含宿主包
+管理器，自动运行它们会越过沙箱安全边界、修改宿主状态。
+
 ---
 
 ## 🔄 执行流程

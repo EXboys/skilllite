@@ -147,6 +147,7 @@ pub fn exec_script(
             allowed_tools: None,
             requires_elevated_permissions: false,
             capabilities: Vec::new(),
+            openclaw_installs: None,
         };
         let env_spec = skilllite_core::EnvSpec {
             language: language.clone(),
