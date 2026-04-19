@@ -15,6 +15,7 @@ mod env_config;
 mod event_sink;
 mod feedback;
 mod llm_usage;
+mod mcp_servers;
 mod string_utils;
 mod task;
 
@@ -41,5 +42,6 @@ pub use feedback::{
     ToolExecDetail,
 };
 pub use llm_usage::{LlmUsageReport, LlmUsageTotals};
+pub use mcp_servers::{parse_mcp_servers_json, McpServerEntry};
 pub use string_utils::{chunk_str, safe_slice_from, safe_truncate};
 pub use task::{PlanningRule, SourceEntry, SourceRegistry, Task};

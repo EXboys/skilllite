@@ -629,6 +629,16 @@ async fn handle_agent_chat(
         {
             config.max_consecutive_failures = if n == 0 { None } else { Some(n as usize) };
         }
+        if let Some(servers) = overrides.get("mcp_servers") {
+            match serde_json::from_value::<Vec<crate::types::McpServerEntry>>(servers.clone()) {
+                Ok(v) => {
+                    config.mcp_servers = v;
+                }
+                Err(e) => {
+                    tracing::warn!("config.mcp_servers: invalid shape, ignored: {}", e);
+                }
+            }
+        }
     }
     // params.context.append — was documented but not parsed
     if let Some(ctx) = params

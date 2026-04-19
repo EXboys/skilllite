@@ -16,6 +16,7 @@ pub mod high_risk;
 pub mod llm;
 pub mod locale_prompt;
 pub mod long_text;
+pub mod mcp_client;
 pub mod planning_guard;
 pub mod planning_rules;
 pub mod prompt;

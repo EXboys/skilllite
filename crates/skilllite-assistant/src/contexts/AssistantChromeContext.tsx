@@ -3,6 +3,7 @@ import { createContext, useContext, useMemo, type ReactNode } from "react";
 export type AssistantSettingsTabId =
   | "llm"
   | "workspace"
+  | "mcp"
   | "environment"
   | "agent"
   | "evolution"

@@ -43,6 +43,13 @@ When the same variable is set in multiple places, resolution order is (highest �
 |----------|--------|---------|-------------|
 | `SKILLLITE_UI_LOCALE` | `zh`, `en` | unset = no extra block | The desktop app sets this from **Settings → UI language** for child processes; it is merged into the system prompt append segment so the model defaults to that language for explanations. **`skilllite schedule tick` and interactive chat** behave consistently when set. CLI users may `export SKILLLITE_UI_LOCALE=en`. |
 
+### Agent outbound MCP (stdio)
+
+| Variable | Values | Default | Description |
+|----------|--------|---------|-------------|
+| `SKILLLITE_MCP_SERVERS_JSON` | JSON array string | unset | Stdio MCP servers for the Agent. Same fields as `McpServerEntry`: `id`, `enabled`, `command`, `args`, optional `cwd`. **SkillLite Desktop**: overridden from **Settings → Outbound MCP** (dedicated tab); saving an empty list is equivalent to `[]`. |
+| `SKILLLITE_AGENT_MCP_CLIENT` | `0` | enabled | Set to `0` to disable all outbound MCP (JSON ignored). |
+
 ---
 
 ## Layered by Scenario

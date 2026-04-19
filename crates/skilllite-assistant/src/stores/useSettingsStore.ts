@@ -18,6 +18,15 @@ export interface LlmSavedProfile {
   apiKey: string;
 }
 
+/** Outbound MCP stdio servers (same shape as agent `McpServerEntry`). */
+export interface McpServerConfig {
+  id: string;
+  enabled: boolean;
+  command: string;
+  args: string[];
+  cwd?: string;
+}
+
 export interface Settings {
   provider: Provider;
   apiKey: string;
@@ -82,6 +91,8 @@ export interface Settings {
   evoCooldownHours?: number;
   /** 多模型/API 端点已保存配置（在设置保存或完成引导时自动合并）。 */
   llmProfiles?: LlmSavedProfile[];
+  /** 可选：Agent 出站 MCP（stdio）；每项可单独启用/禁用。 */
+  mcpServers?: McpServerConfig[];
 }
 
 /** localStorage 键名；详情窗口与主窗口同步设置时需与此一致 */

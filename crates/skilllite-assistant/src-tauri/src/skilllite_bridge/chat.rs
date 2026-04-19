@@ -10,6 +10,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{Emitter, Manager, Window};
 
+use skilllite_agent::types::McpServerEntry;
+
 use super::bundled_skills_sync;
 use super::paths::{find_project_root, load_dotenv_for_child};
 use super::protocol::{
@@ -67,6 +69,8 @@ pub struct ChatConfigOverrides {
     pub evo_cooldown_hours: Option<f64>,
     /// 桌面界面语言：`zh` | `en` → 写入子进程 `SKILLLITE_UI_LOCALE`，与聊天 / 定时任务共用。
     pub ui_locale: Option<String>,
+    /// When set, replaces `SKILLLITE_MCP_SERVERS_JSON` for the child (outbound MCP stdio servers).
+    pub mcp_servers: Option<Vec<McpServerEntry>>,
 }
 
 /// Merge workspace dotenv-derived pairs with optional UI overrides (same semantics as [`chat_stream`]).
@@ -170,6 +174,17 @@ pub fn merge_dotenv_with_chat_overrides(
         let t = loc.trim();
         if t == "en" || t == "zh" {
             m.insert(agent_keys::SKILLLITE_UI_LOCALE.to_string(), t.to_string());
+        }
+    }
+
+    if let Some(ref servers) = cfg.mcp_servers {
+        match serde_json::to_string(servers) {
+            Ok(json) => {
+                m.insert("SKILLLITE_MCP_SERVERS_JSON".to_string(), json);
+            }
+            Err(e) => {
+                eprintln!("[skilllite-assistant] mcp_servers serialize error: {}", e);
+            }
         }
     }
 
@@ -321,6 +336,11 @@ pub fn chat_stream(
         }
         if let Some(n) = cfg.context_soft_limit_chars {
             config_json.insert("context_soft_limit_chars".to_string(), json!(n));
+        }
+        if let Some(ref mcp) = cfg.mcp_servers {
+            if let Ok(v) = serde_json::to_value(mcp) {
+                config_json.insert("mcp_servers".to_string(), v);
+            }
         }
     }
 

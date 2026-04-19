@@ -1,7 +1,12 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from "react";
 import { ask, message, open as openDirectoryDialog } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { useSettingsStore, type Provider, type SandboxLevel } from "../stores/useSettingsStore";
+import {
+  useSettingsStore,
+  type McpServerConfig,
+  type Provider,
+  type SandboxLevel,
+} from "../stores/useSettingsStore";
 import ScheduleEditor from "./ScheduleEditor";
 import ModelComboBox from "./ModelComboBox";
 import { API_MODEL_PRESETS, presetApiBaseForModelId } from "../utils/modelPresets";
@@ -21,6 +26,73 @@ import { useStatusStore } from "../stores/useStatusStore";
 import type { AssistantSettingsTabId } from "../contexts/AssistantChromeContext";
 import EnvironmentSettingsSection from "./EnvironmentSettingsSection";
 import { SettingsNavIcon } from "./settings/SettingsNavIcon";
+
+/** Local list row: stable key for React (do not use user `id` in `key` or inputs remount on every edit). */
+type McpRowState = McpServerConfig & { _rowKey: string };
+
+function newMcpRowState(): McpRowState {
+  return {
+    id: "",
+    enabled: true,
+    command: "",
+    args: [],
+    _rowKey: crypto.randomUUID(),
+  };
+}
+
+function mcpRowStateFromSaved(s: McpServerConfig): McpRowState {
+  return {
+    id: s.id,
+    enabled: s.enabled,
+    command: s.command,
+    args: [...s.args],
+    ...(s.cwd ? { cwd: s.cwd } : {}),
+    _rowKey: crypto.randomUUID(),
+  };
+}
+
+/** Parse one JSON object from an external array (e.g. SKILLLITE_MCP_SERVERS_JSON). */
+function mcpRowFromUnknown(item: unknown, index: number): McpRowState {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    throw new Error(`Entry ${index + 1}: expected an object`);
+  }
+  const o = item as Record<string, unknown>;
+  const id = typeof o.id === "string" ? o.id.trim() : "";
+  const command = typeof o.command === "string" ? o.command.trim() : "";
+  if (!id) {
+    throw new Error(`Entry ${index + 1}: missing or empty "id"`);
+  }
+  if (!command) {
+    throw new Error(`Entry ${index + 1}: missing or empty "command"`);
+  }
+  const enabled = typeof o.enabled === "boolean" ? o.enabled : true;
+  let args: string[] = [];
+  if (o.args !== undefined) {
+    if (!Array.isArray(o.args)) {
+      throw new Error(`Entry ${index + 1}: "args" must be an array`);
+    }
+    args = o.args.map((a, j) => {
+      if (typeof a !== "string" && typeof a !== "number") {
+        throw new Error(`Entry ${index + 1}: args[${j}] must be string or number`);
+      }
+      return String(a);
+    });
+  }
+  let cwd: string | undefined;
+  if (o.cwd !== undefined) {
+    if (typeof o.cwd !== "string") {
+      throw new Error(`Entry ${index + 1}: "cwd" must be a string`);
+    }
+    cwd = o.cwd.trim() || undefined;
+  }
+  return mcpRowStateFromSaved({
+    id,
+    enabled,
+    command,
+    args,
+    ...(cwd ? { cwd } : {}),
+  });
+}
 
 interface OllamaProbeResult {
   available: boolean;
@@ -68,6 +140,7 @@ export default function SettingsModal({
           titleKey: "settings.navGroup.workspace" as const,
           tabs: [
             { id: "workspace" as const, label: t("settings.tab.workspace") },
+            { id: "mcp" as const, label: t("settings.tab.mcp") },
             { id: "environment" as const, label: t("settings.tab.environment") },
           ],
         },
@@ -101,6 +174,9 @@ export default function SettingsModal({
   const [sandboxLevel, setSandboxLevel] = useState<SandboxLevel>(settings.sandboxLevel ?? 3);
   const [swarmEnabled, setSwarmEnabled] = useState(settings.swarmEnabled ?? false);
   const [swarmUrl, setSwarmUrl] = useState(settings.swarmUrl ?? "");
+  const [mcpRows, setMcpRows] = useState<McpRowState[]>([]);
+  /** Raw JSON paste buffer for MCP server list (same shape as SKILLLITE_MCP_SERVERS_JSON). */
+  const [mcpBulkJson, setMcpBulkJson] = useState("");
   const [ideLayout, setIdeLayout] = useState(settings.ideLayout === true);
   const [autoApproveToolConfirmations, setAutoApproveToolConfirmations] = useState(
     settings.autoApproveToolConfirmations === true
@@ -215,6 +291,11 @@ export default function SettingsModal({
       setSandboxLevel(settings.sandboxLevel ?? 3);
       setSwarmEnabled(settings.swarmEnabled ?? false);
       setSwarmUrl(settings.swarmUrl ?? "");
+      setMcpRows(
+        settings.mcpServers?.length
+          ? settings.mcpServers.map(mcpRowStateFromSaved)
+          : []
+      );
       setIdeLayout(settings.ideLayout === true);
       setAutoApproveToolConfirmations(settings.autoApproveToolConfirmations === true);
       setMaxIterationsStr(
@@ -363,6 +444,16 @@ export default function SettingsModal({
   );
 
   const handleSave = async () => {
+    const mcpServers = mcpRows
+      .filter((r) => r.id.trim() && r.command.trim())
+      .map((r) => ({
+        id: r.id.trim(),
+        enabled: r.enabled,
+        command: r.command.trim(),
+        args: r.args.map((a) => a.trim()).filter((a) => a.length > 0),
+        ...(r.cwd?.trim() ? { cwd: r.cwd.trim() as string } : {}),
+      }));
+
     const shared = {
       ideLayout,
       sandboxLevel,
@@ -377,6 +468,7 @@ export default function SettingsModal({
       evoProfile:
         evoProfileChoice === "inherit" ? undefined : (evoProfileChoice as "demo" | "conservative"),
       evoCooldownHours: parseCooldownHoursField(evoCooldownStr),
+      mcpServers,
     };
     if (provider === "ollama") {
       const m = model.trim() || "llama3.2";
@@ -880,6 +972,198 @@ export default function SettingsModal({
                 </p>
               </div>
             )}
+          </div>
+          </div>
+          )}
+
+          {activeTab === "mcp" && (
+          <div className="space-y-4">
+          <div>
+            <p className="text-xs font-medium text-ink dark:text-ink-dark-mute mb-2">
+              {t("settings.mcpOutbound")}
+            </p>
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute mb-3 leading-relaxed">
+              {t("settings.mcpOutboundHint")}
+            </p>
+            <div className="mb-4 rounded-xl border border-border dark:border-border-dark p-3 space-y-2 bg-white/30 dark:bg-black/15">
+              <label className={labelCls}>{t("settings.mcpBulkJsonLabel")}</label>
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute">
+                {t("settings.mcpBulkJsonHint")}
+              </p>
+              <textarea
+                value={mcpBulkJson}
+                onChange={(e) => setMcpBulkJson(e.target.value)}
+                rows={8}
+                spellCheck={false}
+                className={`${inputCls} font-mono text-xs`}
+                placeholder={t("settings.mcpBulkJsonPlaceholder")}
+              />
+              <div className="flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  className="text-xs px-3 py-1.5 rounded-lg border border-border dark:border-border-dark hover:bg-black/5 dark:hover:bg-white/10"
+                  onClick={() => {
+                    const payload: McpServerConfig[] = mcpRows.map(
+                      ({ _rowKey: _k, ...rest }) => rest
+                    );
+                    setMcpBulkJson(JSON.stringify(payload, null, 2));
+                  }}
+                >
+                  {t("settings.mcpExportJson")}
+                </button>
+                <button
+                  type="button"
+                  className="text-xs px-3 py-1.5 rounded-lg bg-accent text-white hover:opacity-90"
+                  onClick={async () => {
+                    try {
+                      const parsed: unknown = JSON.parse(mcpBulkJson.trim());
+                      if (!Array.isArray(parsed)) {
+                        throw new Error(
+                          t("settings.mcpJsonExpectArray")
+                        );
+                      }
+                      const rows = parsed.map((item, idx) => mcpRowFromUnknown(item, idx));
+                      setMcpRows(rows);
+                      setMcpBulkJson(JSON.stringify(rows.map(({ _rowKey: _k, ...r }) => r), null, 2));
+                      await message(t("settings.mcpJsonApplied"), { kind: "info" });
+                    } catch (e: unknown) {
+                      const err = e instanceof Error ? e.message : String(e);
+                      await message(t("settings.mcpJsonInvalid", { err }), {
+                        title: t("settings.mcpApplyJson"),
+                        kind: "error",
+                      });
+                    }
+                  }}
+                >
+                  {t("settings.mcpApplyJson")}
+                </button>
+              </div>
+            </div>
+            <div className="flex justify-end mb-3">
+              <button
+                type="button"
+                className="text-xs px-3 py-1.5 rounded-lg border border-border dark:border-border-dark hover:bg-black/5 dark:hover:bg-white/10"
+                onClick={() => setMcpRows((rows) => [...rows, newMcpRowState()])}
+              >
+                {t("settings.mcpAdd")}
+              </button>
+            </div>
+            <div className="space-y-3">
+              {mcpRows.map((row, i) => (
+                <div
+                  key={row._rowKey}
+                  className="rounded-xl border border-border dark:border-border-dark p-3 space-y-2 bg-white/40 dark:bg-black/20"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-ink dark:text-ink-dark">
+                      #{i + 1}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={row.enabled}
+                        onClick={() =>
+                          setMcpRows((rows) =>
+                            rows.map((r, j) =>
+                              j === i ? { ...r, enabled: !r.enabled } : r
+                            )
+                          )
+                        }
+                        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors cursor-pointer ${
+                          row.enabled ? "bg-accent" : "bg-gray-300 dark:bg-gray-600"
+                        }`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform ${
+                            row.enabled ? "translate-x-4" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                        onClick={() =>
+                          setMcpRows((rows) => rows.filter((_, j) => j !== i))
+                        }
+                      >
+                        {t("settings.mcpRemove")}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className={labelCls}>{t("settings.mcpId")}</label>
+                      <input
+                        type="text"
+                        value={row.id}
+                        onChange={(e) =>
+                          setMcpRows((rows) =>
+                            rows.map((r, j) =>
+                              j === i ? { ...r, id: e.target.value } : r
+                            )
+                          )
+                        }
+                        className={inputCls}
+                        placeholder="my-mcp"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>{t("settings.mcpCwd")}</label>
+                      <input
+                        type="text"
+                        value={row.cwd ?? ""}
+                        onChange={(e) =>
+                          setMcpRows((rows) =>
+                            rows.map((r, j) =>
+                              j === i
+                                ? { ...r, cwd: e.target.value || undefined }
+                                : r
+                            )
+                          )
+                        }
+                        className={inputCls}
+                        placeholder=""
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>{t("settings.mcpCommand")}</label>
+                    <input
+                      type="text"
+                      value={row.command}
+                      onChange={(e) =>
+                        setMcpRows((rows) =>
+                          rows.map((r, j) =>
+                            j === i ? { ...r, command: e.target.value } : r
+                          )
+                        )
+                      }
+                      className={inputCls}
+                      placeholder="npx"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelCls}>{t("settings.mcpArgs")}</label>
+                    <textarea
+                      value={row.args.join("\n")}
+                      onChange={(e) => {
+                        const args = e.target.value
+                          .split(/\r?\n/)
+                          .map((line) => line.trim())
+                          .filter((line) => line.length > 0);
+                        setMcpRows((rows) =>
+                          rows.map((r, j) => (j === i ? { ...r, args } : r))
+                        );
+                      }}
+                      rows={3}
+                      className={`${inputCls} font-mono text-xs`}
+                      placeholder="-y&#10;@modelcontextprotocol/server-everything"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
           </div>
           )}

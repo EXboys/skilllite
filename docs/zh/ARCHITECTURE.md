@@ -425,6 +425,7 @@ pub enum SecuritySeverity {
 | `task_planner.rs` | 任务规划器 |
 | `planning_rules.rs` | 规划规则配置 |
 | `types.rs` | Agent 类型定义 |
+| `mcp_client/` | 出站 MCP：按 `AgentConfig.mcp_servers` / `SKILLLITE_MCP_SERVERS_JSON` 连接 stdio MCP，`tools/list` 合并进 `ExtensionRegistry`，工具名前缀 `mcp__…`；`SKILLLITE_AGENT_MCP_CLIENT=0` 可全局关闭 |
 
 #### 4.2 长文本处理 (`long_text/`)
 

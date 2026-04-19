@@ -5,10 +5,12 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::Arc;
 
 use super::builtin;
 use super::memory;
 use crate::llm::LlmClient;
+use crate::mcp_client::McpRuntime;
 use crate::prompt;
 use crate::skills::{self, LoadedSkill};
 use crate::types::{EventSink, ToolDefinition, ToolResult};
@@ -301,6 +303,11 @@ pub enum ToolHandler {
     },
     /// Control tools (complete_task, update_task_plan) executed via PlanningControlExecutor.
     PlanningControl,
+    /// Outbound MCP: `server_id` matches configured alias; `remote_tool` is the server tool name.
+    Mcp {
+        server_id: String,
+        remote_tool: String,
+    },
 }
 
 /// A tool registration that keeps definition, capability requirements, scope, and handler together.
@@ -346,6 +353,11 @@ impl RegisteredTool {
     }
 
     pub fn validate_input(&self, arguments: &str) -> Result<(), String> {
+        if self.name().starts_with("mcp__") {
+            let _: Value = serde_json::from_str(arguments)
+                .map_err(|e| format!("Invalid arguments JSON: {}", e))?;
+            return Ok(());
+        }
         if self.definition.function.name == "write_file"
             || self.definition.function.name == "write_output"
         {
@@ -638,6 +650,8 @@ pub struct ExtensionRegistry<'a> {
     pub enable_memory_vector: bool,
     /// Loaded skills (for execution dispatch).
     pub skills: &'a [LoadedSkill],
+    /// Active MCP stdio sessions for [`ToolHandler::Mcp`] (same agent loop invocation).
+    mcp_runtime: Option<Arc<McpRuntime>>,
 }
 
 /// Builder for ExtensionRegistry with explicit tool registration.
@@ -649,6 +663,8 @@ pub struct ExtensionRegistryBuilder<'a> {
     enable_memory_vector: bool,
     enable_task_planning: bool,
     skills: &'a [LoadedSkill],
+    mcp_tools: Vec<RegisteredTool>,
+    mcp_runtime: Option<Arc<McpRuntime>>,
 }
 
 impl<'a> ExtensionRegistryBuilder<'a> {
@@ -661,7 +677,21 @@ impl<'a> ExtensionRegistryBuilder<'a> {
             enable_memory_vector,
             enable_task_planning: true, // default: include planning tools for backward compat
             skills,
+            mcp_tools: Vec::new(),
+            mcp_runtime: None,
         }
+    }
+
+    /// Register outbound MCP tools for this agent loop (stdio servers discovered at bootstrap).
+    #[must_use]
+    pub fn register_mcp(
+        mut self,
+        tools: Vec<RegisteredTool>,
+        runtime: Option<Arc<McpRuntime>>,
+    ) -> Self {
+        self.mcp_tools = tools;
+        self.mcp_runtime = runtime;
+        self
     }
 
     /// Exclude PlanningOnly tools when false (simple mode).
@@ -698,6 +728,7 @@ impl<'a> ExtensionRegistryBuilder<'a> {
     /// 按 function.name 去重，避免重复声明导致 Gemini 等 API 报 Duplicate function declaration。
     pub fn build(self) -> ExtensionRegistry<'a> {
         let mut registered_tools = self.registered_tools;
+        registered_tools.extend(self.mcp_tools);
         for skill in self.skills {
             for td in &skill.tool_definitions {
                 registered_tools.push(RegisteredTool::new(
@@ -743,6 +774,7 @@ impl<'a> ExtensionRegistryBuilder<'a> {
             enable_memory: self.enable_memory,
             enable_memory_vector: self.enable_memory_vector,
             skills: self.skills,
+            mcp_runtime: self.mcp_runtime,
         }
     }
 }
@@ -961,6 +993,48 @@ impl<'a> ExtensionRegistry<'a> {
                         is_error: true,
                         counts_as_failure: true,
                     }
+                }
+            }
+            ToolHandler::Mcp {
+                server_id,
+                remote_tool,
+            } => {
+                let Some(rt) = self.mcp_runtime.as_ref() else {
+                    return ToolResult {
+                        tool_call_id: String::new(),
+                        tool_name: tool_name.to_string(),
+                        content: "MCP runtime not available for this agent loop".to_string(),
+                        is_error: true,
+                        counts_as_failure: true,
+                    };
+                };
+                let args: Value = match serde_json::from_str(arguments) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return ToolResult {
+                            tool_call_id: String::new(),
+                            tool_name: tool_name.to_string(),
+                            content: format!("Invalid MCP arguments JSON: {}", e),
+                            is_error: true,
+                            counts_as_failure: true,
+                        };
+                    }
+                };
+                match rt.call_tool(server_id, remote_tool, args).await {
+                    Ok(text) => ToolResult {
+                        tool_call_id: String::new(),
+                        tool_name: tool_name.to_string(),
+                        content: text,
+                        is_error: false,
+                        counts_as_failure: false,
+                    },
+                    Err(e) => ToolResult {
+                        tool_call_id: String::new(),
+                        tool_name: tool_name.to_string(),
+                        content: e.to_string(),
+                        is_error: true,
+                        counts_as_failure: true,
+                    },
                 }
             }
         }

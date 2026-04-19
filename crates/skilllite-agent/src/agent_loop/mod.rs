@@ -37,6 +37,7 @@ use super::soul::Soul;
 use super::types::*;
 use skilllite_core::config::EmbeddingConfig;
 
+use crate::mcp_client::bootstrap_mcp;
 use clarification::{
     no_progress_planning_copy, no_progress_simple_copy, too_many_failures_message, tool_limit_chip,
     try_clarify, ClarifyAction, CHIP_NARROW_SCOPE,
@@ -55,6 +56,29 @@ use planning::{
     build_task_focus_message, maybe_save_checkpoint, run_planning_phase, PlanningResult,
 };
 use reflection::{reflect_planning, reflect_simple, ReflectionOutcome};
+
+async fn build_registry_with_mcp<'a>(
+    config: &'a AgentConfig,
+    skills: &'a [LoadedSkill],
+) -> extensions::ExtensionRegistry<'a> {
+    let mcp = bootstrap_mcp(config).await;
+    let policy = if config.read_only_tools {
+        extensions::CapabilityPolicy::read_only()
+    } else {
+        extensions::CapabilityPolicy::full_access()
+    };
+    extensions::ExtensionRegistry::builder(
+        config.enable_memory,
+        config.enable_memory_vector,
+        skills,
+    )
+    .with_task_planning(config.enable_task_planning)
+    .with_policy(policy)
+    .register(extensions::get_builtin_tools())
+    .register_memory_if(config.enable_memory)
+    .register_mcp(mcp.tools, mcp.runtime)
+    .build()
+}
 
 fn strip_ansi_sequences(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -241,21 +265,7 @@ async fn run_simple_loop(
         },
     );
 
-    let registry = if config.read_only_tools {
-        extensions::ExtensionRegistry::read_only_with_task_planning(
-            config.enable_memory,
-            config.enable_memory_vector,
-            config.enable_task_planning,
-            skills,
-        )
-    } else {
-        extensions::ExtensionRegistry::with_task_planning(
-            config.enable_memory,
-            config.enable_memory_vector,
-            config.enable_task_planning,
-            skills,
-        )
-    };
+    let registry = build_registry_with_mcp(config, skills).await;
     let all_tools = registry.all_tool_definitions();
 
     let chat_root = skilllite_executor::chat_root();
@@ -558,21 +568,7 @@ async fn run_with_task_planning(
         },
     );
 
-    let registry = if config.read_only_tools {
-        extensions::ExtensionRegistry::read_only_with_task_planning(
-            config.enable_memory,
-            config.enable_memory_vector,
-            config.enable_task_planning,
-            skills,
-        )
-    } else {
-        extensions::ExtensionRegistry::with_task_planning(
-            config.enable_memory,
-            config.enable_memory_vector,
-            config.enable_task_planning,
-            skills,
-        )
-    };
+    let registry = build_registry_with_mcp(config, skills).await;
     let all_tools = registry.all_tool_definitions();
 
     let mut state = ExecutionState::new();

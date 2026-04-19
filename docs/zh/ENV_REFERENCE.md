@@ -43,6 +43,13 @@
 |------|------|------|------|
 | `SKILLLITE_UI_LOCALE` | `zh`、`en` | 未设置则不注入 | 桌面应用会根据「设置 → 界面语言」写入子进程；`AgentConfig` 会将其合并进 system prompt 附加段，使模型默认用对应语言说明。**`skilllite schedule tick` 与交互式聊天**在设置此变量后行为一致。CLI 用户也可手动 `export SKILLLITE_UI_LOCALE=zh`。 |
 
+### Agent 出站 MCP（stdio）
+
+| 变量 | 取值 | 默认 | 说明 |
+|------|------|------|------|
+| `SKILLLITE_MCP_SERVERS_JSON` | JSON 数组字符串 | 未设置 | Agent 连接的 stdio MCP 服务列表，字段与 `McpServerEntry` 一致：`id`、`enabled`、`command`、`args`、`cwd`（可选）。**SkillLite 桌面**：**设置 → 出站 MCP** 独立标签页覆盖并写入子进程；保存空列表等价于 `[]`。 |
+| `SKILLLITE_AGENT_MCP_CLIENT` | `0` | 默认启用 | 设为 `0` 时跳过全部出站 MCP（忽略 JSON）。 |
+
 ---
 
 ## 按场景分层

@@ -45,5 +45,17 @@ export function buildAssistantBridgeConfig(settings: Settings): Record<string, u
     config.evo_cooldown_hours = settings.evoCooldownHours;
   }
   config.ui_locale = settings.locale === "en" ? "en" : "zh";
+  if (settings.mcpServers !== undefined) {
+    config.mcp_servers =
+      settings.mcpServers.length > 0
+        ? settings.mcpServers.map((s) => ({
+            id: s.id,
+            enabled: s.enabled,
+            command: s.command,
+            args: s.args,
+            ...(s.cwd != null && s.cwd.trim() !== "" ? { cwd: s.cwd.trim() } : {}),
+          }))
+        : [];
+  }
   return config;
 }

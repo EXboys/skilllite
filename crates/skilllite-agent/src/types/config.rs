@@ -1,5 +1,7 @@
 //! Agent configuration.
 
+use super::McpServerEntry;
+
 /// Agent configuration.
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
@@ -55,6 +57,10 @@ pub struct AgentConfig {
     /// Restrict the tool registry to read-only operations.
     /// Used by replay/eval flows that must not mutate the workspace.
     pub read_only_tools: bool,
+
+    /// Optional outbound MCP servers (stdio). Disabled entries are skipped.
+    /// Also loaded from `SKILLLITE_MCP_SERVERS_JSON` in [`AgentConfig::from_env`].
+    pub mcp_servers: Vec<McpServerEntry>,
 }
 
 impl Default for AgentConfig {
@@ -82,6 +88,7 @@ impl Default for AgentConfig {
             goal_boundaries: None,
             skip_history_for_planning: false,
             read_only_tools: false,
+            mcp_servers: Vec::new(),
         }
     }
 }
@@ -96,7 +103,7 @@ impl AgentConfig {
         let paths = skilllite_core::config::PathsConfig::from_env();
         let flags = skilllite_core::config::AgentFeatureFlags::from_env();
         let loop_limits = skilllite_core::config::AgentLoopLimitsConfig::from_env();
-        Self {
+        let mut config = Self {
             api_base: llm.api_base,
             api_key: llm.api_key,
             model: llm.model,
@@ -109,6 +116,12 @@ impl AgentConfig {
             max_consecutive_failures: Some(5),
             context_append: crate::locale_prompt::context_append_from_ui_locale_env(),
             ..Default::default()
+        };
+
+        if let Ok(raw) = std::env::var("SKILLLITE_MCP_SERVERS_JSON") {
+            config.mcp_servers = super::parse_mcp_servers_json(&raw);
         }
+
+        config
     }
 }

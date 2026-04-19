@@ -427,6 +427,7 @@ pub enum SecuritySeverity {
 | `task_planner.rs` | Task planner |
 | `planning_rules.rs` | Planning rules configuration |
 | `types.rs` | Agent type definitions |
+| `mcp_client/` | Outbound MCP: connect stdio servers from `AgentConfig.mcp_servers` / `SKILLLITE_MCP_SERVERS_JSON`, merge `tools/list` into `ExtensionRegistry` with `mcp__…` tool names; set `SKILLLITE_AGENT_MCP_CLIENT=0` to disable |
 
 #### 4.2 Long Text Handling (`long_text/`)
 

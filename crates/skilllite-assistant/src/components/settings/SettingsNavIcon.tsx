@@ -41,6 +41,29 @@ export function SettingsNavIcon({
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
         </svg>
       );
+    case "mcp":
+      return (
+        <svg
+          className={c}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M12 22v-6" />
+          <path d="M12 8V2" />
+          <path d="M4 12H2" />
+          <path d="M22 12h-2" />
+          <circle cx="12" cy="12" r="4" />
+          <path d="M4.93 4.93 6.34 6.34" />
+          <path d="M17.66 17.66l1.41 1.41" />
+          <path d="M17.66 6.34 19.07 4.93" />
+          <path d="M6.34 17.66 4.93 19.07" />
+        </svg>
+      );
     case "environment":
       return (
         <svg
