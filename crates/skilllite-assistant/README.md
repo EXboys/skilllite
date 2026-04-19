@@ -45,6 +45,7 @@ npm run tauri:build
 
 ## 环境与 Skills
 
+- **设置 UI**：主窗口中进入 **设置** 为全屏分区视图（左侧导航）；**环境与依赖** 分区可检测 Git（`git --version`）、一键下载 Python/Node 运行时到 SkillLite 缓存。
 - **API Key**：在项目根目录或 workspace 的 `.env` 中设置 `OPENAI_API_KEY`
 - **Skills**：会自动从 workspace 向上查找 `skills`、`.skills`、`.agents/skills`、`.claude/skills`；默认技能根目录解析与 `skilllite-core::skill::discovery` 保持一致（含 `skills -> .skills` 兼容回退）
 - **skilllite**：需已安装（`pip install skilllite` 或 `cargo install --path skilllite`）

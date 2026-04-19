@@ -19,6 +19,8 @@ import {
 import { useI18n } from "../i18n";
 import { useStatusStore } from "../stores/useStatusStore";
 import type { AssistantSettingsTabId } from "../contexts/AssistantChromeContext";
+import EnvironmentSettingsSection from "./EnvironmentSettingsSection";
+import { SettingsNavIcon } from "./settings/SettingsNavIcon";
 
 interface OllamaProbeResult {
   available: boolean;
@@ -52,15 +54,37 @@ export default function SettingsModal({
   initialTabId,
 }: SettingsModalProps) {
   const { t, locale, setLocale } = useI18n();
-  const settingsTabs = useMemo(
+  /** 左侧分组导航：连接 → 工作区/环境 → Agent 调度 → 维护 */
+  const settingsNavGroups = useMemo(
     () =>
       [
-        { id: "llm" as const, label: t("settings.tab.llm") },
-        { id: "workspace" as const, label: t("settings.tab.workspace") },
-        { id: "agent" as const, label: t("settings.tab.agent") },
-        { id: "evolution" as const, label: t("settings.tab.evolution") },
-        { id: "schedule" as const, label: t("settings.tab.schedule") },
-        { id: "uninstall" as const, label: t("settings.tab.uninstall") },
+        {
+          id: "connection",
+          titleKey: "settings.navGroup.connection" as const,
+          tabs: [{ id: "llm" as const, label: t("settings.tab.llm") }],
+        },
+        {
+          id: "workspace",
+          titleKey: "settings.navGroup.workspace" as const,
+          tabs: [
+            { id: "workspace" as const, label: t("settings.tab.workspace") },
+            { id: "environment" as const, label: t("settings.tab.environment") },
+          ],
+        },
+        {
+          id: "automation",
+          titleKey: "settings.navGroup.automation" as const,
+          tabs: [
+            { id: "agent" as const, label: t("settings.tab.agent") },
+            { id: "evolution" as const, label: t("settings.tab.evolution") },
+            { id: "schedule" as const, label: t("settings.tab.schedule") },
+          ],
+        },
+        {
+          id: "maintenance",
+          titleKey: "settings.navGroup.maintenance" as const,
+          tabs: [{ id: "uninstall" as const, label: t("settings.tab.uninstall") }],
+        },
       ] as const,
     [t]
   );
@@ -451,29 +475,63 @@ export default function SettingsModal({
 
   return (
     <div
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-ink/50 dark:bg-black/60 backdrop-blur-sm p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="settings-modal-title"
-      onClick={onClose}
+      className="flex flex-1 min-h-0 min-w-0 w-full flex-col bg-white dark:bg-paper-dark"
+      role="main"
+      aria-labelledby="settings-page-title"
     >
-      <div
-        className="relative flex max-h-[min(90vh,800px)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border dark:border-border-dark bg-white dark:bg-paper-dark shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Fixed header + tabs */}
-        <div className="shrink-0 border-b border-border dark:border-border-dark px-4 pb-0 pt-4">
-          <div className="flex items-center justify-between gap-2 pb-2">
+      <div className="flex min-h-0 flex-1 flex-row">
+        <nav
+          className="flex w-[min(15rem,36vw)] shrink-0 flex-col gap-5 overflow-y-auto border-r border-border dark:border-border-dark bg-ink/[0.02] dark:bg-white/[0.02] px-2 py-4"
+          aria-label={t("settings.navAria")}
+        >
+          {settingsNavGroups.map((group) => (
+            <div key={group.id} className="min-w-0">
+              <div className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-ink-mute dark:text-ink-dark-mute">
+                {t(group.titleKey)}
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {group.tabs.map((tab) => {
+                  const selected = activeTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`group flex w-full min-w-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+                        selected
+                          ? "bg-accent/15 text-accent"
+                          : "text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/5 hover:text-ink dark:hover:text-ink-dark"
+                      }`}
+                    >
+                      <SettingsNavIcon
+                        tabId={tab.id}
+                        className={
+                          selected
+                            ? "h-[1.125rem] w-[1.125rem] text-accent"
+                            : "h-[1.125rem] w-[1.125rem] text-ink-mute group-hover:text-ink dark:text-ink-dark-mute dark:group-hover:text-ink-dark"
+                        }
+                      />
+                      <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border dark:border-border-dark px-5 py-4">
             <h2
-              id="settings-modal-title"
-              className="text-base font-semibold text-ink dark:text-ink-dark"
+              id="settings-page-title"
+              className="truncate text-lg font-semibold text-ink dark:text-ink-dark"
             >
               {t("settings.title")}
             </h2>
             <button
               type="button"
               onClick={onClose}
-              className="shrink-0 rounded-md p-1.5 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark transition-colors"
+              className="shrink-0 rounded-md p-2 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark transition-colors"
               aria-label={t("common.close")}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -482,26 +540,8 @@ export default function SettingsModal({
               </svg>
             </button>
           </div>
-          <div className="flex gap-1 overflow-x-auto pb-0 -mx-1 px-1">
-            {settingsTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`shrink-0 px-3 py-2 text-xs font-medium rounded-t-lg border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? "border-accent text-accent bg-accent/5"
-                    : "border-transparent text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        {/* Scrollable content */}
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-4 py-3">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-5 py-4">
 
           {activeTab === "llm" && (
           <div className="space-y-4">
@@ -843,6 +883,8 @@ export default function SettingsModal({
           </div>
           </div>
           )}
+
+          {activeTab === "environment" && <EnvironmentSettingsSection />}
 
           {activeTab === "agent" && (
           <div className="space-y-4">
@@ -1308,7 +1350,7 @@ export default function SettingsModal({
         </div>
 
         {/* Fixed footer */}
-        <div className="flex shrink-0 justify-end gap-2 border-t border-border dark:border-border-dark bg-white dark:bg-paper-dark px-4 py-3">
+        <div className="flex shrink-0 justify-end gap-2 border-t border-border dark:border-border-dark bg-white dark:bg-paper-dark px-5 py-3">
           <button
             type="button"
             onClick={onClose}
@@ -1323,6 +1365,7 @@ export default function SettingsModal({
           >
             {t("common.save")}
           </button>
+        </div>
         </div>
       </div>
     </div>

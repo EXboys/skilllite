@@ -197,6 +197,63 @@ pub fn init_workspace(dir: &str, skilllite_path: &std::path::Path) -> Result<(),
     Ok(())
 }
 
+/// 供设置页展示：本机 `git` 是否在 PATH 中（从 GitHub 等源 `skilllite add` 克隆仓库时需要）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitUiStatus {
+    pub available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version_line: Option<String>,
+    /// 技术向错误摘要（未找到可执行文件、非零退出等）；用户向说明由前端 i18n 提供。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_detail: Option<String>,
+}
+
+pub fn probe_git_status() -> GitUiStatus {
+    let mut cmd = std::process::Command::new("git");
+    crate::windows_spawn::hide_child_console(&mut cmd);
+    match cmd.arg("--version").output() {
+        Ok(out) if out.status.success() => {
+            let line = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .next()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(std::string::ToString::to_string);
+            GitUiStatus {
+                available: true,
+                version_line: line,
+                error_detail: None,
+            }
+        }
+        Ok(out) => {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            let hint = if !stderr.is_empty() {
+                stderr
+            } else if !stdout.is_empty() {
+                stdout
+            } else {
+                format!("git exited with status {}", out.status)
+            };
+            GitUiStatus {
+                available: false,
+                version_line: None,
+                error_detail: Some(hint),
+            }
+        }
+        Err(e) => GitUiStatus {
+            available: false,
+            version_line: None,
+            error_detail: Some(if e.kind() == std::io::ErrorKind::NotFound {
+                "git executable not found in PATH".to_string()
+            } else {
+                format!("failed to run git: {e}")
+            }),
+        },
+    }
+}
+
 /// Python/Node 来源探测（系统 PATH vs SkillLite 缓存下载），供左侧栏等 UI 展示。
 pub fn probe_runtime_status() -> RuntimeUiSnapshot {
     skilllite_sandbox::probe_runtime_for_ui(None)

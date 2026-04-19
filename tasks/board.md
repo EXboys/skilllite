@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-19 (TASK-2026-034 structured OpenClaw metadata + install[] support done)
+Last updated: 2026-04-19 (TASK-2026-035 assistant settings environment page done)
 
 ## In Progress
 
@@ -8,6 +8,7 @@ Last updated: 2026-04-19 (TASK-2026-034 structured OpenClaw metadata + install[]
 
 ## Ready
 
+- `TASK-2026-035-assistant-settings-environment-page` - Status: `draft` - Owner: `maintainer`
 - `TASK-2026-003-ci-hardening-and-matrix` - Status: `ready` - Owner: `TBD`
 
 ## Blocked
@@ -16,6 +17,7 @@ Last updated: 2026-04-19 (TASK-2026-034 structured OpenClaw metadata + install[]
 
 ## Done
 
+- `TASK-2026-035-assistant-settings-environment-page` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-034-openclaw-metadata-and-install` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-033-openclaw-import-skills` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-032-evo-output-rate-learners` - Status: `done` - Owner: `airlu`

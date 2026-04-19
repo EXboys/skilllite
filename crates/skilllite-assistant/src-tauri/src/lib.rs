@@ -598,6 +598,18 @@ async fn skilllite_probe_ollama() -> skilllite_bridge::OllamaProbeResult {
 }
 
 #[tauri::command]
+async fn skilllite_git_status() -> skilllite_bridge::GitUiStatus {
+    match tauri::async_runtime::spawn_blocking(skilllite_bridge::probe_git_status).await {
+        Ok(s) => s,
+        Err(e) => skilllite_bridge::GitUiStatus {
+            available: false,
+            version_line: None,
+            error_detail: Some(format!("task failed: {}", e)),
+        },
+    }
+}
+
+#[tauri::command]
 async fn skilllite_runtime_status() -> skilllite_bridge::RuntimeUiSnapshot {
     match tauri::async_runtime::spawn_blocking(skilllite_bridge::probe_runtime_status).await {
         Ok(s) => s,
@@ -828,6 +840,7 @@ pub fn run() {
             skilllite_default_workspace,
             skilllite_init_workspace,
             skilllite_probe_ollama,
+            skilllite_git_status,
             skilllite_runtime_status,
             skilllite_provision_runtimes,
             skilllite_health_check,

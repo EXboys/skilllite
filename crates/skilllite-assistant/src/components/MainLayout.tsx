@@ -258,25 +258,41 @@ export default function MainLayout() {
           <button
             type="button"
             onClick={() => {
-              setSettingsInitialTab(null);
-              setSettingsOpen((v) => !v);
+              if (settingsOpen) {
+                setSettingsInitialTab(null);
+                setSettingsOpen(false);
+              } else {
+                setSettingsInitialTab(null);
+                setSettingsOpen(true);
+              }
             }}
             className={`px-2 py-1.5 text-sm rounded-md transition-colors ${
               settingsOpen
                 ? "text-accent bg-accent/10 dark:bg-accent/15"
                 : "text-ink-mute dark:text-ink-dark-mute hover:text-accent dark:hover:text-accent hover:bg-ink/5 dark:hover:bg-white/5"
             }`}
-            aria-label={t("main.settings")}
+            aria-label={
+              settingsOpen ? t("main.backFromSettingsAria") : t("main.settingsAria")
+            }
             aria-pressed={settingsOpen}
           >
-            {t("main.settings")}
+            {settingsOpen ? t("main.backFromSettings") : t("main.settings")}
           </button>
         </div>
       </header>
 
       {/* Main content */}
       <div className="flex flex-1 min-h-0">
-        {ideLayout ? (
+        {settingsOpen ? (
+          <SettingsModal
+            open={settingsOpen}
+            initialTabId={settingsInitialTab ?? undefined}
+            onClose={() => {
+              setSettingsOpen(false);
+              setSettingsInitialTab(null);
+            }}
+          />
+        ) : ideLayout ? (
           <div
             ref={ideRowRef}
             className="flex flex-1 min-w-0 min-h-0"
@@ -424,14 +440,6 @@ export default function MainLayout() {
             </>
           )}
       </div>
-      <SettingsModal
-        open={settingsOpen}
-        initialTabId={settingsInitialTab ?? undefined}
-        onClose={() => {
-          setSettingsOpen(false);
-          setSettingsInitialTab(null);
-        }}
-      />
       {showOnboarding && <OnboardingModal />}
     </div>
     </AssistantChromeProvider>
