@@ -72,12 +72,6 @@ export async function openDetailWindow(
   options?: { evolutionTab?: EvolutionDetailTab; focusTxn?: string }
 ) {
   const mainWindow = getCurrentWindow();
-  const [pos, size] = await Promise.all([
-    mainWindow.outerPosition(),
-    mainWindow.outerSize(),
-  ]);
-  const x = pos.x + size.width;
-  const y = pos.y;
 
   const label = `detail-${module}`;
   const base = `${window.location.origin}${window.location.pathname || "/"}`.replace(/\/$/, "");
@@ -95,6 +89,36 @@ export async function openDetailWindow(
   }
   const url = `${base}#detail/${module}?${params.toString()}`;
   const wide = module === "evolution";
+
+  /** 同一模块的详情已是独立 OS 窗口：再次打开时应置顶聚焦，而不是留在主窗口后面（与 CSS z-index 无关）。 */
+  const existing = await WebviewWindow.getByLabel(label);
+  if (existing) {
+    try {
+      /**
+       * 主窗口按钮点击会把焦点先给主窗体；同一次事件里立刻 setFocus 在 macOS 上常被抢回。
+       * 让出一次 macrotask 再置顶；Tauri 2 另需 `core:window:allow-set-focus` 等能力，否则 set_focus 被 ACL 拒绝。
+       */
+      await new Promise<void>((r) => {
+        setTimeout(r, 0);
+      });
+      if (await existing.isMinimized()) {
+        await existing.unminimize();
+      }
+      await existing.show();
+      await existing.setFocus();
+      return;
+    } catch {
+      /* 句柄失效等：继续尝试新建 */
+    }
+  }
+
+  const [pos, size] = await Promise.all([
+    mainWindow.outerPosition(),
+    mainWindow.outerSize(),
+  ]);
+  const x = pos.x + size.width;
+  const y = pos.y;
+
   new WebviewWindow(label, {
     url,
     title: MODULE_TITLES[module],
