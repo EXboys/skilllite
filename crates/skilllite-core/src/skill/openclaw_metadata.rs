@@ -95,11 +95,7 @@ fn collect_openclaw_compatibility_fragments(block: &Value) -> Vec<String> {
 
     if let Some(req) = block.get("requires") {
         push_str_array_line(&mut adds, "Requires bins", req.get("bins"));
-        push_str_array_line(
-            &mut adds,
-            "Requires at least one bin",
-            req.get("anyBins"),
-        );
+        push_str_array_line(&mut adds, "Requires at least one bin", req.get("anyBins"));
         push_str_array_line(&mut adds, "Requires env", req.get("env"));
         push_str_array_line(&mut adds, "Requires config", req.get("config"));
     }
@@ -136,10 +132,7 @@ fn collect_openclaw_compatibility_fragments(block: &Value) -> Vec<String> {
 }
 
 /// Merge OpenClaw / ClawHub `metadata` subtree into the Agent Skills `compatibility` string.
-pub fn merge_into_compatibility(
-    compat: Option<&str>,
-    metadata: Option<&Value>,
-) -> Option<String> {
+pub fn merge_into_compatibility(compat: Option<&str>, metadata: Option<&Value>) -> Option<String> {
     let Some(block) = openclaw_block(metadata) else {
         return compat.map(String::from);
     };

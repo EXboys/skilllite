@@ -65,8 +65,8 @@ pub fn detect_dependencies(_skill_dir: &Path, metadata: &SkillMetadata) -> Resul
                 );
             }
 
-            let prefer_python = language == "python"
-                || (language != "node" && installs.node_packages.is_empty());
+            let prefer_python =
+                language == "python" || (language != "node" && installs.node_packages.is_empty());
             if prefer_python && !installs.python_packages.is_empty() {
                 let pkgs = installs.python_packages.clone();
                 let hash = compute_packages_hash(&pkgs);
