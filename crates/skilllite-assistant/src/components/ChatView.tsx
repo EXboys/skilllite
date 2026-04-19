@@ -18,6 +18,7 @@ import {
   formatProfileShortLabel,
   listProfilesForQuickSwitch,
   matchActiveProfileId,
+  removeLlmProfileWithSessionReselect,
 } from "../utils/llmProfiles";
 import { useAssistantChrome } from "../contexts/AssistantChromeContext";
 import { MessageList } from "./chat/MessageList";
@@ -1070,23 +1071,46 @@ export default function ChatView() {
                   {t("chat.modelQuickSwitchSectionSaved")}
                 </p>
                 {quickSwitchProfiles.map((p) => (
-                  <button
+                  <div
                     key={p.id}
-                    type="button"
-                    role="option"
-                    className="flex w-full items-center px-2.5 py-1.5 text-left text-xs text-ink dark:text-ink-dark hover:bg-ink/[0.04] dark:hover:bg-white/[0.06]"
-                    onClick={() => {
-                      setSettings({
-                        provider: p.provider,
-                        model: p.model,
-                        apiBase: p.apiBase,
-                        apiKey: p.apiKey,
-                      });
-                      setModelQuickOpen(false);
-                    }}
+                    className="flex w-full items-stretch gap-0.5 border-b border-border/60 dark:border-border-dark/60 last:border-b-0"
                   >
-                    {formatProfileShortLabel(p)}
-                  </button>
+                    <button
+                      type="button"
+                      role="option"
+                      className="flex min-w-0 flex-1 items-center px-2.5 py-1.5 text-left text-xs text-ink dark:text-ink-dark hover:bg-ink/[0.04] dark:hover:bg-white/[0.06]"
+                      onClick={() => {
+                        setSettings({
+                          provider: p.provider,
+                          model: p.model,
+                          apiBase: p.apiBase,
+                          apiKey: p.apiKey,
+                        });
+                        setModelQuickOpen(false);
+                      }}
+                    >
+                      <span className="truncate">{formatProfileShortLabel(p)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={t("chat.modelQuickSwitchRemoveSaved")}
+                      className="shrink-0 px-2 py-1.5 text-sm leading-none text-ink-mute hover:text-red-600 dark:text-ink-dark-mute dark:hover:text-red-400"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSettings(
+                          removeLlmProfileWithSessionReselect(settings.llmProfiles, p.id, {
+                            provider: settings.provider,
+                            model: settings.model,
+                            apiBase: settings.apiBase,
+                            apiKey: settings.apiKey,
+                          })
+                        );
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
                 <div className="my-1 h-px bg-border dark:bg-border-dark" />
               </>

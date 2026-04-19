@@ -12,7 +12,9 @@ import ModelComboBox from "./ModelComboBox";
 import { API_MODEL_PRESETS, presetApiBaseForModelId } from "../utils/modelPresets";
 import {
   findSavedProfileForModel,
+  formatProfileShortLabel,
   persistCurrentLlmAsProfile,
+  removeLlmProfileWithSessionReselect,
 } from "../utils/llmProfiles";
 import {
   type ScheduleForm,
@@ -806,6 +808,38 @@ export default function SettingsModal({
                 </div>
               )}
             </>
+          )}
+
+          {(settings.llmProfiles?.length ?? 0) > 0 && (
+            <div>
+              <label className={labelCls}>{t("settings.llmSavedProfilesHeading")}</label>
+              <ul className="max-h-48 overflow-y-auto rounded-lg border border-border dark:border-border-dark divide-y divide-border dark:divide-border-dark">
+                {(settings.llmProfiles ?? []).map((p) => (
+                  <li key={p.id} className="flex items-center gap-2 px-2.5 py-1.5">
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink dark:text-ink-dark">
+                      {formatProfileShortLabel(p)}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={t("chat.modelQuickSwitchRemoveSaved")}
+                      className="shrink-0 rounded-md px-2 py-1 text-sm leading-none text-ink-mute hover:bg-red-50 hover:text-red-600 dark:text-ink-dark-mute dark:hover:bg-red-900/25 dark:hover:text-red-400"
+                      onClick={() =>
+                        setSettings(
+                          removeLlmProfileWithSessionReselect(settings.llmProfiles, p.id, {
+                            provider: settings.provider,
+                            model: settings.model,
+                            apiBase: settings.apiBase,
+                            apiKey: settings.apiKey,
+                          })
+                        )
+                      }
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           <section

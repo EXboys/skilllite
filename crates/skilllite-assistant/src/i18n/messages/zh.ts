@@ -145,6 +145,7 @@ export const zhMessages: Record<string, string> = {
   "chat.modelQuickSwitch": "当前模型",
   "chat.modelQuickSwitchPlaceholder": "选择已保存的配置…",
   "chat.modelQuickSwitchSectionSaved": "已保存",
+  "chat.modelQuickSwitchRemoveSaved": "删除此条已保存配置",
   "chat.modelQuickSwitchAddNew": "【新增】",
   "chat.timelineNeedsAction": "待操作",
   "chat.timelineNeedsActionHint": "请展开本条，点击允许/拒绝或选择澄清选项。",
@@ -495,6 +496,7 @@ export const zhMessages: Record<string, string> = {
   "settings.apiKeyHint": "sk-…（留空则尝试使用本机或工作区里已配置的密钥）",
   "settings.llmProfilesAutoHint":
     "保存后会记住每个模型的 Key 与 Base，切换模型时自动填入。",
+  "settings.llmSavedProfilesHeading": "已保存的配置",
   "settings.model": "模型",
   "settings.modelPlaceholder": "选择模型",
   "settings.apiBase": "API Base URL（可选）",

@@ -53,6 +53,16 @@ export function upsertLlmProfile(
   return arr;
 }
 
+/** 按 id 从列表中移除一条已保存配置；id 为空则原样返回副本。 */
+export function removeLlmProfileById(
+  list: LlmSavedProfile[] | undefined,
+  id: string
+): LlmSavedProfile[] {
+  const tid = id.trim();
+  if (!tid) return [...(list ?? [])];
+  return (list ?? []).filter((p) => p.id !== tid);
+}
+
 /**
  * 切换模型时：优先匹配同 apiBase 的已保存项，否则取同模型的任意一条。
  */
@@ -91,6 +101,13 @@ export function listProfilesForQuickSwitch(list: LlmSavedProfile[] | undefined):
   });
 }
 
+function pickFallbackProfileFromRemaining(list: LlmSavedProfile[]): LlmSavedProfile | undefined {
+  const quick = listProfilesForQuickSwitch(list);
+  if (quick.length > 0) return quick[0];
+  if (list.length > 0) return list[0];
+  return undefined;
+}
+
 export function formatProfileShortLabel(p: LlmSavedProfile): string {
   if (p.provider === "ollama") {
     return `${p.model} (Ollama)`;
@@ -122,6 +139,52 @@ export function matchActiveProfileId(
     }
   }
   return "";
+}
+
+/** 与 `useSettingsStore` 默认 LLM 字段一致：删除全部已保存后避免继续显示已删模型/Key。 */
+const DEFAULT_LLM_SESSION: Pick<
+  LlmSavedProfile,
+  "provider" | "model" | "apiBase" | "apiKey"
+> = {
+  provider: "api",
+  model: "gpt-4o",
+  apiKey: "",
+  apiBase: "",
+};
+
+export type LlmSessionPatch = Pick<
+  LlmSavedProfile,
+  "provider" | "model" | "apiBase" | "apiKey"
+>;
+
+/**
+ * 删除一条已保存配置；若删除的是当前会话正在使用的那条，则切换到剩余列表中的第一条
+ * （优先仍可在快捷切换中展示的项），若无剩余则回落到应用默认 LLM 字段。
+ */
+export function removeLlmProfileWithSessionReselect(
+  list: LlmSavedProfile[] | undefined,
+  removeId: string,
+  current: LlmSessionPatch
+): { llmProfiles: LlmSavedProfile[] } & Partial<LlmSessionPatch> {
+  const tid = removeId.trim();
+  const nextList = removeLlmProfileById(list, removeId);
+  if (!tid || matchActiveProfileId(list, current) !== tid) {
+    return { llmProfiles: nextList };
+  }
+  const fallback = pickFallbackProfileFromRemaining(nextList);
+  if (fallback) {
+    return {
+      llmProfiles: nextList,
+      provider: fallback.provider,
+      model: fallback.model,
+      apiBase: fallback.apiBase,
+      apiKey: fallback.apiKey,
+    };
+  }
+  return {
+    llmProfiles: nextList,
+    ...DEFAULT_LLM_SESSION,
+  };
 }
 
 /** 在设置 / 引导流程中：API 模式仅在 key 非空时写入列表；Ollama 始终写入。 */

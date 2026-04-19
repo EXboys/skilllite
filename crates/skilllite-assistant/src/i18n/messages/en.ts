@@ -154,6 +154,7 @@ export const enMessages: Record<string, string> = {
   "chat.modelQuickSwitch": "Model",
   "chat.modelQuickSwitchPlaceholder": "Choose a saved profile…",
   "chat.modelQuickSwitchSectionSaved": "Saved",
+  "chat.modelQuickSwitchRemoveSaved": "Remove this saved profile",
   "chat.modelQuickSwitchAddNew": "【新增】",
   "chat.timelineNeedsAction": "Action needed",
   "chat.timelineNeedsActionHint":
@@ -522,6 +523,7 @@ export const enMessages: Record<string, string> = {
   "settings.apiKeyHint": "sk-… (leave empty to use a key already configured on this machine or workspace)",
   "settings.llmProfilesAutoHint":
     "Saved keys and bases are remembered per model and auto-filled when switching.",
+  "settings.llmSavedProfilesHeading": "Saved profiles",
   "settings.model": "Model",
   "settings.modelPlaceholder": "Choose model",
   "settings.apiBase": "API base URL (optional)",
