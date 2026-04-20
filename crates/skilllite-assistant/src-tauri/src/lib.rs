@@ -387,22 +387,20 @@ async fn skilllite_load_evolution_status(
     workspace: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
     life_pulse: tauri::State<'_, life_pulse::LifePulseState>,
-) -> skilllite_bridge::LlmInvokeResult<skilllite_bridge::EvolutionStatusPayload> {
+) -> Result<skilllite_bridge::LlmInvokeResult<skilllite_bridge::EvolutionStatusPayload>, String> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
     let periodic_anchor_unix = life_pulse.periodic_anchor_unix();
-    match tauri::async_runtime::spawn_blocking(move || {
+    let out = match tauri::async_runtime::spawn_blocking(move || {
         skilllite_bridge::load_evolution_status(&ws, config, periodic_anchor_unix)
     })
     .await
     {
-        Ok(Ok(payload)) => skilllite_bridge::LlmInvokeResult::ok(payload),
-        Ok(Err(err)) => skilllite_bridge::LlmInvokeResult::err(
-            skilllite_bridge::classify_llm_routing_error_message(&err),
-        ),
+        Ok(payload) => skilllite_bridge::LlmInvokeResult::ok(payload),
         Err(err) => skilllite_bridge::LlmInvokeResult::err(
             skilllite_bridge::classify_llm_routing_error_message(&err.to_string()),
         ),
-    }
+    };
+    Ok(out)
 }
 
 #[tauri::command]

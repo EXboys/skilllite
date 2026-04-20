@@ -22,9 +22,7 @@ pub use chat::{
 };
 pub use followup_suggestions::followup_chat_suggestions;
 pub use integrations::*;
-pub use llm_routing_error::{
-    classify_llm_routing_error_message, LlmInvokeResult, LlmRoutingError, LlmRoutingErrorKind,
-};
+pub use llm_routing_error::{classify_llm_routing_error_message, LlmInvokeResult};
 pub(crate) use paths::load_dotenv_for_child;
 pub use paths::{default_writable_workspace_dir, resolve_skilllite_path_app};
 pub use sessions::*;
