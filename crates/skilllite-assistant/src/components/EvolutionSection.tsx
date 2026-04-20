@@ -19,7 +19,7 @@ import {
   parseDetailWorkspaceFromUrl,
   type EvolutionDetailTab,
 } from "../utils/detailWindow";
-import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
+import { runWithScenarioFallbackNotified } from "../utils/llmScenarioFallbackToast";
 import { useI18n } from "../i18n";
 import type { Locale } from "../i18n/translate";
 
@@ -677,16 +677,19 @@ function useEvolutionStatus() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const bridgeConfig = useMemo(() => buildAssistantBridgeConfig(settings), [settings]);
-
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const s = await invoke<EvolutionStatusPayload>("skilllite_load_evolution_status", {
-        workspace,
-        config: bridgeConfig,
-      });
+      const { result: s } = await runWithScenarioFallbackNotified<EvolutionStatusPayload>(
+        settings,
+        "evolution",
+        (config) =>
+          invoke<EvolutionStatusPayload>("skilllite_load_evolution_status", {
+            workspace,
+            config,
+          })
+      );
       setStatus(s);
     } catch (e) {
       setError(String(e));
@@ -694,7 +697,7 @@ function useEvolutionStatus() {
     } finally {
       setLoading(false);
     }
-  }, [workspace, bridgeConfig]);
+  }, [workspace, settings]);
 
   useEffect(() => {
     void refresh();
@@ -1456,14 +1459,15 @@ export function EvolutionDetailBody({
                         [row.proposal_id]: "触发请求已发送，等待执行结果…",
                       }));
                       try {
-                        const config = buildAssistantBridgeConfig(settings);
-                        const out = await invoke<string>(
-                          "skilllite_trigger_evolution_run",
-                          {
-                            workspace,
-                            proposalId: row.proposal_id,
-                            config,
-                          }
+                        const { result: out } = await runWithScenarioFallbackNotified<string>(
+                          settings,
+                          "evolution",
+                          (config) =>
+                            invoke<string>("skilllite_trigger_evolution_run", {
+                              workspace,
+                              proposalId: row.proposal_id,
+                              config,
+                            })
                         );
                         setTriggerResultByProposal((prev) => ({
                           ...prev,

@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-19 (TASK-2026-036 agent MCP client done)
+Last updated: 2026-04-20 (TASK-2026-038 LLM scenario runtime fallback MVP-A done)
 
 ## In Progress
 
@@ -16,6 +16,8 @@ Last updated: 2026-04-19 (TASK-2026-036 agent MCP client done)
 
 ## Done
 
+- `TASK-2026-038-llm-scenario-fallback` - Status: `done` - Owner: `maintainer`
+- `TASK-2026-037-llm-scenario-routing` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-036-agent-mcp-client` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-035-assistant-settings-environment-page` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-034-openclaw-metadata-and-install` - Status: `done` - Owner: `maintainer`

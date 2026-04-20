@@ -111,7 +111,8 @@ import {
   evolutionStatusHeadline,
   isEvolutionNoMaterialChanges,
 } from "../utils/evolutionDisplay";
-import { buildAssistantBridgeConfig } from "../utils/buildAssistantBridgeConfig";
+import { buildAssistantBridgeConfigForScenario } from "../utils/llmScenarioRouting";
+import { runWithScenarioFallbackNotified } from "../utils/llmScenarioFallbackToast";
 import { serializeChatMessagesForFollowup } from "../utils/followupSuggestions";
 import { tryParseReadFilePathFromToolArgs } from "../utils/readFileToolMeta";
 
@@ -189,11 +190,16 @@ export default function ChatView() {
     const id = ++followupReqIdRef.current;
     const s = useSettingsStore.getState().settings;
     try {
-      const rows = await invoke<string[]>("skilllite_followup_suggestions", {
-        transcript: text,
-        workspace: s.workspace || ".",
-        config: buildAssistantBridgeConfig(s),
-      });
+      const { result: rows } = await runWithScenarioFallbackNotified<string[]>(
+        s,
+        "followup",
+        (config) =>
+          invoke<string[]>("skilllite_followup_suggestions", {
+            transcript: text,
+            workspace: s.workspace || ".",
+            config,
+          })
+      );
       if (id !== followupReqIdRef.current) return;
       const list = Array.isArray(rows)
         ? rows.map((x) => x.trim()).filter((x) => x.length > 0)
@@ -616,14 +622,20 @@ export default function ChatView() {
           `已启动进化，提案 ${proposalId} 已加入队列（queued）。` +
           "后续由后台进化调度执行；聊天会自动推送进度更新，也可在右侧「自进化 > 详情与审核」查看。";
         try {
-          const s = await invoke<{
+          const { result: s } = await runWithScenarioFallbackNotified<{
             unprocessed_decisions: number;
             pending_skill_count: number;
             last_run_ts: string | null;
-          }>("skilllite_load_evolution_status", {
-            workspace: settings.workspace || ".",
-            config: buildAssistantBridgeConfig(settings),
-          });
+          }>(settings, "evolution", (config) =>
+            invoke<{
+              unprocessed_decisions: number;
+              pending_skill_count: number;
+              last_run_ts: string | null;
+            }>("skilllite_load_evolution_status", {
+              workspace: settings.workspace || ".",
+              config,
+            })
+          );
           progressNotice += ` 当前未进化决策: ${s.unprocessed_decisions}，待确认技能: ${s.pending_skill_count}` +
             (s.last_run_ts ? `，上次进化运行: ${s.last_run_ts}` : "");
         } catch {
@@ -771,7 +783,7 @@ export default function ChatView() {
         ]);
         setLoading(true);
 
-        const config = buildAssistantBridgeConfig(settings);
+        const config = buildAssistantBridgeConfigForScenario(settings, "agent");
         const rpcImages =
           attachments.length > 0
             ? attachments.map(({ media_type, data_base64 }) => ({
@@ -824,6 +836,8 @@ export default function ChatView() {
       settings.maxIterations,
       settings.maxToolCallsPerTask,
       settings.locale,
+      settings.llmScenarioRoutingEnabled,
+      settings.llmScenarioRoutes,
       currentSessionKey,
       statusActions,
       t,

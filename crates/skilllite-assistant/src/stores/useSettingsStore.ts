@@ -6,6 +6,9 @@ export type UiLocale = "zh" | "en";
 
 export type Provider = "api" | "ollama";
 
+/** Scenario keys for local LLM routing; keep in sync with `LlmRouteScenario` in `utils/llmScenarioRouting.ts`. */
+export type LlmScenarioRouteKey = "agent" | "followup" | "lifePulse" | "evolution";
+
 /** 沙箱安全等级：1=无沙箱, 2=基础隔离, 3=完全沙箱(默认) */
 export type SandboxLevel = 1 | 2 | 3;
 
@@ -91,6 +94,18 @@ export interface Settings {
   evoCooldownHours?: number;
   /** 多模型/API 端点已保存配置（在设置保存或完成引导时自动合并）。 */
   llmProfiles?: LlmSavedProfile[];
+  /**
+   * 本地轻量场景路由：启用后，不同调用场景可选用 `llmProfiles` 中已保存的一条配置；
+   * 某场景未选择映射时仍使用当前主界面模型（provider/model/apiBase/apiKey）。
+   */
+  llmScenarioRoutingEnabled?: boolean;
+  /** 场景 → 已保存配置 id（`LlmSavedProfile.id`）。 */
+  llmScenarioRoutes?: Partial<Record<LlmScenarioRouteKey, string>>;
+  /**
+   * 场景 → 备用 `LlmSavedProfile.id` 列表（按顺序尝试）。
+   * 仅在 `llmScenarioRoutingEnabled` 为 true 时生效；非流式调用失败时由 runtime 顺序切换。
+   */
+  llmScenarioFallbacks?: Partial<Record<LlmScenarioRouteKey, string[]>>;
   /** 可选：Agent 出站 MCP（stdio）；每项可单独启用/禁用。 */
   mcpServers?: McpServerConfig[];
 }

@@ -17,6 +17,12 @@ import {
   removeLlmProfileWithSessionReselect,
 } from "../utils/llmProfiles";
 import {
+  LLM_ROUTE_SCENARIOS,
+  normalizeLlmScenarioRoutes,
+  type LlmRouteScenario,
+} from "../utils/llmScenarioRouting";
+import { normalizeLlmScenarioFallbacks } from "../utils/llmScenarioFallback";
+import {
   type ScheduleForm,
   emptyScheduleForm,
   parseScheduleJson,
@@ -100,6 +106,31 @@ interface OllamaProbeResult {
   available: boolean;
   models: string[];
   has_embedding: boolean;
+}
+
+/** Small chevron used in scenario routing selects to keep a consistent custom dropdown style. */
+function ScenarioSelectChevron() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-mute dark:text-ink-dark-mute"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="opacity-70"
+      >
+        <path d="m6 9 6 6 6-6" />
+      </svg>
+    </span>
+  );
 }
 
 interface AssistantUninstallInfo {
@@ -192,6 +223,21 @@ export default function SettingsModal({
     "inherit"
   );
   const [evoCooldownStr, setEvoCooldownStr] = useState("");
+  const [scenarioRoutingEnabled, setScenarioRoutingEnabled] = useState(false);
+  const [scenarioRoutes, setScenarioRoutes] = useState<
+    Partial<Record<LlmRouteScenario, string>>
+  >({});
+  const [scenarioFallbacks, setScenarioFallbacks] = useState<
+    Partial<Record<LlmRouteScenario, string[]>>
+  >({});
+  /** 哪些场景卡片当前展开；打开时按「有配置默认展开、无配置默认折叠」初始化。 */
+  const [expandedScenarios, setExpandedScenarios] = useState<
+    Partial<Record<LlmRouteScenario, boolean>>
+  >({});
+  /** 在备用列表为空时，是否已点过「+ 添加备用」临时展开了添加器。 */
+  const [addingFallbackFor, setAddingFallbackFor] = useState<
+    Partial<Record<LlmRouteScenario, boolean>>
+  >({});
 
   const [activeTab, setActiveTab] = useState<SettingsTabId>("llm");
   const [scheduleData, setScheduleData] = useState<ScheduleForm | null>(null);
@@ -319,6 +365,24 @@ export default function SettingsModal({
       );
       setEvoProfileChoice(settings.evoProfile ?? "inherit");
       setEvoCooldownStr(settings.evoCooldownHours != null ? String(settings.evoCooldownHours) : "");
+      setScenarioRoutingEnabled(settings.llmScenarioRoutingEnabled === true);
+      const initRoutes = { ...(settings.llmScenarioRoutes ?? {}) };
+      setScenarioRoutes(initRoutes);
+      const initFallbacks = Object.fromEntries(
+        Object.entries(settings.llmScenarioFallbacks ?? {}).map(([k, v]) => [
+          k,
+          Array.isArray(v) ? [...v] : [],
+        ])
+      ) as Partial<Record<LlmRouteScenario, string[]>>;
+      setScenarioFallbacks(initFallbacks);
+      const initExpanded: Partial<Record<LlmRouteScenario, boolean>> = {};
+      for (const sc of LLM_ROUTE_SCENARIOS) {
+        const hasPrimary = !!initRoutes[sc]?.trim();
+        const hasFallback = (initFallbacks[sc]?.length ?? 0) > 0;
+        if (hasPrimary || hasFallback) initExpanded[sc] = true;
+      }
+      setExpandedScenarios(initExpanded);
+      setAddingFallbackFor({});
       setOllamaProbe(null);
       setScheduleLoadError(null);
       setScheduleData(null);
@@ -471,6 +535,9 @@ export default function SettingsModal({
         evoProfileChoice === "inherit" ? undefined : (evoProfileChoice as "demo" | "conservative"),
       evoCooldownHours: parseCooldownHoursField(evoCooldownStr),
       mcpServers,
+      llmScenarioRoutingEnabled: scenarioRoutingEnabled,
+      llmScenarioRoutes: normalizeLlmScenarioRoutes(scenarioRoutes),
+      llmScenarioFallbacks: normalizeLlmScenarioFallbacks(scenarioFallbacks),
     };
     if (provider === "ollama") {
       const m = model.trim() || "llama3.2";
@@ -841,6 +908,272 @@ export default function SettingsModal({
               </ul>
             </div>
           )}
+
+          <div className="rounded-lg border border-border dark:border-border-dark px-3 py-2.5 space-y-2">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={scenarioRoutingEnabled}
+                onChange={(e) => setScenarioRoutingEnabled(e.target.checked)}
+                className="mt-0.5 rounded border-border dark:border-border-dark"
+              />
+              <span className="text-sm font-medium text-ink dark:text-ink-dark">
+                {t("settings.llmScenarioRoutingEnable")}
+              </span>
+            </label>
+            <p className="text-xs text-ink-mute dark:text-ink-dark-mute pl-6 -mt-1">
+              {t("settings.llmScenarioRoutingHint")}
+            </p>
+            {scenarioRoutingEnabled && (
+              <div className="space-y-2 pl-6 pt-1 border-t border-border/60 dark:border-border-dark/60">
+                {(settings.llmProfiles?.length ?? 0) === 0 ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    {t("settings.llmScenarioRoutingNoProfiles")}
+                  </p>
+                ) : (
+                  LLM_ROUTE_SCENARIOS.map((sc) => {
+                    const primaryId = scenarioRoutes[sc] ?? "";
+                    const fbList = scenarioFallbacks[sc] ?? [];
+                    const allProfiles = settings.llmProfiles ?? [];
+                    const isStreamingScenario = sc === "agent";
+                    const primaryProfile = primaryId
+                      ? allProfiles.find((p) => p.id === primaryId)
+                      : null;
+                    const hasAnyConfig = !!primaryId || fbList.length > 0;
+                    const isExpanded = expandedScenarios[sc] ?? hasAnyConfig;
+                    /** 仅当已经有备用值，或本次会话里点过「+」时，才显示备用编辑区。 */
+                    const showFallbackEditor =
+                      fbList.length > 0 || (addingFallbackFor[sc] ?? false);
+                    const candidateForAdd = allProfiles.filter(
+                      (p) => p.id !== primaryId && !fbList.includes(p.id)
+                    );
+                    const summaryText = primaryProfile
+                      ? formatProfileShortLabel(primaryProfile)
+                      : t("settings.llmScenarioCardSummaryDefault");
+                    const updateFallbacks = (
+                      mut: (prev: string[]) => string[]
+                    ): void => {
+                      setScenarioFallbacks((prev) => {
+                        const next = { ...prev };
+                        const updated = mut(prev[sc] ?? []);
+                        if (updated.length === 0) {
+                          delete next[sc];
+                        } else {
+                          next[sc] = updated;
+                        }
+                        return next;
+                      });
+                    };
+                    const setExpanded = (open: boolean): void =>
+                      setExpandedScenarios((prev) => ({ ...prev, [sc]: open }));
+                    return (
+                      <div
+                        key={sc}
+                        className="rounded-md border border-border/70 dark:border-border-dark/70 bg-white/40 dark:bg-white/[0.02] overflow-hidden"
+                      >
+                        <div className="flex items-stretch">
+                          <button
+                            type="button"
+                            onClick={() => setExpanded(!isExpanded)}
+                            aria-expanded={isExpanded}
+                            className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-ink/[0.025] dark:hover:bg-white/[0.04]"
+                          >
+                            <span
+                              aria-hidden
+                              className="shrink-0 w-3 text-[10px] tabular-nums text-ink-mute dark:text-ink-dark-mute"
+                            >
+                              {isExpanded ? "▾" : "▸"}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink dark:text-ink-dark">
+                              {t(`settings.llmScenarioRoute.${sc}`)}
+                            </span>
+                            <span className="flex shrink-0 items-center gap-1.5 max-w-[16rem]">
+                              <span
+                                className={`truncate text-xs ${
+                                  primaryProfile
+                                    ? "text-ink dark:text-ink-dark"
+                                    : "text-ink-mute dark:text-ink-dark-mute"
+                                }`}
+                                title={summaryText}
+                              >
+                                {summaryText}
+                              </span>
+                              {fbList.length > 0 && (
+                                <span
+                                  className="shrink-0 rounded-full border border-border dark:border-border-dark px-1.5 py-px text-[10px] tabular-nums text-ink-mute dark:text-ink-dark-mute"
+                                  title={t(
+                                    "settings.llmScenarioCardFallbackBadgeTitle",
+                                    { n: fbList.length }
+                                  )}
+                                >
+                                  +{fbList.length}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                          {isExpanded && !showFallbackEditor && candidateForAdd.length > 0 && (
+                            <button
+                              type="button"
+                              title={t("settings.llmScenarioFallbackEnableLink")}
+                              aria-label={t("settings.llmScenarioFallbackEnableLink")}
+                              onClick={() =>
+                                setAddingFallbackFor((prev) => ({ ...prev, [sc]: true }))
+                              }
+                              className="shrink-0 px-2 text-ink-mute hover:bg-ink/[0.04] hover:text-ink dark:text-ink-dark-mute dark:hover:bg-white/[0.06] dark:hover:text-ink-dark"
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden
+                              >
+                                <path d="M12 5v14" />
+                                <path d="M5 12h14" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {isExpanded && (
+                          <div className="space-y-2 border-t border-border/60 dark:border-border-dark/60 px-2.5 pt-2 pb-2.5">
+                            {isStreamingScenario && (
+                              <p className="text-[11px] italic text-amber-600 dark:text-amber-400">
+                                {t("settings.llmScenarioFallbackStreamingNote")}
+                              </p>
+                            )}
+                            <div className="relative">
+                              <select
+                                className={`${inputCls} cursor-pointer appearance-none pr-9`}
+                                value={primaryId}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setScenarioRoutes((prev) => {
+                                    const next = { ...prev };
+                                    if (!v) {
+                                      delete next[sc];
+                                    } else {
+                                      next[sc] = v;
+                                    }
+                                    return next;
+                                  });
+                                  if (v) {
+                                    updateFallbacks((prev) =>
+                                      prev.filter((id) => id !== v)
+                                    );
+                                  }
+                                }}
+                              >
+                                <option value="">
+                                  {t("settings.llmScenarioRouteDefault")}
+                                </option>
+                                {allProfiles.map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    {formatProfileShortLabel(p)}
+                                  </option>
+                                ))}
+                              </select>
+                              <ScenarioSelectChevron />
+                            </div>
+                            {showFallbackEditor && (
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <div className="text-[11px] text-ink-mute dark:text-ink-dark-mute">
+                                    {t("settings.llmScenarioFallbackHeading")}
+                                  </div>
+                                  {fbList.length === 0 && (
+                                    <button
+                                      type="button"
+                                      className="text-[11px] text-ink-mute hover:text-ink dark:text-ink-dark-mute dark:hover:text-ink-dark"
+                                      onClick={() =>
+                                        setAddingFallbackFor((prev) => {
+                                          const next = { ...prev };
+                                          delete next[sc];
+                                          return next;
+                                        })
+                                      }
+                                    >
+                                      {t("settings.llmScenarioFallbackHideEditor")}
+                                    </button>
+                                  )}
+                                </div>
+                                {fbList.length > 0 && (
+                                  <ul className="flex flex-wrap gap-1.5">
+                                    {fbList.map((fid, idx) => {
+                                      const p = allProfiles.find((x) => x.id === fid);
+                                      const label = p ? formatProfileShortLabel(p) : fid;
+                                      return (
+                                        <li
+                                          key={`${fid}-${idx}`}
+                                          className="inline-flex items-center gap-1 rounded-full border border-border dark:border-border-dark bg-ink/[0.03] dark:bg-white/[0.04] px-2 py-0.5 text-xs text-ink dark:text-ink-dark"
+                                        >
+                                          <span className="text-ink-mute dark:text-ink-dark-mute">
+                                            {idx + 1}.
+                                          </span>
+                                          <span className="max-w-[16rem] truncate">{label}</span>
+                                          <button
+                                            type="button"
+                                            aria-label={t(
+                                              "settings.llmScenarioFallbackRemoveAria"
+                                            )}
+                                            className="ml-0.5 rounded px-1 text-ink-mute hover:bg-red-50 hover:text-red-600 dark:text-ink-dark-mute dark:hover:bg-red-900/25 dark:hover:text-red-400"
+                                            onClick={() =>
+                                              updateFallbacks((prev) =>
+                                                prev.filter((x) => x !== fid)
+                                              )
+                                            }
+                                          >
+                                            ×
+                                          </button>
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                )}
+                                {candidateForAdd.length > 0 ? (
+                                  <div className="relative">
+                                    <select
+                                      className={`${inputCls} cursor-pointer appearance-none pr-9`}
+                                      value=""
+                                      onChange={(e) => {
+                                        const v = e.target.value;
+                                        if (!v) return;
+                                        updateFallbacks((prev) =>
+                                          prev.includes(v) ? prev : [...prev, v]
+                                        );
+                                      }}
+                                    >
+                                      <option value="">
+                                        {t("settings.llmScenarioFallbackAddPlaceholder")}
+                                      </option>
+                                      {candidateForAdd.map((p) => (
+                                        <option key={p.id} value={p.id}>
+                                          {formatProfileShortLabel(p)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <ScenarioSelectChevron />
+                                  </div>
+                                ) : (
+                                  <p className="text-[11px] text-ink-mute dark:text-ink-dark-mute">
+                                    {t("settings.llmScenarioFallbackAllAddedHint")}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
 
           <section
             className="rounded-lg border border-border/70 dark:border-border-dark/70 bg-ink/[0.02] dark:bg-white/[0.03] px-2.5 py-2"
