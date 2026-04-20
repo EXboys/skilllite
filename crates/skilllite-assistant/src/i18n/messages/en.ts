@@ -214,6 +214,8 @@ export const enMessages: Record<string, string> = {
   "toast.lifePulseWsFailed": "Failed to sync Life Pulse workspace: {err}",
   "toast.openDirFailed": "Failed to open folder: {err}",
   "toast.revealFmFailed": "Could not reveal in file manager: {err}",
+  "toast.llmScenarioRefsCleaned":
+    "Cleaned {n} stale routing reference(s) (primary {primary}, fallback {fallback})",
 
   "lifePulse.growthStarted": "Evolving…",
   "lifePulse.growthDone": "Learned something new",

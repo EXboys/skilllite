@@ -19,6 +19,10 @@ import {
   parseDetailWorkspaceFromUrl,
   type EvolutionDetailTab,
 } from "../utils/detailWindow";
+import {
+  type StructuredLlmInvokeResult,
+  unwrapStructuredLlmInvokeResult,
+} from "../utils/llmScenarioFallback";
 import { runWithScenarioFallbackNotified } from "../utils/llmScenarioFallbackToast";
 import { useI18n } from "../i18n";
 import type { Locale } from "../i18n/translate";
@@ -685,10 +689,13 @@ function useEvolutionStatus() {
         settings,
         "evolution",
         (config) =>
-          invoke<EvolutionStatusPayload>("skilllite_load_evolution_status", {
-            workspace,
-            config,
-          })
+          invoke<StructuredLlmInvokeResult<EvolutionStatusPayload>>(
+            "skilllite_load_evolution_status",
+            {
+              workspace,
+              config,
+            }
+          ).then(unwrapStructuredLlmInvokeResult)
       );
       setStatus(s);
     } catch (e) {
@@ -1463,11 +1470,14 @@ export function EvolutionDetailBody({
                           settings,
                           "evolution",
                           (config) =>
-                            invoke<string>("skilllite_trigger_evolution_run", {
-                              workspace,
-                              proposalId: row.proposal_id,
-                              config,
-                            })
+                            invoke<StructuredLlmInvokeResult<string>>(
+                              "skilllite_trigger_evolution_run",
+                              {
+                                workspace,
+                                proposalId: row.proposal_id,
+                                config,
+                              }
+                            ).then(unwrapStructuredLlmInvokeResult)
                         );
                         setTriggerResultByProposal((prev) => ({
                           ...prev,

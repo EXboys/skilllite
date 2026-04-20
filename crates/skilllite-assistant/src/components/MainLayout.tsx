@@ -15,7 +15,10 @@ import OnboardingModal from "./OnboardingModal";
 import IdePanelResizeHandle from "./IdePanelResizeHandle";
 import { useRecentData } from "../hooks/useRecentData";
 import { useSettingsStore } from "../stores/useSettingsStore";
-import { persistCurrentLlmAsProfile } from "../utils/llmProfiles";
+import {
+  cleanupLlmScenarioProfileReferences,
+  persistCurrentLlmAsProfile,
+} from "../utils/llmProfiles";
 import { useIdeFileOpenerStore } from "../stores/useIdeFileOpenerStore";
 import { useSessionStore } from "../stores/useSessionStore";
 import { useUiToastStore } from "../stores/useUiToastStore";
@@ -61,15 +64,40 @@ export default function MainLayout() {
   useEffect(() => {
     const bootstrapProfiles = () => {
       const { settings: s, setSettings: patch } = useSettingsStore.getState();
-      if ((s.llmProfiles?.length ?? 0) > 0) return;
-      const next = persistCurrentLlmAsProfile(s.llmProfiles, {
-        provider: s.provider,
-        model: s.model,
-        apiBase: s.apiBase,
-        apiKey: s.apiKey,
-      });
-      if (next.length > 0) {
-        patch({ llmProfiles: next });
+      let llmProfiles = s.llmProfiles;
+      if ((s.llmProfiles?.length ?? 0) === 0) {
+        const next = persistCurrentLlmAsProfile(s.llmProfiles, {
+          provider: s.provider,
+          model: s.model,
+          apiBase: s.apiBase,
+          apiKey: s.apiKey,
+        });
+        if (next.length > 0) {
+          llmProfiles = next;
+          patch({ llmProfiles: next });
+        }
+      }
+      const cleaned = cleanupLlmScenarioProfileReferences(
+        llmProfiles,
+        s.llmScenarioRoutes,
+        s.llmScenarioFallbacks
+      );
+      if (cleaned.changed) {
+        patch({
+          llmScenarioRoutes: cleaned.llmScenarioRoutes,
+          llmScenarioFallbacks: cleaned.llmScenarioFallbacks,
+        });
+        const removed = cleaned.removedPrimaryRefs + cleaned.removedFallbackRefs;
+        if (removed > 0) {
+          useUiToastStore.getState().show(
+            t("toast.llmScenarioRefsCleaned", {
+              n: removed,
+              primary: cleaned.removedPrimaryRefs,
+              fallback: cleaned.removedFallbackRefs,
+            }),
+            "info"
+          );
+        }
       }
     };
     const unsub = useSettingsStore.persist.onFinishHydration(() => {
@@ -79,7 +107,7 @@ export default function MainLayout() {
       bootstrapProfiles();
     }
     return unsub;
-  }, []);
+  }, [t]);
 
   const currentSessionKey = useSessionStore((s) => s.currentSessionKey);
   const leftPanelCollapsed = settings.sessionPanelCollapsed ?? false;

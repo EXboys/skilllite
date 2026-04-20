@@ -14,7 +14,7 @@ import {
   findSavedProfileForModel,
   formatProfileShortLabel,
   persistCurrentLlmAsProfile,
-  removeLlmProfileWithSessionReselect,
+  removeLlmProfileWithRoutingCleanup,
 } from "../utils/llmProfiles";
 import {
   LLM_ROUTE_SCENARIOS,
@@ -31,6 +31,7 @@ import {
 } from "../utils/scheduleForm";
 import { useI18n } from "../i18n";
 import { useStatusStore } from "../stores/useStatusStore";
+import { useUiToastStore } from "../stores/useUiToastStore";
 import type { AssistantSettingsTabId } from "../contexts/AssistantChromeContext";
 import EnvironmentSettingsSection from "./EnvironmentSettingsSection";
 import { SettingsNavIcon } from "./settings/SettingsNavIcon";
@@ -891,14 +892,35 @@ export default function SettingsModal({
                       aria-label={t("chat.modelQuickSwitchRemoveSaved")}
                       className="shrink-0 rounded-md px-2 py-1 text-sm leading-none text-ink-mute hover:bg-red-50 hover:text-red-600 dark:text-ink-dark-mute dark:hover:bg-red-900/25 dark:hover:text-red-400"
                       onClick={() =>
-                        setSettings(
-                          removeLlmProfileWithSessionReselect(settings.llmProfiles, p.id, {
+                        (() => {
+                          const next = removeLlmProfileWithRoutingCleanup(
+                            settings.llmProfiles,
+                            p.id,
+                            {
                             provider: settings.provider,
                             model: settings.model,
                             apiBase: settings.apiBase,
                             apiKey: settings.apiKey,
-                          })
-                        )
+                            },
+                            {
+                              llmScenarioRoutes: settings.llmScenarioRoutes,
+                              llmScenarioFallbacks: settings.llmScenarioFallbacks,
+                            }
+                          );
+                          const { removedPrimaryRefs, removedFallbackRefs, ...patch } = next;
+                          setSettings(patch);
+                          const removed = removedPrimaryRefs + removedFallbackRefs;
+                          if (removed > 0) {
+                            useUiToastStore.getState().show(
+                              t("toast.llmScenarioRefsCleaned", {
+                                n: removed,
+                                primary: removedPrimaryRefs,
+                                fallback: removedFallbackRefs,
+                              }),
+                              "info"
+                            );
+                          }
+                        })()
                       }
                     >
                       ×

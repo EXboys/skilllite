@@ -1,4 +1,15 @@
-import type { LlmSavedProfile, Provider } from "../stores/useSettingsStore";
+import type {
+  LlmSavedProfile,
+  LlmScenarioRouteKey,
+  Provider,
+} from "../stores/useSettingsStore";
+
+const LLM_SCENARIO_ROUTE_KEYS: readonly LlmScenarioRouteKey[] = [
+  "agent",
+  "followup",
+  "lifePulse",
+  "evolution",
+] as const;
 
 function normModel(m: string): string {
   return m.trim();
@@ -157,6 +168,74 @@ export type LlmSessionPatch = Pick<
   "provider" | "model" | "apiBase" | "apiKey"
 >;
 
+export interface LlmScenarioReferenceCleanup {
+  llmScenarioRoutes?: Partial<Record<LlmScenarioRouteKey, string>>;
+  llmScenarioFallbacks?: Partial<Record<LlmScenarioRouteKey, string[]>>;
+  removedPrimaryRefs: number;
+  removedFallbackRefs: number;
+  changed: boolean;
+}
+
+/**
+ * Remove stale scenario route/fallback references that point to missing saved profiles.
+ * Keeps only ids that still exist in `list`, preserving order of valid fallback ids.
+ */
+export function cleanupLlmScenarioProfileReferences(
+  list: LlmSavedProfile[] | undefined,
+  routes: Partial<Record<LlmScenarioRouteKey, string>> | undefined,
+  fallbacks: Partial<Record<LlmScenarioRouteKey, string[]>> | undefined
+): LlmScenarioReferenceCleanup {
+  const validIds = new Set((list ?? []).map((p) => p.id));
+  const nextRoutes: Partial<Record<LlmScenarioRouteKey, string>> = {};
+  const nextFallbacks: Partial<Record<LlmScenarioRouteKey, string[]>> = {};
+  let removedPrimaryRefs = 0;
+  let removedFallbackRefs = 0;
+
+  for (const key of LLM_SCENARIO_ROUTE_KEYS) {
+    const routeId = routes?.[key]?.trim() ?? "";
+    if (routeId) {
+      if (validIds.has(routeId)) {
+        nextRoutes[key] = routeId;
+      } else {
+        removedPrimaryRefs += 1;
+      }
+    }
+
+    const rawFallbacks = fallbacks?.[key] ?? [];
+    const keptFallbacks: string[] = [];
+    for (const raw of rawFallbacks) {
+      const id = raw?.trim();
+      if (!id) continue;
+      if (!validIds.has(id)) {
+        removedFallbackRefs += 1;
+        continue;
+      }
+      if (id === routeId || keptFallbacks.includes(id)) continue;
+      keptFallbacks.push(id);
+    }
+    if (keptFallbacks.length > 0) {
+      nextFallbacks[key] = keptFallbacks;
+    }
+  }
+
+  const hadRouteKeys = Object.keys(routes ?? {}).length > 0;
+  const hadFallbackKeys = Object.keys(fallbacks ?? {}).length > 0;
+  const changed =
+    removedPrimaryRefs > 0 ||
+    removedFallbackRefs > 0 ||
+    (hadRouteKeys && Object.keys(nextRoutes).length === 0) ||
+    (hadFallbackKeys && Object.keys(nextFallbacks).length === 0);
+
+  return {
+    llmScenarioRoutes: Object.keys(nextRoutes).length > 0 ? nextRoutes : undefined,
+    llmScenarioFallbacks:
+      Object.keys(nextFallbacks).length > 0 ? nextFallbacks : undefined,
+    removedPrimaryRefs,
+    removedFallbackRefs,
+    changed,
+  };
+}
+
 /**
  * 删除一条已保存配置；若删除的是当前会话正在使用的那条，则切换到剩余列表中的第一条
  * （优先仍可在快捷切换中展示的项），若无剩余则回落到应用默认 LLM 字段。
@@ -184,6 +263,35 @@ export function removeLlmProfileWithSessionReselect(
   return {
     llmProfiles: nextList,
     ...DEFAULT_LLM_SESSION,
+  };
+}
+
+export function removeLlmProfileWithRoutingCleanup(
+  list: LlmSavedProfile[] | undefined,
+  removeId: string,
+  current: LlmSessionPatch,
+  routing: {
+    llmScenarioRoutes?: Partial<Record<LlmScenarioRouteKey, string>>;
+    llmScenarioFallbacks?: Partial<Record<LlmScenarioRouteKey, string[]>>;
+  }
+): ({
+  llmProfiles: LlmSavedProfile[];
+} & Partial<LlmSessionPatch> & {
+    llmScenarioRoutes?: Partial<Record<LlmScenarioRouteKey, string>>;
+    llmScenarioFallbacks?: Partial<Record<LlmScenarioRouteKey, string[]>>;
+  } & Pick<LlmScenarioReferenceCleanup, "removedPrimaryRefs" | "removedFallbackRefs">) {
+  const sessionPatch = removeLlmProfileWithSessionReselect(list, removeId, current);
+  const cleaned = cleanupLlmScenarioProfileReferences(
+    sessionPatch.llmProfiles,
+    routing.llmScenarioRoutes,
+    routing.llmScenarioFallbacks
+  );
+  return {
+    ...sessionPatch,
+    llmScenarioRoutes: cleaned.llmScenarioRoutes,
+    llmScenarioFallbacks: cleaned.llmScenarioFallbacks,
+    removedPrimaryRefs: cleaned.removedPrimaryRefs,
+    removedFallbackRefs: cleaned.removedFallbackRefs,
   };
 }
 

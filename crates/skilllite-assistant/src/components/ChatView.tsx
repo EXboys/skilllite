@@ -18,7 +18,7 @@ import {
   formatProfileShortLabel,
   listProfilesForQuickSwitch,
   matchActiveProfileId,
-  removeLlmProfileWithSessionReselect,
+  removeLlmProfileWithRoutingCleanup,
 } from "../utils/llmProfiles";
 import { useAssistantChrome } from "../contexts/AssistantChromeContext";
 import { MessageList } from "./chat/MessageList";
@@ -112,7 +112,13 @@ import {
   isEvolutionNoMaterialChanges,
 } from "../utils/evolutionDisplay";
 import { buildAssistantBridgeConfigForScenario } from "../utils/llmScenarioRouting";
-import { runWithScenarioFallbackNotified } from "../utils/llmScenarioFallbackToast";
+import {
+  runWithScenarioFallbackNotified,
+} from "../utils/llmScenarioFallbackToast";
+import {
+  type StructuredLlmInvokeResult,
+  unwrapStructuredLlmInvokeResult,
+} from "../utils/llmScenarioFallback";
 import { serializeChatMessagesForFollowup } from "../utils/followupSuggestions";
 import { tryParseReadFilePathFromToolArgs } from "../utils/readFileToolMeta";
 
@@ -194,11 +200,11 @@ export default function ChatView() {
         s,
         "followup",
         (config) =>
-          invoke<string[]>("skilllite_followup_suggestions", {
+          invoke<StructuredLlmInvokeResult<string[]>>("skilllite_followup_suggestions", {
             transcript: text,
             workspace: s.workspace || ".",
             config,
-          })
+          }).then(unwrapStructuredLlmInvokeResult)
       );
       if (id !== followupReqIdRef.current) return;
       const list = Array.isArray(rows)
@@ -627,14 +633,16 @@ export default function ChatView() {
             pending_skill_count: number;
             last_run_ts: string | null;
           }>(settings, "evolution", (config) =>
-            invoke<{
-              unprocessed_decisions: number;
-              pending_skill_count: number;
-              last_run_ts: string | null;
-            }>("skilllite_load_evolution_status", {
+            invoke<
+              StructuredLlmInvokeResult<{
+                unprocessed_decisions: number;
+                pending_skill_count: number;
+                last_run_ts: string | null;
+              }>
+            >("skilllite_load_evolution_status", {
               workspace: settings.workspace || ".",
               config,
-            })
+            }).then(unwrapStructuredLlmInvokeResult)
           );
           progressNotice += ` 当前未进化决策: ${s.unprocessed_decisions}，待确认技能: ${s.pending_skill_count}` +
             (s.last_run_ts ? `，上次进化运行: ${s.last_run_ts}` : "");
@@ -1112,14 +1120,33 @@ export default function ChatView() {
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        setSettings(
-                          removeLlmProfileWithSessionReselect(settings.llmProfiles, p.id, {
+                        const next = removeLlmProfileWithRoutingCleanup(
+                          settings.llmProfiles,
+                          p.id,
+                          {
                             provider: settings.provider,
                             model: settings.model,
                             apiBase: settings.apiBase,
                             apiKey: settings.apiKey,
-                          })
+                          },
+                          {
+                            llmScenarioRoutes: settings.llmScenarioRoutes,
+                            llmScenarioFallbacks: settings.llmScenarioFallbacks,
+                          }
                         );
+                        const { removedPrimaryRefs, removedFallbackRefs, ...patch } = next;
+                        setSettings(patch);
+                        const removed = removedPrimaryRefs + removedFallbackRefs;
+                        if (removed > 0) {
+                          useUiToastStore.getState().show(
+                            t("toast.llmScenarioRefsCleaned", {
+                              n: removed,
+                              primary: removedPrimaryRefs,
+                              fallback: removedFallbackRefs,
+                            }),
+                            "info"
+                          );
+                        }
                       }}
                     >
                       ×

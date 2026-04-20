@@ -81,8 +81,13 @@ async fn skilllite_followup_suggestions(
     transcript: String,
     workspace: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
-) -> Result<Vec<String>, String> {
-    skilllite_bridge::followup_chat_suggestions(transcript, workspace, config).await
+) -> skilllite_bridge::LlmInvokeResult<Vec<String>> {
+    match skilllite_bridge::followup_chat_suggestions(transcript, workspace, config).await {
+        Ok(rows) => skilllite_bridge::LlmInvokeResult::ok(rows),
+        Err(err) => skilllite_bridge::LlmInvokeResult::err(
+            skilllite_bridge::classify_llm_routing_error_message(&err),
+        ),
+    }
 }
 
 #[tauri::command]
@@ -382,14 +387,22 @@ async fn skilllite_load_evolution_status(
     workspace: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
     life_pulse: tauri::State<'_, life_pulse::LifePulseState>,
-) -> Result<skilllite_bridge::EvolutionStatusPayload, String> {
+) -> skilllite_bridge::LlmInvokeResult<skilllite_bridge::EvolutionStatusPayload> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
     let periodic_anchor_unix = life_pulse.periodic_anchor_unix();
-    tauri::async_runtime::spawn_blocking(move || {
+    match tauri::async_runtime::spawn_blocking(move || {
         skilllite_bridge::load_evolution_status(&ws, config, periodic_anchor_unix)
     })
     .await
-    .map_err(|e| format!("{}", e))
+    {
+        Ok(Ok(payload)) => skilllite_bridge::LlmInvokeResult::ok(payload),
+        Ok(Err(err)) => skilllite_bridge::LlmInvokeResult::err(
+            skilllite_bridge::classify_llm_routing_error_message(&err),
+        ),
+        Err(err) => skilllite_bridge::LlmInvokeResult::err(
+            skilllite_bridge::classify_llm_routing_error_message(&err.to_string()),
+        ),
+    }
 }
 
 #[tauri::command]
@@ -499,10 +512,10 @@ async fn skilllite_trigger_evolution_run(
     workspace: Option<String>,
     proposal_id: Option<String>,
     config: Option<skilllite_bridge::ChatConfigOverrides>,
-) -> Result<String, String> {
+) -> skilllite_bridge::LlmInvokeResult<String> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
     let skilllite_path = skilllite_bridge::resolve_skilllite_path_app(&app);
-    tauri::async_runtime::spawn_blocking(move || {
+    match tauri::async_runtime::spawn_blocking(move || {
         skilllite_bridge::trigger_evolution_run(
             &ws,
             proposal_id.as_deref(),
@@ -511,7 +524,15 @@ async fn skilllite_trigger_evolution_run(
         )
     })
     .await
-    .map_err(|e| e.to_string())?
+    {
+        Ok(Ok(out)) => skilllite_bridge::LlmInvokeResult::ok(out),
+        Ok(Err(err)) => skilllite_bridge::LlmInvokeResult::err(
+            skilllite_bridge::classify_llm_routing_error_message(&err),
+        ),
+        Err(err) => skilllite_bridge::LlmInvokeResult::err(
+            skilllite_bridge::classify_llm_routing_error_message(&err.to_string()),
+        ),
+    }
 }
 
 #[tauri::command]

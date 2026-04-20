@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-20 (TASK-2026-038 LLM scenario runtime fallback MVP-A done)
+Last updated: 2026-04-20 (TASK-2026-041 fallback logic tests done)
 
 ## In Progress
 
@@ -16,6 +16,9 @@ Last updated: 2026-04-20 (TASK-2026-038 LLM scenario runtime fallback MVP-A done
 
 ## Done
 
+- `TASK-2026-041-llm-fallback-tests` - Status: `done` - Owner: `maintainer`
+- `TASK-2026-040-llm-profile-reference-cleanup` - Status: `done` - Owner: `maintainer`
+- `TASK-2026-039-llm-structured-error-classification` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-038-llm-scenario-fallback` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-037-llm-scenario-routing` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-036-agent-mcp-client` - Status: `done` - Owner: `maintainer`

@@ -201,6 +201,8 @@ export const zhMessages: Record<string, string> = {
   "toast.lifePulseWsFailed": "同步生命脉冲工作区失败：{err}",
   "toast.openDirFailed": "打开目录失败：{err}",
   "toast.revealFmFailed": "无法在文件管理器中显示：{err}",
+  "toast.llmScenarioRefsCleaned":
+    "已清理 {n} 个失效路由引用（主配置 {primary}，备用 {fallback}）",
 
   "lifePulse.growthStarted": "正在进化…",
   "lifePulse.growthDone": "学到了新东西",

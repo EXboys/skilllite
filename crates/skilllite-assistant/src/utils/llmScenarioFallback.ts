@@ -55,6 +55,30 @@ export interface ScenarioFallbackInfo<T> {
   switched: boolean;
 }
 
+/** Structured LLM routing error returned by Tauri bridge commands. */
+export interface StructuredLlmRoutingError {
+  kind:
+    | "missing_api_key"
+    | "auth_invalid"
+    | "permission_denied"
+    | "model_not_found"
+    | "invalid_request"
+    | "rate_limited"
+    | "provider_unavailable"
+    | "network_timeout"
+    | "network_unavailable"
+    | "unknown";
+  retryable: boolean;
+  message: string;
+}
+
+/** Non-throwing result envelope for routing-aware Tauri commands. */
+export interface StructuredLlmInvokeResult<T> {
+  ok: boolean;
+  data?: T;
+  error?: StructuredLlmRoutingError;
+}
+
 interface CandidateEntry {
   profileId: string | null;
   isPrimary: boolean;
@@ -149,6 +173,9 @@ const RETRYABLE_PATTERNS: readonly RegExp[] = [
  * silently switch profiles for genuine misconfiguration.
  */
 export function isRetryableLlmError(err: unknown): boolean {
+  if (err && typeof err === "object" && "retryable" in err) {
+    return (err as { retryable?: unknown }).retryable === true;
+  }
   const msg =
     err == null
       ? ""
@@ -165,6 +192,24 @@ export function isRetryableLlmError(err: unknown): boolean {
             })();
   if (!msg) return false;
   return RETRYABLE_PATTERNS.some((re) => re.test(msg));
+}
+
+/** Throws the embedded structured error so the existing fallback loop can inspect it. */
+export function unwrapStructuredLlmInvokeResult<T>(res: StructuredLlmInvokeResult<T>): T {
+  if (res.ok) {
+    return res.data as T;
+  }
+  const err = res.error ?? {
+    kind: "unknown",
+    retryable: false,
+    message: "Structured LLM invoke returned ok=false without error payload",
+  };
+  const wrapped = new Error(err.message) as Error & StructuredLlmRoutingError;
+  wrapped.kind = err.kind;
+  wrapped.retryable = err.retryable;
+  return (() => {
+    throw wrapped;
+  })();
 }
 
 export interface RunWithFallbackOptions {
