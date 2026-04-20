@@ -17,7 +17,7 @@
 
 | English | 中文 |
 |---------|------|
-| **[📗 English Docs](./README.md)** · [Pick your path](./docs/en/START_PATHS.md) · [Getting Started](./docs/en/GETTING_STARTED.md) · [Architecture](./docs/en/ARCHITECTURE.md) · [Env Reference](./docs/en/ENV_REFERENCE.md) · [Contributing](./docs/en/CONTRIBUTING.md) | **[📘 中文文档](./docs/zh/README.md)** · [选择路径](./docs/zh/START_PATHS.md) · [入门指南](./docs/zh/GETTING_STARTED.md) · [架构说明](./docs/zh/ARCHITECTURE.md) · [环境变量](./docs/zh/ENV_REFERENCE.md) · [贡献指南](./docs/zh/CONTRIBUTING.md) |
+| **[📗 English Docs](./README.md)** · [Pick path](./docs/en/START_PATHS.md) · [Getting Started](./docs/en/GETTING_STARTED.md) · [Architecture](./docs/en/ARCHITECTURE.md) · [Env Reference](./docs/en/ENV_REFERENCE.md) · [Contributing](./docs/en/CONTRIBUTING.md) | **[📘 中文文档](./docs/zh/README.md)** · [选择路径](./docs/zh/START_PATHS.md) · [入门指南](./docs/zh/GETTING_STARTED.md) · [架构说明](./docs/zh/ARCHITECTURE.md) · [环境变量](./docs/zh/ENV_REFERENCE.md) · [贡献指南](./docs/zh/CONTRIBUTING.md) |
 
 </div>
 
