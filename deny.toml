@@ -1,9 +1,18 @@
-# cargo-deny — dependency policy for the SkillLite workspace.
-# Run: `cargo deny check bans` (see `.github/workflows/ci.yml`).
+# cargo-deny — dependency policy for SkillLite.
+# Run for the workspace:
+#   cargo deny check bans
+# Run for the Desktop manifest (excluded from the root workspace):
+#   cargo deny --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml check bans
 #
-# Layering rules match `spec/architecture-boundaries.md`:
-# entry (skilllite) -> commands -> agent -> executor -> sandbox -> core.
-# Workspace path crates `skilllite-*` must not be pulled from the wrong layer.
+# Layering rules track `spec/architecture-boundaries.md`:
+# entry (skilllite, skilllite-assistant, future MCP) -> services -> commands/agent -> executor -> sandbox -> core.
+#
+# Desktop note (Phase 0, D1 + D4, 2026-04-20):
+# `skilllite-assistant` (Tauri) is a first-class entry and may currently consume
+# `skilllite-{agent,sandbox,evolution}` directly; it is therefore listed as an
+# allowed wrapper for those denied crates. Future migrations (Phase 1+) move
+# shared flows behind `skilllite-services`, but those direct deps remain
+# permissible until the migration completes.
 
 [graph]
 # Resolve the same feature set CI builds with (full agent / artifact / swarm graph).
@@ -19,13 +28,17 @@ workspace-default-features = "warn"
 # This blocks lower layers from depending on upper layers (e.g. core -> agent).
 # Package names match Cargo.toml `name =` for each member.
 deny = [
-  { crate = "skilllite-agent", wrappers = ["skilllite", "skilllite-commands"], reason = "spec/architecture-boundaries.md — agent is above core/sandbox/executor" },
-  { crate = "skilllite-commands", wrappers = ["skilllite"], reason = "spec/architecture-boundaries.md — commands are entry-adjacent; agent must not depend on commands" },
-  { crate = "skilllite-executor", wrappers = ["skilllite", "skilllite-agent"], reason = "spec/architecture-boundaries.md — executor sits below agent" },
-  { crate = "skilllite-evolution", wrappers = ["skilllite-agent", "skilllite-commands"], reason = "evolution is orchestration; not a foundation crate (skilllite binary depends via commands)" },
-  { crate = "skilllite-artifact", wrappers = ["skilllite", "skilllite-agent"], reason = "artifact store is agent/entry concern" },
-  { crate = "skilllite-swarm", wrappers = ["skilllite"], reason = "swarm is optional entry feature" },
-  { crate = "skilllite-sandbox", wrappers = ["skilllite", "skilllite-agent", "skilllite-commands", "skilllite-evolution"], reason = "spec/architecture-boundaries.md — sandbox above core, below agent/commands/evolution" },
+  { crate = "skilllite-agent", wrappers = ["skilllite", "skilllite-commands", "skilllite-assistant", "skilllite-services"], reason = "spec/architecture-boundaries.md — agent is above core/sandbox/executor; assistant + services are first-class entry-side wrappers" },
+  { crate = "skilllite-commands", wrappers = ["skilllite", "skilllite-services"], reason = "spec/architecture-boundaries.md — commands are entry-adjacent; agent must not depend on commands; services may compose commands as a fallback during migration" },
+  { crate = "skilllite-executor", wrappers = ["skilllite", "skilllite-agent", "skilllite-services"], reason = "spec/architecture-boundaries.md — executor sits below agent" },
+  { crate = "skilllite-evolution", wrappers = ["skilllite-agent", "skilllite-commands", "skilllite-assistant", "skilllite-services"], reason = "evolution is orchestration; not a foundation crate (skilllite binary depends via commands; assistant Desktop bridge consumes it directly until Phase 2 migration)" },
+  { crate = "skilllite-artifact", wrappers = ["skilllite", "skilllite-agent", "skilllite-services"], reason = "artifact store is agent/entry concern" },
+  { crate = "skilllite-swarm", wrappers = ["skilllite", "skilllite-services"], reason = "swarm is optional entry feature" },
+  { crate = "skilllite-sandbox", wrappers = ["skilllite", "skilllite-agent", "skilllite-commands", "skilllite-evolution", "skilllite-assistant", "skilllite-services"], reason = "spec/architecture-boundaries.md — sandbox above core, below agent/commands/evolution; assistant is a first-class entry per D1 (2026-04-20)" },
+  # Phase 0 D2 (2026-04-20): pre-declare the boundary for the future
+  # `skilllite-services` crate. Until that crate exists in the graph the rule is
+  # inert; once it lands it must remain reachable only from entry-layer crates.
+  { crate = "skilllite-services", wrappers = ["skilllite", "skilllite-commands", "skilllite-assistant"], reason = "Phase 0 D2 — shared application service layer; only entry-layer crates may depend on it" },
 ]
 
 [bans.workspace-dependencies]

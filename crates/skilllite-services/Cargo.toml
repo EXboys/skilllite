@@ -1,0 +1,29 @@
+[package]
+name = "skilllite-services"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Shared application service layer for SkillLite — entry-neutral use case orchestration consumed by CLI, Desktop, and (future) MCP entries"
+keywords = ["agent", "ai", "services", "skills", "sandbox"]
+categories = ["development-tools"]
+
+# Phase 1A (TASK-2026-044, 2026-04-20) lands the first real service:
+# `WorkspaceService::resolve_skills_dir`. Future TASKs:
+#   * services-phase1b-runtime (RuntimeService — async, network)
+#   * services-phase2-evolution (EvolutionService — read + write split)
+# Design decisions live in `tasks/TASK-2026-042-services-phase0-decisions/CONTEXT.md`
+# (D1..D5: Desktop is first-class entry, services live here, async by default
+# with pragmatic sync exceptions for pure-local-IO services, per-crate
+# thiserror, deny.toml covers Desktop manifest, serde-serializable interfaces).
+
+[dependencies]
+skilllite-core = { path = "../skilllite-core", version = "0.1.27" }
+
+serde = { version = "1", features = ["derive"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"

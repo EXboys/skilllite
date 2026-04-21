@@ -2,6 +2,7 @@
 
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::metadata;
+use skilllite_services::WorkspaceService;
 use std::path::{Path, PathBuf};
 
 use crate::error::bail;
@@ -9,13 +10,33 @@ use crate::Result;
 
 pub fn resolve_skills_dir(skills_dir: &str) -> PathBuf {
     let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let resolution = skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(
-        &workspace, skills_dir,
-    );
-    if let Some(warning) = resolution.conflict_warning() {
+    let response = WorkspaceService::new()
+        .resolve_skills_dir_for_workspace(&workspace, skills_dir)
+        .unwrap_or_else(|err| {
+            // Empty workspace_root / blank skills_dir would have already
+            // failed earlier validation; fall back to the legacy core path
+            // so existing CLI behaviour stays observable instead of
+            // panicking on a service-level invariant violation.
+            tracing::debug!(
+                "WorkspaceService::resolve_skills_dir rejected input ({err}); using requested path"
+            );
+            let resolution =
+                skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(
+                    &workspace, skills_dir,
+                );
+            let warning = resolution.conflict_warning();
+            skilllite_services::ResolveSkillsDirResponse {
+                requested_path: resolution.requested_path,
+                effective_path: resolution.effective_path,
+                used_legacy_fallback: resolution.used_legacy_fallback,
+                conflicting_skill_names: resolution.conflicting_skill_names,
+                conflict_warning: warning,
+            }
+        });
+    if let Some(warning) = response.conflict_warning {
         eprintln!("{}", warning);
     }
-    resolution.effective_path
+    response.effective_path
 }
 
 pub fn find_skill(skills_path: &Path, skill_name: &str) -> Result<PathBuf> {

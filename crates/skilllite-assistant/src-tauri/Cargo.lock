@@ -3792,6 +3792,7 @@ dependencies = [
  "skilllite-evolution",
  "skilllite-fs",
  "skilllite-sandbox",
+ "skilllite-services",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -3897,6 +3898,15 @@ dependencies = [
  "ureq",
  "which",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "skilllite-services"
+version = "0.1.27"
+dependencies = [
+ "serde",
+ "skilllite-core",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -20,6 +20,7 @@ skilllite-core = { path = "../skilllite-core", version = "0.1.27", features = ["
 skilllite-fs = { path = "../skilllite-fs", version = "0.1.27" }
 skilllite-evolution = { path = "../skilllite-evolution", version = "0.1.27" }
 skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.27" }
+skilllite-services = { path = "../skilllite-services", version = "0.1.27" }
 skilllite-agent = { path = "../skilllite-agent", version = "0.1.27", optional = true }
 
 anyhow = "1.0"

@@ -157,7 +157,7 @@ skillLite/
 │   │
 │   ├── skilllite-artifact/        # ArtifactStore 实现：本地目录（agent 默认）、可选 HTTP 服务端/客户端
 │   │
-│   └── skilllite-assistant/       # Tauri 2 + React 桌面端（不在根 workspace 默认 members，见根 Cargo.toml exclude）
+│   └── skilllite-assistant/       # Tauri 2 + React 桌面端 — 一等入口（Phase 0 D1）；因 Tauri 需平台 GUI 工具链而被 root workspace 排除，使用单独 manifest 构建。直接 path 依赖：core、fs、sandbox、agent、evolution。
 │       ├── vite.config.ts         # 唯一 Vite 配置（勿再并列 vite.config.js；见该 crate README）
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
@@ -228,11 +228,28 @@ skilllite (主二进制)
   ├── skilllite-artifact → skilllite-core（agent 仅 `local`；主 `skilllite` 二进制默认启用 `artifact_http`，依赖 `local`+`server`）
   └── skilllite-core (根)
 
-执行链：CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
+skilllite-assistant（Tauri 桌面端，一等入口 — Phase 0 D1）
+  ├── skilllite-core
+  ├── skilllite-fs
+  ├── skilllite-sandbox          （在 deny.toml 中显式 allow-list）
+  ├── skilllite-agent            （在 deny.toml 中显式 allow-list）
+  └── skilllite-evolution        （在 deny.toml 中显式 allow-list）
+
+执行链（CLI）：CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
+执行链（Desktop，当前）：Tauri command → skilllite_bridge → {agent | sandbox | evolution | core | fs} 直接调用。
+未来方向（Phase 1+）：CLI 与 Desktop 共享流程统一通过新建的 `skilllite-services` crate 再抵达领域 crate。
+
 Core 不依赖上层；Agent 是 Core 的客户。
 ```
 
-**CI / 本地检查**：仓库根目录 `deny.toml` 使用 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) 的 `bans` 规则，限制各 `skilllite-*` 工作区 crate 之间**直接依赖**的方向（规则与 `spec/architecture-boundaries.md` 一致）。在仓库根执行 `cargo deny check bans`；CI 在 PR 上也会跑该步骤。
+**CI / 本地检查**：仓库根目录 `deny.toml` 使用 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) 的 `bans` 规则，限制各 `skilllite-*` 工作区 crate 之间**直接依赖**的方向（规则与 `spec/architecture-boundaries.md` 一致）。CI 在每个 PR 上对 **root workspace 与 Desktop manifest 各跑一次**：
+
+```bash
+cargo deny check bans
+cargo deny --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml check bans
+```
+
+Desktop manifest 因 Tauri 平台 GUI 工具链原因被 root workspace 排除，但其依赖分层规则单独校验，以保持「一等入口」对等地位。
 
 **Feature Flags**：
 

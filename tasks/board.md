@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-20 (TASK-2026-041 fallback logic tests done)
+Last updated: 2026-04-20 (TASK-2026-044 WorkspaceService extracted)
 
 ## In Progress
 
@@ -16,6 +16,9 @@ Last updated: 2026-04-20 (TASK-2026-041 fallback logic tests done)
 
 ## Done
 
+- `TASK-2026-044-services-phase1a-workspace` - Status: `done` - Owner: `maintainer`
+- `TASK-2026-043-services-bootstrap-crate` - Status: `done` - Owner: `maintainer`
+- `TASK-2026-042-services-phase0-decisions` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-041-llm-fallback-tests` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-040-llm-profile-reference-cleanup` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-039-llm-structured-error-classification` - Status: `done` - Owner: `maintainer`

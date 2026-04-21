@@ -11,7 +11,7 @@
 | **CLI** | Main binary `skilllite` | core, sandbox, commands, (optional) executor, agent, swarm | Terminal users, scripts, CI: run skills, scan, chat, init, and full feature set. |
 | **Python** | python-sdk + IPC/subprocess (+ stdlib HTTP for artifacts) | Calls local `skilllite` binary (`serve` / subcommands); `artifact_put`/`artifact_get` hit artifact HTTP | Python apps: scan_code, execute_code, chat, run_skill; optional cross-process blobs via artifact API. |
 | **MCP** | Subcommand `skilllite mcp` | Same as CLI main binary (mcp module lives in skilllite package) | Cursor/VSCode etc.: MCP protocol exposes list_skills, run_skill, scan_code, execute_code. |
-| **Desktop** | skilllite-assistant (Tauri) | skilllite-core (paths/config); runtime requires installed `skilllite` | Desktop users: GUI chat (optional **image attachments** → multimodal `agent_chat`), session management, read transcript/memory via `skilllite`. |
+| **Desktop** | skilllite-assistant (Tauri) — first-class entry | core, fs, sandbox, agent, evolution (direct path deps); optional runtime fallback to installed `skilllite` for some commands | Desktop users: GUI chat (optional **image attachments** → multimodal `agent_chat`), session management, evolution UI, runtime provisioning, transcript/memory views. |
 | **Swarm** | Subcommand `skilllite swarm` | skilllite-swarm (+ main binary; with agent, includes swarm_executor) | Multi-machine / multi-agent: mDNS discovery, P2P task routing, NewSkill sync. |
 
 ---
@@ -47,13 +47,15 @@
 
 ## 4. Desktop (skilllite-assistant)
 
-- **Entry**: Tauri app `skilllite-assistant` (built separately; not part of main workspace default build).
+- **Entry status**: First-class entry (Phase 0 D1, 2026-04-20). Architectural rules, dependency policy (`deny.toml`), CI checks (`cargo deny check bans` runs against this manifest in addition to the root workspace), documentation, and testing strategy treat Desktop on equal footing with the CLI. Desktop is **not** a thin shell over the installed binary.
+- **Entry**: Tauri app `skilllite-assistant`. Built via a separate Cargo manifest (`crates/skilllite-assistant/src-tauri/Cargo.toml`) and excluded from the root workspace because Tauri requires platform GUI toolchains (e.g. glib/GTK on Linux). Build with `cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml` or `npm run tauri build` from `crates/skilllite-assistant/`.
 - **Dependencies**:
-  - **Build time**: `skilllite-core` (paths, config, etc.)
-  - **Runtime**: System-installed `skilllite` binary (for chat, clear-session, reading transcript, etc.)
-- **Capabilities**: GUI chat, session clear, read chat history / memory / output files; invokes `skilllite` via `skilllite_bridge`.
+  - **Build time (direct path deps)**: `skilllite-core`, `skilllite-fs`, `skilllite-sandbox`, `skilllite-agent`, `skilllite-evolution`.
+  - **Runtime fallback**: For a subset of commands the bridge still spawns the installed `skilllite` binary (e.g. `agent-rpc` subprocess); see `crates/skilllite-assistant/README.md`. This is a runtime convenience, not a build-time requirement.
+- **Capabilities**: GUI chat, session management, evolution review/triggering, runtime probing/provisioning, transcript/memory/output views, IDE three-pane layout, image attachments to multimodal `agent_chat`.
 - **Chat input**: `Enter` sends; `Shift+Enter` inserts a newline; during an active IME composition, `Enter` is left to the IME (confirm candidates) and does not send.
 - **Use case**: Desktop users who prefer not to use the CLI; tray and shortcut scenarios.
+- **Boundary policy**: Direct dependencies on `skilllite-{agent,sandbox,evolution}` are explicitly allow-listed in `deny.toml` for now. Phase 1+ progressively moves shared flows behind a `skilllite-services` crate; existing direct deps remain permissible during migration. Reverting Desktop to a "shell" status would require explicitly overturning D1.
 
 ---
 
@@ -69,6 +71,7 @@
 ## Dependency direction (brief)
 
 - **Core** does not depend on upper layers; **sandbox / fs / executor / agent / evolution / commands** depend on core or each other by layer.
-- **Main binary** skilllite aggregates commands and optional features; **skilllite-assistant** depends only on core at build time and on external `skilllite` at runtime; **skilllite-swarm** depends only on core and is wired in by the main binary via feature for the `swarm` subcommand.
+- **Main binary** skilllite aggregates commands and optional features; **skilllite-assistant** is a first-class entry that directly consumes `core`, `fs`, `sandbox`, `agent`, and `evolution` (allow-listed in `deny.toml`); **skilllite-swarm** depends only on core and is wired in by the main binary via feature for the `swarm` subcommand.
+- The future **`skilllite-services`** crate (Phase 1+) will sit between entry crates (`skilllite`, `skilllite-assistant`, future MCP entry) and domain crates; both CLI and Desktop will progressively migrate shared flows there.
 
 For detailed crate list and directory layout, see [ARCHITECTURE.md](./ARCHITECTURE.md). 中文版：[入口与能力域一览](../zh/ENTRYPOINTS-AND-DOMAINS.md).

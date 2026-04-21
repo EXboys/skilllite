@@ -8,8 +8,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use skilllite_core::skill::discovery::SkillsDirResolution;
 use skilllite_core::skill::metadata;
+use skilllite_services::{ResolveSkillsDirResponse, WorkspaceService};
 
 use crate::Result;
 
@@ -46,11 +46,29 @@ fn get_available_skills(skills_dir: &Path) -> Vec<(String, String)> {
 fn resolve_skills_dir_with_legacy_fallback(
     project: &Path,
     skills_dir: &str,
-) -> SkillsDirResolution {
-    skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(project, skills_dir)
+) -> ResolveSkillsDirResponse {
+    WorkspaceService::new()
+        .resolve_skills_dir_for_workspace(project, skills_dir)
+        .unwrap_or_else(|err| {
+            tracing::debug!(
+                "WorkspaceService::resolve_skills_dir rejected input ({err}); using requested path"
+            );
+            let resolution =
+                skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(
+                    project, skills_dir,
+                );
+            let warning = resolution.conflict_warning();
+            ResolveSkillsDirResponse {
+                requested_path: resolution.requested_path,
+                effective_path: resolution.effective_path,
+                used_legacy_fallback: resolution.used_legacy_fallback,
+                conflicting_skill_names: resolution.conflicting_skill_names,
+                conflict_warning: warning,
+            }
+        })
 }
 
-fn effective_skills_dir_arg(skills_dir: &str, resolution: &SkillsDirResolution) -> String {
+fn effective_skills_dir_arg(skills_dir: &str, resolution: &ResolveSkillsDirResponse) -> String {
     if resolution.used_legacy_fallback {
         "./.skills".to_string()
     } else {
@@ -288,7 +306,7 @@ pub fn cmd_cursor(
     eprintln!("   → {}", command.join(" "));
 
     let resolution = resolve_skills_dir_with_legacy_fallback(&project, skills_dir);
-    if let Some(warning) = resolution.conflict_warning() {
+    if let Some(warning) = resolution.conflict_warning.as_ref() {
         eprintln!("{}", warning);
     }
     let effective_skills_dir = effective_skills_dir_arg(skills_dir, &resolution);
@@ -417,7 +435,7 @@ pub fn cmd_opencode(project_dir: Option<&str>, skills_dir: &str, force: bool) ->
         .map(PathBuf::from)
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
     let resolution = resolve_skills_dir_with_legacy_fallback(&project, skills_dir);
-    if let Some(warning) = resolution.conflict_warning() {
+    if let Some(warning) = resolution.conflict_warning.as_ref() {
         eprintln!("{}", warning);
     }
     let effective_skills_dir = effective_skills_dir_arg(skills_dir, &resolution);

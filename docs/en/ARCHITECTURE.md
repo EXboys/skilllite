@@ -159,7 +159,7 @@ skillLite/
 │   │
 │   ├── skilllite-artifact/        # ArtifactStore impls: local dir (default for agent), optional HTTP server/client
 │   │
-│   └── skilllite-assistant/       # Tauri 2 + React desktop (not in default workspace members; see root Cargo.toml exclude)
+│   └── skilllite-assistant/       # Tauri 2 + React desktop — first-class entry (Phase 0 D1); excluded from root workspace because Tauri needs platform GUI toolchains. Build via separate manifest. Direct path deps: core, fs, sandbox, agent, evolution.
 │       ├── vite.config.ts         # sole Vite config (do not duplicate vite.config.js; see crate README)
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
 │
@@ -230,11 +230,28 @@ skilllite (main binary)
   ├── skilllite-artifact → skilllite-core (agent: `local` only; main `skilllite` binary: `local` + `server` when `artifact_http` is enabled — default-on)
   └── skilllite-core (root)
 
-Execution chain: CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
+skilllite-assistant (Tauri desktop, first-class entry — Phase 0 D1)
+  ├── skilllite-core
+  ├── skilllite-fs
+  ├── skilllite-sandbox          (allow-listed wrapper in deny.toml)
+  ├── skilllite-agent            (allow-listed wrapper in deny.toml)
+  └── skilllite-evolution        (allow-listed wrapper in deny.toml)
+
+Execution chain (CLI):  CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
+Execution chain (Desktop, today): Tauri command → skilllite_bridge → {agent | sandbox | evolution | core | fs} directly.
+Future direction (Phase 1+): both entries route shared flows through a new `skilllite-services` crate before reaching domain crates.
+
 Core doesn't depend on upper layers; Agent is Core's customer.
 ```
 
-**CI / local guard**: Root `deny.toml` configures [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) `bans` so only allowed workspace crates may *directly* depend on each upper-layer `skilllite-*` crate (see `spec/architecture-boundaries.md`). Run `cargo deny check bans` from the repo root (CI runs this on every PR).
+**CI / local guard**: Root `deny.toml` configures [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) `bans` so only allowed workspace crates may *directly* depend on each upper-layer `skilllite-*` crate (see `spec/architecture-boundaries.md`). CI runs `cargo deny check bans` on every PR for **both** the root workspace and the Desktop manifest:
+
+```bash
+cargo deny check bans
+cargo deny --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml check bans
+```
+
+The Desktop manifest is excluded from the root workspace because Tauri requires platform GUI toolchains, but its dependency layering is enforced separately to keep first-class-entry parity.
 
 **Feature Flags**:
 

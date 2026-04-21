@@ -28,6 +28,12 @@ jobs:
       - name: Check workspace crate layering (cargo-deny)
         run: cargo deny check bans
 
+      - name: Check Desktop manifest crate layering (cargo-deny)
+        # Phase 0 D4 (2026-04-20): Desktop is a first-class entry per D1; its
+        # Cargo.toml is excluded from the root workspace, so deny the boundary
+        # rules separately against `crates/skilllite-assistant/src-tauri/Cargo.toml`.
+        run: cargo deny --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml check bans
+
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:
