@@ -59,8 +59,10 @@
 
 ## Decision
 
-- Merge readiness: ready
+- Merge readiness: superseded by `tasks/TASK-2026-045-services-rollback-phase1a/`
+- Superseded note (2026-04-20):
+  - This TASK's `WorkspaceService` extraction was rolled back the same day. Post-implementation comparison showed the four migrated callsites went from ~5 lines each (direct call to `skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback`) to ~10–15 lines each because the new service returned `Result<...>` over an infallible underlying operation, forcing every caller to add fallback boilerplate. Net LOC increased rather than decreased.
+  - A subsequent grep-driven review of Phase 1B (RuntimeService) and Phase 2 (EvolutionService) candidates found that the cross-entry duplication these phases were meant to consolidate was smaller than initially estimated, weakening the case for retaining a single `skilllite-services` crate as a foundation.
+  - Both this TASK and TASK-2026-043 (bootstrap) are preserved (not deleted) to keep the audit trail.
 - Follow-up actions:
-  - Create `services-phase1b-runtime` TASK to add the first `async` service (`RuntimeService` for runtime probing / provisioning / diagnostics). This is where Phase 0 D3's async default is genuinely exercised.
-  - When MCP becomes a real consumer of `skilllite-services`, expand the `deny.toml` rule's wrapper allow-list and verify the remaining `unused-wrapper` warnings disappear.
-  - Optional cleanup TASK: route Desktop `conflicting_skill_names` into the assistant UI as a structured notification.
+  - None. The Phase 0 boundary work (TASK-2026-042) — Desktop manifest deny coverage, EN+ZH doc updates — is unaffected and remains in force.

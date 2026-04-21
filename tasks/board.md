@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-20 (TASK-2026-044 WorkspaceService extracted)
+Last updated: 2026-04-20 (TASK-2026-045 services Phase 1A rolled back; Phase 0 retained)
 
 ## In Progress
 
@@ -16,8 +16,9 @@ Last updated: 2026-04-20 (TASK-2026-044 WorkspaceService extracted)
 
 ## Done
 
-- `TASK-2026-044-services-phase1a-workspace` - Status: `done` - Owner: `maintainer`
-- `TASK-2026-043-services-bootstrap-crate` - Status: `done` - Owner: `maintainer`
+- `TASK-2026-045-services-rollback-phase1a` - Status: `done` - Owner: `maintainer`
+- `TASK-2026-044-services-phase1a-workspace` - Status: `cancelled` - Owner: `maintainer`
+- `TASK-2026-043-services-bootstrap-crate` - Status: `cancelled` - Owner: `maintainer`
 - `TASK-2026-042-services-phase0-decisions` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-041-llm-fallback-tests` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-040-llm-profile-reference-cleanup` - Status: `done` - Owner: `maintainer`

@@ -2358,7 +2358,6 @@ dependencies = [
  "skilllite-evolution",
  "skilllite-fs",
  "skilllite-sandbox",
- "skilllite-services",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -2470,16 +2469,6 @@ dependencies = [
  "ureq",
  "which",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "skilllite-services"
-version = "0.1.27"
-dependencies = [
- "serde",
- "skilllite-core",
- "tempfile",
- "thiserror 2.0.18",
 ]
 
 [[package]]

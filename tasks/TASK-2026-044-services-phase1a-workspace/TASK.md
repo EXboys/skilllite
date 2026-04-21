@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-044`
 - Title: Extract WorkspaceService into skilllite-services
-- Status: `done`
+- Status: `cancelled`
 
 - Priority: `P1`
 - Owner: `maintainer`

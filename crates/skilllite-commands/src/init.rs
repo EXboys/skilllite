@@ -17,8 +17,8 @@ use crate::error::bail;
 use crate::skill;
 use crate::Result;
 use skilllite_core::skill::dependency_resolver;
+use skilllite_core::skill::discovery;
 use skilllite_core::skill::metadata;
-use skilllite_services::WorkspaceService;
 
 /// True when `cwd` is a typical GUI / launcher default (not a project dir). Relative `skills_dir`
 /// would resolve under it and often hit permission errors or wrong location.
@@ -199,29 +199,11 @@ pub fn cmd_init(
 
 pub(crate) fn resolve_path_with_legacy_fallback(dir: &str) -> PathBuf {
     let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let response = WorkspaceService::new()
-        .resolve_skills_dir_for_workspace(&workspace, dir)
-        .unwrap_or_else(|err| {
-            tracing::debug!(
-                "WorkspaceService::resolve_skills_dir rejected input ({err}); using requested path"
-            );
-            let resolution =
-                skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(
-                    &workspace, dir,
-                );
-            let warning = resolution.conflict_warning();
-            skilllite_services::ResolveSkillsDirResponse {
-                requested_path: resolution.requested_path,
-                effective_path: resolution.effective_path,
-                used_legacy_fallback: resolution.used_legacy_fallback,
-                conflicting_skill_names: resolution.conflicting_skill_names,
-                conflict_warning: warning,
-            }
-        });
-    if let Some(warning) = response.conflict_warning {
+    let resolution = discovery::resolve_skills_dir_with_legacy_fallback(&workspace, dir);
+    if let Some(warning) = resolution.conflict_warning() {
         eprintln!("{}", warning);
     }
-    response.effective_path
+    resolution.effective_path
 }
 
 /// Ensure skills directory exists and has skills. When empty, download from

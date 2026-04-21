@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-043`
 - Title: Bootstrap empty skilllite-services crate
-- Status: `done`
+- Status: `cancelled`
 - Priority: `P1`
 - Owner: `maintainer`
 - Contributors:

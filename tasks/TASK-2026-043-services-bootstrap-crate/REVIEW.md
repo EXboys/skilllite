@@ -48,6 +48,9 @@
 
 ## Decision
 
-- Merge readiness: ready
+- Merge readiness: superseded by `tasks/TASK-2026-045-services-rollback-phase1a/`
+- Superseded note (2026-04-20):
+  - The empty `skilllite-services` crate this TASK created was rolled back together with TASK-2026-044's `WorkspaceService` migration, after a post-implementation review concluded the cross-entry duplication this layer was meant to absorb was smaller than initially estimated. See `tasks/TASK-2026-045-services-rollback-phase1a/CONTEXT.md` for the full evidence.
+  - This TASK is preserved (not deleted) to keep the audit trail of the decision sequence.
 - Follow-up actions:
-  - Create `services-phase1a-workspace` TASK to extract the first real service (`WorkspaceService`) into `crates/skilllite-services/src/workspace.rs` (or similar), and migrate Desktop bridge + commands callers to the new service. Real dependencies (`tokio`, `serde`, `thiserror`) land in that TASK.
+  - None. The Phase 0 boundary work (TASK-2026-042) is unaffected and remains in force.
