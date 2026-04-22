@@ -1,8 +1,11 @@
-//! Source parsing: URL detection, ClawHub download, git clone.
+//! Source parsing: URL detection, local ZIP extraction, ClawHub download, git clone.
 
 use anyhow::Context;
 use regex::Regex;
 use std::fs;
+#[cfg(feature = "audit")]
+use std::io::Cursor;
+use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::LazyLock;
@@ -57,6 +60,13 @@ fn is_local_path(source: &str) -> bool {
         || source == ".."
 }
 
+fn is_zip_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("zip"))
+        .unwrap_or(false)
+}
+
 pub(super) fn parse_source(source: &str) -> ParsedSource {
     if let Some(slug) = source.strip_prefix("clawhub:") {
         let slug = slug.trim().to_lowercase();
@@ -76,7 +86,11 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(source);
         return ParsedSource {
-            source_type: "local".into(),
+            source_type: if is_zip_path(&abs) {
+                "local_zip".into()
+            } else {
+                "local".into()
+            },
             url: abs.to_string_lossy().into(),
             git_ref: None,
             subpath: None,
@@ -162,12 +176,60 @@ pub(super) fn parse_source(source: &str) -> ParsedSource {
 
 // ─── ClawHub Download ──────────────────────────────────────────────────────
 
+#[cfg(feature = "audit")]
 const CLAWHUB_DOWNLOAD_URL: &str = "https://clawhub.ai/api/v1/download";
+
+fn extract_zip_archive<R: Read + Seek>(reader: R, source_label: &str) -> Result<PathBuf> {
+    let temp_dir = tempfile::tempdir().context("Failed to create temp directory")?;
+    #[allow(deprecated)]
+    let extract_path = temp_dir.into_path();
+
+    let mut archive =
+        zip::ZipArchive::new(reader).with_context(|| format!("Invalid zip from {source_label}"))?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).context("Failed to read zip entry")?;
+        let name = file.name().to_string();
+        let enclosed = file.enclosed_name().ok_or_else(|| {
+            crate::Error::validation(format!(
+                "ZIP entry escapes extraction root: {} ({})",
+                name, source_label
+            ))
+        })?;
+        let out_path = extract_path.join(enclosed);
+        if file.is_dir() {
+            fs::create_dir_all(&out_path)
+                .with_context(|| format!("Failed to create {}", out_path.display()))?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("Failed to create {}", parent.display()))?;
+            }
+            let mut out_file = fs::File::create(&out_path)
+                .with_context(|| format!("Failed to create {}", out_path.display()))?;
+            std::io::copy(&mut file, &mut out_file)
+                .with_context(|| format!("Failed to extract {}", name))?;
+        }
+    }
+
+    Ok(extract_path)
+}
+
+pub(super) fn extract_local_zip(zip_path: &Path) -> Result<PathBuf> {
+    let zip_path = if zip_path.is_absolute() {
+        zip_path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(crate::Error::from)?
+            .join(zip_path)
+    };
+    let file = fs::File::open(&zip_path)
+        .with_context(|| format!("Failed to open local zip: {}", zip_path.display()))?;
+    extract_zip_archive(file, &zip_path.display().to_string())
+}
 
 #[cfg(feature = "audit")]
 pub(super) fn fetch_from_clawhub(slug: &str) -> Result<PathBuf> {
-    use std::io::Read;
-
     let url = format!("{}?slug={}", CLAWHUB_DOWNLOAD_URL, slug);
     let agent = ureq::AgentBuilder::new().build();
     let resp = agent
@@ -192,34 +254,7 @@ pub(super) fn fetch_from_clawhub(slug: &str) -> Result<PathBuf> {
         .read_to_end(&mut bytes)
         .context("Failed to read zip from ClawHub")?;
 
-    let temp_dir = tempfile::tempdir().context("Failed to create temp directory")?;
-    #[allow(deprecated)]
-    let extract_path = temp_dir.into_path();
-
-    let mut archive =
-        zip::ZipArchive::new(std::io::Cursor::new(bytes)).context("Invalid zip from ClawHub")?;
-
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i).context("Failed to read zip entry")?;
-        let name = file.name().to_string();
-        if name.contains("..") || name.starts_with('/') {
-            continue;
-        }
-        let out_path = extract_path.join(&name);
-        if file.is_dir() {
-            let _ = fs::create_dir_all(&out_path);
-        } else {
-            if let Some(parent) = out_path.parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            let mut out_file = fs::File::create(&out_path)
-                .with_context(|| format!("Failed to create {}", out_path.display()))?;
-            std::io::copy(&mut file, &mut out_file)
-                .with_context(|| format!("Failed to extract {}", name))?;
-        }
-    }
-
-    Ok(extract_path)
+    extract_zip_archive(Cursor::new(bytes), &format!("ClawHub slug {}", slug))
 }
 
 #[cfg(not(feature = "audit"))]
@@ -258,4 +293,38 @@ pub(super) fn clone_repo(url: &str, git_ref: Option<&str>) -> Result<PathBuf> {
     }
 
     Ok(temp_path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    fn write_zip(entries: &[(&str, &[u8])]) -> tempfile::NamedTempFile {
+        let file = tempfile::NamedTempFile::new().expect("temp zip");
+        let writer = file.reopen().expect("reopen zip writer");
+        let mut zip = zip::ZipWriter::new(writer);
+        let options = zip::write::FileOptions::default();
+        for (name, bytes) in entries {
+            zip.start_file(*name, options).expect("start file");
+            zip.write_all(bytes).expect("write zip file");
+        }
+        zip.finish().expect("finish zip");
+        file
+    }
+
+    #[test]
+    fn parse_source_marks_local_zip_paths() {
+        let parsed = parse_source("./fixtures/sample-skill.zip");
+        assert_eq!(parsed.source_type, "local_zip");
+        assert!(parsed.url.ends_with("fixtures/sample-skill.zip"));
+    }
+
+    #[test]
+    fn extract_local_zip_rejects_path_traversal() {
+        let zip = write_zip(&[("../escape.txt", b"boom")]);
+        let err = extract_local_zip(zip.path()).expect_err("zip traversal should fail");
+        let msg = err.to_string();
+        assert!(msg.contains("ZIP entry escapes extraction root"));
+    }
 }

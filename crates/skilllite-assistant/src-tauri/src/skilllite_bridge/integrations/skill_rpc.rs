@@ -8,14 +8,14 @@ use skilllite_core::skill::manifest;
 use std::fs;
 
 use super::shared::{
-    discover_scripted_skill_instances, find_skill_dir, resolve_workspace_skills_root,
+    discover_skill_instances, find_skill_dir, resolve_workspace_skills_root,
 };
 
 /// List skill names in workspace (for repair UI) using core-owned discovery.
 pub fn list_skill_names(workspace: &str) -> Vec<String> {
     let root = find_project_root(workspace);
     let mut names = std::collections::HashSet::new();
-    for (_, name) in discover_scripted_skill_instances(&root) {
+    for (_, name) in discover_skill_instances(&root) {
         names.insert(name);
     }
     let mut v: Vec<String> = names.into_iter().collect();
@@ -251,6 +251,28 @@ mod skill_discovery_tests {
 
         let names = list_skill_names(nested_skill.to_string_lossy().as_ref());
         assert_eq!(names, vec!["evolved-skill", "nested-skill"]);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn list_skill_names_includes_non_script_skills() {
+        let tmp = temp_test_dir("non_script_skill");
+        let bash_tool = tmp.join(".skills").join("web-search");
+        std::fs::create_dir_all(&bash_tool).expect("bash tool dir");
+        std::fs::write(
+            bash_tool.join("SKILL.md"),
+            "---\nname: web-search\nallowed-tools: Bash(infsh *)\n---\n",
+        )
+        .expect("bash tool skill md");
+
+        let names = list_skill_names(tmp.to_string_lossy().as_ref());
+        assert_eq!(names, vec!["web-search"]);
+        let resolved = find_skill_dir(tmp.to_string_lossy().as_ref(), "web-search")
+            .expect("find non-script skill");
+        assert_eq!(
+            resolved.canonicalize().expect("resolved canonical"),
+            bash_tool.canonicalize().expect("bash tool canonical")
+        );
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

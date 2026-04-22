@@ -98,6 +98,13 @@ pub(crate) fn validate_transcript_log_filename(name: &str) -> Result<(), String>
 }
 
 /// Resolve skilllite binary for subprocess (used from `lib` / life_pulse).
+#[cfg(debug_assertions)]
+fn workspace_debug_skilllite_candidate(exe_name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../target/debug")
+        .join(exe_name)
+}
+
 pub fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> PathBuf {
     let exe_name = if cfg!(target_os = "windows") {
         "skilllite.exe"
@@ -106,14 +113,24 @@ pub fn resolve_skilllite_path_app(app: &tauri::AppHandle) -> PathBuf {
     };
 
     #[cfg(debug_assertions)]
-    if let Some(home) = dirs::home_dir() {
-        let dev_bin = home.join(".skilllite").join("bin").join(exe_name);
-        if dev_bin.exists() {
+    {
+        let workspace_bin = workspace_debug_skilllite_candidate(exe_name);
+        if workspace_bin.exists() {
             eprintln!(
-                "[skilllite-bridge] using ~/.skilllite/bin binary: {}",
-                dev_bin.display()
+                "[skilllite-bridge] using workspace debug binary: {}",
+                workspace_bin.display()
             );
-            return dev_bin;
+            return workspace_bin;
+        }
+        if let Some(home) = dirs::home_dir() {
+            let dev_bin = home.join(".skilllite").join("bin").join(exe_name);
+            if dev_bin.exists() {
+                eprintln!(
+                    "[skilllite-bridge] using ~/.skilllite/bin binary: {}",
+                    dev_bin.display()
+                );
+                return dev_bin;
+            }
         }
     }
 
@@ -205,5 +222,22 @@ mod tests {
             tmp.canonicalize().expect("tmp canonical")
         );
         let _ = std::fs::remove_dir_all(&resolved);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn workspace_debug_skilllite_candidate_points_to_workspace_target_debug() {
+        let exe_name = if cfg!(target_os = "windows") {
+            "skilllite.exe"
+        } else {
+            "skilllite"
+        };
+        let candidate = workspace_debug_skilllite_candidate(exe_name);
+        let normalized = candidate.to_string_lossy().replace('\\', "/");
+        assert!(
+            normalized.ends_with(&format!("target/debug/{}", exe_name)),
+            "unexpected debug candidate path: {}",
+            normalized
+        );
     }
 }

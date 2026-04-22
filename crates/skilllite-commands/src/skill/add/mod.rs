@@ -22,7 +22,7 @@ pub(in crate::skill) use admission::{
 pub(in crate::skill) use discovery::{copy_skill, install_skill_deps};
 
 use discovery::discover_skills;
-use source::{clone_repo, fetch_from_clawhub, parse_source};
+use source::{clone_repo, extract_local_zip, fetch_from_clawhub, parse_source};
 
 pub fn cmd_add(
     source: &str,
@@ -57,6 +57,16 @@ pub fn cmd_add(
             }
             eprintln!("📁 Using local path: {}", parsed.url);
             p
+        } else if parsed.source_type == "local_zip" {
+            let p = PathBuf::from(&parsed.url);
+            if !p.is_file() {
+                bail!("Local zip path does not exist: {}", parsed.url);
+            }
+            eprintln!("📦 Extracting local zip: {}", parsed.url);
+            let td = extract_local_zip(&p)?;
+            eprintln!("✓ Extraction complete");
+            temp_dir = Some(td.clone());
+            td
         } else if parsed.source_type == "clawhub" {
             eprintln!("⬇ Downloading from ClawHub ({}) ...", parsed.url);
             let td = fetch_from_clawhub(&parsed.url)?;

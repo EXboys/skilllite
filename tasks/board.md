@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-20 (TASK-2026-045 services Phase 1A rolled back; Phase 0 retained)
+Last updated: 2026-04-22 (TASK-2026-049 desktop all-skills list done)
 
 ## In Progress
 
@@ -16,6 +16,10 @@ Last updated: 2026-04-20 (TASK-2026-045 services Phase 1A rolled back; Phase 0 r
 
 ## Done
 
+- `TASK-2026-049-desktop-show-all-installed-skills` - Status: `done` - Owner: `airlu`
+- `TASK-2026-048-desktop-debug-skilllite-path` - Status: `done` - Owner: `airlu`
+- `TASK-2026-047-desktop-zip-import-button` - Status: `done` - Owner: `airlu`
+- `TASK-2026-046-zip-skill-import` - Status: `done` - Owner: `airlu`
 - `TASK-2026-045-services-rollback-phase1a` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-044-services-phase1a-workspace` - Status: `cancelled` - Owner: `maintainer`
 - `TASK-2026-043-services-bootstrap-crate` - Status: `cancelled` - Owner: `maintainer`

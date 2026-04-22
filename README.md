@@ -324,6 +324,7 @@ print(result["text"])
 skilllite add owner/repo                    # Add all skills from a GitHub repo
 skilllite add owner/repo@skill-name         # Add a specific skill by name
 skilllite add ./local-path                  # Add from local directory
+skilllite add ./downloaded-skill.zip        # Add from a downloaded local ZIP package
 skilllite import-openclaw-skills            # Import from OpenClaw-style dirs (workspace/skills, ~/.openclaw/skills, …)
 skilllite list                              # List all installed skills
 skilllite remove <skill-name>               # Remove an installed skill
@@ -469,7 +470,7 @@ skilllite/                         Dependency Flow
 | `skilllite init`               | Initialize project (skills/ + download skills + dependencies + audit) |
 | `skilllite quickstart`         | Zero-config: detect LLM, setup skills, launch chat                     |
 | `skilllite chat`               | Interactive agent chat (or `--message` for single-shot)                |
-| `skilllite add owner/repo`     | Add skills from GitHub                                                 |
+| `skilllite add owner/repo`     | Add skills from GitHub, a local folder, or a local ZIP package         |
 | `skilllite import-openclaw-skills` | Copy skills from OpenClaw-style paths into `skills/` (see `--dry-run`, `--skill-conflict`) |
 | `skilllite remove <name>`      | Remove an installed skill                                              |
 | `skilllite list`               | List installed skills                                                  |
@@ -545,7 +546,7 @@ The `init-opencode` command automatically detects the best way to start the MCP 
 <details>
 <summary>Desktop Assistant (skilllite-assistant)</summary>
 
-**SkillLite Assistant** is the native **desktop app** (Tauri 2 + React) on top of the same **`skilllite`** engine (`agent-rpc`). **Installers** (dmg / msi / AppImage) ship on [GitHub Releases](https://github.com/EXboys/skilllite/releases) (desktop builds may appear shortly after the main release artifacts). First-time orientation: [Pick your path → Desktop](./docs/en/START_PATHS.md#path-1-desktop).
+**SkillLite Assistant** is the native **desktop app** (Tauri 2 + React) on top of the same **`skilllite`** engine (`agent-rpc`). **Installers** (dmg / msi / AppImage) ship on [GitHub Releases](https://github.com/EXboys/skilllite/releases) (desktop builds may appear shortly after the main release artifacts). First-time orientation: [Pick your path → Desktop](./docs/en/START_PATHS.md#path-1-desktop). In the skills side panel, you can now either paste a source or choose a local ZIP package via the native file picker, and the list shows installed skills even when they are bash-tool or other non-script packages.
 
 
 ![SkillLite Assistant — Settings, Model & API tab](./docs/images/assistant-settings-model-api.png)

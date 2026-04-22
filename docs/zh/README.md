@@ -272,6 +272,7 @@ print(result["text"])
 skilllite add owner/repo                    # 添加 GitHub 仓库中的所有 skills
 skilllite add owner/repo@skill-name         # 按名称添加指定 skill
 skilllite add ./local-path                  # 从本地目录添加
+skilllite add ./downloaded-skill.zip        # 从本地下载好的 ZIP 技能包添加
 skilllite import-openclaw-skills            # 从 OpenClaw 风格目录导入（workspace/skills、~/.openclaw/skills 等）
 skilllite list                              # 列出所有已安装 skills
 skilllite remove <skill-name>               # 移除已安装的 skill
@@ -411,7 +412,7 @@ skilllite/                         依赖流向
 | `skilllite init` | 初始化项目（skills/ + 下载 skills + 依赖 + 审计） |
 | `skilllite quickstart` | 零配置：检测 LLM、配置 skills、启动对话 |
 | `skilllite chat` | 交互式 Agent 对话（或 `--message` 单次对话） |
-| `skilllite add owner/repo` | 从 GitHub 添加 skills |
+| `skilllite add owner/repo` | 从 GitHub、本地目录或本地 ZIP 技能包添加 skills |
 | `skilllite import-openclaw-skills` | 从 OpenClaw 风格路径复制 skills 到 `skills/`（可用 `--dry-run`、`--skill-conflict`） |
 | `skilllite remove <name>` | 移除已安装的 skill |
 | `skilllite list` | 列出已安装 skills |
@@ -482,7 +483,7 @@ opencode
 <details>
 <summary>桌面助手（skilllite-assistant）</summary>
 
-**SkillLite Assistant** 是本机 **桌面应用**（Tauri 2 + React），底层仍是同一套 **`skilllite`** 引擎（`agent-rpc`）。**安装包**（dmg / msi / AppImage）见 [GitHub Releases](https://github.com/EXboys/skilllite/releases)（桌面构建可能比主产物稍晚出现）。首次分流说明：[选择你的路径 → 桌面](./START_PATHS.md#path-1-desktop)。
+**SkillLite Assistant** 是本机 **桌面应用**（Tauri 2 + React），底层仍是同一套 **`skilllite`** 引擎（`agent-rpc`）。**安装包**（dmg / msi / AppImage）见 [GitHub Releases](https://github.com/EXboys/skilllite/releases)（桌面构建可能比主产物稍晚出现）。首次分流说明：[选择你的路径 → 桌面](./START_PATHS.md#path-1-desktop)。现在在技能侧栏里，既可以粘贴来源，也可以通过原生文件选择器直接导入本地 ZIP 技能包；技能列表也会显示已安装的 bash-tool 等非脚本技能包。
 
 **设置**（齿轮）：**模型与 API**（界面语言、服务商、API Key、模型、可选 Base URL、Token 统计等）、**工作区与沙箱**、**Agent 预算**、**自进化**、**定时任务**、**卸载与数据**。
 

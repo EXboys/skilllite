@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { formatInvokeError } from "../utils/formatInvokeError";
 import { useUiToastStore } from "../stores/useUiToastStore";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useStatusStore, type LogEntry } from "../stores/useStatusStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
@@ -458,12 +459,13 @@ function SkillRepairSection() {
     }
   };
 
-  const runAdd = async () => {
-    const source = addSource.trim();
+  const runAdd = async (sourceOverride?: string) => {
+    const source = (sourceOverride ?? addSource).trim();
     if (!source) return;
     setAdding(true);
     setAddResult(null);
     setAddResultIsError(false);
+    if (sourceOverride) setAddSource(source);
     try {
       const out = await invoke<string>("skilllite_add_skill", {
         workspace,
@@ -474,10 +476,32 @@ function SkillRepairSection() {
       setAddSource("");
       loadSkills();
     } catch (e) {
-      setAddResult(String(e));
+      setAddResult(formatInvokeError(e));
       setAddResultIsError(true);
     } finally {
       setAdding(false);
+    }
+  };
+
+  const runImportZip = async () => {
+    if (adding) return;
+    try {
+      const selected = await openFileDialog({
+        multiple: false,
+        filters: [
+          {
+            name: "ZIP",
+            extensions: ["zip"],
+          },
+        ],
+      });
+      if (selected == null) return;
+      const path = Array.isArray(selected) ? selected[0] : selected;
+      if (typeof path !== "string" || !path.trim()) return;
+      await runAdd(path);
+    } catch (e) {
+      setAddResult(t("status.zipPickerFailed", { err: formatInvokeError(e) }));
+      setAddResultIsError(true);
     }
   };
 
@@ -551,6 +575,14 @@ function SkillRepairSection() {
             placeholder={t("status.skillPlaceholder")}
             className="flex-1 min-w-0 rounded-lg border border-border dark:border-border-dark bg-gray-50 dark:bg-surface-dark px-2.5 py-1.5 text-xs placeholder:text-ink-mute dark:placeholder:text-ink-dark-mute"
           />
+          <button
+            type="button"
+            onClick={runImportZip}
+            disabled={adding}
+            className="shrink-0 px-2.5 py-1.5 rounded-lg border border-border dark:border-border-dark bg-white dark:bg-surface-dark text-xs font-medium text-ink dark:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {t("status.importZip")}
+          </button>
           <button
             type="button"
             onClick={runAdd}
