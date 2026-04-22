@@ -546,7 +546,7 @@ The `init-opencode` command automatically detects the best way to start the MCP 
 <details>
 <summary>Desktop Assistant (skilllite-assistant)</summary>
 
-**SkillLite Assistant** is the native **desktop app** (Tauri 2 + React) on top of the same **`skilllite`** engine (`agent-rpc`). **Installers** (dmg / msi / AppImage) ship on [GitHub Releases](https://github.com/EXboys/skilllite/releases) (desktop builds may appear shortly after the main release artifacts). First-time orientation: [Pick your path → Desktop](./docs/en/START_PATHS.md#path-1-desktop). In the skills side panel, you can now either paste a source or choose a local ZIP package via the native file picker, and the list shows installed skills even when they are bash-tool or other non-script packages.
+**SkillLite Assistant** is the native **desktop app** (Tauri 2 + React) on top of the same **`skilllite`** engine (`agent-rpc`). **Installers** (dmg / msi / AppImage) ship on [GitHub Releases](https://github.com/EXboys/skilllite/releases) (desktop builds may appear shortly after the main release artifacts). First-time orientation: [Pick your path → Desktop](./docs/en/START_PATHS.md#path-1-desktop). In the skills side panel, you can now either paste a source or choose a local ZIP package via the native file picker, the list shows installed skills even when they are bash-tool or other non-script packages, and each skill row surfaces type / trust / dependency hints.
 
 
 ![SkillLite Assistant — Settings, Model & API tab](./docs/images/assistant-settings-model-api.png)

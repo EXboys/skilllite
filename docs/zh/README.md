@@ -483,7 +483,7 @@ opencode
 <details>
 <summary>桌面助手（skilllite-assistant）</summary>
 
-**SkillLite Assistant** 是本机 **桌面应用**（Tauri 2 + React），底层仍是同一套 **`skilllite`** 引擎（`agent-rpc`）。**安装包**（dmg / msi / AppImage）见 [GitHub Releases](https://github.com/EXboys/skilllite/releases)（桌面构建可能比主产物稍晚出现）。首次分流说明：[选择你的路径 → 桌面](./START_PATHS.md#path-1-desktop)。现在在技能侧栏里，既可以粘贴来源，也可以通过原生文件选择器直接导入本地 ZIP 技能包；技能列表也会显示已安装的 bash-tool 等非脚本技能包。
+**SkillLite Assistant** 是本机 **桌面应用**（Tauri 2 + React），底层仍是同一套 **`skilllite`** 引擎（`agent-rpc`）。**安装包**（dmg / msi / AppImage）见 [GitHub Releases](https://github.com/EXboys/skilllite/releases)（桌面构建可能比主产物稍晚出现）。首次分流说明：[选择你的路径 → 桌面](./START_PATHS.md#path-1-desktop)。现在在技能侧栏里，既可以粘贴来源，也可以通过原生文件选择器直接导入本地 ZIP 技能包；技能列表也会显示已安装的 bash-tool 等非脚本技能包，并展示类型、信任和依赖提示。
 
 **设置**（齿轮）：**模型与 API**（界面语言、服务商、API Key、模型、可选 Base URL、Token 统计等）、**工作区与沙箱**、**Agent 预算**、**自进化**、**定时任务**、**卸载与数据**。
 

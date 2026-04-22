@@ -95,13 +95,19 @@ pub fn parse_allowed_tools(raw: &str) -> Vec<BashToolPattern> {
     for cap in ALLOWED_TOOLS_RE.captures_iter(raw) {
         if let Some(inner) = cap.get(1) {
             let pattern_str = inner.as_str().trim();
-            // Extract command prefix: everything before the first ':'
+            // Extract command prefix: everything before the first ':' or whitespace.
             // e.g. "agent-browser:*" -> "agent-browser"
-            // e.g. "agent-browser" -> "agent-browser" (no colon = entire string is prefix)
+            // e.g. "infsh *" -> "infsh"
+            // e.g. "agent-browser" -> "agent-browser"
             let command_prefix = if let Some(idx) = pattern_str.find(':') {
                 pattern_str[..idx].trim().to_string()
             } else {
-                pattern_str.to_string()
+                pattern_str
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .trim()
+                    .to_string()
             };
 
             if !command_prefix.is_empty() {
@@ -800,6 +806,14 @@ description: A simple skill
         let patterns = parse_allowed_tools("Bash(simple-tool)");
         assert_eq!(patterns.len(), 1);
         assert_eq!(patterns[0].command_prefix, "simple-tool");
+    }
+
+    #[test]
+    fn test_parse_allowed_tools_space_wildcard() {
+        let patterns = parse_allowed_tools("Bash(infsh *)");
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].command_prefix, "infsh");
+        assert_eq!(patterns[0].raw_pattern, "infsh *");
     }
 
     #[test]

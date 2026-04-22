@@ -344,6 +344,23 @@ type StatusPanelTab = "evolution" | "archive";
 
 const SKILL_LIST_MAX_HEIGHT = 200;
 
+interface DesktopSkillInfo {
+  name: string;
+  description?: string | null;
+  skillType: "script" | "bash_tool" | "prompt_only" | string;
+  source?: string | null;
+  trustTier: "trusted" | "reviewed" | "community" | "unknown" | string;
+  trustScore?: number | null;
+  admissionRisk?: "safe" | "suspicious" | "malicious" | string | null;
+  dependencyType: "python" | "node" | "none" | string;
+  dependencyPackages: string[];
+  missingCommands: string[];
+  missingAnyCommandGroups: string[][];
+  missingEnvVars: string[];
+}
+
+type TranslateFn = (key: string, vars?: Record<string, string | number>) => string;
+
 /** 将 skill 名称转为短标签（如 xiaohongshu-writer → 小红书）；英文界面保留原名 */
 function skillDisplayName(name: string, locale: "zh" | "en"): string {
   if (locale === "en") return name;
@@ -361,6 +378,80 @@ function skillDisplayName(name: string, locale: "zh" | "en"): string {
   return map[name] || name;
 }
 
+function skillTypeLabel(skill: DesktopSkillInfo, t: TranslateFn): string {
+  switch (skill.skillType) {
+    case "script":
+      return t("status.skillTypeScript");
+    case "bash_tool":
+      return t("status.skillTypeBashTool");
+    default:
+      return t("status.skillTypePromptOnly");
+  }
+}
+
+function trustTierLabel(skill: DesktopSkillInfo, t: TranslateFn): string {
+  switch (skill.trustTier) {
+    case "trusted":
+      return t("status.skillTrustTrusted");
+    case "reviewed":
+      return t("status.skillTrustReviewed");
+    case "community":
+      return t("status.skillTrustCommunity");
+    default:
+      return t("status.skillTrustUnknown");
+  }
+}
+
+function admissionRiskLabel(
+  admissionRisk: DesktopSkillInfo["admissionRisk"],
+  t: TranslateFn
+): string | null {
+  switch (admissionRisk) {
+    case "safe":
+      return t("status.skillAdmissionSafe");
+    case "suspicious":
+      return t("status.skillAdmissionSuspicious");
+    case "malicious":
+      return t("status.skillAdmissionMalicious");
+    default:
+      return null;
+  }
+}
+
+function dependencySummary(skill: DesktopSkillInfo, t: TranslateFn): string {
+  if (skill.dependencyPackages.length === 0) {
+    return t("status.skillDependenciesNone");
+  }
+  const typeLabel =
+    skill.dependencyType === "python"
+      ? t("status.skillDependencyTypePython")
+      : skill.dependencyType === "node"
+        ? t("status.skillDependencyTypeNode")
+        : t("status.skillDependencyTypeOther");
+  return `${typeLabel}: ${skill.dependencyPackages.join(", ")}`;
+}
+
+function skillMissingHints(
+  skill: DesktopSkillInfo,
+  t: TranslateFn
+): string[] {
+  return [
+    ...skill.missingCommands.map((name) => t("status.skillMissingCommand", { name })),
+    ...skill.missingAnyCommandGroups.map((names) =>
+      t("status.skillMissingAnyCommand", { names: names.join(" / ") })
+    ),
+    ...skill.missingEnvVars.map((name) => t("status.skillMissingEnv", { name })),
+  ];
+}
+
+function compactSourceLabel(source?: string | null): string {
+  if (!source) return "";
+  const trimmed = source.trim();
+  if (!trimmed) return "";
+  const parts = trimmed.split(/[\\/]/);
+  return parts[parts.length - 1] || trimmed;
+}
+
 const SKILLS_SH_URL = "https://skills.sh/";
 
 function SkillRepairSection() {
@@ -368,7 +459,7 @@ function SkillRepairSection() {
   const locale = getLocale();
   const { settings } = useSettingsStore();
   const workspace = settings.workspace || ".";
-  const [skillNames, setSkillNames] = useState<string[]>([]);
+  const [skills, setSkills] = useState<DesktopSkillInfo[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loadingList, setLoadingList] = useState(false);
   const [repairing, setRepairing] = useState(false);
@@ -386,12 +477,12 @@ function SkillRepairSection() {
     setLoadingList(true);
     setRepairResult(null);
     try {
-      const names = await invoke<string[]>("skilllite_list_skills", { workspace });
-      setSkillNames(names);
+      const nextSkills = await invoke<DesktopSkillInfo[]>("skilllite_list_skills", { workspace });
+      setSkills(nextSkills);
       setSelected(new Set());
     } catch (e) {
       console.error("[skilllite-assistant] skilllite_list_skills failed:", e);
-      setSkillNames([]);
+      setSkills([]);
     } finally {
       setLoadingList(false);
     }
@@ -410,8 +501,12 @@ function SkillRepairSection() {
     });
   };
 
-  const selectAll = () => setSelected(new Set(skillNames));
+  const selectAll = () => setSelected(new Set(skills.map((skill) => skill.name)));
   const selectNone = () => setSelected(new Set());
+  const selectedSkill =
+    selected.size === 1 ? skills.find((skill) => selected.has(skill.name)) ?? null : null;
+  const selectedRiskLabel = selectedSkill ? admissionRiskLabel(selectedSkill.admissionRisk, t) : null;
+  const selectedMissingHints = selectedSkill ? skillMissingHints(selectedSkill, t) : [];
 
   const runRepair = async () => {
     setRepairing(true);
@@ -523,9 +618,9 @@ function SkillRepairSection() {
       {/* 标题行：技能 + 数量 + 操作 */}
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 mb-2 min-w-0">
         <span className="font-medium text-ink dark:text-ink-dark shrink-0">{t("status.skills")}</span>
-        {skillNames.length > 0 && (
+        {skills.length > 0 && (
           <span className="text-xs text-ink-mute dark:text-ink-dark-mute shrink-0">
-            {t("status.countSkills", { n: skillNames.length })}
+            {t("status.countSkills", { n: skills.length })}
           </span>
         )}
         <div className="flex items-center gap-0.5 min-w-0">
@@ -547,7 +642,7 @@ function SkillRepairSection() {
           <button
             type="button"
             onClick={selectAll}
-            disabled={skillNames.length === 0}
+            disabled={skills.length === 0}
             className="text-xs px-1.5 py-1 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
             title={t("status.selectAll")}
           >
@@ -585,7 +680,7 @@ function SkillRepairSection() {
           </button>
           <button
             type="button"
-            onClick={runAdd}
+            onClick={() => runAdd()}
             disabled={adding || !addSource.trim()}
             className="shrink-0 px-2.5 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -622,7 +717,7 @@ function SkillRepairSection() {
             </svg>
             {t("common.loading")}
           </div>
-        ) : skillNames.length === 0 ? (
+        ) : skills.length === 0 ? (
           <div className="p-4 text-xs text-ink-mute dark:text-ink-dark-mute text-center leading-relaxed">
             <p>{t("status.noSkillsFound")}</p>
             <p className="text-[11px] mt-1 mb-2">{t("status.noSkillsHint")}</p>
@@ -640,11 +735,15 @@ function SkillRepairSection() {
           </div>
         ) : (
           <ul className="p-1.5 space-y-0.5">
-            {skillNames.map((name) => (
+            {skills.map((skill) => {
+              const name = skill.name;
+              const riskLabel = admissionRiskLabel(skill.admissionRisk, t);
+              const missingHints = skillMissingHints(skill, t);
+              return (
               <li key={name}>
                 <label
                   title={name}
-                  className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors ${
+                  className={`flex items-start gap-2.5 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors ${
                     selected.has(name)
                       ? "bg-accent/10 dark:bg-accent/20 text-accent dark:text-accent"
                       : "hover:bg-ink/5 dark:hover:bg-white/5 text-ink dark:text-ink-dark"
@@ -656,9 +755,39 @@ function SkillRepairSection() {
                     onChange={() => toggleOne(name)}
                     className="rounded border-border dark:border-border-dark text-accent focus:ring-accent/40 shrink-0"
                   />
-                  <span className="truncate text-xs font-medium flex-1 min-w-0">
-                    {skillDisplayName(name, locale)}
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate text-xs font-medium min-w-0">
+                        {skillDisplayName(name, locale)}
+                      </span>
+                      <span className="shrink-0 rounded-full border border-border dark:border-border-dark bg-white/80 dark:bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-ink-mute dark:text-ink-dark-mute">
+                        {skillTypeLabel(skill, t)}
+                      </span>
+                      {missingHints.length > 0 && (
+                        <span className="shrink-0 rounded-full border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                          {t("status.skillNeedsSetup")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-ink-mute dark:text-ink-dark-mute">
+                      {skill.source && (
+                        <span className="truncate max-w-full">
+                          {t("status.skillSourceCompact", { source: compactSourceLabel(skill.source) })}
+                        </span>
+                      )}
+                      <span>
+                        {t("status.skillTrustCompact", {
+                          tier: trustTierLabel(skill, t),
+                          score: skill.trustScore ?? 0,
+                        })}
+                      </span>
+                      {riskLabel && (
+                        <span>
+                          {t("status.skillAdmissionCompact", { risk: riskLabel })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <button
                     type="button"
                     onClick={(e) => {
@@ -684,16 +813,78 @@ function SkillRepairSection() {
                   </button>
                 </label>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </div>
+
+      {selectedSkill && (
+        <div className="mb-3 rounded-lg border border-border dark:border-border-dark bg-white/60 dark:bg-surface-dark/60 p-3 text-xs text-ink dark:text-ink-dark">
+          <div className="flex min-w-0 items-center gap-2 flex-wrap">
+            <div className="font-medium truncate">{skillDisplayName(selectedSkill.name, locale)}</div>
+            <span className="rounded-full border border-border dark:border-border-dark bg-gray-50 dark:bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-ink-mute dark:text-ink-dark-mute">
+              {skillTypeLabel(selectedSkill, t)}
+            </span>
+          </div>
+          {selectedSkill.description && (
+            <p className="mt-2 break-words text-[11px] text-ink-mute dark:text-ink-dark-mute">
+              {selectedSkill.description}
+            </p>
+          )}
+          <dl className="mt-2 space-y-1.5">
+            <div className="min-w-0">
+              <dt className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                {t("status.skillSourceLabel")}
+              </dt>
+              <dd className="break-words">{selectedSkill.source || t("status.skillValueUnknown")}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                {t("status.skillTrustLabel")}
+              </dt>
+              <dd>
+                {trustTierLabel(selectedSkill, t)}
+                {selectedSkill.trustScore != null ? ` (${selectedSkill.trustScore})` : ""}
+                {selectedRiskLabel
+                  ? ` · ${t("status.skillAdmissionCompact", {
+                      risk: selectedRiskLabel,
+                    })}`
+                  : ""}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                {t("status.skillDependenciesLabel")}
+              </dt>
+              <dd className="break-words">{dependencySummary(selectedSkill, t)}</dd>
+            </div>
+            {selectedMissingHints.length > 0 && (
+              <div className="min-w-0">
+                <dt className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                  {t("status.skillSetupLabel")}
+                </dt>
+                <dd className="mt-1 space-y-1">
+                  {selectedMissingHints.map((hint) => (
+                    <div
+                      key={hint}
+                      className="rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-1 text-amber-800 dark:text-amber-200 break-words"
+                    >
+                      {hint}
+                    </div>
+                  ))}
+                </dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      )}
 
       {/* 修复按钮 */}
       <button
         type="button"
         onClick={runRepair}
-        disabled={repairing || deleting || skillNames.length === 0}
+        disabled={repairing || deleting || skills.length === 0}
         className="w-full text-sm px-3 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {repairing
@@ -706,7 +897,7 @@ function SkillRepairSection() {
       <button
         type="button"
         onClick={runDelete}
-        disabled={deleting || repairing || skillNames.length === 0 || selected.size === 0}
+        disabled={deleting || repairing || skills.length === 0 || selected.size === 0}
         className="w-full mt-2 text-sm px-3 py-2 rounded-lg border border-red-300 dark:border-red-800/80 text-red-700 dark:text-red-300 font-medium hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {deleting

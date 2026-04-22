@@ -228,9 +228,11 @@ fn skilllite_clarify(
 }
 
 #[tauri::command]
-async fn skilllite_list_skills(workspace: Option<String>) -> Vec<String> {
+async fn skilllite_list_skills(
+    workspace: Option<String>,
+) -> Vec<skilllite_bridge::DesktopSkillInfo> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
-    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_skill_names(&ws))
+    tauri::async_runtime::spawn_blocking(move || skilllite_bridge::list_skills(&ws))
         .await
         .unwrap_or_default()
 }
