@@ -209,7 +209,7 @@ function PromptChatFileEditorRow({ filename }: { filename: string }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-2 py-2 text-left text-xs font-mono bg-white/60 dark:bg-paper-dark/60 hover:bg-ink/5 dark:hover:bg-white/5"
+        className="w-full flex items-center justify-between px-2 py-2 text-left text-xs font-mono bg-paper/35 dark:bg-paper-dark/60 hover:bg-ink/5 dark:hover:bg-paper/55/5"
       >
         <span>{filename}</span>
         <span className="text-ink-mute dark:text-ink-dark-mute text-[10px]">{open ? "▼" : "▶"}</span>
@@ -224,7 +224,7 @@ function PromptChatFileEditorRow({ filename }: { filename: string }) {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 rows={12}
-                className="w-full rounded border border-border dark:border-border-dark bg-white dark:bg-paper-dark px-2 py-1.5 text-[11px] font-mono text-ink dark:text-ink-dark"
+                className="w-full rounded border border-border dark:border-border-dark bg-paper/55 dark:bg-paper-dark px-2 py-1.5 text-[11px] font-mono text-ink dark:text-ink-dark"
                 spellCheck={false}
               />
               <div className="flex flex-wrap gap-2">
@@ -331,7 +331,7 @@ function formatSnapshotTimeLabel(modifiedUnix: number, locale: Locale): string {
 
 const PROMPT_VERSION_SELECT_CLS =
   "w-full min-w-0 appearance-none rounded-lg border border-border dark:border-border-dark " +
-  "bg-white dark:bg-paper-dark shadow-sm pl-3 pr-9 py-2 text-[11px] font-mono " +
+  "bg-paper/55 dark:bg-paper-dark shadow-sm pl-3 pr-9 py-2 text-[11px] font-mono " +
   "text-ink dark:text-ink-dark transition-[border-color,box-shadow] duration-150 " +
   "hover:border-accent/40 dark:hover:border-accent/35 " +
   "focus:outline-none focus:ring-2 focus:ring-accent/25 focus:border-accent/50 " +
@@ -551,10 +551,6 @@ function formatDurationSecs(secs: number): string {
 
 function dxMark(on: boolean): string {
   return on ? "✓" : "×";
-}
-
-function passiveTryWord(on: boolean, t: (k: string) => string): string {
-  return on ? t("evolution.diagnostics.tryYes") : t("evolution.diagnostics.tryNo");
 }
 
 function passiveSkillExtra(p: PassiveScheduleDiagnostics, t: (k: string) => string): string {
@@ -791,7 +787,7 @@ export function EvolutionStatusSummary({
           type="button"
           onClick={() => void refresh()}
           disabled={loading}
-          className="p-1.5 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 shrink-0"
+          className="p-1.5 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-paper/55/5 disabled:opacity-50 shrink-0"
           title={t("evolution.summary.refreshTitle")}
           aria-label={t("evolution.summary.refreshEvolutionAria")}
         >
@@ -949,12 +945,12 @@ function PendingSkillReviewCard({
   const showShort = !expanded || fullMd === null;
 
   return (
-    <div className="rounded-lg border border-border/70 dark:border-border-dark/60 bg-gray-50/90 dark:bg-surface-dark/35 p-2.5">
-      <div className="flex flex-wrap items-start justify-between gap-2">
+    <div className="overflow-hidden rounded-2xl border border-border/70 bg-paper/50 shadow-sm dark:border-border-dark/55 dark:bg-paper-dark/35">
+      <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border/50 bg-surface dark:bg-paper-dark/15 px-4 py-3 dark:border-border-dark dark:bg-black/25">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
           <span className="truncate text-sm font-semibold text-ink dark:text-ink-dark">{skill.name}</span>
           {skill.needs_review && (
-            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200">
+            <span className="shrink-0 rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-900 dark:bg-amber-900/40 dark:text-amber-100">
               建议人工过目
             </span>
           )}
@@ -962,15 +958,15 @@ function PendingSkillReviewCard({
         <button
           type="button"
           onClick={() => void loadFull()}
-          className="shrink-0 rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10 disabled:opacity-50"
+          className="shrink-0 rounded-lg border border-border bg-paper/55 px-2.5 py-1 text-xs font-medium text-accent shadow-sm hover:border-accent/30 disabled:opacity-50 dark:border-border-dark dark:bg-paper-dark/30 dark:hover:border-accent/40"
           disabled={loadingFull}
         >
           {loadingFull ? "加载全文…" : expanded ? "收起全文" : "查看全文"}
         </button>
       </div>
       <div
-        className={`prose prose-sm mt-2 max-w-none dark:prose-invert [&_pre]:text-xs [&_code]:text-xs overflow-y-auto rounded-md border border-border/50 dark:border-border-dark/50 bg-white/70 p-2 dark:bg-black/20 ${
-          showShort ? "max-h-44" : "max-h-[min(65vh,480px)]"
+        className={`prose prose-sm max-w-none dark:prose-invert [&_pre]:text-xs [&_code]:text-xs overflow-y-auto border-border/50 bg-paper/55 px-3 py-3 dark:border-border-dark dark:bg-paper-dark/25 ${
+          showShort ? "max-h-40" : "max-h-[min(65vh,480px)]"
         }`}
       >
         {displayMd ? (
@@ -979,13 +975,13 @@ function PendingSkillReviewCard({
           <p className="text-xs text-ink-mute">（无 SKILL.md 内容）</p>
         )}
       </div>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 dark:border-border-dark/40">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-surface/85 px-4 py-3 dark:border-border-dark dark:bg-black/20">
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             onClick={() => void confirm()}
             disabled={acting !== null}
-            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-50"
           >
             {acting === "confirm" ? "处理中…" : "确认加入"}
           </button>
@@ -993,14 +989,30 @@ function PendingSkillReviewCard({
             type="button"
             onClick={() => void reject()}
             disabled={acting !== null}
-            className="rounded-lg border border-border px-3 py-1.5 text-xs text-ink dark:border-border-dark dark:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50"
+            className="rounded-lg border border-border bg-paper/55 px-3 py-1.5 text-xs font-medium text-ink shadow-sm hover:bg-paper/40 disabled:opacity-50 dark:border-border-dark dark:bg-paper-dark/30 dark:text-ink-dark dark:hover:bg-paper-dark/35"
           >
             {acting === "reject" ? "处理中…" : "拒绝"}
           </button>
         </div>
-        {msg ? <p className="max-w-full min-w-0 flex-1 text-right text-xs text-ink-mute dark:text-ink-dark-mute">{msg}</p> : null}
+        {msg ? (
+          <p className="max-w-full min-w-0 flex-1 text-right text-xs text-ink-mute dark:text-ink-dark-mute">{msg}</p>
+        ) : null}
       </div>
     </div>
+  );
+}
+
+function EvolutionArmChip({ label, active }: { label: string; active: boolean }) {
+  return (
+    <span
+      className={`inline-flex min-h-[1.375rem] items-center rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+        active
+          ? "bg-emerald-500/15 text-emerald-900 ring-1 ring-emerald-500/20 dark:bg-emerald-400/12 dark:text-emerald-100 dark:ring-emerald-400/25"
+          : "bg-surface text-ink-mute ring-1 ring-border/60 dark:bg-paper-dark/25 dark:text-ink-dark-mute dark:ring-border-dark/60"
+      }`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -1158,409 +1170,531 @@ export function EvolutionDetailBody({
 
   const s = status;
 
-  const tabBtnClass = (active: boolean, emphasize?: boolean) =>
-    `flex-1 min-w-0 py-2 px-1.5 text-xs font-medium rounded-t-md border-b-2 transition-colors ${
-      active
-        ? emphasize
-          ? "border-accent text-accent dark:text-accent font-semibold"
-          : "border-accent text-ink dark:text-ink-dark"
-        : "border-transparent text-ink-mute dark:text-ink-dark-mute hover:text-ink dark:hover:text-ink-dark"
-    }`;
-
   const pendingCount = pending.length;
   const hasJudgement = Boolean(s?.judgement_label);
 
-  const detailCard =
-    "rounded-xl border border-border/70 dark:border-border-dark/60 bg-white/60 dark:bg-surface-dark/30 shadow-sm overflow-hidden";
-  const detailCardPad = "p-3 sm:p-4";
+  const tabPill = (active: boolean, emphasize?: boolean) =>
+    `flex-1 min-w-0 rounded-xl px-2.5 py-2.5 text-xs font-medium outline-none transition-all focus-visible:ring-2 focus-visible:ring-accent/40 sm:px-3 ${
+      active
+        ? `bg-paper/85 text-ink shadow-md ring-1 ring-border/80 backdrop-blur-sm dark:bg-paper-dark/35 dark:text-ink-dark dark:ring-border-dark/60 ${
+            emphasize ? "!text-accent dark:!text-accent" : ""
+          }`
+        : "text-ink-mute hover:bg-paper/40 dark:text-ink-dark-mute dark:hover:bg-paper-dark/20"
+    }`;
+
+  /** 与全局 token 一致：有色页面底 + 半透明卡片，避免「一片白」 */
+  const evoPage =
+    "relative bg-surface dark:bg-surface-dark before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(185deg,rgba(59,130,246,0.085)_0%,transparent_42%)] before:content-[''] dark:before:bg-[linear-gradient(185deg,rgba(59,130,246,0.11)_0%,transparent_38%)]";
+  const evoPanel =
+    "overflow-hidden rounded-2xl border border-border/70 bg-paper/40 shadow-sm backdrop-blur-md dark:border-border-dark/55 dark:bg-paper-dark/20 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]";
+  const evoPanelPad = "px-4 py-4 sm:px-5 sm:py-5";
   const detailSectionTitle =
-    "text-[11px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute mb-2.5";
+    "text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-mute dark:text-ink-dark-mute";
 
   return (
-    <div className="mx-auto max-w-5xl space-y-3 px-2 py-2 sm:px-5 sm:py-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 dark:border-border-dark/50 bg-gray-50/70 dark:bg-surface-dark/40 px-1.5 pt-1">
-        <div
-          role="tablist"
-          aria-label={t("evolution.detail.tabListAria")}
-          className="flex min-w-0 flex-1 gap-0 border-b border-transparent"
-        >
+    <div className={`mx-auto max-w-5xl min-h-0 ${evoPage}`}>
+      <div className="relative z-[1] space-y-4 px-3 py-4 sm:px-6 sm:py-6">
+        <nav className="sticky top-0 z-20 flex flex-wrap items-stretch gap-1.5 rounded-2xl border border-border/70 bg-paper/35 p-1 shadow-sm backdrop-blur-md dark:border-border-dark/55 dark:bg-paper-dark/25">
+          <div
+            role="tablist"
+            aria-label={t("evolution.detail.tabListAria")}
+            className="flex min-w-0 flex-1 gap-1"
+          >
+            <button
+              type="button"
+              role="tab"
+              id="evolution-detail-tab-run"
+              aria-controls="evolution-detail-panel-run"
+              aria-selected={detailTab === "run"}
+              tabIndex={detailTab === "run" ? 0 : -1}
+              onClick={() => setDetailTab("run")}
+              className={tabPill(detailTab === "run")}
+            >
+              {t("evolution.detail.tabRun")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="evolution-detail-tab-review"
+              aria-controls="evolution-detail-panel-review"
+              aria-selected={detailTab === "review"}
+              tabIndex={detailTab === "review" ? 0 : -1}
+              onClick={() => setDetailTab("review")}
+              className={tabPill(detailTab === "review")}
+            >
+              <span className="inline-flex items-center justify-center gap-1.5">
+                {t("evolution.detail.tabReview")}
+                {(pendingCount > 0 || hasJudgement) && (
+                  <span className="tabular-nums rounded-full bg-accent/15 px-1.5 py-0.5 text-[10px] font-bold text-accent dark:bg-accent/25">
+                    {pendingCount > 0 ? pendingCount : "!"}
+                  </span>
+                )}
+              </span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="evolution-detail-tab-changes"
+              aria-controls="evolution-detail-panel-changes"
+              aria-selected={detailTab === "changes"}
+              tabIndex={detailTab === "changes" ? 0 : -1}
+              onClick={() => setDetailTab("changes")}
+              className={tabPill(detailTab === "changes", true)}
+            >
+              <span className="inline-flex items-center justify-center gap-1.5">
+                {t("evolution.detail.tabChanges")}
+                {evolvedPromptWithChangeCount > 0 && (
+                  <span
+                    className="tabular-nums rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-400/15 dark:text-emerald-200"
+                    title={t("evolution.diff.changedFilesTabHint")}
+                  >
+                    {t("evolution.diff.evolvedFilesCount", { n: evolvedPromptWithChangeCount })}
+                  </span>
+                )}
+              </span>
+            </button>
+          </div>
           <button
             type="button"
-            role="tab"
-            id="evolution-detail-tab-run"
-            aria-controls="evolution-detail-panel-run"
-            aria-selected={detailTab === "run"}
-            tabIndex={detailTab === "run" ? 0 : -1}
-            onClick={() => setDetailTab("run")}
-            className={tabBtnClass(detailTab === "run")}
+            onClick={() => void refresh()}
+            disabled={loading}
+            className="shrink-0 self-center rounded-xl px-3 py-2 text-xs font-medium text-accent hover:bg-accent/[0.08] disabled:opacity-50 dark:hover:bg-accent/10"
           >
-            {t("evolution.detail.tabRun")}
+            {loading ? t("evolution.detail.refreshing") : t("evolution.detail.refreshStatus")}
           </button>
-          <button
-            type="button"
-            role="tab"
-            id="evolution-detail-tab-review"
-            aria-controls="evolution-detail-panel-review"
-            aria-selected={detailTab === "review"}
-            tabIndex={detailTab === "review" ? 0 : -1}
-            onClick={() => setDetailTab("review")}
-            className={tabBtnClass(detailTab === "review")}
-          >
-            <span className="inline-flex items-center justify-center gap-1">
-              {t("evolution.detail.tabReview")}
-              {(pendingCount > 0 || hasJudgement) && (
-                <span className="tabular-nums rounded-full bg-accent/15 dark:bg-accent/25 px-1.5 py-px text-[10px] font-semibold text-accent">
-                  {pendingCount > 0 ? pendingCount : "!"}
-                </span>
-              )}
-            </span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id="evolution-detail-tab-changes"
-            aria-controls="evolution-detail-panel-changes"
-            aria-selected={detailTab === "changes"}
-            tabIndex={detailTab === "changes" ? 0 : -1}
-            onClick={() => setDetailTab("changes")}
-            className={tabBtnClass(detailTab === "changes", true)}
-          >
-            <span className="inline-flex items-center justify-center gap-1">
-              {t("evolution.detail.tabChanges")}
-              {evolvedPromptWithChangeCount > 0 && (
-                <span
-                  className="tabular-nums rounded-full bg-emerald-500/20 dark:bg-emerald-400/15 px-1.5 py-px text-[10px] font-semibold text-emerald-800 dark:text-emerald-300"
-                  title={t("evolution.diff.changedFilesTabHint")}
-                >
-                  {t("evolution.diff.evolvedFilesCount", { n: evolvedPromptWithChangeCount })}
-                </span>
-              )}
-            </span>
-          </button>
-        </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={loading}
-          className="mb-1 mr-1 shrink-0 rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10 disabled:opacity-50"
-        >
-          {loading ? t("evolution.detail.refreshing") : t("evolution.detail.refreshStatus")}
-        </button>
-      </div>
+        </nav>
 
-      {s?.db_error && (
-        <p className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-200">
-          {s.db_error}
-        </p>
-      )}
+        {s?.db_error && (
+          <p className="rounded-2xl border border-amber-200/90 bg-amber-50/95 px-4 py-3 text-sm text-amber-950 shadow-sm dark:border-amber-800/50 dark:bg-amber-950/40 dark:text-amber-100">
+            {s.db_error}
+          </p>
+        )}
 
       {detailTab === "run" && (
         <div
           role="tabpanel"
           id="evolution-detail-panel-run"
           aria-labelledby="evolution-detail-tab-run"
-          className="space-y-3"
+          className="space-y-4"
         >
           {s && (
-            <div className={`${detailCard} divide-y divide-border/50 dark:divide-border-dark/50`}>
-              <div className={`${detailCardPad} bg-gray-50/40 dark:bg-black/10`}>
-                <h2 className={detailSectionTitle}>{t("evolution.detail.scheduleHeading")}</h2>
-                <dl className="grid grid-cols-[minmax(5.5rem,auto)_1fr] gap-x-3 gap-y-2 text-xs text-ink dark:text-ink-dark">
-                  <dt className="text-ink-mute dark:text-ink-dark-mute">模式</dt>
-                  <dd className="min-w-0 font-medium">{s.mode_label}</dd>
-                  <dt className="text-ink-mute dark:text-ink-dark-mute">周期触发</dt>
-                  <dd className="min-w-0 tabular-nums">
-                    {s.mode_key === "disabled" ? "—" : formatInterval(s.interval_secs)}
-                  </dd>
-                  <dt className="text-ink-mute dark:text-ink-dark-mute">加权触发</dt>
-                  <dd className="min-w-0 leading-snug">
-                    窗口 {s.signal_window ?? 10} 条内加权和 ≥ {s.weighted_trigger_min ?? 3}（当前{" "}
-                    {s.weighted_signal_sum ?? 0}）
-                  </dd>
-                  <dt className="text-ink-mute dark:text-ink-dark-mute">未处理 OR</dt>
-                  <dd className="min-w-0 tabular-nums">
-                    ≥ {s.decision_threshold} 条触发 · 当前 {s.unprocessed_decisions}
-                  </dd>
-                  <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}</dt>
-                  <dd className="min-w-0">
-                    {(s.evo_profile_key ?? "default") === "demo"
-                      ? t("evolution.profile.demo")
-                      : (s.evo_profile_key ?? "default") === "conservative"
-                        ? t("evolution.profile.conservative")
-                        : t("evolution.profile.default")}
-                  </dd>
-                  <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}</dt>
-                  <dd className="min-w-0 tabular-nums">
-                    {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours)
-                      ? `${s.evo_cooldown_hours} h`
-                      : "—"}
-                  </dd>
-                  <dt className="text-ink-mute dark:text-ink-dark-mute">
-                    {t("evolution.summary.lastEvolutionAttempt")}
-                  </dt>
-                  <dd className="min-w-0 tabular-nums">{s.last_run_ts ? formatTs(s.last_run_ts) : "暂无记录"}</dd>
-                </dl>
-                <div className="mt-3 space-y-1 border-t border-border/40 pt-3 text-[11px] leading-relaxed text-ink-mute dark:text-ink-dark-mute dark:border-border-dark/40">
-                  <p>{t("evolution.adjustInSettingsHint")}</p>
-                  <p>{t("evolution.detailEnvHint")}</p>
-                </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+              <div className="rounded-2xl border border-border/70 bg-paper/45 p-3 shadow-sm dark:border-border-dark/55 dark:bg-paper-dark/35">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                  {t("evolution.detail.kpiMode")}
+                </p>
+                <p className="mt-1 truncate text-sm font-semibold text-ink dark:text-ink-dark">
+                  {s.mode_label}
+                </p>
               </div>
-            {(s.a9 || s.passive) && (
-              <div className={`${detailCardPad} space-y-2`}>
-                <h2 className={`${detailSectionTitle} mb-0`}>
-                  {t("evolution.diagnostics.titleShort")}
-                </h2>
-                {s.last_material_run_ts != null && s.last_material_run_ts !== "" && (
-                  <p className="text-xs text-ink dark:text-ink-dark tabular-nums">
-                    <span className="text-ink-mute dark:text-ink-dark-mute">
-                      {t("evolution.diagnostics.kMaterial")}
-                    </span>
-                    {formatTs(s.last_material_run_ts)}
-                  </p>
-                )}
-                {s.a9 && (
-                  <p className="text-xs text-ink dark:text-ink-dark leading-snug tabular-nums">
-                    <span className="font-semibold text-accent">A9</span>{" "}
-                    {s.a9.growth_tick_would_be_due
-                      ? t("evolution.diagnostics.a9Fire")
-                      : t("evolution.diagnostics.a9Idle")}
-                    {s.a9.min_run_gap_secs > 0 ? (
-                      <>
-                        {" · "}
-                        <span
-                          className={
-                            s.a9.min_run_gap_blocked
-                              ? "text-amber-700 dark:text-amber-400"
-                              : "text-ink-mute dark:text-ink-dark-mute"
-                          }
-                        >
-                          {t("evolution.diagnostics.gapSeg", {
-                            secs: s.a9.min_run_gap_secs,
-                            st: dxMark(!s.a9.min_run_gap_blocked),
-                          })}
-                        </span>
-                      </>
-                    ) : null}
-                    {" · "}
-                    Σ{s.a9.weighted_signal_sum}/{s.a9.weighted_trigger_min} · {s.a9.raw_unprocessed_decisions}/
-                    {s.a9.raw_unprocessed_threshold}
-                    {" · "}
-                    {t("evolution.diagnostics.lblSweep")}
-                    {dxMark(s.a9.arm_sweep)}
-                    {" · "}
-                    {t("evolution.diagnostics.lblPeriodic")}
-                    {dxMark(s.a9.arm_periodic)} {formatDurationSecs(s.a9.periodic_elapsed_secs)}/
-                    {formatDurationSecs(s.a9.interval_secs)}
-                    {s.a9.growth_tick_would_be_due && s.a9.periodic_only ? (
-                      <span className="text-ink-mute dark:text-ink-dark-mute">
-                        {" "}
-                        {t("evolution.diagnostics.badgePeriodicOnly")}
-                      </span>
-                    ) : null}
-                  </p>
-                )}
-                {s.passive && (
-                  <div className="text-xs text-ink dark:text-ink-dark leading-relaxed space-y-1">
-                    <p className="font-semibold text-accent">
-                      {t("evolution.diagnostics.kPassive")}
-                    </p>
-                    <p className="text-ink-mute dark:text-ink-dark-mute">
-                      {t("evolution.diagnostics.passiveDailyPlain", {
-                        n: s.passive.daily_runs_today,
-                        cap: s.passive.daily_cap,
-                        hint: s.passive.daily_cap_blocked
-                          ? t("evolution.diagnostics.hintDailyBlocked")
-                          : t("evolution.diagnostics.hintDailyOk"),
-                      })}
-                    </p>
-                    <p className="text-ink-mute dark:text-ink-dark-mute">
-                      {s.passive.hours_since_last_material_run != null
-                        ? t("evolution.diagnostics.passiveCoolPlain", {
-                            since: s.passive.hours_since_last_material_run.toFixed(1),
-                            need: s.passive.cooldown_hours,
-                            hint: s.passive.cooldown_blocked
-                              ? t("evolution.diagnostics.hintCoolWait")
-                              : t("evolution.diagnostics.hintCoolOk"),
-                          })
-                        : t("evolution.diagnostics.passiveCoolNone")}
-                    </p>
-                    <p className="text-ink-mute dark:text-ink-dark-mute">
-                      {t("evolution.diagnostics.passiveStatsPlain", {
-                        days: s.passive.recent_days,
-                        m: s.passive.meaningful,
-                        f: s.passive.failures,
-                        rp: s.passive.repeated_patterns,
-                      })}
-                    </p>
-                    <p className="text-ink dark:text-ink-dark">
-                      {t("evolution.diagnostics.passiveArmsPlain", {
-                        prompts: passiveTryWord(s.passive.arm_prompts, t),
-                        memory: passiveTryWord(s.passive.arm_memory, t),
-                        skills: passiveTryWord(s.passive.arm_skills, t),
-                        skillExtra: passiveSkillExtra(s.passive, t),
-                      })}
-                    </p>
+              <div className="rounded-2xl border border-border/70 bg-paper/45 p-3 shadow-sm dark:border-border-dark/55 dark:bg-paper-dark/35">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                  {t("evolution.detail.kpiSignal")}
+                </p>
+                <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-ink dark:text-ink-dark">
+                  Σ {s.weighted_signal_sum ?? 0}/{s.weighted_trigger_min ?? 3}
+                </p>
+                {s.mode_key !== "disabled" ? (
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface dark:bg-paper-dark/25">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-accent/80 to-accent transition-[width] duration-300"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          ((s.weighted_signal_sum ?? 0) / Math.max(1, s.weighted_trigger_min ?? 3)) * 100
+                        )}%`,
+                      }}
+                    />
                   </div>
-                )}
-                {typeof s.would_have_evolution_proposals === "boolean" && (
-                  <p className="text-xs text-ink dark:text-ink-dark leading-snug">
-                    <span className="font-semibold text-accent">
-                      {t("evolution.diagnostics.kProposals")}
-                    </span>{" "}
-                    {s.would_have_evolution_proposals
-                      ? t("evolution.diagnostics.proposalsYes")
-                      : t("evolution.diagnostics.proposalsNo")}
-                    {!s.would_have_evolution_proposals && s.empty_proposals_reason ? (
-                      <span className="text-ink-mute dark:text-ink-dark-mute">
-                        {" — "}
-                        {evolutionLogReasonForDisplay(s.empty_proposals_reason, locale) ??
-                          s.empty_proposals_reason}
-                      </span>
-                    ) : null}
-                  </p>
-                )}
-                <div className="mt-2 rounded-md bg-ink/[0.04] dark:bg-white/[0.06] px-2.5 py-2">
-                  <p className="text-[11px] font-semibold text-ink dark:text-ink-dark">
-                    {t("evolution.diagnostics.resultHeading")}
-                  </p>
-                  <p className="text-xs text-ink dark:text-ink-dark leading-relaxed mt-0.5">
-                    {t(evolutionBeginnerInsightKey(s))}
-                  </p>
-                </div>
+                ) : null}
               </div>
-            )}
+              <div className="rounded-2xl border border-border/70 bg-paper/45 p-3 shadow-sm dark:border-border-dark/55 dark:bg-paper-dark/35">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                  {t("evolution.detail.kpiBacklog")}
+                </p>
+                <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-ink dark:text-ink-dark">
+                  {s.unprocessed_decisions}/{s.decision_threshold}
+                </p>
+                {s.mode_key !== "disabled" ? (
+                  <div className="mt-2 h-1 overflow-hidden rounded-full bg-surface dark:bg-paper-dark/25">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-400/90 to-violet-500/80 dark:from-violet-400/70 dark:to-violet-500/60"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          (s.unprocessed_decisions / Math.max(1, s.decision_threshold)) * 100
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <div className="rounded-2xl border border-border/70 bg-paper/45 p-3 shadow-sm dark:border-border-dark/55 dark:bg-paper-dark/35">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                  {t("evolution.detail.kpiLastRun")}
+                </p>
+                <p className="mt-1 font-mono text-xs font-semibold tabular-nums leading-snug text-ink dark:text-ink-dark">
+                  {s.last_run_ts ? formatTs(s.last_run_ts) : "—"}
+                </p>
+              </div>
             </div>
           )}
 
-      <section className={`${detailCard} ${detailCardPad} space-y-3`}>
-        <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 dark:border-border-dark/40">
-          <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">
-            {t("evolution.detail.backlogHeading")}
-          </h2>
-          <button
-            type="button"
-            onClick={() => void loadBacklog()}
-            className="rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10"
-          >
-            {t("evolution.detail.backlogRefresh")}
-          </button>
-        </div>
-        {backlogLoading ? (
-          <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
-        ) : backlog.length === 0 ? (
-          <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
-            暂无待处理队列项。已执行且验收已结束（met / not_met）的记录不在此列表展示；仍在验收窗口（pending_validation）的仍会显示。
-          </p>
-        ) : (
-          <div className="space-y-2.5">
-            {backlog.map((row) => (
-              <div
-                key={row.proposal_id}
-                className="rounded-lg border border-border/50 dark:border-border-dark/50 bg-gray-50/50 dark:bg-black/20 p-2.5 text-xs"
-              >
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="font-mono text-ink dark:text-ink-dark">{row.proposal_id}</span>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">[{row.source}]</span>
-                  <span
-                    className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300"
-                    title={row.status}
-                  >
-                    {evolutionBacklogStatusLabel(row.status)}
-                  </span>
-                  <span
-                    className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300"
-                    title={row.acceptance_status}
-                  >
-                    {evolutionAcceptanceStatusLabel(row.acceptance_status)}
-                  </span>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">
-                    risk={row.risk_level} ROI={row.roi_score.toFixed(2)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setTriggeringProposalId(row.proposal_id);
-                      setTriggerResultByProposal((prev) => ({
-                        ...prev,
-                        [row.proposal_id]: "触发请求已发送，等待执行结果…",
-                      }));
-                      try {
-                        const { result: out } = await runWithScenarioFallbackNotified<string>(
-                          settings,
-                          "evolution",
-                          (config) =>
-                            invoke<StructuredLlmInvokeResult<string>>(
-                              "skilllite_trigger_evolution_run",
-                              {
-                                workspace,
-                                proposalId: row.proposal_id,
-                                config,
-                              }
-                            ).then(unwrapStructuredLlmInvokeResult)
-                        );
-                        setTriggerResultByProposal((prev) => ({
-                          ...prev,
-                          [row.proposal_id]: `已手动触发：${prependNoMaterialHelpIfNeeded(out)}`,
-                        }));
-                        useUiToastStore.getState().show("已触发一次进化运行", "info");
-                        await loadBacklog();
-                        await refresh();
-                      } catch (e) {
-                        const msg = String(e);
-                        setTriggerResultByProposal((prev) => ({
-                          ...prev,
-                          [row.proposal_id]: `触发失败：${msg}`,
-                        }));
-                        useUiToastStore.getState().show(`触发失败：${msg}`, "error");
-                      } finally {
-                        setTriggeringProposalId(null);
-                      }
-                    }}
-                    disabled={triggeringProposalId !== null}
-                    className="ml-auto px-2 py-0.5 rounded border border-border dark:border-border-dark text-ink dark:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50"
-                    title="对此提案强制触发一轮进化（后端会设置 SKILLLITE_EVO_FORCE_PROPOSAL_ID 并 force 执行该 proposal）"
-                  >
-                    {triggeringProposalId === row.proposal_id ? "触发中…" : "立即执行"}
-                  </button>
-                </div>
-                <div className="mt-1 text-ink-mute dark:text-ink-dark-mute">
-                  更新: {formatTs(row.updated_at)}
-                </div>
-                {row.note && (
-                  <p className="mt-1 whitespace-pre-wrap text-ink-mute dark:text-ink-dark-mute">
-                    {(() => {
-                      const shown = evolutionBacklogNoteForDisplay(
-                        row.status,
-                        row.acceptance_status,
-                        row.note
-                      );
-                      return shown.length > 280
-                        ? `${shown.slice(0, 280)}…`
-                        : shown;
-                    })()}
-                  </p>
-                )}
-                {triggerResultByProposal[row.proposal_id] && (
-                  <p className="mt-1 whitespace-pre-wrap text-ink-mute dark:text-ink-dark-mute">
-                    {triggerResultByProposal[row.proposal_id]}
-                  </p>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_min(22rem,100%)] lg:items-start lg:gap-5">
+            {s && (
+              <div className="min-w-0 space-y-4">
+                <article className={evoPanel}>
+                  <header className="border-b border-border/50 bg-surface dark:bg-paper-dark/15 px-4 py-3 dark:border-border-dark/70 dark:bg-black/20">
+                    <h2 className={detailSectionTitle}>{t("evolution.detail.scheduleHeading")}</h2>
+                  </header>
+                  <div className={`${evoPanelPad} bg-paper/35 dark:bg-transparent`}>
+                    <dl className="divide-y divide-border/50 text-[12px] leading-relaxed dark:divide-border-dark/60">
+                      <div className="grid grid-cols-[6.5rem_1fr] gap-x-3 py-2.5 first:pt-0 sm:grid-cols-[8rem_1fr]">
+                        <dt className="text-ink-mute dark:text-ink-dark-mute">模式</dt>
+                        <dd className="min-w-0 font-medium text-ink dark:text-ink-dark">{s.mode_label}</dd>
+                      </div>
+                      <div className="grid grid-cols-[6.5rem_1fr] gap-x-3 py-2.5 sm:grid-cols-[8rem_1fr]">
+                        <dt className="text-ink-mute dark:text-ink-dark-mute">周期触发</dt>
+                        <dd className="min-w-0 tabular-nums text-ink dark:text-ink-dark">
+                          {s.mode_key === "disabled" ? "—" : formatInterval(s.interval_secs)}
+                        </dd>
+                      </div>
+                      <div className="grid grid-cols-[6.5rem_1fr] gap-x-3 py-2.5 sm:grid-cols-[8rem_1fr]">
+                        <dt className="text-ink-mute dark:text-ink-dark-mute">
+                          {t("evolution.detail.mergedTriggersLabel")}
+                        </dt>
+                        <dd className="min-w-0 text-ink dark:text-ink-dark">
+                          {s.mode_key === "disabled"
+                            ? "—"
+                            : t("evolution.detail.mergedTriggersValue", {
+                                w: s.weighted_signal_sum ?? 0,
+                                wmin: s.weighted_trigger_min ?? 3,
+                                win: s.signal_window ?? 10,
+                                d: s.unprocessed_decisions,
+                                thr: s.decision_threshold,
+                              })}
+                        </dd>
+                      </div>
+                      <div className="grid grid-cols-[6.5rem_1fr] gap-x-3 py-2.5 sm:grid-cols-[8rem_1fr]">
+                        <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}</dt>
+                        <dd className="min-w-0 text-ink dark:text-ink-dark">
+                          {(s.evo_profile_key ?? "default") === "demo"
+                            ? t("evolution.profile.demo")
+                            : (s.evo_profile_key ?? "default") === "conservative"
+                              ? t("evolution.profile.conservative")
+                              : t("evolution.profile.default")}
+                        </dd>
+                      </div>
+                      <div className="grid grid-cols-[6.5rem_1fr] gap-x-3 py-2.5 sm:grid-cols-[8rem_1fr]">
+                        <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}</dt>
+                        <dd className="min-w-0 tabular-nums text-ink dark:text-ink-dark">
+                          {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours)
+                            ? `${s.evo_cooldown_hours} h`
+                            : "—"}
+                        </dd>
+                      </div>
+                      <div className="grid grid-cols-[6.5rem_1fr] gap-x-3 py-2.5 last:pb-0 sm:grid-cols-[8rem_1fr]">
+                        <dt className="text-ink-mute dark:text-ink-dark-mute">
+                          {t("evolution.summary.lastEvolutionAttempt")}
+                        </dt>
+                        <dd className="min-w-0 tabular-nums text-ink dark:text-ink-dark">
+                          {s.last_run_ts ? formatTs(s.last_run_ts) : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <details className="mt-3 rounded-xl border border-border/65 bg-surface/90 text-[11px] text-ink-mute dark:border-border-dark/55 dark:bg-paper-dark/25 dark:text-ink-dark-mute">
+                      <summary className="cursor-pointer select-none px-3 py-2 font-medium text-accent list-none hover:bg-paper/30 dark:hover:bg-paper-dark/30 [&::-webkit-details-marker]:hidden">
+                        {t("evolution.detail.settingsHintsToggle")}
+                      </summary>
+                      <div className="space-y-2 border-t border-border/65 px-3 py-2.5 leading-relaxed dark:border-border-dark/55">
+                        <p>{t("evolution.adjustInSettingsHint")}</p>
+                        <p>{t("evolution.detailEnvHint")}</p>
+                      </div>
+                    </details>
+                  </div>
+                </article>
+
+                {(s.a9 || s.passive) && (
+                  <article className={evoPanel}>
+                    <header className="border-b border-border/50 bg-gradient-to-r from-accent/[0.08] to-transparent px-4 py-3 dark:border-border-dark/70 dark:from-accent/[0.12]">
+                      <h2 className={detailSectionTitle}>{t("evolution.diagnostics.titleShort")}</h2>
+                    </header>
+                    <div className={`${evoPanelPad} space-y-3`}>
+                      {s.last_material_run_ts != null && s.last_material_run_ts !== "" && (
+                        <p className="text-xs tabular-nums text-ink dark:text-ink-dark">
+                          <span className="font-medium text-ink-mute dark:text-ink-dark-mute">
+                            {t("evolution.diagnostics.kMaterial")}
+                          </span>
+                          {formatTs(s.last_material_run_ts)}
+                        </p>
+                      )}
+                      {s.a9 && (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                              s.a9.growth_tick_would_be_due
+                                ? "bg-emerald-500/15 text-emerald-800 ring-1 ring-emerald-500/25 dark:text-emerald-200"
+                                : "bg-surface text-ink-mute ring-1 ring-border/60 dark:bg-paper-dark/25 dark:text-ink-dark-mute dark:ring-border-dark/60"
+                            }`}
+                          >
+                            A9 ·{" "}
+                            {s.a9.growth_tick_would_be_due
+                              ? t("evolution.diagnostics.a9Fire")
+                              : t("evolution.diagnostics.a9Idle")}
+                          </span>
+                          {s.a9.min_run_gap_secs > 0 ? (
+                            <span
+                              className={`rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ${
+                                s.a9.min_run_gap_blocked
+                                  ? "bg-amber-500/15 text-amber-900 ring-amber-400/30 dark:text-amber-200"
+                                  : "bg-surface text-ink-mute ring-border/60 dark:bg-paper-dark/25 dark:text-ink-dark-mute dark:ring-border-dark/60"
+                              }`}
+                            >
+                              {t("evolution.diagnostics.gapSeg", {
+                                secs: s.a9.min_run_gap_secs,
+                                st: dxMark(!s.a9.min_run_gap_blocked),
+                              })}
+                            </span>
+                          ) : null}
+                          <span className="rounded-full bg-surface px-2.5 py-1 font-mono text-[10px] text-ink ring-1 ring-border/60 dark:bg-paper-dark/25 dark:text-ink-dark-mute dark:ring-border-dark/60">
+                            Σ{s.a9.weighted_signal_sum}/{s.a9.weighted_trigger_min} · {s.a9.raw_unprocessed_decisions}/
+                            {s.a9.raw_unprocessed_threshold}
+                          </span>
+                          <span className="rounded-full bg-surface px-2 py-1 font-mono text-[10px] text-ink-mute dark:bg-paper-dark/25 dark:text-ink-dark-mute">
+                            {t("evolution.diagnostics.lblSweep")}
+                            {dxMark(s.a9.arm_sweep)} · {t("evolution.diagnostics.lblPeriodic")}
+                            {dxMark(s.a9.arm_periodic)}{" "}
+                            {formatDurationSecs(s.a9.periodic_elapsed_secs)}/
+                            {formatDurationSecs(s.a9.interval_secs)}
+                            {s.a9.growth_tick_would_be_due && s.a9.periodic_only
+                              ? ` ${t("evolution.diagnostics.badgePeriodicOnly")}`
+                              : ""}
+                          </span>
+                        </div>
+                      )}
+                      {s.passive && (
+                        <div className="rounded-xl border border-border/65 bg-surface/80 p-3 dark:border-border-dark/55 dark:bg-black/25">
+                          <p className="text-[11px] font-semibold text-accent">{t("evolution.diagnostics.kPassive")}</p>
+                          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                            <p className="text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute">
+                              {t("evolution.diagnostics.passiveDailyPlain", {
+                                n: s.passive.daily_runs_today,
+                                cap: s.passive.daily_cap,
+                                hint: s.passive.daily_cap_blocked
+                                  ? t("evolution.diagnostics.hintDailyBlocked")
+                                  : t("evolution.diagnostics.hintDailyOk"),
+                              })}
+                            </p>
+                            <p className="text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute">
+                              {s.passive.hours_since_last_material_run != null
+                                ? t("evolution.diagnostics.passiveCoolPlain", {
+                                    since: s.passive.hours_since_last_material_run.toFixed(1),
+                                    need: s.passive.cooldown_hours,
+                                    hint: s.passive.cooldown_blocked
+                                      ? t("evolution.diagnostics.hintCoolWait")
+                                      : t("evolution.diagnostics.hintCoolOk"),
+                                  })
+                                : t("evolution.diagnostics.passiveCoolNone")}
+                            </p>
+                          </div>
+                          <p className="mt-2 text-[11px] text-ink-mute dark:text-ink-dark-mute">
+                            {t("evolution.diagnostics.passiveStatsOneLine", {
+                              days: s.passive.recent_days,
+                              m: s.passive.meaningful,
+                              f: s.passive.failures,
+                              rp: s.passive.repeated_patterns,
+                            })}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <EvolutionArmChip
+                              label={t("evolution.detail.armShortPrompts")}
+                              active={s.passive.arm_prompts}
+                            />
+                            <EvolutionArmChip
+                              label={t("evolution.detail.armShortMemory")}
+                              active={s.passive.arm_memory}
+                            />
+                            <EvolutionArmChip
+                              label={t("evolution.detail.armShortSkills")}
+                              active={s.passive.arm_skills}
+                            />
+                          </div>
+                          {passiveSkillExtra(s.passive, t) ? (
+                            <p className="mt-1.5 text-[10px] text-ink-mute dark:text-ink-dark-mute">
+                              {passiveSkillExtra(s.passive, t)}
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
+                      {typeof s.would_have_evolution_proposals === "boolean" && (
+                        <p className="text-[12px] leading-snug text-ink dark:text-ink-dark">
+                          <span className="font-semibold text-accent">{t("evolution.diagnostics.kProposals")}</span>{" "}
+                          {s.would_have_evolution_proposals
+                            ? t("evolution.diagnostics.proposalsYes")
+                            : t("evolution.diagnostics.proposalsNo")}
+                          {!s.would_have_evolution_proposals && s.empty_proposals_reason ? (
+                            <span className="text-ink-mute dark:text-ink-dark-mute">
+                              {" — "}
+                              {evolutionLogReasonForDisplay(s.empty_proposals_reason, locale) ??
+                                s.empty_proposals_reason}
+                            </span>
+                          ) : null}
+                        </p>
+                      )}
+                      <div className="rounded-xl border-l-4 border-accent bg-gradient-to-r from-accent/[0.07] to-transparent px-3 py-2.5 dark:from-accent/[0.12] dark:to-transparent">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+                          {t("evolution.diagnostics.resultHeading")}
+                        </p>
+                        <p className="mt-1 text-sm leading-snug text-ink dark:text-ink-dark">
+                          {t(evolutionBeginnerInsightKey(s))}
+                        </p>
+                      </div>
+                    </div>
+                  </article>
                 )}
               </div>
-            ))}
-          </div>
-        )}
-      </section>
+            )}
 
-      <section className={`${detailCard} ${detailCardPad} space-y-2`}>
-        <h2 className={`${detailSectionTitle} border-b border-border/40 pb-2 dark:border-border-dark/40`}>
-          {t("evolution.log.sectionRecent")}
-        </h2>
-        {!s?.recent_events.length ? (
-          <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
-            {t("evolution.log.noEvents")}
-          </p>
-        ) : (
-          <ul className="max-h-[min(48vh,22rem)] space-y-1.5 overflow-y-auto pr-1 text-xs overscroll-contain">
+            <div className="min-w-0 space-y-4 lg:sticky lg:top-24 lg:self-start">
+                <section className={evoPanel}>
+                  <div className="flex items-center justify-between gap-2 border-b border-border/50 px-4 py-3 dark:border-border-dark/70">
+                    <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">
+                      {t("evolution.detail.backlogHeading")}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => void loadBacklog()}
+                      className="rounded-lg px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/[0.08] dark:hover:bg-accent/10"
+                    >
+                      {t("evolution.detail.backlogRefresh")}
+                    </button>
+                  </div>
+                  <div className="space-y-2 p-4">
+                    {backlogLoading ? (
+                      <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
+                    ) : backlog.length === 0 ? (
+                      <p className="text-xs italic leading-relaxed text-ink-mute dark:text-ink-dark-mute">
+                        {t("evolution.detail.backlogEmptyShort")}
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {backlog.map((row) => (
+                          <div
+                            key={row.proposal_id}
+                            className="rounded-xl border border-border/70 bg-surface/90 p-3 transition-colors hover:border-accent/25 hover:bg-paper dark:border-border-dark/50 dark:bg-paper-dark/25 dark:hover:border-accent/30 dark:hover:bg-paper-dark/40"
+                          >
+                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="font-mono text-[11px] font-medium text-ink dark:text-ink-dark">
+                                {row.proposal_id}
+                              </span>
+                              <span className="text-[11px] text-ink-mute dark:text-ink-dark-mute">[{row.source}]</span>
+                              <span
+                                className="rounded-md bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-violet-900/50 dark:text-violet-200"
+                                title={row.status}
+                              >
+                                {evolutionBacklogStatusLabel(row.status)}
+                              </span>
+                              <span
+                                className="rounded-md bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-900 dark:bg-sky-900/45 dark:text-sky-100"
+                                title={row.acceptance_status}
+                              >
+                                {evolutionAcceptanceStatusLabel(row.acceptance_status)}
+                              </span>
+                              <span className="text-[11px] tabular-nums text-ink-mute dark:text-ink-dark-mute">
+                                r{row.risk_level} · ROI {row.roi_score.toFixed(2)}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setTriggeringProposalId(row.proposal_id);
+                                  setTriggerResultByProposal((prev) => ({
+                                    ...prev,
+                                    [row.proposal_id]: "触发请求已发送，等待执行结果…",
+                                  }));
+                                  try {
+                                    const { result: out } = await runWithScenarioFallbackNotified<string>(
+                                      settings,
+                                      "evolution",
+                                      (config) =>
+                                        invoke<StructuredLlmInvokeResult<string>>(
+                                          "skilllite_trigger_evolution_run",
+                                          {
+                                            workspace,
+                                            proposalId: row.proposal_id,
+                                            config,
+                                          }
+                                        ).then(unwrapStructuredLlmInvokeResult)
+                                    );
+                                    setTriggerResultByProposal((prev) => ({
+                                      ...prev,
+                                      [row.proposal_id]: `已手动触发：${prependNoMaterialHelpIfNeeded(out)}`,
+                                    }));
+                                    useUiToastStore.getState().show("已触发一次进化运行", "info");
+                                    await loadBacklog();
+                                    await refresh();
+                                  } catch (e) {
+                                    const msg = String(e);
+                                    setTriggerResultByProposal((prev) => ({
+                                      ...prev,
+                                      [row.proposal_id]: `触发失败：${msg}`,
+                                    }));
+                                    useUiToastStore.getState().show(`触发失败：${msg}`, "error");
+                                  } finally {
+                                    setTriggeringProposalId(null);
+                                  }
+                                }}
+                                disabled={triggeringProposalId !== null}
+                                className="ml-auto rounded-lg border border-border bg-paper/55 px-2 py-1 text-[11px] font-medium text-ink shadow-sm hover:border-accent/40 hover:text-accent disabled:opacity-50 dark:border-border-dark dark:bg-paper-dark/30 dark:text-ink-dark dark:hover:border-accent/40"
+                                title="对此提案强制触发一轮进化（后端会设置 SKILLLITE_EVO_FORCE_PROPOSAL_ID 并 force 执行该 proposal）"
+                              >
+                                {triggeringProposalId === row.proposal_id ? "触发中…" : "立即执行"}
+                              </button>
+                            </div>
+                            <div className="mt-1 font-mono text-[10px] tabular-nums text-ink-mute dark:text-ink-dark-mute">
+                              {formatTs(row.updated_at)}
+                            </div>
+                            {row.note && (
+                              <p
+                                className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-ink-mute dark:text-ink-dark-mute"
+                                title={evolutionBacklogNoteForDisplay(
+                                  row.status,
+                                  row.acceptance_status,
+                                  row.note
+                                )}
+                              >
+                                {(() => {
+                                  const shown = evolutionBacklogNoteForDisplay(
+                                    row.status,
+                                    row.acceptance_status,
+                                    row.note
+                                  );
+                                  return shown.length > 220 ? `${shown.slice(0, 220)}…` : shown;
+                                })()}
+                              </p>
+                            )}
+                            {triggerResultByProposal[row.proposal_id] && (
+                              <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-[10px] text-ink-mute dark:text-ink-dark-mute">
+                                {triggerResultByProposal[row.proposal_id]}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className={evoPanel}>
+                  <div className="border-b border-border/50 px-4 py-3 dark:border-border-dark/70">
+                    <h2 className={detailSectionTitle}>{t("evolution.log.sectionRecent")}</h2>
+                  </div>
+                  <div className="p-3 sm:p-4">
+                    {!s?.recent_events.length ? (
+                      <p className="text-xs italic text-ink-mute dark:text-ink-dark-mute">
+                        {t("evolution.log.noEvents")}
+                      </p>
+                    ) : (
+                      <ul className="max-h-[min(42vh,20rem)] space-y-0 overflow-y-auto overscroll-contain pr-1 sm:pr-2">
             {s.recent_events.map((e, i) => {
               const reasonShown = evolutionLogReasonForDisplay(e.reason ?? null, locale);
               const softenRunNoOutput =
@@ -1587,10 +1721,12 @@ export function EvolutionDetailBody({
               return (
                 <li
                   key={`${e.ts}-${e.event_type}-${i}`}
-                  className="border-b border-border/40 dark:border-border-dark/40 pb-2 last:border-0"
+                  className="mb-2 rounded-xl border border-border/60 bg-surface/80 p-2.5 last:mb-0 dark:border-border-dark/55 dark:bg-paper-dark/25"
                 >
                   <div className="flex items-start gap-2">
-                    <span className="shrink-0 w-4 text-center pt-0.5">{eventIcon(e.event_type)}</span>
+                    <span className="shrink-0 w-6 text-center text-sm leading-none text-ink-mute dark:text-ink-dark-mute">
+                      {eventIcon(e.event_type)}
+                    </span>
                     <div className="min-w-0 flex-1">
                       {rowOpensDiff ? (
                         <button
@@ -1614,11 +1750,11 @@ export function EvolutionDetailBody({
                                 ? t("evolution.log.rowOpenReviewTitle")
                                 : t("evolution.log.rowOpenDiffTitle")
                           }
-                          className="w-full rounded-lg text-left px-1 py-0.5 -mx-1 transition-colors cursor-pointer hover:bg-ink/[0.06] dark:hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
+                          className="w-full rounded-lg text-left transition-colors hover:bg-paper/55 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 dark:hover:bg-paper-dark/35"
                         >
-                          <div className="text-ink-mute dark:text-ink-dark-mute font-mono text-[11px]">
+                          <div className="font-mono text-[10px] text-ink-mute dark:text-ink-dark-mute">
                             {formatTs(e.ts)}
-                            <span className="ml-1.5 text-[10px] text-accent font-sans font-medium">
+                            <span className="ml-1.5 font-sans text-[10px] font-semibold text-accent">
                               {rowPrimary === "memory"
                                 ? t("evolution.log.rowOpenMemoryBadge")
                                 : rowPrimary === "review"
@@ -1626,44 +1762,44 @@ export function EvolutionDetailBody({
                                   : t("evolution.log.rowOpenDiffBadge")}
                             </span>
                           </div>
-                          <div className="font-medium text-ink dark:text-ink-dark" title={e.event_type}>
+                          <div className="mt-0.5 font-medium text-ink dark:text-ink-dark text-[12px]" title={e.event_type}>
                             {evolutionLogEventTypeLabel(e.event_type, locale)}
                           </div>
                           {targetShown && (
-                            <div className="text-ink-mute dark:text-ink-dark-mute truncate">
+                            <div className="truncate text-[11px] text-ink-mute dark:text-ink-dark-mute">
                               {targetShown}
                             </div>
                           )}
-                          <div className="text-[10px] font-mono text-ink-mute/90 dark:text-ink-dark-mute/90 mt-0.5">
+                          <div className="mt-0.5 font-mono text-[10px] text-ink-mute dark:text-ink-dark-mute">
                             txn: {txnTrim}
                           </div>
                           {reasonShown && (
-                            <p className={reasonRowClass}>
-                              {reasonShown.length > 280 ? `${reasonShown.slice(0, 280)}…` : reasonShown}
+                            <p className={`${reasonRowClass} mt-1 text-[11px] text-ink-mute dark:text-ink-dark-mute`}>
+                              {reasonShown.length > 200 ? `${reasonShown.slice(0, 200)}…` : reasonShown}
                             </p>
                           )}
                         </button>
                       ) : (
-                        <div className="w-full px-1 py-0.5 -mx-1">
-                          <div className="text-ink-mute dark:text-ink-dark-mute font-mono text-[11px]">
+                        <div className="w-full">
+                          <div className="font-mono text-[10px] text-ink-mute dark:text-ink-dark-mute">
                             {formatTs(e.ts)}
                           </div>
-                          <div className="font-medium text-ink dark:text-ink-dark" title={e.event_type}>
+                          <div className="mt-0.5 font-medium text-ink dark:text-ink-dark text-[12px]" title={e.event_type}>
                             {evolutionLogEventTypeLabel(e.event_type, locale)}
                           </div>
                           {targetShown && (
-                            <div className="text-ink-mute dark:text-ink-dark-mute truncate">
+                            <div className="truncate text-[11px] text-ink-mute dark:text-ink-dark-mute">
                               {targetShown}
                             </div>
                           )}
                           {txnTrim ? (
-                            <div className="text-[10px] font-mono text-ink-mute/90 dark:text-ink-dark-mute/90 mt-0.5">
+                            <div className="mt-0.5 font-mono text-[10px] text-ink-mute dark:text-ink-dark-mute">
                               txn: {txnTrim}
                             </div>
                           ) : null}
                           {reasonShown && (
-                            <p className={reasonRowClass}>
-                              {reasonShown.length > 280 ? `${reasonShown.slice(0, 280)}…` : reasonShown}
+                            <p className={`${reasonRowClass} mt-1 text-[11px] text-ink-mute dark:text-ink-dark-mute`}>
+                              {reasonShown.length > 200 ? `${reasonShown.slice(0, 200)}…` : reasonShown}
                             </p>
                           )}
                         </div>
@@ -1672,7 +1808,7 @@ export function EvolutionDetailBody({
                         <button
                           type="button"
                           onClick={() => void openDetailWindow("mem")}
-                          className="mt-1.5 ml-1 text-[11px] text-accent hover:underline font-medium"
+                          className="mt-1.5 text-[11px] font-medium text-accent hover:underline"
                         >
                           {t("evolution.log.openMemoryPanel")}
                         </button>
@@ -1682,9 +1818,12 @@ export function EvolutionDetailBody({
                 </li>
               );
             })}
-          </ul>
-        )}
-      </section>
+                      </ul>
+                    )}
+                  </div>
+                </section>
+              </div>
+            </div>
         </div>
       )}
 
@@ -1693,36 +1832,38 @@ export function EvolutionDetailBody({
           role="tabpanel"
           id="evolution-detail-panel-review"
           aria-labelledby="evolution-detail-tab-review"
-          className={`${detailCard} divide-y divide-border/50 dark:divide-border-dark/50`}
+          className={`${evoPanel} divide-y divide-border/50 dark:divide-border-dark/60`}
         >
           <div
-            className={`${detailCardPad} bg-gradient-to-b from-accent/[0.07] to-transparent dark:from-accent/[0.1] dark:to-transparent`}
+            className={`${evoPanelPad} bg-gradient-to-br from-accent-light/70 via-surface to-paper/40 dark:from-accent-light-dark/25 dark:via-surface-dark dark:to-paper-dark/25`}
           >
             <h2 className={detailSectionTitle}>{t("evolution.detail.reviewSystemHeading")}</h2>
             {s?.judgement_label ? (
-              <div className="mt-1 rounded-lg border border-border/60 bg-white/80 p-3 text-sm dark:border-border-dark/60 dark:bg-black/25">
-                <p className="font-medium text-ink dark:text-ink-dark">{s.judgement_label}</p>
+              <div className="mt-3 rounded-2xl border border-violet-200/70 bg-paper/50 p-4 shadow-sm dark:border-violet-800/40 dark:bg-paper-dark/30">
+                <p className="text-base font-semibold leading-snug text-ink dark:text-ink-dark">
+                  {s.judgement_label}
+                </p>
                 {s.judgement_reason && (
-                  <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-ink-mute dark:text-ink-dark-mute">
+                  <p className="mt-2 line-clamp-5 whitespace-pre-wrap text-sm leading-relaxed text-ink-mute dark:text-ink-dark-mute">
                     {s.judgement_reason}
                   </p>
                 )}
               </div>
             ) : (
-              <p className="mt-1 text-xs italic text-ink-mute dark:text-ink-dark-mute">
+              <p className="mt-2 text-sm italic leading-relaxed text-ink-mute dark:text-ink-dark-mute">
                 {t("evolution.detail.reviewNoJudgement")}
               </p>
             )}
           </div>
-          <div className={`${detailCardPad} space-y-3`}>
-            <div className="flex items-center justify-between gap-2 border-b border-border/30 pb-2 dark:border-border-dark/40">
+          <div className={`${evoPanelPad} space-y-3`}>
+            <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-2 dark:border-border-dark/70">
               <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">
                 {t("evolution.detail.reviewPendingHeading")}
               </h2>
               <button
                 type="button"
                 onClick={() => void loadPending()}
-                className="rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10"
+                className="rounded-lg px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/[0.08] dark:hover:bg-accent/10"
               >
                 {t("evolution.detail.reviewPendingRefresh")}
               </button>
@@ -1730,11 +1871,11 @@ export function EvolutionDetailBody({
             {pendingLoading ? (
               <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
             ) : pending.length === 0 ? (
-              <p className="text-xs italic text-ink-mute dark:text-ink-dark-mute">
+              <p className="text-sm italic leading-relaxed text-ink-mute dark:text-ink-dark-mute">
                 {t("evolution.detail.reviewPendingEmpty")}
               </p>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {pending.map((p) => (
                   <PendingSkillReviewCard
                     key={p.name}
@@ -1754,23 +1895,23 @@ export function EvolutionDetailBody({
           role="tabpanel"
           id="evolution-detail-panel-changes"
           aria-labelledby="evolution-detail-tab-changes"
-          className={`${detailCard} ${detailCardPad} space-y-3`}
+          className={`${evoPanel} ${evoPanelPad} space-y-4`}
         >
-          <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 dark:border-border-dark/40">
+          <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-3 dark:border-border-dark/70">
             <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink dark:text-ink-dark">
               <span
-                className="h-5 w-1 shrink-0 rounded-full bg-gradient-to-b from-accent to-accent/55"
+                className="h-6 w-1 shrink-0 rounded-full bg-gradient-to-b from-accent to-violet-500/80"
                 aria-hidden
               />
               <span className="min-w-0 leading-snug">
-                <span className="font-bold text-accent">{t("evolution.diff.sectionTitleEvolution")}</span>
-                <span>{t("evolution.diff.sectionTitleRest")}</span>
+                <span className="text-accent">{t("evolution.diff.sectionTitleEvolution")}</span>
+                <span className="text-ink dark:text-ink-dark">{t("evolution.diff.sectionTitleRest")}</span>
               </span>
             </h2>
             <button
               type="button"
               onClick={() => void loadDiffs()}
-              className="shrink-0 rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10"
+              className="shrink-0 rounded-lg px-2.5 py-1 text-xs font-medium text-accent hover:bg-accent/[0.08] dark:hover:bg-accent/10"
             >
               {t("status.refresh")}
             </button>
@@ -1780,31 +1921,36 @@ export function EvolutionDetailBody({
           ) : (
             <>
               {diffs.length === 0 ? (
-                <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
+                <p className="text-sm italic leading-relaxed text-ink-mute dark:text-ink-dark-mute">
                   {t("evolution.diff.emptyHint")}
                 </p>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-                    {t("evolution.diff.legend")}
-                  </p>
+                  <details className="rounded-xl border border-border/65 bg-surface/90 text-sm text-ink-mute dark:border-border-dark/55 dark:bg-paper-dark/25 dark:text-ink-dark-mute">
+                    <summary className="cursor-pointer select-none px-3 py-2 font-medium text-accent list-none hover:bg-paper/30 dark:hover:bg-paper-dark/30 [&::-webkit-details-marker]:hidden">
+                      {t("evolution.diff.legendToggle")}
+                    </summary>
+                    <p className="border-t border-border/65 px-3 py-2.5 text-xs leading-relaxed dark:border-border-dark/55">
+                      {t("evolution.diff.legend")}
+                    </p>
+                  </details>
                   {sortedDiffs.map((d) => (
                     <div
                       key={d.filename}
-                      className={`rounded-lg border text-xs overflow-hidden ${
+                      className={`overflow-hidden rounded-xl border text-[12px] ${
                         evolutionPromptHasNetChange(d)
-                          ? "bg-green-50/60 dark:bg-green-900/15 border-green-400/70 dark:border-green-600/50 ring-1 ring-accent/20 dark:ring-accent/25 shadow-sm shadow-emerald-500/10 dark:shadow-emerald-400/5"
-                          : "bg-gray-50/50 dark:bg-surface-dark/40 border-border/50 dark:border-border-dark/50"
+                          ? "border-emerald-300/80 bg-gradient-to-b from-emerald-50/90 to-surface shadow-sm dark:border-emerald-700/50 dark:from-emerald-950/35 dark:to-paper-dark/35"
+                          : "border-border/65 bg-surface/80 dark:border-border-dark/50 dark:bg-paper-dark/25"
                       }`}
                     >
                       <div
-                        className={`flex items-center justify-between gap-2 px-3 py-2 border-b border-border/30 dark:border-border-dark/30 ${
+                        className={`flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5 dark:border-border-dark/70 ${
                           evolutionPromptHasNetChange(d)
-                            ? "bg-gradient-to-r from-accent/[0.08] to-transparent dark:from-accent/[0.12]"
-                            : "bg-gray-100/50 dark:bg-surface-dark/30"
+                            ? "bg-emerald-500/[0.06] dark:bg-emerald-500/[0.08]"
+                            : "bg-paper/35 dark:bg-paper-dark/35"
                         }`}
                       >
-                        <span className="font-mono font-medium text-ink dark:text-ink-dark min-w-0">
+                        <span className="min-w-0 font-mono font-medium text-ink dark:text-ink-dark">
                           {d.filename}
                         </span>
                         <div className="flex flex-col items-end gap-0.5 shrink-0">
@@ -1815,7 +1961,7 @@ export function EvolutionDetailBody({
                           ) : d.evolved ? (
                             d.original_content != null ? (
                               <span
-                                className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-ink/[0.06] dark:bg-white/[0.08] text-ink-mute dark:text-ink-dark-mute border border-border/60 dark:border-border-dark/50"
+                                className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-ink/[0.06] dark:bg-paper/55/[0.08] text-ink-mute dark:text-ink-dark-mute border border-border/60 dark:border-border-dark/50"
                                 title={t("evolution.diff.evolvedNoChangeHint")}
                               >
                                 {t("evolution.diff.evolvedNoChangeBadge")}
@@ -1850,6 +1996,7 @@ export function EvolutionDetailBody({
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

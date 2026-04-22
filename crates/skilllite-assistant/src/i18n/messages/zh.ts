@@ -233,6 +233,19 @@ export const zhMessages: Record<string, string> = {
   "evolution.detail.refreshStatus": "刷新状态",
   "evolution.detail.refreshing": "刷新中…",
   "evolution.detail.scheduleHeading": "调度与阈值",
+  "evolution.detail.kpiMode": "运行模式",
+  "evolution.detail.kpiSignal": "加权信号",
+  "evolution.detail.kpiBacklog": "决策积压",
+  "evolution.detail.kpiLastRun": "上次进化",
+  "evolution.detail.armShortPrompts": "规则",
+  "evolution.detail.armShortMemory": "记忆",
+  "evolution.detail.armShortSkills": "技能",
+  "evolution.detail.mergedTriggersLabel": "信号与积压",
+  "evolution.detail.mergedTriggersValue":
+    "加权和 Σ{w}/{wmin}（近{win}条窗）· 未进化决策 {d}/{thr} 即触发",
+  "evolution.detail.settingsHintsToggle": "设置与环境说明（展开）",
+  "evolution.detail.backlogEmptyShort":
+    "暂无队列项。验收中（pending_validation）仍会显示；已结束的不列出。",
   "evolution.detail.backlogHeading": "能力进化队列与执行",
   "evolution.detail.backlogRefresh": "刷新队列",
   "evolution.detail.reviewSystemHeading": "系统审核判断",
@@ -303,6 +316,8 @@ export const zhMessages: Record<string, string> = {
     "还没有过一次「留下文件改动」的进化记录；等有第一次之后，才会按上面的间隔开始算冷却。",
   "evolution.diagnostics.passiveStatsPlain":
     "近 {days} 天里：对话里「工具用得够多」的约 {m} 条，有明显失败的约 {f} 条，能看出「重复用法模式」的约 {rp} 组（这些数用来判断要不要开进化）。",
+  "evolution.diagnostics.passiveStatsOneLine":
+    "近{days}天信号：忙对话≈{m} · 明显失败≈{f} · 重复模式≈{rp}",
   "evolution.diagnostics.passiveArmsPlain":
     "按当前规则，三块会不会动：① 提示词里的规则/示例 — {prompts}；② 长期记忆 — {memory}；③ 技能 — {skills}{skillExtra}",
   "evolution.diagnostics.kProposals": "提案",
@@ -382,6 +397,7 @@ export const zhMessages: Record<string, string> = {
   "evolution.diff.loadingContent": "加载内容…",
   "evolution.diff.legend":
     "列表顺序：相对最早快照有文本差异的文件在上；仅在 changelog 中记录但与最早快照一致者为灰框。任选左右版本；下方为左右两栏全文对照（不折叠未改行）。绿色为右侧相对左侧新增，红色删除线为左侧有而右侧无。旧快照可能因保留策略被清理。记忆类进化写入 memory/evolution/（按月分卷），不会出现在本页的 prompts 对比中，请在「记忆」详情里查看对应文件。",
+  "evolution.diff.legendToggle": "如何阅读本页对比（展开）",
   "evolution.diff.compareColumnLeft": "左侧版本",
   "evolution.diff.compareColumnRight": "右侧版本",
   "evolution.diff.sameContent": "内容无变化（快照与当前版本相同）",

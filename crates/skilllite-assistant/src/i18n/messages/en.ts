@@ -246,6 +246,19 @@ export const enMessages: Record<string, string> = {
   "evolution.detail.refreshStatus": "Refresh status",
   "evolution.detail.refreshing": "Refreshing…",
   "evolution.detail.scheduleHeading": "Schedule & thresholds",
+  "evolution.detail.kpiMode": "Mode",
+  "evolution.detail.kpiSignal": "Weighted signal",
+  "evolution.detail.kpiBacklog": "Open decisions",
+  "evolution.detail.kpiLastRun": "Last evolution",
+  "evolution.detail.armShortPrompts": "Prompts",
+  "evolution.detail.armShortMemory": "Memory",
+  "evolution.detail.armShortSkills": "Skills",
+  "evolution.detail.mergedTriggersLabel": "Signals & backlog",
+  "evolution.detail.mergedTriggersValue":
+    "Weighted Σ {w}/{wmin} (last {win} msgs) · unprocessed decisions {d}/{thr} to fire",
+  "evolution.detail.settingsHintsToggle": "Settings & environment notes (expand)",
+  "evolution.detail.backlogEmptyShort":
+    "No queue rows. Items still in pending_validation appear here; finished validations are hidden.",
   "evolution.detail.backlogHeading": "Proposal queue & execution",
   "evolution.detail.backlogRefresh": "Refresh queue",
   "evolution.detail.reviewSystemHeading": "System judgement",
@@ -319,6 +332,8 @@ export const enMessages: Record<string, string> = {
     "No material run yet; the cooldown clock starts after the first run that writes real changes.",
   "evolution.diagnostics.passiveStatsPlain":
     "In the last ~{days} days: about {m} “busy enough” chats, {f} with clear failures, {rp} repeated usage patterns (used to decide whether to evolve).",
+  "evolution.diagnostics.passiveStatsOneLine":
+    "~{days}d signals: busy≈{m} · failures≈{f} · patterns≈{rp}",
   "evolution.diagnostics.passiveArmsPlain":
     "If gates pass, three areas: ① rules/examples — {prompts}; ② long-term memory — {memory}; ③ skills — {skills}{skillExtra}",
   "evolution.diagnostics.kProposals": "Proposals",
@@ -410,6 +425,7 @@ export const enMessages: Record<string, string> = {
   "evolution.diff.loadingContent": "Loading content…",
   "evolution.diff.legend":
     "Order: files whose live text differs from the earliest snapshot are listed first; entries only recorded in the changelog but identical to that snapshot use the neutral card. Pick any two versions; the view shows full text on both sides (unchanged lines are not collapsed). Green = added on the right vs left; red strikethrough = removed from the left. Older snapshots may be pruned. Memory evolution writes under memory/evolution/ (monthly shards) and does not appear in this prompts diff—open the Memory detail to inspect those files.",
+  "evolution.diff.legendToggle": "How to read this diff (expand)",
   "evolution.diff.compareColumnLeft": "Left version",
   "evolution.diff.compareColumnRight": "Right version",
   "evolution.diff.sameContent": "No differences (snapshot matches the current file).",
