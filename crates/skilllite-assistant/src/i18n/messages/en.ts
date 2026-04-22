@@ -245,6 +245,16 @@ export const enMessages: Record<string, string> = {
   "evolution.detail.tabChanges": "Evolution diff",
   "evolution.detail.refreshStatus": "Refresh status",
   "evolution.detail.refreshing": "Refreshing…",
+  "evolution.detail.scheduleHeading": "Schedule & thresholds",
+  "evolution.detail.backlogHeading": "Proposal queue & execution",
+  "evolution.detail.backlogRefresh": "Refresh queue",
+  "evolution.detail.reviewSystemHeading": "System judgement",
+  "evolution.detail.reviewPendingHeading": "Pending skills (manual)",
+  "evolution.detail.reviewPendingRefresh": "Refresh list",
+  "evolution.detail.reviewNoJudgement":
+    "No system judgement yet (last evolution decision missing or empty).",
+  "evolution.detail.reviewPendingEmpty":
+    "No pending skills. Newly evolved skills appear under .skills/_evolved/_pending/.",
   "evolution.diff.sectionTitleEvolution": "Evolution",
   "evolution.diff.sectionTitleRest": " prompt diff",
   "evolution.diff.evolvedBadge": "✨ Evolved this run",

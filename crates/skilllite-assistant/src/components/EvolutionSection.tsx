@@ -949,26 +949,28 @@ function PendingSkillReviewCard({
   const showShort = !expanded || fullMd === null;
 
   return (
-    <div className="rounded-lg border border-border dark:border-border-dark bg-white/60 dark:bg-paper-dark/60 p-3 space-y-2">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <span className="text-sm font-semibold text-ink dark:text-ink-dark">{skill.name}</span>
-        {skill.needs_review && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200">
-            建议人工过目
-          </span>
-        )}
+    <div className="rounded-lg border border-border/70 dark:border-border-dark/60 bg-gray-50/90 dark:bg-surface-dark/35 p-2.5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="truncate text-sm font-semibold text-ink dark:text-ink-dark">{skill.name}</span>
+          {skill.needs_review && (
+            <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200">
+              建议人工过目
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => void loadFull()}
+          className="shrink-0 rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10 disabled:opacity-50"
+          disabled={loadingFull}
+        >
+          {loadingFull ? "加载全文…" : expanded ? "收起全文" : "查看全文"}
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={() => void loadFull()}
-        className="text-xs text-accent hover:underline"
-        disabled={loadingFull}
-      >
-        {loadingFull ? "加载全文…" : expanded ? "收起全文" : "查看 / 展开全文"}
-      </button>
       <div
-        className={`prose prose-sm max-w-none dark:prose-invert [&_pre]:text-xs [&_code]:text-xs overflow-y-auto border border-border/50 dark:border-border-dark/50 rounded-md p-2 bg-gray-50/80 dark:bg-surface-dark/50 ${
-          showShort ? "max-h-48" : "max-h-[min(70vh,520px)]"
+        className={`prose prose-sm mt-2 max-w-none dark:prose-invert [&_pre]:text-xs [&_code]:text-xs overflow-y-auto rounded-md border border-border/50 dark:border-border-dark/50 bg-white/70 p-2 dark:bg-black/20 ${
+          showShort ? "max-h-44" : "max-h-[min(65vh,480px)]"
         }`}
       >
         {displayMd ? (
@@ -977,25 +979,27 @@ function PendingSkillReviewCard({
           <p className="text-xs text-ink-mute">（无 SKILL.md 内容）</p>
         )}
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => void confirm()}
-          disabled={acting !== null}
-          className="px-3 py-1.5 rounded-lg bg-accent text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
-        >
-          {acting === "confirm" ? "处理中…" : "确认加入"}
-        </button>
-        <button
-          type="button"
-          onClick={() => void reject()}
-          disabled={acting !== null}
-          className="px-3 py-1.5 rounded-lg border border-border dark:border-border-dark text-xs text-ink dark:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50"
-        >
-          {acting === "reject" ? "处理中…" : "拒绝"}
-        </button>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 dark:border-border-dark/40">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void confirm()}
+            disabled={acting !== null}
+            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {acting === "confirm" ? "处理中…" : "确认加入"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void reject()}
+            disabled={acting !== null}
+            className="rounded-lg border border-border px-3 py-1.5 text-xs text-ink dark:border-border-dark dark:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50"
+          >
+            {acting === "reject" ? "处理中…" : "拒绝"}
+          </button>
+        </div>
+        {msg ? <p className="max-w-full min-w-0 flex-1 text-right text-xs text-ink-mute dark:text-ink-dark-mute">{msg}</p> : null}
       </div>
-      {msg && <p className="text-xs text-ink-mute dark:text-ink-dark-mute">{msg}</p>}
     </div>
   );
 }
@@ -1166,13 +1170,19 @@ export function EvolutionDetailBody({
   const pendingCount = pending.length;
   const hasJudgement = Boolean(s?.judgement_label);
 
+  const detailCard =
+    "rounded-xl border border-border/70 dark:border-border-dark/60 bg-white/60 dark:bg-surface-dark/30 shadow-sm overflow-hidden";
+  const detailCardPad = "p-3 sm:p-4";
+  const detailSectionTitle =
+    "text-[11px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute mb-2.5";
+
   return (
-    <div className="space-y-4 p-1">
-      <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="mx-auto max-w-5xl space-y-3 px-2 py-2 sm:px-5 sm:py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/60 dark:border-border-dark/50 bg-gray-50/70 dark:bg-surface-dark/40 px-1.5 pt-1">
         <div
           role="tablist"
           aria-label={t("evolution.detail.tabListAria")}
-          className="flex flex-1 min-w-0 gap-0 border-b border-border/80 dark:border-border-dark/80"
+          className="flex min-w-0 flex-1 gap-0 border-b border-transparent"
         >
           <button
             type="button"
@@ -1232,14 +1242,16 @@ export function EvolutionDetailBody({
           type="button"
           onClick={() => void refresh()}
           disabled={loading}
-          className="text-xs text-accent hover:underline disabled:opacity-50 shrink-0"
+          className="mb-1 mr-1 shrink-0 rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10 disabled:opacity-50"
         >
           {loading ? t("evolution.detail.refreshing") : t("evolution.detail.refreshStatus")}
         </button>
       </div>
 
       {s?.db_error && (
-        <p className="text-sm text-amber-700 dark:text-amber-400">{s.db_error}</p>
+        <p className="rounded-lg border border-amber-200/80 bg-amber-50/80 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-200">
+          {s.db_error}
+        </p>
       )}
 
       {detailTab === "run" && (
@@ -1247,61 +1259,55 @@ export function EvolutionDetailBody({
           role="tabpanel"
           id="evolution-detail-panel-run"
           aria-labelledby="evolution-detail-tab-run"
-          className="space-y-6"
+          className="space-y-3"
         >
           {s && (
-            <>
-            <section className="space-y-2">
-              <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">调度与配置</h2>
-              <ul className="text-xs text-ink dark:text-ink-dark space-y-1.5 bg-gray-50/80 dark:bg-surface-dark/50 rounded-lg p-3 border border-border/50 dark:border-border-dark/50">
-                <li>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">模式：</span>
-                  {s.mode_label}
-                </li>
-                <li>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">周期触发：</span>
-                  {s.mode_key === "disabled" ? "—" : formatInterval(s.interval_secs)}
-                </li>
-                <li>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">加权触发：</span>
-                  窗口 {s.signal_window ?? 10} 条内加权和需 ≥ {s.weighted_trigger_min ?? 3}（当前{" "}
-                  {s.weighted_signal_sum ?? 0}）
-                </li>
-                <li>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">未处理条数（OR）：</span>
-                  ≥ {s.decision_threshold} 条即触发（当前 {s.unprocessed_decisions}）
-                </li>
-                <li>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}（生效）：</span>
-                  {(s.evo_profile_key ?? "default") === "demo"
-                    ? t("evolution.profile.demo")
-                    : (s.evo_profile_key ?? "default") === "conservative"
-                      ? t("evolution.profile.conservative")
-                      : t("evolution.profile.default")}
-                </li>
-                <li>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}（生效）：</span>
-                  {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours)
-                    ? `${s.evo_cooldown_hours} h`
-                    : "—"}
-                </li>
-                <li>
-                  <span className="text-ink-mute dark:text-ink-dark-mute">
+            <div className={`${detailCard} divide-y divide-border/50 dark:divide-border-dark/50`}>
+              <div className={`${detailCardPad} bg-gray-50/40 dark:bg-black/10`}>
+                <h2 className={detailSectionTitle}>{t("evolution.detail.scheduleHeading")}</h2>
+                <dl className="grid grid-cols-[minmax(5.5rem,auto)_1fr] gap-x-3 gap-y-2 text-xs text-ink dark:text-ink-dark">
+                  <dt className="text-ink-mute dark:text-ink-dark-mute">模式</dt>
+                  <dd className="min-w-0 font-medium">{s.mode_label}</dd>
+                  <dt className="text-ink-mute dark:text-ink-dark-mute">周期触发</dt>
+                  <dd className="min-w-0 tabular-nums">
+                    {s.mode_key === "disabled" ? "—" : formatInterval(s.interval_secs)}
+                  </dd>
+                  <dt className="text-ink-mute dark:text-ink-dark-mute">加权触发</dt>
+                  <dd className="min-w-0 leading-snug">
+                    窗口 {s.signal_window ?? 10} 条内加权和 ≥ {s.weighted_trigger_min ?? 3}（当前{" "}
+                    {s.weighted_signal_sum ?? 0}）
+                  </dd>
+                  <dt className="text-ink-mute dark:text-ink-dark-mute">未处理 OR</dt>
+                  <dd className="min-w-0 tabular-nums">
+                    ≥ {s.decision_threshold} 条触发 · 当前 {s.unprocessed_decisions}
+                  </dd>
+                  <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}</dt>
+                  <dd className="min-w-0">
+                    {(s.evo_profile_key ?? "default") === "demo"
+                      ? t("evolution.profile.demo")
+                      : (s.evo_profile_key ?? "default") === "conservative"
+                        ? t("evolution.profile.conservative")
+                        : t("evolution.profile.default")}
+                  </dd>
+                  <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}</dt>
+                  <dd className="min-w-0 tabular-nums">
+                    {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours)
+                      ? `${s.evo_cooldown_hours} h`
+                      : "—"}
+                  </dd>
+                  <dt className="text-ink-mute dark:text-ink-dark-mute">
                     {t("evolution.summary.lastEvolutionAttempt")}
-                  </span>
-                  {s.last_run_ts ? formatTs(s.last_run_ts) : "暂无记录"}
-                </li>
-                <li className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-                  {t("evolution.adjustInSettingsHint")}
-                </li>
-                <li className="text-[11px] text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-                  {t("evolution.detailEnvHint")}
-                </li>
-              </ul>
-            </section>
+                  </dt>
+                  <dd className="min-w-0 tabular-nums">{s.last_run_ts ? formatTs(s.last_run_ts) : "暂无记录"}</dd>
+                </dl>
+                <div className="mt-3 space-y-1 border-t border-border/40 pt-3 text-[11px] leading-relaxed text-ink-mute dark:text-ink-dark-mute dark:border-border-dark/40">
+                  <p>{t("evolution.adjustInSettingsHint")}</p>
+                  <p>{t("evolution.detailEnvHint")}</p>
+                </div>
+              </div>
             {(s.a9 || s.passive) && (
-              <section className="space-y-1.5 rounded-lg border border-border/50 dark:border-border-dark/50 bg-gray-50/80 dark:bg-surface-dark/50 p-3">
-                <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">
+              <div className={`${detailCardPad} space-y-2`}>
+                <h2 className={`${detailSectionTitle} mb-0`}>
                   {t("evolution.diagnostics.titleShort")}
                 </h2>
                 {s.last_material_run_ts != null && s.last_material_run_ts !== "" && (
@@ -1421,20 +1427,22 @@ export function EvolutionDetailBody({
                     {t(evolutionBeginnerInsightKey(s))}
                   </p>
                 </div>
-              </section>
+              </div>
             )}
-            </>
+            </div>
           )}
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">能力进化队列与执行</h2>
+      <section className={`${detailCard} ${detailCardPad} space-y-3`}>
+        <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 dark:border-border-dark/40">
+          <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">
+            {t("evolution.detail.backlogHeading")}
+          </h2>
           <button
             type="button"
             onClick={() => void loadBacklog()}
-            className="text-xs text-accent hover:underline"
+            className="rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10"
           >
-            刷新队列
+            {t("evolution.detail.backlogRefresh")}
           </button>
         </div>
         {backlogLoading ? (
@@ -1444,11 +1452,11 @@ export function EvolutionDetailBody({
             暂无待处理队列项。已执行且验收已结束（met / not_met）的记录不在此列表展示；仍在验收窗口（pending_validation）的仍会显示。
           </p>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-2.5">
             {backlog.map((row) => (
               <div
                 key={row.proposal_id}
-                className="rounded-lg border border-border/60 dark:border-border-dark/60 bg-gray-50/60 dark:bg-surface-dark/50 p-3 text-xs"
+                className="rounded-lg border border-border/50 dark:border-border-dark/50 bg-gray-50/50 dark:bg-black/20 p-2.5 text-xs"
               >
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <span className="font-mono text-ink dark:text-ink-dark">{row.proposal_id}</span>
@@ -1543,8 +1551,8 @@ export function EvolutionDetailBody({
         )}
       </section>
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">
+      <section className={`${detailCard} ${detailCardPad} space-y-2`}>
+        <h2 className={`${detailSectionTitle} border-b border-border/40 pb-2 dark:border-border-dark/40`}>
           {t("evolution.log.sectionRecent")}
         </h2>
         {!s?.recent_events.length ? (
@@ -1552,7 +1560,7 @@ export function EvolutionDetailBody({
             {t("evolution.log.noEvents")}
           </p>
         ) : (
-          <ul className="space-y-2 text-xs">
+          <ul className="max-h-[min(48vh,22rem)] space-y-1.5 overflow-y-auto pr-1 text-xs overscroll-contain">
             {s.recent_events.map((e, i) => {
               const reasonShown = evolutionLogReasonForDisplay(e.reason ?? null, locale);
               const softenRunNoOutput =
@@ -1685,45 +1693,48 @@ export function EvolutionDetailBody({
           role="tabpanel"
           id="evolution-detail-panel-review"
           aria-labelledby="evolution-detail-tab-review"
-          className="space-y-6"
+          className={`${detailCard} divide-y divide-border/50 dark:divide-border-dark/50`}
         >
-          <section className="space-y-2">
-            <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">系统审核判断</h2>
+          <div
+            className={`${detailCardPad} bg-gradient-to-b from-accent/[0.07] to-transparent dark:from-accent/[0.1] dark:to-transparent`}
+          >
+            <h2 className={detailSectionTitle}>{t("evolution.detail.reviewSystemHeading")}</h2>
             {s?.judgement_label ? (
-              <div className="rounded-lg border border-border dark:border-border-dark p-3 text-sm">
+              <div className="mt-1 rounded-lg border border-border/60 bg-white/80 p-3 text-sm dark:border-border-dark/60 dark:bg-black/25">
                 <p className="font-medium text-ink dark:text-ink-dark">{s.judgement_label}</p>
                 {s.judgement_reason && (
-                  <p className="text-xs text-ink-mute dark:text-ink-dark-mute mt-2 whitespace-pre-wrap">
+                  <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-ink-mute dark:text-ink-dark-mute">
                     {s.judgement_reason}
                   </p>
                 )}
               </div>
             ) : (
-              <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
-                暂无系统审核结论（最近一次进化判断未记录或为空）。
+              <p className="mt-1 text-xs italic text-ink-mute dark:text-ink-dark-mute">
+                {t("evolution.detail.reviewNoJudgement")}
               </p>
             )}
-          </section>
-
-          <section className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">待确认技能（人工审核）</h2>
+          </div>
+          <div className={`${detailCardPad} space-y-3`}>
+            <div className="flex items-center justify-between gap-2 border-b border-border/30 pb-2 dark:border-border-dark/40">
+              <h2 className="text-sm font-semibold text-ink dark:text-ink-dark">
+                {t("evolution.detail.reviewPendingHeading")}
+              </h2>
               <button
                 type="button"
                 onClick={() => void loadPending()}
-                className="text-xs text-accent hover:underline"
+                className="rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10"
               >
-                刷新列表
+                {t("evolution.detail.reviewPendingRefresh")}
               </button>
             </div>
             {pendingLoading ? (
               <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
             ) : pending.length === 0 ? (
-              <p className="text-xs text-ink-mute dark:text-ink-dark-mute italic">
-                暂无待确认技能。进化生成的新技能会出现在 .skills/_evolved/_pending/。
+              <p className="text-xs italic text-ink-mute dark:text-ink-dark-mute">
+                {t("evolution.detail.reviewPendingEmpty")}
               </p>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-2.5">
                 {pending.map((p) => (
                   <PendingSkillReviewCard
                     key={p.name}
@@ -1734,7 +1745,7 @@ export function EvolutionDetailBody({
                 ))}
               </div>
             )}
-          </section>
+          </div>
         </div>
       )}
 
@@ -1743,23 +1754,23 @@ export function EvolutionDetailBody({
           role="tabpanel"
           id="evolution-detail-panel-changes"
           aria-labelledby="evolution-detail-tab-changes"
-          className="space-y-3"
+          className={`${detailCard} ${detailCardPad} space-y-3`}
         >
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-ink dark:text-ink-dark flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2 dark:border-border-dark/40">
+            <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink dark:text-ink-dark">
               <span
                 className="h-5 w-1 shrink-0 rounded-full bg-gradient-to-b from-accent to-accent/55"
                 aria-hidden
               />
               <span className="min-w-0 leading-snug">
-                <span className="text-accent font-bold">{t("evolution.diff.sectionTitleEvolution")}</span>
+                <span className="font-bold text-accent">{t("evolution.diff.sectionTitleEvolution")}</span>
                 <span>{t("evolution.diff.sectionTitleRest")}</span>
               </span>
             </h2>
             <button
               type="button"
               onClick={() => void loadDiffs()}
-              className="text-xs text-accent hover:underline shrink-0"
+              className="shrink-0 rounded-md px-2 py-1 text-xs text-accent hover:bg-accent/10"
             >
               {t("status.refresh")}
             </button>
