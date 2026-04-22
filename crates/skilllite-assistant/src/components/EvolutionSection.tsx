@@ -714,13 +714,24 @@ function useEvolutionStatus() {
 }
 
 /** 右侧面板摘要 */
-export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => void }) {
+export function EvolutionStatusSummary({
+  onOpenDetail,
+  className,
+  metricsClassName,
+}: {
+  onOpenDetail: () => void;
+  /** 外层 section，用于右栏占满剩余高度等布局（默认仅 `mb-4`）。 */
+  className?: string;
+  /** 指标卡片额外 class（如 `flex-1 min-h-*`）。 */
+  metricsClassName?: string;
+}) {
   const { t } = useI18n();
   const { status, loading, error, refresh, workspace } = useEvolutionStatus();
+  const sectionCls = `min-w-0 flex flex-col ${className ?? "mb-4"}`;
 
   if (loading && !status) {
     return (
-      <section className="mb-4 min-w-0">
+      <section className={sectionCls}>
         <div className="flex items-center justify-between mb-2">
           <EvolutionBrandTitle className="font-medium text-ink dark:text-ink-dark" />
         </div>
@@ -731,7 +742,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
 
   if (error && !status) {
     return (
-      <section className="mb-4 min-w-0">
+      <section className={sectionCls}>
         <div className="flex items-center justify-between mb-2">
           <EvolutionBrandTitle className="font-medium text-ink dark:text-ink-dark" />
           <button
@@ -761,8 +772,8 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
       : `${formatInterval(s.interval_secs)} 检查一次；近期加权（窗口 ${s.signal_window ?? 10}）≥ ${s.weighted_trigger_min ?? 3}（当前 ${s.weighted_signal_sum ?? 0}）或未处理 ≥ ${s.decision_threshold} 条也会触发`;
 
   return (
-    <section className="mb-4 min-w-0">
-      <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
+    <section className={sectionCls}>
+      <div className="flex shrink-0 items-center justify-between gap-2 mb-2 min-w-0">
         <button
           type="button"
           onClick={onOpenDetail}
@@ -805,7 +816,7 @@ export function EvolutionStatusSummary({ onOpenDetail }: { onOpenDetail: () => v
       </div>
 
       <div
-        className="max-w-full min-w-0 cursor-pointer rounded-lg border border-border/60 dark:border-border-dark/60 border-l-[3px] border-l-accent/55 dark:border-l-accent/45 bg-gray-50/50 dark:bg-surface-dark/50 px-2.5 py-2 text-xs text-ink dark:text-ink-dark space-y-1.5 break-words shadow-sm shadow-accent/[0.07] dark:shadow-accent/[0.12]"
+        className={`max-w-full min-w-0 cursor-pointer rounded-lg border border-border/60 dark:border-border-dark/60 border-l-[3px] border-l-accent/55 dark:border-l-accent/45 bg-gray-50/50 dark:bg-surface-dark/50 px-2.5 py-2 text-xs text-ink dark:text-ink-dark space-y-1.5 break-words shadow-sm shadow-accent/[0.07] dark:shadow-accent/[0.12] flex flex-col ${metricsClassName ?? ""}`}
         onClick={onOpenDetail}
         role="button"
         onKeyDown={(e) => e.key === "Enter" && onOpenDetail()}

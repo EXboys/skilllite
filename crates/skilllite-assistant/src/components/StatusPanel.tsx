@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { formatInvokeError } from "../utils/formatInvokeError";
 import { useUiToastStore } from "../stores/useUiToastStore";
@@ -14,7 +14,6 @@ import { openDetailWindow } from "../utils/detailWindow";
 import { EvolutionStatusSummary } from "./EvolutionSection";
 import { useLifePulse, type LifePulseActivity } from "../hooks/useLifePulse";
 import { translate, useI18n } from "../i18n";
-import { useAssistantChrome } from "../contexts/AssistantChromeContext";
 import { runWithScenarioFallback } from "../utils/llmScenarioFallback";
 
 interface MemoryEntryData {
@@ -340,82 +339,6 @@ function SummarySection({
 
 type StatusPanelTab = "evolution" | "archive";
 
-
-function SkillsStatusSummary() {
-  const { t } = useI18n();
-  const { openSettingsToTab } = useAssistantChrome();
-  const workspace = useSettingsStore((s) => s.settings.workspace?.trim() || ".");
-  const [count, setCount] = useState<number | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const refreshCount = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await invoke<{ name: string }[]>("skilllite_list_skills", { workspace });
-      setCount(list.length);
-    } catch {
-      setCount(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [workspace]);
-
-  useEffect(() => {
-    void refreshCount();
-  }, [refreshCount]);
-
-  return (
-    <section className="mb-0 min-w-0 rounded-lg border border-border/70 dark:border-border-dark/70 bg-gray-50/40 dark:bg-surface-dark/30 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 gap-y-1">
-        <span className="text-sm font-medium text-ink dark:text-ink-dark">{t("status.skills")}</span>
-        <div className="flex items-center gap-1">
-          {count != null && !loading && (
-            <span className="text-xs text-ink-mute dark:text-ink-dark-mute">
-              {t("status.countSkills", { n: count })}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => void refreshCount()}
-            disabled={loading}
-            className="p-1 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50"
-            title={t("status.refresh")}
-            aria-label={t("status.refresh")}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className={loading ? "animate-spin" : ""}
-            >
-              <path d="M21 2v6h-6" />
-              <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-              <path d="M3 22v-6h6" />
-              <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-            </svg>
-          </button>
-        </div>
-      </div>
-      <p className="mt-1.5 text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-        {t("status.skillsManageHint")}
-      </p>
-      <button
-        type="button"
-        onClick={() => openSettingsToTab("skills")}
-        className="mt-2 w-full text-sm px-3 py-2 rounded-lg bg-accent text-white font-medium hover:opacity-90 transition-colors"
-      >
-        {t("status.openSkillsSettings")}
-      </button>
-    </section>
-  );
-}
-
 function formatPulseTime(ts: number): string {
   if (!ts) return "";
   const d = new Date(ts * 1000);
@@ -555,11 +478,11 @@ export default function StatusPanel() {
     }`;
 
   return (
-    <div className="box-border w-full min-w-0 max-w-full p-4 text-sm break-words">
+    <div className="box-border flex h-full min-h-0 w-full min-w-0 max-w-full flex-col p-4 text-sm break-words">
       <div
         role="tablist"
         aria-label={t("status.panelAria")}
-        className="flex gap-0 mb-1 border-b border-border/80 dark:border-border-dark/80"
+        className="mb-1 flex shrink-0 gap-0 border-b border-border/80 dark:border-border-dark/80"
       >
         <button
           type="button"
@@ -592,10 +515,13 @@ export default function StatusPanel() {
           role="tabpanel"
           id="status-tab-panel-evolution"
           aria-labelledby="status-tab-trigger-evolution"
-          className="min-w-0 pt-3"
+          className="flex min-h-0 min-w-0 flex-1 flex-col pt-3"
         >
-          <EvolutionStatusSummary onOpenDetail={() => openDetailWindow("evolution")} />
-          <SkillsStatusSummary />
+          <EvolutionStatusSummary
+            onOpenDetail={() => openDetailWindow("evolution")}
+            className="flex-1 min-h-0 mb-0"
+            metricsClassName="flex-1 min-h-[min(42vh,16rem)] justify-between"
+          />
         </div>
       )}
 
@@ -604,7 +530,7 @@ export default function StatusPanel() {
           role="tabpanel"
           id="status-tab-panel-archive"
           aria-labelledby="status-tab-trigger-archive"
-          className="min-w-0 pt-3"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto pt-3"
         >
           <SummarySection
             title={t("status.memory")}
