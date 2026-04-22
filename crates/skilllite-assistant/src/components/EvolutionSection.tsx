@@ -762,32 +762,57 @@ export function EvolutionStatusSummary({
       : pk === "conservative"
         ? t("evolution.profile.conservative")
         : t("evolution.profile.default");
-  const scheduleHint =
+
+  const schedParams = {
+    interval: formatInterval(s.interval_secs),
+    w: s.weighted_signal_sum ?? 0,
+    wmin: s.weighted_trigger_min ?? 3,
+    win: s.signal_window ?? 10,
+    d: s.unprocessed_decisions,
+    thr: s.decision_threshold,
+  };
+  const scheduleOneLine =
     s.mode_key === "disabled"
-      ? "已禁用，后台不会自动进化"
-      : `${formatInterval(s.interval_secs)} 检查一次；近期加权（窗口 ${s.signal_window ?? 10}）≥ ${s.weighted_trigger_min ?? 3}（当前 ${s.weighted_signal_sum ?? 0}）或未处理 ≥ ${s.decision_threshold} 条也会触发`;
+      ? t("evolution.summary.scheduleDisabled")
+      : t("evolution.summary.scheduleCompact", schedParams);
+  const scheduleTitleLong =
+    s.mode_key === "disabled"
+      ? t("evolution.summary.scheduleDisabled")
+      : t("evolution.summary.scheduleTitleLong", schedParams);
 
   return (
     <section className={sectionCls}>
-      <div className="flex shrink-0 items-center justify-between gap-2 mb-2 min-w-0">
+      <div className="mb-2 flex min-w-0 shrink-0 items-center justify-between gap-2">
         <button
           type="button"
           onClick={onOpenDetail}
-          className="flex-1 min-w-0 text-left font-medium text-ink dark:text-ink-dark group hover:text-accent dark:hover:text-accent"
+          className="group min-w-0 flex-1 text-left text-ink dark:text-ink-dark"
         >
-          <EvolutionBrandTitle />
-          <span className="text-xs font-normal text-ink-mute group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent inline-flex items-center gap-0.5 ml-0.5 transition-colors">
-            {t("evolution.summary.openDetail")}
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <div className="font-medium leading-tight group-hover:text-accent dark:group-hover:text-accent">
+            <EvolutionBrandTitle />
+          </div>
+          <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-normal text-ink-mute transition-colors group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent">
+            <span>{t("evolution.summary.openDetail")}</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="opacity-70"
+              aria-hidden
+            >
               <path d="M9 18l6-6-6-6" />
             </svg>
-          </span>
+          </div>
         </button>
         <button
           type="button"
           onClick={() => void refresh()}
           disabled={loading}
-          className="p-1.5 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-paper/55/5 disabled:opacity-50 shrink-0"
+          className="shrink-0 rounded-lg p-1.5 text-ink-mute hover:bg-ink/5 hover:text-ink disabled:opacity-50 dark:text-ink-dark-mute dark:hover:bg-paper-dark/25 dark:hover:text-ink-dark"
           title={t("evolution.summary.refreshTitle")}
           aria-label={t("evolution.summary.refreshEvolutionAria")}
         >
@@ -812,66 +837,76 @@ export function EvolutionStatusSummary({
       </div>
 
       <div
-        className={`max-w-full min-w-0 cursor-pointer rounded-lg border border-border/60 dark:border-border-dark/60 border-l-[3px] border-l-accent/55 dark:border-l-accent/45 bg-gray-50/50 dark:bg-surface-dark/50 px-2.5 py-2 text-xs text-ink dark:text-ink-dark space-y-1.5 break-words shadow-sm shadow-accent/[0.07] dark:shadow-accent/[0.12] flex flex-col ${metricsClassName ?? ""}`}
+        className={`flex max-w-full min-w-0 cursor-pointer flex-col gap-2.5 rounded-xl border-l-[3px] border-l-accent/50 bg-gradient-to-b from-paper/55 via-paper/25 to-surface/90 py-3 pl-2.5 pr-3 text-xs text-ink shadow-md shadow-black/[0.06] ring-1 ring-border/25 dark:border-l-accent/45 dark:from-paper-dark/35 dark:via-paper-dark/18 dark:to-surface-dark/50 dark:text-ink-dark dark:shadow-black/30 dark:ring-border-dark/30 ${metricsClassName ?? ""}`}
         onClick={onOpenDetail}
         role="button"
         onKeyDown={(e) => e.key === "Enter" && onOpenDetail()}
         tabIndex={0}
       >
-        {s.db_error && (
-          <p className="break-words text-amber-700 dark:text-amber-400">{s.db_error}</p>
-        )}
-        <div className="flex min-w-0 justify-between gap-2">
-          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">模式</span>
-          <span className="min-w-0 truncate text-right font-medium">{s.mode_label}</span>
+        {s.db_error ? (
+          <p className="break-words rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] leading-snug text-amber-900 dark:bg-amber-500/15 dark:text-amber-100">
+            {s.db_error}
+          </p>
+        ) : null}
+
+        <div className="rounded-lg bg-ink/[0.04] px-2.5 py-2 dark:bg-white/[0.06]">
+          <p className="truncate text-sm font-semibold tracking-tight text-ink dark:text-ink-dark">{s.mode_label}</p>
+          <p
+            className="mt-1 line-clamp-2 text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute"
+            title={s.mode_key === "disabled" ? scheduleTitleLong : `${scheduleOneLine}\n\n${scheduleTitleLong}`}
+          >
+            {scheduleOneLine}
+          </p>
         </div>
-        <p className="text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute break-words">{scheduleHint}</p>
-        <div className="flex min-w-0 justify-between gap-2">
-          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}</span>
-          <span className="min-w-0 truncate text-right text-[11px]">{profileLabel}</span>
+
+        <div className="rounded-lg bg-paper/55 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(0,0,0,0.04)] dark:bg-black/25 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-mute dark:text-ink-dark-mute">
+            {t("evolution.summary.snapshotLabel")}
+          </p>
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[11px] leading-snug">
+            <dt className="shrink-0 text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}</dt>
+            <dd className="min-w-0 truncate font-medium text-ink dark:text-ink-dark">{profileLabel}</dd>
+            <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}</dt>
+            <dd className="font-mono tabular-nums text-ink dark:text-ink-dark">
+              {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours) ? `${s.evo_cooldown_hours} h` : "—"}
+            </dd>
+            <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.unprocessedShort")}</dt>
+            <dd className="font-mono tabular-nums text-ink dark:text-ink-dark">{s.unprocessed_decisions}</dd>
+            <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.lastRunShort")}</dt>
+            <dd className="truncate font-mono tabular-nums text-ink dark:text-ink-dark">
+              {s.last_run_ts ? formatTs(s.last_run_ts) : "—"}
+            </dd>
+          </dl>
         </div>
-        <div className="flex min-w-0 justify-between gap-2">
-          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}</span>
-          <span className="min-w-0 tabular-nums text-right text-[11px]">
-            {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours)
-              ? `${s.evo_cooldown_hours} h`
-              : "—"}
-          </span>
-        </div>
-        <div className="flex min-w-0 justify-between gap-2">
-          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">未进化决策</span>
-          <span className="min-w-0 truncate text-right">{s.unprocessed_decisions}</span>
-        </div>
-        <div className="flex min-w-0 justify-between gap-2">
-          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">上次进化运行</span>
-          <span className="min-w-0 truncate text-right">
-            {s.last_run_ts ? formatTs(s.last_run_ts) : "—"}
-          </span>
-        </div>
-        {s.judgement_label && (
-          <div className="min-w-0 border-t border-border/40 pt-1 dark:border-border-dark/40">
-            <span className="text-ink-mute dark:text-ink-dark-mute">审核判断 </span>
-            <span className="break-words font-medium">{s.judgement_label}</span>
-            {s.judgement_reason && (
-              <p className="mt-0.5 line-clamp-2 break-words text-[11px] text-ink-mute dark:text-ink-dark-mute">
+
+        {s.judgement_label ? (
+          <div className="rounded-lg bg-gradient-to-br from-accent-light/70 to-accent-light/25 px-2.5 py-2 shadow-sm dark:from-accent-light-dark/35 dark:to-accent-light-dark/10">
+            <p className="text-[11px] font-semibold text-ink dark:text-ink-dark">
+              <span className="font-normal text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.judgementHeading")} · </span>
+              {s.judgement_label}
+            </p>
+            {s.judgement_reason ? (
+              <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute">
                 {s.judgement_reason}
               </p>
-            )}
+            ) : null}
           </div>
-        )}
-        <div className="flex min-w-0 justify-between gap-2 pt-0.5">
-          <span className="shrink-0 text-ink-mute dark:text-ink-dark-mute">待确认技能</span>
+        ) : null}
+
+        <div className="flex min-w-0 items-baseline justify-between gap-2 rounded-md bg-ink/[0.035] px-2 py-1.5 text-[11px] dark:bg-white/[0.05]">
+          <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.pendingShort")}</span>
           <span
-            className={`min-w-0 shrink-0 text-right ${s.pending_skill_count > 0 ? "font-semibold text-accent" : ""}`}
+            className={`font-mono tabular-nums ${s.pending_skill_count > 0 ? "font-semibold text-accent" : "font-medium text-ink dark:text-ink-dark"}`}
           >
             {s.pending_skill_count}
           </span>
         </div>
+
         <p
-          className="min-w-0 truncate text-[10px] text-ink-mute/80 dark:text-ink-dark-mute/80"
+          className="min-w-0 truncate rounded-md bg-ink/[0.03] px-1.5 py-1 font-mono text-[10px] text-ink-mute dark:bg-white/[0.04] dark:text-ink-dark-mute"
           title={workspace}
         >
-          工作区: {workspace}
+          {t("evolution.summary.workspace")}: {workspace}
         </p>
       </div>
     </section>

@@ -237,6 +237,17 @@ export const enMessages: Record<string, string> = {
   "evolution.brand.lead": "Self-",
   "evolution.brand.accent": "Evolution",
   "evolution.summary.openDetail": "Details & review",
+  "evolution.summary.snapshotLabel": "Current thresholds",
+  "evolution.summary.scheduleCompact":
+    "{interval} · weighted Σ {w}/{wmin} ({win} msgs) · backlog {d}/{thr} can also fire",
+  "evolution.summary.scheduleTitleLong":
+    "Checks {interval}; weighted sum in the last {win} msgs must be ≥ {wmin} (now {w}), or unprocessed decisions ≥ {thr}, can also fire a run.",
+  "evolution.summary.scheduleDisabled": "Automatic evolution is off.",
+  "evolution.summary.unprocessedShort": "Open decisions",
+  "evolution.summary.lastRunShort": "Last run",
+  "evolution.summary.judgementHeading": "Review",
+  "evolution.summary.pendingShort": "Pending skills",
+  "evolution.summary.workspace": "Workspace",
   "evolution.summary.refreshTitle": "Refresh",
   "evolution.summary.refreshEvolutionAria": "Refresh evolution status",
   "evolution.detail.tabListAria": "Evolution detail sections",

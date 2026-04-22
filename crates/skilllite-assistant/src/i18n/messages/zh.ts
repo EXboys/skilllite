@@ -224,6 +224,17 @@ export const zhMessages: Record<string, string> = {
   "evolution.brand.lead": "自",
   "evolution.brand.accent": "进化",
   "evolution.summary.openDetail": "详情与审核",
+  "evolution.summary.snapshotLabel": "当前阈值",
+  "evolution.summary.scheduleCompact":
+    "{interval} · 加权和 {w}/{wmin}（窗 {win}）· 未进化决策 {d}/{thr} 亦触发",
+  "evolution.summary.scheduleTitleLong":
+    "{interval} 检查一次；近期加权（窗口 {win}）≥ {wmin}（当前 {w}）或未处理 ≥ {thr} 条也会触发",
+  "evolution.summary.scheduleDisabled": "自动进化已关闭。",
+  "evolution.summary.unprocessedShort": "未进化决策",
+  "evolution.summary.lastRunShort": "上次运行",
+  "evolution.summary.judgementHeading": "审核判断",
+  "evolution.summary.pendingShort": "待确认技能",
+  "evolution.summary.workspace": "工作区",
   "evolution.summary.refreshTitle": "刷新",
   "evolution.summary.refreshEvolutionAria": "刷新进化状态",
   "evolution.detail.tabListAria": "自进化详情分类",
