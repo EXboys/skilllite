@@ -34,6 +34,7 @@ import { useStatusStore } from "../stores/useStatusStore";
 import { useUiToastStore } from "../stores/useUiToastStore";
 import type { AssistantSettingsTabId } from "../contexts/AssistantChromeContext";
 import EnvironmentSettingsSection from "./EnvironmentSettingsSection";
+import SkillsSettingsSection from "./SkillsSettingsSection";
 import { SettingsNavIcon } from "./settings/SettingsNavIcon";
 
 /** Local list row: stable key for React (do not use user `id` in `key` or inputs remount on every edit). */
@@ -175,6 +176,7 @@ export default function SettingsModal({
           tabs: [
             { id: "workspace" as const, label: t("settings.tab.workspace") },
             { id: "mcp" as const, label: t("settings.tab.mcp") },
+            { id: "skills" as const, label: t("settings.tab.skills") },
             { id: "environment" as const, label: t("settings.tab.environment") },
           ],
         },
@@ -1555,6 +1557,15 @@ export default function SettingsModal({
             </div>
           </div>
           </div>
+          )}
+
+          {activeTab === "skills" && (
+            <div className="space-y-4">
+              <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
+                {t("settings.skillsIntro")}
+              </p>
+              <SkillsSettingsSection />
+            </div>
           )}
 
           {activeTab === "environment" && <EnvironmentSettingsSection />}

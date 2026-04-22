@@ -4,6 +4,7 @@ export type AssistantSettingsTabId =
   | "llm"
   | "workspace"
   | "mcp"
+  | "skills"
   | "environment"
   | "agent"
   | "evolution"

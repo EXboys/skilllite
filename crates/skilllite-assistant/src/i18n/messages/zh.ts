@@ -420,6 +420,8 @@ export const zhMessages: Record<string, string> = {
   "status.openDirFailed": "打开目录失败（{module}）：{err}",
   "status.openSkillDirFailed": "打开技能目录失败：{err}",
   "status.skills": "技能",
+  "status.skillsManageHint": "添加、导入、修复与查看技能请前往设置。",
+  "status.openSkillsSettings": "在设置中打开「技能」",
   "status.countSkills": "{n} 个",
   "status.skillTypeScript": "脚本型",
   "status.skillTypeBashTool": "Bash 工具",
@@ -480,6 +482,9 @@ export const zhMessages: Record<string, string> = {
   "settings.tab.llm": "模型与 API",
   "settings.tab.workspace": "工作区与沙箱",
   "settings.tab.mcp": "出站 MCP",
+  "settings.tab.skills": "技能",
+  "settings.skillsIntro":
+    "为当前工作区安装、修复或移除技能；能力与此前侧边栏中的模块一致，现与 MCP 同列在「工作区」相关设置中，便于集中管理。",
   "settings.tab.environment": "环境与依赖",
   "settings.navAria": "设置分区导航",
   "settings.navGroup.connection": "连接与界面",

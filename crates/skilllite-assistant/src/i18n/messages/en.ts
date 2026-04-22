@@ -447,6 +447,8 @@ export const enMessages: Record<string, string> = {
   "status.openDirFailed": "Open folder failed ({module}): {err}",
   "status.openSkillDirFailed": "Open skill folder failed: {err}",
   "status.skills": "Skills",
+  "status.skillsManageHint": "Add, import, repair, and inspect skills in Settings.",
+  "status.openSkillsSettings": "Open Skills in settings",
   "status.countSkills": "{n} total",
   "status.skillTypeScript": "Script",
   "status.skillTypeBashTool": "Bash Tool",
@@ -507,6 +509,9 @@ export const enMessages: Record<string, string> = {
   "settings.tab.llm": "Model & API",
   "settings.tab.workspace": "Workspace & sandbox",
   "settings.tab.mcp": "Outbound MCP",
+  "settings.tab.skills": "Skills",
+  "settings.skillsIntro":
+    "Install, repair, and remove skills for the current workspace. Same capabilities as before, now grouped with workspace tooling next to MCP.",
   "settings.tab.environment": "Environment",
   "settings.navAria": "Settings sections",
   "settings.navGroup.connection": "Connection",
