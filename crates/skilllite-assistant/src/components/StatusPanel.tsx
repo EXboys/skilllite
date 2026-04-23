@@ -515,7 +515,7 @@ export default function StatusPanel() {
           role="tabpanel"
           id="status-tab-panel-evolution-memory"
           aria-labelledby="status-tab-trigger-evolution-memory"
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-3"
+          className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-3"
         >
           <EvolutionStatusSummary
             onOpenDetail={() => openDetailWindow("evolution")}
@@ -539,7 +539,7 @@ export default function StatusPanel() {
           role="tabpanel"
           id="status-tab-panel-log-output"
           aria-labelledby="status-tab-trigger-log-output"
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-3"
+          className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-3"
         >
           <SummarySection
             title={t("status.log")}

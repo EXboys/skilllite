@@ -495,6 +495,7 @@ export const zhMessages: Record<string, string> = {
   "status.zipPickerFailed": "打开 ZIP 选择器失败：{err}",
   "status.repairSelected": "修复选中 ({n})",
   "status.repairAll": "修复技能",
+  "status.repairAllToolbar": "全部修复",
   "status.repairing": "修复中…",
   "status.deleteSkill": "删除技能",
   "status.deleteSelected": "删除选中 ({n})",
@@ -523,8 +524,6 @@ export const zhMessages: Record<string, string> = {
   "settings.tab.workspace": "工作区与沙箱",
   "settings.tab.mcp": "出站 MCP",
   "settings.tab.skills": "技能",
-  "settings.skillsIntro":
-    "为当前工作区安装、修复或移除技能；能力与此前侧边栏中的模块一致，现与 MCP 同列在「工作区」相关设置中，便于集中管理。",
   "settings.tab.environment": "环境与依赖",
   "settings.navAria": "设置分区导航",
   "settings.navGroup.connection": "连接与界面",

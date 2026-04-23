@@ -134,16 +134,6 @@ export interface EvolutionSnapshotTxnDto {
 /** Matches `skilllite_bridge::PROMPT_VERSION_CURRENT` */
 const PROMPT_VERSION_CURRENT = "__current__";
 
-function EvolutionBrandTitle({ className }: { className?: string }) {
-  const { t } = useI18n();
-  return (
-    <span className={className}>
-      {t("evolution.brand.lead")}
-      <span className="text-accent font-bold">{t("evolution.brand.accent")}</span>
-    </span>
-  );
-}
-
 /** 与 `EVOLUTION_PROMPT_DIFF_FILENAMES` 一致，可安全写入 chat prompts */
 const CHAT_PROMPT_EDIT_FILENAMES = [
   "planning.md",
@@ -722,15 +712,71 @@ export function EvolutionStatusSummary({
   metricsClassName?: string;
 }) {
   const { t } = useI18n();
-  const { status, loading, error, refresh, workspace } = useEvolutionStatus();
+  const { status, loading, error, refresh } = useEvolutionStatus();
   const sectionCls = `min-w-0 flex flex-col ${className ?? "mb-4"}`;
+
+  const summaryHeaderRow = () => (
+    <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={onOpenDetail}
+        className="group flex min-w-0 flex-1 items-center gap-1 text-left font-medium text-ink dark:text-ink-dark hover:text-accent dark:hover:text-accent"
+      >
+        <span>
+          {/** 与侧栏「记忆」标题一致：整词同色，避免单独高亮一字 */}
+          {t("evolution.brand.lead")}
+          {t("evolution.brand.accent")}
+        </span>
+        <span className="inline-flex min-w-0 items-center gap-0.5 text-xs font-normal text-ink-mute transition-colors group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent">
+          <span className="truncate">{t("evolution.summary.openDetail")}</span>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="shrink-0 opacity-70"
+            aria-hidden
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={() => void refresh()}
+        disabled={loading}
+        className="shrink-0 rounded p-1.5 text-ink-mute transition-colors hover:bg-ink/5 hover:text-ink disabled:opacity-50 dark:text-ink-dark-mute dark:hover:bg-white/5 dark:hover:text-ink-dark"
+        title={t("evolution.summary.refreshTitle")}
+        aria-label={t("evolution.summary.refreshEvolutionAria")}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={loading ? "animate-spin" : ""}
+        >
+          <path d="M21 2v6h-6" />
+          <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+          <path d="M3 22v-6h6" />
+          <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+        </svg>
+      </button>
+    </div>
+  );
 
   if (loading && !status) {
     return (
       <section className={sectionCls}>
-        <div className="flex items-center justify-between mb-2">
-          <EvolutionBrandTitle className="font-medium text-ink dark:text-ink-dark" />
-        </div>
+        {summaryHeaderRow()}
         <p className="text-xs text-ink-mute dark:text-ink-dark-mute">加载中…</p>
       </section>
     );
@@ -739,16 +785,7 @@ export function EvolutionStatusSummary({
   if (error && !status) {
     return (
       <section className={sectionCls}>
-        <div className="flex items-center justify-between mb-2">
-          <EvolutionBrandTitle className="font-medium text-ink dark:text-ink-dark" />
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            className="text-xs text-accent hover:underline"
-          >
-            重试
-          </button>
-        </div>
+        {summaryHeaderRow()}
         <p className="break-words text-xs text-red-600 dark:text-red-400">{error}</p>
       </section>
     );
@@ -782,132 +819,88 @@ export function EvolutionStatusSummary({
 
   return (
     <section className={sectionCls}>
-      <div className="mb-2 flex min-w-0 shrink-0 items-center justify-between gap-2">
-        <button
-          type="button"
+      {summaryHeaderRow()}
+
+      <div className="min-w-0 space-y-2">
+        <div
+          className={`max-w-full min-w-0 cursor-pointer rounded-md border border-border/50 bg-white/50 px-3 py-2.5 text-xs text-ink shadow-none dark:border-border-dark/50 dark:bg-white/[0.02] dark:text-ink-dark ${metricsClassName ?? ""}`}
           onClick={onOpenDetail}
-          className="group min-w-0 flex-1 text-left text-ink dark:text-ink-dark"
+          role="button"
+          onKeyDown={(e) => e.key === "Enter" && onOpenDetail()}
+          tabIndex={0}
         >
-          <div className="font-medium leading-tight group-hover:text-accent dark:group-hover:text-accent">
-            <EvolutionBrandTitle />
-          </div>
-          <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-normal text-ink-mute transition-colors group-hover:text-accent dark:text-ink-dark-mute dark:group-hover:text-accent">
-            <span>{t("evolution.summary.openDetail")}</span>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="opacity-70"
-              aria-hidden
+          {s.db_error ? (
+            <p className="break-words text-xs leading-relaxed text-amber-800 dark:text-amber-200">{s.db_error}</p>
+          ) : null}
+
+          <div className={s.db_error ? "mt-2 space-y-2.5" : "space-y-2.5"}>
+            <div>
+              <p className="truncate text-sm font-semibold leading-snug text-ink dark:text-ink-dark">{s.mode_label}</p>
+              <p
+                className="mt-1.5 line-clamp-3 text-xs leading-relaxed text-ink-mute dark:text-ink-dark-mute"
+                title={s.mode_key === "disabled" ? scheduleTitleLong : `${scheduleOneLine}\n\n${scheduleTitleLong}`}
+              >
+                {scheduleOneLine}
+              </p>
+            </div>
+
+            <div
+              role="group"
+              aria-label={t("evolution.summary.snapshotLabel")}
+              className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border/50 pt-2.5 text-xs leading-snug dark:border-border-dark/50"
             >
-              <path d="M9 18l6-6-6-6" />
-            </svg>
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={loading}
-          className="shrink-0 rounded-lg p-1.5 text-ink-mute hover:bg-ink/5 hover:text-ink disabled:opacity-50 dark:text-ink-dark-mute dark:hover:bg-paper-dark/25 dark:hover:text-ink-dark"
-          title={t("evolution.summary.refreshTitle")}
-          aria-label={t("evolution.summary.refreshEvolutionAria")}
-        >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={loading ? "animate-spin" : ""}
-          >
-            <path d="M21 2v6h-6" />
-            <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-            <path d="M3 22v-6h6" />
-            <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-          </svg>
-        </button>
-      </div>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-[11px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}</span>
+                <span className="min-w-0 truncate font-medium text-ink dark:text-ink-dark">{profileLabel}</span>
+              </div>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-[11px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}</span>
+                <span className="min-w-0 truncate font-mono tabular-nums text-ink dark:text-ink-dark">
+                  {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours) ? `${s.evo_cooldown_hours} h` : "—"}
+                </span>
+              </div>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-[11px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.unprocessedShort")}</span>
+                <span className="min-w-0 truncate font-mono tabular-nums text-ink dark:text-ink-dark">{s.unprocessed_decisions}</span>
+              </div>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-[11px] text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.lastRunShort")}</span>
+                <span className="min-w-0 truncate font-mono tabular-nums text-ink dark:text-ink-dark">
+                  {s.last_run_ts ? formatTs(s.last_run_ts) : "—"}
+                </span>
+              </div>
+            </div>
 
-      <div
-        className={`flex max-w-full min-w-0 cursor-pointer flex-col gap-2.5 rounded-xl border-l-[3px] border-l-accent/50 bg-gradient-to-b from-paper/55 via-paper/25 to-surface/90 py-3 pl-2.5 pr-3 text-xs text-ink shadow-md shadow-black/[0.06] ring-1 ring-border/25 dark:border-l-accent/45 dark:from-paper-dark/35 dark:via-paper-dark/18 dark:to-surface-dark/50 dark:text-ink-dark dark:shadow-black/30 dark:ring-border-dark/30 ${metricsClassName ?? ""}`}
-        onClick={onOpenDetail}
-        role="button"
-        onKeyDown={(e) => e.key === "Enter" && onOpenDetail()}
-        tabIndex={0}
-      >
-        {s.db_error ? (
-          <p className="break-words rounded-md bg-amber-500/10 px-2 py-1.5 text-[11px] leading-snug text-amber-900 dark:bg-amber-500/15 dark:text-amber-100">
-            {s.db_error}
-          </p>
-        ) : null}
-
-        <div className="rounded-lg bg-ink/[0.04] px-2.5 py-2 dark:bg-white/[0.06]">
-          <p className="truncate text-sm font-semibold tracking-tight text-ink dark:text-ink-dark">{s.mode_label}</p>
-          <p
-            className="mt-1 line-clamp-2 text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute"
-            title={s.mode_key === "disabled" ? scheduleTitleLong : `${scheduleOneLine}\n\n${scheduleTitleLong}`}
-          >
-            {scheduleOneLine}
-          </p>
-        </div>
-
-        <div className="rounded-lg bg-paper/55 px-2.5 py-2 shadow-[inset_0_1px_0_rgba(0,0,0,0.04)] dark:bg-black/25 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-ink-mute dark:text-ink-dark-mute">
-            {t("evolution.summary.snapshotLabel")}
-          </p>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[11px] leading-snug">
-            <dt className="shrink-0 text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.profile")}</dt>
-            <dd className="min-w-0 truncate font-medium text-ink dark:text-ink-dark">{profileLabel}</dd>
-            <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.cooldown")}</dt>
-            <dd className="font-mono tabular-nums text-ink dark:text-ink-dark">
-              {s.evo_cooldown_hours != null && Number.isFinite(s.evo_cooldown_hours) ? `${s.evo_cooldown_hours} h` : "—"}
-            </dd>
-            <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.unprocessedShort")}</dt>
-            <dd className="font-mono tabular-nums text-ink dark:text-ink-dark">{s.unprocessed_decisions}</dd>
-            <dt className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.lastRunShort")}</dt>
-            <dd className="truncate font-mono tabular-nums text-ink dark:text-ink-dark">
-              {s.last_run_ts ? formatTs(s.last_run_ts) : "—"}
-            </dd>
-          </dl>
-        </div>
-
-        {s.judgement_label ? (
-          <div className="rounded-lg bg-gradient-to-br from-accent-light/70 to-accent-light/25 px-2.5 py-2 shadow-sm dark:from-accent-light-dark/35 dark:to-accent-light-dark/10">
-            <p className="text-[11px] font-semibold text-ink dark:text-ink-dark">
-              <span className="font-normal text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.judgementHeading")} · </span>
-              {s.judgement_label}
-            </p>
-            {s.judgement_reason ? (
-              <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute">
-                {s.judgement_reason}
+            {s.judgement_label ? (
+              <p
+                className="line-clamp-4 border-t border-border/50 pt-2.5 text-xs leading-relaxed text-ink dark:border-border-dark/50 dark:text-ink-dark"
+                title={
+                  s.judgement_reason
+                    ? `${s.judgement_label} — ${s.judgement_reason}`
+                    : s.judgement_label ?? undefined
+                }
+              >
+                <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.judgementHeading")} · </span>
+                <span className="font-medium">{s.judgement_label}</span>
+                {s.judgement_reason ? (
+                  <span className="text-ink-mute dark:text-ink-dark-mute"> — {s.judgement_reason}</span>
+                ) : null}
               </p>
             ) : null}
+
+            <div
+              className="flex min-w-0 items-baseline gap-1.5 border-t border-border/50 pt-2.5 text-xs leading-relaxed dark:border-border-dark/50"
+              title={`${t("evolution.summary.pendingShort")} ${s.pending_skill_count}`}
+            >
+              <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.pendingShort")}</span>
+              <span
+                className={`font-mono tabular-nums ${s.pending_skill_count > 0 ? "font-semibold text-accent" : "font-medium text-ink dark:text-ink-dark"}`}
+              >
+                {s.pending_skill_count}
+              </span>
+            </div>
           </div>
-        ) : null}
-
-        <div className="flex min-w-0 items-baseline justify-between gap-2 rounded-md bg-ink/[0.035] px-2 py-1.5 text-[11px] dark:bg-white/[0.05]">
-          <span className="text-ink-mute dark:text-ink-dark-mute">{t("evolution.summary.pendingShort")}</span>
-          <span
-            className={`font-mono tabular-nums ${s.pending_skill_count > 0 ? "font-semibold text-accent" : "font-medium text-ink dark:text-ink-dark"}`}
-          >
-            {s.pending_skill_count}
-          </span>
         </div>
-
-        <p
-          className="min-w-0 truncate rounded-md bg-ink/[0.03] px-1.5 py-1 font-mono text-[10px] text-ink-mute dark:bg-white/[0.04] dark:text-ink-dark-mute"
-          title={workspace}
-        >
-          {t("evolution.summary.workspace")}: {workspace}
-        </p>
       </div>
     </section>
   );

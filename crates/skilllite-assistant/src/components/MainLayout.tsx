@@ -459,7 +459,7 @@ export default function MainLayout() {
                   </svg>
                 </button>
                 {!rightPanelCollapsed && (
-                  <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-5 pr-3 pb-3 pt-3">
+                  <div className="no-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pl-5 pr-3 pb-3 pt-3">
                     <StatusPanel />
                   </div>
                 )}

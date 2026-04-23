@@ -600,7 +600,7 @@ export default function DetailWindowView() {
           </svg>
         </button>
       </header>
-      <main className="flex-1 overflow-y-auto p-4">
+      <main className="no-scrollbar flex-1 overflow-y-auto p-4">
         {module === "plan" && <TaskList tasks={tasks} />}
         {module === "mem" && <MemoryContent files={memoryFiles} hints={memoryHints} />}
         {module === "log" && <LogFileContent files={logFiles} entries={logEntries} />}

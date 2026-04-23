@@ -641,7 +641,7 @@ export default function SettingsModal({
     <div
       className="flex flex-1 min-h-0 min-w-0 w-full flex-col bg-white dark:bg-paper-dark"
       role="main"
-      aria-labelledby="settings-page-title"
+      aria-label={t("settings.title")}
     >
       <div className="flex min-h-0 flex-1 flex-row">
         <nav
@@ -685,26 +685,6 @@ export default function SettingsModal({
         </nav>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border dark:border-border-dark px-5 py-4">
-            <h2
-              id="settings-page-title"
-              className="truncate text-lg font-semibold text-ink dark:text-ink-dark"
-            >
-              {t("settings.title")}
-            </h2>
-            <button
-              type="button"
-              onClick={onClose}
-              className="shrink-0 rounded-md p-2 text-ink-mute dark:text-ink-dark-mute hover:bg-ink/5 dark:hover:bg-white/10 hover:text-ink dark:hover:text-ink-dark transition-colors"
-              aria-label={t("common.close")}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                <path d="M18 6 6 18" />
-                <path d="m6 6 12 12" />
-              </svg>
-            </button>
-          </div>
-
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-5 py-4">
 
           {activeTab === "llm" && (
@@ -1559,14 +1539,7 @@ export default function SettingsModal({
           </div>
           )}
 
-          {activeTab === "skills" && (
-            <div className="space-y-4">
-              <p className="text-xs text-ink-mute dark:text-ink-dark-mute leading-relaxed">
-                {t("settings.skillsIntro")}
-              </p>
-              <SkillsSettingsSection />
-            </div>
-          )}
+          {activeTab === "skills" && <SkillsSettingsSection />}
 
           {activeTab === "environment" && <EnvironmentSettingsSection />}
 

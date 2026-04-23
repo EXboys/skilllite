@@ -7,3 +7,14 @@
     @apply antialiased;
   }
 }
+
+/* 隐藏滚动条但保留滚动（WebKit / Firefox）；用于侧栏等窄区域 */
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

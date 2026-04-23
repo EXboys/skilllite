@@ -523,6 +523,7 @@ export const enMessages: Record<string, string> = {
   "status.zipPickerFailed": "Could not open ZIP picker: {err}",
   "status.repairSelected": "Repair selected ({n})",
   "status.repairAll": "Repair skills",
+  "status.repairAllToolbar": "Repair all",
   "status.repairing": "Repairing…",
   "status.deleteSkill": "Delete skills",
   "status.deleteSelected": "Delete selected ({n})",
@@ -551,8 +552,6 @@ export const enMessages: Record<string, string> = {
   "settings.tab.workspace": "Workspace & sandbox",
   "settings.tab.mcp": "Outbound MCP",
   "settings.tab.skills": "Skills",
-  "settings.skillsIntro":
-    "Install, repair, and remove skills for the current workspace. Same capabilities as before, now grouped with workspace tooling next to MCP.",
   "settings.tab.environment": "Environment",
   "settings.navAria": "Settings sections",
   "settings.navGroup.connection": "Connection",

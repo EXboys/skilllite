@@ -82,19 +82,6 @@ function admissionRiskLabel(
   }
 }
 
-function dependencySummary(skill: DesktopSkillInfo, t: TranslateFn): string {
-  if (skill.dependencyPackages.length === 0) {
-    return t("status.skillDependenciesNone");
-  }
-  const typeLabel =
-    skill.dependencyType === "python"
-      ? t("status.skillDependencyTypePython")
-      : skill.dependencyType === "node"
-        ? t("status.skillDependencyTypeNode")
-        : t("status.skillDependencyTypeOther");
-  return `${typeLabel}: ${skill.dependencyPackages.join(", ")}`;
-}
-
 function skillMissingHints(skill: DesktopSkillInfo, t: TranslateFn): string[] {
   return [
     ...skill.missingCommands.map((name) => t("status.skillMissingCommand", { name })),
@@ -180,10 +167,6 @@ export default function SkillsSettingsSection() {
 
   const selectAll = () => setSelected(new Set(skills.map((skill) => skill.name)));
   const selectNone = () => setSelected(new Set());
-  const selectedSkill =
-    selected.size === 1 ? skills.find((skill) => selected.has(skill.name)) ?? null : null;
-  const selectedRiskLabel = selectedSkill ? admissionRiskLabel(selectedSkill.admissionRisk, t) : null;
-  const selectedMissingHints = selectedSkill ? skillMissingHints(selectedSkill, t) : [];
 
   const runRepair = async () => {
     setRepairing(true);
@@ -194,6 +177,26 @@ export default function SkillsSettingsSection() {
       const out = await invoke<string>("skilllite_repair_skills", {
         workspace,
         skillNames: toRepair,
+      });
+      setRepairResult(out || t("status.repairComplete"));
+      await loadSkills({ preserveRepairResult: true });
+    } catch (e) {
+      setRepairResult(String(e));
+      setResultIsError(true);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  /** 始终修复工作区内全部技能（忽略勾选） */
+  const runRepairAll = async () => {
+    setRepairing(true);
+    setRepairResult(null);
+    setResultIsError(false);
+    try {
+      const out = await invoke<string>("skilllite_repair_skills", {
+        workspace,
+        skillNames: [],
       });
       setRepairResult(out || t("status.repairComplete"));
       await loadSkills({ preserveRepairResult: true });
@@ -376,6 +379,17 @@ export default function SkillsSettingsSection() {
           >
             {t("status.deselect")}
           </button>
+          {skills.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void runRepairAll()}
+              disabled={repairing || deleting}
+              className="text-xs px-1.5 py-1 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
+              title={t("status.repairAll")}
+            >
+              {repairing ? t("status.repairing") : t("status.repairAllToolbar")}
+            </button>
+          )}
         </div>
       </div>
 
@@ -611,94 +625,27 @@ export default function SkillsSettingsSection() {
         )}
       </div>
 
-      {selectedSkill && (
-        <div className="rounded-lg border border-border dark:border-border-dark bg-white/60 dark:bg-surface-dark/60 p-3 text-xs text-ink dark:text-ink-dark">
-          <div className="flex min-w-0 items-center gap-2 flex-wrap">
-            <div className="font-medium truncate">{skillDisplayName(selectedSkill.name, locale)}</div>
-            <span className="rounded-full border border-border dark:border-border-dark bg-gray-50 dark:bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-ink-mute dark:text-ink-dark-mute">
-              {skillTypeLabel(selectedSkill, t)}
-            </span>
-          </div>
-          {selectedSkill.description && (
-            <p className="mt-2 break-words text-[11px] text-ink-mute dark:text-ink-dark-mute">
-              {selectedSkill.description}
-            </p>
-          )}
-          <dl className="mt-2 space-y-1.5">
-            <div className="min-w-0">
-              <dt className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
-                {t("status.skillSourceLabel")}
-              </dt>
-              <dd className="break-words">{selectedSkill.source || t("status.skillValueUnknown")}</dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
-                {t("status.skillTrustLabel")}
-              </dt>
-              <dd>
-                {trustTierLabel(selectedSkill, t)}
-                {selectedSkill.trustScore != null ? ` (${selectedSkill.trustScore})` : ""}
-                {selectedRiskLabel
-                  ? ` · ${t("status.skillAdmissionCompact", {
-                      risk: selectedRiskLabel,
-                    })}`
-                  : ""}
-              </dd>
-            </div>
-            <div className="min-w-0">
-              <dt className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
-                {t("status.skillDependenciesLabel")}
-              </dt>
-              <dd className="break-words">{dependencySummary(selectedSkill, t)}</dd>
-            </div>
-            {selectedMissingHints.length > 0 && (
-              <div className="min-w-0">
-                <dt className="text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                  {t("status.skillSetupLabel")}
-                </dt>
-                <dd className="mt-1 space-y-1">
-                  {selectedMissingHints.map((hint) => (
-                    <div
-                      key={hint}
-                      className="rounded-md bg-amber-50 dark:bg-amber-900/20 px-2 py-1 text-amber-800 dark:text-amber-200 break-words"
-                    >
-                      {hint}
-                    </div>
-                  ))}
-                </dd>
-              </div>
-            )}
-          </dl>
+      {/* 仅多选：批量修复/删除；单选与未选用行内或顶栏「全部修复」 */}
+      {skills.length > 0 && selected.size >= 2 && (
+        <div className="flex gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={() => void runRepair()}
+            disabled={repairing || deleting}
+            className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {repairing ? t("status.repairing") : t("status.repairSelected", { n: selected.size })}
+          </button>
+          <button
+            type="button"
+            onClick={() => void runDelete()}
+            disabled={deleting || repairing}
+            className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-red-300 dark:border-red-800/80 text-red-700 dark:text-red-300 font-medium hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {deleting ? t("status.deletingSkills") : t("status.deleteSelected", { n: selected.size })}
+          </button>
         </div>
       )}
-
-      <div className="flex gap-2 min-w-0">
-        <button
-          type="button"
-          onClick={() => void runRepair()}
-          disabled={repairing || deleting || skills.length === 0}
-          className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {repairing
-            ? t("status.repairing")
-            : selected.size > 0
-              ? t("status.repairSelected", { n: selected.size })
-              : t("status.repairAll")}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => void runDelete()}
-          disabled={deleting || repairing || skills.length === 0 || selected.size === 0}
-          className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-red-300 dark:border-red-800/80 text-red-700 dark:text-red-300 font-medium hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {deleting
-            ? t("status.deletingSkills")
-            : selected.size > 0
-              ? t("status.deleteSelected", { n: selected.size })
-              : t("status.deleteSkill")}
-        </button>
-      </div>
 
       {repairResult !== null && (
         <div
