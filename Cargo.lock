@@ -2342,6 +2342,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "skilllite-channel"
+version = "0.1.28"
+dependencies = [
+ "anyhow",
+ "base64",
+ "hmac",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "skilllite-commands"
 version = "0.1.28"
 dependencies = [

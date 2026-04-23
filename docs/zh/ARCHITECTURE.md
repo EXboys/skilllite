@@ -157,6 +157,8 @@ skillLite/
 │   │
 │   ├── skilllite-artifact/        # ArtifactStore 实现：本地目录（agent 默认）、可选 HTTP 服务端/客户端
 │   │
+│   ├── skilllite-channel/         # 出站消息：企业微信群机器人、钉钉机器人、Discord Webhook、WhatsApp Cloud API（reqwest blocking）
+│   │
 │   └── skilllite-assistant/       # Tauri 2 + React 桌面端 — 一等入口（Phase 0 D1）；因 Tauri 需平台 GUI 工具链而被 root workspace 排除，使用单独 manifest 构建。直接 path 依赖：core、fs、sandbox、agent、evolution。
 │       ├── vite.config.ts         # 唯一 Vite 配置（勿再并列 vite.config.js；见该 crate README）
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
@@ -226,6 +228,7 @@ skilllite (主二进制)
   │           └── skilllite-executor → skilllite-core, skilllite-fs
   ├── skilllite-swarm (swarm feature) → skilllite-core
   ├── skilllite-artifact → skilllite-core（agent 仅 `local`；主 `skilllite` 二进制默认启用 `artifact_http`，依赖 `local`+`server`）
+  ├── skilllite-channel            # 独立 crate（无 `skilllite-*` path 依赖）；告警/集成由入口 crate 按需引用
   └── skilllite-core (根)
 
 skilllite-assistant（Tauri 桌面端，一等入口 — Phase 0 D1）

@@ -159,6 +159,8 @@ skillLite/
 │   │
 │   ├── skilllite-artifact/        # ArtifactStore impls: local dir (default for agent), optional HTTP server/client
 │   │
+│   ├── skilllite-channel/         # Outbound messaging: WeChat Work robot, DingTalk robot, Discord webhook, WhatsApp Cloud API (reqwest blocking)
+│   │
 │   └── skilllite-assistant/       # Tauri 2 + React desktop — first-class entry (Phase 0 D1); excluded from root workspace because Tauri needs platform GUI toolchains. Build via separate manifest. Direct path deps: core, fs, sandbox, agent, evolution.
 │       ├── vite.config.ts         # sole Vite config (do not duplicate vite.config.js; see crate README)
 │       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
@@ -228,6 +230,7 @@ skilllite (main binary)
   │           └── skilllite-executor → skilllite-core, skilllite-fs
   ├── skilllite-swarm (swarm feature) → skilllite-core
   ├── skilllite-artifact → skilllite-core (agent: `local` only; main `skilllite` binary: `local` + `server` when `artifact_http` is enabled — default-on)
+  ├── skilllite-channel            # standalone (no `skilllite-*` path deps); optional alerts/integrations — wire from entry crates when needed
   └── skilllite-core (root)
 
 skilllite-assistant (Tauri desktop, first-class entry — Phase 0 D1)

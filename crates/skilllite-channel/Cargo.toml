@@ -1,0 +1,27 @@
+[package]
+name = "skilllite-channel"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Outbound messaging integrations: WeChat Work, DingTalk, Discord webhooks, WhatsApp Cloud API"
+keywords = ["webhook", "dingtalk", "wechat", "discord", "whatsapp", "skilllite"]
+categories = ["web-programming", "development-tools"]
+
+[features]
+default = ["http"]
+# Blocking HTTP clients (reqwest::blocking) for robot / webhook style APIs.
+http = ["dep:reqwest", "dep:hmac", "dep:sha2", "dep:base64"]
+
+[dependencies]
+anyhow = "1.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0"
+thiserror.workspace = true
+
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
+hmac = { version = "0.12", optional = true }
+sha2 = { version = "0.10", optional = true }
+base64 = { version = "0.22", optional = true }
