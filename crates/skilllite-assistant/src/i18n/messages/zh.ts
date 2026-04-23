@@ -501,6 +501,10 @@ export const zhMessages: Record<string, string> = {
   "status.deletingSkills": "删除中…",
   "status.deleteSkillConfirm": "确定删除选中的 {n} 个技能？此操作不可撤销。",
   "status.deleteSkillNeedSelect": "请先勾选要删除的技能",
+  "status.repairThisSkillTitle": "仅修复此技能",
+  "status.deleteThisSkillTitle": "删除此技能",
+  "status.repairThisSkillAria": "仅修复此技能",
+  "status.deleteThisSkillAria": "删除此技能",
   "status.initSkills": "初始化技能",
   "status.initializing": "初始化中…",
   "status.noSkillsHint":

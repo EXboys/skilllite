@@ -529,6 +529,10 @@ export const enMessages: Record<string, string> = {
   "status.deletingSkills": "Deleting…",
   "status.deleteSkillConfirm": "Delete {n} selected skill(s)? This cannot be undone.",
   "status.deleteSkillNeedSelect": "Select at least one skill to delete",
+  "status.repairThisSkillTitle": "Repair this skill only",
+  "status.deleteThisSkillTitle": "Delete this skill",
+  "status.repairThisSkillAria": "Repair this skill only",
+  "status.deleteThisSkillAria": "Delete this skill",
   "status.initSkills": "Initialize skills",
   "status.initializing": "Initializing…",
   "status.noSkillsHint":

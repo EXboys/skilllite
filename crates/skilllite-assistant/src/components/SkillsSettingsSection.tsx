@@ -137,13 +137,26 @@ export default function SkillsSettingsSection() {
   const [initializing, setInitializing] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
-  const loadSkills = useCallback(async () => {
+  const loadSkills = useCallback(async (opts?: { preserveRepairResult?: boolean }) => {
     setLoadingList(true);
-    setRepairResult(null);
+    if (!opts?.preserveRepairResult) {
+      setRepairResult(null);
+    }
     try {
       const nextSkills = await invoke<DesktopSkillInfo[]>("skilllite_list_skills", { workspace });
       setSkills(nextSkills);
-      setSelected(new Set());
+      if (!opts?.preserveRepairResult) {
+        setSelected(new Set());
+      } else {
+        setSelected((prev) => {
+          const names = new Set(nextSkills.map((s) => s.name));
+          const next = new Set<string>();
+          for (const n of prev) {
+            if (names.has(n)) next.add(n);
+          }
+          return next;
+        });
+      }
     } catch (e) {
       console.error("[skilllite-assistant] skilllite_list_skills failed:", e);
       setSkills([]);
@@ -183,6 +196,7 @@ export default function SkillsSettingsSection() {
         skillNames: toRepair,
       });
       setRepairResult(out || t("status.repairComplete"));
+      await loadSkills({ preserveRepairResult: true });
     } catch (e) {
       setRepairResult(String(e));
       setResultIsError(true);
@@ -191,31 +205,63 @@ export default function SkillsSettingsSection() {
     }
   };
 
-  const runDelete = async () => {
-    if (selected.size === 0) {
-      useUiToastStore.getState().show(t("status.deleteSkillNeedSelect"), "error");
-      return;
+  const runRepairOne = async (name: string) => {
+    setRepairing(true);
+    setRepairResult(null);
+    setResultIsError(false);
+    try {
+      const out = await invoke<string>("skilllite_repair_skills", {
+        workspace,
+        skillNames: [name],
+      });
+      setRepairResult(out || t("status.repairComplete"));
+      await loadSkills({ preserveRepairResult: true });
+    } catch (e) {
+      setRepairResult(String(e));
+      setResultIsError(true);
+    } finally {
+      setRepairing(false);
     }
-    const n = selected.size;
-    if (!window.confirm(t("status.deleteSkillConfirm", { n }))) return;
+  };
+
+  const runDeleteForNames = async (names: string[]) => {
+    if (names.length === 0) return;
     setDeleting(true);
     setRepairResult(null);
     setResultIsError(false);
     try {
-      const names = Array.from(selected);
       const out = await invoke<string>("skilllite_remove_skills", {
         workspace,
         skillNames: names,
       });
       setRepairResult(out || t("status.deleteSkill"));
-      setSelected(new Set());
-      loadSkills();
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const n of names) next.delete(n);
+        return next;
+      });
+      await loadSkills({ preserveRepairResult: true });
     } catch (e) {
       setRepairResult(String(e));
       setResultIsError(true);
     } finally {
       setDeleting(false);
     }
+  };
+
+  const runDeleteOne = async (name: string) => {
+    if (!window.confirm(t("status.deleteSkillConfirm", { n: 1 }))) return;
+    await runDeleteForNames([name]);
+  };
+
+  const runDelete = async () => {
+    if (selected.size === 0) {
+      useUiToastStore.getState().show(t("status.deleteSkillNeedSelect"), "error");
+      return;
+    }
+    const names = Array.from(selected);
+    if (!window.confirm(t("status.deleteSkillConfirm", { n: names.length }))) return;
+    await runDeleteForNames(names);
   };
 
   const runAdd = async (sourceOverride?: string) => {
@@ -289,7 +335,7 @@ export default function SkillsSettingsSection() {
         <div className="flex items-center gap-0.5 min-w-0">
           <button
             type="button"
-            onClick={loadSkills}
+            onClick={() => void loadSkills()}
             disabled={loadingList}
             className="p-1.5 rounded-md text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 disabled:opacity-50 transition-colors"
             title={t("status.refresh")}
@@ -467,39 +513,96 @@ export default function SkillsSettingsSection() {
                         )}
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        invoke("skilllite_open_skill_directory", { workspace, skillName: name }).catch((err) => {
-                          console.error("[skilllite-assistant] open_skill_directory failed:", err);
-                          const msg = formatInvokeError(err);
-                          setRepairResult(translate("status.openSkillDirResult", { err: msg }));
-                          setResultIsError(true);
-                          useUiToastStore
-                            .getState()
-                            .show(translate("status.openSkillDirFailed", { err: msg }), "error");
-                        });
-                      }}
-                      className="p-1 rounded text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 shrink-0"
-                      title={t("status.openFolder")}
-                      aria-label={t("status.openFolderAria")}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                    <div className="flex shrink-0 items-start gap-0.5 pt-0.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          invoke("skilllite_open_skill_directory", { workspace, skillName: name }).catch((err) => {
+                            console.error("[skilllite-assistant] open_skill_directory failed:", err);
+                            const msg = formatInvokeError(err);
+                            setRepairResult(translate("status.openSkillDirResult", { err: msg }));
+                            setResultIsError(true);
+                            useUiToastStore
+                              .getState()
+                              .show(translate("status.openSkillDirFailed", { err: msg }), "error");
+                          });
+                        }}
+                        className="p-1 rounded text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 shrink-0"
+                        title={t("status.openFolder")}
+                        aria-label={t("status.openFolderAria")}
                       >
-                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                      </svg>
-                    </button>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void runRepairOne(name);
+                        }}
+                        disabled={repairing || deleting}
+                        className="p-1 rounded text-ink-mute hover:text-ink dark:hover:text-ink-dark hover:bg-ink/5 dark:hover:bg-white/5 shrink-0 disabled:opacity-50"
+                        title={t("status.repairThisSkillTitle")}
+                        aria-label={t("status.repairThisSkillAria")}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void runDeleteOne(name);
+                        }}
+                        disabled={repairing || deleting}
+                        className="p-1 rounded text-ink-mute hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 shrink-0 disabled:opacity-50"
+                        title={t("status.deleteThisSkillTitle")}
+                        aria-label={t("status.deleteThisSkillAria")}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          <line x1="10" y1="11" x2="10" y2="17" />
+                          <line x1="14" y1="11" x2="14" y2="17" />
+                        </svg>
+                      </button>
+                    </div>
                   </label>
                 </li>
               );
@@ -569,31 +672,33 @@ export default function SkillsSettingsSection() {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={runRepair}
-        disabled={repairing || deleting || skills.length === 0}
-        className="w-full text-sm px-3 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {repairing
-          ? t("status.repairing")
-          : selected.size > 0
-            ? t("status.repairSelected", { n: selected.size })
-            : t("status.repairAll")}
-      </button>
+      <div className="flex gap-2 min-w-0">
+        <button
+          type="button"
+          onClick={() => void runRepair()}
+          disabled={repairing || deleting || skills.length === 0}
+          className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg bg-accent text-white font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {repairing
+            ? t("status.repairing")
+            : selected.size > 0
+              ? t("status.repairSelected", { n: selected.size })
+              : t("status.repairAll")}
+        </button>
 
-      <button
-        type="button"
-        onClick={runDelete}
-        disabled={deleting || repairing || skills.length === 0 || selected.size === 0}
-        className="w-full text-sm px-3 py-2 rounded-lg border border-red-300 dark:border-red-800/80 text-red-700 dark:text-red-300 font-medium hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-      >
-        {deleting
-          ? t("status.deletingSkills")
-          : selected.size > 0
-            ? t("status.deleteSelected", { n: selected.size })
-            : t("status.deleteSkill")}
-      </button>
+        <button
+          type="button"
+          onClick={() => void runDelete()}
+          disabled={deleting || repairing || skills.length === 0 || selected.size === 0}
+          className="flex-1 min-w-0 text-sm px-3 py-2 rounded-lg border border-red-300 dark:border-red-800/80 text-red-700 dark:text-red-300 font-medium hover:bg-red-50 dark:hover:bg-red-950/30 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {deleting
+            ? t("status.deletingSkills")
+            : selected.size > 0
+              ? t("status.deleteSelected", { n: selected.size })
+              : t("status.deleteSkill")}
+        </button>
+      </div>
 
       {repairResult !== null && (
         <div
