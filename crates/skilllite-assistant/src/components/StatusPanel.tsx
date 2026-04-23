@@ -337,7 +337,7 @@ function SummarySection({
   );
 }
 
-type StatusPanelTab = "evolution" | "archive";
+type StatusPanelTab = "evolutionMemory" | "logOutput";
 
 function formatPulseTime(ts: number): string {
   if (!ts) return "";
@@ -441,7 +441,7 @@ export function LifePulseBadge() {
 
 export default function StatusPanel() {
   const { t } = useI18n();
-  const [tab, setTab] = useState<StatusPanelTab>("evolution");
+  const [tab, setTab] = useState<StatusPanelTab>("evolutionMemory");
   const { logEntries, logFiles, memoryHints, memoryFiles, outputFiles, rollLlmUsageMonthIfNeeded } =
     useStatusStore();
   const { settings } = useSettingsStore();
@@ -487,60 +487,60 @@ export default function StatusPanel() {
         <button
           type="button"
           role="tab"
-          id="status-tab-trigger-evolution"
-          aria-controls="status-tab-panel-evolution"
-          aria-selected={tab === "evolution"}
-          tabIndex={0}
-          onClick={() => setTab("evolution")}
-          className={tabBtnClass(tab === "evolution")}
+          id="status-tab-trigger-evolution-memory"
+          aria-controls="status-tab-panel-evolution-memory"
+          aria-selected={tab === "evolutionMemory"}
+          tabIndex={tab === "evolutionMemory" ? 0 : -1}
+          onClick={() => setTab("evolutionMemory")}
+          className={tabBtnClass(tab === "evolutionMemory")}
         >
-          {t("status.tabEvolution")}
+          {t("status.tabEvolutionMemory")}
         </button>
         <button
           type="button"
           role="tab"
-          id="status-tab-trigger-archive"
-          aria-controls="status-tab-panel-archive"
-          aria-selected={tab === "archive"}
-          tabIndex={0}
-          onClick={() => setTab("archive")}
-          className={tabBtnClass(tab === "archive")}
+          id="status-tab-trigger-log-output"
+          aria-controls="status-tab-panel-log-output"
+          aria-selected={tab === "logOutput"}
+          tabIndex={tab === "logOutput" ? 0 : -1}
+          onClick={() => setTab("logOutput")}
+          className={tabBtnClass(tab === "logOutput")}
         >
-          {t("status.tabArchive")}
+          {t("status.tabLogOutput")}
         </button>
       </div>
 
-      {tab === "evolution" && (
+      {tab === "evolutionMemory" && (
         <div
           role="tabpanel"
-          id="status-tab-panel-evolution"
-          aria-labelledby="status-tab-trigger-evolution"
-          className="flex min-h-0 min-w-0 flex-1 flex-col pt-3"
+          id="status-tab-panel-evolution-memory"
+          aria-labelledby="status-tab-trigger-evolution-memory"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-3"
         >
           <EvolutionStatusSummary
             onOpenDetail={() => openDetailWindow("evolution")}
-            className="flex-1 min-h-0 mb-0"
-            metricsClassName="flex-1 min-h-[min(42vh,16rem)] justify-between"
+            className="mb-0 shrink-0"
           />
+          <div className="mt-4 border-t border-border/70 pt-4 dark:border-border-dark/70">
+            <SummarySection
+              title={t("status.memory")}
+              onClickMore={() => openDetailWindow("mem")}
+              onOpenDir={openDir("memory")}
+              hasMore={memHasMore || memoryFiles.length > 0}
+            >
+              <MemoryPreview files={memoryFiles} hints={memoryHints} limit={PREVIEW_LIMIT} />
+            </SummarySection>
+          </div>
         </div>
       )}
 
-      {tab === "archive" && (
+      {tab === "logOutput" && (
         <div
           role="tabpanel"
-          id="status-tab-panel-archive"
-          aria-labelledby="status-tab-trigger-archive"
-          className="min-h-0 min-w-0 flex-1 overflow-y-auto pt-3"
+          id="status-tab-panel-log-output"
+          aria-labelledby="status-tab-trigger-log-output"
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden pt-3"
         >
-          <SummarySection
-            title={t("status.memory")}
-            onClickMore={() => openDetailWindow("mem")}
-            onOpenDir={openDir("memory")}
-            hasMore={memHasMore || memoryFiles.length > 0}
-          >
-            <MemoryPreview files={memoryFiles} hints={memoryHints} limit={PREVIEW_LIMIT} />
-          </SummarySection>
-
           <SummarySection
             title={t("status.log")}
             onClickMore={() => openDetailWindow("log")}
