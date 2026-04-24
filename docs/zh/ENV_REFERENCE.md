@@ -139,6 +139,38 @@
 
 ---
 
+## 统一 gateway HTTP `skilllite gateway serve` <small>[可选]</small>
+
+| 变量 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `SKILLLITE_GATEWAY_SERVE_ALLOW` | string | 未设置 | 必须为 **`1`** 时 **`skilllite gateway serve`** 才会**监听**端口；与独立的 `artifact-serve` / `channel serve` 相同，默认 fail-closed。 |
+| `SKILLLITE_GATEWAY_HTTP_ALLOW_INSECURE_NO_AUTH` | string | 未设置 | 为 **`1`** 时允许**非回环** `--bind` 且**无** `--token`（不安全，仅建议在可信反向代理后或受控实验环境中使用）。 |
+
+**端点**：
+- 固定提供：`GET /health`、`POST /webhook/inbound`
+- 可选提供：当设置 `--artifact-dir <DIR>` 时，挂载 `GET` / `PUT` `/v1/runs/{run_id}/artifacts?key=...`
+
+**鉴权模型**：若指定 `--token`，gateway 会把同一个 bearer token 应用于所挂载的 webhook 与 artifact HTTP 路由。
+
+**兼容说明**：本阶段 `skilllite channel serve` 与 `skilllite artifact-serve` 仍然可用；若希望用**一个常驻进程**同时承载两类 HTTP 面，优先使用 `gateway serve`。
+
+**Channel 说明**：当 `/webhook/inbound` 由 gateway 托管时，可选的钉钉摘要环境变量（`SKILLLITE_CHANNEL_DINGTALK_WEBHOOK`、`SKILLLITE_CHANNEL_DINGTALK_SECRET`）仍然生效。
+
+---
+
+## 入站 channel HTTP `skilllite channel serve` <small>[可选]</small>
+
+| 变量 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `SKILLLITE_CHANNEL_SERVE_ALLOW` | string | 未设置 | 必须为 **`1`** 时 **`skilllite channel serve`** 才会**监听**端口；与 `SKILLLITE_ARTIFACT_SERVE_ALLOW` 同类 fail-closed。 |
+| `SKILLLITE_CHANNEL_HTTP_ALLOW_INSECURE_NO_AUTH` | string | 未设置 | 为 **`1`** 时允许**非回环** `--bind` 且**无** `--token`（不安全，仅建议在可信反向代理后使用）。 |
+| `SKILLLITE_CHANNEL_DINGTALK_WEBHOOK` | string | 未设置 | 若设为 HTTPS 机器人 URL，每次接受的 `POST /webhook/inbound` 会**尽力**推送一条钉钉 Markdown 摘要（失败仅打日志）。 |
+| `SKILLLITE_CHANNEL_DINGTALK_SECRET` | string | 未设置 | 与 `SKILLLITE_CHANNEL_DINGTALK_WEBHOOK` 配套的可选加签密钥。 |
+
+**端点**：`GET /health`、`POST /webhook/inbound`。若指定 `--token`，入站 POST 须带 `Authorization: Bearer <token>`。
+
+---
+
 ## 沙箱与安全 <small>[常用]</small>
 
 沙箱相关变量**统一走 config 层**（`SandboxEnvConfig::from_env()`）；config 接受 `SKILLLITE_*`（推荐）与旧名 `SKILLBOX_*`。

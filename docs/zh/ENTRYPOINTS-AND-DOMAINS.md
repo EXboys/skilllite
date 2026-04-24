@@ -8,7 +8,7 @@
 
 | 入口 | 是什么 | 依赖的 Crate / 组件 | 适用场景（一句话） |
 |------|--------|----------------------|--------------------|
-| **CLI** | 主二进制 `skilllite` | core, sandbox, commands, (可选) executor, agent, swarm | 终端用户、脚本、CI：执行技能、扫描、聊天、初始化等全功能。 |
+| **CLI** | 主二进制 `skilllite` | core, sandbox, commands, (可选) executor, agent, swarm, artifact HTTP, 统一 gateway 宿主 | 终端用户、脚本、CI：执行技能、扫描、聊天、初始化等全功能。 |
 | **Python** | python-sdk + IPC/子进程（artifact 走标准库 HTTP） | 调用本机 `skilllite` 二进制；`artifact_put`/`artifact_get` 对接 artifact HTTP | Python 应用：scan_code、execute_code、chat、run_skill；可选跨进程大对象走 artifact API。 |
 | **MCP** | 子命令 `skilllite mcp` | 同 CLI 主二进制（mcp 模块在 skilllite 包内） | Cursor/VSCode 等 IDE：通过 MCP 协议暴露 list_skills、run_skill、scan_code、execute_code。 |
 | **Desktop** | skilllite-assistant（Tauri，**一等入口**） | core、fs、sandbox、agent、evolution（直接 path 依赖）；部分命令运行时仍 fallback 到已安装的 `skilllite` | 桌面用户：图形化聊天（含可选 **图片附件** → `agent_chat` 多模态）、会话管理、自进化 UI、运行时供给、transcript/memory 视图。 |
@@ -22,7 +22,7 @@
 - **依赖**：
   - **必选**：`skilllite-core`、`skilllite-sandbox`、`skilllite-commands`
   - **可选**：`skilllite-executor`（会话/记忆）、`skilllite-agent`（chat/run agent）、`skilllite-swarm`（swarm 子命令）
-- **主要子命令**：`run`、`exec`、`scan`、`validate`、`info`、`security-scan`、`bash`、`serve`（IPC）、`artifact-serve`（本地 artifact HTTP；**监听**需 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`）、`chat`、`init`、`mcp`、`swarm`、`evolution`、`init-cursor`、`dependency-audit` 等。
+- **主要子命令**：`run`、`exec`、`scan`、`validate`、`info`、`security-scan`、`bash`、`serve`（IPC）、`gateway serve`（统一 HTTP 宿主；**监听**需 `SKILLLITE_GATEWAY_SERVE_ALLOW=1`）、`artifact-serve`（独立 artifact HTTP；**监听**需 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`）、`channel serve`（独立入站 webhook；**监听**需 `SKILLLITE_CHANNEL_SERVE_ALLOW=1`）、`chat`、`init`、`mcp`、`swarm`、`evolution`、`init-cursor`、`dependency-audit` 等。
 - **适用**：终端与脚本的主力入口；CI、自动化、本地开发。
 
 ---
@@ -31,7 +31,7 @@
 
 - **入口**：Python 包 `skilllite`（`python-sdk/`），通过 **IPC**（`skilllite serve` stdio JSON-RPC）或 **子进程** 调用本机 `skilllite`。
 - **依赖**：无 Rust 直接依赖；运行时依赖已安装的 `skilllite` 二进制（pip 安装或 PATH）。
-- **主要 API**：`scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`；`artifact_put` / `artifact_get`（标准库 `urllib`）访问 artifact HTTP（`skilllite artifact-serve` 或任意兼容实现）；IPC 由 `ipc.py` 连接 `serve`，否则走子进程。
+- **主要 API**：`scan_code`、`execute_code`、`chat`、`run_skill`、`get_binary`；`artifact_put` / `artifact_get`（标准库 `urllib`）访问 artifact HTTP（`skilllite gateway serve --artifact-dir ...`、`skilllite artifact-serve` 或任意兼容实现）；IPC 由 `ipc.py` 连接 `serve`，否则走子进程。
 - **适用**：Python 应用、LangChain/LlamaIndex 等框架集成、服务端或本地脚本。
 
 ---

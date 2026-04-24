@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-22 (TASK-2026-050 desktop skill details done)
+Last updated: 2026-04-24 (TASK-2026-054 assistant gateway settings migration done)
 
 ## In Progress
 
@@ -16,6 +16,10 @@ Last updated: 2026-04-22 (TASK-2026-050 desktop skill details done)
 
 ## Done
 
+- `TASK-2026-054-assistant-gateway-settings-migration` - Status: `done` - Owner: `airlu`
+- `TASK-2026-053-assistant-gateway-naming-cleanup` - Status: `done` - Owner: `airlu`
+- `TASK-2026-052-assistant-gateway-settings` - Status: `done` - Owner: `airlu`
+- `TASK-2026-051-gateway-phase1-bootstrap` - Status: `done` - Owner: `airlu`
 - `TASK-2026-050-desktop-skill-details-and-badges` - Status: `done` - Owner: `airlu`
 - `TASK-2026-049-desktop-show-all-installed-skills` - Status: `done` - Owner: `airlu`
 - `TASK-2026-048-desktop-debug-skilllite-path` - Status: `done` - Owner: `airlu`

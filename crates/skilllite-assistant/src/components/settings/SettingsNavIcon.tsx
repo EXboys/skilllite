@@ -97,6 +97,26 @@ export function SettingsNavIcon({
           <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
         </svg>
       );
+    case "channel":
+      return (
+        <svg
+          className={c}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M10 13a5 5 0 0 0 7.54.54L21 10" />
+          <path d="M14 11a5 5 0 0 0-7.54-.54L3 14" />
+          <path d="M22 12h-4" />
+          <path d="M6 12H2" />
+          <path d="M12 6V2" />
+          <path d="M12 22v-4" />
+        </svg>
+      );
     case "agent":
       return (
         <svg

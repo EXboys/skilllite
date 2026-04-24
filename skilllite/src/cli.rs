@@ -749,6 +749,59 @@ pub enum Commands {
         #[command(subcommand)]
         action: ScheduleAction,
     },
+
+    /// Unified HTTP host for health, inbound webhook, and optional artifact routes.
+    ///
+    /// This is the preferred long-running host direction when you want a single process to expose
+    /// the webhook MVP plus optional artifact HTTP. Refuses to **bind** unless
+    /// **`SKILLLITE_GATEWAY_SERVE_ALLOW=1`**. Non-loopback `--bind` requires `--token` or
+    /// **`SKILLLITE_GATEWAY_HTTP_ALLOW_INSECURE_NO_AUTH=1`** (unsafe).
+    ///
+    /// Examples:
+    ///   SKILLLITE_GATEWAY_SERVE_ALLOW=1 skilllite gateway serve --bind 127.0.0.1:8787
+    ///   SKILLLITE_GATEWAY_SERVE_ALLOW=1 skilllite gateway serve --bind 127.0.0.1:8787 --token secret --artifact-dir ./.skilllite
+    #[cfg(feature = "gateway")]
+    #[command(name = "gateway")]
+    Gateway {
+        #[command(subcommand)]
+        action: GatewayAction,
+    },
+
+    /// Inbound HTTP for messaging webhooks (gateway-style surface without a separate crate).
+    ///
+    /// Refuses to **bind** unless **`SKILLLITE_CHANNEL_SERVE_ALLOW=1`**. Non-loopback `--bind`
+    /// requires `--token` or **`SKILLLITE_CHANNEL_HTTP_ALLOW_INSECURE_NO_AUTH=1`** (unsafe).
+    ///
+    /// Optional: set **`SKILLLITE_CHANNEL_DINGTALK_WEBHOOK`** (+ optional **`SKILLLITE_CHANNEL_DINGTALK_SECRET`**)
+    /// to forward a short Markdown summary to DingTalk on each accepted POST.
+    ///
+    /// Examples:
+    ///   SKILLLITE_CHANNEL_SERVE_ALLOW=1 skilllite channel serve --bind 127.0.0.1:8787
+    ///   SKILLLITE_CHANNEL_SERVE_ALLOW=1 skilllite channel serve --bind 127.0.0.1:8787 --token secret
+    #[cfg(feature = "channel_serve")]
+    #[command(name = "channel")]
+    Channel {
+        #[command(subcommand)]
+        action: ChannelAction,
+    },
+}
+
+/// `skilllite gateway` subcommands.
+#[cfg(feature = "gateway")]
+#[derive(Subcommand, Debug)]
+pub enum GatewayAction {
+    /// Start unified HTTP listener (`GET /health`, `POST /webhook/inbound`, optional artifact routes); blocks until Ctrl+C.
+    Serve {
+        /// Listen address (default 127.0.0.1:8787)
+        #[arg(long, default_value = "127.0.0.1:8787")]
+        bind: String,
+        /// Require `Authorization: Bearer <token>` on protected routes when set
+        #[arg(long, value_name = "SECRET")]
+        token: Option<String>,
+        /// Mount artifact HTTP routes backed by this local directory when set
+        #[arg(long, value_name = "DIR")]
+        artifact_dir: Option<std::path::PathBuf>,
+    },
 }
 
 /// Evolution subcommands (EVO-5).
@@ -837,5 +890,20 @@ pub enum ScheduleAction {
         /// List due jobs and exit without calling the LLM
         #[arg(long)]
         dry_run: bool,
+    },
+}
+
+/// `skilllite channel` subcommands.
+#[cfg(feature = "channel_serve")]
+#[derive(Subcommand, Debug)]
+pub enum ChannelAction {
+    /// Start HTTP listener (`GET /health`, `POST /webhook/inbound`); blocks until Ctrl+C.
+    Serve {
+        /// Listen address (default 127.0.0.1:8787)
+        #[arg(long, default_value = "127.0.0.1:8787")]
+        bind: String,
+        /// Require `Authorization: Bearer <token>` on webhook when set
+        #[arg(long, value_name = "SECRET")]
+        token: Option<String>,
     },
 }

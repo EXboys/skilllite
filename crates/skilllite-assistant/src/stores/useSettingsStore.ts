@@ -108,10 +108,58 @@ export interface Settings {
   llmScenarioFallbacks?: Partial<Record<LlmScenarioRouteKey, string[]>>;
   /** 可选：Agent 出站 MCP（stdio）；每项可单独启用/禁用。 */
   mcpServers?: McpServerConfig[];
+  /** `skilllite gateway serve --bind` 地址，默认 `127.0.0.1:8787`（IPv4 `host:port`）。 */
+  gatewayServeBind?: string;
+  /** 可选 Bearer，与 CLI `--token` 一致；仅存本地（与 API Key 同级风险，勿提交仓库）。 */
+  gatewayServeToken?: string;
+  /** 可选 artifact 目录；设置后 `gateway serve` 会挂载 artifact HTTP 路由。 */
+  gatewayArtifactDir?: string;
 }
 
 /** localStorage 键名；详情窗口与主窗口同步设置时需与此一致 */
 export const SETTINGS_STORE_PERSIST_KEY = "skilllite-assistant-settings";
+const SETTINGS_STORE_VERSION = 1;
+const DEFAULT_GATEWAY_SERVE_BIND = "127.0.0.1:8787";
+const DEFAULT_GATEWAY_SERVE_TOKEN = "";
+const DEFAULT_GATEWAY_ARTIFACT_DIR = "";
+
+type LegacyGatewaySettings = Settings & {
+  channelServeBind?: string;
+  channelServeToken?: string;
+};
+
+type PersistedSettingsStore = {
+  settings?: LegacyGatewaySettings;
+};
+
+function migrateSettingsStore(persistedState: unknown, version: number): PersistedSettingsStore {
+  if (!persistedState || typeof persistedState !== "object") {
+    return {};
+  }
+
+  const store = persistedState as PersistedSettingsStore;
+  const settings = store.settings;
+  if (!settings || typeof settings !== "object") {
+    return store;
+  }
+
+  if (version >= SETTINGS_STORE_VERSION) {
+    return store;
+  }
+
+  const { channelServeBind, channelServeToken, ...rest } = settings;
+  const migratedSettings: Settings = {
+    ...rest,
+    gatewayServeBind: settings.gatewayServeBind ?? channelServeBind ?? DEFAULT_GATEWAY_SERVE_BIND,
+    gatewayServeToken: settings.gatewayServeToken ?? channelServeToken ?? DEFAULT_GATEWAY_SERVE_TOKEN,
+    gatewayArtifactDir: settings.gatewayArtifactDir ?? DEFAULT_GATEWAY_ARTIFACT_DIR,
+  };
+
+  return {
+    ...store,
+    settings: migratedSettings,
+  };
+}
 
 const defaultSettings: Settings = {
   provider: "api",
@@ -126,6 +174,9 @@ const defaultSettings: Settings = {
   sandboxLevel: 3,
   swarmEnabled: false,
   swarmUrl: "",
+  gatewayServeBind: DEFAULT_GATEWAY_SERVE_BIND,
+  gatewayServeToken: DEFAULT_GATEWAY_SERVE_TOKEN,
+  gatewayArtifactDir: DEFAULT_GATEWAY_ARTIFACT_DIR,
 };
 
 export const useSettingsStore = create<{
@@ -142,6 +193,10 @@ export const useSettingsStore = create<{
         })),
       reset: () => set({ settings: defaultSettings }),
     }),
-    { name: SETTINGS_STORE_PERSIST_KEY }
+    {
+      name: SETTINGS_STORE_PERSIST_KEY,
+      version: SETTINGS_STORE_VERSION,
+      migrate: migrateSettingsStore,
+    }
   )
 );

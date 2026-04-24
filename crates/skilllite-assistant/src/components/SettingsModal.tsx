@@ -34,6 +34,7 @@ import { useStatusStore } from "../stores/useStatusStore";
 import { useUiToastStore } from "../stores/useUiToastStore";
 import type { AssistantSettingsTabId } from "../contexts/AssistantChromeContext";
 import EnvironmentSettingsSection from "./EnvironmentSettingsSection";
+import GatewayServeSettingsSection from "./GatewayServeSettingsSection";
 import SkillsSettingsSection from "./SkillsSettingsSection";
 import { SettingsNavIcon } from "./settings/SettingsNavIcon";
 
@@ -178,6 +179,7 @@ export default function SettingsModal({
             { id: "mcp" as const, label: t("settings.tab.mcp") },
             { id: "skills" as const, label: t("settings.tab.skills") },
             { id: "environment" as const, label: t("settings.tab.environment") },
+            { id: "channel" as const, label: t("settings.tab.channel") },
           ],
         },
         {
@@ -1542,6 +1544,12 @@ export default function SettingsModal({
           {activeTab === "skills" && <SkillsSettingsSection />}
 
           {activeTab === "environment" && <EnvironmentSettingsSection />}
+
+          {activeTab === "channel" && (
+            <div className="max-w-3xl space-y-4">
+              <GatewayServeSettingsSection />
+            </div>
+          )}
 
           {activeTab === "agent" && (
           <div className="space-y-4">

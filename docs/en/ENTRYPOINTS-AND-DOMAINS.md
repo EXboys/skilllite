@@ -8,7 +8,7 @@
 
 | Entry | What it is | Crate / component dependencies | Use case (one line) |
 |-------|-------------|---------------------------------|----------------------|
-| **CLI** | Main binary `skilllite` | core, sandbox, commands, (optional) executor, agent, swarm | Terminal users, scripts, CI: run skills, scan, chat, init, and full feature set. |
+| **CLI** | Main binary `skilllite` | core, sandbox, commands, (optional) executor, agent, swarm, artifact HTTP, unified gateway host | Terminal users, scripts, CI: run skills, scan, chat, init, and full feature set. |
 | **Python** | python-sdk + IPC/subprocess (+ stdlib HTTP for artifacts) | Calls local `skilllite` binary (`serve` / subcommands); `artifact_put`/`artifact_get` hit artifact HTTP | Python apps: scan_code, execute_code, chat, run_skill; optional cross-process blobs via artifact API. |
 | **MCP** | Subcommand `skilllite mcp` | Same as CLI main binary (mcp module lives in skilllite package) | Cursor/VSCode etc.: MCP protocol exposes list_skills, run_skill, scan_code, execute_code. |
 | **Desktop** | skilllite-assistant (Tauri) — first-class entry | core, fs, sandbox, agent, evolution (direct path deps); optional runtime fallback to installed `skilllite` for some commands | Desktop users: GUI chat (optional **image attachments** → multimodal `agent_chat`), session management, evolution UI, runtime provisioning, transcript/memory views. |
@@ -22,7 +22,7 @@
 - **Dependencies**:
   - **Required**: `skilllite-core`, `skilllite-sandbox`, `skilllite-commands`
   - **Optional**: `skilllite-executor` (session/memory), `skilllite-agent` (chat/run agent), `skilllite-swarm` (swarm subcommand)
-- **Main subcommands**: `run`, `exec`, `scan`, `validate`, `info`, `security-scan`, `bash`, `serve` (IPC), `artifact-serve` (local artifact HTTP; **bind** requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`), `chat`, `init`, `mcp`, `swarm`, `evolution`, `init-cursor`, `dependency-audit`, etc.
+- **Main subcommands**: `run`, `exec`, `scan`, `validate`, `info`, `security-scan`, `bash`, `serve` (IPC), `gateway serve` (unified HTTP host; **bind** requires `SKILLLITE_GATEWAY_SERVE_ALLOW=1`), `artifact-serve` (standalone artifact HTTP; **bind** requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`), `channel serve` (standalone inbound webhook; **bind** requires `SKILLLITE_CHANNEL_SERVE_ALLOW=1`), `chat`, `init`, `mcp`, `swarm`, `evolution`, `init-cursor`, `dependency-audit`, etc.
 - **Use case**: Primary terminal and script entry; CI, automation, local development.
 
 ---
@@ -31,7 +31,7 @@
 
 - **Entry**: Python package `skilllite` (`python-sdk/`), calling local `skilllite` via **IPC** (`skilllite serve` stdio JSON-RPC) or **subprocess**.
 - **Dependencies**: No direct Rust dependency; runtime depends on an installed `skilllite` binary (pip or PATH).
-- **Main API**: `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`; `artifact_put` / `artifact_get` (stdlib `urllib`) against the artifact HTTP API (`skilllite artifact-serve` or any compatible server); IPC in `ipc.py` connects to `serve`, otherwise subprocess.
+- **Main API**: `scan_code`, `execute_code`, `chat`, `run_skill`, `get_binary`; `artifact_put` / `artifact_get` (stdlib `urllib`) against the artifact HTTP API (`skilllite gateway serve --artifact-dir ...`, `skilllite artifact-serve`, or any compatible server); IPC in `ipc.py` connects to `serve`, otherwise subprocess.
 - **Use case**: Python applications, LangChain/LlamaIndex integration, server or local scripts.
 
 ---

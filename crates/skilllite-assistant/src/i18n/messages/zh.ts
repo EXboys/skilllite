@@ -525,6 +525,7 @@ export const zhMessages: Record<string, string> = {
   "settings.tab.mcp": "出站 MCP",
   "settings.tab.skills": "技能",
   "settings.tab.environment": "环境与依赖",
+  "settings.tab.channel": "Gateway / 入站 HTTP",
   "settings.navAria": "设置分区导航",
   "settings.navGroup.connection": "连接与界面",
   "settings.navGroup.workspace": "工作区与环境",
@@ -561,6 +562,40 @@ export const zhMessages: Record<string, string> = {
   "settings.environment.runtimeDesc":
     "优先使用本机已安装版本；若缺失或版本过低，可一键下载到 SkillLite 缓存目录（与此前会话侧栏中的准备流程相同）。",
   "settings.environment.refreshStatus": "刷新运行时状态",
+
+  "settings.gatewayServe.title": "Gateway（统一 HTTP 宿主）",
+  "settings.gatewayServe.subtitle":
+    "为 `skilllite gateway serve` 配置监听地址、可选 Token 与可选 artifact 目录。桌面端**不会**自动拉起监听进程；长期维护建议在终端或 systemd 中单独运行。",
+  "settings.gatewayServe.bPatternNote":
+    "推荐：使用 `gateway serve` 作为统一宿主，在一个进程中承载入站 webhook，并可按需挂载 artifact HTTP；本页用于复制启动命令、查看 URL，并在本机探测健康检查。",
+  "settings.gatewayServe.bindLabel": "监听地址（host:port）",
+  "settings.gatewayServe.tokenLabel": "Bearer Token（可选）",
+  "settings.gatewayServe.tokenPlaceholder": "与 CLI `--token` 一致",
+  "settings.gatewayServe.artifactDirLabel": "Artifact 目录（可选）",
+  "settings.gatewayServe.artifactDirPlaceholder": "例如 ./.skilllite 或 /path/to/artifacts",
+  "settings.gatewayServe.artifactDirHint":
+    "填写后，`gateway serve` 会一并挂载 artifact HTTP 路由；留空则仅提供 `/health` 与 `/webhook/inbound`。",
+  "settings.gatewayServe.urlsHeading": "地址（需先已启动 gateway）",
+  "settings.gatewayServe.healthUrl": "健康检查",
+  "settings.gatewayServe.webhookUrl": "入站 Webhook",
+  "settings.gatewayServe.artifactUrl": "Artifact API（示例）",
+  "settings.gatewayServe.copyStartCmd": "复制启动命令",
+  "settings.gatewayServe.healthCheck": "检查健康",
+  "settings.gatewayServe.healthChecking": "检查中…",
+  "settings.gatewayServe.healthOk": "健康检查通过",
+  "settings.gatewayServe.healthFail": "健康检查失败（HTTP {status}）",
+  "settings.gatewayServe.healthError": "健康检查失败：{msg}",
+  "settings.gatewayServe.healthPrerequisite":
+    "检测前请在本机终端（或 systemd）先启动 `skilllite gateway serve`；未启动时出现「连接被拒绝」属正常情况。",
+  "settings.gatewayServe.healthRefusedHint":
+    "该地址暂无进程在监听（连接被拒绝）。请先点击「复制启动命令」，在终端执行并看到 `SKILLLITE_GATEWAY_HTTP_ADDR=…` 后再试。",
+  "settings.gatewayServe.healthTimeoutHint": "连接超时：请确认地址、端口与防火墙设置是否与启动命令一致。",
+  "settings.gatewayServe.healthBadgeOk": "正常",
+  "settings.gatewayServe.healthBadgeFail": "不可达",
+  "settings.gatewayServe.webhookAuthHint":
+    "若填写 Token，gateway 会把同一个 `Authorization: Bearer <token>` 应用于所挂载的 webhook 与 artifact HTTP 路由。Token 与 API Key 一样仅存本机，请勿写入仓库。",
+  "settings.gatewayServe.clipboardFail": "无法复制到剪贴板",
+
   "settings.evolutionIntro":
     "以下项会用于后台进化调度（与聊天、定时检查、手动触发共用同一套规则）。在这里填写的值会覆盖工作区里仅通过配置文件保存的同名项。点「保存」后生效。",
   "settings.providerMode": "使用方式",

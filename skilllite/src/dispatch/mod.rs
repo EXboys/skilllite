@@ -2,7 +2,11 @@
 
 #[cfg(feature = "artifact_http")]
 mod artifact;
+#[cfg(feature = "channel_serve")]
+mod channel_serve;
 mod execute;
+#[cfg(feature = "gateway")]
+mod gateway;
 mod protocol;
 mod skill;
 
@@ -16,6 +20,10 @@ pub fn register_all(reg: &mut CommandRegistry) {
     skill::register(reg);
     #[cfg(feature = "artifact_http")]
     artifact::register(reg);
+    #[cfg(feature = "gateway")]
+    gateway::register(reg);
+    #[cfg(feature = "channel_serve")]
+    channel_serve::register(reg);
     register_ide(reg);
     register_env(reg);
     register_reindex(reg);

@@ -80,7 +80,7 @@ skillLite/
 │       │   ├── tools.rs
 │       │   ├── handlers.rs
 │       │   └── scan.rs
-│       ├── dispatch/              # Dispatch to skilllite-commands (+ artifact-serve when feature enabled)
+│       ├── dispatch/              # Dispatch to skilllite-commands + entry-local HTTP hosts (artifact/channel/gateway when enabled)
 │       │   ├── mod.rs
 │       │   ├── execute.rs
 │       │   ├── skill.rs
@@ -159,7 +159,7 @@ skillLite/
 │   │
 │   ├── skilllite-artifact/        # ArtifactStore impls: local dir (default for agent), optional HTTP server/client
 │   │
-│   ├── skilllite-channel/         # Outbound messaging: WeChat Work robot, DingTalk robot, Discord webhook, WhatsApp Cloud API (reqwest blocking)
+│   ├── skilllite-channel/         # Outbound messaging (WeChat Work, DingTalk, Discord, WhatsApp). Inbound webhook MVP stays thin (`skilllite channel serve`), while `skilllite gateway serve` is the preferred unified host. No separate `skilllite-gateway` crate in this phase.
 │   │
 │   └── skilllite-assistant/       # Tauri 2 + React desktop — first-class entry (Phase 0 D1); excluded from root workspace because Tauri needs platform GUI toolchains. Build via separate manifest. Direct path deps: core, fs, sandbox, agent, evolution.
 │       ├── vite.config.ts         # sole Vite config (do not duplicate vite.config.js; see crate README)
@@ -230,7 +230,7 @@ skilllite (main binary)
   │           └── skilllite-executor → skilllite-core, skilllite-fs
   ├── skilllite-swarm (swarm feature) → skilllite-core
   ├── skilllite-artifact → skilllite-core (agent: `local` only; main `skilllite` binary: `local` + `server` when `artifact_http` is enabled — default-on)
-  ├── skilllite-channel            # standalone (no `skilllite-*` path deps); optional alerts/integrations — wire from entry crates when needed
+  ├── skilllite-channel            # standalone (no `skilllite-*` path deps); outbound adapters; inbound webhook MVP via `skilllite channel serve`; unified host lives in main binary via `skilllite gateway serve`
   └── skilllite-core (root)
 
 skilllite-assistant (Tauri desktop, first-class entry — Phase 0 D1)
@@ -268,19 +268,22 @@ The Desktop manifest is excluded from the root workspace because Tauri requires 
 | `memory_vector` | sqlite-vec | Optional semantic search |
 | `swarm` | skilllite-swarm | P2P networking |
 | `artifact_http` (default) | skilllite-artifact (`local` + `server` in main binary) | Run-scoped artifact HTTP (`skilllite artifact-serve`; **bind** gated by `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`) |
+| `gateway` (default) | entry-local Axum host + `skilllite-artifact` + channel webhook router | Unified HTTP host (`skilllite gateway serve`; **bind** gated by `SKILLLITE_GATEWAY_SERVE_ALLOW=1`) |
 
 **Artifact implementations (`skilllite-artifact`)**:
 
 - Crate: `skilllite-artifact` (depends only on `skilllite-core`). Features: `local` (filesystem store), `server` (Axum), `client` (blocking HTTP).
 - **`skilllite-agent`** depends on `skilllite-artifact` with `default-features = false, features = ["local"]` so the agent crate does not pull Axum into its default build.
 - The **`skilllite`** binary enables `artifact_http` by default and depends on `skilllite-artifact` with `features = ["local", "server"]` so `skilllite artifact-serve` is compiled in; listening still requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`.
+- The same main binary now also exposes **`skilllite gateway serve`** as an additive unified host. In this phase it serves `GET /health`, reuses the inbound webhook MVP (`POST /webhook/inbound`), and can optionally mount artifact routes from a local directory via `--artifact-dir`.
+- Standalone `skilllite artifact-serve` and `skilllite channel serve` remain compatibility entry points; gateway is the preferred direction when one long-running process should host both surfaces.
 - OpenAPI (HTTP): [`docs/openapi/artifact-store-http-v1.yaml`](../openapi/artifact-store-http-v1.yaml).
 - Embedders can expose `GET`/`PUT` `/v1/runs/{run_id}/artifacts?key=...` via `artifact_router`, or call the same API from other languages.
 - `run_artifact_http_server` refuses **non-loopback** binds without a bearer token unless `SKILLLITE_ARTIFACT_HTTP_ALLOW_INSECURE_NO_AUTH=1` (emits a high-severity warning); loopback-without-token only **warns**. Optional `SKILLLITE_ARTIFACT_HTTP_REQUIRE_AUTH=1` requires a token even on loopback — see [`ENV_REFERENCE.md`](./ENV_REFERENCE.md).
 - HTTP `PUT` bodies are capped at **`MAX_ARTIFACT_BODY_BYTES` (64 MiB)** via Axum `DefaultBodyLimit`; larger requests get **413**. The crate uses `skilllite_artifact::Error` / `skilllite_artifact::Result` for serve and client construction (`Other(#[from] anyhow::Error)` per workspace conventions).
 
 **Build Targets**:
-- `cargo build -p skilllite`: Full product (`artifact-serve` is compiled in; **bind** requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`)
+- `cargo build -p skilllite`: Full product (`gateway serve`, `artifact-serve`, and `channel serve` are compiled in; each **bind** remains explicitly gated)
 - `cargo build -p skilllite --no-default-features --features sandbox_binary`: skilllite-sandbox lightweight binary
 
 ### 2. Sandbox Module (skilllite-sandbox)

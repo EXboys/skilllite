@@ -24,6 +24,8 @@ pub mod execute;
 pub mod scan;
 pub mod security;
 
+#[cfg(feature = "channel_serve")]
+pub mod channel_serve;
 pub mod env;
 #[cfg(feature = "agent")]
 pub mod evolution;

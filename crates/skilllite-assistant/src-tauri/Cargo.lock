@@ -3798,6 +3798,8 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-shell",
  "tokio",
+ "ureq",
+ "url",
 ]
 
 [[package]]

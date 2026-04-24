@@ -13,7 +13,7 @@ keywords = ["agent", "ai", "sandbox", "llm", "skills"]
 categories = ["command-line-utilities", "development-tools"]
 
 [features]
-default = ["sandbox", "audit", "agent", "swarm", "artifact_http"]
+default = ["sandbox", "audit", "agent", "swarm", "artifact_http", "channel_serve", "gateway"]
 sandbox = []
 audit = ["skilllite-sandbox/audit", "skilllite-commands/audit", "dep:ureq"]
 executor = ["sandbox", "dep:skilllite-executor"]
@@ -27,6 +27,10 @@ swarm = ["dep:skilllite-swarm"]
 # Run-scoped artifact HTTP (`skilllite artifact-serve`). Compiled in by default; binding requires
 # `SKILLLITE_ARTIFACT_SERVE_ALLOW=1` at runtime (see `dispatch/artifact.rs`). Not in sandbox-only binary.
 artifact_http = ["dep:skilllite-artifact", "dep:tokio"]
+# Inbound webhook HTTP (`skilllite channel serve`); implemented in skilllite-commands, no skilllite-gateway crate.
+channel_serve = ["skilllite-commands/channel_serve"]
+# Unified HTTP host (`skilllite gateway serve`) for health, inbound webhook, and optional artifact routes.
+gateway = ["artifact_http", "channel_serve", "dep:axum", "dep:tower-http"]
 
 [dependencies]
 skilllite-core = { path = "../crates/skilllite-core", version = "0.1.28" }
@@ -49,6 +53,8 @@ hex = "0.4"
 dirs = "5.0"
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3.10"
+axum = { version = "0.7", optional = true, features = ["json"] }
+tower-http = { version = "0.5", optional = true, features = ["trace"] }
 
 # Agent feature deps re-exported for commands that use them directly
 tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "time", "io-util", "process", "net"] }
@@ -75,3 +81,6 @@ path = "src/main.rs"
 name = "skilllite-sandbox"
 path = "src/bin/skilllite-sandbox.rs"
 required-features = ["sandbox_binary"]
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }

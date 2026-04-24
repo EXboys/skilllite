@@ -833,6 +833,99 @@ fn skilllite_read_local_image_b64(
     })
 }
 
+/// Result of probing `GET …/health` for `skilllite gateway serve` (native HTTP; WebView `fetch` to loopback often fails with "Load failed").
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AssistantGatewayHealthResult {
+    ok: bool,
+    status: Option<u16>,
+    error: Option<String>,
+}
+
+fn validate_loopback_gateway_health_url(raw: &str) -> Result<url::Url, String> {
+    use url::Host;
+
+    let u = url::Url::parse(raw.trim()).map_err(|e| format!("invalid URL: {e}"))?;
+    if u.scheme() != "http" {
+        return Err("only http:// loopback URLs are allowed".to_string());
+    }
+    match u.host() {
+        Some(Host::Ipv4(ip)) if ip.is_loopback() => {}
+        Some(Host::Ipv6(ip)) if ip.is_loopback() => {}
+        Some(Host::Domain(d)) if d.eq_ignore_ascii_case("localhost") => {}
+        _ => {
+            return Err("host must be loopback (127.0.0.1, ::1, localhost)".to_string());
+        }
+    }
+    if !u.path().ends_with("/health") {
+        return Err("path must end with /health".to_string());
+    }
+    Ok(u)
+}
+
+#[tauri::command]
+fn assistant_gateway_health_probe(url: String) -> AssistantGatewayHealthResult {
+    let parsed = match validate_loopback_gateway_health_url(&url) {
+        Ok(u) => u,
+        Err(e) => {
+            return AssistantGatewayHealthResult {
+                ok: false,
+                status: None,
+                error: Some(e),
+            };
+        }
+    };
+    let url = parsed.as_str();
+    let resp = match ureq::get(url)
+        .timeout(std::time::Duration::from_secs(5))
+        .call()
+    {
+        Ok(r) => r,
+        Err(ureq::Error::Status(code, _)) => {
+            return AssistantGatewayHealthResult {
+                ok: false,
+                status: Some(code),
+                error: Some(format!("HTTP {code}")),
+            };
+        }
+        Err(e) => {
+            return AssistantGatewayHealthResult {
+                ok: false,
+                status: None,
+                error: Some(e.to_string()),
+            };
+        }
+    };
+    let status = resp.status();
+    if status != 200 {
+        return AssistantGatewayHealthResult {
+            ok: false,
+            status: Some(status),
+            error: Some(format!("HTTP {status}")),
+        };
+    }
+    let body: serde_json::Value = match resp.into_json() {
+        Ok(v) => v,
+        Err(e) => {
+            return AssistantGatewayHealthResult {
+                ok: false,
+                status: Some(status),
+                error: Some(format!("invalid JSON: {e}")),
+            };
+        }
+    };
+    let body_ok = body.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    AssistantGatewayHealthResult {
+        ok: body_ok,
+        status: Some(status),
+        error: if body_ok {
+            None
+        } else {
+            Some("response body ok is not true".to_string())
+        },
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let run_result = tauri::Builder::default()
@@ -896,7 +989,8 @@ pub fn run() {
             skilllite_life_pulse_set_llm_overrides,
             assistant_uninstall_info,
             assistant_reveal_install_location,
-            assistant_quit_uninstall
+            assistant_quit_uninstall,
+            assistant_gateway_health_probe
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())

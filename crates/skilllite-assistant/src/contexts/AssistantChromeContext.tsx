@@ -6,6 +6,7 @@ export type AssistantSettingsTabId =
   | "mcp"
   | "skills"
   | "environment"
+  | "channel"
   | "agent"
   | "evolution"
   | "schedule"

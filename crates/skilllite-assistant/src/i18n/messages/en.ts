@@ -553,6 +553,7 @@ export const enMessages: Record<string, string> = {
   "settings.tab.mcp": "Outbound MCP",
   "settings.tab.skills": "Skills",
   "settings.tab.environment": "Environment",
+  "settings.tab.channel": "Gateway / Inbound HTTP",
   "settings.navAria": "Settings sections",
   "settings.navGroup.connection": "Connection",
   "settings.navGroup.workspace": "Workspace",
@@ -589,6 +590,41 @@ export const enMessages: Record<string, string> = {
   "settings.environment.runtimeDesc":
     "Prefer a system install; if missing or too old, download into the SkillLite cache (same flow as the former session sidebar).",
   "settings.environment.refreshStatus": "Refresh runtime status",
+
+  "settings.gatewayServe.title": "Gateway (unified HTTP host)",
+  "settings.gatewayServe.subtitle":
+    "Configure bind address, optional token, and optional artifact directory for `skilllite gateway serve`. The desktop app does not start the listener for you — run it separately (terminal or systemd) for long-term maintenance.",
+  "settings.gatewayServe.bPatternNote":
+    "Recommended: use `gateway serve` as the unified host for inbound webhook plus optional artifact HTTP; use this panel to copy the start command, inspect URLs, and run a local health check.",
+  "settings.gatewayServe.bindLabel": "Listen address (host:port)",
+  "settings.gatewayServe.tokenLabel": "Bearer token (optional)",
+  "settings.gatewayServe.tokenPlaceholder": "Same as CLI --token",
+  "settings.gatewayServe.artifactDirLabel": "Artifact directory (optional)",
+  "settings.gatewayServe.artifactDirPlaceholder": "For example ./.skilllite or /path/to/artifacts",
+  "settings.gatewayServe.artifactDirHint":
+    "When set, `gateway serve` also mounts the artifact HTTP routes. Leave empty to expose only `/health` and `/webhook/inbound`.",
+  "settings.gatewayServe.urlsHeading": "URLs (after the gateway is running)",
+  "settings.gatewayServe.healthUrl": "Health",
+  "settings.gatewayServe.webhookUrl": "Inbound webhook",
+  "settings.gatewayServe.artifactUrl": "Artifact API (example)",
+  "settings.gatewayServe.copyStartCmd": "Copy start command",
+  "settings.gatewayServe.healthCheck": "Check health",
+  "settings.gatewayServe.healthChecking": "Checking…",
+  "settings.gatewayServe.healthOk": "Health endpoint responded OK",
+  "settings.gatewayServe.healthFail": "Health check failed (HTTP {status})",
+  "settings.gatewayServe.healthError": "Health check failed: {msg}",
+  "settings.gatewayServe.healthPrerequisite":
+    "Start `skilllite gateway serve` on this machine (terminal or systemd) before checking; \"connection refused\" usually means nothing is listening yet.",
+  "settings.gatewayServe.healthRefusedHint":
+    "Nothing is listening on that address (connection refused). Copy the start command, run it in a terminal until you see `SKILLLITE_GATEWAY_HTTP_ADDR=…`, then try again.",
+  "settings.gatewayServe.healthTimeoutHint":
+    "Timed out: verify the bind address/port and firewall match your running server.",
+  "settings.gatewayServe.healthBadgeOk": "OK",
+  "settings.gatewayServe.healthBadgeFail": "Unreachable",
+  "settings.gatewayServe.webhookAuthHint":
+    "When a token is set, the gateway applies the same `Authorization: Bearer <token>` to the mounted webhook and artifact HTTP routes. Token is stored locally like your API key — do not commit it.",
+  "settings.gatewayServe.clipboardFail": "Could not copy to clipboard",
+
   "settings.evolutionIntro":
     "These values drive background evolution scheduling (same rules as chat, periodic checks, and manual runs). Anything you fill in here overrides workspace-saved defaults. Click Save to apply.",
   "settings.providerMode": "Provider",

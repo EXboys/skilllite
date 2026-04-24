@@ -139,6 +139,38 @@ When the same variable is set in multiple places, resolution order is (highest â
 
 ---
 
+## Unified gateway HTTP `skilllite gateway serve` <small>[Optional]</small>
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_GATEWAY_SERVE_ALLOW` | string | unset | Must be **`1`** for **`skilllite gateway serve`** to **bind** and listen. Same fail-closed pattern as the standalone `artifact-serve` / `channel serve` commands. |
+| `SKILLLITE_GATEWAY_HTTP_ALLOW_INSECURE_NO_AUTH` | string | unset | When **`1`**, allows **non-loopback** `--bind` **without** `--token` (unsafe; use only behind a trusted reverse proxy or in a controlled lab setup). |
+
+**Endpoints**:
+- Always: `GET /health`, `POST /webhook/inbound`
+- Optional: `GET` / `PUT` `/v1/runs/{run_id}/artifacts?key=...` when `--artifact-dir <DIR>` is set
+
+**Auth model**: when `--token` is set, the gateway applies the same bearer token to the mounted webhook and artifact HTTP routes.
+
+**Compatibility note**: `skilllite channel serve` and `skilllite artifact-serve` remain available in this phase. `gateway serve` is the preferred unified host when you want a single long-running process for both surfaces.
+
+**Channel note**: when `/webhook/inbound` is hosted by the gateway, the optional DingTalk summary env vars (`SKILLLITE_CHANNEL_DINGTALK_WEBHOOK`, `SKILLLITE_CHANNEL_DINGTALK_SECRET`) still apply.
+
+---
+
+## Inbound channel HTTP `skilllite channel serve` <small>[Optional]</small>
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `SKILLLITE_CHANNEL_SERVE_ALLOW` | string | unset | Must be **`1`** for **`skilllite channel serve`** to **bind** and listen. Same fail-closed pattern as `SKILLLITE_ARTIFACT_SERVE_ALLOW`. |
+| `SKILLLITE_CHANNEL_HTTP_ALLOW_INSECURE_NO_AUTH` | string | unset | When **`1`**, allows **non-loopback** `--bind` **without** `--token` (unsafe; use only behind a reverse proxy you trust). |
+| `SKILLLITE_CHANNEL_DINGTALK_WEBHOOK` | string | unset | When set (HTTPS URL), each accepted `POST /webhook/inbound` triggers an optional DingTalk Markdown summary (best-effort; failures are logged). |
+| `SKILLLITE_CHANNEL_DINGTALK_SECRET` | string | unset | DingTalk robot signing secret when using `SKILLLITE_CHANNEL_DINGTALK_WEBHOOK` with signing enabled. |
+
+**Endpoints**: `GET /health`, `POST /webhook/inbound`. When `--token` is set, inbound POSTs must send `Authorization: Bearer <token>`.
+
+---
+
 ## Sandbox & Security <small>[Common]</small>
 
 Sandbox-related variables are read through the **config layer** (`SandboxEnvConfig::from_env()`); config accepts `SKILLLITE_*` (recommended) and legacy `SKILLBOX_*`.
