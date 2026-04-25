@@ -93,6 +93,11 @@ skilllite_scan_*/
 python-sdk/skilllite/bins/skilllite
 python-sdk/skilllite/bins/skilllite.exe
 
+# Assistant generated build artifacts
+crates/skilllite-assistant/src-tauri/resources/skilllite
+crates/skilllite-assistant/src-tauri/resources/skilllite.exe
+crates/skilllite-assistant/*.tsbuildinfo
+
 # Separate repository (langchain-skilllite has its own git repo)
 langchain-skilllite/
 
