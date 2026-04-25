@@ -624,6 +624,7 @@ export const enMessages: Record<string, string> = {
   "settings.gatewayServe.stopManaged": "Stop",
   "settings.gatewayServe.managedStarting": "Starting…",
   "settings.gatewayServe.managedStopping": "Stopping…",
+  "settings.gatewayServe.externalStopManual": "Stop external instance manually",
   "settings.gatewayServe.externalAlreadyRunning": "Already running externally",
   "settings.gatewayServe.copyStartCmd": "Copy external start command",
   "settings.gatewayServe.healthCheck": "Check health",

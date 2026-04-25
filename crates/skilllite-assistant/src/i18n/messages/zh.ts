@@ -596,6 +596,7 @@ export const zhMessages: Record<string, string> = {
   "settings.gatewayServe.stopManaged": "停止",
   "settings.gatewayServe.managedStarting": "启动中…",
   "settings.gatewayServe.managedStopping": "停止中…",
+  "settings.gatewayServe.externalStopManual": "外部实例需手动停止",
   "settings.gatewayServe.externalAlreadyRunning": "已由外部实例运行",
   "settings.gatewayServe.copyStartCmd": "复制外部启动命令",
   "settings.gatewayServe.healthCheck": "检查健康",

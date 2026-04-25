@@ -366,10 +366,12 @@ export default function GatewayServeSettingsSection() {
             type="button"
             disabled={gatewayBusy !== null || !managedRunning}
             onClick={() => void stopManagedGateway()}
-            className="inline-flex items-center justify-center rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-ink shadow-sm transition-colors hover:bg-ink/[0.04] dark:border-border-dark dark:bg-paper-dark dark:text-ink-dark dark:hover:bg-white/[0.06]"
+            className="inline-flex items-center justify-center rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-ink shadow-sm transition-colors hover:bg-ink/[0.04] disabled:opacity-50 dark:border-border-dark dark:bg-paper-dark dark:text-ink-dark dark:hover:bg-white/[0.06]"
           >
             {gatewayBusy === "stop"
               ? t("settings.gatewayServe.managedStopping")
+              : externalRunning
+                ? t("settings.gatewayServe.externalStopManual")
               : t("settings.gatewayServe.stopManaged")}
           </button>
           <button
