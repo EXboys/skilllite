@@ -593,9 +593,9 @@ export const enMessages: Record<string, string> = {
 
   "settings.gatewayServe.title": "Gateway (unified HTTP host)",
   "settings.gatewayServe.subtitle":
-    "Configure bind address, optional token, and optional artifact directory for `skilllite gateway serve`. The desktop app does not start the listener for you — run it separately (terminal or systemd) for long-term maintenance.",
+    "Configure bind address, optional token, and optional artifact directory for `skilllite gateway serve`. You can start a locally managed gateway from this page, or still copy the CLI command for terminal/systemd supervision.",
   "settings.gatewayServe.bPatternNote":
-    "Recommended: use `gateway serve` as the unified host for inbound webhook plus optional artifact HTTP; use this panel to copy the start command, inspect URLs, and run a local health check.",
+    "Recommended: use `gateway serve` as the unified host for inbound webhook plus optional artifact HTTP; use this panel to start/stop the local managed process, inspect URLs, copy the external start command, and run a local health check.",
   "settings.gatewayServe.bindLabel": "Listen address (host:port)",
   "settings.gatewayServe.tokenLabel": "Bearer token (optional)",
   "settings.gatewayServe.tokenPlaceholder": "Same as CLI --token",
@@ -607,16 +607,39 @@ export const enMessages: Record<string, string> = {
   "settings.gatewayServe.healthUrl": "Health",
   "settings.gatewayServe.webhookUrl": "Inbound webhook",
   "settings.gatewayServe.artifactUrl": "Artifact API (example)",
-  "settings.gatewayServe.copyStartCmd": "Copy start command",
+  "settings.gatewayServe.managedStatusHeading": "Gateway status",
+  "settings.gatewayServe.managedStatusRunning": "Running",
+  "settings.gatewayServe.managedStatusStopped": "Stopped",
+  "settings.gatewayServe.managedStatusNote":
+    "This gateway was started by the desktop app itself, so the app can stop it and report its local process status here.",
+  "settings.gatewayServe.externalStatusRunning": "External gateway running",
+  "settings.gatewayServe.externalStatusNote":
+    "A healthy gateway is already responding on this bind, but it was not started by this desktop app. You can use it normally here, but stopping it must be done from the terminal/service that owns it.",
+  "settings.gatewayServe.managedPid": "PID {pid}",
+  "settings.gatewayServe.managedLastError": "Last error: {msg}",
+  "settings.gatewayServe.managedRecentLog": "Recent log: {msg}",
+  "settings.gatewayServe.restartAfterChange":
+    "This managed gateway keeps the settings it started with. After editing bind, token, or artifact directory, stop and start it again to apply the new values.",
+  "settings.gatewayServe.startManaged": "Start here",
+  "settings.gatewayServe.stopManaged": "Stop",
+  "settings.gatewayServe.managedStarting": "Starting…",
+  "settings.gatewayServe.managedStopping": "Stopping…",
+  "settings.gatewayServe.externalAlreadyRunning": "Already running externally",
+  "settings.gatewayServe.copyStartCmd": "Copy external start command",
   "settings.gatewayServe.healthCheck": "Check health",
   "settings.gatewayServe.healthChecking": "Checking…",
+  "settings.gatewayServe.startedOk": "Managed gateway started",
+  "settings.gatewayServe.externalDetected": "A healthy external gateway is already running on this bind",
+  "settings.gatewayServe.stoppedOk": "Managed gateway stopped",
+  "settings.gatewayServe.startFailed": "Failed to start managed gateway: {err}",
+  "settings.gatewayServe.stopFailed": "Failed to stop managed gateway: {err}",
   "settings.gatewayServe.healthOk": "Health endpoint responded OK",
   "settings.gatewayServe.healthFail": "Health check failed (HTTP {status})",
   "settings.gatewayServe.healthError": "Health check failed: {msg}",
   "settings.gatewayServe.healthPrerequisite":
-    "Start `skilllite gateway serve` on this machine (terminal or systemd) before checking; \"connection refused\" usually means nothing is listening yet.",
+    "Start the managed gateway below, or run `skilllite gateway serve` on this machine externally, before checking; \"connection refused\" usually means nothing is listening yet.",
   "settings.gatewayServe.healthRefusedHint":
-    "Nothing is listening on that address (connection refused). Copy the start command, run it in a terminal until you see `SKILLLITE_GATEWAY_HTTP_ADDR=…`, then try again.",
+    "Nothing is listening on that address (connection refused). Start the managed gateway here, or copy the external start command and run it until you see `SKILLLITE_GATEWAY_HTTP_ADDR=…`, then try again.",
   "settings.gatewayServe.healthTimeoutHint":
     "Timed out: verify the bind address/port and firewall match your running server.",
   "settings.gatewayServe.healthBadgeOk": "OK",

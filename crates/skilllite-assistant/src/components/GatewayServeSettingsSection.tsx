@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "../i18n";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUiToastStore } from "../stores/useUiToastStore";
+import { formatInvokeError } from "../utils/formatInvokeError";
 
 const DEFAULT_BIND = "127.0.0.1:8787";
 
@@ -41,6 +42,17 @@ function buildStartCommand(bind: string, token: string | undefined, artifactDir:
   return cmd;
 }
 
+interface GatewayManagedStatus {
+  running: boolean;
+  source: "none" | "managed" | "external";
+  pid?: number;
+  bind?: string;
+  startedAtMs?: number;
+  lastExitCode?: number;
+  lastError?: string;
+  recentLog?: string;
+}
+
 /** Map common transport errors to a short, actionable message (locale via `t`). */
 function humanizeGatewayHealthDetail(
   raw: string,
@@ -67,10 +79,13 @@ export default function GatewayServeSettingsSection() {
   const { settings, setSettings } = useSettingsStore();
   const [healthBusy, setHealthBusy] = useState(false);
   const [healthLabel, setHealthLabel] = useState<"idle" | "ok" | "fail">("idle");
+  const [gatewayBusy, setGatewayBusy] = useState<"start" | "stop" | null>(null);
+  const [gatewayStatus, setGatewayStatus] = useState<GatewayManagedStatus | null>(null);
 
   const bind = settings.gatewayServeBind ?? DEFAULT_BIND;
   const token = settings.gatewayServeToken ?? "";
   const artifactDir = settings.gatewayArtifactDir ?? "";
+  const workspace = settings.workspace;
 
   const baseUrl = useMemo(() => httpBaseForLocalFetch(bind), [bind]);
   const healthUrl = `${baseUrl}/health`;
@@ -80,6 +95,12 @@ export default function GatewayServeSettingsSection() {
     () => buildStartCommand(bind, token || undefined, artifactDir || undefined),
     [artifactDir, bind, token]
   );
+  const gatewaySource = gatewayStatus?.source ?? "none";
+  const gatewayRunning = gatewayStatus?.running ?? false;
+  const managedRunning = gatewayRunning && gatewaySource === "managed";
+  const externalRunning = gatewayRunning && gatewaySource === "external";
+  const gatewayBind = gatewayStatus?.bind?.trim() ?? "";
+  const bindChangedWhileRunning = managedRunning && gatewayBind.length > 0 && gatewayBind !== bind.trim();
 
   const copyText = useCallback(async (text: string, okMsg: string) => {
     try {
@@ -89,6 +110,80 @@ export default function GatewayServeSettingsSection() {
       useUiToastStore.getState().show(t("settings.gatewayServe.clipboardFail"), "error");
     }
   }, [t]);
+
+  const refreshGatewayStatus = useCallback(async () => {
+    try {
+      const status = await invoke<GatewayManagedStatus>("assistant_gateway_status", {
+        request: { bind },
+      });
+      setGatewayStatus(status);
+      return status;
+    } catch (e) {
+      setGatewayStatus((prev) => ({
+        running: false,
+        source: "none",
+        pid: prev?.pid,
+        bind,
+        startedAtMs: prev?.startedAtMs,
+        lastExitCode: prev?.lastExitCode,
+        lastError: formatInvokeError(e),
+        recentLog: prev?.recentLog,
+      }));
+      return null;
+    }
+  }, [bind]);
+
+  useEffect(() => {
+    void refreshGatewayStatus();
+    const timer = window.setInterval(() => {
+      void refreshGatewayStatus();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [refreshGatewayStatus]);
+
+  const startManagedGateway = useCallback(async () => {
+    setGatewayBusy("start");
+    try {
+      const status = await invoke<GatewayManagedStatus>("assistant_gateway_start", {
+        request: {
+          workspace,
+          bind,
+          token: token || null,
+          artifactDir: artifactDir || null,
+        },
+      });
+      setGatewayStatus(status);
+      setHealthLabel("idle");
+      useUiToastStore.getState().show(
+        status.source === "external"
+          ? t("settings.gatewayServe.externalDetected")
+          : t("settings.gatewayServe.startedOk"),
+        "info"
+      );
+    } catch (e) {
+      const err = formatInvokeError(e);
+      useUiToastStore.getState().show(t("settings.gatewayServe.startFailed", { err }), "error");
+      await refreshGatewayStatus();
+    } finally {
+      setGatewayBusy(null);
+    }
+  }, [artifactDir, bind, refreshGatewayStatus, t, token, workspace]);
+
+  const stopManagedGateway = useCallback(async () => {
+    setGatewayBusy("stop");
+    try {
+      const status = await invoke<GatewayManagedStatus>("assistant_gateway_stop");
+      setGatewayStatus(status);
+      setHealthLabel("idle");
+      useUiToastStore.getState().show(t("settings.gatewayServe.stoppedOk"), "info");
+    } catch (e) {
+      const err = formatInvokeError(e);
+      useUiToastStore.getState().show(t("settings.gatewayServe.stopFailed", { err }), "error");
+      await refreshGatewayStatus();
+    } finally {
+      setGatewayBusy(null);
+    }
+  }, [refreshGatewayStatus, t]);
 
   const runHealthCheck = useCallback(async () => {
     setHealthBusy(true);
@@ -138,6 +233,51 @@ export default function GatewayServeSettingsSection() {
 
       <div className="space-y-4 p-4">
         <p className="text-xs leading-relaxed text-ink-mute dark:text-ink-dark-mute">{t("settings.gatewayServe.bPatternNote")}</p>
+
+        <div className="rounded-lg border border-dashed border-border px-3 py-2.5 dark:border-border-dark">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-mute dark:text-ink-dark-mute">
+              {t("settings.gatewayServe.managedStatusHeading")}
+            </span>
+            <span className={`text-xs font-medium ${gatewayRunning ? "text-emerald-700 dark:text-emerald-300" : "text-amber-800 dark:text-amber-200"}`}>
+              {managedRunning
+                ? t("settings.gatewayServe.managedStatusRunning")
+                : externalRunning
+                  ? t("settings.gatewayServe.externalStatusRunning")
+                  : t("settings.gatewayServe.managedStatusStopped")}
+            </span>
+            {managedRunning && gatewayStatus?.pid ? (
+              <span className="text-xs text-ink-mute dark:text-ink-dark-mute">
+                {t("settings.gatewayServe.managedPid", { pid: String(gatewayStatus.pid) })}
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute">
+            {externalRunning
+              ? t("settings.gatewayServe.externalStatusNote")
+              : t("settings.gatewayServe.managedStatusNote")}
+          </p>
+          {gatewayStatus?.bind ? (
+            <p className="mt-2 break-all font-mono text-[11px] leading-snug text-ink dark:text-ink-dark">
+              {gatewayStatus.bind}
+            </p>
+          ) : null}
+          {!externalRunning && gatewayStatus?.lastError ? (
+            <p className="mt-2 text-[11px] leading-snug text-amber-800 dark:text-amber-200">
+              {t("settings.gatewayServe.managedLastError", { msg: gatewayStatus.lastError })}
+            </p>
+          ) : null}
+          {!externalRunning && !gatewayStatus?.lastError && gatewayStatus?.recentLog ? (
+            <p className="mt-2 text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute">
+              {t("settings.gatewayServe.managedRecentLog", { msg: gatewayStatus.recentLog })}
+            </p>
+          ) : null}
+          {bindChangedWhileRunning ? (
+            <p className="mt-2 text-[11px] leading-snug text-ink-mute dark:text-ink-dark-mute">
+              {t("settings.gatewayServe.restartAfterChange")}
+            </p>
+          ) : null}
+        </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-xs font-medium text-ink dark:text-ink-dark">
@@ -212,6 +352,28 @@ export default function GatewayServeSettingsSection() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
+            disabled={gatewayBusy !== null || gatewayRunning}
+            onClick={() => void startManagedGateway()}
+            className="inline-flex items-center justify-center rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-ink shadow-sm transition-colors hover:bg-ink/[0.04] disabled:opacity-50 dark:border-border-dark dark:bg-paper-dark dark:text-ink-dark dark:hover:bg-white/[0.06]"
+          >
+            {gatewayBusy === "start"
+              ? t("settings.gatewayServe.managedStarting")
+              : externalRunning
+                ? t("settings.gatewayServe.externalAlreadyRunning")
+              : t("settings.gatewayServe.startManaged")}
+          </button>
+          <button
+            type="button"
+            disabled={gatewayBusy !== null || !managedRunning}
+            onClick={() => void stopManagedGateway()}
+            className="inline-flex items-center justify-center rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-ink shadow-sm transition-colors hover:bg-ink/[0.04] dark:border-border-dark dark:bg-paper-dark dark:text-ink-dark dark:hover:bg-white/[0.06]"
+          >
+            {gatewayBusy === "stop"
+              ? t("settings.gatewayServe.managedStopping")
+              : t("settings.gatewayServe.stopManaged")}
+          </button>
+          <button
+            type="button"
             onClick={() => void copyText(startCmd, t("settings.environment.clipboardOk"))}
             className="inline-flex items-center justify-center rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-ink shadow-sm transition-colors hover:bg-ink/[0.04] dark:border-border-dark dark:bg-paper-dark dark:text-ink-dark dark:hover:bg-white/[0.06]"
           >
@@ -219,7 +381,7 @@ export default function GatewayServeSettingsSection() {
           </button>
           <button
             type="button"
-            disabled={healthBusy}
+            disabled={healthBusy || gatewayBusy !== null}
             onClick={() => void runHealthCheck()}
             className="inline-flex items-center justify-center rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-ink shadow-sm transition-colors hover:bg-ink/[0.04] disabled:opacity-50 dark:border-border-dark dark:bg-paper-dark dark:text-ink-dark dark:hover:bg-white/[0.06]"
           >

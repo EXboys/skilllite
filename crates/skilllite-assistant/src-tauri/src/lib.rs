@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod gateway_manager;
 mod life_pulse;
 mod skilllite_bridge;
 mod uninstall;
@@ -8,7 +9,7 @@ mod windows_spawn;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, WindowEvent,
+    Emitter, Manager, RunEvent, WindowEvent,
 };
 
 #[tauri::command]
@@ -926,9 +927,33 @@ fn assistant_gateway_health_probe(url: String) -> AssistantGatewayHealthResult {
     }
 }
 
+#[tauri::command]
+fn assistant_gateway_status(
+    gateway_state: tauri::State<'_, gateway_manager::GatewayProcessState>,
+    request: gateway_manager::GatewayStatusRequest,
+) -> Result<gateway_manager::GatewayManagedStatus, String> {
+    gateway_manager::status_gateway(&gateway_state, request)
+}
+
+#[tauri::command]
+fn assistant_gateway_start(
+    app: tauri::AppHandle,
+    gateway_state: tauri::State<'_, gateway_manager::GatewayProcessState>,
+    request: gateway_manager::GatewayStartRequest,
+) -> Result<gateway_manager::GatewayManagedStatus, String> {
+    gateway_manager::start_gateway(&app, &gateway_state, request)
+}
+
+#[tauri::command]
+fn assistant_gateway_stop(
+    gateway_state: tauri::State<'_, gateway_manager::GatewayProcessState>,
+) -> Result<gateway_manager::GatewayManagedStatus, String> {
+    gateway_manager::stop_gateway(&gateway_state)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let run_result = tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             skilllite_chat_stream,
@@ -990,13 +1015,17 @@ pub fn run() {
             assistant_uninstall_info,
             assistant_reveal_install_location,
             assistant_quit_uninstall,
-            assistant_gateway_health_probe
+            assistant_gateway_health_probe,
+            assistant_gateway_status,
+            assistant_gateway_start,
+            assistant_gateway_stop
         ])
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_shell::init())
         .manage(skilllite_bridge::ConfirmationState::default())
         .manage(skilllite_bridge::ClarificationState::default())
         .manage(skilllite_bridge::ChatProcessState::default())
+        .manage(gateway_manager::GatewayProcessState::default())
         .manage(life_pulse::LifePulseState::default())
         .setup(|app| {
             // ── Life Pulse: start heartbeat thread ──
@@ -1080,8 +1109,21 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
+        });
+    let run_result = builder.build(tauri::generate_context!()).map(|app| {
+        app.run(|app_handle, event| {
+            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+                if let Some(ps) = app_handle.try_state::<life_pulse::LifePulseState>() {
+                    life_pulse::stop(&ps);
+                }
+                if let Some(gateway_state) =
+                    app_handle.try_state::<gateway_manager::GatewayProcessState>()
+                {
+                    gateway_manager::cleanup_gateway_process(&gateway_state);
+                }
+            }
         })
-        .run(tauri::generate_context!());
+    });
     if let Err(e) = run_result {
         eprintln!("Error running SkillLite Assistant: {}", e);
         std::process::exit(1);

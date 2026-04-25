@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-24 (TASK-2026-054 assistant gateway settings migration done)
+Last updated: 2026-04-24 (TASK-2026-056 assistant external gateway detection done)
 
 ## In Progress
 
@@ -16,6 +16,8 @@ Last updated: 2026-04-24 (TASK-2026-054 assistant gateway settings migration don
 
 ## Done
 
+- `TASK-2026-056-assistant-gateway-external-detection` - Status: `done` - Owner: `airlu`
+- `TASK-2026-055-assistant-gateway-managed-process-minimal` - Status: `done` - Owner: `airlu`
 - `TASK-2026-054-assistant-gateway-settings-migration` - Status: `done` - Owner: `airlu`
 - `TASK-2026-053-assistant-gateway-naming-cleanup` - Status: `done` - Owner: `airlu`
 - `TASK-2026-052-assistant-gateway-settings` - Status: `done` - Owner: `airlu`
