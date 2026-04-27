@@ -202,7 +202,7 @@ cd benchmark && python3 security_vs.py
 
 > **3-5x faster** execution, **10x lower memory** footprint vs Docker/SRT.
 
-**Benchmarking standard:** SkillLite avoids the MicroVM layer entirely for local code execution: no guest kernel, VM monitor, image, or sandbox service stack. Its focused no-Python sandbox launch benchmark runs at **111 ms avg / 113 ms P95** with **~1.14 MB child peak RSS**. Real Python skill execution is reported separately: **~40 ms warm**, **~492 ms cold**, and **~10 MB RSS**.
+**Benchmarking standard:** SkillLite avoids the MicroVM layer entirely for local code execution: no guest kernel, VM monitor, image, or sandbox service stack. Its focused no-Python sandbox launch benchmark runs at **111 ms avg / 113 ms P95** with **~1.14 MB child peak RSS**. This is process RSS, not directly comparable to MicroVM VMM-overhead/PSS figures. Real Python skill execution is reported separately: **~40 ms warm**, **~492 ms cold**, and **~10 MB RSS**.
 
 <details>
 <summary>Performance benchmark details & commands</summary>

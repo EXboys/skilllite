@@ -162,7 +162,7 @@ cd benchmark && python3 security_vs.py
 
 > 比 Docker/SRT 快 **3-5 倍**，内存占用低 **10 倍**。
 
-**测试口径：** 面向本地代码执行时，SkillLite 完全避开 MicroVM 层：不启动 guest kernel、VM monitor、镜像或沙箱服务栈。聚焦的非 Python 沙箱启动基准为 **111 ms avg / 113 ms P95**，**~1.14 MB child peak RSS**。真实 Python skill 执行单独报告：**~40 ms 热启动**、**~492 ms 冷启动**、**~10 MB RSS**。
+**测试口径：** 面向本地代码执行时，SkillLite 完全避开 MicroVM 层：不启动 guest kernel、VM monitor、镜像或沙箱服务栈。聚焦的非 Python 沙箱启动基准为 **111 ms avg / 113 ms P95**，**~1.14 MB child peak RSS**。这是进程 RSS 口径，不能直接与 MicroVM 的 VMM-overhead/PSS 增量口径对比。真实 Python skill 执行单独报告：**~40 ms 热启动**、**~492 ms 冷启动**、**~10 MB RSS**。
 
 <details>
 <summary>性能测试详情与命令</summary>
