@@ -82,6 +82,17 @@ pub(crate) fn execute_simple_with_limits(
     common::execute_unsandboxed(skill_dir, runtime, config, input_json, limits)
 }
 
+struct LinuxSandboxInvocation<'a> {
+    skill_dir: &'a Path,
+    runtime: &'a RuntimePaths,
+    config: &'a SandboxConfig,
+    input_json: &'a str,
+    resolved: &'a ResolvedRuntime,
+    entry_point: &'a Path,
+    work_dir: &'a Path,
+    limits: ResourceLimits,
+}
+
 /// Execute with seccomp-based sandbox (works without root privileges)
 /// Uses landlock on Linux 5.13+ or falls back to seccomp
 fn execute_with_seccomp(
@@ -102,34 +113,25 @@ fn execute_with_seccomp(
     let temp_dir = TempDir::new()?;
     let work_dir = temp_dir.path();
 
+    let invocation = LinuxSandboxInvocation {
+        skill_dir,
+        runtime,
+        config,
+        input_json,
+        resolved: &resolved,
+        entry_point: &entry_point,
+        work_dir,
+        limits,
+    };
+
     let bwrap_path = resolve_which(Path::new("bwrap"));
     if let Some(bwrap) = bwrap_path {
-        return execute_with_bwrap(
-            &bwrap,
-            skill_dir,
-            runtime,
-            config,
-            input_json,
-            &resolved,
-            &entry_point,
-            work_dir,
-            limits,
-        );
+        return execute_with_bwrap(&bwrap, &invocation);
     }
 
     let firejail_path = resolve_which(Path::new("firejail"));
     if let Some(firejail) = firejail_path {
-        return execute_with_firejail(
-            &firejail,
-            skill_dir,
-            runtime,
-            config,
-            input_json,
-            &resolved,
-            &entry_point,
-            work_dir,
-            limits,
-        );
+        return execute_with_firejail(&firejail, &invocation);
     }
 
     bail!(
@@ -140,15 +142,17 @@ fn execute_with_seccomp(
 /// Execute with bubblewrap (bwrap) sandbox with network proxy support
 fn execute_with_bwrap(
     bwrap: &Path,
-    skill_dir: &Path,
-    runtime: &RuntimePaths,
-    config: &SandboxConfig,
-    input_json: &str,
-    resolved: &ResolvedRuntime,
-    entry_point: &Path,
-    work_dir: &Path,
-    limits: crate::runner::ResourceLimits,
+    invocation: &LinuxSandboxInvocation<'_>,
 ) -> Result<ExecutionResult> {
+    let skill_dir = invocation.skill_dir;
+    let runtime = invocation.runtime;
+    let config = invocation.config;
+    let input_json = invocation.input_json;
+    let resolved = invocation.resolved;
+    let entry_point = invocation.entry_point;
+    let work_dir = invocation.work_dir;
+    let limits = invocation.limits;
+
     let env_path = &runtime.env_dir;
     let interpreter_path = resolve_command_path(&resolved.interpreter);
     let network_policy =
@@ -510,15 +514,16 @@ fn generate_seccomp_bpf_file(path: &Path) -> Result<()> {
 /// Execute with firejail sandbox with network proxy support
 fn execute_with_firejail(
     firejail: &Path,
-    skill_dir: &Path,
-    runtime: &RuntimePaths,
-    config: &SandboxConfig,
-    input_json: &str,
-    resolved: &ResolvedRuntime,
-    entry_point: &Path,
-    work_dir: &Path,
-    _limits: ResourceLimits,
+    invocation: &LinuxSandboxInvocation<'_>,
 ) -> Result<ExecutionResult> {
+    let skill_dir = invocation.skill_dir;
+    let runtime = invocation.runtime;
+    let config = invocation.config;
+    let input_json = invocation.input_json;
+    let resolved = invocation.resolved;
+    let entry_point = invocation.entry_point;
+    let work_dir = invocation.work_dir;
+
     let env_path = &runtime.env_dir;
     let interpreter_path = resolve_command_path(&resolved.interpreter);
     let network_policy =
