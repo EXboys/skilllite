@@ -21,8 +21,15 @@ static VEC_INIT: Once = Once::new();
 #[cfg(feature = "memory_vector")]
 pub fn ensure_vec_extension_loaded() {
     VEC_INIT.call_once(|| unsafe {
-        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute(
-            sqlite_vec::sqlite3_vec_init as *const (),
+        rusqlite::ffi::sqlite3_auto_extension(Some(std::mem::transmute::<
+            *const (),
+            unsafe extern "C" fn(
+                *mut rusqlite::ffi::sqlite3,
+                *mut *const i8,
+                *const rusqlite::ffi::sqlite3_api_routines,
+            ) -> i32,
+        >(
+            sqlite_vec::sqlite3_vec_init as *const ()
         )));
     });
 }
@@ -74,10 +81,7 @@ pub fn ensure_vec0_table(conn: &Connection, dimension: usize) -> Result<()> {
         )
         .ok();
 
-    let need_recreate = match stored_dim {
-        Some(d) if d as usize == dimension => false,
-        _ => true,
-    };
+    let need_recreate = !matches!(stored_dim, Some(d) if d as usize == dimension);
 
     if need_recreate {
         conn.execute_batch("DROP TABLE IF EXISTS memory_vec")?;

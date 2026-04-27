@@ -317,7 +317,7 @@ pub fn cmd_audit_report(
         }
     }
     let mut top_edit: Vec<(String, u64)> = path_counts.into_iter().collect();
-    top_edit.sort_by(|a, b| b.1.cmp(&a.1));
+    top_edit.sort_by_key(|item| std::cmp::Reverse(item.1));
     top_edit.truncate(20);
 
     let alerts = eval_alerts(

@@ -193,7 +193,7 @@ Example output: [{"id":"csdn_article","priority":88,"keywords":["csdn","CSDN","c
         }
     }
 
-    skill_rules.sort_by(|a, b| b.priority.cmp(&a.priority));
+    skill_rules.sort_by_key(|rule| std::cmp::Reverse(rule.priority));
 
     fs::create_dir_all(&out_dir)
         .with_context(|| format!("Failed to create {}", out_dir.display()))?;
