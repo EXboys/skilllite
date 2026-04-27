@@ -167,6 +167,17 @@ cd benchmark && python3 security_vs.py
 
 ![Performance Benchmark Comparison](../images/benchmark-en.png)
 
+根目录 `benchmark/` 的结果主要由 Python 脚本执行 Python skill 得出。非 Python 测量只在这里说明聚焦的 `skilllite-sandbox` 启动路径微基准，避免和 Python E2E 结果混在一起解读。
+
+**非 Python `skilllite-sandbox` 启动路径数据**（`/usr/bin/true`，200 次迭代，macOS ARM64）：
+
+| 指标 | Native Spawn | `skilllite-sandbox` | 沙箱额外开销 |
+|---|---:|---:|---:|
+| Avg latency | 0.806 ms | **111.296 ms** | +110.490 ms |
+| P50 latency | 0.757 ms | **112.020 ms** | +111.263 ms |
+| P95 latency | 1.063 ms | **113.385 ms** | +112.322 ms |
+| Child peak RSS | 1.016 MB | **1.141 MB** | +0.125 MB |
+
 ```bash
 cd benchmark/
 python benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
@@ -176,6 +187,9 @@ python benchmark_runner.py --cold-start --compare-ipc
 
 # 完整测试：冷启动 + 高并发
 python benchmark_runner.py --cold-start --cold-iterations 20 --compare-levels --compare-ipc -o results.json
+
+# 可选：非 Python 的 skilllite-sandbox 启动路径微基准
+./run_benchmark.sh --core-only
 ```
 
 详见 [benchmark/README.md](../../benchmark/README.md)。

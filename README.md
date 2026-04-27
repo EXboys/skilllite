@@ -207,6 +207,17 @@ cd benchmark && python3 security_vs.py
 
 ![Performance Benchmark Comparison](./docs/images/benchmark-en.png)
 
+The root `benchmark/` results are primarily produced by Python scripts that exercise Python skill execution. For no-Python measurements, only the focused `skilllite-sandbox` launch-path microbenchmark is documented here to avoid mixing it with Python E2E results.
+
+**No-Python `skilllite-sandbox` launch-path data** (`/usr/bin/true`, 200 iterations, macOS ARM64):
+
+| Metric | Native Spawn | `skilllite-sandbox` | Sandbox Overhead |
+|---|---:|---:|---:|
+| Avg latency | 0.806 ms | **111.296 ms** | +110.490 ms |
+| P50 latency | 0.757 ms | **112.020 ms** | +111.263 ms |
+| P95 latency | 1.063 ms | **113.385 ms** | +112.322 ms |
+| Child peak RSS | 1.016 MB | **1.141 MB** | +0.125 MB |
+
 ```bash
 cd benchmark/
 python benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
@@ -216,6 +227,9 @@ python benchmark_runner.py --cold-start --compare-ipc
 
 # Full test: cold start + high concurrency
 python benchmark_runner.py --cold-start --cold-iterations 20 --compare-levels --compare-ipc -o results.json
+
+# Optional no-Python skilllite-sandbox launch-path microbenchmark
+./run_benchmark.sh --core-only
 ```
 
 See [benchmark/README.md](./benchmark/README.md) for full documentation.
