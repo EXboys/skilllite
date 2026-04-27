@@ -67,7 +67,7 @@ pub(super) fn query_osv_batch(
             .into_json()
             .context("Failed to parse audit API response")?;
 
-        for (dep, result) in chunk.iter().zip(batch.results.into_iter()) {
+        for (dep, result) in chunk.iter().zip(batch.results) {
             entries.push(PackageAuditEntry {
                 name: dep.name.clone(),
                 version: dep.version.clone(),

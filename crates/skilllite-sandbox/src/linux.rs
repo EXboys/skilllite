@@ -97,8 +97,6 @@ fn execute_with_seccomp(
     let resolved = runtime
         .resolve(language)
         .ok_or_else(|| crate::Error::validation(format!("Unsupported language: {}", language)))?;
-    let _program = &resolved.interpreter;
-    let _args = vec![entry_point.to_string_lossy().to_string()];
 
     // Create temporary directory for execution
     let temp_dir = TempDir::new()?;
@@ -655,9 +653,7 @@ fn execute_with_namespaces(
     unsafe {
         cmd.pre_exec(|| {
             unshare(CloneFlags::CLONE_NEWUTS | CloneFlags::CLONE_NEWPID | CloneFlags::CLONE_NEWNET)
-                .map_err(|e| {
-                    std::io::Error::new(std::io::ErrorKind::Other, format!("unshare failed: {}", e))
-                })?;
+                .map_err(|e| std::io::Error::other(format!("unshare failed: {}", e)))?;
             Ok(())
         });
     }
