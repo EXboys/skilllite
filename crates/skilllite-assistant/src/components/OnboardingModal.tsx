@@ -285,9 +285,11 @@ export default function OnboardingModal() {
     setHealthResult(null);
     try {
       const result = await invoke<OnboardingHealthCheckResult>("skilllite_health_check", {
-        workspace: ws,
-        provider: mode,
-        apiKey: mode === "api" ? apiKey.trim() : undefined,
+        input: {
+          workspace: ws,
+          provider: mode,
+          apiKey: mode === "api" ? apiKey.trim() : undefined,
+        },
       });
       setHealthResult(result);
       if (result.ok) {
