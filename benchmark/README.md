@@ -26,11 +26,64 @@ High-concurrency performance comparison test suite for comparing SkillLite with 
 - **Success Rate**
 - **Memory Usage**
 
+## Benchmark Layers
+
+SkillLite benchmark results are reported in two layers. Keep these layers separate when interpreting or publishing results.
+
+### No-Python Core Launch Benchmark
+
+This layer answers: **how expensive is the isolation/container backend itself?**
+
+Run it with:
+
+```bash
+./run_benchmark.sh --core-only
+```
+
+It does not start Python and does not run a SkillLite Python skill. The workload is the smallest native command available for each backend:
+
+| Backend | Workload | What It Measures |
+|---------|----------|------------------|
+| Native | `/usr/bin/true` | Baseline process spawn cost |
+| SkillLite sandbox | `/usr/bin/true` through SkillLite sandbox backend | SkillLite isolation launch cost |
+| SRT | `srt /usr/bin/true` | SRT launch/isolation cost without Python |
+| Docker | `/bin/true` inside `DOCKER_CORE_IMAGE` | Container launch cost without Python |
+
+Memory notes:
+
+- Native, SkillLite, and SRT use `getrusage(RUSAGE_CHILDREN)` peak RSS.
+- Docker uses `docker stats`, which reports container memory only.
+- Docker memory is not subtracted from native memory because the measurement domains differ.
+- Pyodide is intentionally excluded from this layer because Pyodide is a Python/WASM runtime; it has no meaningful no-Python `/usr/bin/true` equivalent.
+
+### Python Skill E2E Benchmark
+
+This layer answers: **how expensive is real Python skill execution for users?**
+
+Run it with:
+
+```bash
+./run_benchmark.sh --compare-levels
+```
+
+It runs the calculator Python skill and includes SkillLite CLI/IPC, sandbox setup, Python interpreter startup, JSON I/O, and script execution. This is the correct layer for comparing Python execution backends, including Pyodide.
+
+| Backend | Workload | What It Measures |
+|---------|----------|------------------|
+| Native Python | calculator Python script | Baseline Python script execution |
+| SkillLite | calculator skill through SkillLite | Product E2E Python skill execution |
+| SRT | calculator Python script through SRT | SRT Python E2E execution |
+| Docker | calculator Python script in container | Containerized Python E2E execution |
+| Pyodide | calculator Python code in WASM Python | WASM Python runtime execution |
+
+Do not merge the two layers into one number. Core results explain backend launch overhead; Python E2E results explain real user-visible Python skill cost.
+
 ## Test Scripts
 
 | Script | Description |
 |--------|-------------|
 | `benchmark_runner.py` | Performance comparison: cold start, high concurrency (SkillLite, Docker, SRT, Pyodide) |
+| `run_benchmark.sh --native-sandbox-core` | Native `/usr/bin/true` sandbox core microbenchmark (no Python runtime) |
 | `security_vs.py` | Security comparison test (默认测试 Level 2 和 Level 3) |
 | `security_detailed_vs.py` | Detailed security behavior (blocked vs limited vs allowed) |
 
@@ -90,6 +143,16 @@ python benchmark_runner.py -n 100 -c 10       # No benchmark/ prefix when alread
 # Or
 python benchmark_runner.py --compare-levels --compare-ipc -n 100 -c 10
 
+# Include the native sandbox core microbenchmark (no Python runtime)
+./run_benchmark.sh --native-sandbox-core
+# Only run no-Python native / SkillLite sandbox / SRT / Docker core benchmarks
+./run_benchmark.sh --core-only
+# Tune the native core sample size
+NATIVE_SANDBOX_ITERATIONS=1000 NATIVE_SANDBOX_WARMUP=50 ./run_benchmark.sh --core-only
+# Include no-Python Docker core if the image is already local
+docker pull alpine:3.20
+DOCKER_CORE_IMAGE=alpine:3.20 ./run_benchmark.sh --native-sandbox-core
+
 # Cold start comparison (setup -> execute -> teardown per iteration)
 python benchmark_runner.py --cold-start --compare-levels --compare-ipc
 python benchmark_runner.py --cold-start --cold-iterations 20 --compare-ipc  # Custom iterations
@@ -107,6 +170,22 @@ python benchmark_runner.py --cold-start --cold-iterations 20 --compare-ipc  # Cu
 | **High Concurrency** | Keep warm, run multiple requests concurrently, outputs **performance comparison table** | Compare throughput, P50/P95/P99 latency |
 
 Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50/P95/Max per Executor and multiplier vs baseline.
+
+### Native Sandbox Core Benchmark
+
+Use `./run_benchmark.sh --core-only` when you want to measure sandbox/container backends without starting Python or the Python E2E benchmark. `./run_benchmark.sh --native-sandbox-core` prepends the same core benchmark before the regular Python E2E benchmark. The script runs the Rust example `native_sandbox_microbench` for native, SkillLite, and SRT, and also runs Docker core when Docker is available and `DOCKER_CORE_IMAGE` is already local:
+
+- `native`: direct `/usr/bin/true` process spawn.
+- `sandbox`: `/usr/bin/true` launched through the SkillLite platform sandbox backend (`sandbox-exec` on macOS, `bwrap`/`firejail` on Linux).
+- `srt`: SRT launches `/usr/bin/true` directly, without the Python script used by the E2E benchmark.
+- `docker`: Docker launches `/bin/true` from `DOCKER_CORE_IMAGE` (default: `alpine:3.20`); container memory is sampled with `docker stats`.
+- `delta`: `sandbox - native`, the closest approximation of the sandbox isolation launch overhead.
+
+The integrated summary reports latency (`avg`, `p50`, `p95`) and peak RSS for each no-Python mode. Native, SkillLite, and SRT peak RSS come from `getrusage(RUSAGE_CHILDREN)` and can be shown with deltas. Docker peak RSS comes from `docker stats`, so it represents container memory, not Docker Desktop/daemon host-side memory; the report does not compute a Docker-vs-native memory delta because those RSS sources are not the same measurement domain. Docker availability and image checks are bounded by `DOCKER_CORE_TIMEOUT_SECS` (default: `5`) so an unavailable Docker daemon does not block the full benchmark.
+
+This benchmark is intentionally separate from the Python E2E benchmark. Python E2E includes SkillLite CLI/IPC, Python interpreter startup, JSON I/O, and skill workload cost; Native Sandbox Core isolates the sandbox launch path as much as the current backend allows.
+
+Docker, SRT, Pyodide, and SkillLite E2E memory stats are enabled by `--compare-levels`; when memory data is available, the comparison table includes `Avg(MB)` and `Peak(MB)`. Docker memory is sampled with `docker stats`, so it represents container memory during the Python skill E2E workload rather than the no-Python native core benchmark above.
 
 ### CMD vs IPC Performance
 
@@ -138,7 +217,7 @@ Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50
 | **concurrent_5** | - | 60.63 ms | 417.40 ms | **6.9x faster** |
 
 **Key Conclusions:**
-- SkillLite Sandbox Overhead: +22.7 ms (+130%)
+- SkillLite Python E2E overhead vs native Python: +22.7 ms (+130%)
 - SkillLite vs Docker Startup Speed: **4.8x faster**
 - SkillLite vs Docker Concurrent Performance: **6.9x faster**
 
@@ -159,8 +238,10 @@ Cold start test outputs `COLD START BENCHMARK COMPARISON` table with Avg/Min/P50
 | `--concurrency` | `-c` | Concurrency level | 10 |
 | `--cold-start` | - | Run cold start test (outputs comparison table) | false |
 | `--cold-iterations` | - | Cold start iterations | 10 |
-| `--compare-levels` | - | Compare all sandbox levels (1, 2, 3) | false |
+| `--compare-levels` | - | Compare all sandbox levels (1, 2, 3) and enable memory stats for SkillLite, Docker, SRT, Pyodide when available | false |
 | `--compare-ipc` | - | Include SkillLite IPC (daemon mode) vs subprocess | false |
+| `--native-sandbox-core` | - | Also run native `/usr/bin/true` sandbox core microbenchmark before Python E2E | false |
+| `--core-only` | - | Run only no-Python core benchmarks (`native`, SkillLite sandbox, SRT, Docker when available) | false |
 | `--skip-docker` | - | Skip Docker test | false |
 | `--output` | `-o` | Output JSON file (includes cold_start_results) | - |
 
