@@ -52,4 +52,4 @@ zerocopy = { version = "0.7", optional = true }
 
 [dev-dependencies]
 tempfile = "3.10"
-ctor = "0.2"
+ctor = "0.10"
