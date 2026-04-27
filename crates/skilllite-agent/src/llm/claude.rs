@@ -427,22 +427,20 @@ impl LlmClient {
                             }
                         }
                     }
-                    "content_block_stop" => {
-                        if in_tool_use {
-                            tool_calls.push(ToolCall {
-                                id: current_tool_id.clone(),
-                                call_type: "function".to_string(),
-                                function: FunctionCall {
-                                    name: current_tool_name.clone(),
-                                    arguments: if current_tool_input.is_empty() {
-                                        "{}".to_string()
-                                    } else {
-                                        current_tool_input.clone()
-                                    },
+                    "content_block_stop" if in_tool_use => {
+                        tool_calls.push(ToolCall {
+                            id: current_tool_id.clone(),
+                            call_type: "function".to_string(),
+                            function: FunctionCall {
+                                name: current_tool_name.clone(),
+                                arguments: if current_tool_input.is_empty() {
+                                    "{}".to_string()
+                                } else {
+                                    current_tool_input.clone()
                                 },
-                            });
-                            in_tool_use = false;
-                        }
+                            },
+                        });
+                        in_tool_use = false;
                     }
                     "message_delta" => {
                         if let Some(delta) = chunk.get("delta") {

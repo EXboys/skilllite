@@ -106,7 +106,7 @@ pub fn route_task(
     if !local_has_caps && !peers_with_caps.is_empty() {
         // Prefer peer with most capabilities; dedupe by addr (same port = same node, avoid stale mDNS)
         let mut sorted: Vec<_> = peers_with_caps;
-        sorted.sort_by(|a, b| b.capabilities.len().cmp(&a.capabilities.len()));
+        sorted.sort_by_key(|peer| std::cmp::Reverse(peer.capabilities.len()));
         let mut seen_addr = std::collections::HashSet::new();
         let deduped: Vec<_> = sorted
             .into_iter()
