@@ -43,7 +43,7 @@ cp .env.example .env
 1. Fork the repository
 2. Create branch from `main`: `git checkout -b feature/your-feature`
 3. Make changes with clear commits
-4. Test: `cd skilllite && cargo test`; for Python SDK artifact tests also `cargo build -p skilllite --bin skilllite` from the repo root (or set `SKILLLITE_ARTIFACT_HTTP_SERVE` to your `skilllite` executable), then `cd python-sdk && pytest`
+4. Test: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test`; for Python SDK artifact tests also `cargo build -p skilllite --bin skilllite` from the repo root (or set `SKILLLITE_ARTIFACT_HTTP_SERVE` to your `skilllite` executable), then `cd python-sdk && pytest`
 5. Submit PR with clear description
 
 ### Guidelines
@@ -56,8 +56,9 @@ cp .env.example .env
 
 ### Rust
 - Follow standard Rust conventions
-- Run `cargo fmt` and `cargo clippy`
+- Run `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
 - Run `cargo deny check bans` from the repo root before submitting (install: `cargo install cargo-deny --locked --version 0.18.6`, or match `.github/workflows/ci.yml`). This enforces crate layering in `deny.toml`.
+- PR CI runs full Rust/Python checks on Ubuntu and lightweight `cargo check` smoke on macOS and Windows.
 
 ### Python
 - Follow PEP 8

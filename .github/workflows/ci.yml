@@ -49,7 +49,7 @@ jobs:
         run: cargo test
 
       - name: Run clippy
-        run: cargo clippy --all-targets
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Build skilllite (full)
         working-directory: ./skilllite
@@ -104,3 +104,23 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+  platform-smoke:
+    name: Platform smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check skilllite CLI (sandbox-only feature set)
+        run: cargo check -p skilllite --bin skilllite --no-default-features --features sandbox_binary
+
+      - name: Check skilllite-sandbox binary
+        run: cargo check -p skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary

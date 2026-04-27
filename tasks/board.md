@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-24 (TASK-2026-056 assistant external gateway detection done)
+Last updated: 2026-04-27 (TASK-2026-003 CI hardening done)
 
 ## In Progress
 
@@ -8,7 +8,7 @@ Last updated: 2026-04-24 (TASK-2026-056 assistant external gateway detection don
 
 ## Ready
 
-- `TASK-2026-003-ci-hardening-and-matrix` - Status: `ready` - Owner: `TBD`
+- None.
 
 ## Blocked
 
@@ -16,6 +16,7 @@ Last updated: 2026-04-24 (TASK-2026-056 assistant external gateway detection don
 
 ## Done
 
+- `TASK-2026-003-ci-hardening-and-matrix` - Status: `done` - Owner: `airlu`
 - `TASK-2026-056-assistant-gateway-external-detection` - Status: `done` - Owner: `airlu`
 - `TASK-2026-055-assistant-gateway-managed-process-minimal` - Status: `done` - Owner: `airlu`
 - `TASK-2026-054-assistant-gateway-settings-migration` - Status: `done` - Owner: `airlu`
