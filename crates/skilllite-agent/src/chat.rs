@@ -238,8 +238,9 @@ pub fn run_agent_run(config: AgentConfig, goal: String, resume: bool) -> Result<
 /// this function just truncates overly long errors for terminal display.
 fn format_chat_error(e: &crate::Error) -> String {
     let s = e.to_string();
-    if s.len() > 300 {
-        format!("{}…", &s[..300])
+    let truncated: String = s.chars().take(300).collect();
+    if truncated.chars().count() < s.chars().count() {
+        format!("{truncated}…")
     } else {
         s
     }
@@ -324,4 +325,44 @@ async fn run_interactive_chat(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn format_chat_error_from_message(message: &str) -> String {
+        let err = crate::Error::validation(message.to_string());
+        format_chat_error(&err)
+    }
+
+    #[test]
+    fn format_chat_error_keeps_short_messages() {
+        let msg = "short message";
+        assert_eq!(format_chat_error_from_message(msg), msg);
+    }
+
+    #[test]
+    fn format_chat_error_truncates_long_ascii_without_panicking() {
+        let msg = "a".repeat(500);
+        let formatted = format_chat_error_from_message(&msg);
+        assert!(formatted.ends_with('…'));
+        assert_eq!(formatted.chars().count(), 301);
+    }
+
+    #[test]
+    fn format_chat_error_truncates_long_cjk_without_panicking() {
+        let msg = "你".repeat(500);
+        let formatted = format_chat_error_from_message(&msg);
+        assert!(formatted.ends_with('…'));
+        assert_eq!(formatted.chars().count(), 301);
+    }
+
+    #[test]
+    fn format_chat_error_truncates_long_emoji_without_panicking() {
+        let msg = "😀".repeat(500);
+        let formatted = format_chat_error_from_message(&msg);
+        assert!(formatted.ends_with('…'));
+        assert_eq!(formatted.chars().count(), 301);
+    }
 }
