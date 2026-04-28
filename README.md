@@ -504,14 +504,18 @@ skilllite/                         Dependency Flow
 | `skilllite clean-env`          | Clean cached runtime environments                                      |
 | `skilllite reindex`            | Re-index all installed skills                                          |
 | `skilllite wiki init`          | Initialize or repair the Markdown-only project Repo Wiki at `.skilllite/wiki/` |
-| `skilllite wiki ingest <path>` | Ingest a local file into `.skilllite/wiki/raw/` with Markdown frontmatter |
-| `skilllite wiki query "<q>"`   | Query Repo Wiki Markdown content without SQLite or memory              |
-| `skilllite wiki lint`          | Validate Repo Wiki structure, indexes, and frontmatter basics          |
+| `skilllite wiki ingest <path>` | Ingest a local file into `.skilllite/wiki/raw/` and auto-compile by default (`--no-compile` skips refresh) |
+| `skilllite wiki compile`       | Manually compile `raw/` sources into structured `wiki/` articles with source fingerprints |
+| `skilllite wiki status`        | Report stale, uncompiled, missing-source, and up-to-date wiki sources without writing files |
+| `skilllite wiki record-lesson` | Record a user-confirmed chat/Assistant lesson with experience and optimization guidance into `raw/`, then auto-compile |
+| `skilllite wiki query "<q>"`   | Query Repo Wiki Markdown content; stale sources auto-refresh unless `--no-compile` is set (`--quick` indexes, `--deep` all Markdown) |
+| `skilllite wiki lint`          | Validate Repo Wiki structure, indexes, frontmatter, sources, and links |
 
 > Note: for default `skills` mode, if `skills/` is missing and `.skills/` exists, SkillLite automatically falls back to `.skills/`.
 > When both `skills/<name>` and `.skills/<name>` exist, commands print a duplicate-name warning to improve observability.
 > Workspace skill discovery also supports `.agents/skills/` and `.claude/skills/` as canonical search roots.
-> `skilllite init` also creates a project-local Repo Wiki at `.skilllite/wiki/`. The wiki is plain Markdown (`_index.md`, `config.md`, `log.md`, `raw/`, `wiki/`, `lessons/`, `output/`) and does not use SQLite. Existing chat memory remains under the normal chat data root.
+> `skilllite init` also creates a project-local Repo Wiki at `.skilllite/wiki/`. The wiki is plain Markdown (`_index.md`, `config.md`, `log.md`, `raw/`, `wiki/`, `lessons/`, `output/`) and does not use SQLite. Existing chat memory remains under the normal chat data root. Repo Wiki freshness is tracked with source fingerprints; `ingest` and `query` can refresh compiled articles, while `status` only reports freshness.
+> Chat/Assistant runs can emit a `wiki_update_suggestion` after replans or repeated tool failures. The suggestion is prompt-only; Wiki content is written only after user confirmation through `skilllite wiki record-lesson`. Recorded lessons use `What Happened`, `Root Cause`, `Optimization`, and `Next Time` sections instead of storing full transcripts.
 
 </details>
 

@@ -446,14 +446,18 @@ skilllite/                         依赖流向
 | `skilllite clean-env` | 清理缓存的运行时环境 |
 | `skilllite reindex` | 重新索引所有已安装 skills |
 | `skilllite wiki init` | 初始化或修复 `.skilllite/wiki/` 下的纯 Markdown 项目 Repo Wiki |
-| `skilllite wiki ingest <path>` | 将本地文件写入 `.skilllite/wiki/raw/`，并生成 Markdown frontmatter |
-| `skilllite wiki query "<q>"` | 查询 Repo Wiki Markdown 内容，不使用 SQLite 或 memory |
-| `skilllite wiki lint` | 校验 Repo Wiki 结构、索引和基础 frontmatter |
+| `skilllite wiki ingest <path>` | 将本地文件写入 `.skilllite/wiki/raw/`，默认自动 compile（`--no-compile` 跳过刷新） |
+| `skilllite wiki compile` | 手动将 `raw/` 来源编译为带来源 fingerprint 的结构化 `wiki/` 文章 |
+| `skilllite wiki status` | 只读报告 stale、uncompiled、missing-source 和 up-to-date 状态 |
+| `skilllite wiki record-lesson` | 将用户确认后的 chat/Assistant 经验和优化经验写入 `raw/` 并自动 compile |
+| `skilllite wiki query "<q>"` | 查询 Repo Wiki Markdown 内容；默认查询前刷新过期来源，可用 `--no-compile` 跳过（`--quick` 查索引，`--deep` 查全部 Markdown） |
+| `skilllite wiki lint` | 校验 Repo Wiki 结构、索引、frontmatter、来源和链接 |
 
 > 说明：在默认 `skills` 模式下，若 `skills/` 不存在但 `.skills/` 存在，SkillLite 会自动回退到 `.skills/`。
 > 当 `skills/<name>` 与 `.skills/<name>` 同时存在时，命令会输出同名冲突告警，便于定位问题。
 > 工作区技能发现还支持 `.agents/skills/` 与 `.claude/skills/` 作为规范搜索根目录。
-> `skilllite init` 也会在 `.skilllite/wiki/` 创建项目级 Repo Wiki。该 Wiki 是纯 Markdown（`_index.md`、`config.md`、`log.md`、`raw/`、`wiki/`、`lessons/`、`output/`），不使用 SQLite。现有聊天记忆仍保留在原来的 chat 数据根目录。
+> `skilllite init` 也会在 `.skilllite/wiki/` 创建项目级 Repo Wiki。该 Wiki 是纯 Markdown（`_index.md`、`config.md`、`log.md`、`raw/`、`wiki/`、`lessons/`、`output/`），不使用 SQLite。现有聊天记忆仍保留在原来的 chat 数据根目录。Repo Wiki 通过 source fingerprint 判断新旧；`ingest` 和 `query` 可以刷新编译文章，`status` 只报告状态不写文件。
+> Chat/Assistant 在 replan 或重复工具失败后可以输出 `wiki_update_suggestion`。该信号只用于提示；只有用户确认后，才通过 `skilllite wiki record-lesson` 写入 Wiki。记录内容使用 `What Happened`、`Root Cause`、`Optimization`、`Next Time` 结构，不保存完整聊天记录。
 
 </details>
 

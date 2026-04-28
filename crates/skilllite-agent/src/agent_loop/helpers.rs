@@ -778,6 +778,42 @@ fn final_response_from_assistant_or_tools(messages: &[ChatMessage]) -> String {
     "[Agent completed without text response]".to_string()
 }
 
+fn collect_tool_result_excerpts_for_wiki(
+    messages: &[ChatMessage],
+    max_items: usize,
+) -> Vec<String> {
+    let mut excerpts = Vec::new();
+    for msg in messages.iter().rev() {
+        if msg.role != "tool" {
+            continue;
+        }
+        let Some(content) = msg
+            .content
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        else {
+            continue;
+        };
+        let one_line = content
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or("")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if one_line.is_empty() || excerpts.contains(&one_line) {
+            continue;
+        }
+        excerpts.push(safe_truncate(&one_line, 180).to_string());
+        if excerpts.len() >= max_items {
+            break;
+        }
+    }
+    excerpts
+}
+
 /// Build the final `AgentResult` from the message history.
 pub(super) fn build_agent_result(
     messages: Vec<ChatMessage>,
@@ -796,6 +832,10 @@ pub(super) fn build_agent_result(
     } else {
         final_response_from_assistant_or_tools(&messages)
     };
+    let wiki_update_suggestion = build_wiki_update_suggestion(
+        &feedback,
+        collect_tool_result_excerpts_for_wiki(&messages, 3),
+    );
 
     AgentResult {
         response: final_response,
@@ -804,6 +844,7 @@ pub(super) fn build_agent_result(
         iterations,
         task_plan,
         feedback,
+        wiki_update_suggestion,
     }
 }
 

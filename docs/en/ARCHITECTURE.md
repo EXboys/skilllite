@@ -497,9 +497,16 @@ registry.register(memory::tools());
 | Command | Description |
 |---------|-------------|
 | `skilllite wiki init` | Initialize or repair the `.skilllite/wiki/` skeleton |
-| `skilllite wiki ingest <path>` | Ingest a local file into `raw/` with YAML frontmatter |
-| `skilllite wiki query "<question>"` | Search wiki Markdown only; does not use SQLite or memory |
-| `skilllite wiki lint` | Validate required files, indexes, and frontmatter basics |
+| `skilllite wiki ingest <path>` | Ingest a local file into `raw/` and auto-compile by default (`--no-compile` skips refresh) |
+| `skilllite wiki compile` | Manually compile `raw/` sources into `wiki/` articles with source fingerprints |
+| `skilllite wiki status` | Report stale, uncompiled, missing-source, and up-to-date wiki sources without writing files |
+| `skilllite wiki record-lesson` | Record a user-confirmed chat/Assistant lesson with experience and optimization guidance into `raw/`, then auto-compile |
+| `skilllite wiki query "<question>"` | Search wiki Markdown only; stale sources auto-refresh unless `--no-compile` is set; `--quick` uses indexes and `--deep` scans all Markdown |
+| `skilllite wiki lint` | Validate required files, indexes, frontmatter schema, source references, and Markdown links |
+
+Compiled articles store source fingerprints in Markdown frontmatter. This lets `status` and `query` detect when `raw/` sources have changed without using SQLite or a background watcher.
+
+Agent chat and Desktop Assistant surfaces receive a structured `wiki_update_suggestion` after replans or repeated tool failures. This signal is prompt-only; confirmed lessons are recorded through `skilllite wiki record-lesson`, which writes Markdown into `raw/` and reuses the compile path. Recorded lessons use `What Happened`, `Root Cause`, `Optimization`, and `Next Time` sections rather than full transcripts.
 
 ---
 

@@ -802,11 +802,45 @@ pub enum WikiAction {
         #[arg(long, short = 'w', default_value = ".")]
         workspace: String,
     },
+    /// Compile raw sources into curated wiki articles
+    Compile {
+        /// Project workspace (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+    },
+    /// Report whether compiled wiki articles are fresh
+    Status {
+        /// Project workspace (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+    },
+    /// Record a user-confirmed chat/Assistant lesson into Repo Wiki
+    #[command(name = "record-lesson")]
+    RecordLesson {
+        /// Lesson title
+        #[arg(long)]
+        title: String,
+        /// Trigger that caused the lesson suggestion
+        #[arg(long, default_value = "manual")]
+        trigger: String,
+        /// One-line lesson summary
+        #[arg(long)]
+        summary: String,
+        /// Lesson body. Defaults to summary when omitted.
+        #[arg(long, default_value = "")]
+        body: String,
+        /// Project workspace (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+    },
     /// Ingest a local file into `.skilllite/wiki/raw/`
     Ingest {
         /// Local file to ingest
         #[arg(value_name = "PATH")]
         path: std::path::PathBuf,
+        /// Skip automatic compile after ingest
+        #[arg(long)]
+        no_compile: bool,
         /// Project workspace (default: current directory)
         #[arg(long, short = 'w', default_value = ".")]
         workspace: String,
@@ -816,11 +850,20 @@ pub enum WikiAction {
         /// Question or keywords to search for
         #[arg(value_name = "QUESTION")]
         question: String,
+        /// Query indexes only
+        #[arg(long, conflicts_with = "deep")]
+        quick: bool,
+        /// Query all wiki Markdown, including raw sources and indexes
+        #[arg(long)]
+        deep: bool,
+        /// Skip automatic stale refresh before query
+        #[arg(long)]
+        no_compile: bool,
         /// Project workspace (default: current directory)
         #[arg(long, short = 'w', default_value = ".")]
         workspace: String,
     },
-    /// Validate wiki structure and basic frontmatter/index health
+    /// Validate wiki structure, frontmatter schema, sources, and links
     Lint {
         /// Project workspace (default: current directory)
         #[arg(long, short = 'w', default_value = ".")]

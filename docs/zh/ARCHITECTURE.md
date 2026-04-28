@@ -495,9 +495,16 @@ registry.register(memory::tools());
 | 命令 | 说明 |
 |------|------|
 | `skilllite wiki init` | 初始化或修复 `.skilllite/wiki/` 骨架 |
-| `skilllite wiki ingest <path>` | 将本地文件写入 `raw/`，并生成 YAML frontmatter |
-| `skilllite wiki query "<question>"` | 只搜索 wiki Markdown；不使用 SQLite 或 memory |
-| `skilllite wiki lint` | 校验必需文件、索引和基础 frontmatter |
+| `skilllite wiki ingest <path>` | 将本地文件写入 `raw/`，默认自动 compile（`--no-compile` 跳过刷新） |
+| `skilllite wiki compile` | 手动将 `raw/` 来源编译成带 source fingerprint 的 `wiki/` 文章 |
+| `skilllite wiki status` | 只读报告 stale、uncompiled、missing-source 和 up-to-date 状态 |
+| `skilllite wiki record-lesson` | 将用户确认后的 chat/Assistant 经验和优化经验写入 `raw/` 并自动 compile |
+| `skilllite wiki query "<question>"` | 只搜索 wiki Markdown；默认查询前刷新过期来源，可用 `--no-compile` 跳过；`--quick` 查索引，`--deep` 查全部 Markdown |
+| `skilllite wiki lint` | 校验必需文件、索引、frontmatter schema、来源引用和 Markdown 链接 |
+
+编译后的文章会在 Markdown frontmatter 中记录 source fingerprint。这样 `status` 和 `query` 可以在不使用 SQLite、也不开后台 watcher 的情况下检测 `raw/` 来源是否变化。
+
+Agent chat 和 Desktop Assistant 在 replan 或重复工具失败后会收到结构化 `wiki_update_suggestion`。该信号只用于提示；用户确认后通过 `skilllite wiki record-lesson` 写入 Markdown 到 `raw/`，并复用 compile 流程。记录内容使用 `What Happened`、`Root Cause`、`Optimization`、`Next Time` 结构，不保存完整聊天记录。
 
 ---
 

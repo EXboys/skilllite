@@ -47,13 +47,47 @@ fn register_wiki(reg: &mut CommandRegistry) {
                 WikiAction::Init { workspace } => {
                     skilllite_commands::wiki::cmd_wiki_init(workspace)
                 }
-                WikiAction::Ingest { path, workspace } => {
-                    skilllite_commands::wiki::cmd_wiki_ingest(workspace, path)
+                WikiAction::Compile { workspace } => {
+                    skilllite_commands::wiki::cmd_wiki_compile(workspace)
                 }
+                WikiAction::Status { workspace } => {
+                    skilllite_commands::wiki::cmd_wiki_status(workspace)
+                }
+                WikiAction::RecordLesson {
+                    title,
+                    trigger,
+                    summary,
+                    body,
+                    workspace,
+                } => skilllite_commands::wiki::cmd_wiki_record_lesson(
+                    workspace, title, trigger, summary, body,
+                ),
+                WikiAction::Ingest {
+                    path,
+                    no_compile,
+                    workspace,
+                } => skilllite_commands::wiki::cmd_wiki_ingest(workspace, path, *no_compile),
                 WikiAction::Query {
                     question,
+                    quick,
+                    deep,
+                    no_compile,
                     workspace,
-                } => skilllite_commands::wiki::cmd_wiki_query(workspace, question),
+                } => {
+                    let depth = if *quick {
+                        skilllite_commands::wiki::WikiQueryDepth::Quick
+                    } else if *deep {
+                        skilllite_commands::wiki::WikiQueryDepth::Deep
+                    } else {
+                        skilllite_commands::wiki::WikiQueryDepth::Standard
+                    };
+                    skilllite_commands::wiki::cmd_wiki_query(
+                        workspace,
+                        question,
+                        depth,
+                        *no_compile,
+                    )
+                }
                 WikiAction::Lint { workspace } => {
                     skilllite_commands::wiki::cmd_wiki_lint(workspace)
                 }

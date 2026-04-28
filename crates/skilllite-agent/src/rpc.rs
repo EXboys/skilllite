@@ -47,7 +47,7 @@
 //! {"event": "llm_usage", "data": {"reported": false}}
 //! {"event": "confirmation_request", "data": {"prompt": "Execute rm -rf?", "risk_tier": "confirm_required"}}
 //! {"event": "clarification_request", "data": {"reason": "no_progress", "message": "...", "suggestions": ["...", "..."]}}
-//! {"event": "done", "data": {"task_id": "...", "response": "...", "task_completed": true, "tool_calls": 3, "new_skill": null, "completion_type": "success", "llm_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "responses_with_usage": 0, "responses_without_usage": 0}}}
+//! {"event": "done", "data": {"task_id": "...", "response": "...", "task_completed": true, "tool_calls": 3, "new_skill": null, "completion_type": "success", "llm_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "responses_with_usage": 0, "responses_without_usage": 0}, "wiki_update_suggestion": null}}
 //! {"event": "error", "data": {"message": "..."}}
 //! ```
 //!
@@ -699,6 +699,11 @@ async fn handle_agent_chat(
                 obj.insert(
                     "llm_usage".to_string(),
                     serde_json::to_value(agent_result.feedback.llm_usage).unwrap_or(json!({})),
+                );
+                obj.insert(
+                    "wiki_update_suggestion".to_string(),
+                    serde_json::to_value(&agent_result.wiki_update_suggestion)
+                        .unwrap_or(serde_json::Value::Null),
                 );
             }
             emit_event(&writer, "done", data);

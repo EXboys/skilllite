@@ -38,8 +38,9 @@ pub use event_sink::{
     RunModeEventSink, SilentEventSink, TerminalEventSink,
 };
 pub use feedback::{
-    classify_user_feedback, ExecutionFeedback, FeedbackSignal, SkillAction, TaskCompletionType,
-    ToolExecDetail,
+    build_wiki_update_suggestion, classify_user_feedback, ExecutionFeedback, FeedbackSignal,
+    SkillAction, TaskCompletionType, ToolExecDetail, WikiUpdateSuggestion, WikiUpdateTrigger,
+    WIKI_CONSECUTIVE_TOOL_FAILURE_THRESHOLD,
 };
 pub use llm_usage::{LlmUsageReport, LlmUsageTotals};
 pub use mcp_servers::{parse_mcp_servers_json, McpServerEntry};

@@ -140,6 +140,8 @@ pub(super) struct ExecutionState {
     /// Reset when a different tool/error combination occurs or a tool succeeds.
     last_failure_sig: Option<(String, String)>,
     pub repeated_failure_count: usize,
+    pub max_consecutive_failures_seen: usize,
+    pub max_repeated_failure_seen: usize,
     /// Cumulative LLM token usage (API-reported) for this agent run.
     pub llm_usage_totals: LlmUsageTotals,
 }
@@ -166,6 +168,8 @@ impl ExecutionState {
             completion_type: TaskCompletionType::Success,
             last_failure_sig: None,
             repeated_failure_count: 0,
+            max_consecutive_failures_seen: 0,
+            max_repeated_failure_seen: 0,
             llm_usage_totals: LlmUsageTotals::default(),
         }
     }
@@ -180,6 +184,12 @@ impl ExecutionState {
             self.last_failure_sig = Some(sig);
             self.repeated_failure_count = 1;
         }
+        self.max_consecutive_failures_seen = self
+            .max_consecutive_failures_seen
+            .max(self.consecutive_failures);
+        self.max_repeated_failure_seen = self
+            .max_repeated_failure_seen
+            .max(self.repeated_failure_count);
         self.repeated_failure_count
     }
 

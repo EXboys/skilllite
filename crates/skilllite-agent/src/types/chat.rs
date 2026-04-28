@@ -245,6 +245,8 @@ pub struct AgentResult {
     pub task_plan: Vec<Task>,
     /// Execution feedback for the evolution engine (EVO-1).
     pub feedback: ExecutionFeedback,
+    /// Optional prompt payload for asking the user to record a Repo Wiki lesson.
+    pub wiki_update_suggestion: Option<super::feedback::WikiUpdateSuggestion>,
 }
 
 impl AgentResult {

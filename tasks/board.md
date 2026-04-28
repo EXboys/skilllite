@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-28 (TASK-2026-058 repo wiki MVP done)
+Last updated: 2026-04-28 (TASK-2026-062 wiki lesson optimization template done)
 
 ## In Progress
 
@@ -16,6 +16,10 @@ Last updated: 2026-04-28 (TASK-2026-058 repo wiki MVP done)
 
 ## Done
 
+- `TASK-2026-062-wiki-lesson-optimization-template` - Status: `done` - Owner: `agent`
+- `TASK-2026-061-conversation-wiki-suggestion` - Status: `done` - Owner: `agent`
+- `TASK-2026-060-repo-wiki-dynamic-refresh` - Status: `done` - Owner: `agent`
+- `TASK-2026-059-repo-wiki-compile-query-lint` - Status: `done` - Owner: `agent`
 - `TASK-2026-058-repo-wiki-mvp` - Status: `done` - Owner: `agent`
 - `TASK-2026-057-project-wiki-skills-roots` - Status: `done` - Owner: `agent`
 - `TASK-2026-003-ci-hardening-and-matrix` - Status: `done` - Owner: `airlu`

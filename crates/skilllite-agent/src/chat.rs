@@ -6,6 +6,7 @@ use crate::error::bail;
 use crate::Result;
 use anyhow::Context;
 use std::path::Path;
+use std::process::Command;
 
 use super::chat_session::ChatSession;
 use super::skills;
@@ -257,6 +258,7 @@ async fn run_interactive_chat(
     eprintln!("│  /exit 退出  ·  /clear 清空  ·  /compact 压缩历史");
     eprintln!("└────────────────────────────────────────────────────────────\n");
 
+    let workspace = config.workspace.clone();
     let mut session = ChatSession::new(config, session_key, skills);
     let mut sink = TerminalEventSink::new(verbose);
 
@@ -298,7 +300,8 @@ async fn run_interactive_chat(
 
                 eprintln!();
                 match session.run_turn(input, &mut sink).await {
-                    Ok(_) => {
+                    Ok(result) => {
+                        maybe_prompt_record_wiki_lesson(&workspace, &result, &mut rl);
                         eprintln!();
                     }
                     Err(e) => {
@@ -325,6 +328,57 @@ async fn run_interactive_chat(
     }
 
     Ok(())
+}
+
+fn maybe_prompt_record_wiki_lesson(
+    workspace: &str,
+    result: &AgentResult,
+    rl: &mut rustyline::DefaultEditor,
+) {
+    let Some(suggestion) = result.wiki_update_suggestion.as_ref() else {
+        return;
+    };
+    eprintln!();
+    eprintln!("本轮出现 replan 或重复工具失败，是否把这次经验写入项目 Wiki？");
+    eprintln!("- 标题: {}", suggestion.proposed_title);
+    eprintln!("- 摘要: {}", suggestion.proposed_lesson);
+    match rl.readline("Update Wiki? [y/N] ") {
+        Ok(answer) if matches!(answer.trim(), "y" | "Y" | "yes" | "YES") => {
+            let trigger = serde_json::to_string(&suggestion.trigger)
+                .unwrap_or_else(|_| "\"manual\"".to_string())
+                .trim_matches('"')
+                .to_string();
+            let current_exe = match std::env::current_exe() {
+                Ok(path) => path,
+                Err(e) => {
+                    eprintln!("⚠️ 无法定位当前可执行文件，未写入 Wiki: {}", e);
+                    return;
+                }
+            };
+            let status = Command::new(current_exe)
+                .args([
+                    "wiki",
+                    "record-lesson",
+                    "--workspace",
+                    workspace,
+                    "--title",
+                    &suggestion.proposed_title,
+                    "--trigger",
+                    &trigger,
+                    "--summary",
+                    &suggestion.proposed_lesson,
+                    "--body",
+                    &suggestion.proposed_lesson,
+                ])
+                .status();
+            match status {
+                Ok(s) if s.success() => eprintln!("✅ 已写入项目 Wiki。"),
+                Ok(s) => eprintln!("⚠️ Wiki 写入命令失败，exit code: {:?}", s.code()),
+                Err(e) => eprintln!("⚠️ Wiki 写入命令启动失败: {}", e),
+            }
+        }
+        Ok(_) | Err(_) => eprintln!("已跳过 Wiki 更新。"),
+    }
 }
 
 #[cfg(test)]
