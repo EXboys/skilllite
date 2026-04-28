@@ -520,6 +520,13 @@ pub enum Commands {
         rebuild_manifest: bool,
     },
 
+    /// Manage the project Repo Wiki (`.skilllite/wiki/`, Markdown-only)
+    #[command(name = "wiki")]
+    Wiki {
+        #[command(subcommand)]
+        action: WikiAction,
+    },
+
     /// Initialize a SkillLite project — create skills/, install deps, run audit
     ///
     /// Sets up the project structure, creates an example skill if needed,
@@ -783,6 +790,41 @@ pub enum Commands {
     Channel {
         #[command(subcommand)]
         action: ChannelAction,
+    },
+}
+
+/// `skilllite wiki` subcommands.
+#[derive(Subcommand, Debug)]
+pub enum WikiAction {
+    /// Initialize or repair `.skilllite/wiki/`
+    Init {
+        /// Project workspace (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+    },
+    /// Ingest a local file into `.skilllite/wiki/raw/`
+    Ingest {
+        /// Local file to ingest
+        #[arg(value_name = "PATH")]
+        path: std::path::PathBuf,
+        /// Project workspace (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+    },
+    /// Query wiki Markdown content without SQLite or memory
+    Query {
+        /// Question or keywords to search for
+        #[arg(value_name = "QUESTION")]
+        question: String,
+        /// Project workspace (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+    },
+    /// Validate wiki structure and basic frontmatter/index health
+    Lint {
+        /// Project workspace (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
     },
 }
 

@@ -198,6 +198,9 @@ skillLite/
 │   ├── writing-helper/           # 写作助手
 │   └── xiaohongshu-writer/       # 小红书写作
 │
+├── .skilllite/                    # 项目级 SkillLite 元数据
+│   └── wiki/                      # Repo Wiki：纯 Markdown，不使用 SQLite
+│
 ├── tutorials/                     # 教程示例
 ├── test/                          # 集成测试
 ├── tests/                         # 额外测试
@@ -484,6 +487,17 @@ registry.register(memory::tools());
 | `memory_list` | 列出所有记忆 |
 
 **进化抽取知识**（工作区 `memory/evolution/`）：五维目录下按月分卷 `YYYY-MM.md`；每次 Memory 进化写入后，引擎会重算 **`YYYY-MM.rollup.md`** 去重汇总（分卷正文仍按次追加保留）。汇总卷与其他 evolution 正文一样参与 BM25 索引。
+
+#### 4.4 项目 Repo Wiki (`.skilllite/wiki/`)
+
+`skilllite wiki` 提供纯 Markdown 项目知识库命令：
+
+| 命令 | 说明 |
+|------|------|
+| `skilllite wiki init` | 初始化或修复 `.skilllite/wiki/` 骨架 |
+| `skilllite wiki ingest <path>` | 将本地文件写入 `raw/`，并生成 YAML frontmatter |
+| `skilllite wiki query "<question>"` | 只搜索 wiki Markdown；不使用 SQLite 或 memory |
+| `skilllite wiki lint` | 校验必需文件、索引和基础 frontmatter |
 
 ---
 

@@ -232,6 +232,9 @@ fn scan_candidate_skills_inner(
     skip_dep_audit: bool,
     scan_offline: bool,
 ) -> Vec<SkillScanReport> {
+    #[cfg(not(feature = "audit"))]
+    let _ = skip_dep_audit;
+
     let mut reports = Vec::new();
 
     let total = candidates.len();

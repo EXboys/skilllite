@@ -27,6 +27,7 @@ pub fn register_all(reg: &mut CommandRegistry) {
     register_ide(reg);
     register_env(reg);
     register_reindex(reg);
+    register_wiki(reg);
     register_security(reg);
     register_audit_report(reg);
     register_init(reg);
@@ -36,6 +37,32 @@ pub fn register_all(reg: &mut CommandRegistry) {
         register_agent(reg);
         register_schedule(reg);
     }
+}
+
+fn register_wiki(reg: &mut CommandRegistry) {
+    reg.register(|cmd| {
+        if let Commands::Wiki { action } = cmd {
+            use crate::cli::WikiAction;
+            let result = match action {
+                WikiAction::Init { workspace } => {
+                    skilllite_commands::wiki::cmd_wiki_init(workspace)
+                }
+                WikiAction::Ingest { path, workspace } => {
+                    skilllite_commands::wiki::cmd_wiki_ingest(workspace, path)
+                }
+                WikiAction::Query {
+                    question,
+                    workspace,
+                } => skilllite_commands::wiki::cmd_wiki_query(workspace, question),
+                WikiAction::Lint { workspace } => {
+                    skilllite_commands::wiki::cmd_wiki_lint(workspace)
+                }
+            };
+            Some(result.map_err(Into::into))
+        } else {
+            None
+        }
+    });
 }
 
 #[cfg(feature = "agent")]

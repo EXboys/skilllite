@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-04-27 (TASK-2026-003 CI hardening done)
+Last updated: 2026-04-28 (TASK-2026-058 repo wiki MVP done)
 
 ## In Progress
 
@@ -16,6 +16,8 @@ Last updated: 2026-04-27 (TASK-2026-003 CI hardening done)
 
 ## Done
 
+- `TASK-2026-058-repo-wiki-mvp` - Status: `done` - Owner: `agent`
+- `TASK-2026-057-project-wiki-skills-roots` - Status: `done` - Owner: `agent`
 - `TASK-2026-003-ci-hardening-and-matrix` - Status: `done` - Owner: `airlu`
 - `TASK-2026-056-assistant-gateway-external-detection` - Status: `done` - Owner: `airlu`
 - `TASK-2026-055-assistant-gateway-managed-process-minimal` - Status: `done` - Owner: `airlu`

@@ -5,9 +5,11 @@
 //! Flow:
 //!   1. Verify skilllite binary is available (self — always true)
 //!   2. Create skills/ directory + download skills from SKILLLITE_SKILLS_REPO (if empty)
-//!   3. Scan all skills → resolve dependencies → install to isolated environments
-//!   4. Run security audit (pip-audit / npm audit via dependency_audit)
-//!   5. Output summary
+//!   3. Create project Repo Wiki markdown skeleton under .skilllite/wiki/
+//!   4. Scan all skills → resolve dependencies → install to isolated environments
+//!   5. Run security audit (pip-audit / npm audit via dependency_audit)
+//!   6. Generate planning rules when requested
+//!   7. Output summary
 
 use anyhow::Context;
 use std::fs;
@@ -16,6 +18,7 @@ use std::path::{Path, PathBuf};
 use crate::error::bail;
 use crate::skill;
 use crate::Result;
+use skilllite_core::paths;
 use skilllite_core::skill::dependency_resolver;
 use skilllite_core::skill::discovery;
 use skilllite_core::skill::metadata;
@@ -95,6 +98,7 @@ pub fn cmd_init(
     use_llm: bool,
 ) -> Result<()> {
     reject_relative_skills_dir_when_cwd_root(skills_dir)?;
+    let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let skills_path = resolve_path_with_legacy_fallback(skills_dir);
 
     eprintln!("🚀 Initializing SkillLite project...");
@@ -102,30 +106,38 @@ pub fn cmd_init(
 
     // Step 1: Binary check (we ARE the binary)
     let version = env!("CARGO_PKG_VERSION");
-    eprintln!("✅ Step 1/6: skilllite binary v{} ready", version);
+    eprintln!("✅ Step 1/7: skilllite binary v{} ready", version);
 
     // Step 2: Create skills/ directory + download skills (if empty)
     eprintln!();
     let downloaded = ensure_skills_dir(&skills_path, force)?;
     if downloaded {
         eprintln!(
-            "✅ Step 2/6: Downloaded skills into {}",
+            "✅ Step 2/7: Downloaded skills into {}",
             skills_path.display()
         );
     } else {
         eprintln!(
-            "✅ Step 2/6: Skills directory already exists at {}",
+            "✅ Step 2/7: Skills directory already exists at {}",
             skills_path.display()
         );
     }
 
-    // Step 3: Scan all skills and install dependencies
+    // Step 3: Create project Repo Wiki skeleton
+    eprintln!();
+    let wiki_path = ensure_project_wiki(&workspace)?;
+    eprintln!(
+        "✅ Step 3/7: Project Repo Wiki ready at {}",
+        wiki_path.display()
+    );
+
+    // Step 4: Scan all skills and install dependencies
     eprintln!();
     let skills = discover_all_skills(&skills_path);
     if skills.is_empty() {
-        eprintln!("✅ Step 3/6: No skills found to process");
+        eprintln!("✅ Step 4/7: No skills found to process");
     } else {
-        eprintln!("📦 Step 3/6: Processing {} skill(s)...", skills.len());
+        eprintln!("📦 Step 4/7: Processing {} skill(s)...", skills.len());
         if skip_deps {
             eprintln!("   ⏭ Skipping dependency installation (--skip-deps)");
         } else {
@@ -139,16 +151,16 @@ pub fn cmd_init(
         }
     }
 
-    // Step 4: Security audit
+    // Step 5: Security audit
     eprintln!();
     if skip_audit {
-        eprintln!("✅ Step 4/6: Skipping security audit (--skip-audit)");
+        eprintln!("✅ Step 5/7: Skipping security audit (--skip-audit)");
     } else {
         let (audit_msgs, has_vulns) = audit_all_skills(&skills_path, &skills);
         if audit_msgs.is_empty() {
-            eprintln!("✅ Step 4/6: No dependencies to audit");
+            eprintln!("✅ Step 5/7: No dependencies to audit");
         } else {
-            eprintln!("🔍 Step 4/6: Security audit results:");
+            eprintln!("🔍 Step 5/7: Security audit results:");
             for msg in &audit_msgs {
                 eprintln!("{}", msg);
             }
@@ -161,16 +173,15 @@ pub fn cmd_init(
         }
     }
 
-    // Step 5: Generate planning rules (when --use-llm and API key available)
+    // Step 6: Generate planning rules (when --use-llm and API key available)
     eprintln!();
     #[cfg(feature = "agent")]
     if skills.is_empty() {
-        eprintln!("✅ Step 5/6: No skills, skipping planning rules");
+        eprintln!("✅ Step 6/7: No skills, skipping planning rules");
     } else if !use_llm {
-        eprintln!("✅ Step 5/6: Skipping planning rules (use --use-llm to generate)");
+        eprintln!("✅ Step 6/7: Skipping planning rules (use --use-llm to generate)");
     } else {
-        eprintln!("📋 Step 5/6: Generating planning rules...");
-        let workspace = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        eprintln!("📋 Step 6/7: Generating planning rules...");
         match crate::planning_rules_gen::generate_planning_rules(
             &workspace,
             &skills_path,
@@ -186,13 +197,13 @@ pub fn cmd_init(
         }
     }
     #[cfg(not(feature = "agent"))]
-    eprintln!("✅ Step 5/6: Planning rules (requires agent feature)");
+    eprintln!("✅ Step 6/7: Planning rules (requires agent feature)");
 
-    // Step 6: Summary
+    // Step 7: Summary
     eprintln!();
-    eprintln!("✅ Step 6/6: Initialization complete!");
+    eprintln!("✅ Step 7/7: Initialization complete!");
     eprintln!();
-    print_summary(&skills_path, &skills);
+    print_summary(&skills_path, &wiki_path, &skills);
 
     Ok(())
 }
@@ -243,6 +254,58 @@ pub fn ensure_skills_dir(skills_path: &Path, force: bool) -> Result<bool> {
     })?;
 
     Ok(true)
+}
+
+pub fn ensure_project_wiki(workspace: &Path) -> Result<PathBuf> {
+    let wiki_path = paths::project_wiki_root(workspace);
+    fs::create_dir_all(wiki_path.join("raw")).with_context(|| {
+        format!(
+            "Failed to create project wiki raw directory: {}",
+            wiki_path.join("raw").display()
+        )
+    })?;
+    fs::create_dir_all(wiki_path.join("wiki")).with_context(|| {
+        format!(
+            "Failed to create project wiki article directory: {}",
+            wiki_path.join("wiki").display()
+        )
+    })?;
+    fs::create_dir_all(wiki_path.join("output")).with_context(|| {
+        format!(
+            "Failed to create project wiki output directory: {}",
+            wiki_path.join("output").display()
+        )
+    })?;
+    fs::create_dir_all(wiki_path.join("lessons")).with_context(|| {
+        format!(
+            "Failed to create project wiki lessons directory: {}",
+            wiki_path.join("lessons").display()
+        )
+    })?;
+
+    write_if_missing(
+        &wiki_path.join("_index.md"),
+        "# SkillLite Repo Wiki\n\nProject-local Markdown knowledge base for this repository.\n\n## Contents\n\n- [Config](config.md)\n- [Raw sources](raw/)\n- [Compiled wiki](wiki/)\n- [Lessons](lessons/)\n- [Output](output/)\n",
+    )?;
+    write_if_missing(
+        &wiki_path.join("config.md"),
+        "# Repo Wiki Config\n\n- Scope: project-local SkillLite Repo Wiki\n- Storage: plain Markdown\n- SQLite: not used\n",
+    )?;
+    write_if_missing(
+        &wiki_path.join("log.md"),
+        "# Repo Wiki Log\n\nAppend wiki operations here.\n",
+    )?;
+
+    Ok(wiki_path)
+}
+
+fn write_if_missing(path: &Path, content: &str) -> Result<()> {
+    if path.exists() {
+        return Ok(());
+    }
+    fs::write(path, content)
+        .with_context(|| format!("Failed to write file: {}", path.display()))?;
+    Ok(())
 }
 
 /// Count skills in the directory (subdirs with SKILL.md). Used for status messages.
@@ -578,11 +641,12 @@ fn collect_script_files_for_audit(
     files
 }
 
-fn print_summary(skills_path: &Path, skills: &[String]) {
+fn print_summary(skills_path: &Path, wiki_path: &Path, skills: &[String]) {
     eprintln!("{}", "═".repeat(50));
     eprintln!("🎉 SkillLite project initialized!");
     eprintln!();
     eprintln!("   Skills directory: {}", skills_path.display());
+    eprintln!("   Repo Wiki: {}", wiki_path.display());
     eprintln!("   Skills found: {}", skills.len());
 
     if !skills.is_empty() {
@@ -618,6 +682,7 @@ fn print_summary(skills_path: &Path, skills: &[String]) {
 #[cfg(test)]
 mod cwd_trust_tests {
     use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[cfg(unix)]
     #[test]
@@ -631,5 +696,33 @@ mod cwd_trust_tests {
         assert!(!super::cwd_is_untrusted_for_relative_skills(Path::new(
             "/tmp"
         )));
+    }
+
+    #[test]
+    fn ensure_project_wiki_creates_markdown_skeleton_without_sqlite() {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "skilllite-wiki-test-{}-{suffix}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&workspace).expect("create temp workspace");
+
+        let wiki = super::ensure_project_wiki(&workspace).expect("create project wiki");
+
+        assert_eq!(wiki, workspace.join(".skilllite").join("wiki"));
+        assert!(wiki.join("_index.md").is_file());
+        assert!(wiki.join("config.md").is_file());
+        assert!(wiki.join("log.md").is_file());
+        assert!(wiki.join("raw").is_dir());
+        assert!(wiki.join("wiki").is_dir());
+        assert!(wiki.join("output").is_dir());
+        assert!(wiki.join("lessons").is_dir());
+        assert!(!wiki.join(".index").exists());
+        assert!(!wiki.join("default.sqlite").exists());
+
+        std::fs::remove_dir_all(&workspace).expect("remove temp workspace");
     }
 }

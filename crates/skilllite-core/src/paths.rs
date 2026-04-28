@@ -24,6 +24,19 @@ pub fn resolve_workspace_filesystem_root(workspace: &str) -> PathBuf {
     }
 }
 
+/// Resolve the project-local SkillLite directory for a workspace.
+pub fn project_skilllite_dir(workspace_root: &Path) -> PathBuf {
+    workspace_root.join(".skilllite")
+}
+
+/// Resolve the project-local Repo Wiki root.
+///
+/// The wiki is plain Markdown project knowledge. It is intentionally separate
+/// from [`chat_root`], which stores sessions, transcripts, memory, and evolution state.
+pub fn project_wiki_root(workspace_root: &Path) -> PathBuf {
+    project_skilllite_dir(workspace_root).join("wiki")
+}
+
 /// 解析 skilllite 数据根。
 ///
 /// 优先使用环境变量 `SKILLLITE_WORKSPACE`（若为绝对路径），否则为 `~/.skilllite`。
@@ -44,4 +57,19 @@ pub fn data_root() -> PathBuf {
 /// 即 `data_root().join("chat")`。
 pub fn chat_root() -> PathBuf {
     data_root().join("chat")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_wiki_root_is_under_project_skilllite_dir() {
+        let root = Path::new("example");
+
+        assert_eq!(
+            project_wiki_root(root),
+            PathBuf::from("example").join(".skilllite").join("wiki")
+        );
+    }
 }

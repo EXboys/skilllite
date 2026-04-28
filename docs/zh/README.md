@@ -445,10 +445,15 @@ skilllite/                         依赖流向
 | `skilllite init-opencode` | 初始化 OpenCode 集成 |
 | `skilllite clean-env` | 清理缓存的运行时环境 |
 | `skilllite reindex` | 重新索引所有已安装 skills |
+| `skilllite wiki init` | 初始化或修复 `.skilllite/wiki/` 下的纯 Markdown 项目 Repo Wiki |
+| `skilllite wiki ingest <path>` | 将本地文件写入 `.skilllite/wiki/raw/`，并生成 Markdown frontmatter |
+| `skilllite wiki query "<q>"` | 查询 Repo Wiki Markdown 内容，不使用 SQLite 或 memory |
+| `skilllite wiki lint` | 校验 Repo Wiki 结构、索引和基础 frontmatter |
 
 > 说明：在默认 `skills` 模式下，若 `skills/` 不存在但 `.skills/` 存在，SkillLite 会自动回退到 `.skills/`。
 > 当 `skills/<name>` 与 `.skills/<name>` 同时存在时，命令会输出同名冲突告警，便于定位问题。
 > 工作区技能发现还支持 `.agents/skills/` 与 `.claude/skills/` 作为规范搜索根目录。
+> `skilllite init` 也会在 `.skilllite/wiki/` 创建项目级 Repo Wiki。该 Wiki 是纯 Markdown（`_index.md`、`config.md`、`log.md`、`raw/`、`wiki/`、`lessons/`、`output/`），不使用 SQLite。现有聊天记忆仍保留在原来的 chat 数据根目录。
 
 </details>
 
