@@ -157,6 +157,7 @@ export default function WorkspaceFileTree({
   refreshToken = 0,
 }: WorkspaceFileTreeProps) {
   const { t } = useI18n();
+  const effectiveWorkspace = workspace.trim() || ".";
   const [, startTransition] = useTransition();
   const [entries, setEntries] = useState<WorkspaceListEntryDto[]>([]);
   const [truncated, setTruncated] = useState(false);
@@ -181,7 +182,7 @@ export default function WorkspaceFileTree({
       const payload = await invoke<WorkspaceListPayloadDto>(
         "skilllite_list_workspace_entries",
         {
-          workspace: workspace.trim() || ".",
+          workspace: effectiveWorkspace,
         }
       );
       if (gen !== loadGenRef.current) return;
@@ -209,7 +210,7 @@ export default function WorkspaceFileTree({
         setLoading(false);
       }
     }
-  }, [workspace, startTransition]);
+  }, [effectiveWorkspace, startTransition]);
 
   useEffect(() => {
     void load();
@@ -233,6 +234,12 @@ export default function WorkspaceFileTree({
         <div className="min-w-0 flex flex-col gap-0.5">
           <span className="text-[11px] font-medium text-ink-mute dark:text-ink-dark-mute uppercase tracking-wide">
             {t("ide.workspaceFiles")}
+          </span>
+          <span
+            className="text-[10px] text-ink-mute/90 dark:text-ink-dark-mute truncate font-mono"
+            title={effectiveWorkspace}
+          >
+            {effectiveWorkspace}
           </span>
           {showUpdatingHint ? (
             <span className="text-[10px] text-accent/90 dark:text-accent truncate">

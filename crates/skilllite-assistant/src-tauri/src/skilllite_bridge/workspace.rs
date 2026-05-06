@@ -509,7 +509,7 @@ fn normalize_path_components(path: &std::path::Path) -> std::path::PathBuf {
 
 /// Canonical workspace root (project root) for path-safe read/write/list.
 fn workspace_root_canon(workspace: &str) -> Result<std::path::PathBuf, String> {
-    let root = super::paths::find_project_root(workspace);
+    let root = super::paths::resolve_workspace_dir(workspace);
     root.canonicalize()
         .map_err(|e| format!("无效工作区: {}", e))
 }
@@ -661,7 +661,21 @@ fn walk_workspace_entries(
         *truncated = true;
         return Ok(());
     }
-    let read = std::fs::read_dir(dir).map_err(|e| e.to_string())?;
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(e) => {
+            // macOS may return EPERM for system-protected folders under a workspace.
+            // Skip inaccessible nodes so IDE tree remains usable for the rest.
+            if matches!(
+                e.kind(),
+                std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::NotFound
+            ) {
+                *truncated = true;
+                return Ok(());
+            }
+            return Err(e.to_string());
+        }
+    };
     let mut entries: Vec<_> = read.filter_map(|e| e.ok()).collect();
     entries.sort_by_key(|e| e.file_name());
 
@@ -696,7 +710,16 @@ fn walk_workspace_entries(
             is_dir,
         });
         if is_dir {
-            walk_workspace_entries(root, &path, depth + 1, out, truncated)?;
+            if let Err(e) = walk_workspace_entries(root, &path, depth + 1, out, truncated) {
+                // Do not fail the whole listing because one subtree is not readable.
+                if e.to_lowercase().contains("operation not permitted")
+                    || e.to_lowercase().contains("permission denied")
+                {
+                    *truncated = true;
+                    continue;
+                }
+                return Err(e);
+            }
         }
     }
     Ok(())
@@ -809,5 +832,30 @@ mod workspace_path_tests {
             "should not leak raw std message: {}",
             err
         );
+    }
+
+    #[test]
+    fn explicit_workspace_does_not_float_to_parent_skill_root() {
+        let base = std::env::temp_dir().join(format!(
+            "skilllite_ws_explicit_root_{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&base);
+        let parent = base.join("parent");
+        let child = parent.join("test");
+        std::fs::create_dir_all(parent.join("skills")).unwrap();
+        std::fs::create_dir_all(&child).unwrap();
+        std::fs::write(child.join("only-in-child.txt"), "x").unwrap();
+        std::fs::write(parent.join("only-in-parent.txt"), "x").unwrap();
+
+        let ws = child.to_string_lossy().into_owned();
+        let got = list_workspace_entries(&ws).unwrap();
+        let paths: Vec<_> = got
+            .entries
+            .iter()
+            .map(|e| e.relative_path.as_str())
+            .collect();
+        assert!(paths.contains(&"only-in-child.txt"), "{:?}", paths);
+        assert!(!paths.contains(&"only-in-parent.txt"), "{:?}", paths);
     }
 }

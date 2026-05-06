@@ -73,18 +73,94 @@ pub struct ChatConfigOverrides {
     pub mcp_servers: Option<Vec<McpServerEntry>>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct EnvValueWithSource {
+    value: String,
+    source: &'static str,
+}
+
+fn upsert_env(
+    map: &mut std::collections::HashMap<String, EnvValueWithSource>,
+    key: &str,
+    value: String,
+    source: &'static str,
+) {
+    map.insert(key.to_string(), EnvValueWithSource { value, source });
+}
+
+fn summarize_env_provenance(
+    map: &std::collections::HashMap<String, EnvValueWithSource>,
+) -> Vec<String> {
+    let watched = [
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL",
+        skilllite_core::config::env_keys::llm::MODEL,
+        skilllite_core::config::env_keys::sandbox::SKILLLITE_SANDBOX_LEVEL,
+        skilllite_core::config::env_keys::swarm::SKILLLITE_SWARM_URL,
+        skilllite_core::config::env_keys::agent_loop::SKILLLITE_MAX_ITERATIONS,
+        skilllite_core::config::env_keys::agent_loop::SKILLLITE_MAX_TOOL_CALLS_PER_TASK,
+        skilllite_core::config::env_keys::summarization::SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS,
+        skilllite_core::config::env_keys::agent::SKILLLITE_UI_LOCALE,
+        skilllite_core::config::env_keys::mcp::SKILLLITE_MCP_SERVERS_JSON,
+    ];
+    watched
+        .iter()
+        .filter_map(|key| map.get(*key).map(|v| format!("{key}<-{}", v.source)))
+        .collect()
+}
+
+fn merge_dotenv_with_chat_overrides_with_provenance(
+    dotenv: Vec<(String, String)>,
+    overrides: Option<&ChatConfigOverrides>,
+) -> (
+    Vec<(String, String)>,
+    std::collections::HashMap<String, EnvValueWithSource>,
+) {
+    use std::collections::HashMap;
+    let mut m: HashMap<String, EnvValueWithSource> = dotenv
+        .into_iter()
+        .map(|(k, v)| {
+            (
+                k,
+                EnvValueWithSource {
+                    value: v,
+                    source: "dotenv",
+                },
+            )
+        })
+        .collect();
+
+    let Some(cfg) = overrides else {
+        let env_pairs = m
+            .iter()
+            .map(|(k, v)| (k.clone(), v.value.clone()))
+            .collect::<Vec<_>>();
+        return (env_pairs, m);
+    };
+
+    apply_chat_overrides_env(&mut m, cfg);
+    let env_pairs = m
+        .iter()
+        .map(|(k, v)| (k.clone(), v.value.clone()))
+        .collect::<Vec<_>>();
+    (env_pairs, m)
+}
+
 /// Merge workspace dotenv-derived pairs with optional UI overrides (same semantics as [`chat_stream`]).
 /// When `overrides` is `None`, returns `dotenv` unchanged (backward compatible).
 pub fn merge_dotenv_with_chat_overrides(
     dotenv: Vec<(String, String)>,
     overrides: Option<&ChatConfigOverrides>,
 ) -> Vec<(String, String)> {
-    let Some(cfg) = overrides else {
-        return dotenv;
-    };
+    let (pairs, _) = merge_dotenv_with_chat_overrides_with_provenance(dotenv, overrides);
+    pairs
+}
 
-    use std::collections::HashMap;
-    let mut m: HashMap<String, String> = dotenv.into_iter().collect();
+fn apply_chat_overrides_env(
+    m: &mut std::collections::HashMap<String, EnvValueWithSource>,
+    cfg: &ChatConfigOverrides,
+) {
 
     use skilllite_core::config::env_keys::agent_loop as al_keys;
     use skilllite_core::config::env_keys::mcp as mcp_keys;
@@ -103,78 +179,97 @@ pub fn merge_dotenv_with_chat_overrides(
 
     if let Some(ref key) = cfg.api_key {
         if !key.is_empty() {
-            m.insert("OPENAI_API_KEY".to_string(), key.clone());
+            upsert_env(m, "OPENAI_API_KEY", key.clone(), "ui_override");
         }
     }
     if let Some(ref base) = cfg.api_base {
         if !base.is_empty() {
-            m.insert("OPENAI_BASE_URL".to_string(), base.clone());
+            upsert_env(m, "OPENAI_BASE_URL", base.clone(), "ui_override");
         }
     }
     if let Some(ref model) = cfg.model {
         if !model.is_empty() {
-            m.insert("OPENAI_MODEL".to_string(), model.clone());
-            m.insert(
-                skilllite_core::config::env_keys::llm::MODEL.to_string(),
+            upsert_env(m, "OPENAI_MODEL", model.clone(), "ui_override");
+            upsert_env(
+                m,
+                skilllite_core::config::env_keys::llm::MODEL,
                 model.clone(),
+                "ui_override",
             );
         }
     }
     if let Some(level) = cfg.sandbox_level {
         if (1..=3).contains(&level) {
-            m.insert(
-                sb_keys::SKILLLITE_SANDBOX_LEVEL.to_string(),
+            upsert_env(
+                m,
+                sb_keys::SKILLLITE_SANDBOX_LEVEL,
                 level.to_string(),
+                "ui_override",
             );
         }
     }
     if let Some(ref url) = cfg.swarm_url {
         if !url.is_empty() {
-            m.insert(swarm_keys::SKILLLITE_SWARM_URL.to_string(), url.clone());
+            upsert_env(m, swarm_keys::SKILLLITE_SWARM_URL, url.clone(), "ui_override");
         }
     }
     if let Some(n) = cfg.max_iterations.filter(|&n| n > 0) {
-        m.insert(al_keys::SKILLLITE_MAX_ITERATIONS.to_string(), n.to_string());
+        upsert_env(
+            m,
+            al_keys::SKILLLITE_MAX_ITERATIONS,
+            n.to_string(),
+            "ui_override",
+        );
     }
     if let Some(n) = cfg.max_tool_calls_per_task.filter(|&n| n > 0) {
-        m.insert(
-            al_keys::SKILLLITE_MAX_TOOL_CALLS_PER_TASK.to_string(),
+        upsert_env(
+            m,
+            al_keys::SKILLLITE_MAX_TOOL_CALLS_PER_TASK,
             n.to_string(),
+            "ui_override",
         );
     }
     if let Some(n) = cfg.context_soft_limit_chars {
-        m.insert(
-            sum_keys::SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS.to_string(),
+        upsert_env(
+            m,
+            sum_keys::SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS,
             n.to_string(),
+            "ui_override",
         );
     }
 
     use skilllite_core::config::env_keys::evolution as evo_keys;
     if let Some(n) = cfg.evolution_interval_secs.filter(|&n| n > 0) {
-        m.insert(
-            evo_keys::SKILLLITE_EVOLUTION_INTERVAL_SECS.to_string(),
+        upsert_env(
+            m,
+            evo_keys::SKILLLITE_EVOLUTION_INTERVAL_SECS,
             n.to_string(),
+            "ui_override",
         );
     }
     if let Some(n) = cfg.evolution_decision_threshold.filter(|&n| n > 0) {
-        m.insert(
-            evo_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD.to_string(),
+        upsert_env(
+            m,
+            evo_keys::SKILLLITE_EVOLUTION_DECISION_THRESHOLD,
             n.to_string(),
+            "ui_override",
         );
     }
     if let Some(ref p) = cfg.evo_profile {
         let t = p.trim();
         if t == "demo" || t == "conservative" {
-            m.insert(evo_keys::SKILLLITE_EVO_PROFILE.to_string(), t.to_string());
+            upsert_env(m, evo_keys::SKILLLITE_EVO_PROFILE, t.to_string(), "ui_override");
         }
     }
     if let Some(h) = cfg
         .evo_cooldown_hours
         .filter(|h| h.is_finite() && *h >= 0.0)
     {
-        m.insert(
-            evo_keys::SKILLLITE_EVO_COOLDOWN_HOURS.to_string(),
+        upsert_env(
+            m,
+            evo_keys::SKILLLITE_EVO_COOLDOWN_HOURS,
             format!("{h}"),
+            "ui_override",
         );
     }
 
@@ -182,22 +277,25 @@ pub fn merge_dotenv_with_chat_overrides(
     if let Some(ref loc) = cfg.ui_locale {
         let t = loc.trim();
         if t == "en" || t == "zh" {
-            m.insert(agent_keys::SKILLLITE_UI_LOCALE.to_string(), t.to_string());
+            upsert_env(m, agent_keys::SKILLLITE_UI_LOCALE, t.to_string(), "ui_override");
         }
     }
 
     if let Some(ref servers) = cfg.mcp_servers {
         match serde_json::to_string(servers) {
             Ok(json) => {
-                m.insert(mcp_keys::SKILLLITE_MCP_SERVERS_JSON.to_string(), json);
+                upsert_env(
+                    m,
+                    mcp_keys::SKILLLITE_MCP_SERVERS_JSON,
+                    json,
+                    "ui_override",
+                );
             }
             Err(e) => {
                 eprintln!("[skilllite-assistant] mcp_servers serialize error: {}", e);
             }
         }
     }
-
-    m.into_iter().collect()
 }
 
 fn resolve_skilllite_path(window: &Window) -> (PathBuf, bool) {
@@ -267,10 +365,17 @@ pub fn chat_stream(
         .stderr(Stdio::null())
         .current_dir(&workspace_root);
 
-    let env_pairs = merge_dotenv_with_chat_overrides(
+    let (env_pairs, env_sources) = merge_dotenv_with_chat_overrides_with_provenance(
         load_dotenv_for_child(&raw_workspace),
         config_overrides.as_ref(),
     );
+    let provenance = summarize_env_provenance(&env_sources);
+    if !provenance.is_empty() {
+        eprintln!(
+            "[skilllite-assistant] chat config provenance: {}",
+            provenance.join(", ")
+        );
+    }
     for (k, v) in env_pairs {
         cmd.env(k, v);
     }
@@ -648,5 +753,25 @@ mod tests {
             &ClarificationState::default(),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn merge_dotenv_with_chat_overrides_prefers_ui_values() {
+        let dotenv = vec![
+            ("OPENAI_MODEL".to_string(), "dotenv-model".to_string()),
+            ("OPENAI_BASE_URL".to_string(), "https://dotenv.base".to_string()),
+        ];
+        let overrides = ChatConfigOverrides {
+            model: Some("ui-model".to_string()),
+            api_base: Some("https://ui.base".to_string()),
+            ..Default::default()
+        };
+        let merged = merge_dotenv_with_chat_overrides(dotenv, Some(&overrides));
+        let map: std::collections::HashMap<_, _> = merged.into_iter().collect();
+        assert_eq!(map.get("OPENAI_MODEL").map(String::as_str), Some("ui-model"));
+        assert_eq!(
+            map.get("OPENAI_BASE_URL").map(String::as_str),
+            Some("https://ui.base")
+        );
     }
 }

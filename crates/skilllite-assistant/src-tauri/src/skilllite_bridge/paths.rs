@@ -19,14 +19,22 @@ fn inferred_default_workspace_root() -> PathBuf {
         .join("SkillLite")
 }
 
-/// Find project root (dir containing any supported skill root) by walking up from start path.
-pub(crate) fn find_project_root(start: &str) -> PathBuf {
+/// Resolve workspace directory from user input without "float to parent skill root".
+///
+/// - `""` / `"."` => default writable workspace (e.g. `Documents/SkillLite`)
+/// - explicit path => keep as-is (caller decides whether to canonicalize)
+pub(crate) fn resolve_workspace_dir(start: &str) -> PathBuf {
     let t = start.trim();
-    let start_path = if t.is_empty() || t == "." {
+    if t.is_empty() || t == "." {
         inferred_default_workspace_root()
     } else {
         PathBuf::from(t)
-    };
+    }
+}
+
+/// Find project root (dir containing any supported skill root) by walking up from start path.
+pub(crate) fn find_project_root(start: &str) -> PathBuf {
+    let start_path = resolve_workspace_dir(start);
     let mut dir = start_path
         .canonicalize()
         .unwrap_or_else(|_| start_path.clone());
@@ -46,12 +54,7 @@ pub(crate) fn find_project_root(start: &str) -> PathBuf {
 /// Load .env from workspace and parents for subprocess env.
 /// Treats `""` / `"."` like [`find_project_root`] so GUI cwd (`/` or `System32`) does not break lookup.
 pub(crate) fn load_dotenv_for_child(workspace: &str) -> Vec<(String, String)> {
-    let t = workspace.trim();
-    let base = if t.is_empty() || t == "." {
-        inferred_default_workspace_root()
-    } else {
-        PathBuf::from(t)
-    };
+    let base = resolve_workspace_dir(workspace);
     skilllite_core::config::parse_dotenv_walking_up(&base, 5)
 }
 
