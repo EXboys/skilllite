@@ -17,7 +17,7 @@ skilllite-evolution = { path = "../../skilllite-evolution" }
 skilllite-sandbox = { path = "../../skilllite-sandbox" }
 skilllite-agent = { path = "../../skilllite-agent" }
 skilllite-fs = { path = "../../skilllite-fs" }
-dirs = "5"
+dirs = "6"
 chrono = "0.4"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
