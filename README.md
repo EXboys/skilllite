@@ -342,6 +342,7 @@ skilllite add owner/repo@skill-name         # Add a specific skill by name
 skilllite add ./local-path                  # Add from local directory
 skilllite add ./downloaded-skill.zip        # Add from a downloaded local ZIP package
 skilllite import-openclaw-skills            # Import from OpenClaw-style dirs (workspace/skills, ~/.openclaw/skills, …)
+skilllite claw migrate --dry-run            # OpenClaw → SkillLite: skills, SOUL/MEMORY Markdown, optional secrets
 skilllite list                              # List all installed skills
 skilllite remove <skill-name>               # Remove an installed skill
 ```
@@ -488,6 +489,7 @@ skilllite/                         Dependency Flow
 | `skilllite chat`               | Interactive agent chat (or `--message` for single-shot)                |
 | `skilllite add owner/repo`     | Add skills from GitHub, a local folder, or a local ZIP package         |
 | `skilllite import-openclaw-skills` | Copy skills from OpenClaw-style paths into `skills/` (see `--dry-run`, `--skill-conflict`) |
+| `skilllite claw migrate` | Migrate OpenClaw-style skills, persona/memory Markdown, and optional allowlisted `.env` keys (alias: `skilllite migrate openclaw`) |
 | `skilllite remove <name>`      | Remove an installed skill                                              |
 | `skilllite list`               | List installed skills                                                  |
 | `skilllite show <name>`        | Show skill details                                                     |

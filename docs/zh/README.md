@@ -290,6 +290,7 @@ skilllite add owner/repo@skill-name         # 按名称添加指定 skill
 skilllite add ./local-path                  # 从本地目录添加
 skilllite add ./downloaded-skill.zip        # 从本地下载好的 ZIP 技能包添加
 skilllite import-openclaw-skills            # 从 OpenClaw 风格目录导入（workspace/skills、~/.openclaw/skills 等）
+skilllite claw migrate --dry-run            # OpenClaw → SkillLite：技能、SOUL/MEMORY Markdown、可选密钥
 skilllite list                              # 列出所有已安装 skills
 skilllite remove <skill-name>               # 移除已安装的 skill
 ```
@@ -430,6 +431,7 @@ skilllite/                         依赖流向
 | `skilllite chat` | 交互式 Agent 对话（或 `--message` 单次对话） |
 | `skilllite add owner/repo` | 从 GitHub、本地目录或本地 ZIP 技能包添加 skills |
 | `skilllite import-openclaw-skills` | 从 OpenClaw 风格路径复制 skills 到 `skills/`（可用 `--dry-run`、`--skill-conflict`） |
+| `skilllite claw migrate` | 从 OpenClaw 风格布局迁移技能、人格/记忆 Markdown 与可选白名单 `.env` 密钥（别名：`skilllite migrate openclaw`） |
 | `skilllite remove <name>` | 移除已安装的 skill |
 | `skilllite list` | 列出已安装 skills |
 | `skilllite show <name>` | 显示 skill 详情 |

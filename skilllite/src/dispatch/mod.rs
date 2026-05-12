@@ -7,6 +7,7 @@ mod channel_serve;
 mod execute;
 #[cfg(feature = "gateway")]
 mod gateway;
+mod migrate;
 mod protocol;
 mod skill;
 
@@ -18,6 +19,7 @@ pub fn register_all(reg: &mut CommandRegistry) {
     protocol::register(reg);
     execute::register(reg);
     skill::register(reg);
+    migrate::register(reg);
     #[cfg(feature = "artifact_http")]
     artifact::register(reg);
     #[cfg(feature = "gateway")]

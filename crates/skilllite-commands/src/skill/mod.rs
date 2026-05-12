@@ -12,7 +12,11 @@ mod show;
 mod verify;
 
 pub use add::{cmd_add, update_skill_from_source};
+pub(crate) use common::resolve_skills_dir;
 pub use import_openclaw::cmd_import_openclaw_skills;
+pub(crate) use import_openclaw::{
+    collect_openclaw_import_candidates, openclaw_workspace_candidates, SkillConflictPolicy,
+};
 pub use list::cmd_list;
 pub use remove::cmd_remove;
 pub use show::cmd_show;

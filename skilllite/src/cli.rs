@@ -406,6 +406,20 @@ pub enum Commands {
         scan_offline: bool,
     },
 
+    /// OpenClaw-oriented commands.
+    #[command(name = "claw")]
+    Claw {
+        #[command(subcommand)]
+        action: ClawAction,
+    },
+
+    /// Migrate state from another agent platform into this SkillLite workspace.
+    #[command(name = "migrate")]
+    Migrate {
+        #[command(subcommand)]
+        source: MigrateSource,
+    },
+
     /// Initialize Cursor IDE integration (.cursor/mcp.json + rules)
     #[command(name = "init-cursor")]
     InitCursor {
@@ -790,6 +804,115 @@ pub enum Commands {
     Channel {
         #[command(subcommand)]
         action: ChannelAction,
+    },
+}
+
+/// `skilllite claw` subcommands.
+#[derive(Subcommand, Debug)]
+pub enum ClawAction {
+    /// Migrate OpenClaw-style skills, persona/memory Markdown, and optional API keys into SkillLite.
+    ///
+    /// Examples:
+    ///
+    ///   skilllite claw migrate --dry-run
+    ///
+    ///   skilllite claw migrate --migrate-secrets --yes
+    Migrate {
+        /// Project root used to resolve `workspace/`, `workspace-main/`, etc. (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+
+        /// OpenClaw home directory (default: first of ~/.openclaw, ~/.clawdbot, ~/.moltbot)
+        #[arg(long, value_name = "DIR")]
+        openclaw_dir: Option<String>,
+
+        /// Destination skills directory (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
+        skills_dir: String,
+
+        /// When the destination already has this skill name: skip | overwrite | rename
+        #[arg(long, default_value = "skip")]
+        skill_conflict: String,
+
+        /// Preview the migration plan without writing files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Install skills flagged suspicious by admission scan
+        #[arg(long, short)]
+        force: bool,
+
+        /// Offline admission scan only (no LLM / network dependency audit)
+        #[arg(long)]
+        scan_offline: bool,
+
+        /// Merge allowlisted API keys from OpenClaw `.env` / config into project `.env`
+        #[arg(long)]
+        migrate_secrets: bool,
+
+        /// Skip the pre-migration backup zip under the report directory
+        #[arg(long)]
+        no_backup: bool,
+
+        /// Apply without an interactive confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+
+        /// Overwrite or merge into existing persona/memory files and env keys
+        #[arg(long)]
+        overwrite: bool,
+    },
+}
+
+/// `skilllite migrate` sources.
+#[derive(Subcommand, Debug)]
+pub enum MigrateSource {
+    /// Same as `skilllite claw migrate` (OpenClaw / legacy Clawdbot / Moltbot layout).
+    #[command(name = "openclaw", visible_alias = "claw")]
+    Openclaw {
+        /// Project root used to resolve `workspace/`, `workspace-main/`, etc. (default: current directory)
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+
+        /// OpenClaw home directory (default: first of ~/.openclaw, ~/.clawdbot, ~/.moltbot)
+        #[arg(long, value_name = "DIR")]
+        openclaw_dir: Option<String>,
+
+        /// Destination skills directory (default: skills)
+        #[arg(long, short = 's', default_value = "skills")]
+        skills_dir: String,
+
+        /// When the destination already has this skill name: skip | overwrite | rename
+        #[arg(long, default_value = "skip")]
+        skill_conflict: String,
+
+        /// Preview the migration plan without writing files
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Install skills flagged suspicious by admission scan
+        #[arg(long, short)]
+        force: bool,
+
+        /// Offline admission scan only (no LLM / network dependency audit)
+        #[arg(long)]
+        scan_offline: bool,
+
+        /// Merge allowlisted API keys from OpenClaw `.env` / config into project `.env`
+        #[arg(long)]
+        migrate_secrets: bool,
+
+        /// Skip the pre-migration backup zip under the report directory
+        #[arg(long)]
+        no_backup: bool,
+
+        /// Apply without an interactive confirmation prompt
+        #[arg(long, short = 'y')]
+        yes: bool,
+
+        /// Overwrite or merge into existing persona/memory files and env keys
+        #[arg(long)]
+        overwrite: bool,
     },
 }
 

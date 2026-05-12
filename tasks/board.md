@@ -8,6 +8,7 @@ Last updated: 2026-04-29 (TASK-2026-064 env-keys single-source done)
 
 ## Ready
 
+- `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
 ## Blocked
