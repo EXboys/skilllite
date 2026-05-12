@@ -588,10 +588,7 @@ fn create_backup_zip(
             if !path.is_file() {
                 continue;
             }
-            let rel = path
-                .strip_prefix(root)
-                .unwrap_or(path)
-                .to_string_lossy();
+            let rel = path.strip_prefix(root).unwrap_or(path).to_string_lossy();
             let name = format!("{prefix}/{rel}");
             add_file_to_zip(&mut zip, path, &name, options)?;
         }
@@ -625,10 +622,7 @@ fn plan_memory_reindex_item(planned: &[PlanItem], memory_root: &Path) -> Option<
         .iter()
         .filter(|item| {
             item.category == "memory"
-                && matches!(
-                    item.action,
-                    PlanAction::Copy | PlanAction::MergeAppend
-                )
+                && matches!(item.action, PlanAction::Copy | PlanAction::MergeAppend)
         })
         .count();
     if count == 0 {
@@ -659,17 +653,12 @@ fn reindex_migrated_memory(rel_paths: &[String], items: &mut Vec<PlanItem>) -> R
     }
     let chat_root = paths::chat_root();
     let indexed = skilllite_agent::extensions::reindex_memory_markdown_files(
-        &chat_root,
-        "default",
-        rel_paths,
+        &chat_root, "default", rel_paths,
     )?;
     if indexed.is_empty() {
         return Ok(());
     }
-    eprintln!(
-        "Indexed {} memory file(s) for search.",
-        indexed.len()
-    );
+    eprintln!("Indexed {} memory file(s) for search.", indexed.len());
     items.push(PlanItem {
         category: "memory".to_string(),
         action: PlanAction::ReindexMemory,
