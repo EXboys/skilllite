@@ -31,6 +31,7 @@ pub mod env;
 pub mod evolution;
 pub mod ide;
 pub mod init;
+pub mod migrate;
 #[cfg(feature = "agent")]
 pub mod planning_rules_gen;
 #[cfg(feature = "agent")]
@@ -42,6 +43,5 @@ pub mod replay;
 pub mod replay_quality;
 #[cfg(feature = "agent")]
 pub mod schedule;
-pub mod migrate;
 pub mod skill;
 pub mod wiki;

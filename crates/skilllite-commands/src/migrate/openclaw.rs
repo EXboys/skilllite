@@ -11,8 +11,8 @@ use zip::write::FileOptions;
 use zip::ZipWriter;
 
 use crate::skill::{
-    cmd_import_openclaw_skills, collect_openclaw_import_candidates,
-    openclaw_workspace_candidates, resolve_skills_dir, SkillConflictPolicy,
+    cmd_import_openclaw_skills, collect_openclaw_import_candidates, openclaw_workspace_candidates,
+    resolve_skills_dir, SkillConflictPolicy,
 };
 use crate::Result;
 
@@ -189,7 +189,13 @@ pub fn cmd_claw_migrate_openclaw(
         None
     } else {
         let zip_path = report_dir.join("pre-migration-backup.zip");
-        create_backup_zip(&zip_path, &project_root, &skills_path, &memory_root, &env_dest)?;
+        create_backup_zip(
+            &zip_path,
+            &project_root,
+            &skills_path,
+            &memory_root,
+            &env_dest,
+        )?;
         eprintln!("🗄  Backup: {}", zip_path.display());
         Some(zip_path.display().to_string())
     };
@@ -300,14 +306,7 @@ fn plan_workspace_markdown(
             let soul_src = ws.join("SOUL.md");
             if soul_src.is_file() {
                 soul_found = true;
-                push_file_plan(
-                    "persona",
-                    &soul_src,
-                    soul_dest,
-                    overwrite,
-                    items,
-                    skipped,
-                );
+                push_file_plan("persona", &soul_src, soul_dest, overwrite, items, skipped);
             }
         }
 
@@ -332,14 +331,7 @@ fn plan_workspace_markdown(
                             .map(|n| n.to_string_lossy().into_owned())
                             .unwrap_or_default(),
                     );
-                    push_file_plan(
-                        "memory",
-                        &path,
-                        &dest,
-                        overwrite,
-                        items,
-                        skipped,
-                    );
+                    push_file_plan("memory", &path, &dest, overwrite, items, skipped);
                 }
             }
         }
@@ -457,13 +449,22 @@ fn print_plan(
     dry_run: bool,
     migrate_secrets: bool,
 ) {
-    eprintln!("OpenClaw → SkillLite migration{}", if dry_run { " (dry run)" } else { "" });
+    eprintln!(
+        "OpenClaw → SkillLite migration{}",
+        if dry_run { " (dry run)" } else { "" }
+    );
     eprintln!("  Project:      {}", project_root.display());
     eprintln!("  OpenClaw dir: {}", openclaw_home.display());
     eprintln!("  Skills dir:   {}", skills_path.display());
-    eprintln!("  Memory dir:   {}", paths::chat_root().join("memory").display());
+    eprintln!(
+        "  Memory dir:   {}",
+        paths::chat_root().join("memory").display()
+    );
     eprintln!("  Report dir:   {}", report_dir.display());
-    eprintln!("  Secrets:      {}", if migrate_secrets { "yes" } else { "no" });
+    eprintln!(
+        "  Secrets:      {}",
+        if migrate_secrets { "yes" } else { "no" }
+    );
     eprintln!();
 
     if items.is_empty() {
@@ -502,8 +503,13 @@ fn confirm_apply() -> Result<bool> {
     eprint!("Apply migration? [y/N] ");
     io::stdout().flush().map_err(crate::Error::from)?;
     let mut line = String::new();
-    io::stdin().read_line(&mut line).map_err(crate::Error::from)?;
-    Ok(matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes"))
+    io::stdin()
+        .read_line(&mut line)
+        .map_err(crate::Error::from)?;
+    Ok(matches!(
+        line.trim().to_ascii_lowercase().as_str(),
+        "y" | "yes"
+    ))
 }
 
 fn create_backup_zip(
@@ -520,10 +526,7 @@ fn create_backup_zip(
     let mut zip = ZipWriter::new(file);
     let options = FileOptions::default();
 
-    let mut roots: Vec<(&Path, &str)> = vec![
-        (skills_path, "skills"),
-        (memory_root, "chat-memory"),
-    ];
+    let mut roots: Vec<(&Path, &str)> = vec![(skills_path, "skills"), (memory_root, "chat-memory")];
     let project_skilllite = project_skilllite_dir(project_root);
     if project_skilllite.is_dir() {
         roots.push((&project_skilllite, ".skilllite"));
@@ -822,7 +825,11 @@ fn write_env_file(path: &Path, entries: &BTreeMap<String, String>) -> Result<()>
         lines.push(format!("{k}={v}"));
     }
     let body = lines.join("\n");
-    let body = if body.is_empty() { body } else { format!("{body}\n") };
+    let body = if body.is_empty() {
+        body
+    } else {
+        format!("{body}\n")
+    };
     fs::write(path, body).map_err(crate::Error::from)?;
     Ok(())
 }
@@ -853,21 +860,17 @@ mod tests {
     #[test]
     fn env_allowlist_filters_unknown_keys() {
         let mut collected = BTreeMap::new();
-        collect_env_from_dotenv(
-            &std::path::PathBuf::from("/nonexistent"),
-            &mut collected,
-        );
+        collect_env_from_dotenv(&std::path::PathBuf::from("/nonexistent"), &mut collected);
         assert!(collected.is_empty());
 
         let tmp = tempfile::tempdir().unwrap();
         let env_path = tmp.path().join(".env");
-        fs::write(
-            &env_path,
-            "OPENAI_API_KEY=sk-test\nRANDOM_SECRET=abc\n",
-        )
-        .unwrap();
+        fs::write(&env_path, "OPENAI_API_KEY=sk-test\nRANDOM_SECRET=abc\n").unwrap();
         collect_env_from_dotenv(&env_path, &mut collected);
-        assert_eq!(collected.get("OPENAI_API_KEY").map(String::as_str), Some("sk-test"));
+        assert_eq!(
+            collected.get("OPENAI_API_KEY").map(String::as_str),
+            Some("sk-test")
+        );
         assert!(!collected.contains_key("RANDOM_SECRET"));
     }
 
