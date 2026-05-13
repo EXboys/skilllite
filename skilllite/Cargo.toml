@@ -54,7 +54,7 @@ dirs = "5.0"
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "3.10"
 axum = { version = "0.7", optional = true, features = ["json"] }
-tower-http = { version = "0.5", optional = true, features = ["trace"] }
+tower-http = { version = "0.6", optional = true, features = ["trace"] }
 
 # Agent feature deps re-exported for commands that use them directly
 tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "time", "io-util", "process", "net"] }
