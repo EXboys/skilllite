@@ -127,6 +127,7 @@ cargo install --path .
 ## 下一步
 
 - 阅读 [架构指南](./ARCHITECTURE.md) 了解详细设计
+- 配置入站 Webhook / Gateway：[Channel 与 Gateway 配置指南](./GUIDE_CHANNEL_GATEWAY.md)
 - 查看 [贡献指南](./CONTRIBUTING.md) 了解如何贡献
 - 探索 [benchmark/](../../benchmark/) 了解性能测试
 

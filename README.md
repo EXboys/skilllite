@@ -621,6 +621,7 @@ MIT — See [THIRD_PARTY_LICENSES.md](./THIRD_PARTY_LICENSES.md) for third-party
 
 - [Pick your path](./docs/en/START_PATHS.md) — Desktop vs sandbox/MCP vs full stack (start here if unsure)
 - [Getting Started](./docs/en/GETTING_STARTED.md) — Installation and quick start guide
+- [Channel and Gateway](./docs/en/GUIDE_CHANNEL_GATEWAY.md) — Inbound webhook, `SKILLLITE_CHANNEL_*`, Assistant (EN); [中文](./docs/zh/GUIDE_CHANNEL_GATEWAY.md)
 - [Changelog](./CHANGELOG.md) — Version history and upgrade notes
 - [Environment Variables Reference](./docs/en/ENV_REFERENCE.md) — Complete env var documentation
 - [Architecture](./docs/en/ARCHITECTURE.md) — Project architecture and design

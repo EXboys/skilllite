@@ -559,6 +559,7 @@ MIT — 第三方依赖详见 [THIRD_PARTY_LICENSES.md](../../THIRD_PARTY_LICENS
 
 - [选择你的路径](./START_PATHS.md) — 按目标分流（桌面 / MCP / 全栈）
 - [快速入门](./GETTING_STARTED.md) — 安装和快速入门指南
+- [Channel 与 Gateway 配置指南](./GUIDE_CHANNEL_GATEWAY.md) — Webhook 入站、`SKILLLITE_CHANNEL_*` 摘要与桌面助手流程（含案例与流程图）
 - [更新日志](../../CHANGELOG.md) — 版本历史与升级说明
 - [环境变量参考](./ENV_REFERENCE.md) — 完整环境变量说明
 - [项目架构](./ARCHITECTURE.md) — 项目架构和设计

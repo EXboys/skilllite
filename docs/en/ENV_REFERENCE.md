@@ -154,7 +154,7 @@ When the same variable is set in multiple places, resolution order is (highest �
 
 **Compatibility note**: `skilllite channel serve` and `skilllite artifact-serve` remain available in this phase. `gateway serve` is the preferred unified host when you want a single long-running process for both surfaces.
 
-**Channel note**: when `/webhook/inbound` is hosted by the gateway, the optional inbound-summary env vars still apply: `SKILLLITE_CHANNEL_DINGTALK_WEBHOOK` / `SKILLLITE_CHANNEL_DINGTALK_SECRET`, `SKILLLITE_CHANNEL_FEISHU_WEBHOOK` / `SKILLLITE_CHANNEL_FEISHU_SECRET`, and `SKILLLITE_CHANNEL_TELEGRAM_BOT_TOKEN` + `SKILLLITE_CHANNEL_TELEGRAM_CHAT_ID`. The **SkillLite Assistant** desktop app can also configure these from **Settings → Gateway / inbound HTTP** (persisted in the app WebView `localStorage`, injected into the managed child on **Start here**).
+**Channel note**: when `/webhook/inbound` is hosted by the gateway, the optional inbound-summary env vars still apply: `SKILLLITE_CHANNEL_DINGTALK_WEBHOOK` / `SKILLLITE_CHANNEL_DINGTALK_SECRET`, `SKILLLITE_CHANNEL_FEISHU_WEBHOOK` / `SKILLLITE_CHANNEL_FEISHU_SECRET`, and `SKILLLITE_CHANNEL_TELEGRAM_BOT_TOKEN` + `SKILLLITE_CHANNEL_TELEGRAM_CHAT_ID`. The **SkillLite Assistant** desktop app can also configure these from **Settings → Gateway / inbound HTTP** (persisted in the app WebView `localStorage`, injected into the managed child on **Start here**). For worked examples and diagrams, see [Channel and Gateway configuration](./GUIDE_CHANNEL_GATEWAY.md).
 
 ---
 

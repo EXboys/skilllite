@@ -154,7 +154,7 @@
 
 **兼容说明**：本阶段 `skilllite channel serve` 与 `skilllite artifact-serve` 仍然可用；若希望用**一个常驻进程**同时承载两类 HTTP 面，优先使用 `gateway serve`。
 
-**Channel 说明**：当 `/webhook/inbound` 由 gateway 托管时，可选的入站摘要环境变量仍生效：`SKILLLITE_CHANNEL_DINGTALK_WEBHOOK` / `SKILLLITE_CHANNEL_DINGTALK_SECRET`、`SKILLLITE_CHANNEL_FEISHU_WEBHOOK` / `SKILLLITE_CHANNEL_FEISHU_SECRET`、`SKILLLITE_CHANNEL_TELEGRAM_BOT_TOKEN` + `SKILLLITE_CHANNEL_TELEGRAM_CHAT_ID`。桌面端 **SkillLite Assistant → 设置 → Gateway / 入站 HTTP** 可在界面填写上述项（持久化到本应用 `localStorage`，并由「在这里启动」注入托管子进程）。
+**Channel 说明**：当 `/webhook/inbound` 由 gateway 托管时，可选的入站摘要环境变量仍生效：`SKILLLITE_CHANNEL_DINGTALK_WEBHOOK` / `SKILLLITE_CHANNEL_DINGTALK_SECRET`、`SKILLLITE_CHANNEL_FEISHU_WEBHOOK` / `SKILLLITE_CHANNEL_FEISHU_SECRET`、`SKILLLITE_CHANNEL_TELEGRAM_BOT_TOKEN` + `SKILLLITE_CHANNEL_TELEGRAM_CHAT_ID`。桌面端 **SkillLite Assistant → 设置 → Gateway / 入站 HTTP** 可在界面填写上述项（持久化到本应用 `localStorage`，并由「在这里启动」注入托管子进程）。**分步案例与流程图**见 [Channel 与 Gateway 配置指南](./GUIDE_CHANNEL_GATEWAY.md)。
 
 ---
 

@@ -127,6 +127,7 @@ cargo install --path .
 ## Next Steps
 
 - Read the [Architecture Guide](./ARCHITECTURE.md) for detailed design
+- Configure inbound webhooks / Gateway: [Channel and Gateway configuration](./GUIDE_CHANNEL_GATEWAY.md)
 - Check [Contributing Guide](./CONTRIBUTING.md) for contribution
 - Explore [benchmark/](../../benchmark/) for performance tests
 
