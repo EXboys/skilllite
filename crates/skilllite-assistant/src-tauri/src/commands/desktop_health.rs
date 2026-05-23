@@ -24,8 +24,16 @@ pub async fn skilllite_git_status() -> crate::skilllite_bridge::GitUiStatus {
 }
 
 #[tauri::command]
-pub async fn skilllite_runtime_status() -> crate::skilllite_bridge::RuntimeUiSnapshot {
-    match tauri::async_runtime::spawn_blocking(crate::skilllite_bridge::probe_runtime_status).await
+pub async fn skilllite_runtime_status(
+    app: tauri::AppHandle,
+    workspace: Option<String>,
+) -> crate::skilllite_bridge::RuntimeUiSnapshot {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    let path = crate::skilllite_bridge::resolve_skilllite_path_app(&app);
+    match tauri::async_runtime::spawn_blocking(move || {
+        crate::skilllite_bridge::probe_runtime_status(&ws, Some(&path))
+    })
+    .await
     {
         Ok(s) => s,
         Err(_) => crate::skilllite_bridge::RuntimeUiSnapshot {
@@ -50,13 +58,16 @@ pub async fn skilllite_runtime_status() -> crate::skilllite_bridge::RuntimeUiSna
 #[tauri::command]
 pub async fn skilllite_provision_runtimes(
     app: tauri::AppHandle,
+    workspace: Option<String>,
     python: bool,
     node: bool,
     force: bool,
 ) -> Result<crate::skilllite_bridge::ProvisionRuntimesResult, String> {
+    let ws = workspace.unwrap_or_else(|| ".".to_string());
+    let path = crate::skilllite_bridge::resolve_skilllite_path_app(&app);
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        crate::skilllite_bridge::provision_runtimes_with_emit(&app, python, node, force)
+        crate::skilllite_bridge::provision_runtimes_with_emit(&app, &ws, &path, python, node, force)
     })
     .await
     .map_err(|e| e.to_string())

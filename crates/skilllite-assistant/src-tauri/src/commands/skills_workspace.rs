@@ -2,12 +2,16 @@
 
 #[tauri::command]
 pub async fn skilllite_list_skills(
+    app: tauri::AppHandle,
     workspace: Option<String>,
 ) -> Vec<crate::skilllite_bridge::DesktopSkillInfo> {
     let ws = workspace.unwrap_or_else(|| ".".to_string());
-    tauri::async_runtime::spawn_blocking(move || crate::skilllite_bridge::list_skills(&ws))
-        .await
-        .unwrap_or_default()
+    let path = crate::skilllite_bridge::resolve_skilllite_path_app(&app);
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::skilllite_bridge::list_skills(&ws, Some(&path))
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]

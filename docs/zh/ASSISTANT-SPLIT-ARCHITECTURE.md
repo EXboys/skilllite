@@ -97,8 +97,8 @@ flowchart TB
 | 手动触发进化 | `trigger.rs` | **L2** `evolution run --json --log-manual-trigger`（**已落地**） |
 | Life Pulse `growth_due` | `growth.rs` + `life_pulse.rs` | **L2** status JSON（缓存 30s）；`evolution run` 仍子进程 |
 | 猜你想问 | `followup_suggestions.rs`（`LlmClient`） | **L1** 扩展 `agent-rpc` *或* **L2** `skilllite suggest-followup --json` |
-| 运行时安装 UI | `desktop_services.rs`（`skilllite_sandbox`） | **L2** `skilllite runtime probe/provision` + stderr 进度 |
-| 技能列表 / 添加 | `skill_rpc.rs` + 部分 `core` | **L2** skill 子命令 `--json` |
+| 运行时安装 UI | `desktop_services.rs` | **L2** `runtime probe/provision --json`（**已落地**；CLI 优先 + 回退） |
+| 技能列表 / 添加 | `skill_rpc.rs` + 部分 `core` | **L2** `skills list --json`（列表**已落地**）；add/repair 仍为 CLI 子进程 |
 | Prompts 对比 / 写入 | `prompt_artifact.rs` + `skilllite-fs` | **L3** CLI 读快照；写入走白名单路径 + `skilllite` |
 | 内置技能同步 | `bundled_skills_sync.rs` | **L2** `skilllite skills sync-bundled`（或仅保留 Assistant 资源拷贝） |
 | Gateway | `gateway_manager.rs` | **L2** .spawn `skilllite gateway serve`（已是子进程） |
@@ -128,9 +128,9 @@ flowchart TB
 | `skilllite evolution proposal-status --json` | 单条 backlog | **已落地** |
 | `skilllite evolution confirm/reject --json` | 操作结果 | **已落地** |
 | `skilllite evolution run --json` | `NodeResult` | **已落地**；`--proposal-id`、`--log-manual-trigger` |
-| `skilllite runtime probe` | `RuntimeUiSnapshot` | |
-| `skilllite runtime provision` | stderr 进度 + stdout 结果 JSON | |
-| `skilllite skills list` | `DesktopSkillInfo[]` | 或扩展现有 `list --json` |
+| `skilllite runtime probe --json` | `RuntimeUiSnapshot` | **已落地** |
+| `skilllite runtime provision --json` | stderr 进度 JSON 行 + stdout `ProvisionRuntimesResult` | **已落地**；`--python` / `--node` / `--force` |
+| `skilllite skills list --json --workspace` | `DesktopSkillSnapshot[]`（对齐 `DesktopSkillInfo`） | **已落地** |
 | `skilllite suggest-followup` | `{ "suggestions": [...] }` | 可选 |
 
 **约定：** `--json` 仅在 stdout 输出**一个** JSON 文档；人类可读信息走 stderr。

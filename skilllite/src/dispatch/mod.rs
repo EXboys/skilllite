@@ -28,6 +28,8 @@ pub fn register_all(reg: &mut CommandRegistry) {
     channel_serve::register(reg);
     register_ide(reg);
     register_env(reg);
+    register_runtime(reg);
+    register_skills(reg);
     register_reindex(reg);
     register_wiki(reg);
     register_security(reg);
@@ -156,6 +158,51 @@ fn register_env(reg: &mut CommandRegistry) {
     reg.register(|cmd| {
         if let Commands::CleanEnv { dry_run, force } = cmd {
             Some(skilllite_commands::env::cmd_clean(*dry_run, *force).map_err(Into::into))
+        } else {
+            None
+        }
+    });
+}
+
+fn register_runtime(reg: &mut CommandRegistry) {
+    reg.register(|cmd| {
+        if let Commands::Runtime { action } = cmd {
+            use crate::cli::RuntimeAction;
+            let r = match action {
+                RuntimeAction::Probe { json, cache_dir } => {
+                    skilllite_commands::runtime::cmd_probe(*json, cache_dir.as_deref())
+                }
+                RuntimeAction::Provision {
+                    json,
+                    python,
+                    node,
+                    force,
+                    cache_dir,
+                } => skilllite_commands::runtime::cmd_provision(
+                    *json,
+                    cache_dir.as_deref(),
+                    *python,
+                    *node,
+                    *force,
+                ),
+            };
+            Some(r.map_err(Into::into))
+        } else {
+            None
+        }
+    });
+}
+
+fn register_skills(reg: &mut CommandRegistry) {
+    reg.register(|cmd| {
+        if let Commands::Skills { action } = cmd {
+            use crate::cli::SkillsAction;
+            let r = match action {
+                SkillsAction::List { json, workspace } => {
+                    skilllite_commands::skill::cmd_list_desktop(workspace, *json)
+                }
+            };
+            Some(r.map_err(Into::into))
         } else {
             None
         }

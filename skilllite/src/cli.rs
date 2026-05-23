@@ -744,6 +744,25 @@ pub enum Commands {
         skills_dir: String,
     },
 
+    /// Python/Node runtime probe and provision (desktop UI)
+    ///
+    /// Examples:
+    ///   skilllite runtime probe --json
+    ///   skilllite runtime provision --json --python --node
+    Runtime {
+        #[command(subcommand)]
+        action: RuntimeAction,
+    },
+
+    /// Workspace skill discovery for desktop UI
+    ///
+    /// Examples:
+    ///   skilllite skills list --json --workspace .
+    Skills {
+        #[command(subcommand)]
+        action: SkillsAction,
+    },
+
     /// Manage the self-evolution engine (EVO-5)
     ///
     /// Subcommands:
@@ -1019,6 +1038,46 @@ pub enum GatewayAction {
         /// Mount artifact HTTP routes backed by this local directory when set
         #[arg(long, value_name = "DIR")]
         artifact_dir: Option<std::path::PathBuf>,
+    },
+}
+
+/// `skilllite runtime` subcommands.
+#[derive(Subcommand, Debug)]
+pub enum RuntimeAction {
+    /// Probe system vs cached Python/Node runtimes
+    Probe {
+        /// Emit `RuntimeUiSnapshot` JSON on stdout
+        #[arg(long)]
+        json: bool,
+        /// Override runtime cache directory
+        #[arg(long, value_name = "DIR")]
+        cache_dir: Option<String>,
+    },
+    /// Download bundled Python/Node into the runtime cache
+    Provision {
+        /// Emit `ProvisionRuntimesResult` JSON on stdout; progress lines on stderr
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        python: bool,
+        #[arg(long)]
+        node: bool,
+        #[arg(long)]
+        force: bool,
+        #[arg(long, value_name = "DIR")]
+        cache_dir: Option<String>,
+    },
+}
+
+/// `skilllite skills` subcommands.
+#[derive(Subcommand, Debug)]
+pub enum SkillsAction {
+    /// List skills discovered in a workspace (desktop-shaped JSON)
+    List {
+        #[arg(long)]
+        json: bool,
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
     },
 }
 

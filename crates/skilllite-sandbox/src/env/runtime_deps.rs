@@ -163,7 +163,7 @@ const DEFAULT_NODE_BASE: &str = "https://nodejs.org/dist";
 const FALLBACK_NODE_BASE: &str = "https://npmmirror.com/mirrors/node";
 
 /// Single runtime line for desktop UI (Python / Node): system PATH vs downloaded cache vs not yet provisioned.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeUiLine {
     /// `"system"` | `"cache"` | `"none"`
@@ -176,7 +176,7 @@ pub struct RuntimeUiLine {
     pub detail: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RuntimeUiSnapshot {
     pub python: RuntimeUiLine,
@@ -188,7 +188,7 @@ pub struct RuntimeUiSnapshot {
 }
 
 /// 桌面端「预下载内置运行时」单条结果
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProvisionRuntimeItem {
     pub requested: bool,
@@ -197,7 +197,7 @@ pub struct ProvisionRuntimeItem {
 }
 
 /// 一次预下载 Python / Node 的汇总（可只选其一）
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProvisionRuntimesResult {
     pub python: ProvisionRuntimeItem,

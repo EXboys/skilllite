@@ -255,7 +255,17 @@ pub fn probe_git_status() -> GitUiStatus {
 }
 
 /// Python/Node 来源探测（系统 PATH vs SkillLite 缓存下载），供左侧栏等 UI 展示。
-pub fn probe_runtime_status() -> RuntimeUiSnapshot {
+pub fn probe_runtime_status(
+    workspace: &str,
+    skilllite_path: Option<&std::path::Path>,
+) -> RuntimeUiSnapshot {
+    if let Some(path) = skilllite_path {
+        if let Ok(snap) =
+            crate::skilllite_bridge::evolution_cli::spawn_skilllite_runtime_probe(path, workspace, None)
+        {
+            return snap;
+        }
+    }
     skilllite_sandbox::probe_runtime_for_ui(None)
 }
 
@@ -302,10 +312,36 @@ pub fn provision_runtimes(python: bool, node: bool, force: bool) -> ProvisionRun
 /// 与 [`provision_runtimes`] 相同，但通过 `skilllite-runtime-provision-progress` 事件推送进度文案。
 pub fn provision_runtimes_with_emit(
     app: &tauri::AppHandle,
+    workspace: &str,
+    skilllite_path: &std::path::Path,
     python: bool,
     node: bool,
     force: bool,
 ) -> ProvisionRuntimesResult {
+    let app_emit = app.clone();
+    let ws = workspace.to_string();
+    let path = skilllite_path.to_path_buf();
+    if let Ok(result) = crate::skilllite_bridge::evolution_cli::spawn_skilllite_runtime_provision(
+        &path,
+        &ws,
+        None,
+        python,
+        node,
+        force,
+        move |phase, message, percent| {
+            let _ = app_emit.emit(
+                "skilllite-runtime-provision-progress",
+                RuntimeProvisionProgressPayload {
+                    phase: phase.to_string(),
+                    message: message.to_string(),
+                    percent,
+                },
+            );
+        },
+    ) {
+        return result;
+    }
+
     let py_progress = if python {
         let app = app.clone();
         Some(Box::new(move |m: &str| {

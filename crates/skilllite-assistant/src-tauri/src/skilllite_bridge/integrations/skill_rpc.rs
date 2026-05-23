@@ -4,14 +4,16 @@
 //! 可执行 CLI 与工作区目录，不承担 stdout 行协议解析。契约测试见同目录各子模块 `#[cfg(test)]`。
 
 use crate::skilllite_bridge::paths::{find_project_root, load_dotenv_for_child};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use skilllite_core::skill::{deps, manifest, metadata, trust::TrustTier};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::skilllite_bridge::evolution_cli::spawn_skilllite_json;
+
 use super::shared::{discover_skill_instances, find_skill_dir, resolve_workspace_skills_root};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopSkillInfo {
     pub name: String,
@@ -32,8 +34,22 @@ pub struct DesktopSkillInfo {
     pub missing_env_vars: Vec<String>,
 }
 
-/// List desktop skill infos in workspace using core-owned discovery.
-pub fn list_skills(workspace: &str) -> Vec<DesktopSkillInfo> {
+/// List desktop skill infos in workspace (L2 CLI first, in-process fallback).
+pub fn list_skills(workspace: &str, skilllite_path: Option<&Path>) -> Vec<DesktopSkillInfo> {
+    if let Some(path) = skilllite_path {
+        if let Ok(rows) = spawn_skilllite_json::<Vec<DesktopSkillInfo>>(
+            path,
+            workspace,
+            None,
+            &["skills", "list", "--json", "--workspace", workspace],
+        ) {
+            return rows;
+        }
+    }
+    list_skills_inprocess(workspace)
+}
+
+fn list_skills_inprocess(workspace: &str) -> Vec<DesktopSkillInfo> {
     let root = find_project_root(workspace);
     let mut manifest_cache = std::collections::HashMap::new();
     let mut skills = Vec::new();
@@ -398,7 +414,7 @@ pub fn add_skill(
         return Err(combined);
     }
     let added_skill_names = extract_added_skill_names(&combined);
-    let all_skills = list_skills(workspace);
+    let all_skills = list_skills_inprocess(workspace);
     Ok(summarise_add_output(
         &combined,
         &all_skills,
@@ -548,7 +564,7 @@ mod skill_discovery_tests {
         )
         .expect("evolved script");
 
-        let skills = list_skills(nested_skill.to_string_lossy().as_ref());
+        let skills = list_skills_inprocess(nested_skill.to_string_lossy().as_ref());
         let names: Vec<String> = skills.into_iter().map(|skill| skill.name).collect();
         assert_eq!(names, vec!["evolved-skill", "nested-skill"]);
         let _ = std::fs::remove_dir_all(&tmp);
@@ -565,7 +581,7 @@ mod skill_discovery_tests {
         )
         .expect("bash tool skill md");
 
-        let skills = list_skills(tmp.to_string_lossy().as_ref());
+        let skills = list_skills_inprocess(tmp.to_string_lossy().as_ref());
         assert_eq!(skills.len(), 1);
         assert_eq!(skills[0].name, "web-search");
         assert_eq!(skills[0].skill_type, "bash_tool");

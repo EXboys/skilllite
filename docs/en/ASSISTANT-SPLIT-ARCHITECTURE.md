@@ -95,8 +95,8 @@ flowchart TB
 | Manual evolution trigger | `trigger.rs` | **L2** `skilllite evolution run --json --log-manual-trigger` (**shipped**) |
 | Life Pulse `growth_due` | `growth.rs` + `life_pulse.rs` | **L2** status JSON (cache 30s); keep subprocess for `evolution run` |
 | Follow-up chips | `followup_suggestions.rs` (`LlmClient`) | **L1** new `agent-rpc` method *or* **L2** `skilllite suggest-followup --json` |
-| Runtime install UI | `desktop_services.rs` (`skilllite_sandbox`) | **L2** `skilllite runtime probe/provision` + progress on stderr |
-| Skill list / add | `skill_rpc.rs` + partial `core` | **L2** `skilllite` skill subcommands `--json` |
+| Runtime install UI | `desktop_services.rs` | **L2** `runtime probe/provision --json` (**shipped**; CLI first + in-process fallback) |
+| Skill list / add | `skill_rpc.rs` + partial `core` | **L2** `skills list --json` (**shipped** for list); add/repair still CLI subprocess |
 | Prompts diff / write | `prompt_artifact.rs` + `skilllite-fs` | **L3** read snapshots via CLI; writes via allowlisted paths + `skilllite` or narrow FS helper |
 | Bundled skills sync | `bundled_skills_sync.rs` | **L2** `skilllite skills sync-bundled` (or keep copy-only in Assistant resources) |
 | Gateway manager | `gateway_manager.rs` | **L2** spawn `skilllite gateway serve` (already subprocess) |
@@ -126,9 +126,9 @@ Priority commands for parity with today’s Desktop bridge:
 | `skilllite evolution proposal-status --json <id>` | `EvolutionProposalStatusSnapshot` | **Shipped** |
 | `skilllite evolution confirm/reject --json` | `EvolutionOpSnapshot` | **Shipped** |
 | `skilllite evolution run --json` | `NodeResult` | **Shipped**; `--workspace`, `--proposal-id`, `--log-manual-trigger` |
-| `skilllite runtime probe` | `RuntimeUiSnapshot` | |
-| `skilllite runtime provision` | progress lines on stderr, result JSON on stdout | |
-| `skilllite skills list` (desktop) | `DesktopSkillInfo[]` | Or reuse `list` with `--json` |
+| `skilllite runtime probe --json` | `RuntimeUiSnapshot` | **Shipped** |
+| `skilllite runtime provision --json` | stderr progress JSON lines + `ProvisionRuntimesResult` on stdout | **Shipped**; `--python` / `--node` / `--force` |
+| `skilllite skills list --json --workspace` | `DesktopSkillSnapshot[]` (desktop `DesktopSkillInfo`) | **Shipped** |
 | `skilllite suggest-followup` | `{ "suggestions": string[] }` | Optional; avoids extra RPC surface |
 
 **Convention:** `--json` always prints a single JSON document on stdout; human text on stderr only.
