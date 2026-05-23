@@ -18,6 +18,7 @@ pub struct PendingSkillDto {
 
 #[derive(Debug, Clone, Deserialize)]
 struct EvolutionOpDto {
+    #[allow(dead_code)]
     ok: bool,
     #[allow(dead_code)]
     message: Option<String>,

@@ -98,9 +98,8 @@ pub fn query_backlog_desktop(limit: usize) -> Result<Vec<EvolutionBacklogRowSnap
             })
         })
         .map_err(|e| crate::Error::from(anyhow::Error::from(e)))?;
-    Ok(rows
-        .map(|r| r.map_err(|e| crate::Error::from(anyhow::Error::from(e))))
-        .collect::<Result<Vec<_>>>()?)
+    rows.map(|r| r.map_err(|e| crate::Error::from(anyhow::Error::from(e))))
+        .collect::<Result<Vec<_>>>()
 }
 
 pub fn query_proposal_status(proposal_id: &str) -> Result<EvolutionProposalStatusSnapshot> {

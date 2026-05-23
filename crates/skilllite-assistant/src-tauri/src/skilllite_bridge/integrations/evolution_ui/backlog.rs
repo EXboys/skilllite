@@ -4,7 +4,6 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::skilllite_bridge::chat::ChatConfigOverrides;
 use crate::skilllite_bridge::evolution_cli::spawn_skilllite_json;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
