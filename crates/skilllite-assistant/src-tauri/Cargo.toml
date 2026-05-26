@@ -12,7 +12,7 @@ tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
 tauri = { version = "2.11", features = ["protocol-asset", "tray-icon"] }
-dirs = "5"
+dirs = "6"
 chrono = "0.4"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
