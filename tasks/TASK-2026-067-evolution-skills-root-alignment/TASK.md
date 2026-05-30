@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-067`
 - Title: Align evolution skills root
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P1`
 - Owner: `agent`
 - Contributors:
@@ -30,10 +30,10 @@ generated pending skills to `.skills` unconditionally, so default `skilllite ini
 
 ## Acceptance Criteria
 
-- [ ] `evolution run` resolves the same effective skills root as desktop pending/status/confirm for default workspaces.
-- [ ] Existing `.skills`-only workspaces remain supported.
-- [ ] Regression tests cover default `skills/` and legacy `.skills` behavior.
-- [ ] Required validation commands pass or any blocker is recorded with output.
+- [x] `evolution run` resolves the same effective skills root as desktop pending/status/confirm for default workspaces.
+- [x] Existing `.skills`-only workspaces remain supported.
+- [x] Regression tests cover default `skills/` and legacy `.skills` behavior.
+- [x] Required validation commands pass or any blocker is recorded with output.
 
 ## Risks
 
@@ -47,11 +47,11 @@ generated pending skills to `.skills` unconditionally, so default `skilllite ini
   - Regression tests in `crates/skilllite-commands/src/evolution.rs`.
   - Workspace Rust tests required by policy.
 - Commands to run:
-  - `cargo fmt --check`
-  - `cargo clippy --all-targets -- -D warnings`
-  - `cargo test`
-  - `cargo test -p skilllite`
-  - `python3 scripts/validate_tasks.py`
+  - `cargo fmt --check` - passed
+  - `cargo clippy --all-targets -- -D warnings` - passed
+  - `cargo test` - passed
+  - `cargo test -p skilllite` - passed
+  - `python3 scripts/validate_tasks.py` - passed
 - Manual checks:
   - Re-read modified files and task board after updates.
 

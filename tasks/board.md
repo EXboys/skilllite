@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-05-30 (TASK-2026-067 evolution skills root alignment in progress)
+Last updated: 2026-05-30 (TASK-2026-067 evolution skills root alignment done)
 
 ## In Progress
 
-- `TASK-2026-067-evolution-skills-root-alignment` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-05-30 (TASK-2026-067 evolution skills root alignment in progr
 
 ## Done
 
+- `TASK-2026-067-evolution-skills-root-alignment` - Status: `done` - Owner: `agent`
 - `TASK-2026-066-utf8-evolution-log-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-064-env-keys-single-source` - Status: `done` - Owner: `agent`
 - `TASK-2026-063-extension-tool-metadata-dispatch` - Status: `done` - Owner: `agent`
