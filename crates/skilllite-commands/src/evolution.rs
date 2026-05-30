@@ -31,7 +31,7 @@ use skilllite_core::protocol::{NewSkill, NodeResult};
 use skilllite_core::skill::manifest;
 
 /// Resolve workspace for project-level skill evolution.
-/// Uses SKILLLITE_WORKSPACE env or current_dir. Returns workspace/.skills.
+/// Uses SKILLLITE_WORKSPACE env or current_dir. Returns the effective workspace skills root.
 fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     let ws: PathBuf = workspace
         .filter(|s| !s.is_empty())
@@ -47,7 +47,12 @@ fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     } else {
         std::env::current_dir().ok()?.join(ws)
     };
-    Some(ws.join(".skills"))
+    let resolution =
+        skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(&ws, "skills");
+    if let Some(warning) = resolution.conflict_warning() {
+        eprintln!("{}", warning);
+    }
+    Some(resolution.effective_path)
 }
 
 #[derive(Debug)]
@@ -1028,6 +1033,33 @@ mod tests {
         );
         assert!(normalize_status_filter(Some("unknown")).is_err());
         assert!(normalize_risk_filter(Some("urgent")).is_err());
+    }
+
+    #[test]
+    fn resolve_skills_root_prefers_default_skills_dir() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-root-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("skills")).expect("create skills dir");
+        std::fs::create_dir_all(root.join(".skills")).expect("create legacy skills dir");
+
+        let resolved =
+            resolve_skills_root(Some(root.to_str().expect("temp path utf8"))).expect("resolve");
+
+        assert_eq!(resolved, root.join("skills"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolve_skills_root_falls_back_to_legacy_skills_dir() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-root-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(root.join(".skills")).expect("create legacy skills dir");
+
+        let resolved =
+            resolve_skills_root(Some(root.to_str().expect("temp path utf8"))).expect("resolve");
+
+        assert_eq!(resolved, root.join(".skills"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

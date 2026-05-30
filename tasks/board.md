@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-05-29 (TASK-2026-066 utf8 evolution log truncate done)
+Last updated: 2026-05-30 (TASK-2026-067 evolution skills root alignment in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-067-evolution-skills-root-alignment` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
