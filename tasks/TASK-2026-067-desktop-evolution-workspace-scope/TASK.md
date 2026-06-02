@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-067`
 - Title: Fix desktop evolution workspace scoping
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors: Cursor automation
@@ -29,11 +29,11 @@ Recent desktop L2 CLI bridge changes can run chat, evolution status/backlog, man
 
 ## Acceptance Criteria
 
-- [ ] Agent chat and desktop evolution CLI subprocesses use the same absolute workspace root for `SKILLLITE_WORKSPACE`.
-- [ ] `evolution authorize-capability` background execution includes the workspace passed by the desktop caller.
-- [ ] `evolution run` writes/reads evolved skills through `skills/` by default, falling back to `.skills/` only when appropriate.
-- [ ] Regression tests cover workspace env injection and `skills` vs `.skills` selection.
-- [ ] Required Rust formatting, lint, tests, and task validation pass.
+- [x] Agent chat and desktop evolution CLI subprocesses use the same absolute workspace root for `SKILLLITE_WORKSPACE`.
+- [x] `evolution authorize-capability` background execution includes the workspace passed by the desktop caller.
+- [x] `evolution run` writes/reads evolved skills through `skills/` by default, falling back to `.skills/` only when appropriate.
+- [x] Regression tests cover workspace env injection and `skills` vs `.skills` selection.
+- [x] Required Rust formatting, lint, tests, and task validation pass.
 
 ## Risks
 
