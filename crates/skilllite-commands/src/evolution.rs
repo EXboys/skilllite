@@ -28,10 +28,12 @@ use crate::Result;
 use skilllite_core::config::env_keys::paths as env_paths;
 use skilllite_core::paths;
 use skilllite_core::protocol::{NewSkill, NodeResult};
+use skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback;
 use skilllite_core::skill::manifest;
 
 /// Resolve workspace for project-level skill evolution.
-/// Uses SKILLLITE_WORKSPACE env or current_dir. Returns workspace/.skills.
+/// Uses SKILLLITE_WORKSPACE env or current_dir. Returns the default `skills/`
+/// root, falling back to legacy `.skills/` only when appropriate.
 fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     let ws: PathBuf = workspace
         .filter(|s| !s.is_empty())
@@ -47,7 +49,7 @@ fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     } else {
         std::env::current_dir().ok()?.join(ws)
     };
-    Some(ws.join(".skills"))
+    Some(resolve_skills_dir_with_legacy_fallback(&ws, "skills").effective_path)
 }
 
 #[derive(Debug)]
@@ -1028,6 +1030,37 @@ mod tests {
         );
         assert!(normalize_status_filter(Some("unknown")).is_err());
         assert!(normalize_risk_filter(Some("urgent")).is_err());
+    }
+
+    #[test]
+    fn resolve_skills_root_prefers_default_skills_directory() {
+        let root = std::env::temp_dir().join(format!(
+            "skilllite-evo-skills-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(root.join("skills")).expect("skills dir");
+        std::fs::create_dir_all(root.join(".skills")).expect("legacy skills dir");
+
+        let resolved =
+            resolve_skills_root(Some(root.to_string_lossy().as_ref())).expect("skills root");
+
+        assert_eq!(resolved, root.join("skills"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolve_skills_root_keeps_legacy_fallback_when_default_missing() {
+        let root = std::env::temp_dir().join(format!(
+            "skilllite-evo-skills-test-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(root.join(".skills")).expect("legacy skills dir");
+
+        let resolved =
+            resolve_skills_root(Some(root.to_string_lossy().as_ref())).expect("skills root");
+
+        assert_eq!(resolved, root.join(".skills"));
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
