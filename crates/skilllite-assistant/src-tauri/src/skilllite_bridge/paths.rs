@@ -58,6 +58,21 @@ pub(crate) fn load_dotenv_for_child(workspace: &str) -> Vec<(String, String)> {
     crate::skilllite_bridge::local::parse_dotenv_walking_up(&base, 5)
 }
 
+/// Ensure desktop-spawned CLI children use the selected project as the data root.
+pub(crate) fn with_explicit_workspace_env(
+    mut env_pairs: Vec<(String, String)>,
+    workspace_root: &Path,
+) -> Vec<(String, String)> {
+    env_pairs.retain(|(key, _)| {
+        key != crate::skilllite_bridge::local::env_keys::paths::SKILLLITE_WORKSPACE
+    });
+    env_pairs.push((
+        crate::skilllite_bridge::local::env_keys::paths::SKILLLITE_WORKSPACE.to_string(),
+        workspace_root.to_string_lossy().to_string(),
+    ));
+    env_pairs
+}
+
 pub(crate) fn skilllite_chat_root() -> PathBuf {
     crate::skilllite_bridge::local::chat_root()
 }
@@ -259,6 +274,32 @@ mod tests {
             tmp.canonicalize().expect("tmp canonical")
         );
         let _ = std::fs::remove_dir_all(&resolved);
+    }
+
+    #[test]
+    fn explicit_workspace_env_overrides_dotenv_workspace() {
+        let workspace_root = PathBuf::from("/tmp/selected-workspace");
+        let pairs = with_explicit_workspace_env(
+            vec![
+                (
+                    crate::skilllite_bridge::local::env_keys::paths::SKILLLITE_WORKSPACE
+                        .to_string(),
+                    "/tmp/stale-workspace".to_string(),
+                ),
+                ("OPENAI_MODEL".to_string(), "dotenv-model".to_string()),
+            ],
+            &workspace_root,
+        );
+        let map: std::collections::HashMap<_, _> = pairs.into_iter().collect();
+        assert_eq!(
+            map.get(crate::skilllite_bridge::local::env_keys::paths::SKILLLITE_WORKSPACE)
+                .map(String::as_str),
+            Some("/tmp/selected-workspace")
+        );
+        assert_eq!(
+            map.get("OPENAI_MODEL").map(String::as_str),
+            Some("dotenv-model")
+        );
     }
 
     #[cfg(debug_assertions)]

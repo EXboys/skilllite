@@ -13,7 +13,7 @@ use tauri::{Emitter, Manager, Window};
 use super::local::mcp::McpServerEntry;
 
 use super::bundled_skills_sync;
-use super::paths::{find_project_root, load_dotenv_for_child};
+use super::paths::{find_project_root, load_dotenv_for_child, with_explicit_workspace_env};
 use super::protocol::{
     make_protocol_recovered_event, make_protocol_warning_event, parse_stream_event_line,
     preview_line, StreamEvent, INVALID_LINE_PREVIEW_CHARS, MAX_CONSECUTIVE_INVALID_PROTOCOL_LINES,
@@ -369,6 +369,7 @@ pub fn chat_stream(
         load_dotenv_for_child(&raw_workspace),
         config_overrides.as_ref(),
     );
+    let env_pairs = with_explicit_workspace_env(env_pairs, &workspace_root);
     let provenance = summarize_env_provenance(&env_sources);
     if !provenance.is_empty() {
         eprintln!(

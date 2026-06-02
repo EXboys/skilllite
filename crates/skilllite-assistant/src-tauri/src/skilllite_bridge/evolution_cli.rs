@@ -11,7 +11,7 @@ use serde::Deserialize;
 use super::local::engine_types::{ProvisionRuntimesResult, RuntimeUiSnapshot};
 
 use super::chat::{merge_dotenv_with_chat_overrides, ChatConfigOverrides};
-use super::paths::{find_project_root, load_dotenv_for_child};
+use super::paths::{find_project_root, load_dotenv_for_child, with_explicit_workspace_env};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,7 +31,10 @@ pub fn spawn_skilllite(
     let mut cmd = Command::new(skilllite_path);
     crate::windows_spawn::hide_child_console(&mut cmd);
     cmd.args(args);
-    let env_pairs = merge_dotenv_with_chat_overrides(load_dotenv_for_child(workspace), cfg);
+    let env_pairs = with_explicit_workspace_env(
+        merge_dotenv_with_chat_overrides(load_dotenv_for_child(workspace), cfg),
+        &root,
+    );
     for (k, v) in env_pairs {
         cmd.env(k, v);
     }
@@ -103,7 +106,10 @@ where
     let mut cmd = Command::new(skilllite_path);
     crate::windows_spawn::hide_child_console(&mut cmd);
     cmd.args(&args);
-    let env_pairs = merge_dotenv_with_chat_overrides(load_dotenv_for_child(workspace), cfg);
+    let env_pairs = with_explicit_workspace_env(
+        merge_dotenv_with_chat_overrides(load_dotenv_for_child(workspace), cfg),
+        &root,
+    );
     for (k, v) in env_pairs {
         cmd.env(k, v);
     }
