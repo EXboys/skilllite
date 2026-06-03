@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-03 (TASK-2026-067 pending skill path safety in progress)
+Last updated: 2026-06-03 (TASK-2026-067 pending skill path safety done)
 
 ## In Progress
 
-- `TASK-2026-067-pending-skill-path-safety` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-06-03 (TASK-2026-067 pending skill path safety in progress)
 
 ## Done
 
+- `TASK-2026-067-pending-skill-path-safety` - Status: `done` - Owner: `agent`
 - `TASK-2026-066-utf8-evolution-log-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-064-env-keys-single-source` - Status: `done` - Owner: `agent`
 - `TASK-2026-063-extension-tool-metadata-dispatch` - Status: `done` - Owner: `agent`

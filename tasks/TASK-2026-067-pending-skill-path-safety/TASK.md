@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-067`
 - Title: Constrain pending skill path operations
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors: Cursor automation
@@ -30,10 +30,10 @@ queue. The CLI and desktop bridge expose these operations.
 
 ## Acceptance Criteria
 
-- [ ] `confirm_pending_skill`, `reject_pending_skill`, and desktop pending skill
+- [x] `confirm_pending_skill`, `reject_pending_skill`, and desktop pending skill
       reads reject absolute paths and `..` escapes.
-- [ ] Valid pending skill names continue to confirm and reject normally.
-- [ ] Regression tests cover rejection behavior and prove out-of-scope
+- [x] Valid pending skill names continue to confirm and reject normally.
+- [x] Regression tests cover rejection behavior and prove out-of-scope
       directories survive.
 
 ## Risks
