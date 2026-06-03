@@ -26,7 +26,7 @@ mod scan;
 mod validate;
 
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Component, Path};
 
 use rusqlite::Connection;
 
@@ -242,7 +242,20 @@ pub fn list_pending_skills_with_review(skills_root: &Path) -> Vec<(String, bool)
         .collect()
 }
 
+pub fn validate_pending_skill_name(skill_name: &str) -> Result<&str> {
+    if skill_name.trim().is_empty() || skill_name.chars().any(|c| matches!(c, '/' | '\\' | '\0')) {
+        bail!("invalid pending skill name: {}", skill_name);
+    }
+
+    let mut components = Path::new(skill_name).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => Ok(skill_name),
+        _ => bail!("invalid pending skill name: {}", skill_name),
+    }
+}
+
 pub fn confirm_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> {
+    let skill_name = validate_pending_skill_name(skill_name)?;
     let pending_dir = skills_root.join("_evolved").join("_pending");
     let evolved_dir = skills_root.join("_evolved");
     let src = pending_dir.join(skill_name);
@@ -261,6 +274,7 @@ pub fn confirm_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()>
 }
 
 pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> {
+    let skill_name = validate_pending_skill_name(skill_name)?;
     let pending_dir = skills_root.join("_evolved").join("_pending");
     let src = pending_dir.join(skill_name);
 
@@ -278,3 +292,63 @@ pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> 
 pub use repair::{repair_one_skill, repair_skills};
 pub use scan::track_skill_usage;
 pub use validate::{validate_skills, SkillValidation};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_pending_skill(skills_root: &Path, name: &str) {
+        let skill_dir = skills_root.join("_evolved").join("_pending").join(name);
+        std::fs::create_dir_all(&skill_dir).unwrap();
+        std::fs::write(skill_dir.join("SKILL.md"), "# Test skill\n").unwrap();
+    }
+
+    #[test]
+    fn reject_pending_skill_rejects_path_traversal_without_deleting_escape_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let skills_root = temp.path().join("skills");
+        let escape_target = temp.path().join("keep-me");
+        std::fs::create_dir_all(skills_root.join("_evolved").join("_pending")).unwrap();
+        std::fs::create_dir_all(&escape_target).unwrap();
+        std::fs::write(escape_target.join("sentinel.txt"), "still here").unwrap();
+
+        let err = reject_pending_skill(&skills_root, "../../keep-me").unwrap_err();
+
+        assert!(err.to_string().contains("invalid pending skill name"));
+        assert!(escape_target.join("sentinel.txt").is_file());
+    }
+
+    #[test]
+    fn confirm_pending_skill_rejects_absolute_paths_without_moving_escape_target() {
+        let temp = tempfile::tempdir().unwrap();
+        let skills_root = temp.path().join("skills");
+        let escape_target = temp.path().join("external-skill");
+        std::fs::create_dir_all(skills_root.join("_evolved").join("_pending")).unwrap();
+        std::fs::create_dir_all(&escape_target).unwrap();
+
+        let err = confirm_pending_skill(&skills_root, escape_target.to_str().unwrap()).unwrap_err();
+
+        assert!(err.to_string().contains("invalid pending skill name"));
+        assert!(escape_target.is_dir());
+        assert!(!skills_root.join("_evolved").join("external-skill").exists());
+    }
+
+    #[test]
+    fn confirm_and_reject_pending_skill_accept_safe_names() {
+        let temp = tempfile::tempdir().unwrap();
+        let skills_root = temp.path().join("skills");
+        std::fs::create_dir_all(skills_root.join("_evolved").join("_pending")).unwrap();
+        create_pending_skill(&skills_root, "safe-skill");
+        create_pending_skill(&skills_root, "other-safe-skill");
+
+        confirm_pending_skill(&skills_root, "safe-skill").unwrap();
+        reject_pending_skill(&skills_root, "other-safe-skill").unwrap();
+
+        assert!(skills_root.join("_evolved").join("safe-skill").is_dir());
+        assert!(!skills_root
+            .join("_evolved")
+            .join("_pending")
+            .join("other-safe-skill")
+            .exists());
+    }
+}

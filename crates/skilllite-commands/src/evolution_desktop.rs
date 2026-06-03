@@ -149,6 +149,7 @@ pub fn list_pending_skills(workspace: &str) -> Result<Vec<PendingSkillSnapshot>>
 }
 
 pub fn read_pending_skill_md(workspace: &str, skill_name: &str) -> Result<String> {
+    let skill_name = skilllite_evolution::skill_synth::validate_pending_skill_name(skill_name)?;
     let skills_root = resolve_skills_root(workspace)?;
     let path = skills_root
         .join("_evolved")
