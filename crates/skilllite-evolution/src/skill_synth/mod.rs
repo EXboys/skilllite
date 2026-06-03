@@ -304,7 +304,7 @@ mod tests {
     }
 
     #[test]
-    fn reject_pending_skill_rejects_path_traversal_without_deleting_escape_target() {
+    fn reject_pending_skill_rejects_absolute_path_without_deleting_escape_target() {
         let temp = tempfile::tempdir().unwrap();
         let skills_root = temp.path().join("skills");
         let escape_target = temp.path().join("keep-me");
@@ -312,25 +312,26 @@ mod tests {
         std::fs::create_dir_all(&escape_target).unwrap();
         std::fs::write(escape_target.join("sentinel.txt"), "still here").unwrap();
 
-        let err = reject_pending_skill(&skills_root, "../../keep-me").unwrap_err();
+        let err = reject_pending_skill(&skills_root, escape_target.to_str().unwrap()).unwrap_err();
 
         assert!(err.to_string().contains("invalid pending skill name"));
         assert!(escape_target.join("sentinel.txt").is_file());
     }
 
     #[test]
-    fn confirm_pending_skill_rejects_absolute_paths_without_moving_escape_target() {
+    fn confirm_pending_skill_rejects_path_traversal_without_moving_escape_target() {
         let temp = tempfile::tempdir().unwrap();
         let skills_root = temp.path().join("skills");
-        let escape_target = temp.path().join("external-skill");
         std::fs::create_dir_all(skills_root.join("_evolved").join("_pending")).unwrap();
-        std::fs::create_dir_all(&escape_target).unwrap();
+        let escape_source = skills_root.join("external-skill");
+        let escape_destination = temp.path().join("external-skill");
+        std::fs::create_dir_all(&escape_source).unwrap();
 
-        let err = confirm_pending_skill(&skills_root, escape_target.to_str().unwrap()).unwrap_err();
+        let err = confirm_pending_skill(&skills_root, "../../external-skill").unwrap_err();
 
         assert!(err.to_string().contains("invalid pending skill name"));
-        assert!(escape_target.is_dir());
-        assert!(!skills_root.join("_evolved").join("external-skill").exists());
+        assert!(escape_source.is_dir());
+        assert!(!escape_destination.exists());
     }
 
     #[test]
