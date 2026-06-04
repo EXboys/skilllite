@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-067`
 - Title: Fix authorized evolution proposal run binding
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P1`
 - Owner: `agent`
 - Contributors: `automation`
@@ -23,9 +23,9 @@ Desktop chat authorization for capability evolution enqueues a concrete backlog 
 
 ## Acceptance Criteria
 
-- [ ] Background runs started by `skilllite_authorize_capability_evolution` pass `--proposal-id <authorized id>`.
-- [ ] The forced proposal environment variable is no longer the only binding mechanism for this path.
-- [ ] Tests cover the argument contract and the affected crates still pass required checks.
+- [x] Background runs started by `skilllite_authorize_capability_evolution` pass `--proposal-id <authorized id>`.
+- [x] The forced proposal environment variable is no longer the only binding mechanism for this path.
+- [x] Tests cover the argument contract and the affected crates still pass required checks.
 
 ## Risks
 
@@ -36,8 +36,8 @@ Desktop chat authorization for capability evolution enqueues a concrete backlog 
 ## Validation Plan
 
 - Required tests: targeted Rust tests for the assistant bridge and workspace Rust tests.
-- Commands to run: `cargo fmt --check`; `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml authorize_background_run_args_force_proposal`; `cargo test -p skilllite-commands`; `cargo test`.
-- Manual checks: inspect the final `authorize.rs` command chain to confirm the child receives `--proposal-id`.
+- Commands run: `cargo fmt --check`; `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml authorize_background_run_args_force_proposal`; `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml`; `cargo clippy --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml --all-targets`; `cargo test -p skilllite-commands`; `cargo clippy --all-targets -- -D warnings`; `cargo test`; `python3 scripts/validate_tasks.py`.
+- Manual checks: inspected the final `authorize.rs` command chain and confirmed the child receives `--proposal-id`.
 
 ## Regression Scope
 

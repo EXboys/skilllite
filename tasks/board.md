@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-04 (TASK-2026-067 authorized evolution proposal run in progress)
+Last updated: 2026-06-04 (TASK-2026-067 authorized evolution proposal run done)
 
 ## In Progress
 
-- `TASK-2026-067-authorized-evolution-proposal-run` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-06-04 (TASK-2026-067 authorized evolution proposal run in pro
 
 ## Done
 
+- `TASK-2026-067-authorized-evolution-proposal-run` - Status: `done` - Owner: `agent`
 - `TASK-2026-066-utf8-evolution-log-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-064-env-keys-single-source` - Status: `done` - Owner: `agent`
 - `TASK-2026-063-extension-tool-metadata-dispatch` - Status: `done` - Owner: `agent`
