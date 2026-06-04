@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-05-29 (TASK-2026-066 utf8 evolution log truncate done)
+Last updated: 2026-06-04 (TASK-2026-067 authorized evolution proposal run in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-067-authorized-evolution-proposal-run` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
