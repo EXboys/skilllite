@@ -525,7 +525,7 @@ pub fn get_skill_full_docs(skill: &LoadedSkill) -> Option<String> {
                             .unwrap_or_default();
                         // Limit reference content
                         let truncated = if content.len() > 5000 {
-                            format!("{}...\n[truncated]", &content[..5000])
+                            format!("{}...\n[truncated]", safe_truncate(&content, 5000))
                         } else {
                             content
                         };
@@ -581,6 +581,16 @@ mod tests {
             }],
             multi_script_entries: HashMap::new(),
         }
+    }
+
+    fn make_test_skill_in_dir(
+        name: &str,
+        desc: &str,
+        skill_dir: std::path::PathBuf,
+    ) -> LoadedSkill {
+        let mut skill = make_test_skill(name, desc);
+        skill.skill_dir = skill_dir;
+        skill
     }
 
     #[test]
@@ -711,5 +721,29 @@ mod tests {
         };
         let hint = build_schema_hint(&skill);
         assert_eq!(hint, "");
+    }
+
+    #[test]
+    fn test_get_skill_full_docs_truncates_reference_on_utf8_boundary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let refs_dir = tmp.path().join("references");
+        std::fs::create_dir(&refs_dir).unwrap();
+        std::fs::write(tmp.path().join("SKILL.md"), "# Test Skill\n").unwrap();
+        std::fs::write(
+            refs_dir.join("guide.md"),
+            format!("{}界{}", "a".repeat(4999), "tail".repeat(100)),
+        )
+        .unwrap();
+
+        let skill = make_test_skill_in_dir("test", "desc", tmp.path().to_path_buf());
+        let docs = get_skill_full_docs(&skill).unwrap();
+
+        assert!(docs.contains("### Reference: guide.md"), "{docs}");
+        assert!(docs.contains(&"a".repeat(4999)), "{docs}");
+        assert!(docs.contains("[truncated]"), "{docs}");
+        assert!(
+            !docs.contains("tail"),
+            "reference body should be truncated before the tail: {docs}"
+        );
     }
 }

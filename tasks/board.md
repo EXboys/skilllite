@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-05-29 (TASK-2026-066 utf8 evolution log truncate done)
+Last updated: 2026-06-06 (TASK-2026-067 utf8 llm error truncate done)
 
 ## In Progress
 
@@ -17,6 +17,7 @@ Last updated: 2026-05-29 (TASK-2026-066 utf8 evolution log truncate done)
 
 ## Done
 
+- `TASK-2026-067-utf8-llm-error-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-066-utf8-evolution-log-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-064-env-keys-single-source` - Status: `done` - Owner: `agent`
 - `TASK-2026-063-extension-tool-metadata-dispatch` - Status: `done` - Owner: `agent`

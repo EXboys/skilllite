@@ -354,7 +354,7 @@ fn extract_error_detail(body: &str) -> String {
         }
     }
     if body.len() > 200 {
-        format!("{}…", &body[..200])
+        format!("{}…", safe_truncate(body, 200))
     } else {
         body.to_string()
     }
