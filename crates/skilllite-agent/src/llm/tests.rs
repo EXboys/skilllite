@@ -394,3 +394,17 @@ fn test_format_api_error_truncates_long_body() {
     );
     assert!(result.contains('…'), "should have ellipsis: {result}");
 }
+
+#[test]
+fn test_format_api_error_truncates_non_json_body_on_utf8_boundary() {
+    let body = format!("{}界{}", "a".repeat(199), "tail".repeat(100));
+    let result = format_api_error(reqwest::StatusCode::BAD_GATEWAY, &body, "LLM");
+
+    assert!(result.contains("服务端错误"), "{result}");
+    assert!(result.contains(&"a".repeat(199)), "{result}");
+    assert!(result.contains('…'), "should have ellipsis: {result}");
+    assert!(
+        !result.contains("tail"),
+        "should truncate the long raw body: {result}"
+    );
+}
