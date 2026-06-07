@@ -394,7 +394,7 @@ impl TaskPlanner {
 
         tracing::debug!(
             "parse_task_list raw (first 500 chars): {}",
-            &raw[..raw.len().min(500)]
+            safe_truncate(raw, 500)
         );
         bail!("No valid JSON task array found in LLM response")
     }
@@ -775,6 +775,20 @@ mod tests {
 
         let empty = planner.parse_task_list("[]").unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn parse_task_list_returns_error_without_utf8_boundary_panic() {
+        let planner = TaskPlanner::new(None, None, None);
+        let raw = format!("{}汉 trailing invalid planning response", "a".repeat(499));
+
+        let err = planner.parse_task_list(&raw).unwrap_err();
+
+        assert!(
+            err.to_string().contains("No valid JSON task array found"),
+            "{}",
+            err
+        );
     }
 
     #[test]

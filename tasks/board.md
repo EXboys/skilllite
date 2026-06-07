@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-06 (TASK-2026-067 utf8 llm error truncate done)
+Last updated: 2026-06-07 (TASK-2026-068 critical bug audit in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-068-critical-bug-audit` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
