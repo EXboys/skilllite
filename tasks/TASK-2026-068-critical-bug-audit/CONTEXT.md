@@ -2,27 +2,27 @@
 
 ## Current State
 
-- Relevant crates/files: To be determined from recent commit review; likely `crates/`, `docs/`, `python-sdk/`, and task artifacts touched by recent commits.
-- Current behavior: Current branch `cursor/critical-bug-investigation-b158` is aligned with `origin/main` at audit start.
+- Relevant crates/files: `crates/skilllite-agent/src/agent_loop/helpers.rs`, `crates/skilllite-agent/src/task_planner.rs`, and recent UTF-8 truncation commits on `main`.
+- Current behavior: Agent planning error paths now use `safe_truncate` for previews instead of raw byte slicing.
 
 ## Architecture Fit
 
-- Layer boundaries involved: Potentially all Rust workspace layers depending on reviewed commits.
-- Interfaces to preserve: Public CLI behavior, sandbox execution policy, agent/tool orchestration contracts, persisted data formats.
+- Layer boundaries involved: `skilllite-agent` planning and agent-loop error handling.
+- Interfaces to preserve: Tool-result error reporting, planner parse/fallback behavior, and existing `safe_truncate` utility semantics.
 
 ## Dependency and Compatibility
 
-- New dependencies: None expected for audit-only work.
-- Backward compatibility notes: No compatibility changes unless a confirmed critical fix requires it.
+- New dependencies: None.
+- Backward compatibility notes: No API, CLI, schema, or persisted-format changes; invalid non-ASCII planner inputs now return errors instead of panicking.
 
 ## Design Decisions
 
-- Decision: Use evidence-based triage before any fix.
-  - Rationale: The automation should not open PRs for speculative or low-impact observations.
-  - Alternatives considered: Broad refactoring or proactive hardening without a confirmed trigger.
-  - Why rejected: It would increase review noise and risk outside the requested scope.
+- Decision: Fix only the confirmed agent crash paths in this PR.
+  - Rationale: `update_task_plan` and `parse_task_list` are active agent/planning paths where LLM-produced non-ASCII invalid data can panic before returning a recoverable error.
+  - Alternatives considered: Sweep every remaining byte slice across CLI/admin formatting paths.
+  - Why rejected: Several remaining paths are lower-blast-radius or ASCII/index-derived; broad cleanup would exceed the critical-bug scope.
 
 ## Open Questions
 
-- [ ] Which recent commits have the largest behavioral blast radius?
-- [ ] Do any suspicious changes have a concrete critical trigger scenario?
+- [x] Which recent commits have the largest behavioral blast radius?
+- [x] Do any suspicious changes have a concrete critical trigger scenario?

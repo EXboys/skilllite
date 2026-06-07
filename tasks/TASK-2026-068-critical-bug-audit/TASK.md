@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-068`
 - Title: Critical Bug Audit
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -25,7 +25,7 @@ Inspect recent SkillLite commits for high-severity correctness regressions that 
 - [x] Recent behavioral commits are reviewed beyond the diff by tracing relevant caller and downstream paths.
 - [x] Any reported bug has a concrete trigger scenario and critical impact.
 - [x] If a critical bug is fixed, the fix is minimal and covered by targeted validation.
-- [ ] Validation commands pass and evidence is recorded.
+- [x] Validation commands pass and evidence is recorded.
 
 ## Risks
 
@@ -50,5 +50,5 @@ Inspect recent SkillLite commits for high-severity correctness regressions that 
 ## Links
 
 - Source TODO section: N/A - scheduled critical bug-finding automation.
-- Related PRs/issues: Recent commits on current branch and `main`.
+- Related PRs/issues: Fix commit `ea54799`; recent commits on current branch and `main`.
 - Related docs: `spec/verification-integrity.md`, `spec/README.md`.
