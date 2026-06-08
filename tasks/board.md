@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-08 (TASK-2026-068 utf8 preview crash fixes in progress)
+Last updated: 2026-06-08 (TASK-2026-068 utf8 preview crash fixes done)
 
 ## In Progress
 
-- `TASK-2026-068-utf8-preview-crash-fixes` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-06-08 (TASK-2026-068 utf8 preview crash fixes in progress)
 
 ## Done
 
+- `TASK-2026-068-utf8-preview-crash-fixes` - Status: `done` - Owner: `agent`
 - `TASK-2026-067-utf8-llm-error-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-066-utf8-evolution-log-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-064-env-keys-single-source` - Status: `done` - Owner: `agent`

@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-068`
 - Title: Fix UTF-8 preview truncation crashes
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P1`
 - Owner: `agent`
 - Contributors:
@@ -31,11 +31,11 @@ instead of returning a human-readable status or structured error.
 
 ## Acceptance Criteria
 
-- [ ] Human `evolution status` formatting cannot panic on long CJK/emoji event reasons.
-- [ ] Agent planning-control errors cannot panic when previewing malformed multibyte task strings.
-- [ ] Embedding unexpected-response errors cannot panic when previewing multibyte JSON.
-- [ ] Focused tests cover the above non-ASCII cases.
-- [ ] Required Rust formatting, linting, tests, and task validation pass.
+- [x] Human `evolution status` formatting cannot panic on long CJK/emoji event reasons.
+- [x] Agent planning-control errors cannot panic when previewing malformed multibyte task strings.
+- [x] Embedding unexpected-response errors cannot panic when previewing multibyte JSON.
+- [x] Focused tests cover the above non-ASCII cases.
+- [x] Required Rust formatting, linting, tests, and task validation pass.
 
 ## Risks
 
@@ -48,13 +48,14 @@ instead of returning a human-readable status or structured error.
 - Required tests:
   - `cargo test -p skilllite-agent`
   - `cargo test -p skilllite`
+  - `cargo test -p skilllite-commands --features agent shorten_event_reason_preserves_utf8_boundaries`
   - `cargo test`
 - Commands to run:
   - `cargo fmt --check`
   - `cargo clippy --all-targets -- -D warnings`
   - `python3 scripts/validate_tasks.py`
 - Manual checks:
-  - Build and run a CLI reproduction for `skilllite evolution status` with a long CJK reason.
+  - Build and run a CLI reproduction for `skilllite evolution status` with a long CJK reason: passed, exit `0`.
 
 ## Regression Scope
 
