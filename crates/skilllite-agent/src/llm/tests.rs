@@ -408,3 +408,23 @@ fn test_format_api_error_truncates_non_json_body_on_utf8_boundary() {
         "should truncate the long raw body: {result}"
     );
 }
+
+#[test]
+fn unexpected_embedding_response_error_truncates_on_utf8_boundary() {
+    let json = json!({
+        "error": format!("{}{}", "a".repeat(41), "界".repeat(200))
+    });
+
+    let result = format_unexpected_embedding_response_error(&json);
+
+    assert!(
+        result.contains("Unexpected embedding response format"),
+        "{result}"
+    );
+    assert!(result.is_char_boundary(result.len()));
+    assert!(
+        result.len() < 600,
+        "should keep preview bounded: {}",
+        result.len()
+    );
+}
