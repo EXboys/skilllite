@@ -295,6 +295,25 @@ pub fn cmd_status(json: bool, workspace: &str, periodic_anchor_unix: Option<i64>
     cmd_status_human(workspace)
 }
 
+fn truncate_utf8_prefix(s: &str, max: usize) -> &str {
+    if s.len() <= max {
+        return s;
+    }
+    let mut end = max;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+fn shorten_event_reason(reason: &str) -> String {
+    if reason.len() > 50 {
+        format!("{}...", truncate_utf8_prefix(reason, 47))
+    } else {
+        reason.to_string()
+    }
+}
+
 fn cmd_status_human(workspace: &str) -> Result<()> {
     let workspace_root = resolve_workspace_root(workspace);
     skilllite_core::config::load_dotenv_from_dir(&workspace_root);
@@ -401,11 +420,7 @@ fn cmd_status_human(workspace: &str) -> Result<()> {
             t if t.contains("rolled_back") => "🔙",
             _ => "  ",
         };
-        let reason_short = if reason.len() > 50 {
-            format!("{}...", &reason[..47])
-        } else {
-            reason
-        };
+        let reason_short = shorten_event_reason(&reason);
         println!("  {} {} {} {}", icon, date, etype, reason_short);
         if !target.is_empty() {
             println!("     └─ target: {}", target);
@@ -453,5 +468,15 @@ mod tests {
         assert!(v.get("mode_key").is_some());
         assert!(v.get("would_have_evolution_proposals").is_some());
         assert!(v.get("recent_events").is_some());
+    }
+
+    #[test]
+    fn shorten_event_reason_preserves_utf8_boundaries() {
+        let reason = format!("{}{}", "a".repeat(40), "界".repeat(10));
+        let shortened = shorten_event_reason(&reason);
+
+        assert!(shortened.ends_with("..."));
+        assert!(shortened.len() <= 50);
+        assert!(shortened.is_char_boundary(shortened.len()));
     }
 }

@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-06 (TASK-2026-067 utf8 llm error truncate done)
+Last updated: 2026-06-08 (TASK-2026-068 utf8 preview crash fixes in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-068-utf8-preview-crash-fixes` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
