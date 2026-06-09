@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-06 (TASK-2026-067 utf8 llm error truncate done)
+Last updated: 2026-06-09 (TASK-2026-068 agent utf8 preview panics in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-068-agent-utf8-preview-panics` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 

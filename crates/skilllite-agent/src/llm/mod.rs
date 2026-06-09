@@ -206,13 +206,7 @@ impl LlmClient {
             return Self::extract_embeddings_from_items(items);
         }
 
-        // Log the unexpected response shape for debugging
-        let preview = serde_json::to_string(&json).unwrap_or_default();
-        let preview = &preview[..preview.len().min(500)];
-        bail!(
-            "Unexpected embedding response format (no 'data' or 'output.embeddings'): {}",
-            preview
-        )
+        bail!("{}", format_unexpected_embedding_response(&json))
     }
 
     /// Extract embedding vectors from a JSON array of items, each containing an "embedding" field.
@@ -309,6 +303,14 @@ fn record_llm_usage_totals(out: Option<&mut LlmUsageTotals>, usage: &Option<Usag
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+fn format_unexpected_embedding_response(json: &Value) -> String {
+    let preview = serde_json::to_string(json).unwrap_or_default();
+    format!(
+        "Unexpected embedding response format (no 'data' or 'output.embeddings'): {}",
+        safe_truncate(&preview, 500)
+    )
+}
 
 /// Format a user-friendly error from an LLM API HTTP failure.
 ///
