@@ -394,7 +394,7 @@ impl TaskPlanner {
 
         tracing::debug!(
             "parse_task_list raw (first 500 chars): {}",
-            &raw[..raw.len().min(500)]
+            safe_truncate(raw, 500)
         );
         bail!("No valid JSON task array found in LLM response")
     }
@@ -736,6 +736,28 @@ mod tests {
     use super::*;
     use crate::extensions::ExtensionRegistry;
 
+    struct AlwaysEnabledSubscriber;
+
+    impl tracing::Subscriber for AlwaysEnabledSubscriber {
+        fn enabled(&self, _metadata: &tracing::Metadata<'_>) -> bool {
+            true
+        }
+
+        fn new_span(&self, _span: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+            tracing::span::Id::from_u64(1)
+        }
+
+        fn record(&self, _span: &tracing::span::Id, _values: &tracing::span::Record<'_>) {}
+
+        fn record_follows_from(&self, _span: &tracing::span::Id, _follows: &tracing::span::Id) {}
+
+        fn event(&self, _event: &tracing::Event<'_>) {}
+
+        fn enter(&self, _span: &tracing::span::Id) {}
+
+        fn exit(&self, _span: &tracing::span::Id) {}
+    }
+
     #[test]
     fn test_planning_prompt_phase1_balance() {
         let planner = TaskPlanner::new(None, None, None);
@@ -775,6 +797,22 @@ mod tests {
 
         let empty = planner.parse_task_list("[]").unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn parse_task_list_error_preview_is_utf8_boundary_safe() {
+        let planner = TaskPlanner::new(None, None, None);
+        let raw = format!("{}界{}", "a".repeat(499), "tail");
+        let dispatch = tracing::Dispatch::new(AlwaysEnabledSubscriber);
+
+        let result = tracing::dispatcher::with_default(&dispatch, || planner.parse_task_list(&raw));
+
+        let err = result.expect_err("invalid planner output should be rejected");
+        assert!(
+            err.to_string()
+                .contains("No valid JSON task array found in LLM response"),
+            "{err}"
+        );
     }
 
     #[test]

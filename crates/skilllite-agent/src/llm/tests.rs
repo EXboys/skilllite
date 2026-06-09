@@ -408,3 +408,21 @@ fn test_format_api_error_truncates_non_json_body_on_utf8_boundary() {
         "should truncate the long raw body: {result}"
     );
 }
+
+#[test]
+fn unexpected_embedding_response_preview_is_utf8_boundary_safe() {
+    let body = format!("{}界{}", "a".repeat(487), "tail");
+    let response = json!({ "message": body });
+
+    let result = format_unexpected_embedding_response(&response);
+
+    assert!(
+        result.contains("Unexpected embedding response format"),
+        "{result}"
+    );
+    assert!(result.contains(&"a".repeat(487)), "{result}");
+    assert!(
+        !result.contains("tail"),
+        "preview should be truncated before the suffix: {result}"
+    );
+}

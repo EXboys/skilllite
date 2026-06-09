@@ -72,7 +72,7 @@ pub(super) fn handle_update_task_plan(
                                 "'tasks' must be a JSON array, got a string that is not valid JSON array. \
                                  Pass tasks as a real array: {{\"tasks\": [{{...}}]}} not {{\"tasks\": \"[...]\"}}. \
                                  Received string preview: {:?}",
-                                &s[..s.len().min(120)]
+                                safe_truncate(s, 120)
                             ),
                             is_error: true,
                             counts_as_failure: true,
@@ -1102,6 +1102,24 @@ mod tests {
         let r = handle_update_task_plan(args, &mut planner, &[], &mut sink);
         assert!(r.is_error);
         assert!(r.content.contains("must be a JSON array"), "{}", r.content);
+    }
+
+    #[test]
+    fn update_task_plan_rejects_non_array_string_preview_utf8_boundary_safe() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        let mut sink = SilentEventSink;
+        let tasks = format!("{}界{}", "a".repeat(119), "tail");
+        let args = serde_json::json!({ "tasks": tasks }).to_string();
+
+        let r = handle_update_task_plan(&args, &mut planner, &[], &mut sink);
+
+        assert!(r.is_error);
+        assert!(r.content.contains("must be a JSON array"), "{}", r.content);
+        assert!(
+            !r.content.contains("tail"),
+            "preview should be truncated before the suffix: {}",
+            r.content
+        );
     }
 
     #[test]
