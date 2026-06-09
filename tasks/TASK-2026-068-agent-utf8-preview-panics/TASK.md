@@ -27,10 +27,10 @@ Recent UTF-8 truncation fixes removed several byte-slicing panics, but adjacent 
 
 ## Acceptance Criteria
 
-- [ ] Unexpected embedding JSON responses with non-ASCII content around the 500-byte preview boundary return an error instead of panicking.
-- [ ] Invalid task-planner LLM output with non-ASCII content around the 500-byte debug preview boundary returns the existing parse error instead of panicking.
-- [ ] Invalid `update_task_plan.tasks` string arguments with non-ASCII content around the 120-byte preview boundary return a tool error instead of panicking.
-- [ ] Required Rust and task validation commands pass.
+- [x] Unexpected embedding JSON responses with non-ASCII content around the 500-byte preview boundary return an error instead of panicking.
+- [x] Invalid task-planner LLM output with non-ASCII content around the 500-byte debug preview boundary returns the existing parse error instead of panicking.
+- [x] Invalid `update_task_plan.tasks` string arguments with non-ASCII content around the 120-byte preview boundary return a tool error instead of panicking.
+- [x] Required Rust and task validation commands pass.
 
 ## Risks
 

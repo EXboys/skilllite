@@ -4,33 +4,37 @@
 
 - Files/modules:
   - `crates/skilllite-agent/src/llm/mod.rs`
+  - `crates/skilllite-agent/src/llm/tests.rs`
   - `crates/skilllite-agent/src/task_planner.rs`
   - `crates/skilllite-agent/src/agent_loop/helpers.rs`
 - Commits/changes:
-  - Pending implementation.
+  - Replaced byte-sliced UTF-8 previews with `safe_truncate`.
+  - Added regression tests for non-ASCII boundary inputs.
 
 ## Findings
 
-- Critical: Pending final review.
-- Major: Pending final review.
-- Minor: Pending final review.
+- Critical: Fixed recoverable agent error paths that could panic on long non-ASCII previews.
+- Major: None remaining in scope.
+- Minor: None.
 
 ## Quality Gates
 
-- Architecture boundary checks: `pending`
-- Security invariants: `pending`
-- Required tests executed: `pending`
-- Docs sync (EN/ZH): `pending`
+- Architecture boundary checks: `pass`
+- Security invariants: `pass`
+- Required tests executed: `pass`
+- Docs sync (EN/ZH): `pass`
 
 ## Test Evidence
 
 - Commands run:
-  - Pending.
+  - `cargo test -p skilllite-agent`
+  - `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test && python3 scripts/validate_tasks.py`
 - Key outputs:
-  - Pending.
+  - `cargo test -p skilllite-agent`: `test result: ok. 248 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out`
+  - Full validation: `Finished 'dev' profile`, `Finished 'test' profile`, all test groups reported `test result: ok`, and `Task validation passed (68 task directories checked).`
 
 ## Decision
 
-- Merge readiness: `not ready`
+- Merge readiness: `ready`
 - Follow-up actions:
-  - Complete implementation and validation.
+  - None.

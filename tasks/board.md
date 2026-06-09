@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-09 (TASK-2026-068 agent utf8 preview panics in progress)
+Last updated: 2026-06-09 (TASK-2026-068 agent utf8 preview panics done)
 
 ## In Progress
 
-- `TASK-2026-068-agent-utf8-preview-panics` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-06-09 (TASK-2026-068 agent utf8 preview panics in progress)
 
 ## Done
 
+- `TASK-2026-068-agent-utf8-preview-panics` - Status: `done` - Owner: `agent`
 - `TASK-2026-067-utf8-llm-error-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-066-utf8-evolution-log-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-064-env-keys-single-source` - Status: `done` - Owner: `agent`
