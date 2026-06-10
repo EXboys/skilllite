@@ -156,17 +156,18 @@ fn query_backlog_rows(
 pub fn cmd_backlog(
     json: bool,
     hide_closed: bool,
+    workspace: &str,
     status: Option<&str>,
     risk: Option<&str>,
     limit: usize,
 ) -> Result<()> {
     if json && hide_closed {
-        let rows = query_backlog_desktop(limit)?;
+        let rows = query_backlog_desktop(workspace, limit)?;
         println!("{}", serde_json::to_string_pretty(&rows)?);
         return Ok(());
     }
 
-    let root = paths::chat_root();
+    let root = crate::evolution_status::chat_root_for_workspace(workspace);
     let status_filter = normalize_status_filter(status)?;
     let risk_filter = normalize_risk_filter(risk)?;
     let rows = query_backlog_rows(
@@ -537,8 +538,8 @@ pub fn cmd_pending(json: bool, workspace: &str) -> Result<()> {
 }
 
 /// `skilllite evolution proposal-status <proposal_id>` — single backlog row for desktop.
-pub fn cmd_proposal_status(json: bool, proposal_id: &str) -> Result<()> {
-    let row = desktop_query_proposal_status(proposal_id)?;
+pub fn cmd_proposal_status(json: bool, workspace: &str, proposal_id: &str) -> Result<()> {
+    let row = desktop_query_proposal_status(workspace, proposal_id)?;
     if json {
         println!("{}", serde_json::to_string_pretty(&row)?);
     } else {

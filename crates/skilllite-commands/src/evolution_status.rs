@@ -75,6 +75,10 @@ pub(crate) fn resolve_workspace_root(workspace: &str) -> PathBuf {
     }
 }
 
+pub(crate) fn chat_root_for_workspace(workspace: &str) -> PathBuf {
+    resolve_workspace_root(workspace).join("chat")
+}
+
 fn workspace_env_lookup(workspace_root: &Path, key: &str) -> Option<String> {
     skilllite_core::config::parse_dotenv_from_dir(workspace_root)
         .into_iter()
@@ -156,7 +160,7 @@ pub fn build_evolution_status_snapshot(params: &EvolutionStatusParams) -> Evolut
             skilllite_evolution::skill_synth::list_pending_skills_with_review(&skills_root).len();
     }
 
-    let chat_root = skilllite_core::paths::chat_root();
+    let chat_root = workspace_root.join("chat");
     let mut db_error = None;
     let mut unprocessed_decisions = 0i64;
     let mut weighted_signal_sum = 0i64;
@@ -298,7 +302,7 @@ pub fn cmd_status(json: bool, workspace: &str, periodic_anchor_unix: Option<i64>
 fn cmd_status_human(workspace: &str) -> Result<()> {
     let workspace_root = resolve_workspace_root(workspace);
     skilllite_core::config::load_dotenv_from_dir(&workspace_root);
-    let root = skilllite_core::paths::chat_root();
+    let root = workspace_root.join("chat");
     let conn = skilllite_evolution::feedback::open_evolution_db(&root)?;
     let mode = evolution_mode_from_workspace(&workspace_root);
 
@@ -418,6 +422,81 @@ fn cmd_status_human(workspace: &str) -> Result<()> {
     println!();
 
     Ok(())
+}
+
+#[cfg(test)]
+mod workspace_scope_tests {
+    use super::*;
+    use skilllite_core::config::env_keys::paths as env_paths;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvRestore {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvRestore {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            skilllite_core::config::set_env_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            if let Some(value) = &self.previous {
+                skilllite_core::config::set_env_var(self.key, value);
+            } else {
+                skilllite_core::config::remove_env_var(self.key);
+            }
+        }
+    }
+
+    fn temp_workspace(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "skilllite-evo-status-{label}-{}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    fn seed_decision(workspace: &Path) {
+        let conn = skilllite_evolution::feedback::open_evolution_db(&workspace.join("chat"))
+            .expect("open db");
+        conn.execute(
+            "INSERT INTO decisions
+             (evolved, total_tools, failed_tools, replans, task_completed, task_description, ts)
+             VALUES (0, 1, 0, 0, 1, 'workspace scoped decision', datetime('now'))",
+            [],
+        )
+        .expect("insert decision");
+    }
+
+    #[test]
+    fn status_snapshot_uses_workspace_argument_for_db_over_env() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env_workspace = temp_workspace("env");
+        let target_workspace = temp_workspace("target");
+        let _env_restore = EnvRestore::set(
+            env_paths::SKILLLITE_WORKSPACE,
+            env_workspace.to_string_lossy().as_ref(),
+        );
+        let _ = skilllite_evolution::feedback::open_evolution_db(&env_workspace.join("chat"))
+            .expect("open env db");
+        seed_decision(&target_workspace);
+
+        let snapshot = build_evolution_status_snapshot(&EvolutionStatusParams {
+            workspace: target_workspace.to_string_lossy().to_string(),
+            periodic_anchor_unix: None,
+        });
+
+        assert_eq!(snapshot.unprocessed_decisions, 1);
+        assert!(snapshot.db_error.is_none());
+        let _ = std::fs::remove_dir_all(env_workspace);
+        let _ = std::fs::remove_dir_all(target_workspace);
+    }
 }
 
 #[cfg(test)]

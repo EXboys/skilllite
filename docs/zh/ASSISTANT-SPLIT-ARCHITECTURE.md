@@ -123,16 +123,16 @@ flowchart TB
 | 命令 | JSON 输出 | 说明 |
 |------|-----------|------|
 | `skilllite evolution status --json` | `EvolutionStatusSnapshot` | **已落地**；`--workspace`、`--periodic-anchor-unix` |
-| `skilllite evolution backlog --json --hide-closed` | `EvolutionBacklogRowSnapshot[]` | **已落地**（桌面默认过滤） |
-| `skilllite evolution pending --json` | 待审核技能列表 | **已落地** |
-| `skilllite evolution proposal-status --json` | 单条 backlog | **已落地** |
-| `skilllite evolution confirm/reject --json` | 操作结果 | **已落地** |
-| `skilllite evolution run --json` | `NodeResult` | **已落地**；`--proposal-id`、`--log-manual-trigger` |
+| `skilllite evolution backlog --json --hide-closed` | `EvolutionBacklogRowSnapshot[]` | **已落地**；`--workspace`（桌面默认过滤） |
+| `skilllite evolution pending --json` | 待审核技能列表 | **已落地**；`--workspace` |
+| `skilllite evolution proposal-status --json` | 单条 backlog | **已落地**；`--workspace` |
+| `skilllite evolution confirm/reject --json` | 操作结果 | **已落地**；`--workspace` |
+| `skilllite evolution run --json` | `NodeResult` | **已落地**；`--workspace`、`--proposal-id`、`--log-manual-trigger` |
 | `skilllite runtime probe --json` | `RuntimeUiSnapshot` | **已落地** |
 | `skilllite runtime provision --json` | stderr 进度 JSON 行 + stdout `ProvisionRuntimesResult` | **已落地**；`--python` / `--node` / `--force` |
 | `skilllite skills list --json --workspace` | `DesktopSkillSnapshot[]`（对齐 `DesktopSkillInfo`） | **已落地** |
 | `skilllite suggest-followup --json` | `{ "suggestions": [...] }` | **已落地** |
-| `skilllite evolution authorize-capability --json` | `{ "proposal_id": "..." }` | **已落地** |
+| `skilllite evolution authorize-capability --json` | `{ "proposal_id": "..." }` | **已落地**；`--workspace` |
 
 **约定：** `--json` 仅在 stdout 输出**一个** JSON 文档；人类可读信息走 stderr。
 

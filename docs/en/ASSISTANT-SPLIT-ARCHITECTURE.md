@@ -121,16 +121,16 @@ Priority commands for parity with today’s Desktop bridge:
 | Command | JSON output | Notes |
 |---------|-------------|-------|
 | `skilllite evolution status --json` | `EvolutionStatusSnapshot` | **Shipped**; `--workspace`, `--periodic-anchor-unix` |
-| `skilllite evolution backlog --json --hide-closed` | `EvolutionBacklogRowSnapshot[]` | **Shipped** (desktop filter) |
-| `skilllite evolution pending --json` | `PendingSkillSnapshot[]` | **Shipped** |
-| `skilllite evolution proposal-status --json <id>` | `EvolutionProposalStatusSnapshot` | **Shipped** |
-| `skilllite evolution confirm/reject --json` | `EvolutionOpSnapshot` | **Shipped** |
+| `skilllite evolution backlog --json --hide-closed` | `EvolutionBacklogRowSnapshot[]` | **Shipped**; `--workspace` (desktop filter) |
+| `skilllite evolution pending --json` | `PendingSkillSnapshot[]` | **Shipped**; `--workspace` |
+| `skilllite evolution proposal-status --json <id>` | `EvolutionProposalStatusSnapshot` | **Shipped**; `--workspace` |
+| `skilllite evolution confirm/reject --json` | `EvolutionOpSnapshot` | **Shipped**; `--workspace` |
 | `skilllite evolution run --json` | `NodeResult` | **Shipped**; `--workspace`, `--proposal-id`, `--log-manual-trigger` |
 | `skilllite runtime probe --json` | `RuntimeUiSnapshot` | **Shipped** |
 | `skilllite runtime provision --json` | stderr progress JSON lines + `ProvisionRuntimesResult` on stdout | **Shipped**; `--python` / `--node` / `--force` |
 | `skilllite skills list --json --workspace` | `DesktopSkillSnapshot[]` (desktop `DesktopSkillInfo`) | **Shipped** |
 | `skilllite suggest-followup --json` | `{ "suggestions": string[] }` | **Shipped** |
-| `skilllite evolution authorize-capability --json` | `{ "proposal_id": string }` | **Shipped** |
+| `skilllite evolution authorize-capability --json` | `{ "proposal_id": string }` | **Shipped**; `--workspace` |
 
 **Convention:** `--json` always prints a single JSON document on stdout; human text on stderr only.
 

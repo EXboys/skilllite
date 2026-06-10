@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-06-06 (TASK-2026-067 utf8 llm error truncate done)
+Last updated: 2026-06-10 (TASK-2026-068 evolution workspace db scope done)
 
 ## In Progress
 
@@ -17,6 +17,7 @@ Last updated: 2026-06-06 (TASK-2026-067 utf8 llm error truncate done)
 
 ## Done
 
+- `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-067-utf8-llm-error-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-066-utf8-evolution-log-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-064-env-keys-single-source` - Status: `done` - Owner: `agent`

@@ -28,6 +28,8 @@ pub fn get_evolution_proposal_status(
             "evolution",
             "proposal-status",
             "--json",
+            "--workspace",
+            workspace,
             proposal_id,
         ],
     )

@@ -502,13 +502,14 @@ fn register_agent(reg: &mut CommandRegistry) {
                 EvolutionAction::Backlog {
                     json,
                     hide_closed,
-                    workspace: _,
+                    workspace,
                     status,
                     risk,
                     limit,
                 } => skilllite_commands::evolution::cmd_backlog(
                     *json,
                     *hide_closed,
+                    workspace,
                     status.as_deref(),
                     risk.as_deref(),
                     *limit,
@@ -516,9 +517,15 @@ fn register_agent(reg: &mut CommandRegistry) {
                 EvolutionAction::Pending { json, workspace } => {
                     skilllite_commands::evolution::cmd_pending(*json, workspace)
                 }
-                EvolutionAction::ProposalStatus { json, proposal_id } => {
-                    skilllite_commands::evolution::cmd_proposal_status(*json, proposal_id)
-                }
+                EvolutionAction::ProposalStatus {
+                    json,
+                    workspace,
+                    proposal_id,
+                } => skilllite_commands::evolution::cmd_proposal_status(
+                    *json,
+                    workspace,
+                    proposal_id,
+                ),
                 EvolutionAction::Reset { force } => {
                     skilllite_commands::evolution::cmd_reset(*force)
                 }

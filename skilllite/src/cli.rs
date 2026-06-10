@@ -1148,6 +1148,9 @@ pub enum EvolutionAction {
     ProposalStatus {
         #[arg(long)]
         json: bool,
+        /// Project workspace root
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
         #[arg(value_name = "PROPOSAL_ID")]
         proposal_id: String,
     },
