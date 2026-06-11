@@ -508,7 +508,8 @@ mod workspace_scope_tests {
         let chat_root = workspace.join("chat");
         let conn = skilllite_evolution::feedback::open_evolution_db(&chat_root).expect("open db");
         let reason =
-            "用户手动触发进化，原因包含中文和emoji🙂，需要展示最近事件摘要而不能因为截断崩溃。".repeat(2);
+            "用户手动触发进化，原因包含中文和emoji🙂，需要展示最近事件摘要而不能因为截断崩溃。"
+                .repeat(2);
         skilllite_evolution::log_evolution_event(
             &conn,
             &chat_root,
