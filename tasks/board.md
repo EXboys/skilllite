@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-10 (TASK-2026-068 evolution workspace db scope done)
+Last updated: 2026-06-11 (TASK-2026-069 evolution status UTF-8 reason fix in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-069-evolution-status-utf8-reason` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
