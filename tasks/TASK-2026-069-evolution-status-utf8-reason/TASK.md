@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-069`
 - Title: Fix UTF-8 crash in evolution status reasons
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors: Cursor automation
@@ -22,9 +22,9 @@
 
 ## Acceptance Criteria
 
-- [ ] Human `evolution status` does not panic on long CJK/emoji event reasons.
-- [ ] Regression test covers the actual status rendering path, not only a helper.
-- [ ] Required Rust and task validation commands pass.
+- [x] Human `evolution status` does not panic on long CJK/emoji event reasons.
+- [x] Regression test covers the actual status rendering path, not only a helper.
+- [x] Required Rust and task validation commands pass.
 
 ## Risks
 
