@@ -145,6 +145,14 @@ fn existing_workspace_skills_root(workspace_root: &Path) -> Option<PathBuf> {
     skills_root.is_dir().then_some(skills_root)
 }
 
+fn shorten_status_reason(reason: &str) -> String {
+    if reason.chars().count() > 50 {
+        format!("{}...", reason.chars().take(47).collect::<String>())
+    } else {
+        reason.to_string()
+    }
+}
+
 /// Build evolution status snapshot (workspace `.env` + process env; no desktop UI overrides).
 pub fn build_evolution_status_snapshot(params: &EvolutionStatusParams) -> EvolutionStatusSnapshot {
     let workspace_root = resolve_workspace_root(&params.workspace);
@@ -405,11 +413,7 @@ fn cmd_status_human(workspace: &str) -> Result<()> {
             t if t.contains("rolled_back") => "🔙",
             _ => "  ",
         };
-        let reason_short = if reason.len() > 50 {
-            format!("{}...", &reason[..47])
-        } else {
-            reason
-        };
+        let reason_short = shorten_status_reason(&reason);
         println!("  {} {} {} {}", icon, date, etype, reason_short);
         if !target.is_empty() {
             println!("     └─ target: {}", target);
@@ -496,6 +500,29 @@ mod workspace_scope_tests {
         assert!(snapshot.db_error.is_none());
         let _ = std::fs::remove_dir_all(env_workspace);
         let _ = std::fs::remove_dir_all(target_workspace);
+    }
+
+    #[test]
+    fn status_human_handles_non_ascii_event_reasons() {
+        let workspace = temp_workspace("utf8-reason");
+        let chat_root = workspace.join("chat");
+        let conn = skilllite_evolution::feedback::open_evolution_db(&chat_root).expect("open db");
+        let reason =
+            "用户手动触发进化，原因包含中文和emoji🙂，需要展示最近事件摘要而不能因为截断崩溃。"
+                .repeat(2);
+        skilllite_evolution::log_evolution_event(
+            &conn,
+            &chat_root,
+            "manual_evolution_run_triggered",
+            "all",
+            &reason,
+            "txn-utf8",
+        )
+        .expect("insert log event");
+
+        cmd_status(false, workspace.to_string_lossy().as_ref(), None).expect("status succeeds");
+
+        let _ = std::fs::remove_dir_all(workspace);
     }
 }
 
