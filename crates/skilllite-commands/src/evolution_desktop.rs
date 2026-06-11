@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback;
 
-use crate::evolution_status::resolve_workspace_root;
+use crate::evolution_status::{chat_root_for_workspace, resolve_workspace_root};
 use crate::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,8 +68,11 @@ fn truncate_utf8(s: &str, max: usize) -> String {
     format!("{}…", &s[..end])
 }
 
-pub fn query_backlog_desktop(limit: usize) -> Result<Vec<EvolutionBacklogRowSnapshot>> {
-    let chat_root = skilllite_core::paths::chat_root();
+pub fn query_backlog_desktop(
+    workspace: &str,
+    limit: usize,
+) -> Result<Vec<EvolutionBacklogRowSnapshot>> {
+    let chat_root = chat_root_for_workspace(workspace);
     let conn = skilllite_evolution::feedback::open_evolution_db(&chat_root)?;
     let limit = limit.clamp(1, 200);
     let mut stmt = conn
@@ -102,8 +105,11 @@ pub fn query_backlog_desktop(limit: usize) -> Result<Vec<EvolutionBacklogRowSnap
         .collect::<Result<Vec<_>>>()
 }
 
-pub fn query_proposal_status(proposal_id: &str) -> Result<EvolutionProposalStatusSnapshot> {
-    let chat_root = skilllite_core::paths::chat_root();
+pub fn query_proposal_status(
+    workspace: &str,
+    proposal_id: &str,
+) -> Result<EvolutionProposalStatusSnapshot> {
+    let chat_root = chat_root_for_workspace(workspace);
     let conn = skilllite_evolution::feedback::open_evolution_db(&chat_root)?;
     conn.query_row(
         "SELECT proposal_id, status, acceptance_status, updated_at, note
@@ -167,7 +173,7 @@ pub fn read_pending_skill_md(workspace: &str, skill_name: &str) -> Result<String
 pub fn confirm_pending_skill(workspace: &str, skill_name: &str) -> Result<()> {
     let skills_root = resolve_skills_root(workspace)?;
     skilllite_evolution::skill_synth::confirm_pending_skill(&skills_root, skill_name)?;
-    let chat_root = skilllite_core::paths::chat_root();
+    let chat_root = chat_root_for_workspace(workspace);
     if let Ok(conn) = skilllite_evolution::feedback::open_evolution_db(&chat_root) {
         let _ = skilllite_evolution::log_evolution_event(
             &conn,
@@ -198,8 +204,8 @@ pub fn authorize_capability_evolution(
     outcome: &str,
     summary: &str,
 ) -> Result<AuthorizeCapabilitySnapshot> {
-    let _ = resolve_workspace_root(workspace);
-    let chat_root = skilllite_core::paths::chat_root();
+    let workspace_root = resolve_workspace_root(workspace);
+    let chat_root = workspace_root.join("chat");
     let conn = skilllite_evolution::feedback::open_evolution_db(&chat_root)?;
     let proposal_id =
         skilllite_evolution::enqueue_user_capability_evolution(&conn, tool_name, outcome, summary)?;
@@ -223,7 +229,7 @@ pub fn log_manual_evolution_trigger(
     proposal_id: Option<&str>,
     summary: &str,
 ) -> Result<()> {
-    let chat_root = skilllite_core::paths::chat_root();
+    let chat_root = chat_root_for_workspace(workspace);
     let conn = skilllite_evolution::feedback::open_evolution_db(&chat_root)?;
     let clipped = clip_manual_trigger_summary(summary);
     let _ = skilllite_evolution::log_evolution_event(
@@ -240,6 +246,65 @@ pub fn log_manual_evolution_trigger(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use skilllite_core::config::env_keys::paths as env_paths;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvRestore {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvRestore {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            skilllite_core::config::set_env_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            if let Some(value) = &self.previous {
+                skilllite_core::config::set_env_var(self.key, value);
+            } else {
+                skilllite_core::config::remove_env_var(self.key);
+            }
+        }
+    }
+
+    fn temp_workspace(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "skilllite-evo-desktop-{label}-{}",
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    fn seed_backlog_row(workspace: &std::path::Path, proposal_id: &str, note: &str) {
+        let chat_root = workspace.join("chat");
+        let conn = skilllite_evolution::feedback::open_evolution_db(&chat_root).expect("open db");
+        let dedupe_key = format!("dedupe_{proposal_id}");
+        conn.execute(
+            "INSERT INTO evolution_backlog
+             (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria, status, acceptance_status, note)
+             VALUES (?1, 'active', ?2, '{}', 'low', 0.5, 0.5, 1.0, '[]', 'queued', 'pending_validation', ?3)",
+            [proposal_id, dedupe_key.as_str(), note],
+        )
+        .expect("insert backlog row");
+    }
+
+    fn capability_rows(workspace: &std::path::Path, tool_name: &str) -> i64 {
+        let chat_root = workspace.join("chat");
+        let conn = skilllite_evolution::feedback::open_evolution_db(&chat_root).expect("open db");
+        let dedupe_key = format!("user_capability:{tool_name}:failure");
+        conn.query_row(
+            "SELECT COUNT(*) FROM evolution_backlog WHERE dedupe_key = ?1",
+            [dedupe_key.as_str()],
+            |row| row.get(0),
+        )
+        .expect("count rows")
+    }
 
     #[test]
     fn manual_trigger_summary_clip_is_utf8_boundary_safe() {
@@ -259,5 +324,75 @@ mod tests {
         let summary = "Evolution completed: 新技能已生成";
 
         assert_eq!(clip_manual_trigger_summary(summary), summary);
+    }
+
+    #[test]
+    fn query_backlog_desktop_uses_workspace_argument_over_env() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env_workspace = temp_workspace("env");
+        let target_workspace = temp_workspace("target");
+        let _env_restore = EnvRestore::set(
+            env_paths::SKILLLITE_WORKSPACE,
+            env_workspace.to_string_lossy().as_ref(),
+        );
+        seed_backlog_row(&env_workspace, "env_only", "ENV_DB_ROW");
+        seed_backlog_row(&target_workspace, "target_only", "TARGET_DB_ROW");
+
+        let rows =
+            query_backlog_desktop(target_workspace.to_string_lossy().as_ref(), 10).expect("query");
+
+        let ids: Vec<_> = rows.into_iter().map(|row| row.proposal_id).collect();
+        assert_eq!(ids, vec!["target_only"]);
+        let _ = std::fs::remove_dir_all(env_workspace);
+        let _ = std::fs::remove_dir_all(target_workspace);
+    }
+
+    #[test]
+    fn query_proposal_status_uses_workspace_argument_over_env() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env_workspace = temp_workspace("env");
+        let target_workspace = temp_workspace("target");
+        let _env_restore = EnvRestore::set(
+            env_paths::SKILLLITE_WORKSPACE,
+            env_workspace.to_string_lossy().as_ref(),
+        );
+        seed_backlog_row(&env_workspace, "shared_id", "ENV_DB_ROW");
+        seed_backlog_row(&target_workspace, "shared_id", "TARGET_DB_ROW");
+
+        let row = query_proposal_status(target_workspace.to_string_lossy().as_ref(), "shared_id")
+            .expect("query");
+
+        assert_eq!(row.note.as_deref(), Some("TARGET_DB_ROW"));
+        let _ = std::fs::remove_dir_all(env_workspace);
+        let _ = std::fs::remove_dir_all(target_workspace);
+    }
+
+    #[test]
+    fn authorize_capability_uses_workspace_argument_over_env() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env_workspace = temp_workspace("env");
+        let target_workspace = temp_workspace("target");
+        let tool_name = "workspace_scope_regression";
+        let _env_restore = EnvRestore::set(
+            env_paths::SKILLLITE_WORKSPACE,
+            env_workspace.to_string_lossy().as_ref(),
+        );
+        let _ = skilllite_evolution::feedback::open_evolution_db(&env_workspace.join("chat"))
+            .expect("open env db");
+        let _ = skilllite_evolution::feedback::open_evolution_db(&target_workspace.join("chat"))
+            .expect("open target db");
+
+        authorize_capability_evolution(
+            target_workspace.to_string_lossy().as_ref(),
+            tool_name,
+            "failure",
+            "summary",
+        )
+        .expect("authorize");
+
+        assert_eq!(capability_rows(&env_workspace, tool_name), 0);
+        assert_eq!(capability_rows(&target_workspace, tool_name), 1);
+        let _ = std::fs::remove_dir_all(env_workspace);
+        let _ = std::fs::remove_dir_all(target_workspace);
     }
 }
