@@ -28,10 +28,10 @@ use crate::Result;
 use skilllite_core::config::env_keys::paths as env_paths;
 use skilllite_core::paths;
 use skilllite_core::protocol::{NewSkill, NodeResult};
-use skilllite_core::skill::manifest;
+use skilllite_core::skill::{discovery::resolve_skills_dir_with_legacy_fallback, manifest};
 
 /// Resolve workspace for project-level skill evolution.
-/// Uses SKILLLITE_WORKSPACE env or current_dir. Returns workspace/.skills.
+/// Uses SKILLLITE_WORKSPACE env or current_dir. Returns `skills/` with legacy `.skills/` fallback.
 fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     let ws: PathBuf = workspace
         .filter(|s| !s.is_empty())
@@ -47,7 +47,7 @@ fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     } else {
         std::env::current_dir().ok()?.join(ws)
     };
-    Some(ws.join(".skills"))
+    Some(resolve_skills_dir_with_legacy_fallback(&ws, "skills").effective_path)
 }
 
 #[derive(Debug)]
@@ -729,6 +729,34 @@ fn build_new_skill(skills_root: &Path, skill_name: &str, txn_id: &str) -> Option
         path: path.to_string_lossy().to_string(),
         txn_id: txn_id.to_string(),
     })
+}
+
+#[cfg(test)]
+mod evolution_run_path_tests {
+    use super::*;
+
+    #[test]
+    fn resolve_skills_root_prefers_primary_skills_dir() {
+        let tmp = tempfile::tempdir().expect("temp workspace");
+        std::fs::create_dir_all(tmp.path().join("skills")).expect("create skills");
+        std::fs::create_dir_all(tmp.path().join(".skills")).expect("create legacy skills");
+
+        let resolved = resolve_skills_root(Some(tmp.path().to_string_lossy().as_ref()))
+            .expect("resolve skills root");
+
+        assert_eq!(resolved, tmp.path().join("skills"));
+    }
+
+    #[test]
+    fn resolve_skills_root_uses_legacy_fallback_when_primary_missing() {
+        let tmp = tempfile::tempdir().expect("temp workspace");
+        std::fs::create_dir_all(tmp.path().join(".skills")).expect("create legacy skills");
+
+        let resolved = resolve_skills_root(Some(tmp.path().to_string_lossy().as_ref()))
+            .expect("resolve skills root");
+
+        assert_eq!(resolved, tmp.path().join(".skills"));
+    }
 }
 
 /// 判断 source 是否为远程（非本地路径），用于区分「下载的技能」与本地/进化技能
