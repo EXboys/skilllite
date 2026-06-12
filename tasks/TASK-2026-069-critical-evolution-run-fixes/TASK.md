@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-069`
 - Title: Fix critical evolution run correctness bugs
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -32,10 +32,10 @@ workspace than desktop status/listing paths.
 
 ## Acceptance Criteria
 
-- [ ] `skilllite evolution status` no longer panics on long CJK/emoji event reasons.
-- [ ] `evolution run` writes evolved skills to the same effective `skills/` root that desktop pending-skill list/confirm uses.
-- [ ] Life Pulse growth execution scopes the child `evolution run` to the selected workspace.
-- [ ] Regression tests cover UTF-8 preview safety and skills-root alignment.
+- [x] `skilllite evolution status` no longer panics on long CJK/emoji event reasons.
+- [x] `evolution run` writes evolved skills to the same effective `skills/` root that desktop pending-skill list/confirm uses.
+- [x] Life Pulse growth execution scopes the child `evolution run` to the selected workspace.
+- [x] Regression tests cover UTF-8 preview safety and skills-root alignment.
 
 ## Risks
 
@@ -50,7 +50,9 @@ workspace than desktop status/listing paths.
   - Task artifact validation.
   - Workspace Rust format, lint, and test baseline as feasible.
 - Commands to run:
-  - `cargo test -p skilllite-commands`
+  - `cargo test -p skilllite-commands --features agent`
+  - `cargo test -p skilllite-agent`
+  - `cd crates/skilllite-assistant/src-tauri && cargo test`
   - `cargo fmt --check`
   - `cargo clippy --all-targets -- -D warnings`
   - `cargo test`
