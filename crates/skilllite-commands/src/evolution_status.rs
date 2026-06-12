@@ -299,6 +299,21 @@ pub fn cmd_status(json: bool, workspace: &str, periodic_anchor_unix: Option<i64>
     cmd_status_human(workspace)
 }
 
+fn reason_preview(reason: &str) -> String {
+    const DISPLAY_LIMIT_BYTES: usize = 50;
+    const PREFIX_LIMIT_BYTES: usize = 47;
+
+    if reason.len() <= DISPLAY_LIMIT_BYTES {
+        return reason.to_string();
+    }
+
+    let mut end = PREFIX_LIMIT_BYTES.min(reason.len());
+    while end > 0 && !reason.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &reason[..end])
+}
+
 fn cmd_status_human(workspace: &str) -> Result<()> {
     let workspace_root = resolve_workspace_root(workspace);
     skilllite_core::config::load_dotenv_from_dir(&workspace_root);
@@ -405,11 +420,7 @@ fn cmd_status_human(workspace: &str) -> Result<()> {
             t if t.contains("rolled_back") => "🔙",
             _ => "  ",
         };
-        let reason_short = if reason.len() > 50 {
-            format!("{}...", &reason[..47])
-        } else {
-            reason
-        };
+        let reason_short = reason_preview(&reason);
         println!("  {} {} {} {}", icon, date, etype, reason_short);
         if !target.is_empty() {
             println!("     └─ target: {}", target);
@@ -502,6 +513,20 @@ mod workspace_scope_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reason_preview_truncates_on_utf8_boundary() {
+        let reason = "界".repeat(17);
+
+        let preview = reason_preview(&reason);
+
+        assert_eq!(preview, format!("{}...", "界".repeat(15)));
+    }
+
+    #[test]
+    fn reason_preview_keeps_short_text_unchanged() {
+        assert_eq!(reason_preview("short reason"), "short reason");
+    }
 
     #[test]
     fn evolution_status_snapshot_serializes_required_fields() {
