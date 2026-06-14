@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-069`
 - Title: Daily critical bug sweep
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors: automation
@@ -22,10 +22,10 @@ Recent commits can introduce high-severity correctness regressions that escaped 
 
 ## Acceptance Criteria
 
-- [ ] Recent commits and their changed files are inspected.
-- [ ] Suspicious high-impact changes are traced through callers and downstream effects.
-- [ ] A critical bug is fixed only if a concrete trigger scenario is confirmed; otherwise no PR is opened.
-- [ ] Findings or "no critical bugs found" summary is posted to Slack.
+- [x] Recent commits and their changed files are inspected.
+- [x] Suspicious high-impact changes are traced through callers and downstream effects.
+- [x] A critical bug is fixed only if a concrete trigger scenario is confirmed; otherwise no PR is opened.
+- [x] Findings or "no critical bugs found" summary is posted to Slack.
 
 ## Risks
 
@@ -38,14 +38,14 @@ Recent commits can introduce high-severity correctness regressions that escaped 
 
 ## Validation Plan
 
-- Required tests: no code tests unless a fix is implemented; task artifact validation if task files change.
-- Commands to run: `git status --short`, `git log`, `git diff --stat`, targeted `cargo test`/`cargo clippy` only if code changes are made, `python3 scripts/validate_tasks.py`.
-- Manual checks: trace reviewed changes against concrete trigger scenarios and record final findings.
+- Required tests: targeted desktop assistant unit tests for Life Pulse command workspace propagation and growth anchor behavior; root workspace clippy; task artifact validation.
+- Commands to run: `cargo fmt --check`, `python3 scripts/validate_tasks.py`, `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml life_pulse --lib`, `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml evolution_ui::growth --lib`, `cargo clippy --all-targets -- -D warnings`.
+- Manual checks: traced Life Pulse due checks, subprocess launch arguments, CLI workspace defaults, and A9 periodic anchor semantics.
 
 ## Regression Scope
 
-- Areas likely affected: none unless a confirmed bug fix is implemented.
-- Explicit non-goals: changing behavior for unconfirmed or low-severity issues.
+- Areas likely affected: desktop Life Pulse growth and rhythm background subprocesses; desktop A9 periodic growth diagnostics.
+- Explicit non-goals: changing manual evolution trigger behavior, schedule file semantics, or unrelated desktop bridge integrations.
 
 ## Links
 
