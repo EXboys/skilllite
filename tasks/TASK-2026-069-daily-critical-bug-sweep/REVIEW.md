@@ -41,4 +41,4 @@
 ## Decision
 
 - Merge readiness: `ready`
-- Follow-up actions: open PR and report bug, root cause, fix, and validation.
+- Follow-up actions: PR opened; Slack report attempted but blocked by channel membership, so final automation summary must carry bug, root cause, fix, and validation.

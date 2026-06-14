@@ -18,6 +18,10 @@
   - Progress: Review evidence recorded and task marked done for PR handoff.
   - Blockers: None.
   - Next step: Publish PR and Slack summary.
+- 2026-06-14:
+  - Progress: PR created. Slack summary delivery was attempted in all visible channels (`all-skilllite`, `new-channel`, `social`) but each failed because the Cursor bot is not invited.
+  - Blockers: Slack channel membership prevents posting the requested platform summary.
+  - Next step: Use automation final summary to report the outcome.
 
 ## Checkpoints
 

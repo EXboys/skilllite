@@ -25,7 +25,7 @@ Recent commits can introduce high-severity correctness regressions that escaped 
 - [x] Recent commits and their changed files are inspected.
 - [x] Suspicious high-impact changes are traced through callers and downstream effects.
 - [x] A critical bug is fixed only if a concrete trigger scenario is confirmed; otherwise no PR is opened.
-- [x] Findings or "no critical bugs found" summary is posted to Slack.
+- [x] Findings summary delivery attempted; Slack posting was blocked because the Cursor bot is not invited to any visible channel, so the automation final summary carries the result.
 
 ## Risks
 
