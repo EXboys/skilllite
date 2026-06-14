@@ -161,24 +161,48 @@ fn check_schedule_due(workspace: &std::path::Path) -> bool {
 
 // ─── Subprocess helpers ─────────────────────────────────────────────────────
 
+fn build_life_pulse_command(
+    skilllite_path: &std::path::Path,
+    workspace: &str,
+    env_pairs: &[(String, String)],
+    args: &[&str],
+) -> Command {
+    let root = skilllite_bridge::find_project_root(workspace);
+    let mut cmd = Command::new(skilllite_path);
+    crate::windows_spawn::hide_child_console(&mut cmd);
+    cmd.args(args)
+        .envs(env_pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .current_dir(&root)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    if std::path::Path::new(workspace).is_absolute() {
+        cmd.env(
+            skilllite_bridge::local::env_keys::paths::SKILLLITE_WORKSPACE,
+            workspace,
+        );
+    }
+    cmd
+}
+
 fn spawn_growth(
     skilllite_path: &std::path::Path,
+    workspace: &str,
     env_pairs: &[(String, String)],
     running: Arc<AtomicBool>,
     app: tauri::AppHandle,
 ) {
     let path = skilllite_path.to_path_buf();
+    let workspace = workspace.to_string();
     let env: Vec<(String, String)> = env_pairs.to_vec();
     std::thread::spawn(move || {
         emit(&app, "growth-started", None);
-        let mut growth_cmd = Command::new(&path);
-        crate::windows_spawn::hide_child_console(&mut growth_cmd);
-        let result = growth_cmd
-            .args(["evolution", "run"])
-            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .status();
+        let result = build_life_pulse_command(
+            &path,
+            &workspace,
+            &env,
+            &["evolution", "run", "--workspace", &workspace],
+        )
+        .status();
         running.store(false, Ordering::SeqCst);
         match result {
             Ok(s) if s.success() => emit(&app, "growth-done", None),
@@ -194,22 +218,23 @@ fn spawn_growth(
 
 fn spawn_rhythm(
     skilllite_path: &std::path::Path,
+    workspace: &str,
     env_pairs: &[(String, String)],
     running: Arc<AtomicBool>,
     app: tauri::AppHandle,
 ) {
     let path = skilllite_path.to_path_buf();
+    let workspace = workspace.to_string();
     let env: Vec<(String, String)> = env_pairs.to_vec();
     std::thread::spawn(move || {
         emit(&app, "rhythm-started", None);
-        let mut rhythm_cmd = Command::new(&path);
-        crate::windows_spawn::hide_child_console(&mut rhythm_cmd);
-        let result = rhythm_cmd
-            .args(["schedule", "tick"])
-            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .status();
+        let result = build_life_pulse_command(
+            &path,
+            &workspace,
+            &env,
+            &["schedule", "tick", "--workspace", &workspace],
+        )
+        .status();
         running.store(false, Ordering::SeqCst);
         match result {
             Ok(s) if s.success() => emit(&app, "rhythm-done", None),
@@ -281,6 +306,7 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                     s.growth_running.store(true, Ordering::SeqCst);
                     spawn_growth(
                         &skilllite_path,
+                        &workspace,
                         &child_env,
                         s.growth_running.clone(),
                         app.clone(),
@@ -293,6 +319,7 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                     s.rhythm_running.store(true, Ordering::SeqCst);
                     spawn_rhythm(
                         &skilllite_path,
+                        &workspace,
                         &child_env,
                         s.rhythm_running.clone(),
                         app.clone(),
@@ -325,4 +352,93 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
 
 pub fn stop(state: &LifePulseState) {
     state.alive.store(false, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_workspace(name: &str) -> PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("duration")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "skilllite_life_pulse_{}_{}_{}",
+            std::process::id(),
+            unique,
+            name
+        ));
+        std::fs::create_dir_all(&dir).expect("workspace");
+        dir
+    }
+
+    fn args(cmd: &Command) -> Vec<String> {
+        cmd.get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn growth_command_targets_life_pulse_workspace() {
+        let workspace = temp_workspace("growth");
+        let workspace_str = workspace.to_string_lossy().to_string();
+        let env = vec![("SKILLLITE_API_KEY".to_string(), "test-key".to_string())];
+        let cmd = build_life_pulse_command(
+            std::path::Path::new("skilllite"),
+            &workspace_str,
+            &env,
+            &["evolution", "run", "--workspace", &workspace_str],
+        );
+
+        let expected_workspace = workspace.canonicalize().expect("canonical workspace");
+        assert_eq!(
+            cmd.get_current_dir().expect("current dir"),
+            expected_workspace.as_path()
+        );
+        assert_eq!(
+            args(&cmd),
+            vec![
+                "evolution".to_string(),
+                "run".to_string(),
+                "--workspace".to_string(),
+                workspace_str.clone()
+            ]
+        );
+        assert!(cmd.get_envs().any(|(key, value)| {
+            key == skilllite_bridge::local::env_keys::paths::SKILLLITE_WORKSPACE
+                && value == Some(std::ffi::OsStr::new(&workspace_str))
+        }));
+
+        let _ = std::fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn rhythm_command_targets_life_pulse_workspace() {
+        let workspace = temp_workspace("rhythm");
+        let workspace_str = workspace.to_string_lossy().to_string();
+        let cmd = build_life_pulse_command(
+            std::path::Path::new("skilllite"),
+            &workspace_str,
+            &[],
+            &["schedule", "tick", "--workspace", &workspace_str],
+        );
+
+        let expected_workspace = workspace.canonicalize().expect("canonical workspace");
+        assert_eq!(
+            cmd.get_current_dir().expect("current dir"),
+            expected_workspace.as_path()
+        );
+        assert_eq!(
+            args(&cmd),
+            vec![
+                "schedule".to_string(),
+                "tick".to_string(),
+                "--workspace".to_string(),
+                workspace_str
+            ]
+        );
+
+        let _ = std::fs::remove_dir_all(workspace);
+    }
 }

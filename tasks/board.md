@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-06-10 (TASK-2026-068 evolution workspace db scope done)
+Last updated: 2026-06-14 (TASK-2026-069 daily critical bug sweep done)
 
 ## In Progress
 
@@ -17,6 +17,7 @@ Last updated: 2026-06-10 (TASK-2026-068 evolution workspace db scope done)
 
 ## Done
 
+- `TASK-2026-069-daily-critical-bug-sweep` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-067-utf8-llm-error-truncate` - Status: `done` - Owner: `agent`
 - `TASK-2026-066-utf8-evolution-log-truncate` - Status: `done` - Owner: `agent`
