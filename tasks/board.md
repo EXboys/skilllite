@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-10 (TASK-2026-068 evolution workspace db scope done)
+Last updated: 2026-06-14 (TASK-2026-069 daily critical bug sweep in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-069-daily-critical-bug-sweep` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
