@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-069`
 - Title: Fix critical regression crash and workspace scoping bugs
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -33,11 +33,11 @@ notice.
 
 ## Acceptance Criteria
 
-- [ ] Non-ASCII embedding/task-planner error previews return errors instead of panicking.
-- [ ] Desktop-triggered evolution runs use the same explicit workspace as the status/backlog/authorization paths.
-- [ ] Prompt injections for high-risk reference docs and bash-tool `SKILL.md` include `SKILL_MD_SECURITY_NOTICE`.
-- [ ] Regression tests cover the crash and prompt-security paths.
-- [ ] Required validation commands are recorded with real output.
+- [x] Non-ASCII embedding/task-planner error previews return errors instead of panicking.
+- [x] Desktop-triggered evolution runs use the same explicit workspace as the status/backlog/authorization paths.
+- [x] Prompt injections for high-risk reference docs and bash-tool `SKILL.md` include `SKILL_MD_SECURITY_NOTICE`.
+- [x] Regression tests cover the crash and prompt-security paths.
+- [x] Required validation commands are recorded with real output.
 
 ## Risks
 
@@ -59,6 +59,7 @@ notice.
   - Focused package tests first, then workspace checks after commit/push per automation branch rules.
 - Manual checks:
   - Re-read modified Rust and task files.
+  - Confirmed generated desktop schema file was removed after the Tauri test run.
 
 ## Regression Scope
 

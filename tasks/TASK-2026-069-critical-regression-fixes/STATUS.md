@@ -13,12 +13,20 @@
   - Blockers: None.
   - Next step: Commit and push before running validation, per automation branch
     rules.
+- 2026-06-15:
+  - Progress: Validation completed. Initial `cargo test -p skilllite-agent` exposed
+    Rust 1.83 incompatibility with edition 2024 dependencies; updated stable
+    toolchain to Rust/Cargo 1.96.0 and reran. Desktop crate validation required
+    installing GTK/WebKit/libsoup development packages and building the frontend
+    `dist` directory. Removed the generated untracked Tauri schema after tests.
+  - Blockers: None remaining.
+  - Next step: Update review evidence, mark board done, and open PR.
 
 ## Checkpoints
 
 - [x] PRD drafted before implementation (or `N/A` recorded)
 - [x] Context drafted before implementation (or `N/A` recorded)
 - [x] Implementation complete
-- [ ] Tests passed
-- [ ] Review complete
-- [ ] Board updated
+- [x] Tests passed
+- [x] Review complete
+- [x] Board updated
