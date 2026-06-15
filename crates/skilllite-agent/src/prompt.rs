@@ -798,7 +798,10 @@ mod tests {
         let prompt =
             build_system_prompt(None, &[skill], "/tmp", None, false, None, None, None, None);
 
-        assert!(prompt.contains("## Bash-Tool Skills Documentation"), "{prompt}");
+        assert!(
+            prompt.contains("## Bash-Tool Skills Documentation"),
+            "{prompt}"
+        );
         assert!(prompt.contains("SECURITY NOTICE"), "{prompt}");
         assert!(prompt.contains("| bash"), "{prompt}");
     }
