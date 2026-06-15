@@ -163,18 +163,21 @@ fn check_schedule_due(workspace: &std::path::Path) -> bool {
 
 fn spawn_growth(
     skilllite_path: &std::path::Path,
+    workspace: &str,
     env_pairs: &[(String, String)],
     running: Arc<AtomicBool>,
     app: tauri::AppHandle,
 ) {
     let path = skilllite_path.to_path_buf();
+    let workspace = workspace.to_string();
     let env: Vec<(String, String)> = env_pairs.to_vec();
     std::thread::spawn(move || {
         emit(&app, "growth-started", None);
         let mut growth_cmd = Command::new(&path);
         crate::windows_spawn::hide_child_console(&mut growth_cmd);
         let result = growth_cmd
-            .args(["evolution", "run"])
+            .args(["evolution", "run", "--workspace"])
+            .arg(&workspace)
             .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
@@ -281,6 +284,7 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                     s.growth_running.store(true, Ordering::SeqCst);
                     spawn_growth(
                         &skilllite_path,
+                        &workspace,
                         &child_env,
                         s.growth_running.clone(),
                         app.clone(),
