@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-10 (TASK-2026-068 evolution workspace db scope done)
+Last updated: 2026-06-15 (TASK-2026-069 critical regression fixes in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-069-critical-regression-fixes` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 

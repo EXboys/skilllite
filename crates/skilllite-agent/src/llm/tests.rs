@@ -408,3 +408,22 @@ fn test_format_api_error_truncates_non_json_body_on_utf8_boundary() {
         "should truncate the long raw body: {result}"
     );
 }
+
+#[test]
+fn test_embedding_unexpected_response_preview_truncates_on_utf8_boundary() {
+    let json = json!({ "message": format!("{}界{}", "a".repeat(487), "tail".repeat(100)) });
+    let serialized = serde_json::to_string(&json).expect("json serializes");
+    assert!(
+        !serialized.is_char_boundary(500),
+        "test must place byte 500 inside a multibyte character"
+    );
+
+    let result = unexpected_embedding_response_format_message(&json);
+
+    assert!(
+        result.contains("Unexpected embedding response format"),
+        "{result}"
+    );
+    assert!(result.contains(&"a".repeat(487)), "{result}");
+    assert!(!result.contains("tail"), "{result}");
+}

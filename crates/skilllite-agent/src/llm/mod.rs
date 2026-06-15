@@ -206,13 +206,7 @@ impl LlmClient {
             return Self::extract_embeddings_from_items(items);
         }
 
-        // Log the unexpected response shape for debugging
-        let preview = serde_json::to_string(&json).unwrap_or_default();
-        let preview = &preview[..preview.len().min(500)];
-        bail!(
-            "Unexpected embedding response format (no 'data' or 'output.embeddings'): {}",
-            preview
-        )
+        bail!("{}", unexpected_embedding_response_format_message(&json))
     }
 
     /// Extract embedding vectors from a JSON array of items, each containing an "embedding" field.
@@ -358,6 +352,16 @@ fn extract_error_detail(body: &str) -> String {
     } else {
         body.to_string()
     }
+}
+
+fn unexpected_embedding_response_format_message(json: &Value) -> String {
+    let preview = serde_json::to_string(json).unwrap_or_default();
+    let preview = if preview.len() > 500 {
+        safe_truncate(&preview, 500)
+    } else {
+        preview.as_str()
+    };
+    format!("Unexpected embedding response format (no 'data' or 'output.embeddings'): {preview}")
 }
 
 /// Check if an error is a context overflow (token limit exceeded).

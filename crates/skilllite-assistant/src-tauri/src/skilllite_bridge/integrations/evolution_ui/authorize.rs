@@ -41,6 +41,8 @@ pub fn authorize_capability_evolution(
         cmd.arg("evolution")
             .arg("run")
             .arg("--json")
+            .arg("--workspace")
+            .arg(&workspace_owned)
             .current_dir(&root)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
