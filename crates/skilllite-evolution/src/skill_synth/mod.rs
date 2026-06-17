@@ -12,7 +12,7 @@
 //! - **Retry**: 任何 LLM 输出 JSON 解析失败时，将错误反馈给大模型并重试 1 次
 //! - 代码修改/修复仅由大模型完成，不使用正则或模式匹配
 //!
-//! All evolved skills live in `chat/skills/_evolved/` with `.meta.json` metadata.
+//! All evolved skills live under `<skills-root>/_evolved/` with `.meta.json` metadata.
 //! A10: Newly generated skills go to `_evolved/_pending/` until user confirms.
 
 mod env_helper;

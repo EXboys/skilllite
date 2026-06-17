@@ -278,7 +278,7 @@ export const enMessages: Record<string, string> = {
   "evolution.detail.reviewNoJudgement":
     "No system judgement yet (last evolution decision missing or empty).",
   "evolution.detail.reviewPendingEmpty":
-    "No pending skills. Newly evolved skills appear under .skills/_evolved/_pending/.",
+    "No pending skills. Newly evolved skills appear under skills/_evolved/_pending/ or legacy .skills/_evolved/_pending/.",
   "evolution.diff.sectionTitleEvolution": "Evolution",
   "evolution.diff.sectionTitleRest": " prompt diff",
   "evolution.diff.evolvedBadge": "✨ Evolved this run",

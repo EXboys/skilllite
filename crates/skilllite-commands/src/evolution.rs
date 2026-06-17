@@ -31,7 +31,8 @@ use skilllite_core::protocol::{NewSkill, NodeResult};
 use skilllite_core::skill::manifest;
 
 /// Resolve workspace for project-level skill evolution.
-/// Uses SKILLLITE_WORKSPACE env or current_dir. Returns workspace/.skills.
+/// Uses SKILLLITE_WORKSPACE env or current_dir, then applies the shared
+/// `skills/` default with `.skills/` legacy fallback policy.
 fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     let ws: PathBuf = workspace
         .filter(|s| !s.is_empty())
@@ -47,7 +48,10 @@ fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     } else {
         std::env::current_dir().ok()?.join(ws)
     };
-    Some(ws.join(".skills"))
+    Some(
+        skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(&ws, "skills")
+            .effective_path,
+    )
 }
 
 #[derive(Debug)]
@@ -1012,6 +1016,32 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>, from_source: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolve_skills_root_prefers_default_skills_dir_when_present() {
+        let tmp = tempfile::tempdir().expect("temp workspace");
+        let default_skills = tmp.path().join("skills");
+        let legacy_skills = tmp.path().join(".skills");
+        std::fs::create_dir_all(&default_skills).expect("create skills");
+        std::fs::create_dir_all(&legacy_skills).expect("create legacy skills");
+
+        let resolved = resolve_skills_root(Some(tmp.path().to_string_lossy().as_ref()))
+            .expect("resolve skills root");
+
+        assert_eq!(resolved, default_skills);
+    }
+
+    #[test]
+    fn resolve_skills_root_falls_back_to_legacy_skills_dir() {
+        let tmp = tempfile::tempdir().expect("temp workspace");
+        let legacy_skills = tmp.path().join(".skills");
+        std::fs::create_dir_all(&legacy_skills).expect("create legacy skills");
+
+        let resolved = resolve_skills_root(Some(tmp.path().to_string_lossy().as_ref()))
+            .expect("resolve skills root");
+
+        assert_eq!(resolved, legacy_skills);
+    }
 
     #[test]
     fn normalize_filters_validate_allowed_values() {

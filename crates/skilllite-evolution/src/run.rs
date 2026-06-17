@@ -37,7 +37,7 @@ fn try_log_evolution_run_outcome(chat_root: &Path, reason: &str) {
 ///
 /// Returns [EvolutionRunResult]: SkippedBusy if another run in progress, NoScope if nothing to evolve, Completed(txn_id) otherwise.
 /// When force=true (manual trigger), bypass decision thresholds.
-/// skills_root: project-level dir (workspace/.skills). When None, skips skill evolution.
+/// skills_root: effective project-level skills root. When None, skips skill evolution.
 pub async fn run_evolution<L: EvolutionLlm>(
     chat_root: &Path,
     skills_root: Option<&Path>,

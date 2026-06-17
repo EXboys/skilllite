@@ -264,7 +264,7 @@ export const zhMessages: Record<string, string> = {
   "evolution.detail.reviewPendingRefresh": "刷新列表",
   "evolution.detail.reviewNoJudgement": "暂无系统审核结论（最近一次进化判断未记录或为空）。",
   "evolution.detail.reviewPendingEmpty":
-    "暂无待确认技能。进化生成的新技能会出现在 .skills/_evolved/_pending/。",
+    "暂无待确认技能。进化生成的新技能会出现在 skills/_evolved/_pending/，或旧版 .skills/_evolved/_pending/。",
   "evolution.diff.sectionTitleEvolution": "进化",
   "evolution.diff.sectionTitleRest": "变更对比",
   "evolution.diff.evolvedBadge": "✨ 本轮已进化",
