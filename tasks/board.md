@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-10 (TASK-2026-068 evolution workspace db scope done)
+Last updated: 2026-06-17 (TASK-2026-069 evolution run skills-root alignment in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-069-evolution-run-skills-root` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
