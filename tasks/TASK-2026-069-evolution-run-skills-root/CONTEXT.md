@@ -10,8 +10,8 @@
 - Current behavior:
   - `evolution_desktop::resolve_skills_root` uses `resolve_skills_dir_with_legacy_fallback(&root, "skills")`.
   - `evolution_status` counts pending skills from the same effective skills root.
-  - `evolution::cmd_run` uses a private helper that returns `workspace/.skills`.
-  - When `skills/` exists, generated pending skills can be written to a path the desktop UI does not inspect.
+  - `evolution::cmd_run` now uses the same `skills/` default with `.skills/` legacy fallback policy.
+  - When `skills/` exists, generated pending skills and desktop pending/status/confirm operations target the same root.
 
 ## Architecture Fit
 

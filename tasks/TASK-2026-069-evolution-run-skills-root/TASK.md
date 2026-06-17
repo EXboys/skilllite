@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-069`
 - Title: Evolution run skills-root alignment
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -28,9 +28,9 @@ Recent L2 evolution bridge work made desktop pending/status/confirm paths resolv
 
 ## Acceptance Criteria
 
-- [ ] `evolution run` resolves the same effective skills root as pending/status/confirm for explicit workspaces.
-- [ ] Regression tests cover `skills/` preference and `.skills` legacy fallback.
-- [ ] Required Rust and task validation commands pass.
+- [x] `evolution run` resolves the same effective skills root as pending/status/confirm for explicit workspaces.
+- [x] Regression tests cover `skills/` preference and `.skills` legacy fallback.
+- [x] Required Rust and task validation commands pass.
 
 ## Risks
 
