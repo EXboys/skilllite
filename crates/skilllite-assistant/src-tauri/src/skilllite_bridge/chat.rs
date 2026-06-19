@@ -157,6 +157,18 @@ pub fn merge_dotenv_with_chat_overrides(
     pairs
 }
 
+fn child_env_with_workspace(
+    mut env_pairs: Vec<(String, String)>,
+    workspace: &str,
+) -> Vec<(String, String)> {
+    env_pairs.retain(|(key, _)| key != super::local::env_keys::paths::SKILLLITE_WORKSPACE);
+    env_pairs.push((
+        super::local::env_keys::paths::SKILLLITE_WORKSPACE.to_string(),
+        workspace.to_string(),
+    ));
+    env_pairs
+}
+
 fn apply_chat_overrides_env(
     m: &mut std::collections::HashMap<String, EnvValueWithSource>,
     cfg: &ChatConfigOverrides,
@@ -369,6 +381,7 @@ pub fn chat_stream(
         load_dotenv_for_child(&raw_workspace),
         config_overrides.as_ref(),
     );
+    let env_pairs = child_env_with_workspace(env_pairs, &workspace_str);
     let provenance = summarize_env_provenance(&env_sources);
     if !provenance.is_empty() {
         eprintln!(
@@ -773,5 +786,23 @@ mod tests {
             map.get("OPENAI_BASE_URL").map(String::as_str),
             Some("https://ui.base")
         );
+    }
+
+    #[test]
+    fn child_env_with_workspace_overrides_dotenv_workspace() {
+        let env_pairs = vec![
+            ("SKILLLITE_WORKSPACE".to_string(), "/tmp/wrong".to_string()),
+            ("OPENAI_MODEL".to_string(), "dotenv-model".to_string()),
+        ];
+
+        let merged = child_env_with_workspace(env_pairs, "/tmp/project");
+        let map: std::collections::HashMap<_, _> = merged.into_iter().collect();
+
+        assert_eq!(
+            map.get(super::super::local::env_keys::paths::SKILLLITE_WORKSPACE)
+                .map(String::as_str),
+            Some("/tmp/project")
+        );
+        assert_eq!(map.get("OPENAI_MODEL").map(String::as_str), Some("dotenv-model"));
     }
 }

@@ -5,6 +5,16 @@ use crate::skilllite_bridge::local::engine_types::AuthorizeCapabilityResponse;
 use crate::skilllite_bridge::local::env_keys::evolution as evo_keys;
 use crate::skilllite_bridge::paths::{find_project_root, load_dotenv_for_child};
 
+fn authorized_evolution_run_args(workspace: &str) -> Vec<String> {
+    vec![
+        "evolution".to_string(),
+        "run".to_string(),
+        "--json".to_string(),
+        "--workspace".to_string(),
+        workspace.to_string(),
+    ]
+}
+
 pub fn authorize_capability_evolution(
     workspace: &str,
     tool_name: &str,
@@ -36,11 +46,10 @@ pub fn authorize_capability_evolution(
     let skilllite_path_owned = skilllite_path.to_path_buf();
     std::thread::spawn(move || {
         let root = find_project_root(&workspace_owned);
+        let args = authorized_evolution_run_args(&workspace_owned);
         let mut cmd = std::process::Command::new(&skilllite_path_owned);
         crate::windows_spawn::hide_child_console(&mut cmd);
-        cmd.arg("evolution")
-            .arg("run")
-            .arg("--json")
+        cmd.args(&args)
             .current_dir(&root)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
@@ -51,4 +60,25 @@ pub fn authorize_capability_evolution(
         let _ = cmd.output();
     });
     Ok(proposal_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authorized_run_args_include_target_workspace() {
+        let args = authorized_evolution_run_args("/tmp/skilllite workspace");
+
+        assert_eq!(
+            args,
+            vec![
+                "evolution",
+                "run",
+                "--json",
+                "--workspace",
+                "/tmp/skilllite workspace",
+            ]
+        );
+    }
 }

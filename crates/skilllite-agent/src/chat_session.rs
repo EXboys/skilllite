@@ -1161,6 +1161,20 @@ fn apply_message_window_to_cache(cache: &mut TranscriptCache, paths: &[PathBuf],
 
 // ─── A9: evolution triggers (periodic + decision-count) ─────────────────────
 
+fn resolve_evolution_skills_root(workspace: &str) -> Option<PathBuf> {
+    if workspace.is_empty() {
+        return None;
+    }
+    let workspace_root = skilllite_core::paths::resolve_workspace_filesystem_root(workspace);
+    Some(
+        skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback(
+            &workspace_root,
+            "skills",
+        )
+        .effective_path,
+    )
+}
+
 async fn run_evolution_and_emit_summary(
     data_root: &Path,
     workspace: &str,
@@ -1168,20 +1182,7 @@ async fn run_evolution_and_emit_summary(
     api_key: &str,
     model: &str,
 ) {
-    let skills_root = if workspace.is_empty() {
-        None
-    } else {
-        let ws = std::path::Path::new(workspace);
-        let sr = if ws.is_absolute() {
-            ws.join(".skills")
-        } else {
-            std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."))
-                .join(workspace)
-                .join(".skills")
-        };
-        Some(sr)
-    };
+    let skills_root = resolve_evolution_skills_root(workspace);
     let llm = match LlmClient::new(api_base, api_key) {
         Ok(c) => c,
         Err(e) => {
@@ -1369,6 +1370,35 @@ fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<Ch
             .as_ref()
             .map(|s| ChatMessage::system(&format!("[Previous conversation summary]\n{}", s))),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod evolution_workspace_tests {
+    use super::*;
+
+    #[test]
+    fn evolution_skills_root_prefers_workspace_skills_dir() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let skills_dir = workspace.path().join("skills");
+        let legacy_dir = workspace.path().join(".skills");
+        std::fs::create_dir_all(&skills_dir).expect("create skills");
+        std::fs::create_dir_all(&legacy_dir).expect("create legacy skills");
+
+        let resolved = resolve_evolution_skills_root(workspace.path().to_string_lossy().as_ref());
+
+        assert_eq!(resolved.as_deref(), Some(skills_dir.as_path()));
+    }
+
+    #[test]
+    fn evolution_skills_root_uses_legacy_fallback_when_default_missing() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let legacy_dir = workspace.path().join(".skills");
+        std::fs::create_dir_all(&legacy_dir).expect("create legacy skills");
+
+        let resolved = resolve_evolution_skills_root(workspace.path().to_string_lossy().as_ref());
+
+        assert_eq!(resolved.as_deref(), Some(legacy_dir.as_path()));
     }
 }
 
