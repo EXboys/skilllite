@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-069`
 - Title: Evolution workspace run scope
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -31,12 +31,12 @@ Recent desktop L2 evolution paths and agent-rpc chat can use different workspace
 
 ## Acceptance Criteria
 
-- [ ] `cmd_run` writes and reports evolved skills under the effective `skills/` root when a workspace has `skills/`, preserving legacy `.skills` fallback when appropriate.
-- [ ] Desktop chat decisions are written under the same workspace chat DB that L2 evolution UI reads.
-- [ ] Background desktop authorization follow-up cannot lose the target proposal because it omits `--workspace`.
-- [ ] Life Pulse growth cannot run against process cwd when an active workspace is known.
-- [ ] Regression tests cover the fixed path/argument behavior.
-- [ ] Required verification commands pass or any environment blockers are recorded with evidence.
+- [x] `cmd_run` writes and reports evolved skills under the effective `skills/` root when a workspace has `skills/`, preserving legacy `.skills` fallback when appropriate.
+- [x] Desktop chat decisions are written under the same workspace chat DB that L2 evolution UI reads.
+- [x] Background desktop authorization follow-up cannot lose the target proposal because it omits `--workspace`.
+- [x] Life Pulse growth cannot run against process cwd when an active workspace is known.
+- [x] Regression tests cover the fixed path/argument behavior.
+- [x] Required verification commands pass or any environment blockers are recorded with evidence.
 
 ## Risks
 
