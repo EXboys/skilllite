@@ -161,21 +161,35 @@ fn check_schedule_due(workspace: &std::path::Path) -> bool {
 
 // ─── Subprocess helpers ─────────────────────────────────────────────────────
 
+fn evolution_growth_args(workspace: &str) -> Vec<String> {
+    vec![
+        "evolution".to_string(),
+        "run".to_string(),
+        "--workspace".to_string(),
+        workspace.to_string(),
+    ]
+}
+
 fn spawn_growth(
     skilllite_path: &std::path::Path,
+    workspace: &str,
     env_pairs: &[(String, String)],
     running: Arc<AtomicBool>,
     app: tauri::AppHandle,
 ) {
     let path = skilllite_path.to_path_buf();
+    let workspace = workspace.to_string();
     let env: Vec<(String, String)> = env_pairs.to_vec();
     std::thread::spawn(move || {
         emit(&app, "growth-started", None);
+        let args = evolution_growth_args(&workspace);
+        let root = skilllite_bridge::find_project_root(&workspace);
         let mut growth_cmd = Command::new(&path);
         crate::windows_spawn::hide_child_console(&mut growth_cmd);
         let result = growth_cmd
-            .args(["evolution", "run"])
+            .args(&args)
             .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            .current_dir(root)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .status();
@@ -281,6 +295,7 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                     s.growth_running.store(true, Ordering::SeqCst);
                     spawn_growth(
                         &skilllite_path,
+                        &workspace,
                         &child_env,
                         s.growth_running.clone(),
                         app.clone(),
@@ -325,4 +340,24 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
 
 pub fn stop(state: &LifePulseState) {
     state.alive.store(false, Ordering::SeqCst);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn growth_args_include_active_workspace() {
+        let args = evolution_growth_args("/tmp/skilllite workspace");
+
+        assert_eq!(
+            args,
+            vec![
+                "evolution",
+                "run",
+                "--workspace",
+                "/tmp/skilllite workspace",
+            ]
+        );
+    }
 }

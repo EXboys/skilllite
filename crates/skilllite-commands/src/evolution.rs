@@ -28,9 +28,10 @@ use crate::Result;
 use skilllite_core::config::env_keys::paths as env_paths;
 use skilllite_core::paths;
 use skilllite_core::protocol::{NewSkill, NodeResult};
+use skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback;
 use skilllite_core::skill::manifest;
 
-/// Resolve workspace for project-level skill evolution.
+/// Resolve workspace for legacy project-level skill commands.
 /// Uses SKILLLITE_WORKSPACE env or current_dir. Returns workspace/.skills.
 fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
     let ws: PathBuf = workspace
@@ -48,6 +49,11 @@ fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
         std::env::current_dir().ok()?.join(ws)
     };
     Some(ws.join(".skills"))
+}
+
+fn resolve_run_skills_root(workspace: &str) -> PathBuf {
+    let ws = crate::evolution_status::resolve_workspace_root(workspace);
+    resolve_skills_dir_with_legacy_fallback(&ws, "skills").effective_path
 }
 
 #[derive(Debug)]
@@ -569,7 +575,7 @@ pub fn cmd_run(
     );
 
     let root = paths::chat_root();
-    let skills_root = resolve_skills_root(Some(workspace));
+    let skills_root = Some(resolve_run_skills_root(workspace));
     skilllite_core::config::ensure_default_output_dir();
 
     let force_key = skilllite_core::config::env_keys::evolution::SKILLLITE_EVO_FORCE_PROPOSAL_ID;
@@ -1059,5 +1065,29 @@ mod tests {
         assert_eq!(high[0].proposal_id, "p_high");
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn run_skills_root_prefers_workspace_skills_dir() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let skills_dir = workspace.path().join("skills");
+        let legacy_dir = workspace.path().join(".skills");
+        std::fs::create_dir_all(&skills_dir).expect("create skills");
+        std::fs::create_dir_all(&legacy_dir).expect("create legacy skills");
+
+        let resolved = resolve_run_skills_root(workspace.path().to_string_lossy().as_ref());
+
+        assert_eq!(resolved, skills_dir);
+    }
+
+    #[test]
+    fn run_skills_root_keeps_legacy_fallback_when_default_missing() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let legacy_dir = workspace.path().join(".skills");
+        std::fs::create_dir_all(&legacy_dir).expect("create legacy skills");
+
+        let resolved = resolve_run_skills_root(workspace.path().to_string_lossy().as_ref());
+
+        assert_eq!(resolved, legacy_dir);
     }
 }

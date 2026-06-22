@@ -25,7 +25,7 @@ pub use chat::{
 pub use followup_suggestions::followup_chat_suggestions;
 pub use integrations::*;
 pub use llm_routing_error::{classify_llm_routing_error_message, LlmInvokeResult};
-pub(crate) use paths::load_dotenv_for_child;
+pub(crate) use paths::{find_project_root, load_dotenv_for_child};
 pub use paths::{
     default_writable_workspace_dir, ensure_skilllite_version, resolve_skilllite_path_app,
     MIN_SKILLLITE_VERSION,
