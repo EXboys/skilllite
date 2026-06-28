@@ -221,7 +221,7 @@ jobs:
 
       - name: Upload macOS artifact (dmg)
         if: runner.os == 'macOS'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skilllite-assistant-darwin-arm64
           path: crates/skilllite-assistant/src-tauri/target/release/bundle/dmg/*.dmg
@@ -233,14 +233,14 @@ jobs:
 
       - name: Upload Windows artifact (msi)
         if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skilllite-assistant-windows-x64
           path: crates/skilllite-assistant/src-tauri/target/release/bundle/msi/*.msi
 
       - name: Upload Linux artifact (AppImage)
         if: matrix.os == 'ubuntu-22.04'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: skilllite-assistant-linux-x64
           path: crates/skilllite-assistant/src-tauri/target/release/bundle/appimage/*.AppImage
