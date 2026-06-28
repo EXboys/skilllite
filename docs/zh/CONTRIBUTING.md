@@ -58,7 +58,7 @@ cp .env.example .env
 - 遵循标准 Rust 规范
 - 运行 `cargo fmt --check` 和 `cargo clippy --all-targets -- -D warnings`
 - 提交前在仓库根运行 `cargo deny check bans`（安装：`cargo install cargo-deny --locked --version 0.18.6`，或与 `.github/workflows/ci.yml` 中版本一致），用于校验 `deny.toml` 中的 crate 分层策略
-- PR CI 会在 Ubuntu 运行完整 Rust/Python 检查，并在 macOS 和 Windows 运行轻量 `cargo check` smoke。
+- PR CI 会在 Ubuntu 运行完整 Rust/Python 检查，在 macOS 和 Windows 运行轻量 `cargo check` smoke，并在 macOS 单独跑 Seatbelt 沙箱 smoke（`sandbox-exec` Level 2 真实执行）。
 
 ### Python
 - 遵循 PEP 8
