@@ -124,3 +124,30 @@ jobs:
 
       - name: Check skilllite-sandbox binary
         run: cargo check -p skilllite --bin skilllite-sandbox --no-default-features --features sandbox_binary
+
+  macos-sandbox-smoke:
+    name: macOS sandbox smoke (Seatbelt)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify sandbox-exec is available
+        run: command -v sandbox-exec
+
+      - name: Run skilllite-sandbox macOS integration test
+        env:
+          SKILLLITE_AUTO_APPROVE: "1"
+        run: cargo test -p skilllite-sandbox --test macos_sandbox_smoke -- --nocapture
+
+      - name: Build skilllite (sandbox-only, for CLI smoke)
+        run: cargo build -p skilllite --bin skilllite --no-default-features --features sandbox_binary
+
+      - name: Run skilllite CLI Level 2 sandbox smoke
+        env:
+          SKILLLITE_AUTO_APPROVE: "1"
+          SKILLLITE_AUDIT_DISABLED: "1"
+        run: cargo test -p skilllite --test e2e_macos_sandbox --no-default-features --features sandbox_binary -- --nocapture

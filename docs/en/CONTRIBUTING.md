@@ -58,7 +58,7 @@ cp .env.example .env
 - Follow standard Rust conventions
 - Run `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`
 - Run `cargo deny check bans` from the repo root before submitting (install: `cargo install cargo-deny --locked --version 0.18.6`, or match `.github/workflows/ci.yml`). This enforces crate layering in `deny.toml`.
-- PR CI runs full Rust/Python checks on Ubuntu and lightweight `cargo check` smoke on macOS and Windows.
+- PR CI runs full Rust/Python checks on Ubuntu, lightweight `cargo check` smoke on macOS and Windows, and a dedicated macOS Seatbelt sandbox smoke job (`sandbox-exec` Level 2 execution).
 
 ### Python
 - Follow PEP 8
