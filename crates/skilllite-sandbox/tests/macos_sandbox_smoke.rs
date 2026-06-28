@@ -7,8 +7,7 @@
 #![cfg(target_os = "macos")]
 
 use skilllite_sandbox::runner::{
-    run_in_sandbox_with_limits_and_level, ResourceLimits, RuntimePaths, SandboxConfig,
-    SandboxLevel,
+    run_in_sandbox_with_limits_and_level, ResourceLimits, RuntimePaths, SandboxConfig, SandboxLevel,
 };
 use std::fs;
 use std::path::PathBuf;
