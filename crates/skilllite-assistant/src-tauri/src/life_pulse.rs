@@ -166,7 +166,7 @@ fn evolution_growth_args(workspace: &str) -> Vec<String> {
         "evolution".to_string(),
         "run".to_string(),
         "--workspace".to_string(),
-        workspace.to_string(),
+        skilllite_bridge::canonical_workspace_arg(workspace),
     ]
 }
 
@@ -347,17 +347,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn growth_args_include_active_workspace() {
-        let args = evolution_growth_args("/tmp/skilllite workspace");
+    fn growth_args_include_canonical_workspace() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("duration")
+            .as_nanos();
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite_life_pulse_workspace_{}_{}",
+            std::process::id(),
+            unique
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let nested = tmp.join("apps").join("frontend");
+        std::fs::create_dir_all(tmp.join("skills")).expect("skills root");
+        std::fs::create_dir_all(&nested).expect("nested workspace");
+
+        let args = evolution_growth_args(nested.to_string_lossy().as_ref());
 
         assert_eq!(
-            args,
-            vec![
-                "evolution",
-                "run",
-                "--workspace",
-                "/tmp/skilllite workspace",
-            ]
+            &args[..3],
+            ["evolution", "run", "--workspace"]
         );
+        assert_eq!(
+            std::path::PathBuf::from(&args[3])
+                .canonicalize()
+                .expect("workspace"),
+            tmp.canonicalize().expect("tmp")
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

@@ -51,6 +51,11 @@ pub(crate) fn find_project_root(start: &str) -> PathBuf {
     best_match.unwrap_or(original)
 }
 
+/// Convert a user-provided workspace into the canonical CLI `--workspace` argument.
+pub(crate) fn canonical_workspace_arg(start: &str) -> String {
+    find_project_root(start).to_string_lossy().to_string()
+}
+
 /// Load .env from workspace and parents for subprocess env.
 /// Treats `""` / `"."` like [`find_project_root`] so GUI cwd (`/` or `System32`) does not break lookup.
 pub(crate) fn load_dotenv_for_child(workspace: &str) -> Vec<(String, String)> {
@@ -259,6 +264,31 @@ mod tests {
             tmp.canonicalize().expect("tmp canonical")
         );
         let _ = std::fs::remove_dir_all(&resolved);
+    }
+
+    #[test]
+    fn canonical_workspace_arg_matches_project_root_for_nested_workspace() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("duration")
+            .as_nanos();
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite_assistant_canonical_workspace_{}_{}",
+            std::process::id(),
+            unique
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let nested = tmp.join("apps").join("frontend");
+        std::fs::create_dir_all(tmp.join("skills")).expect("skills root");
+        std::fs::create_dir_all(&nested).expect("nested workspace");
+
+        let resolved = canonical_workspace_arg(nested.to_string_lossy().as_ref());
+
+        assert_eq!(
+            PathBuf::from(resolved).canonicalize().expect("resolved"),
+            tmp.canonicalize().expect("tmp")
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[cfg(debug_assertions)]

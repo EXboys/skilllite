@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::skilllite_bridge::evolution_cli::spawn_skilllite_json;
 use crate::skilllite_bridge::integrations::shared::resolve_workspace_skills_root;
 
+use super::{arg_refs, with_workspace_arg};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingSkillDto {
     pub name: String,
@@ -26,11 +28,20 @@ pub fn list_evolution_pending_skills(
     workspace: &str,
     skilllite_path: &Path,
 ) -> Result<Vec<PendingSkillDto>, String> {
+    let args = with_workspace_arg(
+        vec![
+            "evolution".to_string(),
+            "pending".to_string(),
+            "--json".to_string(),
+        ],
+        workspace,
+    );
+    let arg_refs = arg_refs(&args);
     spawn_skilllite_json(
         skilllite_path,
         workspace,
         None,
-        &["evolution", "pending", "--json", "--workspace", workspace],
+        &arg_refs,
     )
 }
 
@@ -55,18 +66,21 @@ pub fn evolution_confirm_pending_skill(
     skill_name: &str,
     skilllite_path: &Path,
 ) -> Result<(), String> {
+    let mut args = with_workspace_arg(
+        vec![
+            "evolution".to_string(),
+            "confirm".to_string(),
+            "--json".to_string(),
+        ],
+        workspace,
+    );
+    args.push(skill_name.to_string());
+    let arg_refs = arg_refs(&args);
     let _op: EvolutionOpDto = spawn_skilllite_json(
         skilllite_path,
         workspace,
         None,
-        &[
-            "evolution",
-            "confirm",
-            "--json",
-            "--workspace",
-            workspace,
-            skill_name,
-        ],
+        &arg_refs,
     )?;
     Ok(())
 }
@@ -76,18 +90,21 @@ pub fn evolution_reject_pending_skill(
     skill_name: &str,
     skilllite_path: &Path,
 ) -> Result<(), String> {
+    let mut args = with_workspace_arg(
+        vec![
+            "evolution".to_string(),
+            "reject".to_string(),
+            "--json".to_string(),
+        ],
+        workspace,
+    );
+    args.push(skill_name.to_string());
+    let arg_refs = arg_refs(&args);
     let _op: EvolutionOpDto = spawn_skilllite_json(
         skilllite_path,
         workspace,
         None,
-        &[
-            "evolution",
-            "reject",
-            "--json",
-            "--workspace",
-            workspace,
-            skill_name,
-        ],
+        &arg_refs,
     )?;
     Ok(())
 }

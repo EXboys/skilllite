@@ -8,6 +8,8 @@ use crate::skilllite_bridge::chat::ChatConfigOverrides;
 use crate::skilllite_bridge::evolution_cli::spawn_skilllite_json;
 use crate::skilllite_bridge::local::engine_types::{GrowthDueDiagnostics, PassiveScheduleDiagnostics};
 
+use super::{arg_refs, with_workspace_arg};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvolutionLogEntryDto {
     pub ts: String,
@@ -54,12 +56,18 @@ pub fn load_evolution_status(
     periodic_anchor_unix: Option<i64>,
     skilllite_path: &Path,
 ) -> Result<EvolutionStatusPayload, String> {
-    let mut args = vec!["evolution", "status", "--json", "--workspace", workspace];
-    let anchor_buf;
+    let mut args = with_workspace_arg(
+        vec![
+            "evolution".to_string(),
+            "status".to_string(),
+            "--json".to_string(),
+        ],
+        workspace,
+    );
     if let Some(anchor) = periodic_anchor_unix {
-        anchor_buf = anchor.to_string();
-        args.push("--periodic-anchor-unix");
-        args.push(&anchor_buf);
+        args.push("--periodic-anchor-unix".to_string());
+        args.push(anchor.to_string());
     }
-    spawn_skilllite_json(skilllite_path, workspace, cfg.as_ref(), &args)
+    let arg_refs = arg_refs(&args);
+    spawn_skilllite_json(skilllite_path, workspace, cfg.as_ref(), &arg_refs)
 }
