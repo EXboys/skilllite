@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-19 (TASK-2026-069 evolution workspace run scope done)
+Last updated: 2026-07-04 (TASK-2026-070 desktop evolution workspace canonicalization in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-070-desktop-evolution-workspace-canonicalization` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
