@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-070`
 - Title: Canonicalize desktop evolution workspace roots
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -31,10 +31,10 @@ commands read or write under the nested path.
 
 ## Acceptance Criteria
 
-- [ ] Desktop evolution UI commands use the canonical project root for CLI `--workspace`.
-- [ ] Raw workspace remains available for `.env` lookup and process current-directory resolution.
-- [ ] Regression tests prove nested workspace paths are canonicalized before CLI arguments are built.
-- [ ] Required Rust formatting, linting, tests, and task validation pass or any environment blockers are recorded.
+- [x] Desktop evolution UI commands use the canonical project root for CLI `--workspace`.
+- [x] Raw workspace remains available for `.env` lookup and process current-directory resolution.
+- [x] Regression tests prove nested workspace paths are canonicalized before CLI arguments are built.
+- [x] Required Rust formatting, linting, tests, and task validation pass or any environment blockers are recorded.
 
 ## Risks
 
@@ -49,6 +49,7 @@ commands read or write under the nested path.
   - `cargo fmt --check`
   - `cargo clippy --all-targets -- -D warnings`
   - `cargo test`
+  - `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml`
   - `python3 scripts/validate_tasks.py`
 - Commands to run:
   - Run focused tests first, then required workspace checks.
@@ -69,4 +70,5 @@ commands read or write under the nested path.
 
 - Source TODO section:
 - Related PRs/issues:
+- Related commits: `14b9773 fix(desktop): canonicalize evolution workspace args`
 - Related docs:
