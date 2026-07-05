@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-06-19 (TASK-2026-069 evolution workspace run scope done)
+Last updated: 2026-07-05 (TASK-2026-070 evolution reset workspace scope in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-070-evolution-reset-workspace-scope` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 

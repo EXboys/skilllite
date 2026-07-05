@@ -526,14 +526,14 @@ fn register_agent(reg: &mut CommandRegistry) {
                     workspace,
                     proposal_id,
                 ),
-                EvolutionAction::Reset { force } => {
-                    skilllite_commands::evolution::cmd_reset(*force)
+                EvolutionAction::Reset { workspace, force } => {
+                    skilllite_commands::evolution::cmd_reset(workspace, *force)
                 }
-                EvolutionAction::Disable { rule_id } => {
-                    skilllite_commands::evolution::cmd_disable(rule_id)
+                EvolutionAction::Disable { workspace, rule_id } => {
+                    skilllite_commands::evolution::cmd_disable(workspace, rule_id)
                 }
-                EvolutionAction::Explain { rule_id } => {
-                    skilllite_commands::evolution::cmd_explain(rule_id)
+                EvolutionAction::Explain { workspace, rule_id } => {
+                    skilllite_commands::evolution::cmd_explain(workspace, rule_id)
                 }
                 EvolutionAction::AuthorizeCapability {
                     json,
