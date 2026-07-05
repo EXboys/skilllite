@@ -254,7 +254,7 @@ pub fn cmd_backlog(
 }
 
 /// `skilllite evolution reset` — delete all evolved data, return to seed state.
-pub fn cmd_reset(force: bool) -> Result<()> {
+pub fn cmd_reset(workspace: &str, force: bool) -> Result<()> {
     if !force {
         println!("⚠️  这将删除所有进化产物（规则、示例、Skill），回到种子状态。");
         println!("   已有进化经验将永久丢失。种子规则不受影响。");
@@ -263,15 +263,15 @@ pub fn cmd_reset(force: bool) -> Result<()> {
         return Ok(());
     }
 
-    let root = paths::chat_root();
+    let root = crate::evolution_status::chat_root_for_workspace(workspace);
 
     // Re-seed prompts (overwrite evolved rules/examples with seed data)
     skilllite_evolution::seed::ensure_seed_data_force(&root);
     println!("✅ Prompts 已重置为种子状态");
 
     // Remove evolved skills (project-level, includes _pending)
-    let evolved_dir = resolve_skills_root(None).map(|sr| sr.join("_evolved"));
-    if let Some(evolved_dir) = evolved_dir.filter(|p| p.exists()) {
+    let evolved_dir = resolve_run_skills_root(workspace).join("_evolved");
+    if evolved_dir.exists() {
         let count = std::fs::read_dir(&evolved_dir)
             .ok()
             .into_iter()
@@ -309,8 +309,8 @@ pub fn cmd_reset(force: bool) -> Result<()> {
 }
 
 /// `skilllite evolution disable <rule_id>` — disable a specific evolved rule.
-pub fn cmd_disable(rule_id: &str) -> Result<()> {
-    let root = paths::chat_root();
+pub fn cmd_disable(workspace: &str, rule_id: &str) -> Result<()> {
+    let root = crate::evolution_status::chat_root_for_workspace(workspace);
     let rules_path = root.join("prompts").join("rules.json");
 
     if !rules_path.exists() {
@@ -359,8 +359,8 @@ pub fn cmd_disable(rule_id: &str) -> Result<()> {
 }
 
 /// `skilllite evolution explain <rule_id>` — show rule origin, history, effectiveness.
-pub fn cmd_explain(rule_id: &str) -> Result<()> {
-    let root = paths::chat_root();
+pub fn cmd_explain(workspace: &str, rule_id: &str) -> Result<()> {
+    let root = crate::evolution_status::chat_root_for_workspace(workspace);
 
     // Load rule details
     let rules_path = root.join("prompts").join("rules.json");
@@ -1018,6 +1018,33 @@ pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>, from_source: bool) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use skilllite_core::config::env_keys::paths as env_paths;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvRestore {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvRestore {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            skilllite_core::config::set_env_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvRestore {
+        fn drop(&mut self) {
+            if let Some(value) = &self.previous {
+                skilllite_core::config::set_env_var(self.key, value);
+            } else {
+                skilllite_core::config::remove_env_var(self.key);
+            }
+        }
+    }
 
     #[test]
     fn normalize_filters_validate_allowed_values() {
@@ -1089,5 +1116,73 @@ mod tests {
         let resolved = resolve_run_skills_root(workspace.path().to_string_lossy().as_ref());
 
         assert_eq!(resolved, legacy_dir);
+    }
+
+    #[test]
+    fn reset_uses_workspace_argument_for_chat_and_skills_when_env_differs() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let env_workspace = tempfile::tempdir().expect("env workspace");
+        let target_workspace = tempfile::tempdir().expect("target workspace");
+        let _env_restore = EnvRestore::set(
+            env_paths::SKILLLITE_WORKSPACE,
+            env_workspace.path().to_string_lossy().as_ref(),
+        );
+
+        seed_reset_fixture(env_workspace.path(), "env");
+        seed_reset_fixture(target_workspace.path(), "target");
+
+        cmd_reset(target_workspace.path().to_string_lossy().as_ref(), true).expect("reset target");
+
+        assert_reset_fixture_preserved(env_workspace.path(), "env");
+        assert_reset_fixture_cleared(target_workspace.path(), "target");
+    }
+
+    fn seed_reset_fixture(workspace: &Path, label: &str) {
+        let prompts_dir = workspace.join("chat").join("prompts");
+        std::fs::create_dir_all(prompts_dir.join("_versions")).expect("create versions");
+        std::fs::write(
+            prompts_dir.join("rules.json"),
+            format!(r#"[{{"id":"{label}_custom","mutable":true}}]"#),
+        )
+        .expect("write rules");
+        std::fs::write(
+            prompts_dir.join("_versions").join(format!("{label}.json")),
+            "version",
+        )
+        .expect("write version");
+        std::fs::write(workspace.join("chat").join("evolution.log"), "log")
+            .expect("write evolution log");
+
+        let skill_dir = workspace
+            .join(".skills")
+            .join("_evolved")
+            .join(format!("{label}_skill"));
+        std::fs::create_dir_all(&skill_dir).expect("create skill");
+        std::fs::write(skill_dir.join("SKILL.md"), "skill").expect("write skill");
+    }
+
+    fn assert_reset_fixture_preserved(workspace: &Path, label: &str) {
+        let prompts_dir = workspace.join("chat").join("prompts");
+        let rules = std::fs::read_to_string(prompts_dir.join("rules.json")).expect("read rules");
+        assert!(rules.contains(&format!("{label}_custom")));
+        assert!(prompts_dir
+            .join("_versions")
+            .join(format!("{label}.json"))
+            .exists());
+        assert!(workspace.join("chat").join("evolution.log").exists());
+        assert!(workspace
+            .join(".skills")
+            .join("_evolved")
+            .join(format!("{label}_skill"))
+            .exists());
+    }
+
+    fn assert_reset_fixture_cleared(workspace: &Path, label: &str) {
+        let prompts_dir = workspace.join("chat").join("prompts");
+        let rules = std::fs::read_to_string(prompts_dir.join("rules.json")).expect("read rules");
+        assert!(!rules.contains(&format!("{label}_custom")));
+        assert!(!prompts_dir.join("_versions").exists());
+        assert!(!workspace.join("chat").join("evolution.log").exists());
+        assert!(!workspace.join(".skills").join("_evolved").exists());
     }
 }

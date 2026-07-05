@@ -116,7 +116,7 @@ flowchart TB
 
 **版本：** 行协议破坏性变更 → 引擎 **major**；Assistant 声明 `min_skilllite_version`。
 
-### 5.2 L2 — CLI JSON 面（待补/扩展）
+### 5.2 L2 — CLI JSON 与维护命令面（待补/扩展）
 
 与当前 Desktop bridge 对齐的优先子命令：
 
@@ -133,6 +133,7 @@ flowchart TB
 | `skilllite skills list --json --workspace` | `DesktopSkillSnapshot[]`（对齐 `DesktopSkillInfo`） | **已落地** |
 | `skilllite suggest-followup --json` | `{ "suggestions": [...] }` | **已落地** |
 | `skilllite evolution authorize-capability --json` | `{ "proposal_id": "..." }` | **已落地**；`--workspace` |
+| `skilllite evolution reset/disable/explain` | N/A（人类可读维护命令） | **已落地**；`--workspace` 选择要修改/读取的项目状态 |
 
 **约定：** `--json` 仅在 stdout 输出**一个** JSON 文档；人类可读信息走 stderr。
 

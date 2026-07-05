@@ -114,7 +114,7 @@ Already documented in `crates/skilllite-agent/src/rpc.rs`. Assistant depends on:
 
 **Versioning:** Treat breaking changes to line protocol as **engine major** bump; Assistant declares `min_skilllite_version`.
 
-### 5.2 L2 — CLI JSON surface (to add / extend)
+### 5.2 L2 — CLI JSON and maintenance surface (to add / extend)
 
 Priority commands for parity with today’s Desktop bridge:
 
@@ -131,6 +131,7 @@ Priority commands for parity with today’s Desktop bridge:
 | `skilllite skills list --json --workspace` | `DesktopSkillSnapshot[]` (desktop `DesktopSkillInfo`) | **Shipped** |
 | `skilllite suggest-followup --json` | `{ "suggestions": string[] }` | **Shipped** |
 | `skilllite evolution authorize-capability --json` | `{ "proposal_id": string }` | **Shipped**; `--workspace` |
+| `skilllite evolution reset/disable/explain` | N/A (human maintenance commands) | **Shipped**; `--workspace` selects the project state to mutate/read |
 
 **Convention:** `--json` always prints a single JSON document on stdout; human text on stderr only.
 

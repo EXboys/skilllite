@@ -1157,6 +1157,9 @@ pub enum EvolutionAction {
 
     /// Reset to seed state — delete all evolved rules, examples, and skills
     Reset {
+        /// Project workspace root
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
         /// Skip confirmation prompt
         #[arg(long, short)]
         force: bool,
@@ -1164,6 +1167,9 @@ pub enum EvolutionAction {
 
     /// Disable a specific evolved rule by ID
     Disable {
+        /// Project workspace root
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
         /// The rule ID to disable (e.g. "evo_rule_xyz")
         #[arg(value_name = "RULE_ID")]
         rule_id: String,
@@ -1171,6 +1177,9 @@ pub enum EvolutionAction {
 
     /// Show the origin, trigger history, and effectiveness of a specific rule
     Explain {
+        /// Project workspace root
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
         /// The rule ID to explain
         #[arg(value_name = "RULE_ID")]
         rule_id: String,
