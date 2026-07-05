@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-070`
 - Title: Scope destructive evolution commands to workspace
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P1`
 - Owner: `agent`
 - Contributors:
@@ -35,11 +35,11 @@ project chat state untouched and destroying unrelated global evolution state.
 
 ## Acceptance Criteria
 
-- [ ] `skilllite evolution reset --force --workspace W` only resets `W/chat` and `W` skills roots, even when `SKILLLITE_WORKSPACE` points elsewhere.
-- [ ] `disable` and `explain` can target the same workspace root as other evolution commands via `--workspace`.
-- [ ] Regression tests cover the destructive reset workspace mismatch.
-- [ ] EN/ZH docs mention the workspace-scoped reset/disable/explain surface.
-- [ ] Required Rust and task validation commands pass or any pre-existing blockers are recorded.
+- [x] `skilllite evolution reset --force --workspace W` only resets `W/chat` and `W` skills roots, even when `SKILLLITE_WORKSPACE` points elsewhere.
+- [x] `disable` and `explain` can target the same workspace root as other evolution commands via `--workspace`.
+- [x] Regression tests cover the destructive reset workspace mismatch.
+- [x] EN/ZH docs mention the workspace-scoped reset/disable/explain surface.
+- [x] Required Rust and task validation commands pass or any pre-existing blockers are recorded.
 
 ## Risks
 
@@ -53,15 +53,15 @@ project chat state untouched and destroying unrelated global evolution state.
 ## Validation Plan
 
 - Required tests:
-  - `cargo test -p skilllite-commands --features agent`
-  - `cargo test -p skilllite`
-  - `cargo test`
-  - `python3 scripts/validate_tasks.py`
+  - `cargo test -p skilllite-commands --features agent` — passed, 42 tests.
+  - `cargo test -p skilllite` — passed.
+  - `cargo test` — passed.
+  - `python3 scripts/validate_tasks.py` — passed, 70 task directories checked.
 - Commands to run:
-  - `cargo fmt --check`
-  - `cargo clippy --all-targets -- -D warnings`
+  - `cargo fmt --check` — passed.
+  - `cargo clippy --all-targets -- -D warnings` — passed.
 - Manual checks:
-  - Inspect CLI dispatch to confirm reset/disable/explain pass workspace through.
+  - Inspected CLI dispatch to confirm reset/disable/explain pass workspace through.
   - Re-read changed files and task board after edits.
 
 ## Regression Scope
