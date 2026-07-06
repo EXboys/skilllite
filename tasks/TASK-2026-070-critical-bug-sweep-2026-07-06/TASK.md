@@ -63,5 +63,5 @@ Run the scheduled high-severity bug sweep against recent commits and determine w
 ## Links
 
 - Source TODO section: Scheduled critical bug automation, 2026-07-06.
-- Related PRs/issues: Recent commits from `git log`; fix commits `2b23315` and `1e24bcd`.
+- Related PRs/issues: Recent commits from `git log`; fix commits `2b23315` and `1e24bcd`; PR #111.
 - Related docs: `spec/verification-integrity.md`, `spec/task-artifact-language.md`.

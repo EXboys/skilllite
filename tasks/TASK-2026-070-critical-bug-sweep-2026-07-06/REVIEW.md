@@ -48,4 +48,4 @@
 ## Decision
 
 - Merge readiness: `ready`
-- Follow-up actions: Open PR with bug/impact/root cause/fix/validation summary.
+- Follow-up actions: PR #111 opened. Slack summary attempted, but all available channels rejected the bot because it was not invited.
