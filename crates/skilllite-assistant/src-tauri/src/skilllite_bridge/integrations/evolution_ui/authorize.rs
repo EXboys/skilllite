@@ -58,7 +58,10 @@ pub fn authorize_capability_evolution(
         for (k, v) in load_dotenv_for_child(&workspace_owned) {
             cmd.env(k, v);
         }
-        cmd.env(evo_keys::SKILLLITE_EVO_FORCE_PROPOSAL_ID, &proposal_id_owned);
+        cmd.env(
+            evo_keys::SKILLLITE_EVO_FORCE_PROPOSAL_ID,
+            &proposal_id_owned,
+        );
         let _ = cmd.output();
     });
     Ok(proposal_id)
