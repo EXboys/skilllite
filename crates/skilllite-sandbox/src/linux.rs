@@ -35,6 +35,10 @@ pub fn execute_with_limits(
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
 
+    let network_policy =
+        security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
+    validate_linux_network_policy(&network_policy)?;
+
     match execute_with_seccomp(skill_dir, runtime, config, input_json, limits) {
         Ok(result) => Ok(result),
         Err(e) => {
