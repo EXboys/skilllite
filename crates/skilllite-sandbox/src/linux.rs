@@ -8,7 +8,7 @@ use crate::error::bail;
 use crate::runner::{ExecutionResult, ResourceLimits, RuntimePaths, SandboxConfig};
 use crate::runtime_resolver::{ResolvedRuntime, RuntimeResolver};
 use crate::seatbelt::{generate_firejail_blacklist_args, MANDATORY_DENY_DIRECTORIES};
-use crate::security::policy::{self as security_policy};
+use crate::security::policy::{self as security_policy, ResolvedNetworkPolicy};
 use anyhow::Context;
 
 use crate::Result;
@@ -34,6 +34,10 @@ pub fn execute_with_limits(
         tracing::warn!("Sandbox disabled via SKILLLITE_NO_SANDBOX - running without protection");
         return execute_simple_with_limits(skill_dir, runtime, config, input_json, limits);
     }
+
+    let network_policy =
+        security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
+    validate_linux_network_policy(&network_policy)?;
 
     match execute_with_seccomp(skill_dir, runtime, config, input_json, limits) {
         Ok(result) => Ok(result),
@@ -80,6 +84,18 @@ pub(crate) fn execute_simple_with_limits(
     limits: crate::runner::ResourceLimits,
 ) -> Result<ExecutionResult> {
     common::execute_unsandboxed(skill_dir, runtime, config, input_json, limits)
+}
+
+fn validate_linux_network_policy(network_policy: &ResolvedNetworkPolicy) -> Result<()> {
+    if let ResolvedNetworkPolicy::ProxyFiltered { domains } = network_policy {
+        let domains = domains.join(", ");
+        bail!(
+            "Linux sandbox cannot enforce domain-filtered network policy ({domains}); \
+             refusing to run with unrestricted network access. Use network_outbound: ['*'] \
+             for explicit unrestricted egress, or disable network access."
+        );
+    }
+    Ok(())
 }
 
 struct LinuxSandboxInvocation<'a> {
@@ -157,6 +173,7 @@ fn execute_with_bwrap(
     let interpreter_path = resolve_command_path(&resolved.interpreter);
     let network_policy =
         security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
+    validate_linux_network_policy(&network_policy)?;
 
     let proxy_manager = start_network_proxy(&network_policy);
 
@@ -532,6 +549,7 @@ fn execute_with_firejail(
     let interpreter_path = resolve_command_path(&resolved.interpreter);
     let network_policy =
         security_policy::resolve_network_policy(config.network_enabled, &config.network_outbound);
+    validate_linux_network_policy(&network_policy)?;
 
     let proxy_manager = start_network_proxy(&network_policy);
 
@@ -870,5 +888,35 @@ mod tests {
 
         assert!(roots.iter().any(|root| root == &home.join(".pyenv")));
         assert!(roots.iter().any(|root| root == &home.join("miniconda3")));
+    }
+
+    #[test]
+    fn test_validate_linux_network_policy_allows_block_all() {
+        let policy = ResolvedNetworkPolicy::BlockAll;
+
+        validate_linux_network_policy(&policy)
+            .expect("block-all network policy should remain supported on Linux");
+    }
+
+    #[test]
+    fn test_validate_linux_network_policy_allows_wildcard_direct_egress() {
+        let policy = ResolvedNetworkPolicy::AllowAll;
+
+        validate_linux_network_policy(&policy)
+            .expect("explicit wildcard direct egress should remain supported on Linux");
+    }
+
+    #[test]
+    fn test_validate_linux_network_policy_rejects_proxy_filtered() {
+        let policy = ResolvedNetworkPolicy::ProxyFiltered {
+            domains: vec!["api.example.com".to_string()],
+        };
+
+        let err = validate_linux_network_policy(&policy)
+            .expect_err("domain-filtered network policy is not enforceable on Linux");
+        let msg = err.to_string();
+        assert!(msg.contains("Linux sandbox cannot enforce domain-filtered network policy"));
+        assert!(msg.contains("api.example.com"));
+        assert!(msg.contains("refusing to run with unrestricted network access"));
     }
 }

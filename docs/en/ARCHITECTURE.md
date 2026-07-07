@@ -359,13 +359,13 @@ pub struct ResourceLimits {
 
 #### 2.6 Linux Sandbox (`skilllite-sandbox/linux.rs`)
 
-**Sandbox Tool Priority**: bubblewrap (bwrap) → firejail. If both are unavailable or execution fails, **execution is refused by default** (fail-closed, aligned with Windows). Only with `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1` is a **weak** fallback allowed (PID/UTS/network namespaces only, no bwrap filesystem sandbox), recorded as a security event (`security_sandbox_fallback` / `linux_namespace_fallback`).
+**Sandbox Tool Priority**: bubblewrap (bwrap) → firejail. If both are unavailable or execution fails, **execution is refused by default** (fail-closed, aligned with Windows). Only with `SKILLLITE_ALLOW_LINUX_NAMESPACE_FALLBACK=1` is a **weak** fallback allowed (PID/UTS/network namespaces only, no bwrap filesystem sandbox), recorded as a security event (`security_sandbox_fallback` / `linux_namespace_fallback`). Linux currently supports disabled networking and explicit wildcard direct egress (`network_outbound: ["*"]`); domain-filtered egress is refused because bwrap/firejail cannot force all outbound sockets through the local filtering proxy.
 
 **Bubblewrap Isolation:**
 - `--unshare-all`: Unshare all namespaces
 - Minimal filesystem mounts (read-only /usr, /lib, /bin)
 - Skill directory mounted read-only
-- Network isolation (default `--unshare-net`; `--share-net` with proxy filtering when enabled)
+- Network isolation (default `--unshare-net`; `--share-net` only for explicit wildcard direct egress)
 - Seccomp BPF filter blocks AF_UNIX socket creation
 
 #### 2.7 Windows Sandbox (`skilllite-sandbox/windows.rs`)
@@ -811,7 +811,7 @@ Environment variable keys are defined in `skilllite-core/config/env_keys.rs` wit
 **Linux (Namespace + Seccomp)**:
 - Mount namespace: Isolated filesystem view
 - PID namespace: Isolated process space
-- Network namespace: Isolated networking
+- Network namespace: Isolated networking; domain allowlists fail closed on Linux until a kernel-enforced proxy path is available
 - Seccomp BPF: Restricted syscalls (blocks AF_UNIX socket creation)
 - Supported tools: bubblewrap (bwrap) or firejail
 
