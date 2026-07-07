@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-070`
 - Title: Fail closed when Linux filtered network proxy is unavailable
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -31,9 +31,9 @@ This turns an intended allowlist into unrestricted egress for that skill run.
 
 ## Acceptance Criteria
 
-- [ ] Linux bwrap/firejail paths reject filtered-network execution before launching the skill.
-- [ ] Linux `BlockAll` still isolates networking and wildcard `AllowAll` remains direct.
-- [ ] Regression tests cover filtered-without-proxy, filtered-with-proxy, block-all, and allow-all decisions.
+- [x] Linux bwrap/firejail paths reject filtered-network execution before launching the skill.
+- [x] Linux `BlockAll` still isolates networking and wildcard `AllowAll` remains direct.
+- [x] Regression tests cover rejected filtered networking plus block-all and allow-all decisions.
 
 ## Risks
 
@@ -45,12 +45,12 @@ This turns an intended allowlist into unrestricted egress for that skill run.
 
 - Required tests: focused `skilllite-sandbox` unit tests plus workspace Rust checks.
 - Commands to run:
-  - `cargo fmt --check`
-  - `cargo clippy --all-targets -- -D warnings`
-  - `cargo test -p skilllite-sandbox`
-  - `cargo test`
-  - `python3 scripts/validate_tasks.py`
-- Manual checks: inspect Linux bwrap/firejail command-building branches for fail-closed behavior.
+  - `cargo fmt --check` - passed
+  - `cargo clippy --all-targets -- -D warnings` - passed
+  - `cargo test -p skilllite-sandbox` - passed
+  - `cargo test` - passed
+  - `python3 scripts/validate_tasks.py` - passed
+- Manual checks: inspected Linux bwrap/firejail command-building branches and top-level fallback handling for fail-closed behavior.
 
 ## Regression Scope
 
