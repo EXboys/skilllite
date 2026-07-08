@@ -25,31 +25,10 @@ use skilllite_agent::types::AgentConfig;
 
 use crate::error::bail;
 use crate::Result;
-use skilllite_core::config::env_keys::paths as env_paths;
 use skilllite_core::paths;
 use skilllite_core::protocol::{NewSkill, NodeResult};
 use skilllite_core::skill::discovery::resolve_skills_dir_with_legacy_fallback;
 use skilllite_core::skill::manifest;
-
-/// Resolve workspace for legacy project-level skill commands.
-/// Uses SKILLLITE_WORKSPACE env or current_dir. Returns workspace/.skills.
-fn resolve_skills_root(workspace: Option<&str>) -> Option<PathBuf> {
-    let ws: PathBuf = workspace
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var(env_paths::SKILLLITE_WORKSPACE)
-                .ok()
-                .map(PathBuf::from)
-        })
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let ws = if ws.is_absolute() {
-        ws
-    } else {
-        std::env::current_dir().ok()?.join(ws)
-    };
-    Some(ws.join(".skills"))
-}
 
 fn resolve_run_skills_root(workspace: &str) -> PathBuf {
     let ws = crate::evolution_status::resolve_workspace_root(workspace);
@@ -254,7 +233,7 @@ pub fn cmd_backlog(
 }
 
 /// `skilllite evolution reset` — delete all evolved data, return to seed state.
-pub fn cmd_reset(force: bool) -> Result<()> {
+pub fn cmd_reset(workspace: &str, force: bool) -> Result<()> {
     if !force {
         println!("⚠️  这将删除所有进化产物（规则、示例、Skill），回到种子状态。");
         println!("   已有进化经验将永久丢失。种子规则不受影响。");
@@ -263,15 +242,15 @@ pub fn cmd_reset(force: bool) -> Result<()> {
         return Ok(());
     }
 
-    let root = paths::chat_root();
+    let root = crate::evolution_status::chat_root_for_workspace(workspace);
 
     // Re-seed prompts (overwrite evolved rules/examples with seed data)
     skilllite_evolution::seed::ensure_seed_data_force(&root);
     println!("✅ Prompts 已重置为种子状态");
 
     // Remove evolved skills (project-level, includes _pending)
-    let evolved_dir = resolve_skills_root(None).map(|sr| sr.join("_evolved"));
-    if let Some(evolved_dir) = evolved_dir.filter(|p| p.exists()) {
+    let evolved_dir = resolve_run_skills_root(workspace).join("_evolved");
+    if evolved_dir.exists() {
         let count = std::fs::read_dir(&evolved_dir)
             .ok()
             .into_iter()
@@ -776,10 +755,14 @@ fn is_fetchable_source(source: &str) -> bool {
 /// `skilllite evolution repair-skills [SKILL_NAME...]` — 验证技能并修复失败的。
 /// 不传技能名时验证并修复所有失败技能；传一个或多个技能名时仅验证并修复这些技能，缩短执行时间。
 /// `from_source`: 对下载的技能失败时自动从源头更新，不交互询问（桌面/CI 等非 TTY 时传 true）。
-pub fn cmd_repair_skills(skills_filter: Option<Vec<String>>, from_source: bool) -> Result<()> {
-    let skills_root = resolve_skills_root(None).ok_or_else(|| {
-        crate::Error::validation("无法解析工作区。请设置 SKILLLITE_WORKSPACE 或在项目目录运行。")
-    })?;
+pub fn cmd_repair_skills(
+    workspace: &str,
+    skills_filter: Option<Vec<String>>,
+    from_source: bool,
+) -> Result<()> {
+    let ws_root = crate::evolution_status::resolve_workspace_root(workspace);
+    skilllite_core::config::load_dotenv_from_dir(&ws_root);
+    let skills_root = resolve_run_skills_root(workspace);
 
     let config = AgentConfig::from_env();
     if config.api_key.is_empty() {

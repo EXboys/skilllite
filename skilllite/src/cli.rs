@@ -1157,6 +1157,9 @@ pub enum EvolutionAction {
 
     /// Reset to seed state — delete all evolved rules, examples, and skills
     Reset {
+        /// Project workspace root
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
         /// Skip confirmation prompt
         #[arg(long, short)]
         force: bool,
@@ -1226,6 +1229,10 @@ pub enum EvolutionAction {
 
     /// Repair skills: validate then LLM-fix failures. Without names, repair all failed; with names, only validate/repair those (faster when many skills).
     RepairSkills {
+        /// Project workspace root
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
+
         /// 仅验证并修复这些技能（目录名）；不传则处理全部失败技能
         #[arg(value_name = "SKILL_NAME")]
         skills: Vec<String>,

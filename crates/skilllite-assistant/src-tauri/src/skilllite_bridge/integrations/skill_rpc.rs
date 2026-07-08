@@ -141,7 +141,10 @@ pub fn repair_skills(
 
     let mut cmd = std::process::Command::new(skilllite_path);
     crate::windows_spawn::hide_child_console(&mut cmd);
-    cmd.arg("evolution").arg("repair-skills");
+    cmd.arg("evolution")
+        .arg("repair-skills")
+        .arg("--workspace")
+        .arg(root.to_string_lossy().as_ref());
     for name in skill_names {
         cmd.arg(name);
     }

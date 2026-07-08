@@ -526,8 +526,8 @@ fn register_agent(reg: &mut CommandRegistry) {
                     workspace,
                     proposal_id,
                 ),
-                EvolutionAction::Reset { force } => {
-                    skilllite_commands::evolution::cmd_reset(*force)
+                EvolutionAction::Reset { workspace, force } => {
+                    skilllite_commands::evolution::cmd_reset(workspace, *force)
                 }
                 EvolutionAction::Disable { rule_id } => {
                     skilllite_commands::evolution::cmd_disable(rule_id)
@@ -566,9 +566,11 @@ fn register_agent(reg: &mut CommandRegistry) {
                     *log_manual_trigger,
                 ),
                 EvolutionAction::RepairSkills {
+                    workspace,
                     skills,
                     from_source,
                 } => skilllite_commands::evolution::cmd_repair_skills(
+                    workspace,
                     if skills.is_empty() {
                         None
                     } else {
