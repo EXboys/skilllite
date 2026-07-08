@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-070`
 - Title: Fix evolution reset and repair workspace roots
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -33,11 +33,11 @@ In a modern workspace that uses `skills/`, this can reset the wrong chat store, 
 
 ## Acceptance Criteria
 
-- [ ] `skilllite evolution reset --force --workspace <ws>` resets `<ws>/chat` and removes `<ws>/skills/_evolved`.
-- [ ] `skilllite evolution reset --force` run from a workspace defaults to that workspace instead of mixing global chat with project skills.
-- [ ] `skilllite evolution repair-skills --workspace <ws>` validates the effective skills root, preferring `<ws>/skills` with legacy `.skills` fallback.
-- [ ] Focused regression tests cover the destructive reset path without requiring an LLM API key.
-- [ ] Required Rust formatting, linting, tests, and task validation are run and recorded.
+- [x] `skilllite evolution reset --force --workspace <ws>` resets `<ws>/chat` and removes `<ws>/skills/_evolved`.
+- [x] `skilllite evolution reset --force` run from a workspace defaults to that workspace instead of mixing global chat with project skills.
+- [x] `skilllite evolution repair-skills --workspace <ws>` validates the effective skills root, preferring `<ws>/skills` with legacy `.skills` fallback.
+- [x] Focused regression tests cover the destructive reset path without requiring an LLM API key.
+- [x] Required Rust formatting, linting, tests, and task validation are run and recorded.
 
 ## Risks
 
@@ -54,11 +54,12 @@ In a modern workspace that uses `skills/`, this can reset the wrong chat store, 
   - Focused integration tests in `skilllite/tests/cli_evolution_workspace.rs`.
   - Required command-scope tests from `spec/testing-policy.md`.
 - Commands to run:
-  - `cargo fmt --check`
-  - `cargo clippy --all-targets -- -D warnings`
-  - `cargo test`
-  - `cargo test -p skilllite --test cli_evolution_workspace`
-  - `python3 scripts/validate_tasks.py`
+  - `cargo fmt --check` - passed.
+  - `cargo clippy --all-targets -- -D warnings` - passed.
+  - `cargo test` - passed.
+  - `cargo test -p skilllite` - passed.
+  - `cargo test -p skilllite --test cli_evolution_workspace` - passed (4 tests).
+  - `python3 scripts/validate_tasks.py` - passed (70 task directories checked).
 - Manual checks:
   - Re-read modified files and task board after updates.
 
