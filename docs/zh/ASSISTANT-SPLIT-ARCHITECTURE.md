@@ -128,6 +128,8 @@ flowchart TB
 | `skilllite evolution proposal-status --json` | 单条 backlog | **已落地**；`--workspace` |
 | `skilllite evolution confirm/reject --json` | 操作结果 | **已落地**；`--workspace` |
 | `skilllite evolution run --json` | `NodeResult` | **已落地**；`--workspace`、`--proposal-id`、`--log-manual-trigger` |
+| `skilllite evolution reset --workspace` | 人类可读输出 | **已落地**；破坏性重置限定在所选工作区的 `chat/` 与有效技能根 |
+| `skilllite evolution repair-skills --workspace` | 人类可读输出 | **已落地**；桌面修复验证所选工作区技能根（`skills/`，缺失时回退 `.skills`） |
 | `skilllite runtime probe --json` | `RuntimeUiSnapshot` | **已落地** |
 | `skilllite runtime provision --json` | stderr 进度 JSON 行 + stdout `ProvisionRuntimesResult` | **已落地**；`--python` / `--node` / `--force` |
 | `skilllite skills list --json --workspace` | `DesktopSkillSnapshot[]`（对齐 `DesktopSkillInfo`） | **已落地** |
