@@ -222,7 +222,7 @@ fn collect_output_files_inner(
 }
 
 fn sort_newest_first(mut items: Vec<FileWithMtime>) -> Vec<String> {
-    items.sort_by(|a, b| b.1.cmp(&a.1));
+    items.sort_by_key(|item| std::cmp::Reverse(item.1));
     items.into_iter().map(|(path, _)| path).collect()
 }
 
@@ -454,7 +454,7 @@ pub fn load_memory_summaries(workspace: Option<&str>) -> Vec<MemoryEntry> {
 
     let mut files: Vec<FileWithMtime> = Vec::new();
     collect_md_files(&memory_dir, &memory_dir, &mut files);
-    files.sort_by(|a, b| b.1.cmp(&a.1));
+    files.sort_by_key(|item| std::cmp::Reverse(item.1));
 
     files
         .into_iter()
