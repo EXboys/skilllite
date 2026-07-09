@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-070`
 - Title: Fix desktop workspace root mismatches
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -28,11 +28,11 @@ Recent workspace-scope fixes made desktop chat subprocess writes use the active 
 
 ## Acceptance Criteria
 
-- [ ] Desktop transcript/session/memory/log/prompt reads use the same `<workspace>/chat` root as chat subprocess writes when a workspace is supplied.
-- [ ] Desktop session create/rename/delete mutates the active workspace's `sessions.json` and related transcript/plan files.
-- [ ] Life Pulse rhythm executes `skilllite schedule tick --workspace <workspace>` from the resolved project root.
-- [ ] Existing no-workspace call paths remain backward compatible with the process-global chat root.
-- [ ] Regression tests cover the fixed routing behavior.
+- [x] Desktop transcript/session/memory/log/prompt reads use the same `<workspace>/chat` root as chat subprocess writes when a workspace is supplied.
+- [x] Desktop session create/rename/delete mutates the active workspace's `sessions.json` and related transcript/plan files.
+- [x] Life Pulse rhythm executes `skilllite schedule tick --workspace <workspace>` from the resolved project root.
+- [x] Existing no-workspace call paths remain backward compatible with the process-global chat root.
+- [x] Regression tests cover the fixed routing behavior.
 
 ## Risks
 
@@ -51,6 +51,9 @@ Recent workspace-scope fixes made desktop chat subprocess writes use the active 
 - Commands to run:
   - `cargo fmt --check`
   - `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml`
+  - `npm run build` in `crates/skilllite-assistant`
+  - `cargo test`
+  - `cargo clippy --all-targets -- -D warnings`
   - `python3 scripts/validate_tasks.py`
 - Manual checks:
   - Inspect edited callsites to confirm every changed Tauri invoke passes `workspace` or uses a backend compatibility default.
