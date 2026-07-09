@@ -151,8 +151,12 @@ pub fn read_prompt_snapshot_version_at(
     read_utf8_file_capped(&path)
 }
 
-pub fn list_prompt_snapshot_txns(filename: &str) -> Result<Vec<EvolutionSnapshotTxnDto>, String> {
-    list_prompt_snapshot_txns_at(&crate::skilllite_bridge::local::chat_root(), filename)
+pub fn list_prompt_snapshot_txns(
+    filename: &str,
+    workspace: Option<&str>,
+) -> Result<Vec<EvolutionSnapshotTxnDto>, String> {
+    let chat_root = crate::skilllite_bridge::paths::skilllite_chat_root_for_workspace(workspace);
+    list_prompt_snapshot_txns_at(&chat_root, filename)
 }
 
 fn list_prompt_snapshots_batch_at(
@@ -177,16 +181,27 @@ fn list_prompt_snapshots_batch_at(
 /// 一次请求列出多个 prompt 文件的快照 txn（避免前端 N 路并行 invoke 与 Strict Mode 竞态）。
 pub fn list_prompt_snapshots_batch(
     filenames: &[String],
+    workspace: Option<&str>,
 ) -> Result<HashMap<String, Vec<EvolutionSnapshotTxnDto>>, String> {
-    list_prompt_snapshots_batch_at(&crate::skilllite_bridge::local::chat_root(), filenames)
+    let chat_root = crate::skilllite_bridge::paths::skilllite_chat_root_for_workspace(workspace);
+    list_prompt_snapshots_batch_at(&chat_root, filenames)
 }
 
-pub fn read_prompt_version_content(filename: &str, version_ref: &str) -> Result<String, String> {
-    read_prompt_snapshot_version_at(&crate::skilllite_bridge::local::chat_root(), filename, version_ref)
+pub fn read_prompt_version_content(
+    filename: &str,
+    version_ref: &str,
+    workspace: Option<&str>,
+) -> Result<String, String> {
+    let chat_root = crate::skilllite_bridge::paths::skilllite_chat_root_for_workspace(workspace);
+    read_prompt_snapshot_version_at(&chat_root, filename, version_ref)
 }
 
 /// Write UTF-8 to `chat_root/prompts/<filename>`（仅允许与快照对比相同白名单）。
-pub fn write_chat_prompt_text_file(filename: &str, content: &str) -> Result<(), String> {
+pub fn write_chat_prompt_text_file(
+    filename: &str,
+    content: &str,
+    workspace: Option<&str>,
+) -> Result<(), String> {
     if !evolution_prompt_filename_allowed(filename) {
         return Err("不支持的 prompt 文件名".to_string());
     }
@@ -194,9 +209,8 @@ pub fn write_chat_prompt_text_file(filename: &str, content: &str) -> Result<(), 
     if len > MAX_PROMPT_VERSION_BYTES {
         return Err(format!("内容超过 {} 字节上限", MAX_PROMPT_VERSION_BYTES));
     }
-    let path = crate::skilllite_bridge::local::chat_root()
-        .join("prompts")
-        .join(filename);
+    let chat_root = crate::skilllite_bridge::paths::skilllite_chat_root_for_workspace(workspace);
+    let path = chat_root.join("prompts").join(filename);
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
@@ -246,8 +260,9 @@ fn get_earliest_snapshot_content(chat_root: &Path, filename: &str) -> Option<Str
     None
 }
 
-pub fn load_evolution_diffs(_workspace: &str) -> Vec<EvolutionFileDiffDto> {
-    let chat_root = crate::skilllite_bridge::local::chat_root();
+pub fn load_evolution_diffs(workspace: &str) -> Vec<EvolutionFileDiffDto> {
+    let chat_root =
+        crate::skilllite_bridge::paths::skilllite_chat_root_for_workspace(Some(workspace));
     let prompts_dir = chat_root.join("prompts");
     if !prompts_dir.exists() {
         return Vec::new();
@@ -347,7 +362,7 @@ mod evolution_prompt_version_tests {
 
     #[test]
     fn write_chat_prompt_rejects_bad_filename() {
-        let r = write_chat_prompt_text_file("../../../etc/passwd", "x");
+        let r = write_chat_prompt_text_file("../../../etc/passwd", "x", None);
         assert!(r.is_err());
     }
 
@@ -381,6 +396,30 @@ mod evolution_prompt_version_tests {
         let map = list_prompt_snapshots_batch_at(&root, &names).expect("batch");
         assert_eq!(map.len(), 2);
         assert_eq!(map.get("rules.json").map(|v| v.len()), Some(1));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn evolution_diffs_use_workspace_chat_root() {
+        let root = std::env::temp_dir().join(format!(
+            "sl_evo_workspace_diff_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("duration")
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("chat").join("prompts")).expect("mkdir prompts");
+        std::fs::write(root.join("chat").join("prompts").join("rules.json"), b"workspace")
+            .expect("write rules");
+        let workspace = root.to_string_lossy().to_string();
+
+        let diffs = load_evolution_diffs(&workspace);
+
+        assert!(diffs
+            .iter()
+            .any(|d| d.filename == "rules.json" && d.content == "workspace"));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

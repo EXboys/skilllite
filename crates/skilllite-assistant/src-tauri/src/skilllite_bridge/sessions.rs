@@ -1,9 +1,9 @@
 //! sessions.json 与会话 CRUD。
 
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use super::paths::skilllite_chat_root;
+use super::paths::skilllite_chat_root_for_workspace;
 use super::transcript::list_transcript_paths;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -14,8 +14,8 @@ pub struct SessionInfo {
     pub message_preview: Option<String>,
 }
 
-fn sessions_json_path() -> PathBuf {
-    skilllite_chat_root().join("sessions.json")
+fn sessions_json_path(chat_root: &Path) -> PathBuf {
+    chat_root.join("sessions.json")
 }
 
 fn get_last_user_message_from_transcripts(
@@ -56,8 +56,9 @@ fn get_last_user_message_from_transcripts(
     None
 }
 
-pub fn list_sessions() -> Vec<SessionInfo> {
-    let path = sessions_json_path();
+pub fn list_sessions(workspace: Option<&str>) -> Vec<SessionInfo> {
+    let chat_root = skilllite_chat_root_for_workspace(workspace);
+    let path = sessions_json_path(&chat_root);
     let store: serde_json::Value = if path.exists() {
         std::fs::read_to_string(&path)
             .ok()
@@ -73,7 +74,6 @@ pub fn list_sessions() -> Vec<SessionInfo> {
         .cloned()
         .unwrap_or_default();
 
-    let chat_root = skilllite_chat_root();
     let transcripts_dir = chat_root.join("transcripts");
 
     let mut result: Vec<SessionInfo> = sessions_map
@@ -122,8 +122,9 @@ pub fn list_sessions() -> Vec<SessionInfo> {
     result
 }
 
-pub fn create_session(display_name: &str) -> Result<SessionInfo, String> {
-    let path = sessions_json_path();
+pub fn create_session(display_name: &str, workspace: Option<&str>) -> Result<SessionInfo, String> {
+    let chat_root = skilllite_chat_root_for_workspace(workspace);
+    let path = sessions_json_path(&chat_root);
     let mut store: serde_json::Value = if path.exists() {
         std::fs::read_to_string(&path)
             .ok()
@@ -174,8 +175,13 @@ pub fn create_session(display_name: &str) -> Result<SessionInfo, String> {
     })
 }
 
-pub fn rename_session(session_key: &str, new_name: &str) -> Result<(), String> {
-    let path = sessions_json_path();
+pub fn rename_session(
+    session_key: &str,
+    new_name: &str,
+    workspace: Option<&str>,
+) -> Result<(), String> {
+    let chat_root = skilllite_chat_root_for_workspace(workspace);
+    let path = sessions_json_path(&chat_root);
     let mut store: serde_json::Value = if path.exists() {
         std::fs::read_to_string(&path)
             .ok()
@@ -221,12 +227,13 @@ pub fn rename_session(session_key: &str, new_name: &str) -> Result<(), String> {
     std::fs::write(&path, content).map_err(|e| e.to_string())
 }
 
-pub fn delete_session(session_key: &str) -> Result<(), String> {
+pub fn delete_session(session_key: &str, workspace: Option<&str>) -> Result<(), String> {
     if session_key == "default" {
         return Err("不能删除默认会话".to_string());
     }
 
-    let path = sessions_json_path();
+    let chat_root = skilllite_chat_root_for_workspace(workspace);
+    let path = sessions_json_path(&chat_root);
     if path.exists() {
         let mut store: serde_json::Value = std::fs::read_to_string(&path)
             .ok()
@@ -241,7 +248,6 @@ pub fn delete_session(session_key: &str) -> Result<(), String> {
         std::fs::write(&path, content).map_err(|e| e.to_string())?;
     }
 
-    let chat_root = skilllite_chat_root();
     let transcripts_dir = chat_root.join("transcripts");
     if transcripts_dir.is_dir() {
         for p in list_transcript_paths(&transcripts_dir, session_key) {
@@ -269,7 +275,7 @@ pub fn delete_session(session_key: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::list_transcript_paths;
+    use super::{create_session, list_sessions, list_transcript_paths};
 
     #[test]
     fn list_transcript_paths_sorts_dated_files() {
@@ -310,5 +316,32 @@ mod tests {
         assert_eq!(paths.len(), 1);
         assert!(paths[0].ends_with("default.jsonl"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn sessions_use_workspace_chat_root_when_supplied() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("duration")
+            .as_nanos();
+        let workspace = std::env::temp_dir().join(format!(
+            "skilllite-session-workspace-{}-{}",
+            std::process::id(),
+            unique
+        ));
+        let _ = std::fs::remove_dir_all(&workspace);
+        std::fs::create_dir_all(&workspace).expect("workspace");
+        let workspace_str = workspace.to_string_lossy().to_string();
+
+        let created =
+            create_session("Workspace Session", Some(&workspace_str)).expect("create session");
+        let sessions = list_sessions(Some(&workspace_str));
+
+        assert!(workspace.join("chat").join("sessions.json").is_file());
+        assert!(sessions
+            .iter()
+            .any(|s| s.session_key == created.session_key
+                && s.display_name == "Workspace Session"));
+        let _ = std::fs::remove_dir_all(&workspace);
     }
 }

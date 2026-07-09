@@ -144,7 +144,7 @@ const CHAT_PROMPT_EDIT_FILENAMES = [
   "examples.json",
 ] as const;
 
-function PromptChatFileEditorRow({ filename }: { filename: string }) {
+function PromptChatFileEditorRow({ filename, workspace }: { filename: string; workspace: string }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -164,6 +164,7 @@ function PromptChatFileEditorRow({ filename }: { filename: string }) {
         const text = await invoke<string>("skilllite_read_prompt_version_content", {
           filename,
           versionRef: PROMPT_VERSION_CURRENT,
+          workspace,
         });
         if (cancelled) return;
         setDraft(text);
@@ -177,14 +178,14 @@ function PromptChatFileEditorRow({ filename }: { filename: string }) {
     return () => {
       cancelled = true;
     };
-  }, [open, filename]);
+  }, [open, filename, workspace]);
 
   const dirty = draft !== baseline;
   const save = async () => {
     setSaving(true);
     setNotice(null);
     try {
-      await invoke("skilllite_write_chat_prompt_file", { filename, content: draft });
+      await invoke("skilllite_write_chat_prompt_file", { filename, content: draft, workspace });
       setBaseline(draft);
       setNotice(saveOkText);
     } catch (e) {
@@ -299,7 +300,7 @@ function EvolutionPromptManualEditSection({
       </button>
       <div className="mt-3 space-y-2">
         {CHAT_PROMPT_EDIT_FILENAMES.map((fn) => (
-          <PromptChatFileEditorRow key={fn} filename={fn} />
+          <PromptChatFileEditorRow key={fn} filename={fn} workspace={workspace} />
         ))}
       </div>
     </details>
@@ -382,12 +383,14 @@ function PromptVersionSelectRow({
 
 function EvolutionPromptVersionCompare({
   filename,
+  workspace,
   focusTxn = null,
   txns,
   txnsLoading,
   txnsErr,
 }: {
   filename: string;
+  workspace: string;
   /** 若该 txn 在快照中存在，则左侧默认选中它（相对当前） */
   focusTxn?: string | null;
   /** 由父级批量拉取，避免每文件一次 invoke（Strict Mode 下易卡住「加载快照列表」） */
@@ -428,10 +431,12 @@ function EvolutionPromptVersionCompare({
           invoke<string>("skilllite_read_prompt_version_content", {
             filename,
             versionRef: leftRef,
+            workspace,
           }),
           invoke<string>("skilllite_read_prompt_version_content", {
             filename,
             versionRef: rightRef,
+            workspace,
           }),
         ]);
         if (contentFetchGen.current !== id) return;
@@ -446,7 +451,7 @@ function EvolutionPromptVersionCompare({
         if (contentFetchGen.current === id) setLoadingContent(false);
       }
     })();
-  }, [filename, leftRef, rightRef]);
+  }, [filename, leftRef, rightRef, workspace]);
 
   const txnOptions = txns.map((x) => {
     const time = formatSnapshotTimeLabel(x.modified_unix, localeResolved);
@@ -1163,7 +1168,7 @@ export function EvolutionDetailBody({
       try {
         const m = await invoke<Record<string, EvolutionSnapshotTxnDto[]>>(
           "skilllite_list_prompt_snapshots_batch",
-          { filenames }
+          { filenames, workspace }
         );
         if (snapFetchGenRef.current !== id) return;
         setSnapshotsByFile(m);
@@ -2007,6 +2012,7 @@ export function EvolutionDetailBody({
                       </div>
                       <EvolutionPromptVersionCompare
                         filename={d.filename}
+                        workspace={workspace}
                         focusTxn={compareFocusTxn}
                         txns={snapshotsByFile?.[d.filename] ?? []}
                         txnsLoading={snapshotsLoading}

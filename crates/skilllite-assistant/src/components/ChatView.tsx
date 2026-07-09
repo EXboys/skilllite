@@ -285,6 +285,7 @@ export default function ChatView() {
       try {
         const entries = await invoke<TranscriptEntryDto[]>("skilllite_load_transcript", {
           sessionKey: currentSessionKey,
+          workspace: settings.workspace || ".",
         });
         if (cancelled) return;
         if (!entries || entries.length === 0) return;
@@ -407,7 +408,7 @@ export default function ChatView() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSessionKey]);
+  }, [currentSessionKey, settings.workspace]);
 
   useEffect(() => {
     invalidateFollowupInFlight();

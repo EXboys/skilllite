@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
-use super::paths::{find_project_root, load_dotenv_for_child, skilllite_chat_root};
+use super::paths::{find_project_root, load_dotenv_for_child, skilllite_chat_root_for_workspace};
 
 /// Image preview for transcript reload (data URL for `<img src>`).
 #[derive(Debug, Clone, serde::Serialize)]
@@ -164,8 +164,8 @@ fn parse_message_images(v: &serde_json::Value) -> Option<Vec<TranscriptImageRaw>
     }
 }
 
-pub fn load_transcript(session_key: &str) -> Vec<TranscriptMessage> {
-    let chat_root = skilllite_chat_root();
+pub fn load_transcript(session_key: &str, workspace: Option<&str>) -> Vec<TranscriptMessage> {
+    let chat_root = skilllite_chat_root_for_workspace(workspace);
     if !chat_root.exists() {
         return vec![];
     }

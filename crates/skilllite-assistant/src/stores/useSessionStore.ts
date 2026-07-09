@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
 import { formatInvokeError } from "../utils/formatInvokeError";
 import { useUiToastStore } from "./useUiToastStore";
+import { useSettingsStore } from "./useSettingsStore";
 
 export interface SessionInfo {
   session_key: string;
@@ -24,6 +25,10 @@ interface SessionState {
   deleteSession: (key: string) => Promise<void>;
 }
 
+function currentWorkspace() {
+  return useSettingsStore.getState().settings.workspace?.trim() || ".";
+}
+
 export const useSessionStore = create<SessionState>()(
   persist(
     (set, get) => ({
@@ -35,7 +40,8 @@ export const useSessionStore = create<SessionState>()(
 
       loadSessions: async () => {
         try {
-          const remote = await invoke<SessionInfo[]>("skilllite_list_sessions");
+          const workspace = currentWorkspace();
+          const remote = await invoke<SessionInfo[]>("skilllite_list_sessions", { workspace });
           const local = get().sessions;
           const remoteKeys = new Set(remote.map((s) => s.session_key));
           const localOnly = local.filter(
@@ -76,9 +82,10 @@ export const useSessionStore = create<SessionState>()(
         }
 
         try {
+          const workspace = currentWorkspace();
           const session = await invoke<SessionInfo>(
             "skilllite_create_session",
-            { displayName: name }
+            { displayName: name, workspace }
           );
           set((s) => ({
             sessions: [session, ...s.sessions],
@@ -131,9 +138,11 @@ export const useSessionStore = create<SessionState>()(
           ),
         }));
         try {
+          const workspace = currentWorkspace();
           await invoke("skilllite_rename_session", {
             sessionKey: key,
             newName: newName,
+            workspace,
           });
         } catch (e) {
           set({ sessions: prevSessions });
@@ -157,7 +166,8 @@ export const useSessionStore = create<SessionState>()(
           };
         });
         try {
-          await invoke("skilllite_delete_session", { sessionKey: key });
+          const workspace = currentWorkspace();
+          await invoke("skilllite_delete_session", { sessionKey: key, workspace });
         } catch (e) {
           set({
             sessions: prevSessions,

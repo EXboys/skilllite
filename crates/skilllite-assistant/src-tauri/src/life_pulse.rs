@@ -170,6 +170,15 @@ fn evolution_growth_args(workspace: &str) -> Vec<String> {
     ]
 }
 
+fn schedule_tick_args(workspace: &str) -> Vec<String> {
+    vec![
+        "schedule".to_string(),
+        "tick".to_string(),
+        "--workspace".to_string(),
+        workspace.to_string(),
+    ]
+}
+
 fn spawn_growth(
     skilllite_path: &std::path::Path,
     workspace: &str,
@@ -208,19 +217,24 @@ fn spawn_growth(
 
 fn spawn_rhythm(
     skilllite_path: &std::path::Path,
+    workspace: &str,
     env_pairs: &[(String, String)],
     running: Arc<AtomicBool>,
     app: tauri::AppHandle,
 ) {
     let path = skilllite_path.to_path_buf();
+    let workspace = workspace.to_string();
     let env: Vec<(String, String)> = env_pairs.to_vec();
     std::thread::spawn(move || {
         emit(&app, "rhythm-started", None);
+        let args = schedule_tick_args(&workspace);
+        let root = skilllite_bridge::find_project_root(&workspace);
         let mut rhythm_cmd = Command::new(&path);
         crate::windows_spawn::hide_child_console(&mut rhythm_cmd);
         let result = rhythm_cmd
-            .args(["schedule", "tick"])
+            .args(&args)
             .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            .current_dir(root)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .status();
@@ -308,6 +322,7 @@ pub fn start(state: LifePulseState, skilllite_path: PathBuf, app: tauri::AppHand
                     s.rhythm_running.store(true, Ordering::SeqCst);
                     spawn_rhythm(
                         &skilllite_path,
+                        &workspace,
                         &child_env,
                         s.rhythm_running.clone(),
                         app.clone(),
@@ -355,6 +370,21 @@ mod tests {
             vec![
                 "evolution",
                 "run",
+                "--workspace",
+                "/tmp/skilllite workspace",
+            ]
+        );
+    }
+
+    #[test]
+    fn schedule_tick_args_include_active_workspace() {
+        let args = schedule_tick_args("/tmp/skilllite workspace");
+
+        assert_eq!(
+            args,
+            vec![
+                "schedule",
+                "tick",
                 "--workspace",
                 "/tmp/skilllite workspace",
             ]

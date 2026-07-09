@@ -138,15 +138,25 @@ function OutputPreview({ files, limit = 3 }: { files: string[]; limit?: number }
   );
 }
 
-function MemoryPreview({ files, hints, limit }: { files: string[]; hints: string[]; limit?: number }) {
+function MemoryPreview({
+  files,
+  hints,
+  workspace,
+  limit,
+}: {
+  files: string[];
+  hints: string[];
+  workspace: string;
+  limit?: number;
+}) {
   const { t } = useI18n();
   const [summaries, setSummaries] = useState<MemoryEntryData[]>([]);
 
   useEffect(() => {
-    invoke<MemoryEntryData[]>("skilllite_load_memory_summaries")
+    invoke<MemoryEntryData[]>("skilllite_load_memory_summaries", { workspace })
       .then(setSummaries)
       .catch(() => setSummaries([]));
-  }, [files.length]);
+  }, [files.length, workspace]);
 
   const hasSummaries = summaries.length > 0;
   const hasFiles = files.length > 0;
@@ -528,7 +538,12 @@ export default function StatusPanel() {
               onOpenDir={openDir("memory")}
               hasMore={memHasMore || memoryFiles.length > 0}
             >
-              <MemoryPreview files={memoryFiles} hints={memoryHints} limit={PREVIEW_LIMIT} />
+              <MemoryPreview
+                files={memoryFiles}
+                hints={memoryHints}
+                workspace={workspace}
+                limit={PREVIEW_LIMIT}
+              />
             </SummarySection>
           </div>
         </div>

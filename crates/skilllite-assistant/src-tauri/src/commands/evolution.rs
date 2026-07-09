@@ -200,10 +200,11 @@ pub async fn skilllite_load_evolution_diffs(
 #[tauri::command]
 pub async fn skilllite_list_prompt_snapshot_txns(
     filename: String,
+    workspace: Option<String>,
 ) -> Result<Vec<crate::skilllite_bridge::EvolutionSnapshotTxnDto>, String> {
     let f = filename;
     match tauri::async_runtime::spawn_blocking(move || {
-        crate::skilllite_bridge::list_prompt_snapshot_txns(&f)
+        crate::skilllite_bridge::list_prompt_snapshot_txns(&f, workspace.as_deref())
     })
     .await
     {
@@ -215,13 +216,14 @@ pub async fn skilllite_list_prompt_snapshot_txns(
 #[tauri::command]
 pub async fn skilllite_list_prompt_snapshots_batch(
     filenames: Vec<String>,
+    workspace: Option<String>,
 ) -> Result<
     std::collections::HashMap<String, Vec<crate::skilllite_bridge::EvolutionSnapshotTxnDto>>,
     String,
 > {
     let names = filenames;
     match tauri::async_runtime::spawn_blocking(move || {
-        crate::skilllite_bridge::list_prompt_snapshots_batch(&names)
+        crate::skilllite_bridge::list_prompt_snapshots_batch(&names, workspace.as_deref())
     })
     .await
     {
@@ -234,11 +236,12 @@ pub async fn skilllite_list_prompt_snapshots_batch(
 pub async fn skilllite_read_prompt_version_content(
     filename: String,
     version_ref: String,
+    workspace: Option<String>,
 ) -> Result<String, String> {
     let f = filename;
     let v = version_ref;
     match tauri::async_runtime::spawn_blocking(move || {
-        crate::skilllite_bridge::read_prompt_version_content(&f, &v)
+        crate::skilllite_bridge::read_prompt_version_content(&f, &v, workspace.as_deref())
     })
     .await
     {
@@ -251,11 +254,12 @@ pub async fn skilllite_read_prompt_version_content(
 pub async fn skilllite_write_chat_prompt_file(
     filename: String,
     content: String,
+    workspace: Option<String>,
 ) -> Result<(), String> {
     let f = filename;
     let c = content;
     match tauri::async_runtime::spawn_blocking(move || {
-        crate::skilllite_bridge::write_chat_prompt_text_file(&f, &c)
+        crate::skilllite_bridge::write_chat_prompt_text_file(&f, &c, workspace.as_deref())
     })
     .await
     {

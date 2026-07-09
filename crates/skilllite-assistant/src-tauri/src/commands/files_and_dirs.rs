@@ -17,11 +17,14 @@ pub async fn skilllite_load_recent(
 #[tauri::command]
 pub async fn skilllite_load_transcript(
     session_key: Option<String>,
+    workspace: Option<String>,
 ) -> Vec<crate::skilllite_bridge::TranscriptMessage> {
     let key = session_key.unwrap_or_else(|| "default".to_string());
-    tauri::async_runtime::spawn_blocking(move || crate::skilllite_bridge::load_transcript(&key))
-        .await
-        .unwrap_or_default()
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::skilllite_bridge::load_transcript(&key, workspace.as_deref())
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -60,10 +63,13 @@ pub async fn skilllite_clear_transcript(
 }
 
 #[tauri::command]
-pub async fn skilllite_read_memory_file(relative_path: String) -> Result<String, String> {
+pub async fn skilllite_read_memory_file(
+    relative_path: String,
+    workspace: Option<String>,
+) -> Result<String, String> {
     let path = relative_path.clone();
     match tauri::async_runtime::spawn_blocking(move || {
-        crate::skilllite_bridge::read_memory_file(&path)
+        crate::skilllite_bridge::read_memory_file(&path, workspace.as_deref())
     })
     .await
     {
@@ -73,10 +79,13 @@ pub async fn skilllite_read_memory_file(relative_path: String) -> Result<String,
 }
 
 #[tauri::command]
-pub async fn skilllite_read_log_file(filename: String) -> Result<String, String> {
+pub async fn skilllite_read_log_file(
+    filename: String,
+    workspace: Option<String>,
+) -> Result<String, String> {
     let name = filename.clone();
     match tauri::async_runtime::spawn_blocking(move || {
-        crate::skilllite_bridge::read_log_file(&name)
+        crate::skilllite_bridge::read_log_file(&name, workspace.as_deref())
     })
     .await
     {

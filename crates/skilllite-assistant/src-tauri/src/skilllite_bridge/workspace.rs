@@ -4,7 +4,7 @@ use base64::Engine;
 use serde::Serialize;
 
 use super::paths::{
-    find_project_root, skilllite_chat_root, validate_chat_subdir_relative,
+    find_project_root, skilllite_chat_root_for_workspace, validate_chat_subdir_relative,
     validate_transcript_log_filename,
 };
 
@@ -43,9 +43,9 @@ pub struct RecentData {
 
 /// Open a directory in the system file manager.
 ///
-/// `workspace` 用于解析工程根下的 `output/`（与 agent 默认 `SKILLLITE_OUTPUT_DIR` 一致）；其它模块仍使用全局 chat 根。
+/// `workspace` 用于解析工程根下的 `output/` 与 `chat/`，与 agent 子进程保持一致。
 pub fn open_directory(module: &str, workspace: Option<String>) -> Result<(), String> {
-    let chat_root = skilllite_chat_root();
+    let chat_root = skilllite_chat_root_for_workspace(workspace.as_deref());
     let path = match module {
         "output" => workspace_output_dir(workspace.as_deref()),
         "memory" => chat_root.join("memory"),
@@ -264,9 +264,9 @@ fn load_log_files(chat_root: &std::path::Path) -> Vec<String> {
     sort_newest_first(out)
 }
 
-pub fn read_log_file(filename: &str) -> Result<String, String> {
+pub fn read_log_file(filename: &str, workspace: Option<&str>) -> Result<String, String> {
     validate_transcript_log_filename(filename)?;
-    let chat_root = skilllite_chat_root();
+    let chat_root = skilllite_chat_root_for_workspace(workspace);
     let full_path = chat_root.join("transcripts").join(filename);
     if !full_path.starts_with(&chat_root) {
         return Err("Path escape".to_string());
@@ -358,7 +358,7 @@ fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
 }
 
 pub fn load_recent(workspace: Option<String>) -> RecentData {
-    let chat_root = skilllite_chat_root();
+    let chat_root = skilllite_chat_root_for_workspace(workspace.as_deref());
     let output_dir = workspace_output_dir(workspace.as_deref());
 
     let root = chat_root.clone();
@@ -427,9 +427,9 @@ pub fn read_output_file_base64(
     Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
-pub fn read_memory_file(relative_path: &str) -> Result<String, String> {
+pub fn read_memory_file(relative_path: &str, workspace: Option<&str>) -> Result<String, String> {
     validate_chat_subdir_relative(relative_path)?;
-    let chat_root = skilllite_chat_root();
+    let chat_root = skilllite_chat_root_for_workspace(workspace);
     let full_path = chat_root.join("memory").join(relative_path);
     if !full_path.starts_with(&chat_root) {
         return Err("Path escape".to_string());
@@ -445,8 +445,8 @@ pub struct MemoryEntry {
     pub updated_at: String,
 }
 
-pub fn load_memory_summaries() -> Vec<MemoryEntry> {
-    let chat_root = skilllite_chat_root();
+pub fn load_memory_summaries(workspace: Option<&str>) -> Vec<MemoryEntry> {
+    let chat_root = skilllite_chat_root_for_workspace(workspace);
     let memory_dir = chat_root.join("memory");
     if !memory_dir.exists() {
         return vec![];
