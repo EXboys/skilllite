@@ -3,6 +3,7 @@ import {
   useSessionStore,
   type SessionInfo,
 } from "../stores/useSessionStore";
+import { useSettingsStore } from "../stores/useSettingsStore";
 import { getLocale, translate, useI18n } from "../i18n";
 import { useAssistantChrome } from "../contexts/AssistantChromeContext";
 
@@ -193,11 +194,12 @@ export default function SessionSidebar() {
     renameSession,
     deleteSession,
   } = useSessionStore();
+  const workspace = useSettingsStore((s) => s.settings.workspace?.trim() || ".");
   const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     loadSessions();
-  }, [loadSessions]);
+  }, [loadSessions, workspace]);
 
   const handleCreate = useCallback(async () => {
     if (isCreating) return;

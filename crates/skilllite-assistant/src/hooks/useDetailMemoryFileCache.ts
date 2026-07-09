@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { useSettingsStore } from "../stores/useSettingsStore";
 
 const MAX_ENTRIES = 48;
 
@@ -8,9 +9,10 @@ const MAX_ENTRIES = 48;
  * 当路径不再出现在当前列表中时自动剔除缓存项。
  */
 export function useDetailMemoryFileCache(allowedPaths: string[]) {
+  const workspace = useSettingsStore((s) => s.settings.workspace?.trim() || ".");
   const fingerprint = useMemo(
-    () => [...new Set(allowedPaths)].sort().join("\0"),
-    [allowedPaths],
+    () => `${workspace}\0${[...new Set(allowedPaths)].sort().join("\0")}`,
+    [allowedPaths, workspace],
   );
   const allowedRef = useRef<Set<string>>(new Set());
   const cacheRef = useRef<Map<string, string>>(new Map());
@@ -48,7 +50,7 @@ export function useDetailMemoryFileCache(allowedPaths: string[]) {
       if (cacheRef.current.has(path)) return;
       if (inFlightRef.current.has(path)) return;
       inFlightRef.current.add(path);
-      void invoke<string>("skilllite_read_memory_file", { relativePath: path })
+      void invoke<string>("skilllite_read_memory_file", { relativePath: path, workspace })
         .then((content) => {
           touch(path, content);
         })
@@ -57,7 +59,7 @@ export function useDetailMemoryFileCache(allowedPaths: string[]) {
           inFlightRef.current.delete(path);
         });
     },
-    [touch],
+    [touch, workspace],
   );
 
   return { getCached, touch, prefetchPath };

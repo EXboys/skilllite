@@ -62,6 +62,13 @@ pub(crate) fn skilllite_chat_root() -> PathBuf {
     crate::skilllite_bridge::local::chat_root()
 }
 
+pub(crate) fn skilllite_chat_root_for_workspace(workspace: Option<&str>) -> PathBuf {
+    let Some(raw) = workspace.map(str::trim).filter(|s| !s.is_empty()) else {
+        return skilllite_chat_root();
+    };
+    find_project_root(raw).join("chat")
+}
+
 /// memory/ 与 output/ 下相对路径：禁止绝对路径、`..`、盘符等。
 pub(crate) fn validate_chat_subdir_relative(relative_path: &str) -> Result<(), String> {
     if relative_path.is_empty() {
@@ -259,6 +266,31 @@ mod tests {
             tmp.canonicalize().expect("tmp canonical")
         );
         let _ = std::fs::remove_dir_all(&resolved);
+    }
+
+    #[test]
+    fn chat_root_for_workspace_uses_project_chat_when_supplied() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("duration")
+            .as_nanos();
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite_assistant_chat_root_{}_{}",
+            std::process::id(),
+            unique
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).expect("tmp workspace");
+
+        let resolved = skilllite_chat_root_for_workspace(Some(tmp.to_string_lossy().as_ref()));
+
+        assert_eq!(resolved, tmp.canonicalize().expect("tmp canonical").join("chat"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn chat_root_for_workspace_preserves_global_fallback_when_omitted() {
+        assert_eq!(skilllite_chat_root_for_workspace(None), skilllite_chat_root());
     }
 
     #[cfg(debug_assertions)]

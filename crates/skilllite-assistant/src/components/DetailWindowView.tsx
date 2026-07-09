@@ -96,7 +96,15 @@ function LogList({ entries }: { entries: LogEntry[] }) {
   );
 }
 
-function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry[] }) {
+function LogFileContent({
+  files,
+  entries,
+  workspace,
+}: {
+  files: string[];
+  entries: LogEntry[];
+  workspace: string;
+}) {
   const { t } = useI18n();
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -125,7 +133,7 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
     setExpandedFile(filename);
     setFileContent(null);
     try {
-      const content = await invoke<string>("skilllite_read_log_file", { filename });
+      const content = await invoke<string>("skilllite_read_log_file", { filename, workspace });
       if (myGen !== loadGenRef.current) return;
       setFileContent(content);
     } catch {
@@ -190,7 +198,15 @@ function LogFileContent({ files, entries }: { files: string[]; entries: LogEntry
   );
 }
 
-function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
+function MemoryContent({
+  files,
+  hints,
+  workspace,
+}: {
+  files: string[];
+  hints: string[];
+  workspace: string;
+}) {
   const { t } = useI18n();
   const [expandedFile, setExpandedFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -254,6 +270,7 @@ function MemoryContent({ files, hints }: { files: string[]; hints: string[] }) {
     try {
       const content = await invoke<string>("skilllite_read_memory_file", {
         relativePath: path,
+        workspace,
       });
       if (myGen !== loadGenRef.current) return;
       touch(path, content);
@@ -602,8 +619,12 @@ export default function DetailWindowView() {
       </header>
       <main className="no-scrollbar flex-1 overflow-y-auto p-4">
         {module === "plan" && <TaskList tasks={tasks} />}
-        {module === "mem" && <MemoryContent files={memoryFiles} hints={memoryHints} />}
-        {module === "log" && <LogFileContent files={logFiles} entries={logEntries} />}
+        {module === "mem" && (
+          <MemoryContent files={memoryFiles} hints={memoryHints} workspace={workspace} />
+        )}
+        {module === "log" && (
+          <LogFileContent files={logFiles} entries={logEntries} workspace={workspace} />
+        )}
         {module === "output" && (
           <OutputFileContent files={outputFiles} workspace={workspace} />
         )}
