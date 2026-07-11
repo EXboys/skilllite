@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-11 (TASK-2026-070 life pulse rhythm workspace in progress)
+Last updated: 2026-07-11 (TASK-2026-070 life pulse rhythm workspace done)
 
 ## In Progress
 
-- `TASK-2026-070-life-pulse-rhythm-workspace` - Status: `in_progress` - Owner: `cursor`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-07-11 (TASK-2026-070 life pulse rhythm workspace in progress)
 
 ## Done
 
+- `TASK-2026-070-life-pulse-rhythm-workspace` - Status: `done` - Owner: `cursor`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-067-utf8-llm-error-truncate` - Status: `done` - Owner: `agent`

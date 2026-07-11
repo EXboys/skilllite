@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-070`
 - Title: Fix Life Pulse rhythm workspace propagation
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P1`
 - Owner: `cursor`
 - Contributors:
@@ -31,10 +31,10 @@ Life Pulse already detected them as due.
 
 ## Acceptance Criteria
 
-- [ ] Life Pulse rhythm subprocess invokes `skilllite schedule tick --workspace <active workspace>`.
-- [ ] Existing growth subprocess behavior remains unchanged.
-- [ ] Regression test covers workspace propagation for rhythm arguments.
-- [ ] Task artifacts and board are updated with validation evidence.
+- [x] Life Pulse rhythm subprocess invokes `skilllite schedule tick --workspace <active workspace>`.
+- [x] Existing growth subprocess behavior remains unchanged.
+- [x] Regression test covers workspace propagation for rhythm arguments.
+- [x] Task artifacts and board are updated with validation evidence.
 
 ## Risks
 
@@ -50,6 +50,7 @@ Life Pulse already detected them as due.
 - Commands to run:
   - `cargo fmt --check`
   - `cargo test -p skilllite-assistant life_pulse::tests`
+  - `cargo test`
   - `python3 scripts/validate_tasks.py`
 - Manual checks:
   - Re-read modified files.
