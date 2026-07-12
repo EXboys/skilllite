@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-070`
 - Title: Bind Life Pulse rhythm ticks to active workspace
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -28,10 +28,10 @@ Life Pulse checks whether scheduled jobs are due against the active desktop work
 
 ## Acceptance Criteria
 
-- [ ] Life Pulse rhythm subprocess invokes `skilllite schedule tick --workspace <active workspace>`.
-- [ ] Existing environment merge behavior for rhythm subprocesses is preserved.
-- [ ] Regression coverage proves spaces in workspace paths remain a single argument.
-- [ ] Task artifacts and board are updated and validated.
+- [x] Life Pulse rhythm subprocess invokes `skilllite schedule tick --workspace <active workspace>`.
+- [x] Existing environment merge behavior for rhythm subprocesses is preserved.
+- [x] Regression coverage proves spaces in workspace paths remain a single argument.
+- [x] Task artifacts and board are updated and validated.
 
 ## Risks
 
@@ -47,6 +47,9 @@ Life Pulse checks whether scheduled jobs are due against the active desktop work
 - Commands to run:
   - `cargo fmt --check`
   - `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml life_pulse::tests::rhythm_args_include_active_workspace`
+  - `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml`
+  - `cargo test`
+  - `cargo clippy --all-targets -- -D warnings`
   - `python3 scripts/validate_tasks.py`
 - Manual checks:
   - Re-read changed source and task files after edits.
