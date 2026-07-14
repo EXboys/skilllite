@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-070`
 - Title: Route authorized evolution to the selected proposal
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors: Cursor automation
@@ -28,9 +28,10 @@ environment variable, so the authorized proposal remains queued and an unrelated
 
 ## Acceptance Criteria
 
-- [ ] Authorized background runs include `--proposal-id <authorized-id>`.
-- [ ] Existing workspace targeting remains unchanged.
-- [ ] Focused and required repository validation passes.
+- [x] Authorized background runs include `--proposal-id <authorized-id>`.
+- [x] Existing workspace targeting remains unchanged.
+- [x] Focused and required repository tests pass; strict Clippy was run and hit one unrelated
+  pre-existing Rust 1.97 lint in `skilllite-core`.
 
 ## Risks
 
@@ -42,7 +43,8 @@ environment variable, so the authorized proposal remains queued and an unrelated
 
 - Required tests: Focused argument-construction regression plus required Rust workspace checks.
 - Commands to run:
-  - `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml authorized_run_args_include_target_proposal -- --exact`
+  - `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml authorized_run_args_include_target_workspace_and_proposal -- --nocapture`
+  - `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml`
   - `cargo fmt --check`
   - `cargo clippy --all-targets -- -D warnings`
   - `cargo test`

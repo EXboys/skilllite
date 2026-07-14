@@ -2,9 +2,9 @@
 
 ## Background
 
-The desktop chat UI authorizes one backlog proposal and polls that proposal for completion. The
-background runner currently loses this identity at the CLI boundary, leaving the selected proposal
-queued and allowing forced execution to select unrelated work.
+The desktop chat UI authorizes one backlog proposal and polls that proposal for completion. Before
+this fix, the background runner lost that identity at the CLI boundary, leaving the selected
+proposal queued and allowing forced execution to select unrelated work.
 
 ## Objective
 

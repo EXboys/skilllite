@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-14 (TASK-2026-070 authorized evolution proposal routing in progress)
+Last updated: 2026-07-14 (TASK-2026-070 authorized evolution proposal routing done)
 
 ## In Progress
 
-- `TASK-2026-070-authorized-evolution-proposal-routing` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-07-14 (TASK-2026-070 authorized evolution proposal routing in
 
 ## Done
 
+- `TASK-2026-070-authorized-evolution-proposal-routing` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-067-utf8-llm-error-truncate` - Status: `done` - Owner: `agent`

@@ -6,8 +6,9 @@
   - `crates/skilllite-assistant/src-tauri/src/skilllite_bridge/integrations/evolution_ui/authorize.rs`
   - `crates/skilllite-commands/src/evolution.rs`
   - `crates/skilllite-evolution/src/run.rs`
-- Current behavior: The desktop bridge sets `SKILLLITE_EVO_FORCE_PROPOSAL_ID` on the child process,
-  but `cmd_run` removes it whenever the parsed CLI `proposal_id` is `None`.
+- Current behavior: The desktop bridge passes the authorized ID as `--proposal-id`, so `cmd_run`
+  installs that exact value for `run_evolution`. Before this fix, only the child environment was
+  set, and `cmd_run` removed it because the parsed CLI `proposal_id` was `None`.
 
 ## Architecture Fit
 
