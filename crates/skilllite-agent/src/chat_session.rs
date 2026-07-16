@@ -1335,7 +1335,6 @@ fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<Ch
             role,
             content,
             images,
-            llm_usage: _,
             ..
         } => {
             if role == "user" {
