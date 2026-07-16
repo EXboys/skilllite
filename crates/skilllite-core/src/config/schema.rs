@@ -310,7 +310,7 @@ impl SandboxEnvConfig {
         )
         .parse::<u8>()
         .ok()
-        .and_then(|n| if (1..=3).contains(&n) { Some(n) } else { None })
+        .filter(|&n| (1..=3).contains(&n))
         .unwrap_or(3);
 
         let max_memory_mb = env_or(
