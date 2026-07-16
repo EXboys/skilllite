@@ -9,6 +9,7 @@
 - Current behavior:
   - Branch `cursor/critical-bug-investigation-bfa0` starts aligned with `origin/main` at `74f8417`.
   - The previous fix passes an authorized evolution proposal ID through the typed `--proposal-id` CLI argument.
+  - CLI parsing forwards the ID to `cmd_run`, which sets `SKILLLITE_EVO_FORCE_PROPOSAL_ID`; `run_evolution` then loads exactly that backlog row or returns `NoScope`.
 
 ## Architecture Fit
 
@@ -26,8 +27,12 @@
   - Rationale: The automation explicitly expects no finding most days and forbids speculative fix PRs.
   - Alternatives considered: Proactively patch suspicious code.
   - Why rejected: Suspicion without a concrete trigger does not meet the requested confidence bar.
+- Decision: Do not implement a runtime change or open a fix PR.
+  - Rationale: PR #111 reuses the existing CLI contract, matches the established trigger path, and introduces no concrete high-severity regression.
+  - Alternatives considered: Remove the redundant child environment variable or broaden error reporting.
+  - Why rejected: Both are unrelated cleanup of pre-existing behavior and outside this sweep's severity scope.
 
 ## Open Questions
 
-- [ ] Does the merged authorization fix introduce any severe regression in argument construction or command parsing?
-- [ ] Are there other unreviewed recent behavioral commits with meaningful blast radius?
+- [x] Does the merged authorization fix introduce any severe regression in argument construction or command parsing? No.
+- [x] Are there other unreviewed recent behavioral commits with meaningful blast radius? No; the remaining files in the range are task records.
