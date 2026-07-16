@@ -5,13 +5,15 @@ use crate::skilllite_bridge::local::engine_types::AuthorizeCapabilityResponse;
 use crate::skilllite_bridge::local::env_keys::evolution as evo_keys;
 use crate::skilllite_bridge::paths::{find_project_root, load_dotenv_for_child};
 
-fn authorized_evolution_run_args(workspace: &str) -> Vec<String> {
+fn authorized_evolution_run_args(workspace: &str, proposal_id: &str) -> Vec<String> {
     vec![
         "evolution".to_string(),
         "run".to_string(),
         "--json".to_string(),
         "--workspace".to_string(),
         workspace.to_string(),
+        "--proposal-id".to_string(),
+        proposal_id.to_string(),
     ]
 }
 
@@ -46,7 +48,7 @@ pub fn authorize_capability_evolution(
     let skilllite_path_owned = skilllite_path.to_path_buf();
     std::thread::spawn(move || {
         let root = find_project_root(&workspace_owned);
-        let args = authorized_evolution_run_args(&workspace_owned);
+        let args = authorized_evolution_run_args(&workspace_owned, &proposal_id_owned);
         let mut cmd = std::process::Command::new(&skilllite_path_owned);
         crate::windows_spawn::hide_child_console(&mut cmd);
         cmd.args(&args)
@@ -56,7 +58,10 @@ pub fn authorize_capability_evolution(
         for (k, v) in load_dotenv_for_child(&workspace_owned) {
             cmd.env(k, v);
         }
-        cmd.env(evo_keys::SKILLLITE_EVO_FORCE_PROPOSAL_ID, &proposal_id_owned);
+        cmd.env(
+            evo_keys::SKILLLITE_EVO_FORCE_PROPOSAL_ID,
+            &proposal_id_owned,
+        );
         let _ = cmd.output();
     });
     Ok(proposal_id)
@@ -67,8 +72,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn authorized_run_args_include_target_workspace() {
-        let args = authorized_evolution_run_args("/tmp/skilllite workspace");
+    fn authorized_run_args_include_target_workspace_and_proposal() {
+        let args = authorized_evolution_run_args("/tmp/skilllite workspace", "proposal_123");
 
         assert_eq!(
             args,
@@ -78,6 +83,8 @@ mod tests {
                 "--json",
                 "--workspace",
                 "/tmp/skilllite workspace",
+                "--proposal-id",
+                "proposal_123",
             ]
         );
     }
