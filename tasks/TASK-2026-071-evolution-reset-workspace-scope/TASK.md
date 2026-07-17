@@ -73,5 +73,5 @@ artifacts active.
 ## Links
 
 - Source TODO section: N/A (critical bug automation finding)
-- Related PRs/issues: PR #95, PR #101
+- Related PRs/issues: PR #95, PR #101, PR #120
 - Related docs: `README.md`, `docs/zh/README.md`

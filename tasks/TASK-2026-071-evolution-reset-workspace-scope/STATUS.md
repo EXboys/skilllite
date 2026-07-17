@@ -5,9 +5,9 @@
 - 2026-07-17:
   - Progress: Confirmed the reset path mismatch; added explicit workspace
     routing, cleaned both supported evolved-skill layouts, added an isolation
-    regression test, and synchronized EN/ZH command docs.
+    regression test, synchronized EN/ZH command docs, and opened PR #120.
   - Blockers: None.
-  - Next step: Open the pull request and monitor CI.
+  - Next step: Await review and CI.
 
 ## Validation Evidence
 
