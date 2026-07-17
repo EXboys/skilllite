@@ -466,6 +466,7 @@ skilllite/                         依赖流向
 | `skilllite evolution status` | 查看进化指标和历史 |
 | `skilllite evolution backlog` | 查询进化提案 backlog（状态/风险/ROI/acceptance_status） |
 | `skilllite evolution run` | 强制触发进化周期 |
+| `skilllite evolution reset --workspace <目录> --force` | 仅重置指定工作区的进化提示词、日志和 Skill |
 | `skilllite mcp` | 启动 MCP 服务器（Cursor/Claude Desktop） |
 | `skilllite serve` | 启动 IPC 守护进程（stdio JSON-RPC） |
 | `skilllite artifact-serve` | 按 run 的 artifact HTTP 服务（监听需 `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`） |

@@ -1160,6 +1160,9 @@ pub enum EvolutionAction {
         /// Skip confirmation prompt
         #[arg(long, short)]
         force: bool,
+        /// Project workspace root
+        #[arg(long, short = 'w', default_value = ".")]
+        workspace: String,
     },
 
     /// Disable a specific evolved rule by ID
