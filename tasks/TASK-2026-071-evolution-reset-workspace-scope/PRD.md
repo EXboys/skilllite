@@ -18,8 +18,8 @@ workspace selected through the process environment.
 - FR-1: `evolution reset` accepts `--workspace/-w`, defaulting to `.`.
 - FR-2: Chat prompts, database logs, JSONL logs, and snapshots are resolved
   under `<workspace>/chat`.
-- FR-3: Evolved skills are removed from the workspace's effective skills
-  directory, preferring `skills/` with `.skills/` fallback.
+- FR-3: Evolved skills are removed from both supported workspace layouts,
+  `skills/_evolved` and `.skills/_evolved`, when present.
 - FR-4: Without `--force`, reset remains non-mutating.
 
 ## Non-Functional Requirements
@@ -38,7 +38,7 @@ workspace selected through the process environment.
 - Metric: Workspace isolation in the reset integration test.
 - Baseline: Reset uses global chat state and always targets `.skills/`.
 - Target: All reset mutations stay inside the explicit workspace and remove
-  the effective evolved-skills directory.
+  evolved skills from every supported discovery layout.
 
 ## Rollout
 

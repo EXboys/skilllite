@@ -11,9 +11,9 @@
   - `skilllite/tests/cli_evolution_workspace.rs`
 - Current behavior:
   - `cmd_run` uses the requested workspace's `<workspace>/chat` and effective
-    `skills/` directory.
-  - `cmd_reset` uses `paths::chat_root()` and hard-coded `.skills/`, which can
-    target two different workspaces and miss modern evolved skills.
+    skills directory.
+  - `cmd_reset` now uses the same explicit workspace for chat data and removes
+    `_evolved` from both supported skill-discovery layouts.
 
 ## Architecture Fit
 
@@ -28,16 +28,19 @@
 
 ## Design Decisions
 
-- Decision: Pass the CLI workspace into `cmd_reset` and derive chat and skill
-  paths from the existing explicit workspace helpers.
+- Decision: Pass the CLI workspace into `cmd_reset`, derive chat data from the
+  explicit workspace helper, and remove evolved artifacts from both `skills/`
+  and `.skills/`.
   - Rationale: A destructive operation needs one explicit scope and should
     share path semantics with the operation that created the data.
   - Alternatives considered: Continue consulting `SKILLLITE_WORKSPACE` when
-    the flag is omitted.
+    the flag is omitted, or remove only the effective skills directory.
   - Why rejected: An inherited environment variable can silently redirect a
-    destructive command away from the user's current project.
+    destructive command away from the current project. Removing only one skill
+    layout can expose a stale evolved skill from the other scanned layout.
 
 ## Open Questions
 
-- [x] Should legacy `.skills/` remain supported? Yes, as a fallback only.
+- [x] Should legacy `.skills/` remain supported? Yes; reset cleans it even when
+  the modern `skills/` directory also exists.
 - [x] Should unrelated `disable`/`explain` behavior change? No.

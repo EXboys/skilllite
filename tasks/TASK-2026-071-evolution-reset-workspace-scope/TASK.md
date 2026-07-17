@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Scope evolution reset to the requested workspace
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -32,12 +32,12 @@ artifacts active.
 
 ## Acceptance Criteria
 
-- [ ] `evolution reset --force --workspace <target>` modifies only the target
+- [x] `evolution reset --force --workspace <target>` modifies only the target
   workspace's chat evolution state.
-- [ ] Reset removes `skills/_evolved` in modern projects and `.skills/_evolved`
-  when only the legacy directory exists.
-- [ ] A regression test proves an unrelated env workspace remains untouched.
-- [ ] EN/ZH command references document the workspace-scoped reset.
+- [x] Reset removes both `skills/_evolved` and `.skills/_evolved` when present,
+  preventing either supported discovery layout from retaining evolved skills.
+- [x] A regression test proves an unrelated env workspace remains untouched.
+- [x] EN/ZH command references document the workspace-scoped reset.
 
 ## Risks
 
