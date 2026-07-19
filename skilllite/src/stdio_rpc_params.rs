@@ -31,17 +31,12 @@ fn opt_u64(p: &serde_json::Map<String, Value>, key: &str) -> Option<u64> {
     p.get(key).and_then(|v| v.as_u64())
 }
 
-fn opt_sandbox_level(
-    p: &serde_json::Map<String, Value>,
-    key: &str,
-) -> Result<Option<u8>> {
+fn opt_sandbox_level(p: &serde_json::Map<String, Value>, key: &str) -> Result<Option<u8>> {
     let Some(value) = p.get(key) else {
         return Ok(None);
     };
     let Some(level) = value.as_u64() else {
-        return Err(Error::msg(format!(
-            "{key} must be an integer in [1, 2, 3]"
-        )));
+        return Err(Error::msg(format!("{key} must be an integer in [1, 2, 3]")));
     };
     if !(1..=3).contains(&level) {
         return Err(Error::msg(format!("{key} must be one of [1, 2, 3]")));
