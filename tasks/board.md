@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-07-19 (TASK-2026-071 stdio sandbox validation in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-071-stdio-sandbox-level-validation` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
