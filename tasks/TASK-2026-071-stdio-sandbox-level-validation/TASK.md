@@ -58,6 +58,6 @@ isolation instead of rejecting an invalid security setting.
 ## Links
 
 - Source TODO section: N/A; found by the scheduled critical bug sweep.
-- Related PRs/issues: N/A.
+- Related PRs/issues: PR #121.
 - Related docs: `spec/security-nonnegotiables.md`,
   `spec/testing-policy.md`.

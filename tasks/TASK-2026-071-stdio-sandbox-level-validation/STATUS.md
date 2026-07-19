@@ -7,9 +7,11 @@
     confirmed that `257` was truncated to sandbox level 1, and implemented shared
     fail-closed parsing with regression coverage for `run` and `exec`. Focused,
     component, full-workspace, formatting, and adjusted strict-Clippy validation
-    passed. A live stdio request confirmed rejection before execution.
+    passed. A live stdio request confirmed rejection before execution. Opened
+    PR #121; Slack delivery to `all-skilllite` was blocked because the Cursor bot
+    is not a channel member.
   - Blockers: None.
-  - Next step: Open the pull request.
+  - Next step: Await PR review.
 
 ## Checkpoints
 
