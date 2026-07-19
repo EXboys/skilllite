@@ -5,10 +5,10 @@
 - Relevant crates/files: `skilllite/src/stdio_rpc_params.rs`,
   `skilllite/src/stdio_rpc.rs`, and
   `crates/skilllite-sandbox/src/runner.rs`.
-- Current behavior: `IpcRunParams` and `IpcExecParams` parse a JSON `u64` and cast
-  it with `as u8`. `handle_run` and `handle_exec` then pass that value to
-  `SandboxLevel::from_env_or_cli`; a truncated `1` selects direct unsandboxed
-  execution.
+- Current behavior: Before this fix, `IpcRunParams` and `IpcExecParams` cast a
+  JSON `u64` with `as u8`, so `257` reached `SandboxLevel::from_env_or_cli` as
+  level 1. Both request types now use `opt_sandbox_level`, which rejects malformed
+  values before narrowing and preserves omission as `None`.
 
 ## Architecture Fit
 

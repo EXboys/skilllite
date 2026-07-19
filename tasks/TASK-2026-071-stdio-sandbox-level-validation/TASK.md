@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Reject invalid stdio sandbox levels
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors: Cursor critical bug automation
@@ -26,10 +26,10 @@ isolation instead of rejecting an invalid security setting.
 
 ## Acceptance Criteria
 
-- [ ] Stdio `run` and `exec` accept only integer sandbox levels 1, 2, or 3.
-- [ ] Values that previously truncated to a valid lower level are rejected.
-- [ ] Missing `sandbox_level` preserves environment/default resolution.
-- [ ] Focused, crate-wide, formatting, lint, and task validation checks pass.
+- [x] Stdio `run` and `exec` accept only integer sandbox levels 1, 2, or 3.
+- [x] Values that previously truncated to a valid lower level are rejected.
+- [x] Missing `sandbox_level` preserves environment/default resolution.
+- [x] Focused, crate-wide, formatting, lint, and task validation checks pass.
 
 ## Risks
 
