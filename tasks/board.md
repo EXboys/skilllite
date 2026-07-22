@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-07-22 (TASK-2026-071 critical bug sweep in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-071-critical-bug-sweep-2026-07-22` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
