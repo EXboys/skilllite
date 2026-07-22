@@ -34,6 +34,7 @@ coverage; otherwise record a verified no-finding result.
 - Metric: Selected commits with traced behavior.
 - Baseline: Three non-merge changes after the prior sweep.
 - Target: Three of three reviewed, with no unsupported critical-bug assertion.
+- Result: Three of three reviewed; no critical bug was found and no product fix was made.
 
 ## Rollout
 
