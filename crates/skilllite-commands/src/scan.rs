@@ -194,21 +194,15 @@ fn analyze_script_file(
         "ts" => ("typescript", true),
         "sh" | "bash" => ("shell", true),
         "" => {
-            if let Ok(content) = fs::read_to_string(file_path) {
-                if let Some(first_line) = content.lines().next() {
-                    if first_line.starts_with("#!") {
-                        if first_line.contains("python") {
-                            ("python", true)
-                        } else if first_line.contains("node") {
-                            ("node", true)
-                        } else if first_line.contains("bash") || first_line.contains("sh") {
-                            ("shell", true)
-                        } else {
-                            return None;
-                        }
-                    } else {
-                        return None;
-                    }
+            let content = fs::read_to_string(file_path).ok()?;
+            let first_line = content.lines().next()?;
+            if first_line.starts_with("#!") {
+                if first_line.contains("python") {
+                    ("python", true)
+                } else if first_line.contains("node") {
+                    ("node", true)
+                } else if first_line.contains("bash") || first_line.contains("sh") {
+                    ("shell", true)
                 } else {
                     return None;
                 }
