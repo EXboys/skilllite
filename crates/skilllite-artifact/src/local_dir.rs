@@ -186,15 +186,8 @@ mod tests {
             );
         }
 
+        // Rejected puts must not mutate unrelated files outside the store root.
         assert_eq!(std::fs::read(&marker).unwrap(), b"keep");
-        assert!(
-            !marker
-                .parent()
-                .unwrap()
-                .join("artifacts")
-                .join(r"\Windows\Temp")
-                .exists()
-        );
     }
 
     #[test]

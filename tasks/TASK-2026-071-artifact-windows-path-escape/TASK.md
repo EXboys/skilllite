@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Fix Windows artifact path escape
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -29,11 +29,11 @@
 
 ## Acceptance Criteria
 
-- [ ] Windows drive-absolute and rooted keys/run IDs are rejected by validators on all host platforms.
-- [ ] `LocalDirArtifactStore` refuses any joined path that does not remain under `<base>/artifacts`.
-- [ ] Existing hierarchical keys using `/` continue to work.
-- [ ] Regression tests cover drive-letter keys, backslash-rooted run IDs, and happy-path keys.
-- [ ] `cargo fmt --check`, focused package tests, and workspace `cargo test` pass.
+- [x] Windows drive-absolute and rooted keys/run IDs are rejected by validators on all host platforms.
+- [x] `LocalDirArtifactStore` refuses any joined path that does not remain under `<base>/artifacts`.
+- [x] Existing hierarchical keys using `/` continue to work.
+- [x] Regression tests cover drive-letter keys, backslash-rooted run IDs, and happy-path keys.
+- [x] `cargo fmt --check`, focused package tests, and workspace `cargo test` pass.
 
 ## Risks
 

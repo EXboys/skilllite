@@ -54,7 +54,15 @@ mod tests {
 
     #[test]
     fn separators_and_traversal_rejected() {
-        for run_id in ["", "..", "a/b", r"a\b", r"\Windows\Temp", "C:evil", r"C:\evil"] {
+        for run_id in [
+            "",
+            "..",
+            "a/b",
+            r"a\b",
+            r"\Windows\Temp",
+            "C:evil",
+            r"C:\evil",
+        ] {
             let err = validate_run_id(run_id).unwrap_err();
             assert!(
                 matches!(err, StoreError::InvalidKey { .. }),

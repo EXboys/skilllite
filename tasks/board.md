@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-07-25 (TASK-2026-071 artifact Windows path escape fix ready)
 
 ## In Progress
 
@@ -8,7 +8,6 @@ Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
 
 ## Ready
 
-- `TASK-2026-071-artifact-windows-path-escape` - Status: `draft` - Owner: `agent`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
@@ -18,6 +17,7 @@ Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
 
 ## Done
 
+- `TASK-2026-071-artifact-windows-path-escape` - Status: `done` - Owner: `agent`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
