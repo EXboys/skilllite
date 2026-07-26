@@ -108,7 +108,10 @@ mod tests {
         let rule: PlanningRule = serde_json::from_str(raw).expect("deserialize");
         assert!(rule.disabled);
         let encoded = serde_json::to_value(&rule).expect("serialize");
-        assert_eq!(encoded.get("disabled"), Some(&serde_json::Value::Bool(true)));
+        assert_eq!(
+            encoded.get("disabled"),
+            Some(&serde_json::Value::Bool(true))
+        );
     }
 
     #[test]

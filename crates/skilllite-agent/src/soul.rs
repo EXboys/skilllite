@@ -477,6 +477,21 @@ mod tests {
     }
 
     #[test]
+    fn test_build_beliefs_block_skips_disabled_rules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prompts_dir = tmp.path().join("prompts");
+        std::fs::create_dir_all(&prompts_dir).unwrap();
+        let rules = r#"[
+            {"id":"r1","instruction":"Keep this active rule.","mutable":true},
+            {"id":"r2","instruction":"Do not surface this disabled rule.","mutable":true,"disabled":true}
+        ]"#;
+        std::fs::write(prompts_dir.join("rules.json"), rules).unwrap();
+        let block = build_beliefs_block(tmp.path());
+        assert!(block.contains("Keep this active rule"));
+        assert!(!block.contains("Do not surface this disabled rule"));
+    }
+
+    #[test]
     fn test_build_beliefs_block_from_examples() {
         let tmp = tempfile::tempdir().unwrap();
         let prompts_dir = tmp.path().join("prompts");

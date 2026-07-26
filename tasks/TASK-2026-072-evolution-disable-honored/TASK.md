@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-072`
 - Title: Honor evolution disable for planning rules
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -27,10 +27,10 @@
 
 ## Acceptance Criteria
 
-- [ ] `PlanningRule` round-trips a `disabled` JSON field without dropping it
-- [ ] Disabled rules are not injected into planning prompts / beliefs
-- [ ] Active (non-disabled) rules continue to load and match as before
-- [ ] Unit/regression tests cover the disable-honored path
+- [x] `PlanningRule` round-trips a `disabled` JSON field without dropping it
+- [x] Disabled rules are not injected into planning prompts / beliefs
+- [x] Active (non-disabled) rules continue to load and match as before
+- [x] Unit/regression tests cover the disable-honored path
 
 ## Risks
 
