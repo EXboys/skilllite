@@ -284,6 +284,7 @@ fn parse_rule_extraction_response(content: &str) -> Result<Vec<PlanningRule>> {
             mutable: true,
             origin: "evolved".to_string(),
             reusable: false,
+            disabled: false,
             effectiveness: None,
             trigger_count: None,
         });

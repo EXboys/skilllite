@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-07-26 (TASK-2026-072 evolution disable honored in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-072-evolution-disable-honored` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 

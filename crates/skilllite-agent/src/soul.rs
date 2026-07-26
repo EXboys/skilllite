@@ -82,6 +82,7 @@ pub fn build_beliefs_block(chat_root: &Path) -> String {
     let rules = skilllite_evolution::seed::load_rules(chat_root);
     let decision_tendency: String = rules
         .iter()
+        .filter(|r| !r.disabled)
         .filter(|r| r.mutable || r.origin != "seed")
         .take(BELIEFS_RULES_TOP)
         .filter(|r| !r.instruction.is_empty())
