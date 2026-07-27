@@ -16,7 +16,7 @@
 - [x] Shared validator landed with unit tests
 - [x] Call sites enforced
 - [x] Validation evidence recorded
-- [ ] PR opened
+- [x] PR opened: https://github.com/EXboys/skilllite/pull/125
 
 ## Blockers
 
