@@ -311,9 +311,7 @@ mod tests {
         fs::create_dir_all(dir).unwrap();
         fs::write(
             dir.join("SKILL.md"),
-            format!(
-                "---\nname: \"{frontmatter_name}\"\ndescription: traverse\n---\n# Traversal\n"
-            ),
+            format!("---\nname: \"{frontmatter_name}\"\ndescription: traverse\n---\n# Traversal\n"),
         )
         .unwrap();
         fs::write(dir.join("main.py"), "print('x')\n").unwrap();
@@ -333,15 +331,12 @@ mod tests {
 
         let prev = std::env::current_dir().unwrap();
         std::env::set_current_dir(&workspace).unwrap();
-        let result = cmd_add(
-            staging.to_str().unwrap(),
-            ".skills",
-            true,
-            false,
-            true,
-        );
+        let result = cmd_add(staging.to_str().unwrap(), ".skills", true, false, true);
         std::env::set_current_dir(prev).unwrap();
-        assert!(result.is_ok(), "add should fail closed without hard error: {result:?}");
+        assert!(
+            result.is_ok(),
+            "add should fail closed without hard error: {result:?}"
+        );
         assert!(
             escape_target.join("sentinel.txt").is_file(),
             "escape target must not be overwritten"

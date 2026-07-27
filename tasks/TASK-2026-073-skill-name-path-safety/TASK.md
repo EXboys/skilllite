@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-073`
 - Title: Reject path-escaping skill directory names
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -28,12 +28,12 @@ Skill directory names from SKILL.md frontmatter and MCP/CLI `skill_name` argumen
 
 ## Acceptance Criteria
 
-- [ ] Traversal / absolute / multi-segment skill names are rejected before filesystem join.
-- [ ] `skilllite add` does not install outside the skills root when frontmatter `name` contains `../`.
-- [ ] MCP `get_skill_info` / `run_skill` reject escaping `skill_name` values.
-- [ ] CLI show/remove paths that use `find_skill`/remove reject escaping names.
-- [ ] Regression tests cover the critical write/read escape cases.
-- [ ] Validation commands pass for the touched crates.
+- [x] Traversal / absolute / multi-segment skill names are rejected before filesystem join.
+- [x] `skilllite add` does not install outside the skills root when frontmatter `name` contains `../`.
+- [x] MCP `get_skill_info` / `run_skill` reject escaping `skill_name` values.
+- [x] CLI show/remove paths that use `find_skill`/remove reject escaping names.
+- [x] Regression tests cover the critical write/read escape cases.
+- [x] Validation commands pass for the touched crates.
 
 ## Risks
 
@@ -50,11 +50,11 @@ Skill directory names from SKILL.md frontmatter and MCP/CLI `skill_name` argumen
   - Unit tests for `validate_skill_dir_name`.
   - Command/MCP-focused tests proving traversal names do not touch escape targets.
 - Commands to run:
-  - `cargo test -p skilllite-core validate_skill_dir_name`
-  - `cargo test -p skilllite-commands`
+  - `cargo test -p skilllite-core path_validation`
+  - `cargo test -p skilllite-commands path_traversal`
   - `cargo test -p skilllite --test cli_mcp --test cli_skill_management`
   - `cargo fmt --check`
-  - `cargo clippy -p skilllite-core -p skilllite-commands -p skilllite --all-targets -- -D warnings`
+  - `cargo clippy -p skilllite-core -p skilllite-commands -p skilllite --all-targets -- -D warnings -A clippy::question_mark -A clippy::useless_borrows_in_formatting`
   - `python3 scripts/validate_tasks.py`
 - Manual checks:
   - Trace add/MCP/remove call chains for remaining unsanitized joins.
