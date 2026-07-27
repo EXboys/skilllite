@@ -7,6 +7,7 @@ use std::time::Instant;
 use crate::Error;
 use crate::Result;
 
+use skilllite_core::path_validation::{skill_dir_under_root, validate_skill_dir_name};
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::metadata;
 use skilllite_core::skill::trust::TrustDecision;
@@ -96,8 +97,10 @@ pub(super) fn handle_get_skill_info(server: &McpServer, arguments: &Value) -> Re
         .get("skill_name")
         .and_then(|v| v.as_str())
         .ok_or_else(|| Error::msg("skill_name is required"))?;
+    validate_skill_dir_name(skill_name).map_err(|e| Error::msg(e.to_string()))?;
 
-    let skill_dir = server.skills_dir.join(skill_name);
+    let skill_dir = skill_dir_under_root(&server.skills_dir, skill_name)
+        .map_err(|e| Error::msg(e.to_string()))?;
     let skill_md_path = skill_dir.join("SKILL.md");
 
     if !skill_md_path.exists() {
@@ -251,6 +254,7 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         .get("skill_name")
         .and_then(|v| v.as_str())
         .ok_or_else(|| Error::msg("skill_name is required"))?;
+    validate_skill_dir_name(skill_name).map_err(|e| Error::msg(e.to_string()))?;
     let input = arguments.get("input").cloned().unwrap_or(json!({}));
     let confirmed = arguments
         .get("confirmed")
@@ -259,7 +263,8 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
     let scan_id = arguments.get("scan_id").and_then(|v| v.as_str());
 
     // Find the skill
-    let skill_dir = server.skills_dir.join(skill_name);
+    let skill_dir = skill_dir_under_root(&server.skills_dir, skill_name)
+        .map_err(|e| Error::msg(e.to_string()))?;
     if !skill_dir.exists() || !skill_dir.join("SKILL.md").exists() {
         return Err(Error::msg(format!(
             "Skill '{}' not found in {}",

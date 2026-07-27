@@ -68,4 +68,8 @@ pub enum PathValidationError {
     /// Path escapes the allowed root (potential path traversal).
     #[error("{path_type} escapes allowed root: {path}")]
     PathEscape { path_type: String, path: String },
+
+    /// Skill directory name is not a single safe path segment.
+    #[error("invalid skill directory name: {name}")]
+    InvalidSkillDirName { name: String },
 }
