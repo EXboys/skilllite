@@ -47,19 +47,18 @@ fn append_tool_call_to_transcript(
 
     let chat_root = skilllite_executor::chat_root();
     let transcripts_dir = chat_root.join("transcripts");
-    let t_path = match skilllite_executor::transcript::transcript_path_today(
-        &transcripts_dir,
-        session_key,
-    ) {
-        p if p
-            .parent()
-            .map(|p| skilllite_fs::create_dir_all(p).is_ok())
-            .unwrap_or(false) =>
-        {
-            p
-        }
-        _ => return,
+    let Ok(t_path) =
+        skilllite_executor::transcript::transcript_path_today(&transcripts_dir, session_key)
+    else {
+        return;
     };
+    if !t_path
+        .parent()
+        .map(|p| skilllite_fs::create_dir_all(p).is_ok())
+        .unwrap_or(false)
+    {
+        return;
+    }
 
     let now = timestamp_now();
     let tool_call_entry = skilllite_executor::transcript::TranscriptEntry::ToolCall {
@@ -89,19 +88,18 @@ fn append_tool_result_to_transcript(
 
     let chat_root = skilllite_executor::chat_root();
     let transcripts_dir = chat_root.join("transcripts");
-    let t_path = match skilllite_executor::transcript::transcript_path_today(
-        &transcripts_dir,
-        session_key,
-    ) {
-        p if p
-            .parent()
-            .map(|p| skilllite_fs::create_dir_all(p).is_ok())
-            .unwrap_or(false) =>
-        {
-            p
-        }
-        _ => return,
+    let Ok(t_path) =
+        skilllite_executor::transcript::transcript_path_today(&transcripts_dir, session_key)
+    else {
+        return;
     };
+    if !t_path
+        .parent()
+        .map(|p| skilllite_fs::create_dir_all(p).is_ok())
+        .unwrap_or(false)
+    {
+        return;
+    }
 
     let now = timestamp_now();
     let tool_result_entry = skilllite_executor::transcript::TranscriptEntry::ToolResult {

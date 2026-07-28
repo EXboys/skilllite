@@ -46,10 +46,33 @@ pub struct TranscriptMessage {
     pub llm_usage: Option<TranscriptLlmUsagePayload>,
 }
 
+/// Reject session keys that would escape `transcripts_dir` via `Path::join`.
+fn is_safe_session_key(session_key: &str) -> bool {
+    if session_key.trim().is_empty()
+        || session_key.contains(['/', '\\', '\0'])
+        || session_key == "."
+        || session_key == ".."
+    {
+        return false;
+    }
+    let bytes = session_key.as_bytes();
+    if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        return false;
+    }
+    let as_path = Path::new(session_key);
+    !as_path.is_absolute() && as_path.components().count() == 1
+}
+
 /// List transcript file paths for session, sorted by date (legacy first, then YYYY-MM-DD).
 pub(crate) fn list_transcript_paths(transcripts_dir: &Path, session_key: &str) -> Vec<PathBuf> {
+    if !is_safe_session_key(session_key) {
+        return Vec::new();
+    }
     let mut paths = Vec::new();
     let legacy = transcripts_dir.join(format!("{}.jsonl", session_key));
+    if !legacy.starts_with(transcripts_dir) {
+        return Vec::new();
+    }
     if legacy.exists() {
         paths.push(legacy);
     }

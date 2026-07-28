@@ -23,6 +23,8 @@ pub async fn run_single_task(
     description: &str,
     skill_dirs: Option<&[String]>,
 ) -> Result<AgentResult> {
+    skilllite_core::path_validation::validate_session_key(session_key)
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
     let mut config = AgentConfig::from_env();
     config.workspace = workspace.to_string();
     config.enable_task_planning = false; // Single task, no planning
@@ -50,6 +52,8 @@ pub async fn run_single_task(
 /// Clear session (OpenClaw-style): summarize to memory, archive transcript, reset counts.
 /// Called by `skilllite clear-session` and Assistant. Loads .env from workspace.
 pub fn run_clear_session(session_key: &str, workspace: &str) -> Result<()> {
+    skilllite_core::path_validation::validate_session_key(session_key)
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
     let workspace_path = Path::new(workspace).canonicalize().unwrap_or_else(|_| {
         std::env::current_dir()
             .unwrap_or_else(|_| std::path::PathBuf::from("."))
@@ -89,6 +93,8 @@ pub fn run_chat(
     session_key: String,
     single_message: Option<String>,
 ) -> Result<()> {
+    skilllite_core::path_validation::validate_session_key(&session_key)
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
     skilllite_core::config::ensure_default_output_dir();
 
     if config.api_key.is_empty() {
