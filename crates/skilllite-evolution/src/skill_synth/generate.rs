@@ -12,6 +12,7 @@ use crate::EvolutionMessage;
 
 use super::infer;
 use super::parse;
+use super::path_safety::{script_path_under_skill_dir, validate_generated_skill_name};
 use super::query;
 use super::refine;
 use super::repair;
@@ -133,12 +134,19 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
         return Ok(None);
     }
 
-    let skill_dir = pending_dir.join(&parsed.name);
+    let skill_name = match validate_generated_skill_name(&parsed.name) {
+        Ok(name) => name,
+        Err(e) => {
+            tracing::warn!("Rejected generated skill name '{}': {}", parsed.name, e);
+            return Ok(None);
+        }
+    };
+    let skill_dir = pending_dir.join(skill_name);
     // 同名去重：同轮内若已有同名 pending skill，跳过避免覆盖
     if skill_dir.exists() && skill_dir.join("SKILL.md").exists() {
         tracing::debug!(
             "Skill '{}' already in pending (same name), skipping to avoid duplicate",
-            parsed.name
+            skill_name
         );
         return Ok(None);
     }
@@ -153,7 +161,7 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
             if infer::is_description_similar(&parsed.description, &existing_desc) {
                 tracing::debug!(
                     "Skill '{}' description similar to pending '{}', skipping duplicate",
-                    parsed.name,
+                    skill_name,
                     existing_name
                 );
                 return Ok(None);
@@ -164,9 +172,20 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
         tracing::warn!("L1 rejected skill directory: {}", skill_dir.display());
         return Ok(None);
     }
+    let script_path = match script_path_under_skill_dir(&skill_dir, &parsed.entry_point) {
+        Ok(path) => path,
+        Err(e) => {
+            tracing::warn!(
+                "Rejected entry_point '{}' for skill '{}': {}",
+                parsed.entry_point,
+                skill_name,
+                e
+            );
+            return Ok(None);
+        }
+    };
     std::fs::create_dir_all(&skill_dir)?;
 
-    let script_path = skill_dir.join(&parsed.entry_point);
     let skill_md_path = skill_dir.join("SKILL.md");
 
     let needs_network = scan::skill_md_needs_network(&parsed.skill_md_content);

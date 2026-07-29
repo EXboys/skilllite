@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-07-29 (TASK-2026-075 evolution entry_point path safety in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-075-evolution-entry-point-path-safety` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
