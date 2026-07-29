@@ -10,9 +10,7 @@ use crate::Result;
 
 /// Validate a generated/pending skill directory name as a single normal segment.
 pub fn validate_generated_skill_name(skill_name: &str) -> Result<&str> {
-    if skill_name.trim().is_empty()
-        || skill_name.chars().any(|c| matches!(c, '/' | '\\' | '\0'))
-    {
+    if skill_name.trim().is_empty() || skill_name.chars().any(|c| matches!(c, '/' | '\\' | '\0')) {
         bail!("invalid generated skill name: {}", skill_name);
     }
 
@@ -36,8 +34,7 @@ fn has_windows_drive_prefix(segment: &str) -> bool {
 
 /// Resolve `entry_point` under `skill_dir`, rejecting absolute/traversal forms.
 pub fn script_path_under_skill_dir(skill_dir: &Path, entry_point: &str) -> Result<PathBuf> {
-    if entry_point.trim().is_empty() || entry_point.contains('\0') || entry_point.contains('\\')
-    {
+    if entry_point.trim().is_empty() || entry_point.contains('\0') || entry_point.contains('\\') {
         bail!("invalid entry_point: {}", entry_point);
     }
     if entry_point.split('/').any(has_windows_drive_prefix) {
@@ -79,7 +76,10 @@ mod tests {
             validate_generated_skill_name("url-summarizer").unwrap(),
             "url-summarizer"
         );
-        assert_eq!(validate_generated_skill_name("报告技能").unwrap(), "报告技能");
+        assert_eq!(
+            validate_generated_skill_name("报告技能").unwrap(),
+            "报告技能"
+        );
     }
 
     #[test]
@@ -139,13 +139,11 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::join_absolute_paths)]
     fn absolute_entry_point_does_not_replace_skill_dir() {
         let skill_dir = PathBuf::from("/ws/skills/_evolved/_pending/demo");
         // Precondition: Path::join with absolute second component replaces the root.
-        assert_eq!(
-            skill_dir.join("/tmp/pwn.py"),
-            PathBuf::from("/tmp/pwn.py")
-        );
+        assert_eq!(skill_dir.join("/tmp/pwn.py"), PathBuf::from("/tmp/pwn.py"));
         assert!(script_path_under_skill_dir(&skill_dir, "/tmp/pwn.py").is_err());
     }
 }

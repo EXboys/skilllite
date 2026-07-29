@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-075`
 - Title: Fix evolution skill entry_point path escape
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -29,11 +29,11 @@ During evolution skill synthesis, LLM-controlled `entry_point` (and generated sk
 
 ## Acceptance Criteria
 
-- [ ] Absolute `entry_point` (e.g. `/tmp/pwn.py`) is rejected before any write.
-- [ ] Traversal `entry_point` (e.g. `../../../tmp/pwn.py`) is rejected before any write.
-- [ ] Valid relative entry points like `scripts/main.py` still resolve under the skill dir.
-- [ ] Path-escaping generated skill names are skipped/rejected during generation.
-- [ ] Focused unit tests pass; `skilllite-evolution` tests pass.
+- [x] Absolute `entry_point` (e.g. `/tmp/pwn.py`) is rejected before any write.
+- [x] Traversal `entry_point` (e.g. `../../../tmp/pwn.py`) is rejected before any write.
+- [x] Valid relative entry points like `scripts/main.py` still resolve under the skill dir.
+- [x] Path-escaping generated skill names are skipped/rejected during generation.
+- [x] Focused unit tests pass; `skilllite-evolution` tests pass.
 
 ## Risks
 
