@@ -35,10 +35,23 @@ pub fn ensure_vec_extension_loaded() {
 }
 
 /// Get path to memory SQLite index for a workspace.
-pub fn index_path(workspace_root: &Path, agent_id: &str) -> std::path::PathBuf {
-    workspace_root
+///
+/// `agent_id` must be a single path segment; absolute / traversal forms are rejected
+/// so `Path::join` cannot escape `<workspace_root>/memory/`.
+pub fn index_path(workspace_root: &Path, agent_id: &str) -> Result<std::path::PathBuf> {
+    skilllite_core::path_validation::validate_agent_id(agent_id)
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
+    let path = workspace_root
         .join("memory")
-        .join(format!("{}.sqlite", agent_id))
+        .join(format!("{}.sqlite", agent_id));
+    // Defense in depth: reject if join still escaped the memory directory.
+    let memory_dir = workspace_root.join("memory");
+    if !path.starts_with(&memory_dir) {
+        return Err(crate::Error::validation(format!(
+            "Invalid agent_id (must be a single path segment): {agent_id}"
+        )));
+    }
+    Ok(path)
 }
 
 /// Ensure memory index exists with FTS5 table.
@@ -290,7 +303,7 @@ pub fn reindex_memory_markdown_files(
     }
 
     let memory_dir = chat_root.join("memory");
-    let idx_path = index_path(chat_root, agent_id);
+    let idx_path = index_path(chat_root, agent_id)?;
     if let Some(parent) = idx_path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -354,12 +367,32 @@ mod tests {
                 .unwrap();
         assert_eq!(indexed, vec!["MEMORY.md".to_string()]);
 
-        let conn = Connection::open(index_path(chat_root, "default")).unwrap();
+        let conn = Connection::open(index_path(chat_root, "default").unwrap()).unwrap();
         let hits = search_bm25(&conn, "cats", 5).unwrap();
         assert!(
             hits.iter().any(|h| h.path == "MEMORY.md"),
             "expected MEMORY.md in FTS hits, got {:?}",
             hits
         );
+    }
+
+    #[test]
+    fn index_path_keeps_valid_id_under_memory_dir() {
+        let root = Path::new("/tmp/chatroot");
+        let path = index_path(root, "default").unwrap();
+        assert_eq!(path, root.join("memory").join("default.sqlite"));
+    }
+
+    #[test]
+    fn index_path_rejects_absolute_and_traversal_agent_ids() {
+        let root = Path::new("/tmp/chatroot");
+        for id in ["/tmp/pwn", "../../../tmp/pwn", "foo/bar", "C:/evil", ".."] {
+            let err = index_path(root, id).unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Invalid agent_id"),
+                "expected invalid agent_id for {id:?}, got {msg}"
+            );
+        }
     }
 }

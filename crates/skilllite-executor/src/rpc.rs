@@ -315,12 +315,15 @@ pub fn handle_memory_write(params: &Value) -> Result<Value> {
         .unwrap_or("default");
 
     let root = chat_root_for_rpc(workspace_path)?;
-    let full_path = root.join("memory").join(rel_path);
+    // Validate agent_id before any filesystem mutation so escaped IDs cannot
+    // create directories/SQLite files outside the memory root.
+    let idx_path = index_path(&root, agent_id)?;
 
     if rel_path.is_empty() || rel_path.contains("..") || rel_path.starts_with('/') {
         bail!("Invalid rel_path: must be relative, without ..");
     }
 
+    let full_path = root.join("memory").join(rel_path);
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -336,11 +339,10 @@ pub fn handle_memory_write(params: &Value) -> Result<Value> {
     }
 
     // Index into FTS5
-    let index_path = index_path(&root, agent_id);
-    if let Some(parent) = index_path.parent() {
+    if let Some(parent) = idx_path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let conn = rusqlite::Connection::open(&index_path)?;
+    let conn = rusqlite::Connection::open(&idx_path)?;
     ensure_index(&conn)?;
     let file_content = fs::read_to_string(&full_path).unwrap_or_default();
     index_file(&conn, rel_path, &file_content)?;
@@ -362,7 +364,7 @@ pub fn handle_memory_search(params: &Value) -> Result<Value> {
         .unwrap_or("default");
 
     let root = chat_root_for_rpc(workspace_path)?;
-    let idx_path = index_path(&root, agent_id);
+    let idx_path = index_path(&root, agent_id)?;
 
     if !idx_path.exists() {
         return Ok(json!([]));

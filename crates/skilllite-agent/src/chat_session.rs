@@ -982,7 +982,7 @@ impl ChatSession {
 
         // Index for BM25 search
         let rel_path = format!("{}.md", today);
-        let idx_path = executor_memory::index_path(&self.data_root, &self.session_key);
+        let idx_path = executor_memory::index_path(&self.data_root, &self.session_key)?;
         if let Some(parent) = idx_path.parent() {
             skilllite_fs::create_dir_all(parent)?;
         }

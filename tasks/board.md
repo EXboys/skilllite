@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-07-31 (TASK-2026-076 memory agent_id path safety in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-076-memory-agent-id-path-safety` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
