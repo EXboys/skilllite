@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-076`
 - Title: Reject path-escaping memory agent IDs
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -31,11 +31,11 @@ tree. Relative traversal IDs (e.g. `../../../tmp/pwn`) escape the same way.
 
 ## Acceptance Criteria
 
-- [ ] Absolute `agent_id` values are rejected before any SQLite open/create
-- [ ] Traversal / multi-segment / Windows-drive `agent_id` values are rejected
-- [ ] Valid single-segment IDs (e.g. `default`) still resolve under `chat/memory/`
-- [ ] Executor RPC `memory_write` / `memory_search` fail closed on bad IDs
-- [ ] Regression tests cover reject + accept paths
+- [x] Absolute `agent_id` values are rejected before any SQLite open/create
+- [x] Traversal / multi-segment / Windows-drive `agent_id` values are rejected
+- [x] Valid single-segment IDs (e.g. `default`) still resolve under `chat/memory/`
+- [x] Executor RPC `memory_write` / `memory_search` fail closed on bad IDs
+- [x] Regression tests cover reject + accept paths
 
 ## Risks
 
