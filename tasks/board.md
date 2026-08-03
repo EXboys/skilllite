@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-08-03 (TASK-2026-079 OpenClaw import dest-name safety in progress)
+Last updated: 2026-08-03 (TASK-2026-079 OpenClaw import dest-name safety ready)
 
 ## In Progress
 
-- `TASK-2026-079-openclaw-import-dest-name-safety` - Status: `in_progress` - Owner: `critical-bug-automation`
+- None.
 
 ## Ready
 
@@ -16,6 +16,8 @@ Last updated: 2026-08-03 (TASK-2026-079 OpenClaw import dest-name safety in prog
 
 ## Done
 
+- `TASK-2026-079-openclaw-import-dest-name-safety` - Status: `done` - Owner: `critical-bug-automation`
+- `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`

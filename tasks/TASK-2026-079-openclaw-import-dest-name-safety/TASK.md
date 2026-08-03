@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-079`
 - Title: Reject path-escaping OpenClaw import skill names
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `critical-bug-automation`
 - Contributors:
