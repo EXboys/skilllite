@@ -1,14 +1,13 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-03 (TASK-2026-079 OpenClaw import dest-name safety in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-079-openclaw-import-dest-name-safety` - Status: `in_progress` - Owner: `critical-bug-automation`
 
 ## Ready
 
-- `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
 ## Blocked
