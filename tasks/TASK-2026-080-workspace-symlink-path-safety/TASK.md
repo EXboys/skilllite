@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-080`
 - Title: Reject symlink escapes in workspace path resolution
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `cursor-automation`
 - Contributors:

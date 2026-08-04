@@ -11,8 +11,8 @@
 - [x] Implementation
 - [x] Tests + clippy/fmt
 - [x] Task validation script
-- [x] PR opened (pending open_git_pr)
+- [x] PR opened (#132)
 
 ## Current status
 
-`in_progress` — code pushed; opening PR.
+`done` — fixes pushed; PR #132 opened.
