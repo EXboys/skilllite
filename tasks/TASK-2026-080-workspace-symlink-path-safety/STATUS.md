@@ -11,8 +11,8 @@
 - [x] Implementation
 - [x] Tests + clippy/fmt
 - [x] Task validation script
-- [ ] PR opened
+- [x] PR opened (pending open_git_pr)
 
 ## Current status
 
-`in_progress` — ready for PR after board/REVIEW update.
+`in_progress` — code pushed; opening PR.
