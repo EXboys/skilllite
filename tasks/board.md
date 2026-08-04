@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-04 (TASK-2026-080 workspace symlink/path containment)
 
 ## In Progress
 
-- None.
+- `TASK-2026-080-workspace-symlink-path-safety` - Status: `in_progress` - Owner: `cursor-automation`
 
 ## Ready
 
