@@ -288,7 +288,10 @@ mod lib_tests {
             )
             .expect("count active");
         assert_eq!(passive_count, 1, "passive proposal must be persisted");
-        assert_eq!(active_count, 1, "active proposal must not be dropped by INSERT OR IGNORE");
+        assert_eq!(
+            active_count, 1,
+            "active proposal must not be dropped by INSERT OR IGNORE"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

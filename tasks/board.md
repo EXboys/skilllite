@@ -4,10 +4,11 @@ Last updated: 2026-08-05 (TASK-2026-081 artifact tmp + proposal id)
 
 ## In Progress
 
-- `TASK-2026-081-artifact-tmp-collision-proposal-id` - Status: `in_progress` - Owner: `cursor-automation`
+- None.
 
 ## Ready
 
+- `TASK-2026-081-artifact-tmp-collision-proposal-id` - Status: `in_review` - Owner: `cursor-automation`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
