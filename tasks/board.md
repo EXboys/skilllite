@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-05 (TASK-2026-081 artifact tmp + proposal id)
 
 ## In Progress
 
-- None.
+- `TASK-2026-081-artifact-tmp-collision-proposal-id` - Status: `in_progress` - Owner: `cursor-automation`
 
 ## Ready
 

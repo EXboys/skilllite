@@ -64,8 +64,8 @@ mod lib_tests {
     use super::*;
     use crate::scope::{
         auto_link_acceptance_status, build_proposal, compute_roi_score,
-        coordinate_proposals_with_config, AcceptanceThresholds, CoordinatorDecision,
-        EvolutionCoordinatorConfig, EvolutionRiskBudget,
+        coordinate_proposals_with_config, new_proposal_id, AcceptanceThresholds,
+        CoordinatorDecision, EvolutionCoordinatorConfig, EvolutionRiskBudget,
     };
     use crate::snapshots::{create_extended_snapshot, restore_extended_snapshot};
     use rusqlite::Connection;
@@ -179,6 +179,117 @@ mod lib_tests {
         let low = compute_roi_score(1.0, 1.0, ProposalRiskLevel::Low);
         let high = compute_roi_score(1.0, 1.0, ProposalRiskLevel::High);
         assert!(low > high);
+    }
+
+    #[test]
+    fn proposal_ids_remain_unique_under_rapid_generation() {
+        let mut ids = std::collections::HashSet::new();
+        for _ in 0..64 {
+            let id = new_proposal_id();
+            assert!(
+                ids.insert(id.clone()),
+                "duplicate proposal_id generated under rapid minting: {id}"
+            );
+            assert!(
+                id.starts_with("proposal_"),
+                "proposal_id should keep opaque proposal_ prefix: {id}"
+            );
+        }
+
+        // Mirror build_evolution_proposals: two back-to-back builds must never share an id.
+        let passive = build_proposal(
+            ProposalSource::Passive,
+            EvolutionScope {
+                prompts: true,
+                ..Default::default()
+            },
+            ProposalRiskLevel::Medium,
+            0.85,
+            2.0,
+            vec!["criteria".to_string()],
+        );
+        let active = build_proposal(
+            ProposalSource::Active,
+            EvolutionScope {
+                memory: true,
+                ..Default::default()
+            },
+            ProposalRiskLevel::Low,
+            0.45,
+            1.0,
+            vec!["criteria".to_string()],
+        );
+        assert_ne!(
+            passive.proposal_id, active.proposal_id,
+            "passive/active proposals built in one pass must not share proposal_id"
+        );
+    }
+
+    #[test]
+    fn coordinator_persists_both_proposals_when_ids_would_have_collided() {
+        let _g = EVO_LOCK.lock().expect("evo lock");
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let passive = build_proposal(
+            ProposalSource::Passive,
+            EvolutionScope {
+                prompts: true,
+                ..Default::default()
+            },
+            ProposalRiskLevel::Medium,
+            0.85,
+            2.0,
+            vec!["passive criteria".to_string()],
+        );
+        let active = build_proposal(
+            ProposalSource::Active,
+            EvolutionScope {
+                memory: true,
+                ..Default::default()
+            },
+            ProposalRiskLevel::Low,
+            0.45,
+            1.0,
+            vec!["active criteria".to_string()],
+        );
+        assert_ne!(passive.proposal_id, active.proposal_id);
+        let decision = coordinate_proposals_with_config(
+            &conn,
+            vec![passive.clone(), active.clone()],
+            false,
+            EvolutionCoordinatorConfig {
+                policy_runtime_enabled: false,
+                auto_execute_low_risk: false,
+                deny_critical: true,
+                risk_budget: EvolutionRiskBudget {
+                    low_per_day: 5,
+                    medium_per_day: 5,
+                    high_per_day: 0,
+                    critical_per_day: 0,
+                },
+            },
+        )
+        .expect("coordinate");
+        assert!(matches!(decision, CoordinatorDecision::Execute(_)));
+
+        let passive_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM evolution_backlog WHERE proposal_id = ?1",
+                rusqlite::params![passive.proposal_id],
+                |row| row.get(0),
+            )
+            .expect("count passive");
+        let active_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM evolution_backlog WHERE proposal_id = ?1",
+                rusqlite::params![active.proposal_id],
+                |row| row.get(0),
+            )
+            .expect("count active");
+        assert_eq!(passive_count, 1, "passive proposal must be persisted");
+        assert_eq!(active_count, 1, "active proposal must not be dropped by INSERT OR IGNORE");
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
