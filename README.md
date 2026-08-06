@@ -505,7 +505,7 @@ skilllite/                         Dependency Flow
 | `skilllite chat`               | Interactive agent chat (or `--message` for single-shot)                |
 | `skilllite add owner/repo`     | Add skills from GitHub, a local folder, or a local ZIP package         |
 | `skilllite import-openclaw-skills` | Copy skills from OpenClaw-style paths into `skills/` (see `--dry-run`, `--skill-conflict`) |
-| `skilllite claw migrate` | Migrate OpenClaw-style skills, persona/memory Markdown, and optional allowlisted `.env` keys (alias: `skilllite migrate openclaw`) |
+| `skilllite claw migrate` | Migrate OpenClaw-style skills, persona/memory Markdown into `<workspace>/chat/memory`, and optional allowlisted `.env` keys (alias: `skilllite migrate openclaw`) |
 | `skilllite remove <name>`      | Remove an installed skill                                              |
 | `skilllite list`               | List installed skills                                                  |
 | `skilllite show <name>`        | Show skill details                                                     |
@@ -513,6 +513,8 @@ skilllite/                         Dependency Flow
 | `skilllite scan <dir>`         | Scan skill for security issues                                         |
 | `skilllite evolution status`   | View evolution metrics and history                                     |
 | `skilllite evolution backlog`  | Query backlog proposals (status/risk/ROI/acceptance_status)            |
+| `skilllite evolution disable`  | Disable an evolved planning rule (`--workspace`)                       |
+| `skilllite evolution explain`  | Explain an evolved planning rule (`--workspace`)                       |
 | `skilllite evolution run`      | Force-trigger evolution cycle                                          |
 | `skilllite mcp`                | Start MCP server (Cursor/Claude Desktop)                               |
 | `skilllite serve`              | Start IPC daemon (stdio JSON-RPC)                                      |

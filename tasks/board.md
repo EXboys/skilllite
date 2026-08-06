@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-06 (TASK-2026-082 path root scoping + atomic_write)
 
 ## In Progress
 
-- None.
+- `TASK-2026-082-path-root-scoping-atomic-write` - Status: `in_progress` - Owner: `cursor-cloud`
 
 ## Ready
 

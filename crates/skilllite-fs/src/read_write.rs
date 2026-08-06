@@ -55,12 +55,28 @@ pub fn append_file(path: &Path, content: &str) -> Result<()> {
     Ok(())
 }
 
-/// 原子写入：先写 .tmp 再 rename
+/// 原子写入：先写唯一临时文件再 rename。
+///
+/// Staging names preserve the full destination basename so siblings that share a
+/// stem (`examples.json` / `examples.md`) cannot collide on the same `.tmp` path.
+/// Destinations that already end in `.tmp` also get a distinct staging name.
 pub fn atomic_write(path: &Path, content: &str) -> Result<()> {
     if let Some(parent) = path.parent() {
         dir::create_dir_all(parent)?;
     }
-    let tmp = path.with_extension("tmp");
+    let file_name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "file".to_string());
+    let tmp = path.with_file_name(format!(
+        ".{}.{}.{}-.tmp",
+        file_name,
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
     std::fs::write(&tmp, content)
         .with_context(|| format!("Failed to write temp file: {}", tmp.display()))?;
     dir::rename(&tmp, path)?;

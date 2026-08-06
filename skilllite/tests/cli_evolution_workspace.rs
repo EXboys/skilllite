@@ -88,3 +88,78 @@ fn evolution_backlog_workspace_flag_overrides_env_workspace() {
         "env workspace backlog row should not leak into target query: {notes:?}"
     );
 }
+
+#[test]
+fn evolution_disable_workspace_flag_isolates_rules_mutation() {
+    let env_workspace = tempfile::tempdir().expect("env workspace");
+    let target_workspace = tempfile::tempdir().expect("target workspace");
+    let other_workspace = tempfile::tempdir().expect("other workspace");
+
+    let write_rules = |root: &Path, id: &str| {
+        let prompts = root.join("chat").join("prompts");
+        std::fs::create_dir_all(&prompts).expect("prompts dir");
+        let rules = format!(
+            r#"[{{"id":"{id}","mutable":true,"instruction":"{id}","disabled":false}}]"#
+        );
+        std::fs::write(prompts.join("rules.json"), rules).expect("write rules");
+    };
+    write_rules(env_workspace.path(), "env_rule");
+    write_rules(target_workspace.path(), "target_rule");
+    write_rules(other_workspace.path(), "other_rule");
+
+    let target_arg = target_workspace.path().to_string_lossy();
+    let out = run_with_workspace_env(
+        &[
+            "evolution",
+            "disable",
+            "--workspace",
+            target_arg.as_ref(),
+            "target_rule",
+        ],
+        env_workspace.path(),
+    );
+    assert!(
+        out.status.success(),
+        "disable failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let target_rules = std::fs::read_to_string(
+        target_workspace
+            .path()
+            .join("chat")
+            .join("prompts")
+            .join("rules.json"),
+    )
+    .expect("target rules");
+    assert!(
+        target_rules.contains("\"disabled\": true") || target_rules.contains("\"disabled\":true"),
+        "target workspace rule should be disabled: {target_rules}"
+    );
+
+    let env_rules = std::fs::read_to_string(
+        env_workspace
+            .path()
+            .join("chat")
+            .join("prompts")
+            .join("rules.json"),
+    )
+    .expect("env rules");
+    assert!(
+        env_rules.contains("\"disabled\":false") || env_rules.contains("\"disabled\": false"),
+        "env workspace rules must remain untouched: {env_rules}"
+    );
+
+    let other_rules = std::fs::read_to_string(
+        other_workspace
+            .path()
+            .join("chat")
+            .join("prompts")
+            .join("rules.json"),
+    )
+    .expect("other rules");
+    assert!(
+        other_rules.contains("\"disabled\":false") || other_rules.contains("\"disabled\": false"),
+        "unrelated workspace rules must remain untouched: {other_rules}"
+    );
+}

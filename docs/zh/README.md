@@ -457,7 +457,7 @@ skilllite/                         依赖流向
 | `skilllite chat` | 交互式 Agent 对话（或 `--message` 单次对话） |
 | `skilllite add owner/repo` | 从 GitHub、本地目录或本地 ZIP 技能包添加 skills |
 | `skilllite import-openclaw-skills` | 从 OpenClaw 风格路径复制 skills 到 `skills/`（可用 `--dry-run`、`--skill-conflict`） |
-| `skilllite claw migrate` | 从 OpenClaw 风格布局迁移技能、人格/记忆 Markdown 与可选白名单 `.env` 密钥（别名：`skilllite migrate openclaw`） |
+| `skilllite claw migrate` | 从 OpenClaw 风格布局迁移技能、人格/记忆 Markdown 到 `<workspace>/chat/memory`，以及可选白名单 `.env` 密钥（别名：`skilllite migrate openclaw`） |
 | `skilllite remove <name>` | 移除已安装的 skill |
 | `skilllite list` | 列出已安装 skills |
 | `skilllite show <name>` | 显示 skill 详情 |
@@ -465,6 +465,8 @@ skilllite/                         依赖流向
 | `skilllite scan <dir>` | 扫描 skill 安全性 |
 | `skilllite evolution status` | 查看进化指标和历史 |
 | `skilllite evolution backlog` | 查询进化提案 backlog（状态/风险/ROI/acceptance_status） |
+| `skilllite evolution disable` | 禁用进化规则（`--workspace`） |
+| `skilllite evolution explain` | 解释进化规则来源与效果（`--workspace`） |
 | `skilllite evolution run` | 强制触发进化周期 |
 | `skilllite mcp` | 启动 MCP 服务器（Cursor/Claude Desktop） |
 | `skilllite serve` | 启动 IPC 守护进程（stdio JSON-RPC） |
