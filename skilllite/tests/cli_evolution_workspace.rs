@@ -98,9 +98,8 @@ fn evolution_disable_workspace_flag_isolates_rules_mutation() {
     let write_rules = |root: &Path, id: &str| {
         let prompts = root.join("chat").join("prompts");
         std::fs::create_dir_all(&prompts).expect("prompts dir");
-        let rules = format!(
-            r#"[{{"id":"{id}","mutable":true,"instruction":"{id}","disabled":false}}]"#
-        );
+        let rules =
+            format!(r#"[{{"id":"{id}","mutable":true,"instruction":"{id}","disabled":false}}]"#);
         std::fs::write(prompts.join("rules.json"), rules).expect("write rules");
     };
     write_rules(env_workspace.path(), "env_rule");

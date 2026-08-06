@@ -4,9 +4,12 @@
 
 - Task ID: `TASK-2026-082`
 - Title: Fix evolution disable/explain and OpenClaw migrate wrong roots; harden atomic_write staging
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `cursor-cloud`
+- Contributors:
+- Created: `2026-08-06`
+- Target milestone:
 - Branches: `cursor/critical-bug-investigation-b649`
 
 ## Summary
@@ -19,13 +22,13 @@ Three high-confidence critical bugs remain on `main` @ `12010e8` outside open PR
 
 ## Acceptance Criteria
 
-- [ ] `evolution disable` and `explain` accept `--workspace/-w` (default `.`) and operate only on that workspace's `chat/prompts` + evolution DB.
-- [ ] Regression test proves disable with `--workspace A` does not mutate workspace B or global `~/.skilllite/chat`.
-- [ ] OpenClaw migrate memory destination is `<workspace>/chat/memory` (plan display + apply + reindex).
-- [ ] Dry-run / apply evidence shows memory under the selected project chat root, not `~/.skilllite/chat`.
-- [ ] `skilllite_fs::atomic_write` uses basename-preserving unique staging names; unit test covers stem collision.
-- [ ] EN/ZH command docs updated for new `--workspace` on disable/explain.
-- [ ] `python3 scripts/validate_tasks.py` passes.
+- [x] `evolution disable` and `explain` accept `--workspace/-w` (default `.`) and operate only on that workspace's `chat/prompts` + evolution DB.
+- [x] Regression test proves disable with `--workspace A` does not mutate workspace B or global `~/.skilllite/chat`.
+- [x] OpenClaw migrate memory destination is `<workspace>/chat/memory` (plan display + apply + reindex).
+- [x] Dry-run / apply evidence shows memory under the selected project chat root, not `~/.skilllite/chat`.
+- [x] `skilllite_fs::atomic_write` uses basename-preserving unique staging names; unit test covers stem collision.
+- [x] EN/ZH command docs updated for new `--workspace` on disable/explain.
+- [x] `python3 scripts/validate_tasks.py` passes.
 
 ## Non-Goals
 

@@ -1008,8 +1008,8 @@ mod tests {
         assert!(items.iter().any(|i| i.source.contains("SOUL.md")));
         assert!(items.iter().any(|i| i.source.contains("MEMORY.md")));
         assert!(items.iter().any(|i| i.source.contains("2026-05-12.md")));
-        assert!(items.iter().any(|i| {
-            i.category == "memory" && i.destination.contains("chat/memory")
-        }));
+        assert!(items
+            .iter()
+            .any(|i| { i.category == "memory" && i.destination.contains("chat/memory") }));
     }
 }
