@@ -1,13 +1,14 @@
 # Task Board
 
-Last updated: 2026-08-06 (TASK-2026-082 path root scoping + atomic_write)
+Last updated: 2026-08-06 (TASK-2026-083 Life Pulse periodic anchor)
 
 ## In Progress
 
-- None.
+- `TASK-2026-083-life-pulse-periodic-anchor` - Status: `in_progress` - Owner: `cursor-cloud`
 
 ## Ready
 
+- None (moved TASK-2026-083 to In Progress).
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
