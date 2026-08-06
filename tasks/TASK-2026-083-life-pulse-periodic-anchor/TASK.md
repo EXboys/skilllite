@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-083`
 - Title: Fix Life Pulse periodic growth anchor never advancing
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `cursor-cloud`
 - Contributors:

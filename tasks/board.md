@@ -1,14 +1,13 @@
 # Task Board
 
-Last updated: 2026-08-06 (TASK-2026-083 Life Pulse periodic anchor)
+Last updated: 2026-08-06 (TASK-2026-083 Life Pulse periodic anchor done)
 
 ## In Progress
 
-- `TASK-2026-083-life-pulse-periodic-anchor` - Status: `in_progress` - Owner: `cursor-cloud`
+- None.
 
 ## Ready
 
-- None (moved TASK-2026-083 to In Progress).
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
@@ -18,6 +17,7 @@ Last updated: 2026-08-06 (TASK-2026-083 Life Pulse periodic anchor)
 
 ## Done
 
+- `TASK-2026-083-life-pulse-periodic-anchor` - Status: `done` - Owner: `cursor-cloud`
 - `TASK-2026-082-path-root-scoping-atomic-write` - Status: `done` - Owner: `cursor-cloud`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
