@@ -8,6 +8,7 @@ Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
 
 ## Ready
 
+- `TASK-2026-071-session-transcript-prefix-match` - Status: `draft` - Owner: `agent`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 

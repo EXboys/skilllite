@@ -317,6 +317,10 @@ pub fn transcript_path_today(transcripts_dir: &Path, session_key: &str) -> PathB
 }
 
 /// List all transcript files for a session, sorted by date (legacy first, then YYYY-MM-DD).
+///
+/// Dated files must match `{session_key}-*.jsonl` (boundary after the key). A bare
+/// `starts_with(session_key)` would incorrectly include sibling keys such as `s10`
+/// when listing `s1`.
 pub fn list_transcript_files(transcripts_dir: &Path, session_key: &str) -> Result<Vec<PathBuf>> {
     let legacy = transcripts_dir.join(format!("{}.jsonl", session_key));
     let mut files = Vec::new();
@@ -332,15 +336,13 @@ pub fn list_transcript_files(transcripts_dir: &Path, session_key: &str) -> Resul
             transcripts_dir.display()
         )
     })?;
+    let dated_prefix = format!("{}-", session_key);
     for e in entries {
         let e = e?;
         let path = e.path();
         if let Some(name) = path.file_name() {
             let name = name.to_string_lossy();
-            if name.starts_with(session_key)
-                && name.ends_with(".jsonl")
-                && name != format!("{}.jsonl", session_key)
-            {
+            if name.starts_with(&dated_prefix) && name.ends_with(".jsonl") {
                 files.push(path);
             }
         }
@@ -424,5 +426,46 @@ mod tests {
             interval: Duration::ZERO,
         };
         assert!(should_sync_after_append(&path, policy));
+    }
+
+    #[test]
+    fn list_transcript_files_rejects_prefix_sibling_session_keys() {
+        let dir = unique_test_path("prefix-sibling");
+        std::fs::create_dir_all(&dir).expect("create transcripts dir");
+        std::fs::write(dir.join("s1.jsonl"), "{\"type\":\"session\"}\n").unwrap();
+        std::fs::write(dir.join("s1-2026-08-07.jsonl"), "{\"type\":\"session\"}\n").unwrap();
+        std::fs::write(dir.join("s10-2026-08-07.jsonl"), "{\"type\":\"session\"}\n").unwrap();
+        std::fs::write(
+            dir.join("schedule-1-2026-08-07.jsonl"),
+            "{\"type\":\"session\"}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("schedule-10-2026-08-07.jsonl"),
+            "{\"type\":\"session\"}\n",
+        )
+        .unwrap();
+
+        let s1 = list_transcript_files(&dir, "s1").expect("list s1");
+        let s1_names: Vec<_> = s1
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            s1_names,
+            vec!["s1.jsonl".to_string(), "s1-2026-08-07.jsonl".to_string()]
+        );
+
+        let schedule_1 = list_transcript_files(&dir, "schedule-1").expect("list schedule-1");
+        let schedule_names: Vec<_> = schedule_1
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            schedule_names,
+            vec!["schedule-1-2026-08-07.jsonl".to_string()]
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

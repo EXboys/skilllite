@@ -311,4 +311,20 @@ mod tests {
         assert!(paths[0].ends_with("default.jsonl"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
+
+    #[test]
+    fn list_transcript_paths_rejects_prefix_sibling_session_keys() {
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite-transcript-prefix-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("s1-2026-08-07.jsonl"), "").unwrap();
+        std::fs::write(tmp.join("s10-2026-08-07.jsonl"), "").unwrap();
+        let paths = list_transcript_paths(&tmp, "s1");
+        assert_eq!(paths.len(), 1);
+        assert!(paths[0].ends_with("s1-2026-08-07.jsonl"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 }
