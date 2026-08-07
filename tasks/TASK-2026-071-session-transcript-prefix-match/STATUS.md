@@ -12,7 +12,7 @@
 - [x] Minimal fix landed
 - [x] Validation commands executed
 - [x] Board updated
-- [ ] PR opened
+- [x] PR opened: https://github.com/EXboys/skilllite/pull/135
 
 ## Validation Evidence
 
