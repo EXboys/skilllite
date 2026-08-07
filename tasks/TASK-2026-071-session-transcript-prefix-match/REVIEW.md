@@ -8,7 +8,7 @@
 
 ## Decision
 
-- Merge readiness: ready (pending validation evidence in STATUS)
+- Merge readiness: ready
 
 ## Follow-ups
 

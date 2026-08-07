@@ -106,9 +106,9 @@ pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBu
         .filter(|p| p.is_file())
         .filter(|p| {
             p.extension().is_some_and(|e| e == "jsonl" || e == "json")
-                && p.file_stem().and_then(|s| s.to_str()).is_some_and(|n| {
-                    n == session_key || n.starts_with(&dated_prefix)
-                })
+                && p.file_stem()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|n| n == session_key || n.starts_with(&dated_prefix))
         })
         .collect();
     files.sort_by(|a, b| {
@@ -129,10 +129,7 @@ mod tests {
     use super::*;
 
     fn unique_test_dir(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "skilllite-plan-{name}-{}",
-            uuid::Uuid::new_v4()
-        ))
+        std::env::temp_dir().join(format!("skilllite-plan-{name}-{}", uuid::Uuid::new_v4()))
     }
 
     #[test]

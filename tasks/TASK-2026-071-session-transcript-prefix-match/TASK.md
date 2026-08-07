@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Fix session transcript/plan prefix matching
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
