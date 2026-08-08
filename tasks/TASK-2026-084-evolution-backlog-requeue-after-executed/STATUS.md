@@ -3,9 +3,9 @@
 ## Timeline
 
 - 2026-08-08:
-  - Progress: Confirmed critical authorize/re-queue bug on `main@12010e8`; implemented schema migration + upsert rewrite + coordinator persisted-id attach; added regression tests; validation green.
+  - Progress: Confirmed critical authorize/re-queue bug on `main@12010e8`; implemented schema migration + upsert rewrite + coordinator persisted-id attach; added regression tests; validation green; opened PR #136. Slack notify blocked (bot not in channel).
   - Blockers: none
-  - Next step: open PR and notify Slack (best-effort).
+  - Next step: await review/merge.
 
 ## Checkpoints
 
