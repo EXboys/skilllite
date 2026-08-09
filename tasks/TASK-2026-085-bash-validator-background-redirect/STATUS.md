@@ -20,7 +20,7 @@
 - [x] `cargo clippy -p skilllite-sandbox --all-targets -- -D warnings` — clean
 - [x] `cargo fmt --check` — clean for changed files / workspace
 - [x] `python3 scripts/validate_tasks.py` — 71 task folders passed
-- [ ] PR opened
+- [x] PR opened: https://github.com/EXboys/skilllite/pull/137
 
 ## Blockers
 
