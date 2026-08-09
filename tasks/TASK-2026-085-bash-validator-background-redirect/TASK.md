@@ -4,7 +4,7 @@
 
 - Task ID: TASK-2026-085-bash-validator-background-redirect
 - Title: Block bash background and redirect injection
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: automation
 - Contributors: automation

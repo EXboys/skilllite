@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-08-09 (TASK-2026-085 bash validator background/redirect injection)
+Last updated: 2026-08-09 (TASK-2026-085 bash validator background/redirect injection done)
 
 ## In Progress
 
-- `TASK-2026-085-bash-validator-background-redirect` - Status: `in_progress` - Owner: `automation`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-08-09 (TASK-2026-085 bash validator background/redirect injec
 
 ## Done
 
+- `TASK-2026-085-bash-validator-background-redirect` - Status: `done` - Owner: `automation`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
