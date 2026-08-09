@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-09 (TASK-2026-085 bash validator background/redirect injection)
 
 ## In Progress
 
-- None.
+- `TASK-2026-085-bash-validator-background-redirect` - Status: `in_progress` - Owner: `automation`
 
 ## Ready
 
