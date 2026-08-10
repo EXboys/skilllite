@@ -1,13 +1,14 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-10 (TASK-2026-071 SilentEventSink ConfirmRequired deny)
 
 ## In Progress
 
-- None.
+- `TASK-2026-071-silent-sink-confirm-required` - Status: `in_progress` - Owner: `critical-bug-automation`
 
 ## Ready
 
+- `TASK-2026-071-silent-sink-confirm-required` - Status: `draft` - Owner: `critical-bug-automation`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 

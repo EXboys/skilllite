@@ -129,7 +129,8 @@ pub trait EventSink: Send {
 }
 
 /// Silent event sink for background operations (e.g. pre-compaction memory flush).
-/// Swallows all output and auto-approves confirmation requests.
+/// Swallows all output. Auto-approves only [`RiskTier::Low`] confirmations;
+/// [`RiskTier::ConfirmRequired`] is always denied (never silently approved).
 pub struct SilentEventSink;
 
 impl EventSink for SilentEventSink {
@@ -147,8 +148,10 @@ impl EventSink for SilentEventSink {
         _is_error: bool,
     ) {
     }
-    fn on_confirmation_request(&mut self, _request: &ConfirmationRequest) -> bool {
-        true // Auto-approve for silent operations (memory flush may rarely need run_command)
+    fn on_confirmation_request(&mut self, request: &ConfirmationRequest) -> bool {
+        // Memory flush / swarm may need Low-tier run_command. ConfirmRequired must
+        // never be auto-approved (TASK-2026-024 / security non-negotiables).
+        matches!(request.risk_tier, RiskTier::Low)
     }
 }
 
@@ -627,6 +630,19 @@ mod emit_assistant_visible_tests {
         let mut s = SilentEventSink;
         s.emit_assistant_visible("ignored");
         // No panic; no observable on_text (SilentEventSink overrides emit)
+    }
+
+    #[test]
+    fn silent_sink_auto_approves_low_only() {
+        let mut s = SilentEventSink;
+        assert!(s.on_confirmation_request(&ConfirmationRequest::new(
+            "About to execute command:\n  echo ok\n\nConfirm execution?",
+            RiskTier::Low,
+        )));
+        assert!(!s.on_confirmation_request(&ConfirmationRequest::new(
+            "⚠️ Sensitive file access\n\nConfirm execution?",
+            RiskTier::ConfirmRequired,
+        )));
     }
 
     /// Same streaming-vs-full dedupe contract as [`TerminalEventSink`] / [`crate::rpc::RpcEventSink`].
