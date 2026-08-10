@@ -1,14 +1,13 @@
 # Task Board
 
-Last updated: 2026-08-10 (TASK-2026-071 SilentEventSink ConfirmRequired deny)
+Last updated: 2026-08-10 (TASK-2026-071 SilentEventSink ConfirmRequired deny done)
 
 ## In Progress
 
-- `TASK-2026-071-silent-sink-confirm-required` - Status: `in_progress` - Owner: `critical-bug-automation`
+- None.
 
 ## Ready
 
-- `TASK-2026-071-silent-sink-confirm-required` - Status: `draft` - Owner: `critical-bug-automation`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
@@ -18,6 +17,7 @@ Last updated: 2026-08-10 (TASK-2026-071 SilentEventSink ConfirmRequired deny)
 
 ## Done
 
+- `TASK-2026-071-silent-sink-confirm-required` - Status: `done` - Owner: `critical-bug-automation`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`

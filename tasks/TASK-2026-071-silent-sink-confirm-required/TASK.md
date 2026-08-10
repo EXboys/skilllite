@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Deny ConfirmRequired in SilentEventSink
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `critical-bug-automation`
 - Contributors:
@@ -36,12 +36,12 @@ auto-approval of dangerous operations by default).
 
 ## Acceptance Criteria
 
-- [ ] `SilentEventSink` returns `true` only for `RiskTier::Low`.
-- [ ] `SilentEventSink` returns `false` for `RiskTier::ConfirmRequired`.
-- [ ] Regression unit tests cover both tiers.
-- [ ] Existing tests that intended explicit approval use an approving sink, not SilentEventSink.
-- [ ] `cargo test -p skilllite-agent` and required gates pass.
-- [ ] Task artifacts + board updated; `python3 scripts/validate_tasks.py` passes.
+- [x] `SilentEventSink` returns `true` only for `RiskTier::Low`.
+- [x] `SilentEventSink` returns `false` for `RiskTier::ConfirmRequired`.
+- [x] Regression unit tests cover both tiers.
+- [x] Existing tests that intended explicit approval use an approving sink, not SilentEventSink.
+- [x] `cargo test -p skilllite-agent` and required gates pass.
+- [x] Task artifacts + board updated; `python3 scripts/validate_tasks.py` passes.
 
 ## Risks
 
