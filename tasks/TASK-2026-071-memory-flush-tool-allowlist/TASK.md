@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Restrict memory flush to memory tools only
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -32,10 +32,10 @@ unconfirmed mutating tools remain available.
 
 ## Acceptance Criteria
 
-- [ ] Memory flush builds a registry containing only `memory_search` / `memory_write` / `memory_list`
-- [ ] Flush path does not register `write_file`, `run_command`, skills, or MCP tools
-- [ ] Existing chat/agent turns keep full tool access
-- [ ] Focused unit tests pass; agent crate tests pass
+- [x] Memory flush builds a registry containing only `memory_search` / `memory_write` / `memory_list`
+- [x] Flush path does not register `write_file`, `run_command`, skills, or MCP tools
+- [x] Existing chat/agent turns keep full tool access
+- [x] Focused unit tests pass; agent crate tests pass
 
 ## Risks
 
