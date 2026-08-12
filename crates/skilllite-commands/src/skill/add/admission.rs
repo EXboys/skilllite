@@ -181,7 +181,7 @@ Rules:
     let v: serde_json::Value = serde_json::from_str(cleaned).with_context(|| {
         format!(
             "LLM risk JSON parse failed: {}",
-            &raw.chars().take(180).collect::<String>()
+            raw.chars().take(180).collect::<String>()
         )
     })?;
     let risk = match v
