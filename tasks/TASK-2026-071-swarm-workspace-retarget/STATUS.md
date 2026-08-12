@@ -2,7 +2,7 @@
 
 ## Current status
 
-`done` — fix validated; opening PR and notifying Slack.
+`done` — fix validated; PR #141 opened. Slack notify blocked (bot not in channel).
 
 ## Timeline
 
@@ -16,7 +16,8 @@
 - [x] Minimal fix implemented
 - [x] Regression tests added
 - [x] Validation commands completed
-- [ ] PR opened / Slack notified
+- [x] PR opened (#141)
+- [ ] Slack notified (bot not in channel; invite required)
 
 ## Validation evidence
 
