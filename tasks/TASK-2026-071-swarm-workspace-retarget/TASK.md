@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Fix swarm workspace retarget containment bypass
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `cursor-agent`
 - Contributors:

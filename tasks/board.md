@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-08-12 (TASK-2026-071 swarm workspace retarget in progress)
+Last updated: 2026-08-12 (TASK-2026-071 swarm workspace retarget done)
 
 ## In Progress
 
-- `TASK-2026-071-swarm-workspace-retarget` - Status: `in_progress` - Owner: `cursor-agent`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-08-12 (TASK-2026-071 swarm workspace retarget in progress)
 
 ## Done
 
+- `TASK-2026-071-swarm-workspace-retarget` - Status: `done` - Owner: `cursor-agent`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
