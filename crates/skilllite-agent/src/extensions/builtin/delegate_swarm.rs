@@ -1,6 +1,10 @@
 //! delegate_to_swarm: delegate task to P2P swarm when local capabilities insufficient.
 //!
 //! §3.4: Only attempts when SKILLLITE_SWARM_URL is set; 5s timeout; graceful fallback on failure.
+//!
+//! Security: the delegated `NodeTask.context.workspace` is always the calling agent's
+//! workspace. LLM-supplied `workspace` arguments are ignored so a model cannot retarget
+//! local swarm execution (and `write_file` containment) to an arbitrary filesystem root.
 
 use crate::Result;
 use serde_json::{json, Value};
@@ -18,7 +22,7 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
         tool_type: "function".to_string(),
         function: FunctionDef {
             name: "delegate_to_swarm".to_string(),
-            description: "Delegate a sub-task to the P2P swarm when local capabilities are insufficient. Requires SKILLLITE_SWARM_URL (e.g. http://127.0.0.1:7700). If the swarm uses SKILLLITE_SWARM_TOKEN, set the same value in the environment so requests send Authorization: Bearer. 5s timeout.".to_string(),
+            description: "Delegate a sub-task to the P2P swarm when local capabilities are insufficient. Requires SKILLLITE_SWARM_URL (e.g. http://127.0.0.1:7700). If the swarm uses SKILLLITE_SWARM_TOKEN, set the same value in the environment so requests send Authorization: Bearer. 5s timeout. Execution always uses the current agent workspace (caller-supplied workspace overrides are ignored).".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
@@ -28,7 +32,7 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
                     },
                     "workspace": {
                         "type": "string",
-                        "description": "Workspace path (default: current agent workspace)"
+                        "description": "Ignored for security; delegated tasks always use the current agent workspace"
                     },
                     "session_key": {
                         "type": "string",
@@ -44,6 +48,25 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
             }),
         },
     }]
+}
+
+/// Resolve the workspace string embedded in a delegated [`NodeTask`].
+///
+/// Always returns the calling agent's workspace. Any LLM-provided `workspace`
+/// argument is ignored (and logged when it would have retargeted execution).
+pub(super) fn effective_delegate_workspace(args: &Value, agent_workspace: &Path) -> String {
+    let agent = agent_workspace.to_string_lossy().to_string();
+    if let Some(requested) = args.get("workspace").and_then(|v| v.as_str()) {
+        let trimmed = requested.trim();
+        if !trimmed.is_empty() && trimmed != agent {
+            tracing::warn!(
+                requested_workspace = %trimmed,
+                agent_workspace = %agent,
+                "Ignoring delegate_to_swarm workspace override; using agent workspace"
+            );
+        }
+    }
+    agent
 }
 
 pub(super) async fn execute_delegate_to_swarm(
@@ -67,11 +90,7 @@ pub(super) async fn execute_delegate_to_swarm(
     };
     event_sink.on_swarm_started(&description);
 
-    let workspace_str = args
-        .get("workspace")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| workspace.to_string_lossy().to_string());
+    let workspace_str = effective_delegate_workspace(args, workspace);
 
     let session_key = args
         .get("session_key")
@@ -160,5 +179,48 @@ pub(super) async fn execute_delegate_to_swarm(
             event_sink.on_swarm_failed(&msg);
             Ok(msg)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    #[test]
+    fn effective_delegate_workspace_ignores_llm_override() {
+        let agent = PathBuf::from("/home/user/project");
+        let args = json!({
+            "description": "write a file",
+            "workspace": "/tmp/attacker_ws"
+        });
+        assert_eq!(
+            effective_delegate_workspace(&args, &agent),
+            "/home/user/project"
+        );
+    }
+
+    #[test]
+    fn effective_delegate_workspace_defaults_to_agent_when_omitted() {
+        let agent = PathBuf::from("/home/user/project");
+        let args = json!({ "description": "summarize" });
+        assert_eq!(
+            effective_delegate_workspace(&args, &agent),
+            "/home/user/project"
+        );
+    }
+
+    #[test]
+    fn effective_delegate_workspace_preserves_matching_agent_path() {
+        let agent = PathBuf::from("/home/user/project");
+        let args = json!({
+            "description": "ok",
+            "workspace": "/home/user/project"
+        });
+        assert_eq!(
+            effective_delegate_workspace(&args, &agent),
+            "/home/user/project"
+        );
     }
 }

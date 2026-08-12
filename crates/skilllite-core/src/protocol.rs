@@ -15,7 +15,10 @@ use serde::{Deserialize, Serialize};
 /// `required_capabilities` to decide whether to accept the task.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeContext {
-    /// Workspace path (local execution) or originating node ID (P2P).
+    /// Originating workspace path or node ID (P2P metadata).
+    ///
+    /// Local swarm executors must **not** treat this as a trusted filesystem root;
+    /// they resolve their own node workspace (see `AgentTaskExecutor`).
     pub workspace: String,
     /// Session key for memory/transcript continuity (matches `ChatSession` key).
     pub session_key: String,
