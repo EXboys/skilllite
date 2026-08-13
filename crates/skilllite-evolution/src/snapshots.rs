@@ -72,10 +72,7 @@ pub(crate) fn replace_dir_from_snapshot(src: &Path, dst: &Path) -> Result<()> {
         return Ok(());
     }
     let Some(parent) = dst.parent() else {
-        bail!(
-            "Cannot replace directory without parent: {}",
-            dst.display()
-        );
+        bail!("Cannot replace directory without parent: {}", dst.display());
     };
     let Some(name) = dst.file_name() else {
         bail!("Cannot replace directory without name: {}", dst.display());
