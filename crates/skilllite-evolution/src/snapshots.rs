@@ -62,6 +62,60 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Replace `dst` with a complete copy of `src` without deleting `dst` first.
+///
+/// Copies into a sibling temp directory, then renames. If the copy fails, `dst`
+/// is left unchanged. If the final swap fails after `dst` was moved aside, the
+/// previous tree is renamed back.
+pub(crate) fn replace_dir_from_snapshot(src: &Path, dst: &Path) -> Result<()> {
+    if !src.exists() {
+        return Ok(());
+    }
+    let Some(parent) = dst.parent() else {
+        bail!(
+            "Cannot replace directory without parent: {}",
+            dst.display()
+        );
+    };
+    let Some(name) = dst.file_name() else {
+        bail!("Cannot replace directory without name: {}", dst.display());
+    };
+    std::fs::create_dir_all(parent)?;
+
+    let name = name.to_string_lossy();
+    let pid = std::process::id();
+    let tmp = parent.join(format!(".{name}.restore-tmp-{pid}"));
+    let backup = parent.join(format!(".{name}.restore-old-{pid}"));
+
+    if tmp.exists() {
+        std::fs::remove_dir_all(&tmp)?;
+    }
+    if backup.exists() {
+        std::fs::remove_dir_all(&backup)?;
+    }
+
+    if let Err(e) = copy_dir_recursive(src, &tmp) {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(e);
+    }
+
+    let had_dst = dst.exists();
+    if had_dst {
+        std::fs::rename(dst, &backup)?;
+    }
+    if let Err(e) = std::fs::rename(&tmp, dst) {
+        if had_dst {
+            let _ = std::fs::rename(&backup, dst);
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(e.into());
+    }
+    if had_dst {
+        let _ = std::fs::remove_dir_all(&backup);
+    }
+    Ok(())
+}
+
 pub(crate) fn create_extended_snapshot(
     chat_root: &Path,
     skills_root: Option<&Path>,
@@ -143,14 +197,7 @@ pub(crate) fn restore_extended_snapshot(
     let memory_legacy_src = snap_dir.join("memory").join("knowledge.md");
     let memory_dst_root = chat_root.join("memory").join("evolution");
     if memory_tree_src.exists() {
-        if memory_dst_root.exists() {
-            std::fs::remove_dir_all(&memory_dst_root)?;
-        }
-        if let Some(parent) = memory_dst_root.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::create_dir_all(&memory_dst_root)?;
-        copy_dir_recursive(&memory_tree_src, &memory_dst_root)?;
+        replace_dir_from_snapshot(&memory_tree_src, &memory_dst_root)?;
     } else if memory_legacy_src.exists() {
         if let Some(parent) = memory_dst_root.parent() {
             std::fs::create_dir_all(parent)?;
@@ -164,10 +211,7 @@ pub(crate) fn restore_extended_snapshot(
     if skills_src.exists() {
         if let Some(sr) = skills_root {
             let skills_dst = sr.join("_evolved");
-            if skills_dst.exists() {
-                std::fs::remove_dir_all(&skills_dst)?;
-            }
-            copy_dir_recursive(&skills_src, &skills_dst)?;
+            replace_dir_from_snapshot(&skills_src, &skills_dst)?;
         }
     }
     Ok(())

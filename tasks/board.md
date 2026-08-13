@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-13 (TASK-2026-071 evolution restore atomicity)
 
 ## In Progress
 
-- None.
+- `TASK-2026-071-evolution-restore-atomic` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
