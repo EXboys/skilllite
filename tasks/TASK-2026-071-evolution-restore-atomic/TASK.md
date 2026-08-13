@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Make evolution snapshot restore atomic
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors: `agent`
@@ -31,11 +31,11 @@ Concrete trigger: evolution has written memory shards and `_evolved` skills; met
 
 ## Acceptance Criteria
 
-- [ ] Restoring an extended snapshot still restores prompts, memory shards, and evolved skills to the snapshotted content.
-- [ ] Extra files present in live memory/`_evolved` but absent from the snapshot are removed by a successful restore.
-- [ ] If copying the snapshot tree fails, the live destination directory is left intact.
-- [ ] No leftover restore temp/backup directories remain after success or copy failure.
-- [ ] `cargo test -p skilllite-evolution` and workspace `cargo test` / `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` pass.
+- [x] Restoring an extended snapshot still restores prompts, memory shards, and evolved skills to the snapshotted content.
+- [x] Extra files present in live memory/`_evolved` but absent from the snapshot are removed by a successful restore.
+- [x] If copying the snapshot tree fails, the live destination directory is left intact.
+- [x] No leftover restore temp/backup directories remain after success or copy failure.
+- [x] `cargo test -p skilllite-evolution` and workspace `cargo test` / `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` pass.
 
 ## Risks
 
