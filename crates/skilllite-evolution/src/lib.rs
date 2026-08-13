@@ -67,7 +67,9 @@ mod lib_tests {
         coordinate_proposals_with_config, AcceptanceThresholds, CoordinatorDecision,
         EvolutionCoordinatorConfig, EvolutionRiskBudget,
     };
-    use crate::snapshots::{create_extended_snapshot, restore_extended_snapshot};
+    use crate::snapshots::{
+        create_extended_snapshot, replace_dir_from_snapshot, restore_extended_snapshot,
+    };
     use rusqlite::Connection;
     use std::path::Path;
     use std::sync::Mutex;
@@ -614,6 +616,72 @@ mod lib_tests {
         assert_eq!(rules, "before_rules");
         assert_eq!(memory, "before_memory");
         assert_eq!(skill, "before_skill");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn restore_extended_snapshot_removes_live_files_absent_from_snapshot() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let skills_root = root.join("skills_project");
+        let prompts_dir = root.join("prompts");
+        let memory_dir = root.join("memory").join("evolution");
+        let evolved_dir = skills_root.join("_evolved").join("s1");
+        std::fs::create_dir_all(&prompts_dir).expect("prompts");
+        std::fs::create_dir_all(&memory_dir).expect("memory");
+        std::fs::create_dir_all(&evolved_dir).expect("skills");
+        std::fs::write(prompts_dir.join("rules.json"), b"snap_rules").expect("rules");
+        std::fs::write(memory_dir.join("keep.md"), b"keep").expect("memory keep");
+        std::fs::write(evolved_dir.join("SKILL.md"), b"keep_skill").expect("skill");
+
+        create_extended_snapshot(&root, Some(&skills_root), "txn_extra", true, true, true)
+            .expect("snapshot");
+
+        std::fs::write(memory_dir.join("extra.md"), b"live_only").expect("extra memory");
+        std::fs::write(
+            skills_root.join("_evolved").join("extra_skill.md"),
+            b"live_only_skill",
+        )
+        .expect("extra skill");
+
+        restore_extended_snapshot(&root, Some(&skills_root), "txn_extra").expect("restore");
+        assert!(memory_dir.join("keep.md").is_file());
+        assert!(!memory_dir.join("extra.md").exists());
+        assert!(evolved_dir.join("SKILL.md").is_file());
+        assert!(!skills_root.join("_evolved").join("extra_skill.md").exists());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn replace_dir_from_snapshot_leaves_destination_intact_when_copy_fails() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let dest = root.join("memory").join("evolution");
+        std::fs::create_dir_all(&dest).expect("dest");
+        std::fs::write(dest.join("live.md"), b"must-survive").expect("live");
+
+        // A regular file cannot be copied as a directory tree; copy must fail
+        // before any swap, leaving the live destination unchanged.
+        let bogus_src = root.join("not-a-directory");
+        std::fs::write(&bogus_src, b"not a tree").expect("bogus src");
+
+        assert!(
+            replace_dir_from_snapshot(&bogus_src, &dest).is_err(),
+            "copy should fail when source is not a directory"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest.join("live.md")).expect("live read"),
+            "must-survive"
+        );
+        let pid = std::process::id();
+        assert!(!root
+            .join("memory")
+            .join(format!(".evolution.restore-tmp-{pid}"))
+            .exists());
+        assert!(!root
+            .join("memory")
+            .join(format!(".evolution.restore-old-{pid}"))
+            .exists());
         let _ = std::fs::remove_dir_all(&root);
     }
 }
