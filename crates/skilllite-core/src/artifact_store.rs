@@ -76,6 +76,18 @@ pub trait ArtifactStore: Send + Sync {
 /// Maximum allowed key length (bytes). Keeps filesystem paths manageable.
 pub const MAX_KEY_LENGTH: usize = 512;
 
+/// True when `segment` looks like a Windows drive path (`C:`, `C:\...`, `C:/...`).
+///
+/// Checked on all hosts so hostile Windows keys cannot be accepted on Unix and later
+/// interpreted as absolute paths on Windows.
+fn has_windows_drive_prefix(segment: &str) -> bool {
+    let mut chars = segment.chars();
+    matches!(
+        (chars.next(), chars.next()),
+        (Some(drive), Some(':')) if drive.is_ascii_alphabetic()
+    )
+}
+
 /// Validate an artifact key. Returns `Ok(())` or an `InvalidKey` error.
 ///
 /// Rules:
@@ -83,6 +95,8 @@ pub const MAX_KEY_LENGTH: usize = 512;
 /// - Must not exceed `MAX_KEY_LENGTH`.
 /// - Must not contain `..` (path traversal).
 /// - Must not start with `/` or `\` (absolute path).
+/// - Must not contain `\` (Windows separators / rooted paths); use `/` for hierarchy.
+/// - Must not contain a Windows drive prefix in any path segment (`C:...`).
 /// - Must not contain null bytes.
 pub fn validate_artifact_key(key: &str) -> Result<(), StoreError> {
     if key.is_empty() {
@@ -107,6 +121,18 @@ pub fn validate_artifact_key(key: &str) -> Result<(), StoreError> {
         return Err(StoreError::InvalidKey {
             key: key.to_string(),
             reason: "key must not start with '/' or '\\'".to_string(),
+        });
+    }
+    if key.contains('\\') {
+        return Err(StoreError::InvalidKey {
+            key: key.to_string(),
+            reason: "key must not contain '\\'; use '/' for hierarchy".to_string(),
+        });
+    }
+    if key.split('/').any(has_windows_drive_prefix) {
+        return Err(StoreError::InvalidKey {
+            key: key.to_string(),
+            reason: "key must not contain a Windows drive prefix".to_string(),
         });
     }
     if key.contains('\0') {
@@ -150,6 +176,23 @@ mod tests {
         assert!(matches!(err, StoreError::InvalidKey { .. }));
         let err = validate_artifact_key("\\windows\\system32").unwrap_err();
         assert!(matches!(err, StoreError::InvalidKey { .. }));
+    }
+
+    #[test]
+    fn windows_drive_and_backslash_keys_rejected() {
+        for key in [
+            r"C:\Users\Public\owned.txt",
+            "C:/Users/Public/owned.txt",
+            r"foo\bar.txt",
+            "reports/C:/escape.txt",
+            "C:relative.txt",
+        ] {
+            let err = validate_artifact_key(key).unwrap_err();
+            assert!(
+                matches!(err, StoreError::InvalidKey { .. }),
+                "expected rejection for {key:?}, got {err}"
+            );
+        }
     }
 
     #[test]
