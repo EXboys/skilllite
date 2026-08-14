@@ -514,6 +514,7 @@ skilllite/                         Dependency Flow
 | `skilllite evolution status`   | View evolution metrics and history                                     |
 | `skilllite evolution backlog`  | Query backlog proposals (status/risk/ROI/acceptance_status)            |
 | `skilllite evolution run`      | Force-trigger evolution cycle                                          |
+| `skilllite evolution reset --workspace <dir> --force` | Reset only that workspace's evolved prompts, logs, and skills |
 | `skilllite mcp`                | Start MCP server (Cursor/Claude Desktop)                               |
 | `skilllite serve`              | Start IPC daemon (stdio JSON-RPC)                                      |
 | `skilllite artifact-serve`     | Run-scoped artifact HTTP server (bind requires `SKILLLITE_ARTIFACT_SERVE_ALLOW=1`) |
