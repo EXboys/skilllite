@@ -418,20 +418,68 @@ fn rewrite_output_paths(command: &str, output_dir: &Path) -> String {
         let lower = part.to_lowercase();
 
         // Skip if already absolute, uses env var, or is a URL
-        let is_absolute = part.starts_with('/');
+        let is_absolute = part.starts_with('/')
+            || part.starts_with('\\')
+            || (part.len() >= 2
+                && part.as_bytes()[0].is_ascii_alphabetic()
+                && part.as_bytes()[1] == b':');
         let has_env_var = part.contains('$');
         let is_url = part.contains("://");
+        let has_parent = part.split(['/', '\\']).any(|seg| seg == "..");
 
         let has_output_ext = OUTPUT_EXTENSIONS.iter().any(|ext| lower.ends_with(ext));
 
-        if has_output_ext && !is_absolute && !has_env_var && !is_url {
-            // Resolve to absolute path under output_dir
+        if has_output_ext && !is_absolute && !has_env_var && !is_url && !has_parent {
+            // Resolve to absolute path under output_dir, then require containment.
             let abs = output_dir.join(part);
-            result_parts.push(abs.to_string_lossy().to_string());
+            let mut components = Vec::new();
+            for component in abs.components() {
+                match component {
+                    std::path::Component::ParentDir => {
+                        components.pop();
+                    }
+                    std::path::Component::CurDir => {}
+                    other => components.push(other),
+                }
+            }
+            let normalized: std::path::PathBuf = components.iter().collect();
+            if normalized.starts_with(output_dir) {
+                result_parts.push(normalized.to_string_lossy().to_string());
+            } else {
+                // Refuse to inject escaped absolute paths; keep the original token.
+                result_parts.push(part.to_string());
+            }
         } else {
             result_parts.push(part.to_string());
         }
     }
 
     result_parts.join(" ")
+}
+
+#[cfg(test)]
+mod rewrite_output_paths_tests {
+    use super::rewrite_output_paths;
+    use std::path::Path;
+
+    #[test]
+    fn rewrites_bare_filename_under_output_dir() {
+        let out = Path::new("/proj/output");
+        let rewritten = rewrite_output_paths("agent-browser screenshot shot.png", out);
+        assert_eq!(rewritten, "agent-browser screenshot /proj/output/shot.png");
+    }
+
+    #[test]
+    fn does_not_rewrite_parent_traversal() {
+        let out = Path::new("/proj/output");
+        let rewritten = rewrite_output_paths("agent-browser screenshot ../escape.png", out);
+        assert_eq!(rewritten, "agent-browser screenshot ../escape.png");
+    }
+
+    #[test]
+    fn does_not_rewrite_windows_drive_forms() {
+        let out = Path::new("/proj/output");
+        let rewritten = rewrite_output_paths("agent-browser screenshot C:/Temp/pwn.png", out);
+        assert_eq!(rewritten, "agent-browser screenshot C:/Temp/pwn.png");
+    }
 }

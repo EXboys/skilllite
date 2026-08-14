@@ -177,37 +177,100 @@ pub(super) fn is_key_write_path(path: &str) -> bool {
     false
 }
 
-pub(super) fn resolve_within_workspace(path: &str, workspace: &Path) -> Result<PathBuf> {
+/// Canonicalize an existing root, or lexically normalize when the root is missing.
+fn containing_root(root: &Path) -> PathBuf {
+    if let Ok(canon) = root.canonicalize() {
+        return canon;
+    }
+    let abs = if root.is_absolute() {
+        root.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|cwd| cwd.join(root))
+            .unwrap_or_else(|_| root.to_path_buf())
+    };
+    normalize_path(&abs)
+}
+
+/// Reject paths whose final (or nearest existing ancestor) target resolves outside `root_canon`
+/// via symlink follow. Lexical `..` escapes are already rejected by the caller.
+fn reject_symlink_escape(normalized: &Path, root_canon: &Path, display_path: &str) -> Result<()> {
+    let existing = if normalized.exists() {
+        Some(normalized.to_path_buf())
+    } else {
+        let mut ancestor = normalized.parent().map(|p| p.to_path_buf());
+        while let Some(ref a) = ancestor {
+            if a.exists() {
+                break;
+            }
+            ancestor = a.parent().map(|p| p.to_path_buf());
+        }
+        ancestor.filter(|a| a.exists())
+    };
+
+    let Some(existing) = existing else {
+        return Ok(());
+    };
+
+    let canon = existing.canonicalize().map_err(|e| {
+        crate::Error::validation(format!("Failed to resolve path {}: {}", display_path, e))
+    })?;
+    if !canon.starts_with(root_canon) {
+        bail!(
+            "Path escapes workspace via symlink: {} (workspace: {})",
+            display_path,
+            root_canon.display()
+        );
+    }
+    Ok(())
+}
+
+fn resolve_under_root(path: &str, root: &Path) -> Result<PathBuf> {
+    let root_canon = containing_root(root);
     let input = Path::new(path);
     let resolved = if input.is_absolute() {
         input.to_path_buf()
     } else {
-        workspace.join(input)
+        root_canon.join(input)
     };
-
     let normalized = normalize_path(&resolved);
+    if !normalized.starts_with(&root_canon) {
+        bail!(
+            "Path escapes workspace: {} (workspace: {})",
+            path,
+            root_canon.display()
+        );
+    }
+    reject_symlink_escape(&normalized, &root_canon, path)?;
+    Ok(normalized)
+}
 
-    if !normalized.starts_with(workspace) {
-        let is_output_path =
-            types::get_output_dir().is_some_and(|od| normalized.starts_with(Path::new(&od)));
-        if is_output_path {
-            bail!(
-                "Path escapes workspace: {} (workspace: {}). \
-                 Hint: this path is in the output directory — use **write_output** \
-                 (with file_path relative to the output dir) instead of write_file.",
-                path,
-                workspace.display()
-            );
-        } else {
-            bail!(
-                "Path escapes workspace: {} (workspace: {})",
-                path,
-                workspace.display()
-            );
+pub(super) fn resolve_within_workspace(path: &str, workspace: &Path) -> Result<PathBuf> {
+    match resolve_under_root(path, workspace) {
+        Ok(normalized) => Ok(normalized),
+        Err(err) => {
+            // Preserve the write_output hint when the lexically-normalized path lands in output/.
+            let input = Path::new(path);
+            let resolved = if input.is_absolute() {
+                input.to_path_buf()
+            } else {
+                workspace.join(input)
+            };
+            let normalized = normalize_path(&resolved);
+            let is_output_path =
+                types::get_output_dir().is_some_and(|od| normalized.starts_with(Path::new(&od)));
+            if is_output_path {
+                bail!(
+                    "Path escapes workspace: {} (workspace: {}). \
+                     Hint: this path is in the output directory — use **write_output** \
+                     (with file_path relative to the output dir) instead of write_file.",
+                    path,
+                    workspace.display()
+                );
+            }
+            Err(err)
         }
     }
-
-    Ok(normalized)
 }
 
 pub(super) fn resolve_within_workspace_or_output(path: &str, workspace: &Path) -> Result<PathBuf> {
@@ -217,15 +280,8 @@ pub(super) fn resolve_within_workspace_or_output(path: &str, workspace: &Path) -
 
     if let Some(output_dir) = types::get_output_dir() {
         let output_root = PathBuf::from(&output_dir);
-        let input = Path::new(path);
-        let resolved = if input.is_absolute() {
-            input.to_path_buf()
-        } else {
-            output_root.join(input)
-        };
-        let normalized = normalize_path(&resolved);
-        if normalized.starts_with(&output_root) {
-            return Ok(normalized);
+        if let Ok(resolved) = resolve_under_root(path, &output_root) {
+            return Ok(resolved);
         }
     }
 
@@ -259,8 +315,6 @@ pub(crate) fn normalize_path(path: &Path) -> PathBuf {
     }
     components.iter().collect()
 }
-
-// ─── Truncated JSON recovery ─────────────────────────────────────────────────
 
 pub(super) fn parse_truncated_json_for_file_tools(arguments: &str) -> Option<Value> {
     if arguments.is_empty() {
@@ -339,4 +393,114 @@ pub(super) fn unescape_json_string(s: &str) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod path_containment_tests {
+    use super::{normalize_path, resolve_under_root, resolve_within_workspace};
+    use std::path::{Path, PathBuf};
+
+    fn temp_workspace(label: &str) -> PathBuf {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "skilllite_ws_contain_{label}_{}_{}",
+            std::process::id(),
+            unique
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create workspace");
+        dir
+    }
+
+    #[test]
+    fn resolve_within_workspace_allows_normal_relative_file() {
+        let ws = temp_workspace("ok");
+        std::fs::write(ws.join("note.txt"), "hi").unwrap();
+        let resolved = resolve_within_workspace("note.txt", &ws).unwrap();
+        assert_eq!(resolved, containing_expected(&ws, "note.txt"));
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn resolve_within_workspace_rejects_parent_escape() {
+        let ws = temp_workspace("dotdot");
+        let err = resolve_within_workspace("../outside.txt", &ws).unwrap_err();
+        assert!(
+            err.to_string().contains("Path escapes workspace"),
+            "err={err}"
+        );
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn resolve_under_root_rejects_symlink_pointing_outside() {
+        let ws = temp_workspace("symlink");
+        let outside = std::env::temp_dir().join(format!(
+            "skilllite_ws_outside_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::write(&outside, "SECRET").unwrap();
+        let link = ws.join("leak.txt");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside, &link).expect("symlink");
+        #[cfg(not(unix))]
+        {
+            let _ = std::fs::remove_file(&outside);
+            let _ = std::fs::remove_dir_all(&ws);
+            return;
+        }
+
+        let err = resolve_under_root("leak.txt", &ws).unwrap_err();
+        assert!(
+            err.to_string().contains("symlink"),
+            "expected symlink escape error, got: {err}"
+        );
+
+        let _ = std::fs::remove_file(&outside);
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn resolve_under_root_rejects_write_through_symlink_dir() {
+        let ws = temp_workspace("symlink_dir");
+        let outside_dir = std::env::temp_dir().join(format!(
+            "skilllite_ws_outdir_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&outside_dir).unwrap();
+        let link_dir = ws.join("out");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&outside_dir, &link_dir).expect("symlink dir");
+        #[cfg(not(unix))]
+        {
+            let _ = std::fs::remove_dir_all(&outside_dir);
+            let _ = std::fs::remove_dir_all(&ws);
+            return;
+        }
+
+        let err = resolve_under_root("out/pwn.txt", &ws).unwrap_err();
+        assert!(
+            err.to_string().contains("symlink"),
+            "expected symlink escape error, got: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&outside_dir);
+        let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    fn containing_expected(ws: &Path, rel: &str) -> PathBuf {
+        let root = ws.canonicalize().unwrap();
+        normalize_path(&root.join(rel))
+    }
 }
