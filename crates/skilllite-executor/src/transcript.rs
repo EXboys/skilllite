@@ -6,7 +6,7 @@
 //! `{session_key}-YYYY-MM-DD.jsonl` so each day gets a new file. Legacy
 //! `{session_key}.jsonl` without date is still supported for backward compat.
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
@@ -306,19 +306,32 @@ pub fn transcript_path_for_session(
     transcripts_dir: &Path,
     session_key: &str,
     date: Option<&str>,
-) -> PathBuf {
+) -> Result<PathBuf> {
     let date_str = date.map(|s| s.to_string()).unwrap_or_else(date_today);
-    transcripts_dir.join(format!("{}-{}.jsonl", session_key, date_str))
+    let file_name = format!("{}-{}.jsonl", session_key, date_str);
+    skilllite_core::path_validation::session_file_under_dir(
+        transcripts_dir,
+        session_key,
+        &file_name,
+    )
+    .map_err(|e| Error::validation(e.to_string()))
 }
 
 /// Path for today's transcript file (used for append).
-pub fn transcript_path_today(transcripts_dir: &Path, session_key: &str) -> PathBuf {
+pub fn transcript_path_today(transcripts_dir: &Path, session_key: &str) -> Result<PathBuf> {
     transcript_path_for_session(transcripts_dir, session_key, None)
 }
 
 /// List all transcript files for a session, sorted by date (legacy first, then YYYY-MM-DD).
 pub fn list_transcript_files(transcripts_dir: &Path, session_key: &str) -> Result<Vec<PathBuf>> {
-    let legacy = transcripts_dir.join(format!("{}.jsonl", session_key));
+    skilllite_core::path_validation::validate_session_key(session_key)
+        .map_err(|e| Error::validation(e.to_string()))?;
+    let legacy = skilllite_core::path_validation::session_file_under_dir(
+        transcripts_dir,
+        session_key,
+        &format!("{}.jsonl", session_key),
+    )
+    .map_err(|e| Error::validation(e.to_string()))?;
     let mut files = Vec::new();
     if legacy.exists() {
         files.push(legacy);
@@ -392,6 +405,49 @@ mod tests {
             "skilllite-transcript-{name}-{}",
             uuid::Uuid::new_v4()
         ))
+    }
+
+    #[test]
+    fn transcript_path_rejects_absolute_and_traversal_session_keys() {
+        let dir = PathBuf::from("/tmp/skilllite-chat/transcripts");
+        for key in [
+            "/tmp/evil",
+            "../evil",
+            "..\\evil",
+            "foo/bar",
+            "C:\\Windows\\Temp",
+            "C:/Windows/Temp",
+        ] {
+            let err = transcript_path_today(&dir, key).unwrap_err();
+            assert!(
+                err.to_string().contains("invalid session key"),
+                "expected rejection for {key:?}, got {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn transcript_path_keeps_valid_session_key_inside_dir() {
+        let dir = PathBuf::from("/tmp/skilllite-chat/transcripts");
+        let path = transcript_path_today(&dir, "default").unwrap();
+        assert!(path.starts_with(&dir));
+        assert!(path
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with("default-"));
+    }
+
+    #[test]
+    fn append_entry_does_not_escape_transcripts_dir_with_absolute_session_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let transcripts = tmp.path().join("transcripts");
+        std::fs::create_dir_all(&transcripts).unwrap();
+        let outside = tmp.path().join("outside-target.jsonl");
+        let absolute_key = outside.to_string_lossy();
+        // Pre-fix behavior would join to an absolute path outside transcripts/.
+        assert!(transcript_path_today(&transcripts, absolute_key.as_ref()).is_err());
+        assert!(!outside.exists());
     }
 
     #[test]
