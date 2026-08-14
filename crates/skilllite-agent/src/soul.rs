@@ -82,6 +82,7 @@ pub fn build_beliefs_block(chat_root: &Path) -> String {
     let rules = skilllite_evolution::seed::load_rules(chat_root);
     let decision_tendency: String = rules
         .iter()
+        .filter(|r| !r.disabled)
         .filter(|r| r.mutable || r.origin != "seed")
         .take(BELIEFS_RULES_TOP)
         .filter(|r| !r.instruction.is_empty())
@@ -473,6 +474,21 @@ mod tests {
         assert!(block.contains("Beliefs"));
         assert!(block.contains("Decision Tendency"));
         assert!(block.contains("Use read_file before edit"));
+    }
+
+    #[test]
+    fn test_build_beliefs_block_skips_disabled_rules() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prompts_dir = tmp.path().join("prompts");
+        std::fs::create_dir_all(&prompts_dir).unwrap();
+        let rules = r#"[
+            {"id":"r1","instruction":"Keep this active rule.","mutable":true},
+            {"id":"r2","instruction":"Do not surface this disabled rule.","mutable":true,"disabled":true}
+        ]"#;
+        std::fs::write(prompts_dir.join("rules.json"), rules).unwrap();
+        let block = build_beliefs_block(tmp.path());
+        assert!(block.contains("Keep this active rule"));
+        assert!(!block.contains("Do not surface this disabled rule"));
     }
 
     #[test]

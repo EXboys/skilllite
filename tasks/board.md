@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-07-26 (TASK-2026-072 evolution disable honored done)
 
 ## In Progress
 
@@ -17,6 +17,7 @@ Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
 
 ## Done
 
+- `TASK-2026-072-evolution-disable-honored` - Status: `done` - Owner: `agent`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
