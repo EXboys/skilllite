@@ -309,8 +309,8 @@ pub fn cmd_reset(force: bool) -> Result<()> {
 }
 
 /// `skilllite evolution disable <rule_id>` — disable a specific evolved rule.
-pub fn cmd_disable(rule_id: &str) -> Result<()> {
-    let root = paths::chat_root();
+pub fn cmd_disable(workspace: &str, rule_id: &str) -> Result<()> {
+    let root = crate::evolution_status::chat_root_for_workspace(workspace);
     let rules_path = root.join("prompts").join("rules.json");
 
     if !rules_path.exists() {
@@ -359,8 +359,8 @@ pub fn cmd_disable(rule_id: &str) -> Result<()> {
 }
 
 /// `skilllite evolution explain <rule_id>` — show rule origin, history, effectiveness.
-pub fn cmd_explain(rule_id: &str) -> Result<()> {
-    let root = paths::chat_root();
+pub fn cmd_explain(workspace: &str, rule_id: &str) -> Result<()> {
+    let root = crate::evolution_status::chat_root_for_workspace(workspace);
 
     // Load rule details
     let rules_path = root.join("prompts").join("rules.json");

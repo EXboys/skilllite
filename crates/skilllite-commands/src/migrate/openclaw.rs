@@ -6,7 +6,7 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
-use skilllite_core::paths::{self, project_skilllite_dir};
+use skilllite_core::paths::project_skilllite_dir;
 use zip::write::FileOptions;
 use zip::ZipWriter;
 
@@ -94,6 +94,7 @@ struct MigrationPlanDisplay<'a> {
     project_root: &'a Path,
     openclaw_home: &'a Path,
     skills_path: &'a Path,
+    memory_root: &'a Path,
     report_dir: &'a Path,
     items: &'a [PlanItem],
     skipped: &'a [String],
@@ -123,7 +124,8 @@ pub fn cmd_claw_migrate_openclaw(opts: OpenclawMigrateOptions<'_>) -> Result<()>
     let openclaw_home = resolve_openclaw_home(openclaw_dir)?;
     let skills_path = resolve_skills_dir(skills_dir);
     let soul_dest = project_skilllite_dir(&project_root).join("SOUL.md");
-    let memory_root = paths::chat_root().join("memory");
+    // Workspace-scoped chat memory (same layout as agent/evolution), not global ~/.skilllite/chat.
+    let memory_root = project_root.join("chat").join("memory");
     let env_dest = project_root.join(".env");
 
     let skill_candidates = collect_openclaw_import_candidates(&project_root, &openclaw_home);
@@ -183,6 +185,7 @@ pub fn cmd_claw_migrate_openclaw(opts: OpenclawMigrateOptions<'_>) -> Result<()>
         project_root: &project_root,
         openclaw_home: &openclaw_home,
         skills_path: &skills_path,
+        memory_root: &memory_root,
         report_dir: &report_dir,
         items: &items,
         skipped: &skipped,
@@ -242,7 +245,7 @@ pub fn cmd_claw_migrate_openclaw(opts: OpenclawMigrateOptions<'_>) -> Result<()>
         &report_dir,
         &mut items,
     )?;
-    reindex_migrated_memory(&migrated_memory, &mut items)?;
+    reindex_migrated_memory(&migrated_memory, &memory_root, &mut items)?;
     apply_archive_only(&project_root, &openclaw_home, &report_dir, &mut archived)?;
     if migrate_secrets {
         apply_env_merge(&openclaw_home, &env_dest, overwrite)?;
@@ -478,6 +481,7 @@ fn print_plan(display: &MigrationPlanDisplay<'_>) {
         project_root,
         openclaw_home,
         skills_path,
+        memory_root,
         report_dir,
         items,
         skipped,
@@ -493,10 +497,7 @@ fn print_plan(display: &MigrationPlanDisplay<'_>) {
     eprintln!("  Project:      {}", project_root.display());
     eprintln!("  OpenClaw dir: {}", openclaw_home.display());
     eprintln!("  Skills dir:   {}", skills_path.display());
-    eprintln!(
-        "  Memory dir:   {}",
-        paths::chat_root().join("memory").display()
-    );
+    eprintln!("  Memory dir:   {}", memory_root.display());
     eprintln!("  Report dir:   {}", report_dir.display());
     eprintln!(
         "  Secrets:      {}",
@@ -647,13 +648,17 @@ fn plan_memory_reindex_item(_planned: &[PlanItem], _memory_root: &Path) -> Optio
 }
 
 #[cfg(feature = "agent")]
-fn reindex_migrated_memory(rel_paths: &[String], items: &mut Vec<PlanItem>) -> Result<()> {
+fn reindex_migrated_memory(
+    rel_paths: &[String],
+    memory_root: &Path,
+    items: &mut Vec<PlanItem>,
+) -> Result<()> {
     if rel_paths.is_empty() {
         return Ok(());
     }
-    let chat_root = paths::chat_root();
+    let chat_root = memory_root.parent().unwrap_or(memory_root);
     let indexed = skilllite_agent::extensions::reindex_memory_markdown_files(
-        &chat_root, "default", rel_paths,
+        chat_root, "default", rel_paths,
     )?;
     if indexed.is_empty() {
         return Ok(());
@@ -663,18 +668,18 @@ fn reindex_migrated_memory(rel_paths: &[String], items: &mut Vec<PlanItem>) -> R
         category: "memory".to_string(),
         action: PlanAction::ReindexMemory,
         source: indexed.join(", "),
-        destination: chat_root
-            .join("memory")
-            .join("default.sqlite")
-            .display()
-            .to_string(),
+        destination: memory_root.join("default.sqlite").display().to_string(),
         note: None,
     });
     Ok(())
 }
 
 #[cfg(not(feature = "agent"))]
-fn reindex_migrated_memory(rel_paths: &[String], _items: &mut Vec<PlanItem>) -> Result<()> {
+fn reindex_migrated_memory(
+    rel_paths: &[String],
+    _memory_root: &Path,
+    _items: &mut Vec<PlanItem>,
+) -> Result<()> {
     if !rel_paths.is_empty() {
         eprintln!("Memory FTS reindex skipped (build without agent feature).");
     }
@@ -989,7 +994,7 @@ mod tests {
         fs::write(ws.join("memory/2026-05-12.md"), "daily").unwrap();
 
         let soul_dest = project.join(".skilllite/SOUL.md");
-        let memory_root = project.join("memory-out");
+        let memory_root = project.join("chat").join("memory");
         let mut items = Vec::new();
         let mut skipped = Vec::new();
         plan_workspace_markdown(
@@ -1003,5 +1008,8 @@ mod tests {
         assert!(items.iter().any(|i| i.source.contains("SOUL.md")));
         assert!(items.iter().any(|i| i.source.contains("MEMORY.md")));
         assert!(items.iter().any(|i| i.source.contains("2026-05-12.md")));
+        assert!(items
+            .iter()
+            .any(|i| { i.category == "memory" && i.destination.contains("chat/memory") }));
     }
 }

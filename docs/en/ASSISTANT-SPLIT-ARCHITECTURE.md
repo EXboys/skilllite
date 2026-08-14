@@ -126,6 +126,7 @@ Priority commands for parity with today’s Desktop bridge:
 | `skilllite evolution proposal-status --json <id>` | `EvolutionProposalStatusSnapshot` | **Shipped**; `--workspace` |
 | `skilllite evolution confirm/reject --json` | `EvolutionOpSnapshot` | **Shipped**; `--workspace` |
 | `skilllite evolution run --json` | `NodeResult` | **Shipped**; `--workspace`, `--proposal-id`, `--log-manual-trigger` |
+| `skilllite evolution disable/explain` | human output | **Shipped**; `--workspace` scopes `chat/prompts` + evolution DB |
 | `skilllite runtime probe --json` | `RuntimeUiSnapshot` | **Shipped** |
 | `skilllite runtime provision --json` | stderr progress JSON lines + `ProvisionRuntimesResult` on stdout | **Shipped**; `--python` / `--node` / `--force` |
 | `skilllite skills list --json --workspace` | `DesktopSkillSnapshot[]` (desktop `DesktopSkillInfo`) | **Shipped** |
