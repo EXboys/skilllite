@@ -103,6 +103,21 @@ impl CapabilityPolicy {
         }
     }
 
+    /// Restrict to memory tools for silent pre-compaction flush turns.
+    ///
+    /// Pair with registering only memory tools (no builtins/skills/MCP): tools
+    /// with empty capability lists would otherwise still pass policy checks.
+    pub const fn memory_flush() -> Self {
+        Self {
+            allow_filesystem_write: false,
+            allow_memory_write: true,
+            allow_process_exec: false,
+            allow_preview: false,
+            allow_delegation: false,
+            allow_skill_execution: false,
+        }
+    }
+
     #[must_use]
     pub fn with_filesystem_write(mut self, allow: bool) -> Self {
         self.allow_filesystem_write = allow;
@@ -170,6 +185,26 @@ mod tests {
         assert!(!registry.owns_tool("memory_write"));
         assert!(!registry.owns_tool("run_command"));
         assert!(!registry.owns_tool("preview_server"));
+    }
+
+    #[test]
+    fn memory_flush_registry_exposes_only_memory_tools() {
+        let registry = ExtensionRegistry::memory_flush(true, false);
+
+        assert!(registry.owns_tool("memory_search"));
+        assert!(registry.owns_tool("memory_write"));
+        assert!(registry.owns_tool("memory_list"));
+        assert!(!registry.owns_tool("write_file"));
+        assert!(!registry.owns_tool("run_command"));
+        assert!(!registry.owns_tool("read_file"));
+        assert!(!registry.owns_tool("preview_server"));
+        assert!(!registry.owns_tool("delegate_to_swarm"));
+    }
+
+    #[test]
+    fn memory_flush_registry_empty_when_memory_disabled() {
+        let registry = ExtensionRegistry::memory_flush(false, false);
+        assert!(registry.all_tool_definitions().is_empty());
     }
 
     #[test]
@@ -914,6 +949,18 @@ impl<'a> ExtensionRegistry<'a> {
         Self::builder(enable_memory, enable_memory_vector, skills)
             .with_policy(CapabilityPolicy::read_only())
             .register(builtin::get_builtin_tools())
+            .register_memory_if(enable_memory)
+            .build()
+    }
+
+    /// Create a registry restricted to memory tools for silent flush turns.
+    ///
+    /// Does not register builtins, skills, or MCP tools — capability policy alone
+    /// is insufficient because untagged tools (empty capability list) pass checks.
+    pub fn memory_flush(enable_memory: bool, enable_memory_vector: bool) -> Self {
+        Self::builder(enable_memory, enable_memory_vector, &[])
+            .with_task_planning(false)
+            .with_policy(CapabilityPolicy::memory_flush())
             .register_memory_if(enable_memory)
             .build()
     }

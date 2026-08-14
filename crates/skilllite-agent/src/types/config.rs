@@ -58,6 +58,11 @@ pub struct AgentConfig {
     /// Used by replay/eval flows that must not mutate the workspace.
     pub read_only_tools: bool,
 
+    /// Restrict the tool registry to memory tools only.
+    /// Used by pre-compaction memory flush so silent background turns cannot
+    /// mutate the workspace, execute commands, run skills, or call MCP tools.
+    pub memory_tools_only: bool,
+
     /// Optional outbound MCP servers (stdio). Disabled entries are skipped.
     /// Also loaded from `SKILLLITE_MCP_SERVERS_JSON` in [`AgentConfig::from_env`].
     pub mcp_servers: Vec<McpServerEntry>,
@@ -88,6 +93,7 @@ impl Default for AgentConfig {
             goal_boundaries: None,
             skip_history_for_planning: false,
             read_only_tools: false,
+            memory_tools_only: false,
             mcp_servers: Vec::new(),
         }
     }

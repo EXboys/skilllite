@@ -61,6 +61,14 @@ async fn build_registry_with_mcp<'a>(
     config: &'a AgentConfig,
     skills: &'a [LoadedSkill],
 ) -> extensions::ExtensionRegistry<'a> {
+    // Silent memory flush must never see workspace mutators / exec / skills / MCP.
+    if config.memory_tools_only {
+        return extensions::ExtensionRegistry::memory_flush(
+            config.enable_memory,
+            config.enable_memory_vector,
+        );
+    }
+
     let mcp = bootstrap_mcp(config).await;
     let policy = if config.read_only_tools {
         extensions::CapabilityPolicy::read_only()
