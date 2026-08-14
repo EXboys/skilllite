@@ -1101,6 +1101,43 @@ async fn test_run_command_sensitive_cat_env_cancelled_when_denied() {
 #[tokio::test]
 async fn test_run_command_sensitive_cat_env_runs_when_approved() {
     use super::run_command;
+    use crate::types::{ConfirmationRequest, EventSink};
+
+    struct ApprovingSink;
+    impl EventSink for ApprovingSink {
+        fn on_text(&mut self, _text: &str) {}
+        fn on_tool_call(&mut self, _name: &str, _arguments: &str) {}
+        fn on_tool_result(&mut self, _name: &str, _result: &str, _is_error: bool) {}
+        fn on_confirmation_request(&mut self, _request: &ConfirmationRequest) -> bool {
+            true
+        }
+    }
+
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    std::fs::write(workspace.join(".env"), "API_KEY=sk-secret\n").unwrap();
+
+    let mut sink = ApprovingSink;
+    let read_env = if cfg!(windows) {
+        "type .env"
+    } else {
+        "cat .env"
+    };
+    let args = serde_json::json!({ "command": read_env });
+    let outcome = run_command::execute_run_command(&args, workspace, &mut sink)
+        .await
+        .unwrap();
+    assert!(!outcome.is_error);
+    assert!(
+        outcome.content.contains("redacted") || outcome.content.contains("[REDACTED]"),
+        "expected redaction in output, got: {}",
+        outcome.content
+    );
+}
+
+#[tokio::test]
+async fn test_run_command_sensitive_cat_env_denied_by_silent_sink() {
+    use super::run_command;
     use crate::types::SilentEventSink;
 
     let tmp = tempfile::tempdir().unwrap();
@@ -1119,8 +1156,8 @@ async fn test_run_command_sensitive_cat_env_runs_when_approved() {
         .unwrap();
     assert!(!outcome.is_error);
     assert!(
-        outcome.content.contains("redacted") || outcome.content.contains("[REDACTED]"),
-        "expected redaction in output, got: {}",
+        outcome.content.contains("cancelled"),
+        "SilentEventSink must deny ConfirmRequired sensitive reads; got: {}",
         outcome.content
     );
 }
