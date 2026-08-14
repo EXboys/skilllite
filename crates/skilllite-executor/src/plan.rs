@@ -90,10 +90,15 @@ pub fn read_latest_plan(
 }
 
 /// List all plan files for a session (for UI / history browsing).
+///
+/// Stems must equal `session_key` or start with `{session_key}-`. A bare
+/// `starts_with(session_key)` would incorrectly include sibling keys such as
+/// `s10` when listing `s1`.
 pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBuf>> {
     if !plans_dir.exists() {
         return Ok(Vec::new());
     }
+    let dated_prefix = format!("{}-", session_key);
     let mut files: Vec<PathBuf> = skilllite_fs::read_dir(plans_dir)
         .with_context(|| format!("Failed to read plans dir: {}", plans_dir.display()))?
         .into_iter()
@@ -103,7 +108,7 @@ pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBu
             p.extension().is_some_and(|e| e == "jsonl" || e == "json")
                 && p.file_stem()
                     .and_then(|s| s.to_str())
-                    .is_some_and(|n| n.starts_with(session_key))
+                    .is_some_and(|n| n == session_key || n.starts_with(&dated_prefix))
         })
         .collect();
     files.sort_by(|a, b| {
@@ -117,4 +122,33 @@ pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBu
             )
     });
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_test_dir(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("skilllite-plan-{name}-{}", uuid::Uuid::new_v4()))
+    }
+
+    #[test]
+    fn list_plan_files_rejects_prefix_sibling_session_keys() {
+        let dir = unique_test_dir("prefix-sibling");
+        std::fs::create_dir_all(&dir).expect("create plans dir");
+        std::fs::write(dir.join("s1-2026-08-07.jsonl"), "{}\n").unwrap();
+        std::fs::write(dir.join("s10-2026-08-07.jsonl"), "{}\n").unwrap();
+        std::fs::write(dir.join("s1.json"), "{}").unwrap();
+
+        let files = list_plan_files(&dir, "s1").expect("list s1 plans");
+        let names: Vec<_> = files
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert!(names.contains(&"s1-2026-08-07.jsonl".to_string()));
+        assert!(names.contains(&"s1.json".to_string()));
+        assert!(!names.iter().any(|n| n.starts_with("s10")));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

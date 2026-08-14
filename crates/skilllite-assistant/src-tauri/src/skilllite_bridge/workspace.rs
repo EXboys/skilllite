@@ -310,6 +310,7 @@ fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
         } else if json_path.exists() {
             parse_plan_from_file(&json_path)
         } else {
+            let dated_prefix = format!("{}-", session_key);
             let mut candidates: Vec<_> = std::fs::read_dir(&plans_dir)
                 .ok()?
                 .flatten()
@@ -317,7 +318,7 @@ fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
                     e.path()
                         .file_stem()
                         .and_then(|s| s.to_str())
-                        .is_some_and(|n| n.starts_with(session_key))
+                        .is_some_and(|n| n == session_key || n.starts_with(&dated_prefix))
                 })
                 .collect();
             candidates.sort_by_key(|e| {
