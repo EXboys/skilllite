@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-08-14 (TASK-2026-071 block dotenv variants)
+Last updated: 2026-08-14 (TASK-2026-071 block dotenv variants done)
 
 ## In Progress
 
-- `TASK-2026-071-block-dotenv-variants` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-08-14 (TASK-2026-071 block dotenv variants)
 
 ## Done
 
+- `TASK-2026-071-block-dotenv-variants` - Status: `done` - Owner: `agent`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`

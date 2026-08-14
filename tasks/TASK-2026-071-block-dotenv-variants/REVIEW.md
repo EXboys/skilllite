@@ -8,7 +8,7 @@
   - `crates/skilllite-agent/src/extensions/builtin/tests.rs`
   - `crates/skilllite-assistant/src-tauri/src/skilllite_bridge/workspace.rs`
   - `docs/en/ARCHITECTURE.md`, `docs/zh/ARCHITECTURE.md`
-- Commits/changes: pending validation
+- Commits/changes: `1f3269f` plus follow-up task evidence
 
 ## Findings
 
@@ -20,15 +20,24 @@
 
 - Architecture boundary checks: `pass`
 - Security invariants: `pass` (default more restrictive)
-- Required tests executed: `pending`
+- Required tests executed: `pass` (agent + workspace; assistant crate blocked by missing GTK)
 - Docs sync (EN/ZH): `pass`
 
 ## Test Evidence
 
-- Commands run: pending
-- Key outputs: pending
+- Commands run:
+  - `python3 scripts/validate_tasks.py` — Task validation passed (71 task directories checked)
+  - `cargo fmt --check` — exit 0
+  - `cargo clippy --all-targets -- -D warnings` — exit 0
+  - `cargo test -p skilllite-agent` — `251 passed; 0 failed`
+  - `cargo test` (workspace) — all crate results `ok`, 0 failed
+  - `cargo test --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml --lib workspace_path_tests` — compile failed: `gdk-3.0` not installed
+- Key outputs:
+  - `test_read_file_blocks_dotenv_variants ... ok`
+  - `test_write_file_blocks_dotenv_variants ... ok`
+  - `blocks_dotenv_and_common_variants ... ok`
 
 ## Decision
 
-- Merge readiness: not ready
-- Follow-up actions: run `cargo test` / clippy / fmt and record evidence
+- Merge readiness: ready
+- Follow-up actions: none

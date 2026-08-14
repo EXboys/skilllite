@@ -4,7 +4,7 @@
 
 - Task ID: TASK-2026-071
 - Title: Block dotenv variant files from agent and IDE IO
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: agent
 - Contributors: agent
@@ -34,11 +34,11 @@ secrets to the LLM, or lets the agent overwrite local env files (data loss).
 
 ## Acceptance Criteria
 
-- [ ] `.env.local`, `.env.production`, `.envrc` are blocked for agent read and write
-- [ ] Existing `.env`, `.key`, `.pem`, `.git/config` blocks still hold
-- [ ] Non-env files such as `src/env.rs` and `environment.json` remain allowed
-- [ ] Desktop IDE uses the same dotenv-variant rule
-- [ ] Tests fail if the variant check is removed
+- [x] `.env.local`, `.env.production`, `.envrc` are blocked for agent read and write
+- [x] Existing `.env`, `.key`, `.pem`, `.git/config` blocks still hold
+- [x] Non-env files such as `src/env.rs` and `environment.json` remain allowed
+- [x] Desktop IDE uses the same dotenv-variant rule
+- [x] Tests fail if the variant check is removed
 
 ## Risks
 
