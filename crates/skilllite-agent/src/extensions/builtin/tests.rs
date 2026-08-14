@@ -310,6 +310,52 @@ fn test_read_file_blocks_sensitive_paths() {
 }
 
 #[test]
+fn test_read_file_blocks_dotenv_variants() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    std::fs::write(
+        workspace.join(".env.local"),
+        "DATABASE_URL=postgres://secret\n",
+    )
+    .unwrap();
+    std::fs::write(workspace.join(".envrc"), "export API_KEY=hidden\n").unwrap();
+
+    for path in [".env.local", ".envrc"] {
+        let args = serde_json::json!({ "path": path });
+        let result = execute_builtin_tool("read_file", &args.to_string(), workspace, None);
+        assert!(result.is_error, "{path}: {}", result.content);
+        assert!(
+            result.content.contains("Blocked: reading sensitive file"),
+            "{path}: {}",
+            result.content
+        );
+    }
+}
+
+#[test]
+fn test_write_file_blocks_dotenv_variants() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+
+    for path in [".env.local", "frontend/.env.production"] {
+        let args = serde_json::json!({
+            "path": path,
+            "content": "SECRET=1\n"
+        });
+        let result = execute_builtin_tool("write_file", &args.to_string(), workspace, None);
+        assert!(result.is_error, "{path}: {}", result.content);
+        assert!(
+            result
+                .content
+                .contains("Blocked: writing to sensitive file"),
+            "{path}: {}",
+            result.content
+        );
+        assert!(!workspace.join(path).exists(), "must not create {path}");
+    }
+}
+
+#[test]
 fn test_read_file_redacts_sensitive_in_other_files() {
     let tmp = tempfile::tempdir().unwrap();
     let workspace = tmp.path();
