@@ -69,7 +69,7 @@ ureq = { version = "2", optional = true, features = ["json"] }
 zip = "0.6"
 
 # IPC daemon: thread pool for concurrent request handling
-rayon = "1.10"
+rayon = "1.12"
 
 [[bin]]
 name = "skilllite"
