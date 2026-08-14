@@ -1,7 +1,7 @@
 //! Evolution feedback collection and evaluation system (EVO-1).
 
 use crate::Result;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::fs;
 use std::path::Path;
 
@@ -163,7 +163,7 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             proposal_id TEXT NOT NULL UNIQUE,
             source TEXT NOT NULL,
-            dedupe_key TEXT NOT NULL UNIQUE,
+            dedupe_key TEXT NOT NULL,
             scope_json TEXT NOT NULL,
             risk_level TEXT NOT NULL,
             roi_score REAL NOT NULL DEFAULT 0.0,
@@ -184,6 +184,7 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_evo_log_ts ON evolution_log(ts);
         CREATE INDEX IF NOT EXISTS idx_evo_backlog_status_roi ON evolution_backlog(status, roi_score DESC);
         CREATE INDEX IF NOT EXISTS idx_evo_backlog_created_at ON evolution_backlog(created_at);
+        CREATE INDEX IF NOT EXISTS idx_evo_backlog_dedupe_status ON evolution_backlog(dedupe_key, status);
         "#,
     )?;
     // Backward-compatible migration: add column for existing DBs (ignored if column exists).
@@ -204,6 +205,71 @@ pub fn ensure_evolution_tables(conn: &Connection) -> Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_decisions_seq ON decisions(tool_sequence_key)",
         [],
     );
+    migrate_evolution_backlog_drop_dedupe_unique(conn)?;
+    Ok(())
+}
+
+/// Older schemas enforced `dedupe_key TEXT NOT NULL UNIQUE`, which prevents inserting a
+/// fresh active proposal after an `executed` row for the same key. Rebuild without that UNIQUE.
+fn migrate_evolution_backlog_drop_dedupe_unique(conn: &Connection) -> Result<()> {
+    let table_sql: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'evolution_backlog'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(table_sql) = table_sql else {
+        return Ok(());
+    };
+    // Match the historical column constraint text (new installs already omit UNIQUE).
+    let needs_rebuild = table_sql
+        .to_ascii_lowercase()
+        .contains("dedupe_key text not null unique");
+    if !needs_rebuild {
+        let _ = conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_evo_backlog_dedupe_status ON evolution_backlog(dedupe_key, status)",
+            [],
+        );
+        return Ok(());
+    }
+
+    conn.execute_batch(
+        r#"
+        CREATE TABLE evolution_backlog_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            proposal_id TEXT NOT NULL UNIQUE,
+            source TEXT NOT NULL,
+            dedupe_key TEXT NOT NULL,
+            scope_json TEXT NOT NULL,
+            risk_level TEXT NOT NULL,
+            roi_score REAL NOT NULL DEFAULT 0.0,
+            expected_gain REAL NOT NULL DEFAULT 0.0,
+            effort REAL NOT NULL DEFAULT 1.0,
+            acceptance_criteria TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL,
+            acceptance_status TEXT NOT NULL DEFAULT 'pending',
+            note TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO evolution_backlog_new (
+            id, proposal_id, source, dedupe_key, scope_json, risk_level, roi_score,
+            expected_gain, effort, acceptance_criteria, status, acceptance_status,
+            note, created_at, updated_at
+        )
+        SELECT
+            id, proposal_id, source, dedupe_key, scope_json, risk_level, roi_score,
+            expected_gain, effort, acceptance_criteria, status, acceptance_status,
+            note, created_at, updated_at
+        FROM evolution_backlog;
+        DROP TABLE evolution_backlog;
+        ALTER TABLE evolution_backlog_new RENAME TO evolution_backlog;
+        CREATE INDEX IF NOT EXISTS idx_evo_backlog_status_roi ON evolution_backlog(status, roi_score DESC);
+        CREATE INDEX IF NOT EXISTS idx_evo_backlog_created_at ON evolution_backlog(created_at);
+        CREATE INDEX IF NOT EXISTS idx_evo_backlog_dedupe_status ON evolution_backlog(dedupe_key, status);
+        "#,
+    )?;
     Ok(())
 }
 

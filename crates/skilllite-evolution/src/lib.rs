@@ -456,6 +456,201 @@ mod lib_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    #[test]
+    fn enqueue_user_capability_evolution_requeues_after_executed() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let first_id = enqueue_user_capability_evolution(
+            &conn,
+            "weather",
+            "failure",
+            "first authorization",
+        )
+        .expect("first enqueue");
+        conn.execute(
+            "UPDATE evolution_backlog
+             SET status = 'executed', acceptance_status = 'met', updated_at = datetime('now')
+             WHERE proposal_id = ?1",
+            rusqlite::params![first_id],
+        )
+        .expect("mark executed");
+
+        let second_id = enqueue_user_capability_evolution(
+            &conn,
+            "weather",
+            "failure",
+            "re-authorize after executed",
+        )
+        .expect("second enqueue");
+
+        assert_ne!(
+            second_id, first_id,
+            "re-queue after executed must mint a new active proposal identity"
+        );
+        let (status, active_count, total_count): (String, i64, i64) = conn
+            .query_row(
+                "SELECT
+                    (SELECT status FROM evolution_backlog WHERE proposal_id = ?1),
+                    (SELECT COUNT(*) FROM evolution_backlog
+                     WHERE dedupe_key = 'user_capability:weather:failure' AND status != 'executed'),
+                    (SELECT COUNT(*) FROM evolution_backlog
+                     WHERE dedupe_key = 'user_capability:weather:failure')",
+                rusqlite::params![second_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .expect("read re-queued state");
+        assert_eq!(status, "queued");
+        assert_eq!(active_count, 1);
+        assert_eq!(total_count, 2);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn migrate_evolution_backlog_allows_requeue_with_legacy_unique_dedupe() {
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&root).expect("mkdir");
+        let db_path = root.join("feedback.sqlite");
+        {
+            let conn = Connection::open(&db_path).expect("open legacy db");
+            conn.execute_batch(
+                r#"
+                CREATE TABLE evolution_backlog (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    proposal_id TEXT NOT NULL UNIQUE,
+                    source TEXT NOT NULL,
+                    dedupe_key TEXT NOT NULL UNIQUE,
+                    scope_json TEXT NOT NULL,
+                    risk_level TEXT NOT NULL,
+                    roi_score REAL NOT NULL DEFAULT 0.0,
+                    expected_gain REAL NOT NULL DEFAULT 0.0,
+                    effort REAL NOT NULL DEFAULT 1.0,
+                    acceptance_criteria TEXT NOT NULL DEFAULT '[]',
+                    status TEXT NOT NULL,
+                    acceptance_status TEXT NOT NULL DEFAULT 'pending',
+                    note TEXT,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+                INSERT INTO evolution_backlog
+                    (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score,
+                     expected_gain, effort, acceptance_criteria, status, acceptance_status, note)
+                VALUES
+                    ('proposal_legacy_executed', 'passive', 'user_capability:weather:failure',
+                     '{}', 'medium', 0.4, 0.75, 1.8, '[]', 'executed', 'met', 'legacy');
+                "#,
+            )
+            .expect("seed legacy unique schema");
+        }
+
+        let conn = feedback::open_evolution_db(&root).expect("migrate on open");
+        let table_sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'evolution_backlog'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read schema");
+        assert!(
+            !table_sql
+                .to_ascii_lowercase()
+                .contains("dedupe_key text not null unique"),
+            "migration must drop global UNIQUE on dedupe_key: {table_sql}"
+        );
+
+        let requeued_id = enqueue_user_capability_evolution(
+            &conn,
+            "weather",
+            "failure",
+            "after legacy migrate",
+        )
+        .expect("enqueue after migrate");
+        let active: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM evolution_backlog
+                 WHERE proposal_id = ?1 AND status = 'queued'",
+                rusqlite::params![requeued_id],
+                |row| row.get(0),
+            )
+            .expect("count active");
+        assert_eq!(active, 1);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn coordinate_attaches_status_to_persisted_id_after_requeue() {
+        let _guard = EVO_LOCK.lock().expect("evo lock");
+        let root =
+            std::env::temp_dir().join(format!("skilllite-evo-test-{}", uuid::Uuid::new_v4()));
+        let conn = feedback::open_evolution_db(&root).expect("open db");
+        let first = build_proposal(
+            ProposalSource::Passive,
+            EvolutionScope {
+                skills: true,
+                skill_action: SkillAction::Generate,
+                ..Default::default()
+            },
+            ProposalRiskLevel::Low,
+            0.6,
+            1.0,
+            vec!["criteria".into()],
+        );
+        let dedupe_key = first.dedupe_key.clone();
+        conn.execute(
+            "INSERT INTO evolution_backlog
+             (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria, status, acceptance_status, note)
+             VALUES (?1, 'passive', ?2, '{}', 'low', 0.6, 0.6, 1.0, '[\"criteria\"]', 'executed', 'met', 'done')",
+            rusqlite::params![first.proposal_id, dedupe_key],
+        )
+        .expect("seed executed history");
+
+        let next = build_proposal(
+            ProposalSource::Passive,
+            EvolutionScope {
+                skills: true,
+                skill_action: SkillAction::Generate,
+                ..Default::default()
+            },
+            ProposalRiskLevel::Low,
+            0.7,
+            1.0,
+            vec!["criteria".into()],
+        );
+        assert_eq!(next.dedupe_key, dedupe_key);
+        let minted_id = next.proposal_id.clone();
+        let decision = coordinate_proposals_with_config(
+            &conn,
+            vec![next],
+            true,
+            EvolutionCoordinatorConfig {
+                policy_runtime_enabled: false,
+                auto_execute_low_risk: true,
+                deny_critical: true,
+                risk_budget: EvolutionRiskBudget {
+                    low_per_day: 5,
+                    medium_per_day: 5,
+                    high_per_day: 5,
+                    critical_per_day: 1,
+                },
+            },
+        )
+        .expect("coordinate");
+        let CoordinatorDecision::Execute(selected) = decision else {
+            panic!("expected Execute after re-queue");
+        };
+        assert_eq!(selected.proposal_id, minted_id);
+        let status: String = conn
+            .query_row(
+                "SELECT status FROM evolution_backlog WHERE proposal_id = ?1",
+                rusqlite::params![minted_id],
+                |row| row.get(0),
+            )
+            .expect("persisted status");
+        assert_eq!(status, "executing");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     fn seed_backlog_row(conn: &Connection, proposal_id: &str, updated_at: &str) {
         conn.execute(
             "INSERT INTO evolution_backlog

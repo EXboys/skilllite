@@ -478,25 +478,8 @@ fn upsert_backlog_proposal(
 ) -> Result<()> {
     let scope_json = serde_json::to_string(&proposal.scope)?;
     let acceptance_criteria = serde_json::to_string(&proposal.acceptance_criteria)?;
-    conn.execute(
-        "INSERT OR IGNORE INTO evolution_backlog
-         (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria, status, note)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-        params![
-            proposal.proposal_id,
-            proposal.source.as_str(),
-            proposal.dedupe_key,
-            scope_json,
-            proposal.risk_level.as_str(),
-            proposal.roi_score as f64,
-            proposal.expected_gain as f64,
-            proposal.effort as f64,
-            acceptance_criteria,
-            status,
-            note,
-        ],
-    )?;
-    conn.execute(
+    // Soft-dedupe among active rows only. Executed history must not block a fresh insert.
+    let updated = conn.execute(
         "UPDATE evolution_backlog
          SET roi_score = ?1,
              expected_gain = ?2,
@@ -512,6 +495,26 @@ fn upsert_backlog_proposal(
             proposal.dedupe_key,
         ],
     )?;
+    if updated == 0 {
+        conn.execute(
+            "INSERT INTO evolution_backlog
+             (proposal_id, source, dedupe_key, scope_json, risk_level, roi_score, expected_gain, effort, acceptance_criteria, status, note)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                proposal.proposal_id,
+                proposal.source.as_str(),
+                proposal.dedupe_key,
+                scope_json,
+                proposal.risk_level.as_str(),
+                proposal.roi_score as f64,
+                proposal.expected_gain as f64,
+                proposal.effort as f64,
+                acceptance_criteria,
+                status,
+                note,
+            ],
+        )?;
+    }
     Ok(())
 }
 
@@ -969,9 +972,15 @@ pub(crate) fn coordinate_proposals_with_config(
             upsert_backlog_proposal(conn, proposal, "queued", "Proposal collected")?;
         }
         proposals.sort_by(|a, b| b.roi_score.total_cmp(&a.roi_score));
-        let Some(selected) = proposals.into_iter().next() else {
+        let Some(mut selected) = proposals.into_iter().next() else {
             return Ok(CoordinatorDecision::NoCandidate);
         };
+        // Soft-dedupe may keep an older proposal_id on the active row; attach status to that id.
+        if let Some(persisted_id) =
+            latest_non_executed_proposal_id_by_dedupe(conn, &selected.dedupe_key)?
+        {
+            selected.proposal_id = persisted_id;
+        }
         if force {
             set_backlog_status(
                 conn,
