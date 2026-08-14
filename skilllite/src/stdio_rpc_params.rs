@@ -31,6 +31,19 @@ fn opt_u64(p: &serde_json::Map<String, Value>, key: &str) -> Option<u64> {
     p.get(key).and_then(|v| v.as_u64())
 }
 
+fn opt_sandbox_level(p: &serde_json::Map<String, Value>, key: &str) -> Result<Option<u8>> {
+    let Some(value) = p.get(key) else {
+        return Ok(None);
+    };
+    let Some(level) = value.as_u64() else {
+        return Err(Error::msg(format!("{key} must be an integer in [1, 2, 3]")));
+    };
+    if !(1..=3).contains(&level) {
+        return Err(Error::msg(format!("{key} must be one of [1, 2, 3]")));
+    }
+    Ok(Some(level as u8))
+}
+
 #[cfg(feature = "agent")]
 fn opt_array_strings(p: &serde_json::Map<String, Value>, key: &str) -> Option<Vec<String>> {
     p.get(key).and_then(|v| v.as_array()).map(|arr| {
@@ -64,7 +77,7 @@ impl TryFrom<&Value> for IpcRunParams {
             cache_dir: opt_str(p, "cache_dir"),
             max_memory: opt_u64(p, "max_memory"),
             timeout: opt_u64(p, "timeout"),
-            sandbox_level: opt_u64(p, "sandbox_level").map(|u| u as u8),
+            sandbox_level: opt_sandbox_level(p, "sandbox_level")?,
         })
     }
 }
@@ -97,7 +110,7 @@ impl TryFrom<&Value> for IpcExecParams {
             cache_dir: opt_str(p, "cache_dir"),
             max_memory: opt_u64(p, "max_memory"),
             timeout: opt_u64(p, "timeout"),
-            sandbox_level: opt_u64(p, "sandbox_level").map(|u| u as u8),
+            sandbox_level: opt_sandbox_level(p, "sandbox_level")?,
         })
     }
 }
@@ -170,5 +183,83 @@ impl TryFrom<&Value> for IpcListToolsParams {
             skills: opt_array_strings(p, "skills"),
             format: opt_str(p, "format").unwrap_or_else(|| "openai".into()),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn execution_params_accept_documented_sandbox_levels_and_omission() {
+        for level in 1..=3 {
+            let run = json!({
+                "skill_dir": "/skill",
+                "input_json": "{}",
+                "sandbox_level": level,
+            });
+            assert_eq!(
+                IpcRunParams::try_from(&run).unwrap().sandbox_level,
+                Some(level)
+            );
+
+            let exec = json!({
+                "skill_dir": "/skill",
+                "script_path": "main.py",
+                "input_json": "{}",
+                "sandbox_level": level,
+            });
+            assert_eq!(
+                IpcExecParams::try_from(&exec).unwrap().sandbox_level,
+                Some(level)
+            );
+        }
+
+        let run = json!({"skill_dir": "/skill", "input_json": "{}"});
+        assert_eq!(IpcRunParams::try_from(&run).unwrap().sandbox_level, None);
+
+        let exec = json!({
+            "skill_dir": "/skill",
+            "script_path": "main.py",
+            "input_json": "{}",
+        });
+        assert_eq!(IpcExecParams::try_from(&exec).unwrap().sandbox_level, None);
+    }
+
+    #[test]
+    fn execution_params_reject_sandbox_levels_that_could_disable_isolation() {
+        let run = json!({
+            "skill_dir": "/skill",
+            "input_json": "{}",
+            "sandbox_level": 257,
+        });
+        assert_eq!(
+            IpcRunParams::try_from(&run).unwrap_err().to_string(),
+            "sandbox_level must be one of [1, 2, 3]"
+        );
+
+        let exec = json!({
+            "skill_dir": "/skill",
+            "script_path": "main.py",
+            "input_json": "{}",
+            "sandbox_level": 257,
+        });
+        assert_eq!(
+            IpcExecParams::try_from(&exec).unwrap_err().to_string(),
+            "sandbox_level must be one of [1, 2, 3]"
+        );
+    }
+
+    #[test]
+    fn execution_params_reject_malformed_sandbox_levels() {
+        for invalid_level in [json!(0), json!(4), json!(-1), json!("3"), json!(2.5)] {
+            let run = json!({
+                "skill_dir": "/skill",
+                "input_json": "{}",
+                "sandbox_level": invalid_level,
+            });
+            assert!(IpcRunParams::try_from(&run).is_err());
+        }
     }
 }
