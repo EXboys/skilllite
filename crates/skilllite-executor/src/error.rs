@@ -49,9 +49,11 @@ impl Error {
     }
 }
 
+#[cfg(feature = "memory_vector")]
 macro_rules! bail {
     ($($arg:tt)*) => {
         return ::core::result::Result::Err($crate::error::Error::validation(format!($($arg)*)))
     };
 }
+#[cfg(feature = "memory_vector")]
 pub(crate) use bail;
