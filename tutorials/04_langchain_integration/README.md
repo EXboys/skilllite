@@ -2,6 +2,8 @@
 
 SkillLite provides LangChain integration through the [langchain-skilllite](https://pypi.org/project/langchain-skilllite/) package.
 
+LangChain’s official Python integrations catalog lists SkillLite as an **external** tool provider (`SkillLiteTool`): [providers catalog](https://docs.langchain.com/oss/python/integrations/providers/all_providers) ([docs PR #5347](https://github.com/langchain-ai/docs/pull/5347)). The adapter remains independently maintained.
+
 ## Prerequisites
 
 ```bash

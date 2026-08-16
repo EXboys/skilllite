@@ -560,7 +560,7 @@ Separate from `skilllite-agent::rpc` — the latter is dedicated to Agent Chat s
 
 ### 8. LangChain Integration (langchain-skilllite)
 
-> Separate package `pip install langchain-skilllite`; version is defined in `langchain-skilllite/pyproject.toml` (released independently from the main repo `skilllite` PyPI package).
+> Separate package `pip install langchain-skilllite`; version is defined in `langchain-skilllite/pyproject.toml` (released independently from the main repo `skilllite` PyPI package). Listed in LangChain’s official [Python integrations catalog](https://docs.langchain.com/oss/python/integrations/providers/all_providers) as an external `SkillLiteTool` provider ([docs PR #5347](https://github.com/langchain-ai/docs/pull/5347)); not a LangChain first-party component.
 
 | Module | Responsibility |
 |--------|---------------|

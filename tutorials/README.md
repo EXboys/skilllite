@@ -79,6 +79,9 @@ print(result["text"])
 ```
 
 ### LangChain Integration
+
+Listed in LangChain’s official [Python integrations catalog](https://docs.langchain.com/oss/python/integrations/providers/all_providers) as an external `SkillLiteTool` provider.
+
 ```bash
 pip install langchain-skilllite
 ```
