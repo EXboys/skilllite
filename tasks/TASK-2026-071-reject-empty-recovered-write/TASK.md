@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Reject empty recovered write_file content
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -31,11 +31,11 @@ Concrete trigger: user asks the agent to rewrite an existing source file; the pr
 
 ## Acceptance Criteria
 
-- [ ] Truncated `write_file` JSON with empty recovered content does not overwrite an existing file and returns `is_error`.
-- [ ] Truncated `write_output` JSON with empty recovered content does not overwrite an existing output file and returns `is_error`.
-- [ ] Recovered non-empty partial content still writes and includes the truncation warning.
-- [ ] Valid JSON `{"path":"...","content":""}` still writes empty content (intentional).
-- [ ] Validation commands actually run; task artifacts and `tasks/board.md` stay in sync.
+- [x] Truncated `write_file` JSON with empty recovered content does not overwrite an existing file and returns `is_error`.
+- [x] Truncated `write_output` JSON with empty recovered content does not overwrite an existing output file and returns `is_error`.
+- [x] Recovered non-empty partial content still writes and includes the truncation warning.
+- [x] Valid JSON `{"path":"...","content":""}` still writes empty content (intentional).
+- [x] Validation commands actually run; task artifacts and `tasks/board.md` stay in sync.
 
 ## Risks
 
