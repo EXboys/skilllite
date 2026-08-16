@@ -365,6 +365,8 @@ skilllite remove <skill-name>               # Remove an installed skill
 
 ### Framework Integration
 
+`langchain-skilllite` is listed in LangChain’s official Python integrations catalog as an **external** tool provider (`SkillLiteTool`). See the [providers catalog](https://docs.langchain.com/oss/python/integrations/providers/all_providers) ([docs PR #5347](https://github.com/langchain-ai/docs/pull/5347)). The package is independently maintained; it is not a LangChain first-party component.
+
 ```bash
 pip install langchain-skilllite   # LangChain adapter
 ```
@@ -493,7 +495,7 @@ skilllite/                         Dependency Flow
 ### SDK & Integrations
 
 - **python-sdk** (`pip install skilllite`) — Thin bridge (~770 lines of Python under `python-sdk/skilllite/`), zero runtime deps
-- **langchain-skilllite** (`pip install langchain-skilllite`) — LangChain / LangGraph adapter
+- **langchain-skilllite** (`pip install langchain-skilllite`) — LangChain / LangGraph adapter; listed in the [LangChain Python integrations catalog](https://docs.langchain.com/oss/python/integrations/providers/all_providers) as an external provider (`SkillLiteTool`, [PR #5347](https://github.com/langchain-ai/docs/pull/5347))
 
 <details>
 <summary>CLI Commands</summary>

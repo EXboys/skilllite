@@ -47,7 +47,7 @@ result = chat("Calculate 15 * 23", skills_dir=".skills")
 print(result)
 ```
 
-For LangChain/LlamaIndex integration, use `langchain-skilllite`:
+For LangChain/LlamaIndex integration, use `langchain-skilllite` (listed in the [LangChain Python integrations catalog](https://docs.langchain.com/oss/python/integrations/providers/all_providers) as an external `SkillLiteTool` provider):
 ```bash
 pip install langchain-skilllite
 ```

@@ -323,6 +323,8 @@ skilllite remove <skill-name>               # 移除已安装的 skill
 
 ### 框架集成
 
+`langchain-skilllite` 已收录进 LangChain 官方 Python 集成目录，作为**外部** Tool 提供方（`SkillLiteTool`）。见 [providers 目录](https://docs.langchain.com/oss/python/integrations/providers/all_providers)（[文档 PR #5347](https://github.com/langchain-ai/docs/pull/5347)）。包由本项目独立维护，不是 LangChain 一等组件。
+
 ```bash
 pip install langchain-skilllite   # LangChain 适配器
 ```
@@ -445,7 +447,7 @@ skilllite/                         依赖流向
 ### SDK 与集成
 
 - **python-sdk**（`pip install skilllite`）— 薄桥接层，零 PyPI 运行时依赖；含 `artifact_put` / `artifact_get`（HTTP，标准库）与二进制桥接 API
-- **langchain-skilllite**（`pip install langchain-skilllite`）— LangChain / LangGraph 适配器
+- **langchain-skilllite**（`pip install langchain-skilllite`）— LangChain / LangGraph 适配器；已作为外部提供方（`SkillLiteTool`）列入 [LangChain Python 集成目录](https://docs.langchain.com/oss/python/integrations/providers/all_providers)（[PR #5347](https://github.com/langchain-ai/docs/pull/5347)）
 
 <details>
 <summary>CLI 命令</summary>

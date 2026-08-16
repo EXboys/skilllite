@@ -558,7 +558,7 @@ Agent chat 和 Desktop Assistant 在 replan 或重复工具失败后会收到结
 
 ### 8. LangChain 集成 (langchain-skilllite)
 
-> 独立包 `pip install langchain-skilllite`；版本以 `langchain-skilllite/pyproject.toml` 为准（与主仓库 `skilllite` PyPI 包解耦发布）。
+> 独立包 `pip install langchain-skilllite`；版本以 `langchain-skilllite/pyproject.toml` 为准（与主仓库 `skilllite` PyPI 包解耦发布）。已作为外部 `SkillLiteTool` 列入 LangChain 官方 [Python 集成目录](https://docs.langchain.com/oss/python/integrations/providers/all_providers)（[文档 PR #5347](https://github.com/langchain-ai/docs/pull/5347)），不是 LangChain 一等组件。
 
 | 模块 | 职责 |
 |------|------|
