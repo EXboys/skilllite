@@ -161,6 +161,21 @@ pub fn execute_builtin_tool(
         }
     };
 
+    if was_recovered {
+        if let Some(existing) = recovered_write_clobbers_existing(tool_name, &args, workspace) {
+            return ToolResult {
+                tool_call_id: String::new(),
+                tool_name: tool_name.to_string(),
+                content: format!(
+                    "Refusing recovered truncated {tool_name} write that would overwrite existing file '{}' without append:true. Retry with complete JSON or append:true.",
+                    existing.display()
+                ),
+                is_error: true,
+                counts_as_failure: true,
+            };
+        }
+    }
+
     let result = match tool_name {
         "read_file" => file_ops::execute_read_file(&args, workspace),
         "write_file" => file_ops::execute_write_file(&args, workspace, event_sink),

@@ -1,13 +1,14 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-18 (TASK-2026-071 fail-closed recovered write in progress)
 
 ## In Progress
 
-- None.
+- `TASK-2026-071-fail-closed-recovered-write` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
+- None.
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
