@@ -265,6 +265,18 @@ pub(crate) fn normalize_path(path: &Path) -> PathBuf {
 /// Prefix before the first JSON `"content"` key, or the full blob when none exists.
 /// Path recovery must not scan inside `content` — inner `"path"` fields are common
 /// when writing JSON/config and would otherwise steal the write target.
+fn recovered_append_flag(region: &str) -> Option<bool> {
+    let true_re = regex::Regex::new(r#""append"\s*:\s*true"#).ok()?;
+    if true_re.is_match(region) {
+        return Some(true);
+    }
+    let false_re = regex::Regex::new(r#""append"\s*:\s*false"#).ok()?;
+    if false_re.is_match(region) {
+        return Some(false);
+    }
+    None
+}
+
 fn prefix_before_content_key(arguments: &str) -> &str {
     match regex::Regex::new(r#""content"\s*:"#) {
         Ok(re) => re
@@ -283,10 +295,8 @@ pub(super) fn parse_truncated_json_for_file_tools(arguments: &str) -> Option<Val
     let mut result = serde_json::Map::new();
     let path_region = prefix_before_content_key(arguments);
 
-    if path_region.contains("\"append\":true") {
-        result.insert("append".to_string(), Value::Bool(true));
-    } else if path_region.contains("\"append\":false") {
-        result.insert("append".to_string(), Value::Bool(false));
+    if let Some(append) = recovered_append_flag(path_region) {
+        result.insert("append".to_string(), Value::Bool(append));
     }
 
     let path_re = regex::Regex::new(r#""(?:file_)?path"\s*:\s*"((?:[^"\\]|\\.)*)""#).ok()?;
