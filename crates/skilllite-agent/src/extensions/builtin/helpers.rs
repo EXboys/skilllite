@@ -262,22 +262,46 @@ pub(crate) fn normalize_path(path: &Path) -> PathBuf {
 
 // ─── Truncated JSON recovery ─────────────────────────────────────────────────
 
+/// Prefix before the first JSON `"content"` key, or the full blob when none exists.
+/// Path recovery must not scan inside `content` — inner `"path"` fields are common
+/// when writing JSON/config and would otherwise steal the write target.
+fn recovered_append_flag(region: &str) -> Option<bool> {
+    let true_re = regex::Regex::new(r#""append"\s*:\s*true"#).ok()?;
+    if true_re.is_match(region) {
+        return Some(true);
+    }
+    let false_re = regex::Regex::new(r#""append"\s*:\s*false"#).ok()?;
+    if false_re.is_match(region) {
+        return Some(false);
+    }
+    None
+}
+
+fn prefix_before_content_key(arguments: &str) -> &str {
+    match regex::Regex::new(r#""content"\s*:"#) {
+        Ok(re) => re
+            .find(arguments)
+            .map(|m| &arguments[..m.start()])
+            .unwrap_or(arguments),
+        Err(_) => arguments,
+    }
+}
+
 pub(super) fn parse_truncated_json_for_file_tools(arguments: &str) -> Option<Value> {
     if arguments.is_empty() {
         return None;
     }
 
     let mut result = serde_json::Map::new();
+    let path_region = prefix_before_content_key(arguments);
 
-    if arguments.contains("\"append\":true") {
-        result.insert("append".to_string(), Value::Bool(true));
-    } else if arguments.contains("\"append\":false") {
-        result.insert("append".to_string(), Value::Bool(false));
+    if let Some(append) = recovered_append_flag(path_region) {
+        result.insert("append".to_string(), Value::Bool(append));
     }
 
     let path_re = regex::Regex::new(r#""(?:file_)?path"\s*:\s*"((?:[^"\\]|\\.)*)""#).ok()?;
-    if let Some(caps) = path_re.captures(arguments) {
-        let key = if arguments.contains("\"file_path\"") {
+    if let Some(caps) = path_re.captures(path_region) {
+        let key = if path_region.contains("\"file_path\"") {
             "file_path"
         } else {
             "path"
@@ -339,4 +363,47 @@ pub(super) fn unescape_json_string(s: &str) -> String {
         }
     }
     result
+}
+
+/// Recovered writes default `append` to false when the flag was truncated away.
+/// Overwriting an existing non-empty file in that case destroys prior chunks.
+pub(super) fn recovered_write_clobbers_existing(
+    tool_name: &str,
+    args: &Value,
+    workspace: &Path,
+) -> Option<PathBuf> {
+    if args.get("append").and_then(Value::as_bool).unwrap_or(false) {
+        return None;
+    }
+
+    let resolved = match tool_name {
+        "write_file" => {
+            let path = get_path_arg(args, false)?;
+            resolve_within_workspace(&path, workspace).ok()?
+        }
+        "write_output" => {
+            let file_path = args.get("file_path").and_then(Value::as_str)?;
+            let output_root = match types::get_output_dir() {
+                Some(dir) => PathBuf::from(dir),
+                None => workspace.join("output"),
+            };
+            let input = Path::new(file_path);
+            let joined = if input.is_absolute() {
+                input.to_path_buf()
+            } else {
+                output_root.join(input)
+            };
+            let normalized = normalize_path(&joined);
+            if !normalized.starts_with(&output_root) {
+                return None;
+            }
+            normalized
+        }
+        _ => return None,
+    };
+
+    match std::fs::metadata(&resolved) {
+        Ok(meta) if meta.is_file() && meta.len() > 0 => Some(resolved),
+        _ => None,
+    }
 }

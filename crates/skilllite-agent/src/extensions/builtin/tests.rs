@@ -1390,3 +1390,155 @@ async fn test_delegate_to_swarm_emits_failed_only_when_unconfigured() {
     assert!(sink.swarm_progress.is_empty());
     assert_eq!(sink.swarm_failed.len(), 1);
 }
+
+// ─── Truncated write_file / write_output recovery ───────────────────────────
+
+#[test]
+fn recovered_write_file_without_append_does_not_clobber_existing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let file_path = workspace.join("log.txt");
+    std::fs::write(&file_path, "ORIGINAL CHUNK").unwrap();
+
+    // Documented chunked-write shape: path + large content, append:true last.
+    // Token/stream cut inside content drops append and used to overwrite.
+    let result = execute_builtin_tool(
+        "write_file",
+        r#"{"path": "log.txt", "content": "PARTIAL"#,
+        workspace,
+        None,
+    );
+    assert!(result.is_error, "{}", result.content);
+    assert!(
+        result.content.contains("overwrite existing file"),
+        "{}",
+        result.content
+    );
+    assert_eq!(
+        std::fs::read_to_string(&file_path).unwrap(),
+        "ORIGINAL CHUNK"
+    );
+}
+
+#[test]
+fn recovered_write_file_does_not_create_file_at_inner_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+
+    let result = execute_builtin_tool(
+        "write_file",
+        r#"{"content": "see "path": "ghost.rs" please", "path": "real.rs", "content": "NEW"#,
+        workspace,
+        None,
+    );
+    assert!(result.is_error, "{}", result.content);
+    assert!(!workspace.join("ghost.rs").exists());
+    assert!(!workspace.join("real.rs").exists());
+}
+
+#[test]
+fn recovered_write_file_ignores_inner_path_when_content_precedes_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let victim = workspace.join("src_main.rs");
+    let intended = workspace.join("config.json");
+    std::fs::write(&victim, "fn main() {}").unwrap();
+    std::fs::write(&intended, "KEEP").unwrap();
+
+    // LLM writes a JSON file and fails to escape inner quotes, then truncates.
+    // Recovery used to match the first "path" inside content and clobber src_main.rs.
+    let result = execute_builtin_tool(
+        "write_file",
+        r#"{"content": "{
+  "path": "src_main.rs",
+  "enabled": true
+}", "path": "config.json", "content": "NEW"#,
+        workspace,
+        None,
+    );
+    assert!(result.is_error, "{}", result.content);
+    assert_eq!(std::fs::read_to_string(&victim).unwrap(), "fn main() {}");
+    assert_eq!(std::fs::read_to_string(&intended).unwrap(), "KEEP");
+}
+
+#[test]
+fn recovered_write_file_creates_new_file_with_partial_content() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let file_path = workspace.join("note.md");
+
+    let result = execute_builtin_tool(
+        "write_file",
+        r#"{"path": "note.md", "content": "标题 PARTIAL"#,
+        workspace,
+        None,
+    );
+    assert!(!result.is_error, "{}", result.content);
+    assert!(result.content.contains("truncated"), "{}", result.content);
+    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "标题 PARTIAL");
+}
+
+#[test]
+fn recovered_write_file_appends_when_append_precedes_content() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let file_path = workspace.join("log.txt");
+    std::fs::write(&file_path, "ORIGINAL").unwrap();
+
+    let result = execute_builtin_tool(
+        "write_file",
+        r#"{"path": "log.txt", "append": true, "content": " MORE"#,
+        workspace,
+        None,
+    );
+    assert!(!result.is_error, "{}", result.content);
+    assert_eq!(
+        std::fs::read_to_string(&file_path).unwrap(),
+        "ORIGINAL MORE"
+    );
+}
+
+#[test]
+fn valid_json_write_file_overwrite_and_append_unchanged() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let file_path = workspace.join("doc.txt");
+    std::fs::write(&file_path, "OLD").unwrap();
+
+    let overwrite = execute_builtin_tool(
+        "write_file",
+        r#"{"path":"doc.txt","content":"NEW"}"#,
+        workspace,
+        None,
+    );
+    assert!(!overwrite.is_error, "{}", overwrite.content);
+    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "NEW");
+
+    let append = execute_builtin_tool(
+        "write_file",
+        r#"{"path":"doc.txt","content":" +MORE","append":true}"#,
+        workspace,
+        None,
+    );
+    assert!(!append.is_error, "{}", append.content);
+    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "NEW +MORE");
+}
+
+#[test]
+fn recovered_write_output_without_append_does_not_clobber_existing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let output_dir = workspace.join("output");
+    std::fs::create_dir_all(&output_dir).unwrap();
+    let file_path = output_dir.join("report.md");
+    std::fs::write(&file_path, "CHUNK1").unwrap();
+
+    let result = execute_builtin_tool(
+        "write_output",
+        r#"{"file_path": "report.md", "content": "CHUNK2"#,
+        workspace,
+        None,
+    );
+    assert!(result.is_error, "{}", result.content);
+    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "CHUNK1");
+}
