@@ -1414,7 +1414,10 @@ fn recovered_write_file_without_append_does_not_clobber_existing() {
         "{}",
         result.content
     );
-    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "ORIGINAL CHUNK");
+    assert_eq!(
+        std::fs::read_to_string(&file_path).unwrap(),
+        "ORIGINAL CHUNK"
+    );
 }
 
 #[test]
@@ -1489,7 +1492,10 @@ fn recovered_write_file_appends_when_append_precedes_content() {
         None,
     );
     assert!(!result.is_error, "{}", result.content);
-    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "ORIGINAL MORE");
+    assert_eq!(
+        std::fs::read_to_string(&file_path).unwrap(),
+        "ORIGINAL MORE"
+    );
 }
 
 #[test]
