@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Fail closed truncated write_file recovery
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -31,11 +31,11 @@ Truncated / invalid `write_file` and `write_output` JSON recovery can destroy ex
 
 ## Acceptance Criteria
 
-- [ ] Existing file + truncated write without `append: true` returns an error and leaves the file unchanged.
-- [ ] Content-first JSON with an inner `"path"` does not write to that inner path.
-- [ ] Recovered write to a new file still succeeds with the truncation warning.
-- [ ] Recovered write with explicit `append: true` before `content` still appends.
-- [ ] Valid JSON overwrite / append behavior is unchanged.
+- [x] Existing file + truncated write without `append: true` returns an error and leaves the file unchanged.
+- [x] Content-first JSON with an inner `"path"` does not write to that inner path.
+- [x] Recovered write to a new file still succeeds with the truncation warning.
+- [x] Recovered write with explicit `append: true` before `content` still appends.
+- [x] Valid JSON overwrite / append behavior is unchanged.
 
 ## Risks
 

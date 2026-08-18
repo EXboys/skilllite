@@ -1,14 +1,13 @@
 # Task Board
 
-Last updated: 2026-08-18 (TASK-2026-071 fail-closed recovered write in progress)
+Last updated: 2026-08-18 (TASK-2026-071 fail-closed recovered write done)
 
 ## In Progress
 
-- `TASK-2026-071-fail-closed-recovered-write` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
-- None.
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
@@ -18,6 +17,7 @@ Last updated: 2026-08-18 (TASK-2026-071 fail-closed recovered write in progress)
 
 ## Done
 
+- `TASK-2026-071-fail-closed-recovered-write` - Status: `done` - Owner: `agent`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
