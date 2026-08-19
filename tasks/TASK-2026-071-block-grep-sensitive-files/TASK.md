@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Block grep_files from leaking sensitive files
-- Status: `in_progress`
+- Status: `in_review`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors: `agent`
@@ -32,11 +32,11 @@
 
 ## Acceptance Criteria
 
-- [ ] Direct `grep_files` on `.env` / `.key` / `.pem` returns a blocked error and does not include file contents
-- [ ] Workspace-root grep does not return lines from `.env` even when they match the pattern
-- [ ] Sensitive keys in ordinary files are redacted in grep output
-- [ ] Existing grep happy-path tests still pass
-- [ ] `python3 scripts/validate_tasks.py` passes
+- [x] Direct `grep_files` on `.env` / `.key` / `.pem` returns a blocked error and does not include file contents
+- [x] Workspace-root grep does not return lines from `.env` even when they match the pattern
+- [x] Sensitive keys in ordinary files are redacted in grep output
+- [x] Existing grep happy-path tests still pass
+- [x] `python3 scripts/validate_tasks.py` passes
 
 ## Risks
 
