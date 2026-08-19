@@ -771,6 +771,125 @@ fn test_grep_files_invalid_regex() {
     assert!(result.content.contains("Invalid regex"));
 }
 
+#[test]
+fn test_grep_files_blocks_direct_sensitive_path() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    std::fs::write(workspace.join(".env"), "API_KEY=sk-leaked-from-dotenv\n").unwrap();
+    std::fs::write(workspace.join("secret.key"), "BEGIN PRIVATE KEY\n").unwrap();
+    std::fs::write(workspace.join("cert.pem"), "BEGIN CERTIFICATE\n").unwrap();
+
+    for path in [".env", "secret.key", "cert.pem"] {
+        let args = serde_json::json!({ "pattern": ".", "path": path });
+        let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
+        assert!(
+            result.is_error,
+            "expected block for {path}, got: {}",
+            result.content
+        );
+        assert!(
+            result.content.contains("Blocked: reading sensitive file"),
+            "expected blocked wording for {path}, got: {}",
+            result.content
+        );
+        assert!(
+            !result.content.contains("sk-leaked-from-dotenv"),
+            "dotenv secret leaked via direct grep of {path}: {}",
+            result.content
+        );
+        assert!(
+            !result.content.contains("BEGIN PRIVATE KEY"),
+            "key material leaked via direct grep of {path}: {}",
+            result.content
+        );
+    }
+}
+
+#[test]
+fn test_grep_files_skips_dotenv_during_workspace_walk() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    // Fill the 50-match cap if .env were readable, then hide a later non-secret hit.
+    let env_lines = (0..50)
+        .map(|i| format!("API_KEY=sk-leaked-{i}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    std::fs::write(workspace.join(".env"), format!("{env_lines}\n")).unwrap();
+    std::fs::write(
+        workspace.join("notes.txt"),
+        "visible_match API_KEY placeholder\n",
+    )
+    .unwrap();
+
+    let args = serde_json::json!({ "pattern": "API_KEY" });
+    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
+    assert!(
+        !result.is_error,
+        "workspace grep failed: {}",
+        result.content
+    );
+    assert!(
+        !result.content.contains("sk-leaked"),
+        "dotenv secret leaked via workspace grep: {}",
+        result.content
+    );
+    assert!(
+        !result.content.contains(".env:"),
+        "dotenv path should be omitted from grep results: {}",
+        result.content
+    );
+    assert!(
+        result.content.contains("notes.txt"),
+        "non-secret match should still be returned: {}",
+        result.content
+    );
+}
+
+#[test]
+fn test_grep_files_redacts_sensitive_keys_in_normal_files() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    std::fs::write(
+        workspace.join("config.json"),
+        r#"{"api_key": "sk-secret123", "model": "gpt4"}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        workspace.join("README.md"),
+        "Setup: set API_KEY=sk-abcdefghij1234567890 in your env\n中文说明\n",
+    )
+    .unwrap();
+
+    let args = serde_json::json!({ "pattern": "api_key|API_KEY|中文" });
+    let result = execute_builtin_tool("grep_files", &args.to_string(), workspace, None);
+    assert!(!result.is_error, "grep failed: {}", result.content);
+    assert!(
+        !result.content.contains("sk-secret123"),
+        "raw api_key leaked: {}",
+        result.content
+    );
+    assert!(
+        !result.content.contains("sk-abcdefghij1234567890"),
+        "raw API_KEY leaked: {}",
+        result.content
+    );
+    assert!(
+        result.content.contains("[REDACTED]") || result.content.contains("sk-[REDACTED]"),
+        "expected redaction markers, got: {}",
+        result.content
+    );
+    assert!(
+        result.content.contains("中文说明"),
+        "non-ASCII match should be preserved: {}",
+        result.content
+    );
+    assert!(
+        result.content.contains("Sensitive values"),
+        "expected redaction notice, got: {}",
+        result.content
+    );
+}
+
 // ─── Phase II: auto-backup ───────────────────────────────────────────
 
 #[test]

@@ -474,7 +474,7 @@ registry.register(memory::tools());
 
 | File | Tools |
 |------|-------|
-| `file_ops.rs` | read_file, write_file, search_replace, list_directory, file_exists |
+| `file_ops/` | read_file, write_file, search_replace, insert_lines, grep_files, list_directory, file_exists. `read_file` and `grep_files` block `.env` / `.key` / `.pem` / `.git/config` and redact secret-like keys in other files. |
 | `run_command.rs` | run_command (with dangerous command detection and user confirmation) |
 | `output.rs` | write_output, list_output |
 | `preview.rs` | preview_server (built-in HTTP file server) |

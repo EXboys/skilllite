@@ -1,12 +1,14 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-19 (TASK-2026-071 grep_files sensitive-file leak ready for review)
 
 ## In Progress
 
 - None.
 
 ## Ready
+
+- `TASK-2026-071-block-grep-sensitive-files` - Status: `in_review` - Owner: `agent`
 
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.

@@ -28,6 +28,7 @@ pub type GrepMatch = (String, usize, String);
 /// - `include`: 可选 glob，如 "*.rs" 仅匹配扩展名
 /// - `skip_dirs`: 跳过的目录名，默认用 SKIP_DIRS
 /// - `max_matches`: 最大匹配数
+/// - `skip_file`: 为 true 时跳过该文件（在读取之前），用于敏感路径拦截
 pub fn grep_directory(
     path: &Path,
     re: &Regex,
@@ -35,6 +36,7 @@ pub fn grep_directory(
     include: Option<&str>,
     skip_dirs: &[&str],
     max_matches: usize,
+    skip_file: Option<&dyn Fn(&Path) -> bool>,
 ) -> Result<(Vec<GrepMatch>, usize)> {
     let mut results = Vec::new();
     let mut files_matched = 0usize;
@@ -45,6 +47,7 @@ pub fn grep_directory(
         include,
         skip_dirs,
         max_matches,
+        skip_file,
         &mut results,
         &mut files_matched,
     )?;
@@ -59,10 +62,14 @@ fn grep_recursive(
     include: Option<&str>,
     skip_dirs: &[&str],
     max_matches: usize,
+    skip_file: Option<&dyn Fn(&Path) -> bool>,
     results: &mut Vec<GrepMatch>,
     files_matched: &mut usize,
 ) -> Result<()> {
     if !dir.is_dir() {
+        if skip_file.is_some_and(|skip| skip(dir)) {
+            return Ok(());
+        }
         return grep_single_file(dir, base, re, results, files_matched, max_matches);
     }
     let entries = crate::dir::read_dir(dir)?;
@@ -86,6 +93,7 @@ fn grep_recursive(
                 include,
                 skip_dirs,
                 max_matches,
+                skip_file,
                 results,
                 files_matched,
             )?;
@@ -94,6 +102,9 @@ fn grep_recursive(
                 if !util::matches_glob(&name, glob) {
                     continue;
                 }
+            }
+            if skip_file.is_some_and(|skip| skip(&path)) {
+                continue;
             }
             if util::is_likely_binary(&path) {
                 continue;
