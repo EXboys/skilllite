@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-19 (TASK-2026-071 grep_files sensitive-file leak)
 
 ## In Progress
 
-- None.
+- `TASK-2026-071-block-grep-sensitive-files` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 

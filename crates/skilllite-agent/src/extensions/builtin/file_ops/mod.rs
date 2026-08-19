@@ -161,7 +161,7 @@ With write_file, use normal project-relative paths (e.g. src/, docs/); do not in
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "grep_files".to_string(),
-                description: "Search file contents using regex. Returns file:line:content matches. Auto-skips .git, node_modules, target, and binary files.".to_string(),
+                description: "Search file contents using regex. Returns file:line:content matches. Auto-skips .git, node_modules, target, binary files, and sensitive files (.env, .key, .pem, .git/config). Secret-like keys in other files are redacted.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {

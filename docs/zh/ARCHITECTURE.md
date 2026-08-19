@@ -472,7 +472,7 @@ registry.register(memory::tools());
 
 | 文件 | 工具 |
 |------|------|
-| `file_ops.rs` | read_file, write_file, search_replace, list_directory, file_exists |
+| `file_ops/` | read_file, write_file, search_replace, insert_lines, grep_files, list_directory, file_exists。`read_file` 与 `grep_files` 会拦截 `.env` / `.key` / `.pem` / `.git/config`，并对其余文件中的密钥类字段脱敏。 |
 | `run_command.rs` | run_command（带危险命令检测和用户确认） |
 | `output.rs` | write_output, list_output |
 | `preview.rs` | preview_server（内置 HTTP 文件服务器） |
