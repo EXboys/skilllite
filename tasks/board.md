@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-08-22 (TASK-2026-071 reject skill-install symlink follow)
 
 ## In Progress
 
-- None.
+- `TASK-2026-071-reject-skill-install-symlinks` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 

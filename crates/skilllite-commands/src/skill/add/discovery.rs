@@ -122,6 +122,9 @@ const COPY_EXCLUDE_FILES: &[&str] = &[".DS_Store", "Thumbs.db"];
 const COPY_EXCLUDE_EXTENSIONS: &[&str] = &["pyc", "pyo"];
 
 pub(in crate::skill) fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
+    // Inspect first: copy currently deletes dest, so a later symlink reject
+    // must not wipe an already-installed skill.
+    reject_copied_symlinks(src)?;
     if dest.exists() {
         fs::remove_dir_all(dest)
             .with_context(|| format!("Failed to remove existing skill: {}", dest.display()))?;
@@ -130,42 +133,75 @@ pub(in crate::skill) fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
     Ok(())
 }
 
+fn is_excluded_dir_name(name_str: &str) -> bool {
+    COPY_EXCLUDE_DIRS.iter().any(|d| {
+        if d.contains('*') {
+            let prefix = d.trim_end_matches('*').trim_end_matches('.');
+            name_str.ends_with(prefix) || name_str.starts_with(prefix)
+        } else {
+            name_str == *d
+        }
+    })
+}
+
+fn is_excluded_file(name_str: &str, path: &Path) -> bool {
+    if COPY_EXCLUDE_FILES.contains(&name_str) {
+        return true;
+    }
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        return COPY_EXCLUDE_EXTENSIONS.contains(&ext);
+    }
+    false
+}
+
+fn reject_copied_symlinks(src: &Path) -> Result<()> {
+    inspect_or_copy_dir(src, None)
+}
+
 fn copy_dir_filtered(src: &Path, dest: &Path) -> Result<()> {
-    fs::create_dir_all(dest)
-        .with_context(|| format!("Failed to create directory: {}", dest.display()))?;
+    inspect_or_copy_dir(src, Some(dest))
+}
+
+/// Walk `src`. When `dest` is `Some`, copy regular files/dirs into it.
+/// Fail closed on any symlink that would otherwise be copied. Excluded
+/// directory names (including when they are themselves symlinks) are skipped.
+fn inspect_or_copy_dir(src: &Path, dest: Option<&Path>) -> Result<()> {
+    if let Some(dest) = dest {
+        fs::create_dir_all(dest)
+            .with_context(|| format!("Failed to create directory: {}", dest.display()))?;
+    }
     for entry in fs::read_dir(src)?.flatten() {
         let name = entry.file_name();
         let name_str = name.to_string_lossy();
-
-        if COPY_EXCLUDE_DIRS.iter().any(|d| {
-            if d.contains('*') {
-                let prefix = d.trim_end_matches('*').trim_end_matches('.');
-                name_str.ends_with(prefix) || name_str.starts_with(prefix)
-            } else {
-                name_str == *d
-            }
-        }) && entry.path().is_dir()
-        {
-            continue;
-        }
-
-        if COPY_EXCLUDE_FILES.contains(&name_str.as_ref()) {
-            continue;
-        }
-
-        if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
-            if COPY_EXCLUDE_EXTENSIONS.contains(&ext) {
-                continue;
-            }
-        }
-
         let src_path = entry.path();
-        let dest_path = dest.join(&name);
-        if src_path.is_dir() {
-            copy_dir_filtered(&src_path, &dest_path)?;
-        } else {
-            fs::copy(&src_path, &dest_path)
-                .with_context(|| format!("Failed to copy: {}", src_path.display()))?;
+        let meta = fs::symlink_metadata(&src_path)
+            .with_context(|| format!("Failed to inspect: {}", src_path.display()))?;
+        let is_symlink = meta.file_type().is_symlink();
+        let looks_like_dir = meta.is_dir() || (is_symlink && src_path.is_dir());
+
+        if is_excluded_dir_name(name_str.as_ref()) && looks_like_dir {
+            continue;
+        }
+        if is_excluded_file(name_str.as_ref(), &src_path) {
+            continue;
+        }
+        if is_symlink {
+            crate::error::bail!(
+                "Refusing to install skill: symlink is not allowed ({})",
+                src_path.display()
+            );
+        }
+
+        if let Some(dest) = dest {
+            let dest_path = dest.join(&name);
+            if meta.is_dir() {
+                inspect_or_copy_dir(&src_path, Some(&dest_path))?;
+            } else {
+                fs::copy(&src_path, &dest_path)
+                    .with_context(|| format!("Failed to copy: {}", src_path.display()))?;
+            }
+        } else if meta.is_dir() {
+            inspect_or_copy_dir(&src_path, None)?;
         }
     }
     Ok(())
@@ -206,4 +242,106 @@ pub(in crate::skill) fn install_skill_deps(skills_dir: &Path, installed: &[Strin
         }
     }
     messages
+}
+
+#[cfg(test)]
+mod tests {
+    use super::copy_skill;
+    use std::fs;
+    use std::path::Path;
+
+    fn write_skill(dir: &Path, name: &str) {
+        fs::create_dir_all(dir).expect("skill dir");
+        fs::write(
+            dir.join("SKILL.md"),
+            format!("---\nname: {name}\ndescription: test\n---\n"),
+        )
+        .expect("skill md");
+    }
+
+    #[test]
+    fn copy_skill_copies_regular_tree() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let src = tmp.path().join("src");
+        write_skill(&src, "plain");
+        fs::write(src.join("notes.txt"), "hello").expect("notes");
+        let dest = tmp.path().join("dest");
+        copy_skill(&src, &dest).expect("copy regular skill");
+        assert_eq!(fs::read_to_string(dest.join("notes.txt")).unwrap(), "hello");
+        assert!(dest.join("SKILL.md").is_file());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_skill_rejects_file_symlink_to_host_secret() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let src = tmp.path().join("src");
+        write_skill(&src, "localsym");
+        std::os::unix::fs::symlink("/etc/passwd", src.join("passwd-link")).expect("symlink");
+
+        let dest = tmp.path().join("dest");
+        fs::create_dir_all(&dest).expect("existing dest");
+        fs::write(dest.join("KEEP.txt"), "keep-me").expect("marker");
+
+        let err = copy_skill(&src, &dest).expect_err("symlink skill must be rejected");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("symlink is not allowed"),
+            "unexpected error: {msg}"
+        );
+        assert!(
+            !dest.join("passwd-link").exists(),
+            "must not materialize host file"
+        );
+        assert_eq!(
+            fs::read_to_string(dest.join("KEEP.txt")).unwrap(),
+            "keep-me",
+            "existing dest must survive a rejected install"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_skill_rejects_directory_symlink() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let src = tmp.path().join("src");
+        write_skill(&src, "dirsym");
+        std::os::unix::fs::symlink("/etc", src.join("etc-link")).expect("dir symlink");
+
+        let dest = tmp.path().join("dest");
+        let err = copy_skill(&src, &dest).expect_err("dir symlink must be rejected");
+        assert!(err.to_string().contains("symlink is not allowed"));
+        assert!(!dest.join("etc-link").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_skill_skips_excluded_dir_symlink() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let src = tmp.path().join("src");
+        write_skill(&src, "venv-link");
+        std::os::unix::fs::symlink("/etc", src.join(".venv")).expect(".venv symlink");
+        fs::write(src.join("ok.txt"), "ok").expect("ok");
+
+        let dest = tmp.path().join("dest");
+        copy_skill(&src, &dest).expect("excluded dir symlink should not fail install");
+        assert!(dest.join("ok.txt").is_file());
+        assert!(!dest.join(".venv").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_skill_rejects_nested_symlink() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let src = tmp.path().join("src");
+        write_skill(&src, "nested");
+        let scripts = src.join("scripts");
+        fs::create_dir_all(&scripts).expect("scripts");
+        std::os::unix::fs::symlink("/etc/passwd", scripts.join("secret")).expect("nested symlink");
+
+        let dest = tmp.path().join("dest");
+        let err = copy_skill(&src, &dest).expect_err("nested symlink must be rejected");
+        assert!(err.to_string().contains("symlink is not allowed"));
+        assert!(!dest.join("scripts/secret").exists());
+    }
 }
