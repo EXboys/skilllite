@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Reject symlink follow during skill install
-- Status: `in_progress`
+- Status: `in_review`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors: `agent`
@@ -29,12 +29,12 @@
 
 ## Acceptance Criteria
 
-- [ ] `copy_skill` rejects a file symlink to a host secret path and does not write the target bytes into dest
-- [ ] `copy_skill` rejects a directory symlink
-- [ ] Rejecting a symlink does not delete an already-installed skill at dest
-- [ ] Excluded-dir names that are symlinks (e.g. `.venv`) do not fail the install
-- [ ] Regular skills without symlinks still copy
-- [ ] EN/ZH docs mention the fail-closed symlink rule
+- [x] `copy_skill` rejects a file symlink to a host secret path and does not write the target bytes into dest
+- [x] `copy_skill` rejects a directory symlink
+- [x] Rejecting a symlink does not delete an already-installed skill at dest
+- [x] Excluded-dir names that are symlinks (e.g. `.venv`) do not fail the install
+- [x] Regular skills without symlinks still copy
+- [x] EN/ZH docs mention the fail-closed symlink rule
 
 ## Risks
 

@@ -4,7 +4,7 @@ Last updated: 2026-08-22 (TASK-2026-071 reject skill-install symlink follow)
 
 ## In Progress
 
-- `TASK-2026-071-reject-skill-install-symlinks` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
@@ -17,6 +17,7 @@ Last updated: 2026-08-22 (TASK-2026-071 reject skill-install symlink follow)
 
 ## Done
 
+- `TASK-2026-071-reject-skill-install-symlinks` - Status: `in_review` - Owner: `agent`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`
