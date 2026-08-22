@@ -168,3 +168,55 @@ fn e2e_add_local_zip_scan_minimal_skill() {
     assert_eq!(scan["has_skill_md"], true);
     assert_eq!(scan["skill_metadata"]["name"], "e2e-zip-skill");
 }
+
+#[cfg(unix)]
+#[test]
+fn e2e_add_rejects_symlink_to_host_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let staging = root.join("staging-symlink-skill");
+    std::fs::create_dir_all(&staging).unwrap();
+    std::fs::write(
+        staging.join("SKILL.md"),
+        r#"---
+name: e2e-symlink-skill
+description: Must not install when it contains a host-file symlink.
+license: MIT
+---
+"#,
+    )
+    .unwrap();
+    let outside = root.join("outside-secret.txt");
+    std::fs::write(&outside, "SECRET=should-not-be-copied\n").unwrap();
+    std::os::unix::fs::symlink(&outside, staging.join("passwd-link")).unwrap();
+
+    let existing = root.join(".skills").join("e2e-symlink-skill");
+    std::fs::create_dir_all(&existing).unwrap();
+    std::fs::write(existing.join("KEEP.txt"), "keep-me").unwrap();
+
+    let src = staging.to_str().unwrap();
+    let out = run_skilllite_in_dir(
+        &["add", src, "--scan-offline", "-s", ".skills", "--force"],
+        root,
+    );
+    assert!(
+        !out.status.success(),
+        "add should refuse symlink skill: stdout={}\nstderr={}",
+        stdout_str(&out),
+        stderr_str(&out)
+    );
+    let combined = stdout_str(&out) + &stderr_str(&out);
+    assert!(
+        combined.contains("symlink is not allowed"),
+        "expected symlink reject in output: {combined}"
+    );
+    assert!(
+        !existing.join("passwd-link").exists(),
+        "must not copy host file into .skills"
+    );
+    assert_eq!(
+        std::fs::read_to_string(existing.join("KEEP.txt")).unwrap(),
+        "keep-me",
+        "existing install must survive rejected overwrite"
+    );
+}

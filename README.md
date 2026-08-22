@@ -358,6 +358,8 @@ skilllite add owner/repo@skill-name         # Add a specific skill by name
 skilllite add ./local-path                  # Add from local directory
 skilllite add ./downloaded-skill.zip        # Add from a downloaded local ZIP package
 skilllite import-openclaw-skills            # Import from OpenClaw-style dirs (workspace/skills, ~/.openclaw/skills, …)
+# Install copies regular files only. Trees that contain symlinks are refused
+# (ignored dirs such as .venv / node_modules are skipped even if they are links).
 skilllite claw migrate --dry-run            # OpenClaw → SkillLite: skills, SOUL/MEMORY Markdown, optional secrets
 skilllite list                              # List all installed skills
 skilllite remove <skill-name>               # Remove an installed skill
