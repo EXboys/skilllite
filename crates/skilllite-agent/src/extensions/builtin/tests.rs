@@ -1390,3 +1390,100 @@ async fn test_delegate_to_swarm_emits_failed_only_when_unconfigured() {
     assert!(sink.swarm_progress.is_empty());
     assert_eq!(sink.swarm_failed.len(), 1);
 }
+
+#[test]
+fn recovered_empty_write_file_content_does_not_wipe_existing_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let file_path = workspace.join("src_lib.rs");
+    let original = "fn keep_me() { /* 保留 */ }\n";
+    std::fs::write(&file_path, original).unwrap();
+
+    let truncated = r#"{"path": "src_lib.rs", "content": ""#;
+    let result = execute_builtin_tool("write_file", truncated, workspace, None);
+
+    assert!(
+        result.is_error,
+        "empty recovered write must fail: {}",
+        result.content
+    );
+    assert!(
+        result.content.contains("Invalid arguments JSON"),
+        "error should stay on the invalid-JSON path: {}",
+        result.content
+    );
+    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), original);
+}
+
+#[test]
+fn recovered_empty_write_output_content_does_not_wipe_existing_file() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let output_dir = workspace.join("output");
+    std::fs::create_dir_all(&output_dir).unwrap();
+    let file_path = output_dir.join("report.md");
+    let original = "# 已有报告\nkeep\n";
+    std::fs::write(&file_path, original).unwrap();
+
+    let truncated = r#"{"file_path": "report.md", "content": ""#;
+    let result = execute_builtin_tool("write_output", truncated, workspace, None);
+
+    assert!(
+        result.is_error,
+        "empty recovered write_output must fail: {}",
+        result.content
+    );
+    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), original);
+}
+
+#[test]
+fn recovered_partial_write_file_content_still_writes_with_warning() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let file_path = workspace.join("notes.md");
+    std::fs::write(&file_path, "old").unwrap();
+
+    let truncated = "{\"path\": \"notes.md\", \"content\": \"partial-内容";
+    let result = execute_builtin_tool("write_file", truncated, workspace, None);
+
+    assert!(
+        !result.is_error,
+        "non-empty recovered write should succeed: {}",
+        result.content
+    );
+    assert!(result.content.contains("truncated"));
+    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "partial-内容");
+}
+
+#[test]
+fn valid_json_empty_write_file_content_still_overwrites() {
+    let tmp = tempfile::tempdir().unwrap();
+    let workspace = tmp.path();
+    let file_path = workspace.join("clear_me.txt");
+    std::fs::write(&file_path, "delete me").unwrap();
+
+    let args = serde_json::json!({
+        "path": "clear_me.txt",
+        "content": ""
+    });
+    let result = execute_builtin_tool("write_file", &args.to_string(), workspace, None);
+
+    assert!(
+        !result.is_error,
+        "intentional empty JSON write should succeed: {}",
+        result.content
+    );
+    assert_eq!(std::fs::read_to_string(&file_path).unwrap(), "");
+}
+
+#[test]
+fn recovered_write_missing_content_is_not_usable() {
+    let recovered = serde_json::json!({ "path": "src_lib.rs" });
+    assert!(!super::recovered_write_has_usable_content(&recovered));
+
+    let empty = serde_json::json!({ "path": "src_lib.rs", "content": "" });
+    assert!(!super::recovered_write_has_usable_content(&empty));
+
+    let partial = serde_json::json!({ "path": "src_lib.rs", "content": "fn x() {}" });
+    assert!(super::recovered_write_has_usable_content(&partial));
+}

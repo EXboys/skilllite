@@ -317,6 +317,15 @@ pub(super) fn parse_truncated_json_for_file_tools(arguments: &str) -> Option<Val
     }
 }
 
+/// Recovered write arguments are only safe to apply when `content` is present and non-empty.
+/// An empty recovered payload would overwrite an existing file with 0 bytes.
+pub(super) fn recovered_write_has_usable_content(recovered: &Value) -> bool {
+    recovered
+        .get("content")
+        .and_then(|v| v.as_str())
+        .is_some_and(|s| !s.is_empty())
+}
+
 pub(super) fn unescape_json_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();

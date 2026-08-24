@@ -131,7 +131,10 @@ pub fn execute_builtin_tool(
         Err(_e) => {
             if tool_name == "write_file" || tool_name == "write_output" {
                 match parse_truncated_json_for_file_tools(arguments) {
-                    Some(recovered) if recovered.as_object().is_some_and(|o| !o.is_empty()) => {
+                    Some(recovered)
+                        if recovered.as_object().is_some_and(|o| !o.is_empty())
+                            && recovered_write_has_usable_content(&recovered) =>
+                    {
                         tracing::warn!(
                             "Recovered truncated JSON for {} ({} fields)",
                             tool_name,
