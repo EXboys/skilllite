@@ -26,6 +26,10 @@ use super::types::*;
 // Compaction threshold/keep are configurable via types::get_compaction_threshold()
 // and types::get_compaction_keep_recent() (SKILLLITE_COMPACTION_* env vars).
 
+/// Agent id used by `memory_search` / `build_memory_context` (`execute_memory_tool(..., "default")`).
+/// Session-clear summaries must write the same FTS file or later turns cannot find them.
+const MEMORY_SEARCH_AGENT_ID: &str = "default";
+
 /// Periodic-arm anchor for A9 growth scheduling (aligned with desktop Life Pulse).
 static A9_LAST_PERIODIC_GROWTH_UNIX: std::sync::Mutex<Option<i64>> = std::sync::Mutex::new(None);
 
@@ -59,6 +63,18 @@ struct TranscriptCache {
 struct CachedTranscriptFile {
     offset: u64,
     entries: Vec<transcript::TranscriptEntry>,
+}
+
+/// Index a daily memory Markdown file into the shared FTS DB used by search/context.
+fn index_daily_memory_for_search(data_root: &Path, rel_path: &str, content: &str) {
+    let idx_path = executor_memory::index_path(data_root, MEMORY_SEARCH_AGENT_ID);
+    if let Some(parent) = idx_path.parent() {
+        let _ = skilllite_fs::create_dir_all(parent);
+    }
+    if let Ok(conn) = rusqlite::Connection::open(&idx_path) {
+        let _ = executor_memory::ensure_index(&conn)
+            .and_then(|_| executor_memory::index_file(&conn, rel_path, content));
+    }
 }
 
 impl ChatSession {
@@ -980,16 +996,9 @@ impl ChatSession {
         };
         skilllite_fs::write_file(&memory_path, &final_content)?;
 
-        // Index for BM25 search
+        // Index for BM25 search (shared default DB — not per-session)
         let rel_path = format!("{}.md", today);
-        let idx_path = executor_memory::index_path(&self.data_root, &self.session_key);
-        if let Some(parent) = idx_path.parent() {
-            skilllite_fs::create_dir_all(parent)?;
-        }
-        if let Ok(conn) = rusqlite::Connection::open(&idx_path) {
-            let _ = executor_memory::ensure_index(&conn)
-                .and_then(|_| executor_memory::index_file(&conn, &rel_path, &final_content));
-        }
+        index_daily_memory_for_search(&self.data_root, &rel_path, &final_content);
 
         tracing::info!("Session memory summary written to memory/{}", rel_path);
 
@@ -1398,6 +1407,38 @@ mod evolution_workspace_tests {
         let resolved = resolve_evolution_skills_root(workspace.path().to_string_lossy().as_ref());
 
         assert_eq!(resolved.as_deref(), Some(legacy_dir.as_path()));
+    }
+}
+
+#[cfg(test)]
+mod session_clear_memory_index_tests {
+    use super::*;
+
+    #[test]
+    fn session_clear_memory_indexes_shared_default_db() {
+        let tmp = tempfile::tempdir().expect("tmp");
+        let data_root = tmp.path();
+        let rel_path = "2026-08-26.md";
+        let content = "cleared session remembered 中文决策 and the output path";
+
+        index_daily_memory_for_search(data_root, rel_path, content);
+
+        let session_db = data_root.join("memory").join("desktop-main.sqlite");
+        assert!(
+            !session_db.exists(),
+            "clear-session must not create a per-session FTS file"
+        );
+
+        let default_db = executor_memory::index_path(data_root, MEMORY_SEARCH_AGENT_ID);
+        assert!(default_db.exists(), "shared default.sqlite should exist");
+
+        let conn = rusqlite::Connection::open(&default_db).expect("open default index");
+        let hits = executor_memory::search_bm25(&conn, "remembered", 5).expect("search");
+        assert!(
+            hits.iter()
+                .any(|h| h.path == rel_path && h.content.contains("中文决策")),
+            "shared index should contain the cleared-session summary, got {hits:?}"
+        );
     }
 }
 

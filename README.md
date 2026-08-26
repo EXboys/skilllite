@@ -507,7 +507,7 @@ skilllite/                         Dependency Flow
 | `skilllite chat`               | Interactive agent chat (or `--message` for single-shot)                |
 | `skilllite add owner/repo`     | Add skills from GitHub, a local folder, or a local ZIP package         |
 | `skilllite import-openclaw-skills` | Copy skills from OpenClaw-style paths into `skills/` (see `--dry-run`, `--skill-conflict`) |
-| `skilllite claw migrate` | Migrate OpenClaw-style skills, persona/memory Markdown, and optional allowlisted `.env` keys (alias: `skilllite migrate openclaw`) |
+| `skilllite claw migrate` | Migrate OpenClaw-style skills, persona/memory Markdown, and optional allowlisted secrets (`.env` plus `models.providers` apiKeys mapped to the matching env var; alias: `skilllite migrate openclaw`) |
 | `skilllite remove <name>`      | Remove an installed skill                                              |
 | `skilllite list`               | List installed skills                                                  |
 | `skilllite show <name>`        | Show skill details                                                     |

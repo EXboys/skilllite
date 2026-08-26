@@ -851,13 +851,39 @@ fn collect_env_from_openclaw_json(path: &Path, out: &mut BTreeMap<String, String
         .pointer("/models/providers")
         .and_then(|v| v.as_object())
     {
-        for provider in providers.values() {
-            if let Some(key) = provider.get("apiKey").and_then(|v| v.as_str()) {
-                if !key.is_empty() {
-                    out.insert("OPENAI_API_KEY".to_string(), key.to_string());
-                }
+        for (provider_id, provider) in providers {
+            let Some(key) = provider.get("apiKey").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if key.is_empty() {
+                continue;
+            }
+            let Some(env_key) = env_key_for_openclaw_provider(provider_id) else {
+                continue;
+            };
+            if SECRET_ENV_ALLOWLIST.contains(&env_key) {
+                out.insert(env_key.to_string(), key.to_string());
             }
         }
+    }
+}
+
+/// Map an OpenClaw `models.providers` id to an allowlisted SkillLite env var.
+/// Unknown ids are skipped so a non-OpenAI key cannot overwrite `OPENAI_API_KEY`.
+fn env_key_for_openclaw_provider(provider_id: &str) -> Option<&'static str> {
+    match provider_id.trim().to_ascii_lowercase().as_str() {
+        "openai" | "openai-compatible" => Some("OPENAI_API_KEY"),
+        "anthropic" | "claude" => Some("ANTHROPIC_API_KEY"),
+        "openrouter" => Some("OPENROUTER_API_KEY"),
+        "deepseek" => Some("DEEPSEEK_API_KEY"),
+        "gemini" => Some("GEMINI_API_KEY"),
+        "google" => Some("GOOGLE_API_KEY"),
+        "groq" => Some("GROQ_API_KEY"),
+        "xai" | "grok" => Some("XAI_API_KEY"),
+        "mistral" => Some("MISTRAL_API_KEY"),
+        "dashscope" | "qwen" => Some("DASHSCOPE_API_KEY"),
+        "moonshot" | "kimi" => Some("MOONSHOT_API_KEY"),
+        _ => None,
     }
 }
 
@@ -976,6 +1002,93 @@ mod tests {
             Some("sk-test")
         );
         assert!(!collected.contains_key("RANDOM_SECRET"));
+    }
+
+    #[test]
+    fn openclaw_provider_keys_map_to_matching_env_vars_not_openai_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json_path = tmp.path().join("openclaw.json");
+        fs::write(
+            &json_path,
+            r#"{
+              "models": {
+                "providers": {
+                  "anthropic": { "apiKey": "sk-ant-xxx" },
+                  "groq": { "apiKey": "gsk-xxx" },
+                  "openai": { "apiKey": "sk-openai-xxx" }
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+        let mut collected = BTreeMap::new();
+        collect_env_from_openclaw_json(&json_path, &mut collected);
+        assert_eq!(
+            collected.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-ant-xxx")
+        );
+        assert_eq!(
+            collected.get("GROQ_API_KEY").map(String::as_str),
+            Some("gsk-xxx")
+        );
+        assert_eq!(
+            collected.get("OPENAI_API_KEY").map(String::as_str),
+            Some("sk-openai-xxx")
+        );
+    }
+
+    #[test]
+    fn openclaw_unknown_provider_does_not_stomp_openai_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let json_path = tmp.path().join("openclaw.json");
+        fs::write(
+            &json_path,
+            r#"{
+              "models": {
+                "providers": {
+                  "custom-proxy": { "apiKey": "sk-other" }
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+        let mut collected = BTreeMap::new();
+        collect_env_from_openclaw_json(&json_path, &mut collected);
+        assert!(
+            collected.is_empty(),
+            "unknown provider must not become OPENAI_API_KEY: {collected:?}"
+        );
+    }
+
+    #[test]
+    fn apply_env_merge_overwrite_keeps_openai_key_when_last_provider_is_anthropic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tmp.path().join("openclaw");
+        fs::create_dir_all(&home).unwrap();
+        fs::write(
+            home.join("openclaw.json"),
+            r#"{
+              "models": {
+                "providers": {
+                  "openai": { "apiKey": "sk-openai-keep" },
+                  "anthropic": { "apiKey": "sk-ant-last" }
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+        let env_dest = tmp.path().join(".env");
+        fs::write(&env_dest, "OPENAI_API_KEY=sk-existing\n").unwrap();
+        apply_env_merge(&home, &env_dest, true).unwrap();
+        let merged = parse_env_file(&env_dest);
+        assert_eq!(
+            merged.get("OPENAI_API_KEY").map(String::as_str),
+            Some("sk-openai-keep")
+        );
+        assert_eq!(
+            merged.get("ANTHROPIC_API_KEY").map(String::as_str),
+            Some("sk-ant-last")
+        );
     }
 
     #[test]
