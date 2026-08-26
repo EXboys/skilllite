@@ -459,7 +459,7 @@ skilllite/                         依赖流向
 | `skilllite chat` | 交互式 Agent 对话（或 `--message` 单次对话） |
 | `skilllite add owner/repo` | 从 GitHub、本地目录或本地 ZIP 技能包添加 skills |
 | `skilllite import-openclaw-skills` | 从 OpenClaw 风格路径复制 skills 到 `skills/`（可用 `--dry-run`、`--skill-conflict`） |
-| `skilllite claw migrate` | 从 OpenClaw 风格布局迁移技能、人格/记忆 Markdown 与可选白名单 `.env` 密钥（别名：`skilllite migrate openclaw`） |
+| `skilllite claw migrate` | 从 OpenClaw 风格布局迁移技能、人格/记忆 Markdown 与可选白名单密钥（`.env` 以及按 provider 映射的 `models.providers` apiKey；别名：`skilllite migrate openclaw`） |
 | `skilllite remove <name>` | 移除已安装的 skill |
 | `skilllite list` | 列出已安装 skills |
 | `skilllite show <name>` | 显示 skill 详情 |
