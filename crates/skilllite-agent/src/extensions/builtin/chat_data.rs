@@ -120,7 +120,10 @@ fn chat_data_root() -> PathBuf {
 
 fn normalize_date(date: &str) -> String {
     let s = date.trim().replace('-', "");
-    if s.len() == 8 {
+    // Compact YYYYMMDD is eight ASCII digits. `s.len() == 8` alone is not
+    // enough: localized values such as `2026年9` or `2026-9月` are also 8
+    // bytes and would panic if sliced at indexes 4/6.
+    if s.len() == 8 && s.bytes().all(|b| b.is_ascii_digit()) {
         format!("{}-{}-{}", &s[0..4], &s[4..6], &s[6..8])
     } else {
         date.to_string()
@@ -247,4 +250,38 @@ pub(super) fn execute_chat_plan(args: &Value) -> Result<String> {
         lines.push(format!("  {}. [{}] {}", i + 1, status, desc));
     }
     Ok(lines.join("\n"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn normalize_date_keeps_compact_ascii_iso() {
+        assert_eq!(normalize_date("20260902"), "2026-09-02");
+        assert_eq!(normalize_date("2026-09-02"), "2026-09-02");
+        assert_eq!(normalize_date(" 2026-09-02 "), "2026-09-02");
+    }
+
+    #[test]
+    fn normalize_date_does_not_byte_slice_cjk_eight_byte_dates() {
+        // 2026年9 == 8 bytes; 年 occupies indexes 4..7. Slicing at 4/6 panics.
+        assert_eq!(normalize_date("2026年9"), "2026年9");
+        // 2026-9月 == 8 bytes after '-' is stripped (20269月).
+        assert_eq!(normalize_date("2026-9月"), "2026-9月");
+        assert_eq!(normalize_date("ab你好"), "ab你好");
+    }
+
+    #[test]
+    fn chat_history_cjk_date_returns_ok_instead_of_panic() {
+        let result = execute_chat_history(&json!({"date": "2026年9"}));
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn chat_plan_localized_month_date_returns_ok_instead_of_panic() {
+        let result = execute_chat_plan(&json!({"date": "2026-9月"}));
+        assert!(result.is_ok(), "{result:?}");
+    }
 }
