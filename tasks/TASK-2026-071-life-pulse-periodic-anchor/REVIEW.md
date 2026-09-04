@@ -43,4 +43,4 @@
 ## Decision
 
 - Merge readiness: ready
-- Follow-up actions: Open PR; attempt Slack summary.
+- Follow-up actions: PR https://github.com/EXboys/skilllite/pull/151 opened. Slack summary attempted.

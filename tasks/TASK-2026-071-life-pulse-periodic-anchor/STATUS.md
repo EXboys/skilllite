@@ -5,7 +5,7 @@
 - 2026-09-04:
   - Progress: Confirmed Life Pulse periodic mutex is never written; implemented write-back matching `growth_due`; added unit tests; workspace and targeted assistant tests passed.
   - Blockers: None.
-  - Next step: Commit, push, open PR, notify Slack.
+  - Next step: PR #151 opened; Slack notification attempted.
 
 ## Checkpoints
 

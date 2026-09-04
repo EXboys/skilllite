@@ -65,5 +65,5 @@ Desktop Life Pulse never advances `last_periodic_growth_unix`. `evolution_growth
 ## Links
 
 - Source TODO section: Scheduled critical bug automation, 2026-09-04.
-- Related PRs/issues: Open drafts #115/#116 (rhythm workspace); this is a distinct periodic-anchor write-back gap.
+- Related PRs/issues: PR #151; open drafts #115/#116 (rhythm workspace); this is a distinct periodic-anchor write-back gap.
 - Related docs: `docs/en/ENV_REFERENCE.md` A9 periodic arm; `spec/verification-integrity.md`, `spec/task-artifact-language.md`.
