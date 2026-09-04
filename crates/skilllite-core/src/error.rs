@@ -68,4 +68,8 @@ pub enum PathValidationError {
     /// Path escapes the allowed root (potential path traversal).
     #[error("{path_type} escapes allowed root: {path}")]
     PathEscape { path_type: String, path: String },
+
+    /// Memory agent ID is empty, multi-segment, or otherwise unsafe to join under `memory/`.
+    #[error("Invalid agent_id (must be a single path segment): {id}")]
+    InvalidAgentId { id: String },
 }

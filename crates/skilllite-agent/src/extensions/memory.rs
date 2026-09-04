@@ -182,7 +182,7 @@ async fn execute_memory_search(
         .context("'query' is required")?;
     let limit = args.get("limit").and_then(|v| v.as_i64()).unwrap_or(10);
 
-    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
+    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id)?;
     if !idx_path.exists() {
         return Ok("No memory index found. Memory is empty.".to_string());
     }
@@ -289,7 +289,7 @@ async fn execute_memory_write(
         .with_context(|| format!("Failed to write memory file: {}", file_path.display()))?;
 
     // Index for BM25 (always)
-    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
+    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id)?;
     if let Some(parent) = idx_path.parent() {
         skilllite_fs::create_dir_all(parent)?;
     }
@@ -393,7 +393,7 @@ pub fn build_memory_context(
     user_message: &str,
 ) -> Option<String> {
     let chat_root = skilllite_executor::chat_root();
-    let idx_path = skilllite_executor::memory::index_path(&chat_root, agent_id);
+    let idx_path = skilllite_executor::memory::index_path(&chat_root, agent_id).ok()?;
     if !idx_path.exists() {
         return None;
     }
@@ -469,7 +469,7 @@ pub fn index_evolution_knowledge(chat_root: &Path, agent_id: &str) -> Result<()>
     let file_count = files.len();
 
     let memory_root = chat_root.join("memory");
-    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
+    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id)?;
     if let Some(parent) = idx_path.parent() {
         skilllite_fs::create_dir_all(parent)?;
     }
@@ -526,7 +526,7 @@ pub fn write_structured_experience(
     skilllite_fs::write_file(&file_path, &final_content)?;
 
     // Re-index for BM25 search
-    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id);
+    let idx_path = skilllite_executor::memory::index_path(chat_root, agent_id)?;
     if let Some(parent) = idx_path.parent() {
         skilllite_fs::create_dir_all(parent)?;
     }
