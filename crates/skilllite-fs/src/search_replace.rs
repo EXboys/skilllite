@@ -480,7 +480,10 @@ fn fuzzy_match_end(
 }
 
 fn levenshtein_similarity(a: &str, b: &str) -> f64 {
-    let max_len = a.len().max(b.len());
+    // Distance is counted in Unicode scalars; the denominator must use the same
+    // unit. Using `str::len()` (UTF-8 bytes) inflates CJK scores so a 0.85
+    // threshold is effectively ~0.55 in character space.
+    let max_len = a.chars().count().max(b.chars().count());
     if max_len == 0 {
         return 1.0;
     }
@@ -508,4 +511,55 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
         std::mem::swap(&mut prev, &mut curr);
     }
     prev[b_len]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cjk_two_char_name_swap_does_not_fuzzy_replace() {
+        // 10 CJK chars, 2 differ (张三 vs 李四). Byte-length scoring would be
+        // 1 - 2/30 ≈ 0.933 and incorrectly replace; character scoring is 0.80.
+        let content = "请确认用户张三的订单\n保留此行\n";
+        let err = apply_replace_fuzzy(content, "请确认用户李四的订单", "已确认", false)
+            .expect_err("2-of-10 CJK difference must stay below 0.85");
+        assert!(
+            err.to_string().contains("old_string not found"),
+            "unexpected error: {err}"
+        );
+        assert!(content.contains("请确认用户张三的订单"));
+    }
+
+    #[test]
+    fn exact_cjk_replace_still_succeeds() {
+        let content = "请确认用户张三的订单\n";
+        let result = apply_replace_fuzzy(content, "请确认用户张三的订单", "已确认", false)
+            .expect("exact CJK match must succeed");
+        assert_eq!(result.match_type, "exact");
+        assert_eq!(result.new_content, "已确认\n");
+    }
+
+    #[test]
+    fn ascii_one_char_diff_still_fuzzy_matches() {
+        // 10 ASCII chars, 1 differs → 0.90 >= 0.85 (byte==char, unchanged).
+        let content = "abcdefghij\n";
+        let result = apply_replace_fuzzy(content, "abcdefghix", "replaced", false)
+            .expect("1-of-10 ASCII difference should still fuzzy-match");
+        assert!(result.match_type.starts_with("similarity"));
+        assert_eq!(result.new_content, "replaced\n");
+    }
+
+    #[test]
+    fn ascii_two_char_diff_does_not_fuzzy_match() {
+        // 10 ASCII chars, 2 differ → 0.80 < 0.85.
+        let err = apply_replace_fuzzy("abcdefghij\n", "abcdefghxx", "replaced", false)
+            .expect_err("2-of-10 ASCII difference must stay below 0.85");
+        assert!(err.to_string().contains("old_string not found"));
+    }
+
+    #[test]
+    fn empty_strings_are_identical() {
+        assert_eq!(levenshtein_similarity("", ""), 1.0);
+    }
 }
