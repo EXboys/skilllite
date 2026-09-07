@@ -72,7 +72,7 @@ pub(super) fn handle_update_task_plan(
                                 "'tasks' must be a JSON array, got a string that is not valid JSON array. \
                                  Pass tasks as a real array: {{\"tasks\": [{{...}}]}} not {{\"tasks\": \"[...]\"}}. \
                                  Received string preview: {:?}",
-                                &s[..s.len().min(120)]
+                                safe_truncate(s, 120)
                             ),
                             is_error: true,
                             counts_as_failure: true,
@@ -1102,6 +1102,21 @@ mod tests {
         let r = handle_update_task_plan(args, &mut planner, &[], &mut sink);
         assert!(r.is_error);
         assert!(r.content.contains("must be a JSON array"), "{}", r.content);
+    }
+
+    #[test]
+    fn update_task_plan_rejects_non_array_cjk_string_without_panic() {
+        let mut planner = TaskPlanner::new(None, None, None);
+        let mut sink = SilentEventSink;
+        // Mixed ASCII digits + CJK (typical LLM prose). Byte 120 is mid-character.
+        let prose = "请按以下步骤执行：1.审核订单并通知客户；2.更新库存后发送确认邮件给仓库管理员并抄送财务";
+        assert!(prose.len() > 120);
+        assert!(!prose.is_char_boundary(120));
+        let args = serde_json::json!({ "tasks": prose }).to_string();
+        let r = handle_update_task_plan(&args, &mut planner, &[], &mut sink);
+        assert!(r.is_error);
+        assert!(r.content.contains("must be a JSON array"), "{}", r.content);
+        assert!(r.content.is_char_boundary(r.content.len()), "{}", r.content);
     }
 
     #[test]
