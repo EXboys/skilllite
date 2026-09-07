@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: UTF-8-safe update_task_plan error preview
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P0`
 - Owner: `agent`
 - Contributors:
@@ -27,9 +27,9 @@
 
 ## Acceptance Criteria
 
-- [ ] `handle_update_task_plan` does not panic when `tasks` is a long CJK string that is not a JSON array.
-- [ ] The error still states that `tasks` must be a JSON array and includes a UTF-8-safe preview.
-- [ ] A regression test fails if the byte-slice preview is restored.
+- [x] `handle_update_task_plan` does not panic when `tasks` is a long CJK string that is not a JSON array.
+- [x] The error still states that `tasks` must be a JSON array and includes a UTF-8-safe preview.
+- [x] A regression test fails if the byte-slice preview is restored.
 
 ## Risks
 
