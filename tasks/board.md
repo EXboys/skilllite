@@ -1,10 +1,10 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-09-07 (TASK-2026-071 update_task_plan UTF-8 preview)
 
 ## In Progress
 
-- None.
+- `TASK-2026-071-utf8-update-task-plan-preview` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
