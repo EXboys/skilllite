@@ -411,8 +411,19 @@ impl ChatSession {
         // Tool call / result lines are appended during execution (`execution::append_*_to_transcript`)
         // so order matches the UI (tool_call → optional confirmation custom_message → tool_result).
 
-        // Append assistant response to transcript
-        self.append_assistant_message(&result.response, &result.feedback.llm_usage)?;
+        // Append assistant response to transcript, including thinking-mode reasoning so
+        // the next process/turn can echo it (DeepSeek returns 400 if tools are sent without it).
+        let reasoning = result
+            .messages
+            .iter()
+            .rev()
+            .find(|m| m.role == "assistant")
+            .and_then(|m| m.reasoning_content.clone());
+        self.append_assistant_message(
+            &result.response,
+            &result.feedback.llm_usage,
+            reasoning.as_deref(),
+        )?;
 
         // EVO-1: Record execution decision (async-safe, <1ms with WAL).
         // Only record meaningful turns (at least 1 tool call).
@@ -526,6 +537,7 @@ impl ChatSession {
         &self,
         content: &str,
         usage: &crate::types::LlmUsageTotals,
+        reasoning_content: Option<&str>,
     ) -> Result<()> {
         let transcripts_dir = self.data_root.join("transcripts");
         let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
@@ -544,6 +556,10 @@ impl ChatSession {
             tool_calls: None,
             images: None,
             llm_usage,
+            reasoning_content: reasoning_content
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string),
         };
         Ok(transcript::append_entry(&t_path, &entry)?)
     }
@@ -568,6 +584,7 @@ impl ChatSession {
             tool_calls: None,
             images: images.map(|s| s.to_vec()),
             llm_usage: None,
+            reasoning_content: None,
         };
         Ok(transcript::append_entry(&t_path, &entry)?)
     }
@@ -1335,6 +1352,7 @@ fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<Ch
             role,
             content,
             images,
+            reasoning_content,
             ..
         } => {
             if role == "user" {
@@ -1361,7 +1379,7 @@ fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<Ch
                     tool_calls: None,
                     tool_call_id: None,
                     name: None,
-                    reasoning_content: None,
+                    reasoning_content: reasoning_content.clone(),
                 })
             }
         }
@@ -1414,6 +1432,7 @@ mod history_window_tests {
             tool_calls: None,
             images: None,
             llm_usage: None,
+            reasoning_content: None,
         }
     }
 
@@ -1487,5 +1506,39 @@ mod history_window_tests {
             entries.first(),
             Some(transcript::TranscriptEntry::Compaction { .. })
         ));
+    }
+
+    #[test]
+    fn transcript_reload_restores_assistant_reasoning_content() {
+        let entry = transcript::TranscriptEntry::Message {
+            id: "a1".into(),
+            parent_id: None,
+            role: "assistant".into(),
+            content: Some("最终答复".into()),
+            tool_calls: None,
+            images: None,
+            llm_usage: None,
+            reasoning_content: Some("需要先调用天气工具".into()),
+        };
+        let msg = transcript_entry_to_message(&entry).expect("assistant message");
+        assert_eq!(msg.role, "assistant");
+        assert_eq!(msg.content.as_deref(), Some("最终答复"));
+        assert_eq!(msg.reasoning_content.as_deref(), Some("需要先调用天气工具"));
+    }
+
+    #[test]
+    fn transcript_reload_legacy_assistant_has_no_reasoning() {
+        let entry = transcript::TranscriptEntry::Message {
+            id: "a2".into(),
+            parent_id: None,
+            role: "assistant".into(),
+            content: Some("ok".into()),
+            tool_calls: None,
+            images: None,
+            llm_usage: None,
+            reasoning_content: None,
+        };
+        let msg = transcript_entry_to_message(&entry).expect("assistant message");
+        assert!(msg.reasoning_content.is_none());
     }
 }

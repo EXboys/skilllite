@@ -543,4 +543,14 @@ mod openai_attachment_tests {
             .iter()
             .any(|p| p.get("type") == Some(&json!("image_url"))));
     }
+
+    #[test]
+    fn openai_api_message_echoes_assistant_reasoning_content() {
+        let mut m = ChatMessage::assistant("最终答复");
+        m.reasoning_content = Some("需要先调用天气工具".to_string());
+        let v = openai_api_message(&m).expect("openai_api_message");
+        assert_eq!(v["role"], "assistant");
+        assert_eq!(v["content"], "最终答复");
+        assert_eq!(v["reasoning_content"], "需要先调用天气工具");
+    }
 }

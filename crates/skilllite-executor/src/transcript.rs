@@ -56,6 +56,9 @@ pub enum TranscriptEntry {
         /// Present on `assistant` rows when the agent run reported token totals for that turn.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         llm_usage: Option<TranscriptLlmUsage>,
+        /// Thinking-mode chain-of-thought. Must be echoed on later API turns when tools are sent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reasoning_content: Option<String>,
     },
     /// Tool call request - independent entry for complete traceability (aligned with OpenAI Agents SDK tracing)
     ToolCall {
@@ -424,5 +427,50 @@ mod tests {
             interval: Duration::ZERO,
         };
         assert!(should_sync_after_append(&path, policy));
+    }
+
+    #[test]
+    fn message_reasoning_content_round_trips() {
+        let entry = TranscriptEntry::Message {
+            id: "m1".into(),
+            parent_id: None,
+            role: "assistant".into(),
+            content: Some("done".into()),
+            tool_calls: None,
+            images: None,
+            llm_usage: None,
+            reasoning_content: Some("先核对工具再回答".into()),
+        };
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let parsed: TranscriptEntry = serde_json::from_str(&json).expect("deserialize");
+        match parsed {
+            TranscriptEntry::Message {
+                reasoning_content,
+                content,
+                ..
+            } => {
+                assert_eq!(content.as_deref(), Some("done"));
+                assert_eq!(reasoning_content.as_deref(), Some("先核对工具再回答"));
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_message_without_reasoning_content_deserializes() {
+        let json =
+            r#"{"type":"message","id":"m1","parent_id":null,"role":"assistant","content":"hi"}"#;
+        let parsed: TranscriptEntry = serde_json::from_str(json).expect("legacy row");
+        match parsed {
+            TranscriptEntry::Message {
+                reasoning_content,
+                content,
+                ..
+            } => {
+                assert_eq!(content.as_deref(), Some("hi"));
+                assert!(reasoning_content.is_none());
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
     }
 }
