@@ -311,13 +311,14 @@ impl LlmClient {
         let mut finish_reason = None;
         let mut usage = None;
 
-        // Buffer for incomplete SSE lines
+        // Buffer for incomplete SSE lines and incomplete UTF-8 at chunk edges
         let mut buffer = String::new();
+        let mut utf8_pending = Vec::new();
         let mut stream = resp.bytes_stream();
 
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result.context("Stream chunk error")?;
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            buffer.push_str(&super::take_complete_utf8(&mut utf8_pending, &chunk));
 
             // Process complete lines
             while let Some(newline_pos) = buffer.find('\n') {
@@ -421,6 +422,7 @@ impl LlmClient {
                 }
             }
         }
+        buffer.push_str(&super::flush_pending_utf8(&mut utf8_pending));
 
         // Ensure newline after streamed text so logs don't collide.
         // Matches Python SDK: `if stream_callback and message.content: print()`

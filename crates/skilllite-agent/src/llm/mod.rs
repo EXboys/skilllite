@@ -46,6 +46,55 @@ pub(crate) fn normalize_vision_media_type(mt: &str) -> Result<&'static str> {
     }
 }
 
+/// Decode `chunk` together with `pending` leftover bytes from the previous
+/// HTTP body frame. Incomplete UTF-8 at the end is kept in `pending` so a
+/// CJK/emoji scalar split across chunks is not replaced with U+FFFD.
+/// Invalid mid-stream sequences emit U+FFFD and are skipped so the decoder
+/// cannot stall.
+pub(super) fn take_complete_utf8(pending: &mut Vec<u8>, chunk: &[u8]) -> String {
+    pending.extend_from_slice(chunk);
+    let mut out = String::new();
+    loop {
+        match std::str::from_utf8(pending) {
+            Ok(s) => {
+                out.push_str(s);
+                pending.clear();
+                break;
+            }
+            Err(e) => {
+                let valid = e.valid_up_to();
+                if valid > 0 {
+                    match std::str::from_utf8(&pending[..valid]) {
+                        Ok(s) => out.push_str(s),
+                        Err(_) => out.push('\u{FFFD}'),
+                    }
+                    pending.drain(..valid);
+                    continue;
+                }
+                match e.error_len() {
+                    Some(n) => {
+                        out.push('\u{FFFD}');
+                        let n = n.min(pending.len()).max(1);
+                        pending.drain(..n);
+                    }
+                    None => break,
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Flush leftover pending bytes at end-of-stream with lossy decode.
+pub(super) fn flush_pending_utf8(pending: &mut Vec<u8>) -> String {
+    if pending.is_empty() {
+        return String::new();
+    }
+    let text = String::from_utf8_lossy(pending).into_owned();
+    pending.clear();
+    text
+}
+
 #[cfg(test)]
 mod tests;
 
