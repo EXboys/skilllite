@@ -352,12 +352,13 @@ impl LlmClient {
         let mut usage = None;
 
         let mut buffer = String::new();
+        let mut utf8_pending = Vec::new();
         let mut stream = resp.bytes_stream();
         let mut current_event_type = String::new();
 
         while let Some(chunk_result) = stream.next().await {
             let chunk = chunk_result.context("Claude stream chunk error")?;
-            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            buffer.push_str(&super::take_complete_utf8(&mut utf8_pending, &chunk));
 
             while let Some(newline_pos) = buffer.find('\n') {
                 let line = buffer[..newline_pos].trim().to_string();
@@ -473,6 +474,7 @@ impl LlmClient {
                 }
             }
         }
+        buffer.push_str(&super::flush_pending_utf8(&mut utf8_pending));
 
         // Trailing newline after streamed text
         if !text_content.is_empty() {

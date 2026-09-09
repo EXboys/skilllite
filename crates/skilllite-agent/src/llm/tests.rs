@@ -408,3 +408,45 @@ fn test_format_api_error_truncates_non_json_body_on_utf8_boundary() {
         "should truncate the long raw body: {result}"
     );
 }
+
+#[test]
+fn take_complete_utf8_reassembles_cjk_split_across_chunks() {
+    let ni_hao = "你好";
+    let bytes = ni_hao.as_bytes();
+    assert_eq!(bytes.len(), 6);
+    let mut pending = Vec::new();
+    let first = take_complete_utf8(&mut pending, &bytes[..2]);
+    assert!(first.is_empty(), "incomplete leading bytes must be held");
+    assert_eq!(pending.as_slice(), &bytes[..2]);
+    let second = take_complete_utf8(&mut pending, &bytes[2..]);
+    assert_eq!(second, ni_hao);
+    assert!(pending.is_empty());
+}
+
+#[test]
+fn take_complete_utf8_passes_ascii_through_immediately() {
+    let mut pending = Vec::new();
+    let out = take_complete_utf8(&mut pending, b"data: {\"content\":\"hi\"}\n");
+    assert_eq!(out, "data: {\"content\":\"hi\"}\n");
+    assert!(pending.is_empty());
+}
+
+#[test]
+fn take_complete_utf8_replaces_invalid_mid_stream_and_continues() {
+    let mut pending = Vec::new();
+    // 0xFF is never valid UTF-8; following ASCII must still decode.
+    let out = take_complete_utf8(&mut pending, b"ok\xFFyes");
+    assert_eq!(out, "ok\u{FFFD}yes");
+    assert!(pending.is_empty());
+}
+
+#[test]
+fn flush_pending_utf8_lossy_decodes_incomplete_trailer() {
+    let mut pending = Vec::new();
+    let held = take_complete_utf8(&mut pending, "你".as_bytes().get(..2).unwrap_or(&[]));
+    assert!(held.is_empty());
+    assert!(!pending.is_empty());
+    let flushed = flush_pending_utf8(&mut pending);
+    assert_eq!(flushed, "\u{FFFD}");
+    assert!(pending.is_empty());
+}
