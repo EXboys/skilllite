@@ -526,8 +526,8 @@ fn register_agent(reg: &mut CommandRegistry) {
                     workspace,
                     proposal_id,
                 ),
-                EvolutionAction::Reset { force } => {
-                    skilllite_commands::evolution::cmd_reset(*force)
+                EvolutionAction::Reset { force, workspace } => {
+                    skilllite_commands::evolution::cmd_reset(*force, workspace)
                 }
                 EvolutionAction::Disable { rule_id } => {
                     skilllite_commands::evolution::cmd_disable(rule_id)

@@ -40,6 +40,23 @@ fn authorize_capability(workspace: &Path, tool_name: &str) {
     );
 }
 
+fn seed_reset_fixture(workspace: &Path, marker: &str) {
+    let prompts = workspace.join("chat").join("prompts");
+    std::fs::create_dir_all(prompts.join("_versions").join("txn")).expect("create prompt fixture");
+    std::fs::write(prompts.join("rules.json"), marker).expect("write rules fixture");
+    std::fs::write(workspace.join("chat").join("evolution.log"), marker)
+        .expect("write log fixture");
+
+    for skills_dir in ["skills", ".skills"] {
+        let evolved = workspace
+            .join(skills_dir)
+            .join("_evolved")
+            .join(format!("{marker}-{skills_dir}"));
+        std::fs::create_dir_all(&evolved).expect("create evolved skill fixture");
+        std::fs::write(evolved.join("SKILL.md"), marker).expect("write evolved skill fixture");
+    }
+}
+
 #[test]
 fn evolution_backlog_workspace_flag_overrides_env_workspace() {
     let env_workspace = tempfile::tempdir().expect("env workspace");
@@ -87,4 +104,60 @@ fn evolution_backlog_workspace_flag_overrides_env_workspace() {
             .all(|note| !note.contains("env_workspace_tool")),
         "env workspace backlog row should not leak into target query: {notes:?}"
     );
+}
+
+#[test]
+fn evolution_reset_workspace_flag_isolates_all_destructive_changes() {
+    let env_workspace = tempfile::tempdir().expect("env workspace");
+    let target_workspace = tempfile::tempdir().expect("target workspace");
+    seed_reset_fixture(env_workspace.path(), "env-marker");
+    seed_reset_fixture(target_workspace.path(), "target-marker");
+
+    let target_arg = target_workspace.path().to_string_lossy();
+    let out = run_with_workspace_env(
+        &[
+            "evolution",
+            "reset",
+            "--force",
+            "--workspace",
+            target_arg.as_ref(),
+        ],
+        env_workspace.path(),
+    );
+    assert!(
+        out.status.success(),
+        "reset failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let target_rules = std::fs::read_to_string(
+        target_workspace
+            .path()
+            .join("chat")
+            .join("prompts")
+            .join("rules.json"),
+    )
+    .expect("target rules should be reseeded");
+    assert_ne!(target_rules, "target-marker");
+    assert!(!target_workspace.path().join("chat/evolution.log").exists());
+    assert!(!target_workspace
+        .path()
+        .join("chat/prompts/_versions")
+        .exists());
+    assert!(!target_workspace.path().join("skills/_evolved").exists());
+    assert!(!target_workspace.path().join(".skills/_evolved").exists());
+
+    let env_rules = std::fs::read_to_string(
+        env_workspace
+            .path()
+            .join("chat")
+            .join("prompts")
+            .join("rules.json"),
+    )
+    .expect("env rules should remain");
+    assert_eq!(env_rules, "env-marker");
+    assert!(env_workspace.path().join("chat/evolution.log").exists());
+    assert!(env_workspace.path().join("chat/prompts/_versions").exists());
+    assert!(env_workspace.path().join("skills/_evolved").exists());
+    assert!(env_workspace.path().join(".skills/_evolved").exists());
 }

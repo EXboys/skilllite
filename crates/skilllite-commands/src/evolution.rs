@@ -254,7 +254,7 @@ pub fn cmd_backlog(
 }
 
 /// `skilllite evolution reset` — delete all evolved data, return to seed state.
-pub fn cmd_reset(force: bool) -> Result<()> {
+pub fn cmd_reset(force: bool, workspace: &str) -> Result<()> {
     if !force {
         println!("⚠️  这将删除所有进化产物（规则、示例、Skill），回到种子状态。");
         println!("   已有进化经验将永久丢失。种子规则不受影响。");
@@ -263,23 +263,32 @@ pub fn cmd_reset(force: bool) -> Result<()> {
         return Ok(());
     }
 
-    let root = paths::chat_root();
+    let workspace_root = crate::evolution_status::resolve_workspace_root(workspace);
+    let root = crate::evolution_status::chat_root_for_workspace(workspace);
 
     // Re-seed prompts (overwrite evolved rules/examples with seed data)
     skilllite_evolution::seed::ensure_seed_data_force(&root);
     println!("✅ Prompts 已重置为种子状态");
 
-    // Remove evolved skills (project-level, includes _pending)
-    let evolved_dir = resolve_skills_root(None).map(|sr| sr.join("_evolved"));
-    if let Some(evolved_dir) = evolved_dir.filter(|p| p.exists()) {
-        let count = std::fs::read_dir(&evolved_dir)
+    // Remove evolved skills from both supported project layouts. When both
+    // exist, skill discovery scans both, so leaving either one would make a
+    // supposedly reset skill active again.
+    let evolved_dirs = [
+        workspace_root.join("skills").join("_evolved"),
+        workspace_root.join(".skills").join("_evolved"),
+    ];
+    let mut count = 0;
+    for evolved_dir in evolved_dirs.iter().filter(|p| p.exists()) {
+        count += std::fs::read_dir(evolved_dir)
             .ok()
             .into_iter()
             .flatten()
             .filter_map(|e| e.ok())
             .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
             .count();
-        std::fs::remove_dir_all(&evolved_dir)?;
+        std::fs::remove_dir_all(evolved_dir)?;
+    }
+    if count > 0 {
         println!("✅ 已删除 {} 个进化 Skill（含待确认）", count);
     }
 
