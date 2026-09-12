@@ -711,6 +711,9 @@ impl ChatSession {
 
     /// Run a silent agent turn to remind the model to write durable memories before compaction.
     /// OpenClaw-style: system + user prompt, model may call memory_write, we don't show/output.
+    ///
+    /// Tool surface is intentionally restricted to memory tools only — a silent flush must
+    /// never be able to rewrite the workspace, execute commands, run skills, or call MCP.
     async fn run_memory_flush_turn(&self, history: &[ChatMessage]) -> Result<()> {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let memory_flush_reminder = format!(
@@ -727,14 +730,21 @@ impl ChatSession {
         let mut flush_messages: Vec<ChatMessage> = history.to_vec();
         flush_messages.push(ChatMessage::system(&memory_flush_reminder));
 
+        let mut flush_config = self.config.clone();
+        flush_config.enable_task_planning = false;
+        flush_config.memory_tools_only = true;
+        flush_config.mcp_servers.clear();
+        // Skills are omitted below; keep dirs empty so prompts do not advertise them.
+        flush_config.skill_dirs.clear();
+
         let mut silent_sink = SilentEventSink;
-        tracing::debug!("Running pre-compaction memory flush");
+        tracing::debug!("Running pre-compaction memory flush (memory tools only)");
         let _ = agent_loop::run_agent_loop(
-            &self.config,
+            &flush_config,
             flush_messages,
             &memory_flush_prompt,
             None,
-            &self.skills,
+            &[], // no skills during silent flush
             &mut silent_sink,
             Some(&self.session_key),
         )
