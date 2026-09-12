@@ -536,9 +536,14 @@ fn resolve_under_workspace(
     Ok(normalized)
 }
 
+fn is_dotenv_secret_component(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n == ".env" || n == ".envrc" || n.starts_with(".env.")
+}
+
 fn workspace_write_path_blocked(path: &std::path::Path) -> bool {
-    let s = path.to_string_lossy().to_lowercase();
-    if s.ends_with(".env") || s.contains("/.env/") || s.contains("\\.env\\") {
+    let s = path.to_string_lossy().replace('\\', "/").to_lowercase();
+    if s.split('/').any(is_dotenv_secret_component) || s.ends_with(".env") {
         return true;
     }
     if s.contains(".git/config") {
@@ -551,7 +556,7 @@ fn workspace_write_path_blocked(path: &std::path::Path) -> bool {
 }
 
 /// Write UTF-8 text to a path relative to the workspace root (same discovery as chat / agent).
-/// Blocks obvious sensitive paths (.env, .git/config, .key, .pem).
+/// Blocks obvious sensitive paths (`.env`, `.env.*`, `.envrc`, `.git/config`, `.key`, `.pem`).
 pub fn write_workspace_text_file(
     workspace: &str,
     relative_path: &str,
@@ -748,6 +753,40 @@ mod workspace_path_tests {
     use super::*;
 
     #[test]
+    fn blocks_dotenv_variants_and_allows_ordinary_env_named_files() {
+        assert!(workspace_write_path_blocked(std::path::Path::new(".env")));
+        assert!(workspace_write_path_blocked(std::path::Path::new(
+            "frontend/.env.local"
+        )));
+        assert!(workspace_write_path_blocked(std::path::Path::new(
+            ".env.production"
+        )));
+        assert!(workspace_write_path_blocked(std::path::Path::new(".envrc")));
+        assert!(workspace_write_path_blocked(std::path::Path::new(
+            "secrets.env"
+        )));
+        assert!(!workspace_write_path_blocked(std::path::Path::new(
+            "src/env.rs"
+        )));
+        assert!(!workspace_write_path_blocked(std::path::Path::new(
+            "environment.json"
+        )));
+    }
+
+    #[test]
+    fn write_workspace_text_file_rejects_env_local() {
+        let tmp =
+            std::env::temp_dir().join(format!("skilllite_ws_env_local_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let ws = tmp.to_string_lossy().into_owned();
+        let err = write_workspace_text_file(&ws, ".env.local", "SECRET=1\n").unwrap_err();
+        assert!(err.contains("敏感"), "{}", err);
+        assert!(!tmp.join(".env.local").exists());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn resolve_rejects_parent_escape() {
         let tmp = std::env::temp_dir().join(format!("skilllite_ws_test_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
@@ -836,10 +875,8 @@ mod workspace_path_tests {
 
     #[test]
     fn explicit_workspace_does_not_float_to_parent_skill_root() {
-        let base = std::env::temp_dir().join(format!(
-            "skilllite_ws_explicit_root_{}",
-            std::process::id()
-        ));
+        let base =
+            std::env::temp_dir().join(format!("skilllite_ws_explicit_root_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let parent = base.join("parent");
         let child = parent.join("test");

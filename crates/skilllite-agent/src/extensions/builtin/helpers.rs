@@ -11,7 +11,19 @@ use crate::types;
 
 // ─── Security helpers (shared by submodules via super::) ─────────────────────
 
-const SENSITIVE_PATTERNS: &[&str] = &[".env", ".git/config", ".key"];
+const SENSITIVE_PATTERNS: &[&str] = &[".git/config", ".key"];
+
+/// Dotenv / direnv filenames that hold secrets (`.env`, `.env.local`, `.envrc`, …).
+fn is_dotenv_secret_component(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n == ".env" || n == ".envrc" || n.starts_with(".env.")
+}
+
+fn path_has_dotenv_secret_component(path: &str) -> bool {
+    path.replace('\\', "/")
+        .split('/')
+        .any(is_dotenv_secret_component)
+}
 
 /// A11: 关键路径 — 需要确认但非完全禁止（如 package.json、Cargo.toml、配置文件等）
 const KEY_PATH_PATTERNS: &[&str] = &[
@@ -36,6 +48,9 @@ const KEY_PATH_PATTERNS: &[&str] = &[
 
 pub(super) fn is_sensitive_write_path(path: &str) -> bool {
     let lower = path.to_lowercase();
+    if path_has_dotenv_secret_component(&lower) || lower.ends_with(".env") {
+        return true;
+    }
     for pattern in SENSITIVE_PATTERNS {
         if lower.ends_with(pattern) || lower.contains(&format!("{}/", pattern)) {
             return true;
@@ -339,4 +354,38 @@ pub(super) fn unescape_json_string(s: &str) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod sensitive_path_tests {
+    use super::is_sensitive_write_path;
+
+    #[test]
+    fn blocks_dotenv_and_common_variants() {
+        for path in [
+            ".env",
+            ".ENV",
+            "frontend/.env.local",
+            ".env.production",
+            ".env.development",
+            "apps/web/.env.staging",
+            ".envrc",
+            r"win\.env.local",
+            "secrets.env",
+        ] {
+            assert!(is_sensitive_write_path(path), "expected block: {path}");
+        }
+    }
+
+    #[test]
+    fn allows_non_dotenv_env_named_sources() {
+        for path in [
+            "src/env.rs",
+            "environment.json",
+            "docs/env-guide.md",
+            "config/envoy.yaml",
+        ] {
+            assert!(!is_sensitive_write_path(path), "expected allow: {path}");
+        }
+    }
 }

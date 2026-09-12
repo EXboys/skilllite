@@ -474,7 +474,7 @@ registry.register(memory::tools());
 
 | File | Tools |
 |------|-------|
-| `file_ops.rs` | read_file, write_file, search_replace, list_directory, file_exists |
+| `file_ops.rs` | read_file, write_file, search_replace, list_directory, file_exists. Hard-blocks `.env`, dotenv variants (`.env.local`, `.env.production`, …), `.envrc`, `.key`, `.pem`, and `.git/config`. |
 | `run_command.rs` | run_command (with dangerous command detection and user confirmation) |
 | `output.rs` | write_output, list_output |
 | `preview.rs` | preview_server (built-in HTTP file server) |

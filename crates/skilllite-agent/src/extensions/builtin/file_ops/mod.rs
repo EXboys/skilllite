@@ -51,7 +51,7 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "read_file".to_string(),
-                description: "Read the contents of a file. Returns UTF-8 text with line numbers (N|line). Use start_line/end_line for partial reads to save context. Blocks .env, .key, .git/config. Other files have sensitive values (API_KEY, password, etc.) redacted.".to_string(),
+                description: "Read the contents of a file. Returns UTF-8 text with line numbers (N|line). Use start_line/end_line for partial reads to save context. Blocks .env, .env.* (e.g. .env.local), .envrc, .key, .git/config. Other files have sensitive values (API_KEY, password, etc.) redacted.".to_string(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -76,7 +76,7 @@ pub(super) fn tool_definitions() -> Vec<ToolDefinition> {
             tool_type: "function".to_string(),
             function: FunctionDef {
                 name: "write_file".to_string(),
-                description: "Write content to a file under the workspace (source, config, docs you are editing). Creates parent directories if needed. Blocks sensitive paths (.env, .key, .git/config). \
+                description: "Write content to a file under the workspace (source, config, docs you are editing). Creates parent directories if needed. Blocks sensitive paths (.env, .env.*, .envrc, .key, .git/config). \
 For **deliverables** the user should open from the app (reports, tutorials, exports, generated markdown/HTML, screenshots paths in configs): you MUST use **write_output**, not write_file — otherwise files are easy to \"lose\" (not listed in the Output panel). \
 With write_file, use normal project-relative paths (e.g. src/, docs/); do not invent nested paths like users/.../output/.... Use append: true to append instead of overwriting.".to_string(),
                 parameters: json!({
