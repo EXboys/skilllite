@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use skilllite_core::path_validation::{skill_dir_under_root, validate_skill_dir_name};
 use skilllite_core::skill::manifest;
 use skilllite_core::skill::metadata;
 
@@ -257,6 +258,13 @@ pub fn cmd_import_openclaw_skills(
 
     let mut planned: Vec<(String, PathBuf, String, String)> = Vec::new();
     for (logical_name, src_path, tag) in &candidates {
+        if let Err(err) = validate_skill_dir_name(logical_name) {
+            eprintln!(
+                "   ⚠ {}: skipping unsafe skill name ({})",
+                logical_name, err
+            );
+            continue;
+        }
         let Some(dest_name) = resolve_dest_name(&skills_path, logical_name, policy) else {
             eprintln!(
                 "   ⏭ {}: destination exists (--skill-conflict skip)",
@@ -264,6 +272,14 @@ pub fn cmd_import_openclaw_skills(
             );
             continue;
         };
+        // Rename policy appends a suffix; re-validate so join never escapes.
+        if let Err(err) = validate_skill_dir_name(&dest_name) {
+            eprintln!(
+                "   ⚠ {}: skipping unsafe destination name {} ({})",
+                logical_name, dest_name, err
+            );
+            continue;
+        }
         planned.push((
             dest_name.clone(),
             src_path.clone(),
@@ -352,9 +368,10 @@ pub fn cmd_import_openclaw_skills(
         if skipped_suspicious.contains(dest_name.as_str()) {
             continue;
         }
-        let dest = skills_path.join(dest_name);
+        let dest = skill_dir_under_root(&skills_path, dest_name)
+            .map_err(|e| crate::Error::validation(e.to_string()))?;
         copy_skill(src_path, &dest)?;
-        let admission = risk_by_name.get(dest_name).copied();
+        let admission = risk_by_name.get(dest_name.as_str()).copied();
         let source = format!("{source_prefix}:{tag}");
         let _entry = manifest::upsert_installed_skill_with_admission(
             &skills_path,
@@ -431,5 +448,102 @@ mod tests {
         assert_eq!(unique_renamed(skills, "x").as_str(), "x-imported");
         fs::create_dir_all(skills.join("x-imported")).unwrap();
         assert_eq!(unique_renamed(skills, "x").as_str(), "x-imported-2");
+    }
+
+    #[test]
+    fn import_skips_path_escaping_frontmatter_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        let skills_dir = project.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let openclaw_home = project.join(".openclaw");
+        let evil_src = openclaw_home.join("skills").join("evil-src");
+        fs::create_dir_all(&evil_src).unwrap();
+        fs::write(
+            evil_src.join("SKILL.md"),
+            "---\nname: ../escaped-skill\ndescription: malicious\n---\n# evil\n",
+        )
+        .unwrap();
+        fs::write(evil_src.join("main.py"), "print('pwn')\n").unwrap();
+
+        let safe_src = openclaw_home.join("skills").join("safe-src");
+        fs::create_dir_all(&safe_src).unwrap();
+        fs::write(
+            safe_src.join("SKILL.md"),
+            "---\nname: safe-skill\ndescription: ok\n---\n# safe\n",
+        )
+        .unwrap();
+        fs::write(safe_src.join("main.py"), "print('ok')\n").unwrap();
+
+        cmd_import_openclaw_skills(
+            project.to_str().unwrap(),
+            Some(openclaw_home.to_str().unwrap()),
+            skills_dir.to_str().unwrap(),
+            "skip",
+            false,
+            true, // force: skip admission scan prompts
+            true, // scan_offline
+        )
+        .unwrap();
+
+        let escaped = project.join("escaped-skill");
+        assert!(
+            !escaped.exists(),
+            "path-escaping frontmatter name must not install outside skills root"
+        );
+        assert!(
+            skills_dir.join("safe-skill").join("SKILL.md").is_file(),
+            "safe skills should still import"
+        );
+        assert!(!skills_dir.join("../escaped-skill").exists());
+    }
+
+    #[test]
+    fn import_skips_absolute_frontmatter_names() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = tmp.path();
+        let skills_dir = project.join("skills");
+        fs::create_dir_all(&skills_dir).unwrap();
+
+        let abs_dest = tmp.path().join("abs-pwn-target");
+        let openclaw_home = project.join(".openclaw");
+        let evil_src = openclaw_home.join("skills").join("abs-src");
+        fs::create_dir_all(&evil_src).unwrap();
+        // Absolute name would replace skills_root on Path::join.
+        let evil_name = abs_dest.to_string_lossy();
+        fs::write(
+            evil_src.join("SKILL.md"),
+            format!("---\nname: {evil_name}\ndescription: malicious\n---\n# evil\n"),
+        )
+        .unwrap();
+        fs::write(evil_src.join("main.py"), "print('pwn')\n").unwrap();
+
+        cmd_import_openclaw_skills(
+            project.to_str().unwrap(),
+            Some(openclaw_home.to_str().unwrap()),
+            skills_dir.to_str().unwrap(),
+            "skip",
+            false,
+            true,
+            true,
+        )
+        .unwrap();
+
+        assert!(
+            !abs_dest.exists(),
+            "absolute frontmatter name must not install outside skills root"
+        );
+        let skill_dirs: Vec<_> = skills_dir
+            .read_dir()
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+            .collect();
+        assert!(
+            skill_dirs.is_empty(),
+            "no skill directories should be created for absolute escape names, got {:?}",
+            skill_dirs
+        );
     }
 }
