@@ -50,6 +50,9 @@ pub fn load_rules(workspace: Option<&Path>, chat_root: Option<&Path>) -> Vec<Pla
         }
     }
 
+    // Keep disabled rules on disk for evolution merge/explain, but never feed them
+    // into the planner. Filtering here (not in seed::load_rules) avoids write-back loss.
+    rules.retain(|r| !r.disabled);
     rules
 }
 
@@ -124,4 +127,40 @@ pub fn compact_examples_section(user_message: &str) -> String {
         }
     }
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::TempDir;
+
+    #[test]
+    fn load_rules_excludes_disabled_entries() {
+        let tmp = TempDir::new().expect("tempdir");
+        let prompts = tmp.path().join("prompts");
+        fs::create_dir_all(&prompts).expect("mkdir");
+        fs::write(
+            prompts.join("rules.json"),
+            r#"[
+              {
+                "id": "active_rule",
+                "instruction": "Keep this rule",
+                "mutable": true
+              },
+              {
+                "id": "disabled_rule",
+                "instruction": "Do not inject this rule",
+                "mutable": true,
+                "disabled": true
+              }
+            ]"#,
+        )
+        .expect("write rules");
+
+        let rules = load_rules(None, Some(tmp.path()));
+        let ids: Vec<&str> = rules.iter().map(|r| r.id.as_str()).collect();
+        assert!(ids.contains(&"active_rule"));
+        assert!(!ids.contains(&"disabled_rule"));
+    }
 }

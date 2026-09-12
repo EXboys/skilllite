@@ -426,6 +426,7 @@ fn parse_external_rule_response(content: &str) -> Result<Vec<PlanningRule>> {
             mutable: true,
             origin: "external".to_string(),
             reusable: false,
+            disabled: false,
             effectiveness: None,
             trigger_count: None,
         });
@@ -900,6 +901,7 @@ mod tests {
             mutable: true,
             origin: "external".to_string(),
             reusable: false,
+            disabled: false,
             effectiveness: None,
             trigger_count: None,
         };

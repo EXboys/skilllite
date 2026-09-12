@@ -48,6 +48,7 @@ fn filter_rules_for_user_message<'a>(
     let msg_lower = user_message.to_lowercase();
     rules
         .iter()
+        .filter(|r| !r.disabled)
         .filter(|r| {
             if r.keywords.is_empty() && r.context_keywords.is_empty() {
                 return true;
@@ -817,6 +818,44 @@ mod tests {
     }
 
     #[test]
+    fn filter_rules_for_user_message_skips_disabled_rules() {
+        let rules = vec![
+            PlanningRule {
+                id: "always_active".to_string(),
+                priority: 50,
+                keywords: vec![],
+                context_keywords: vec![],
+                tool_hint: None,
+                instruction: "Always apply".to_string(),
+                mutable: true,
+                origin: "evolved".to_string(),
+                reusable: false,
+                disabled: false,
+                effectiveness: None,
+                trigger_count: None,
+            },
+            PlanningRule {
+                id: "always_disabled".to_string(),
+                priority: 50,
+                keywords: vec![],
+                context_keywords: vec![],
+                tool_hint: None,
+                instruction: "Should not apply".to_string(),
+                mutable: true,
+                origin: "evolved".to_string(),
+                reusable: false,
+                disabled: true,
+                effectiveness: None,
+                trigger_count: None,
+            },
+        ];
+
+        let matched = filter_rules_for_user_message(&rules, "any message");
+        let ids: Vec<&str> = matched.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, vec!["always_active"]);
+    }
+
+    #[test]
     fn test_generate_task_list_records_matched_rule_ids() {
         let mut planner = TaskPlanner::new(None, None, None);
         planner.available_rules = vec![
@@ -830,6 +869,7 @@ mod tests {
                 mutable: false,
                 origin: "seed".to_string(),
                 reusable: false,
+                disabled: false,
                 effectiveness: None,
                 trigger_count: None,
             },
@@ -843,6 +883,7 @@ mod tests {
                 mutable: false,
                 origin: "seed".to_string(),
                 reusable: false,
+                disabled: false,
                 effectiveness: None,
                 trigger_count: None,
             },
@@ -856,6 +897,7 @@ mod tests {
                 mutable: false,
                 origin: "seed".to_string(),
                 reusable: false,
+                disabled: false,
                 effectiveness: None,
                 trigger_count: None,
             },
@@ -896,6 +938,7 @@ mod tests {
                 mutable: false,
                 origin: "seed".to_string(),
                 reusable: false,
+                disabled: false,
                 effectiveness: None,
                 trigger_count: None,
             },
@@ -909,6 +952,7 @@ mod tests {
                 mutable: false,
                 origin: "seed".to_string(),
                 reusable: false,
+                disabled: false,
                 effectiveness: None,
                 trigger_count: None,
             },
@@ -922,6 +966,7 @@ mod tests {
                 mutable: false,
                 origin: "seed".to_string(),
                 reusable: false,
+                disabled: false,
                 effectiveness: None,
                 trigger_count: None,
             },
