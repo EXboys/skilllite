@@ -3,7 +3,7 @@
 //! Each plan is appended as a JSON line. Supports reading latest plan.
 //! Backward compatible: can still read legacy single .json files.
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use anyhow::Context;
 use serde_json::Value;
 use std::fs::OpenOptions;
@@ -15,20 +15,28 @@ fn date_today() -> String {
 }
 
 /// Path for plan jsonl file: plans/{session_key}-{date}.jsonl
-pub fn plan_path_jsonl(plans_dir: &Path, session_key: &str, date: Option<&str>) -> PathBuf {
+pub fn plan_path_jsonl(plans_dir: &Path, session_key: &str, date: Option<&str>) -> Result<PathBuf> {
     let date_str = date.map(|s| s.to_string()).unwrap_or_else(date_today);
-    plans_dir.join(format!("{}-{}.jsonl", session_key, date_str))
+    let file_name = format!("{}-{}.jsonl", session_key, date_str);
+    skilllite_core::path_validation::session_file_under_dir(plans_dir, session_key, &file_name)
+        .map_err(|e| Error::validation(e.to_string()))
 }
 
 /// Legacy path: plans/{session_key}-{date}.json (single file, overwrite)
-pub fn plan_path_legacy(plans_dir: &Path, session_key: &str, date: Option<&str>) -> PathBuf {
+pub fn plan_path_legacy(
+    plans_dir: &Path,
+    session_key: &str,
+    date: Option<&str>,
+) -> Result<PathBuf> {
     let date_str = date.map(|s| s.to_string()).unwrap_or_else(date_today);
-    plans_dir.join(format!("{}-{}.json", session_key, date_str))
+    let file_name = format!("{}-{}.json", session_key, date_str);
+    skilllite_core::path_validation::session_file_under_dir(plans_dir, session_key, &file_name)
+        .map_err(|e| Error::validation(e.to_string()))
 }
 
 /// Append a plan entry to the jsonl file.
 pub fn append_plan(plans_dir: &Path, session_key: &str, plan_json: &Value) -> Result<()> {
-    let path = plan_path_jsonl(plans_dir, session_key, None);
+    let path = plan_path_jsonl(plans_dir, session_key, None)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -48,7 +56,7 @@ fn read_plan_entries(
     session_key: &str,
     date: Option<&str>,
 ) -> Result<Vec<Value>> {
-    let path = plan_path_jsonl(plans_dir, session_key, date);
+    let path = plan_path_jsonl(plans_dir, session_key, date)?;
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -79,7 +87,7 @@ pub fn read_latest_plan(
         return Ok(Some(last.clone()));
     }
     // Fallback: legacy single .json file
-    let legacy_path = plan_path_legacy(plans_dir, session_key, date);
+    let legacy_path = plan_path_legacy(plans_dir, session_key, date)?;
     if legacy_path.exists() {
         let content = skilllite_fs::read_file(&legacy_path)
             .map_err(|e| crate::error::Error::Other(e.into()))?;
@@ -91,6 +99,8 @@ pub fn read_latest_plan(
 
 /// List all plan files for a session (for UI / history browsing).
 pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBuf>> {
+    skilllite_core::path_validation::validate_session_key(session_key)
+        .map_err(|e| Error::validation(e.to_string()))?;
     if !plans_dir.exists() {
         return Ok(Vec::new());
     }
@@ -117,4 +127,34 @@ pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBu
             )
     });
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn plan_path_rejects_path_escaping_session_keys() {
+        let dir = PathBuf::from("/tmp/skilllite-chat/plans");
+        for key in ["/tmp/evil", "../evil", "foo/bar", "C:/Windows/Temp"] {
+            let err = plan_path_jsonl(&dir, key, Some("2026-07-28")).unwrap_err();
+            assert!(
+                err.to_string().contains("invalid session key"),
+                "expected rejection for {key:?}, got {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn append_plan_rejects_absolute_session_key_before_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let plans = tmp.path().join("plans");
+        std::fs::create_dir_all(&plans).unwrap();
+        let outside = tmp.path().join("pwned");
+        let key = outside.to_string_lossy();
+        let err = append_plan(&plans, key.as_ref(), &serde_json::json!({"ok": true})).unwrap_err();
+        assert!(err.to_string().contains("invalid session key"));
+        assert!(!outside.exists());
+        assert!(std::fs::read_dir(&plans).unwrap().next().is_none());
+    }
 }

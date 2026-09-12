@@ -110,9 +110,12 @@ impl ChatSession {
     /// Path to today's append-only transcript file for this session (same file as `ensure_session`).
     /// Used by agent RPC to persist desktop-only UI rows (e.g. confirmation/clarification) without
     /// affecting LLM history (`read_history` ignores `custom_message` entries).
-    pub fn transcript_append_path(&self) -> PathBuf {
+    pub fn transcript_append_path(&self) -> Result<PathBuf> {
         let transcripts_dir = self.data_root.join("transcripts");
-        transcript::transcript_path_today(&transcripts_dir, &self.session_key)
+        Ok(transcript::transcript_path_today(
+            &transcripts_dir,
+            &self.session_key,
+        )?)
     }
 
     /// Ensure session and transcript exist, return session_id.
@@ -134,7 +137,7 @@ impl ChatSession {
 
         // Ensure transcript
         let transcripts_dir = self.data_root.join("transcripts");
-        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key)?;
         transcript::ensure_session_header(&t_path, &session_id, Some(&self.config.workspace))?;
 
         self.session_id = Some(session_id.clone());
@@ -528,7 +531,7 @@ impl ChatSession {
         usage: &crate::types::LlmUsageTotals,
     ) -> Result<()> {
         let transcripts_dir = self.data_root.join("transcripts");
-        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key)?;
         let llm_usage = Some(transcript::TranscriptLlmUsage {
             prompt_tokens: usage.prompt_tokens,
             completion_tokens: usage.completion_tokens,
@@ -555,7 +558,7 @@ impl ChatSession {
         images: Option<&[crate::types::UserImageAttachment]>,
     ) -> Result<()> {
         let transcripts_dir = self.data_root.join("transcripts");
-        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key)?;
         let entry = transcript::TranscriptEntry::Message {
             id: uuid::Uuid::new_v4().to_string(),
             parent_id: None,
@@ -802,7 +805,7 @@ impl ChatSession {
 
         // Write compaction entry to transcript
         let transcripts_dir = self.data_root.join("transcripts");
-        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key)?;
         let compaction_entry = transcript::TranscriptEntry::Compaction {
             id: uuid::Uuid::new_v4().to_string(),
             parent_id: None,
@@ -995,7 +998,7 @@ impl ChatSession {
 
         // Also append compaction to transcript so read_history returns summary (CLI /clear case)
         let transcripts_dir = self.data_root.join("transcripts");
-        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
+        let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key)?;
         let entry = transcript::TranscriptEntry::Compaction {
             id: uuid::Uuid::new_v4().to_string(),
             parent_id: None,

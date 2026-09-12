@@ -109,7 +109,7 @@ pub fn handle_transcript_append(params: &Value) -> Result<Value> {
 
     let root = chat_root_for_rpc(workspace_path)?;
     let transcripts_dir = root.join("transcripts");
-    let transcript_path = transcript_path_today(&transcripts_dir, session_key);
+    let transcript_path = transcript_path_today(&transcripts_dir, session_key)?;
 
     // Accept flexible entry format - try structured first, else append raw line
     let entry: TranscriptEntry = match serde_json::from_value(entry_json.clone()) {
@@ -291,7 +291,7 @@ pub fn handle_transcript_ensure(params: &Value) -> Result<Value> {
 
     let root = chat_root_for_rpc(workspace_path)?;
     let transcripts_dir = root.join("transcripts");
-    let transcript_path = transcript_path_today(&transcripts_dir, session_key);
+    let transcript_path = transcript_path_today(&transcripts_dir, session_key)?;
 
     ensure_session_header(&transcript_path, session_id, cwd)?;
     Ok(json!({"ok": true}))

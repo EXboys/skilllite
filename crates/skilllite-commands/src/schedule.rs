@@ -64,6 +64,8 @@ pub fn cmd_tick(workspace: Option<&str>, dry_run: bool) -> Result<()> {
                 .session_key
                 .clone()
                 .unwrap_or_else(|| format!("schedule-{}", job.id));
+            skilllite_core::path_validation::validate_session_key(&session)
+                .map_err(|e| crate::Error::validation(e.to_string()))?;
             eprintln!(
                 "schedule: job `{}` → session `{}` (dry-run)",
                 job.id, session
@@ -104,6 +106,13 @@ pub fn cmd_tick(workspace: Option<&str>, dry_run: bool) -> Result<()> {
             .session_key
             .clone()
             .unwrap_or_else(|| format!("schedule-{}", job.id));
+        if let Err(e) = skilllite_core::path_validation::validate_session_key(&session) {
+            eprintln!(
+                "schedule: job `{}` skipped — invalid session key `{}`: {}",
+                job.id, session, e
+            );
+            continue;
+        }
         eprintln!("schedule: job `{}` → session `{}`", job.id, session);
         match skilllite_agent::chat::run_chat(config.clone(), session, Some(job.injected_message()))
         {

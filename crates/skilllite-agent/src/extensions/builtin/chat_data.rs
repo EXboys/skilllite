@@ -151,7 +151,7 @@ pub(super) fn execute_chat_history(args: &Value) -> Result<String> {
             &transcripts_dir,
             session_key,
             Some(d),
-        );
+        )?;
         if path.exists() {
             skilllite_executor::transcript::read_entries(&path)?
         } else {

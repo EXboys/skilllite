@@ -68,4 +68,8 @@ pub enum PathValidationError {
     /// Path escapes the allowed root (potential path traversal).
     #[error("{path_type} escapes allowed root: {path}")]
     PathEscape { path_type: String, path: String },
+
+    /// Session key is not a single safe path segment.
+    #[error("invalid session key: {key}")]
+    InvalidSessionKey { key: String },
 }

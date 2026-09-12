@@ -584,6 +584,8 @@ async fn handle_agent_chat(
         .get("session_key")
         .and_then(|s| s.as_str())
         .unwrap_or("default");
+    skilllite_core::path_validation::validate_session_key(session_key)
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
 
     let mut config = AgentConfig::from_env();
     if let Some(overrides) = params.get("config") {
@@ -670,7 +672,7 @@ async fn handle_agent_chat(
     let loaded_skills = skills::load_skills(&skill_dirs);
 
     let mut session = ChatSession::new(config, session_key, loaded_skills);
-    let transcript_path = session.transcript_append_path();
+    let transcript_path = session.transcript_append_path()?;
     let mut sink = RpcEventSink::new(writer.clone(), reader, Some(transcript_path));
 
     match session
