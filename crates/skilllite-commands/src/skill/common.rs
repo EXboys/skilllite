@@ -1,5 +1,6 @@
 //! Shared helpers for skill management commands.
 
+use skilllite_core::path_validation::{skill_dir_under_root, validate_skill_dir_name};
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::metadata;
 use std::path::{Path, PathBuf};
@@ -19,11 +20,13 @@ pub fn resolve_skills_dir(skills_dir: &str) -> PathBuf {
 }
 
 pub fn find_skill(skills_path: &Path, skill_name: &str) -> Result<PathBuf> {
+    validate_skill_dir_name(skill_name).map_err(|e| crate::Error::validation(e.to_string()))?;
     if !skills_path.exists() {
         bail!("Skills directory not found: {}", skills_path.display());
     }
 
-    let direct = skills_path.join(skill_name);
+    let direct = skill_dir_under_root(skills_path, skill_name)
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
     if direct.is_dir() && direct.join("SKILL.md").exists() {
         return Ok(direct);
     }
@@ -234,4 +237,22 @@ fn trust_json_fields(skill_path: &Path) -> (String, u8, Vec<String>) {
         report.trust_score,
         report.trust_reasons,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn find_skill_rejects_path_traversal_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let skills = tmp.path().join("skills");
+        fs::create_dir_all(&skills).unwrap();
+        let err = find_skill(&skills, "../escape").unwrap_err();
+        assert!(
+            err.to_string().contains("invalid skill directory name"),
+            "unexpected error: {err}"
+        );
+    }
 }

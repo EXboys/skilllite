@@ -253,6 +253,45 @@ fn mcp_get_skill_info_nonexistent() {
     );
 }
 
+#[test]
+fn mcp_get_skill_info_rejects_path_traversal_name() {
+    let tmp = tempfile::tempdir().unwrap();
+    create_calculator_skill(tmp.path());
+    let escape_target = tmp.path().join("outside-skill");
+    std::fs::create_dir_all(&escape_target).unwrap();
+    std::fs::write(
+        escape_target.join("SKILL.md"),
+        "---\nname: outside\ndescription: secret\n---\n# Outside\n",
+    )
+    .unwrap();
+
+    let stdin = jsonrpc_request(
+        1,
+        "tools/call",
+        json!({
+            "name": "get_skill_info",
+            "arguments": {"skill_name": "../outside-skill"}
+        }),
+    );
+
+    let out = run_in_dir_with_stdin(&["mcp", "-s", ".skills"], tmp.path(), &stdin);
+    assert!(out.status.success());
+
+    let responses = parse_responses(&stdout_str(&out));
+    let resp = find_response(&responses, 1).expect("should have response");
+    let result = &resp["result"];
+    assert_eq!(
+        result["isError"], true,
+        "traversal skill_name should be an error"
+    );
+    let text = result["content"][0]["text"].as_str().unwrap_or("");
+    assert!(
+        text.contains("invalid skill directory name"),
+        "expected invalid skill directory name error, got: {}",
+        text
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // Error handling
 // ═══════════════════════════════════════════════════════════════════════════════

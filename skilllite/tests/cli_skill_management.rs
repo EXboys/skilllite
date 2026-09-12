@@ -99,6 +99,28 @@ fn show_json_returns_valid_json() {
 }
 
 #[test]
+fn show_path_traversal_skill_name_fails_without_escape() {
+    let tmp = tempfile::tempdir().unwrap();
+    create_calculator_skill(tmp.path());
+    let escape_target = tmp.path().join("outside-skill");
+    std::fs::create_dir_all(&escape_target).unwrap();
+    std::fs::write(escape_target.join("SKILL.md"), "name: outside\n").unwrap();
+
+    let out = run_in_dir(&["show", "../outside-skill", "-s", ".skills"], tmp.path());
+    assert!(
+        !out.status.success(),
+        "traversal skill name must fail: {}",
+        stderr_str(&out)
+    );
+    let text = stderr_str(&out) + &stdout_str(&out);
+    assert!(
+        text.contains("invalid skill directory name"),
+        "expected invalid skill directory name error, got: {}",
+        text
+    );
+}
+
+#[test]
 fn show_nonexistent_skill_fails() {
     let tmp = tempfile::tempdir().unwrap();
     create_calculator_skill(tmp.path());

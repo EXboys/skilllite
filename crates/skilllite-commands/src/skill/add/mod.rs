@@ -4,6 +4,7 @@ use anyhow::Context;
 use std::fs;
 use std::path::PathBuf;
 
+use skilllite_core::path_validation::{skill_dir_under_root, validate_skill_dir_name};
 use skilllite_core::skill::manifest;
 use skilllite_core::skill::metadata;
 
@@ -127,7 +128,13 @@ pub fn cmd_add(
                     .to_string(),
             };
 
-            let dest = skills_path.join(&skill_name);
+            if let Err(err) = validate_skill_dir_name(&skill_name) {
+                eprintln!("   ❌ {}: {}", skill_name, err);
+                continue;
+            }
+
+            let dest = skill_dir_under_root(&skills_path, &skill_name)
+                .map_err(|e| crate::Error::validation(e.to_string()))?;
             if dest.exists() && !force {
                 eprintln!(
                     "   ⏭ {}: already exists (use --force to overwrite)",
@@ -198,7 +205,8 @@ pub fn cmd_add(
             if skipped_suspicious.contains(skill_name.as_str()) {
                 continue;
             }
-            let dest = skills_path.join(skill_name);
+            let dest = skill_dir_under_root(&skills_path, skill_name)
+                .map_err(|e| crate::Error::validation(e.to_string()))?;
             copy_skill(skill_path, &dest)?;
             let admission = risk_by_name.get(skill_name).copied();
             let _entry = manifest::upsert_installed_skill_with_admission(
@@ -251,6 +259,7 @@ pub fn update_skill_from_source(
     skill_name: &str,
     source: &str,
 ) -> Result<()> {
+    validate_skill_dir_name(skill_name).map_err(|e| crate::Error::validation(e.to_string()))?;
     let parsed = parse_source(source);
     let mut temp_dir: Option<PathBuf> = None;
 
@@ -281,7 +290,8 @@ pub fn update_skill_from_source(
         })
         .ok_or_else(|| crate::Error::validation(format!("源头中未找到技能: {}", skill_name)))?;
 
-    let dest = skills_path.join(skill_name);
+    let dest = skill_dir_under_root(skills_path, skill_name)
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
     copy_skill(&skill_path, &dest)?;
     manifest::upsert_installed_skill(skills_path, &dest, source)?;
 
@@ -289,4 +299,55 @@ pub fn update_skill_from_source(
         let _ = fs::remove_dir_all(td);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    fn write_local_skill(dir: &Path, frontmatter_name: &str) {
+        fs::create_dir_all(dir).unwrap();
+        fs::write(
+            dir.join("SKILL.md"),
+            format!("---\nname: \"{frontmatter_name}\"\ndescription: traverse\n---\n# Traversal\n"),
+        )
+        .unwrap();
+        fs::write(dir.join("main.py"), "print('x')\n").unwrap();
+    }
+
+    #[test]
+    fn cmd_add_rejects_frontmatter_name_path_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let workspace = tmp.path().join("workspace");
+        let staging = tmp.path().join("staging").join("innocent-dir");
+        let skills = workspace.join(".skills");
+        let escape_target = workspace.join("keep-me");
+        fs::create_dir_all(&skills).unwrap();
+        fs::create_dir_all(&escape_target).unwrap();
+        fs::write(escape_target.join("sentinel.txt"), "still here").unwrap();
+        write_local_skill(&staging, "../keep-me");
+
+        let prev = std::env::current_dir().unwrap();
+        std::env::set_current_dir(&workspace).unwrap();
+        let result = cmd_add(staging.to_str().unwrap(), ".skills", true, false, true);
+        std::env::set_current_dir(prev).unwrap();
+        assert!(
+            result.is_ok(),
+            "add should fail closed without hard error: {result:?}"
+        );
+        assert!(
+            escape_target.join("sentinel.txt").is_file(),
+            "escape target must not be overwritten"
+        );
+        assert!(
+            !skills.join("keep-me").exists(),
+            "traversal name must not install under skills"
+        );
+        assert!(
+            fs::read_dir(&skills).unwrap().next().is_none(),
+            "skills root should remain empty after rejected install"
+        );
+    }
 }

@@ -3,6 +3,7 @@
 use anyhow::Context;
 use std::fs;
 
+use skilllite_core::path_validation::{skill_dir_under_root, validate_skill_dir_name};
 use skilllite_core::skill::manifest;
 use skilllite_core::skill::metadata;
 
@@ -13,13 +14,15 @@ use crate::Result;
 
 /// `skilllite remove <name>`
 pub fn cmd_remove(skill_name: &str, skills_dir: &str, force: bool) -> Result<()> {
+    validate_skill_dir_name(skill_name).map_err(|e| crate::Error::validation(e.to_string()))?;
     let skills_path = common::resolve_skills_dir(skills_dir);
 
     if !skills_path.exists() {
         bail!("No skills directory found. Nothing to remove.");
     }
 
-    let mut skill_path = skills_path.join(skill_name);
+    let mut skill_path = skill_dir_under_root(&skills_path, skill_name)
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
 
     if !skill_path.exists() {
         let mut found = false;
