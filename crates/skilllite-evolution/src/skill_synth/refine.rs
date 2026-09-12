@@ -12,6 +12,7 @@ use crate::EvolutionMessage;
 
 use super::infer;
 use super::parse;
+use super::path_safety::script_path_under_skill_dir;
 use super::query;
 use super::scan;
 use super::SkillMeta;
@@ -37,7 +38,7 @@ pub(super) async fn refine_loop<L: EvolutionLlm>(
 ) -> Result<Option<String>> {
     let mut current_script = initial_script.to_string();
     let mut current_error = initial_error.to_string();
-    let script_path = skill_dir.join(entry_point);
+    let script_path = script_path_under_skill_dir(skill_dir, entry_point)?;
 
     for round in 1..=MAX_REFINE_ROUNDS {
         tracing::info!(
@@ -215,7 +216,7 @@ pub(super) async fn refine_weakest_skill<L: EvolutionLlm>(
     let skill_md = skilllite_fs::read_file(&skill_md_path).unwrap_or_default();
 
     let (entry_point, _test_input) = infer::infer_skill_execution(llm, model, &skill_dir).await?;
-    let script_path = skill_dir.join(&entry_point);
+    let script_path = script_path_under_skill_dir(&skill_dir, &entry_point)?;
     let current_script = skilllite_fs::read_file(&script_path).unwrap_or_default();
 
     if current_script.is_empty() {

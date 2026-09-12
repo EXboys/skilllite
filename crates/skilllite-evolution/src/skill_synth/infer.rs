@@ -10,6 +10,7 @@ use crate::Result;
 use skilllite_sandbox::common::hide_child_console;
 use skilllite_sandbox::env::builder;
 
+use super::path_safety::script_path_under_skill_dir;
 use super::SkillMeta;
 use super::MAX_PARSE_RETRIES;
 use super::SKILL_EXECUTION_INFERENCE_PROMPT;
@@ -344,7 +345,7 @@ pub(super) async fn infer_skill_execution<L: EvolutionLlm>(
         "{}".to_string()
     };
 
-    let full_path = skill_dir.join(&entry);
+    let full_path = script_path_under_skill_dir(skill_dir, &entry)?;
     if !full_path.exists() {
         bail!("LLM inferred entry_point '{}' does not exist", entry);
     }
@@ -360,7 +361,10 @@ pub(super) fn test_skill_invoke(
     test_input: &str,
     env_path: Option<&Path>,
 ) -> Result<(bool, String)> {
-    let script_path = skill_dir.join(entry_point);
+    let script_path = match script_path_under_skill_dir(skill_dir, entry_point) {
+        Ok(path) => path,
+        Err(_) => return Ok((false, "invalid entry_point".to_string())),
+    };
     if !script_path.exists() {
         return Ok((false, "no entry script".to_string()));
     }

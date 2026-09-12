@@ -19,6 +19,7 @@ mod env_helper;
 mod generate;
 mod infer;
 mod parse;
+mod path_safety;
 mod query;
 mod refine;
 mod repair;
@@ -275,6 +276,7 @@ pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> 
 
 // ─── Re-exports ──────────────────────────────────────────────────────────────
 
+pub use path_safety::{script_path_under_skill_dir, validate_generated_skill_name};
 pub use repair::{repair_one_skill, repair_skills};
 pub use scan::track_skill_usage;
 pub use validate::{validate_skills, SkillValidation};

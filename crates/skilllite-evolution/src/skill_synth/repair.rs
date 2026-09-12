@@ -10,6 +10,7 @@ use crate::EvolutionMessage;
 
 use super::infer;
 use super::parse;
+use super::path_safety::script_path_under_skill_dir;
 use super::validate::{self, SkillValidation};
 use super::MAX_REFINE_ROUNDS;
 use super::SKILL_REFINEMENT_PROMPT;
@@ -74,7 +75,7 @@ pub async fn repair_one_skill<L: EvolutionLlm>(
     test_input: &str,
     on_msg: Option<&(dyn Fn(&str) + Send + Sync)>,
 ) -> Result<(bool, String)> {
-    let script_path = skill_dir.join(entry_point);
+    let script_path = script_path_under_skill_dir(skill_dir, entry_point)?;
     let skill_md_path = skill_dir.join("SKILL.md");
     let mut current_test_input = test_input.to_string();
 
