@@ -115,4 +115,25 @@ mod tests {
         let content = read_file(path).unwrap();
         assert_eq!(content, "baz bar baz");
     }
+
+    #[test]
+    fn atomic_write_preserves_same_stem_siblings() {
+        let dir = TempDir::new().unwrap();
+        let json = dir.path().join("examples.json");
+        let md = dir.path().join("examples.md");
+        atomic_write(&json, r#"{"ok":true}"#).unwrap();
+        atomic_write(&md, "# examples\n").unwrap();
+        assert_eq!(read_file(&json).unwrap(), r#"{"ok":true}"#);
+        assert_eq!(read_file(&md).unwrap(), "# examples\n");
+        // No shared stem.tmp leftover from with_extension("tmp")
+        assert!(!dir.path().join("examples.tmp").exists());
+    }
+
+    #[test]
+    fn atomic_write_distinct_staging_for_tmp_destination() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("report.tmp");
+        atomic_write(&path, "payload").unwrap();
+        assert_eq!(read_file(&path).unwrap(), "payload");
+    }
 }
