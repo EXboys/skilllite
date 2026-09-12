@@ -58,9 +58,31 @@ impl ArtifactStore for LocalDirArtifactStore {
     }
 }
 
+/// Staging path for an atomic write.
+///
+/// Must stay unique per destination basename: `Path::with_extension("tmp")`
+/// collapses `report.json` and `report.csv` onto the same `report.tmp`, and
+/// leaves a key ending in `.tmp` with no distinct staging file.
+fn staging_path_for(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "artifact".to_string());
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    path.with_file_name(format!(
+        ".{}.{}.{}.tmp",
+        file_name,
+        std::process::id(),
+        nanos
+    ))
+}
+
 /// Atomic write for byte data: write to temp file, then rename.
 fn atomic_write_bytes(path: &Path, data: &[u8]) -> Result<(), StoreError> {
-    let tmp = path.with_extension("tmp");
+    let tmp = staging_path_for(path);
     std::fs::write(&tmp, data).map_err(|e| StoreError::Backend {
         message: format!("failed to write temp file {}: {}", tmp.display(), e),
         retryable: false,
@@ -176,5 +198,112 @@ mod tests {
         store.put("run-1", "报告/结果.json", b"data").unwrap();
         let data = store.get("run-1", "报告/结果.json").unwrap();
         assert_eq!(data, Some(b"data".to_vec()));
+    }
+
+    #[test]
+    fn staging_paths_preserve_full_basename() {
+        let json = PathBuf::from("/tmp/artifacts/run/report.json");
+        let csv = PathBuf::from("/tmp/artifacts/run/report.csv");
+        let tmp_key = PathBuf::from("/tmp/artifacts/run/report.tmp");
+
+        let json_tmp = staging_path_for(&json);
+        let csv_tmp = staging_path_for(&csv);
+        let tmp_key_tmp = staging_path_for(&tmp_key);
+
+        let json_name = json_tmp.file_name().unwrap().to_string_lossy();
+        let csv_name = csv_tmp.file_name().unwrap().to_string_lossy();
+        let tmp_key_name = tmp_key_tmp.file_name().unwrap().to_string_lossy();
+
+        assert!(
+            json_name.contains("report.json"),
+            "staging name should retain full basename, got {json_name}"
+        );
+        assert!(
+            csv_name.contains("report.csv"),
+            "staging name should retain full basename, got {csv_name}"
+        );
+        assert_ne!(
+            json_tmp.file_name(),
+            csv_tmp.file_name(),
+            "keys that share a stem must not collide on the staging path"
+        );
+        assert_ne!(
+            tmp_key_tmp, tmp_key,
+            "keys ending in .tmp must still get a distinct staging path"
+        );
+        assert!(
+            tmp_key_name.contains("report.tmp"),
+            "staging name should retain .tmp basename, got {tmp_key_name}"
+        );
+    }
+
+    #[test]
+    fn put_keeps_sibling_stem_keys_independent() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_store(&dir);
+        store.put("run-1", "report.json", b"json-bytes").unwrap();
+        store.put("run-1", "report.csv", b"csv-bytes").unwrap();
+        assert_eq!(
+            store.get("run-1", "report.json").unwrap(),
+            Some(b"json-bytes".to_vec())
+        );
+        assert_eq!(
+            store.get("run-1", "report.csv").unwrap(),
+            Some(b"csv-bytes".to_vec())
+        );
+    }
+
+    #[test]
+    fn put_tmp_extension_key_roundtrips_atomically() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_store(&dir);
+        store.put("run-1", "report.tmp", b"staged-ok").unwrap();
+        assert_eq!(
+            store.get("run-1", "report.tmp").unwrap(),
+            Some(b"staged-ok".to_vec())
+        );
+    }
+
+    #[test]
+    fn concurrent_puts_for_shared_stem_keys_preserve_payloads() {
+        use std::sync::Arc;
+        use std::thread;
+
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(make_store(&dir));
+        let json_store = Arc::clone(&store);
+        let csv_store = Arc::clone(&store);
+
+        let json_thread = thread::spawn(move || {
+            for i in 0..40 {
+                let payload = format!("json-{i}");
+                json_store
+                    .put("run-1", "report.json", payload.as_bytes())
+                    .unwrap();
+            }
+        });
+        let csv_thread = thread::spawn(move || {
+            for i in 0..40 {
+                let payload = format!("csv-{i}");
+                csv_store
+                    .put("run-1", "report.csv", payload.as_bytes())
+                    .unwrap();
+            }
+        });
+        json_thread.join().unwrap();
+        csv_thread.join().unwrap();
+
+        let json = store.get("run-1", "report.json").unwrap().unwrap();
+        let csv = store.get("run-1", "report.csv").unwrap().unwrap();
+        let json_text = String::from_utf8(json).unwrap();
+        let csv_text = String::from_utf8(csv).unwrap();
+        assert!(
+            json_text.starts_with("json-"),
+            "report.json must not receive csv payload, got {json_text}"
+        );
+        assert!(
+            csv_text.starts_with("csv-"),
+            "report.csv must not receive json payload, got {csv_text}"
+        );
     }
 }

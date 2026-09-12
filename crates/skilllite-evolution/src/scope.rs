@@ -302,6 +302,19 @@ fn build_dedupe_key(source: ProposalSource, scope: &EvolutionScope) -> String {
     )
 }
 
+/// Mint a unique backlog proposal id.
+///
+/// Millisecond timestamps alone collide when passive and active proposals are
+/// built in the same `build_evolution_proposals` pass; the UUID suffix keeps
+/// `evolution_backlog.proposal_id` unique under `INSERT OR IGNORE`.
+pub(crate) fn new_proposal_id() -> String {
+    format!(
+        "proposal_{}_{}",
+        chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f"),
+        uuid::Uuid::new_v4().simple()
+    )
+}
+
 pub(crate) fn build_proposal(
     source: ProposalSource,
     scope: EvolutionScope,
@@ -311,10 +324,7 @@ pub(crate) fn build_proposal(
     acceptance_criteria: Vec<String>,
 ) -> EvolutionProposal {
     let roi_score = compute_roi_score(expected_gain, effort, risk_level);
-    let proposal_id = format!(
-        "proposal_{}",
-        chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f")
-    );
+    let proposal_id = new_proposal_id();
     let dedupe_key = build_dedupe_key(source, &scope);
     EvolutionProposal {
         proposal_id,
@@ -560,10 +570,7 @@ pub fn enqueue_user_capability_evolution(
     let clean_summary = summary.trim();
     let summary_preview: String = clean_summary.chars().take(160).collect();
     let proposal = EvolutionProposal {
-        proposal_id: format!(
-            "proposal_{}",
-            chrono::Utc::now().format("%Y%m%d_%H%M%S%.3f")
-        ),
+        proposal_id: new_proposal_id(),
         source: ProposalSource::Passive,
         scope: EvolutionScope {
             skills: true,
