@@ -27,7 +27,24 @@ impl LocalDirArtifactStore {
     fn artifact_path(&self, run_id: &str, key: &str) -> Result<PathBuf, StoreError> {
         validate_artifact_key(key)?;
         validate_run_id(run_id)?;
-        Ok(self.base_dir.join("artifacts").join(run_id).join(key))
+
+        // Platform-specific absolute forms (especially Windows) must never replace the root.
+        if Path::new(run_id).is_absolute() || Path::new(key).is_absolute() {
+            return Err(StoreError::InvalidKey {
+                key: format!("{run_id}/{key}"),
+                reason: "artifact path components must be relative".to_string(),
+            });
+        }
+
+        let root = self.base_dir.join("artifacts");
+        let path = root.join(run_id).join(key);
+        if !path.starts_with(&root) {
+            return Err(StoreError::InvalidKey {
+                key: format!("{run_id}/{key}"),
+                reason: "resolved artifact path escapes store root".to_string(),
+            });
+        }
+        Ok(path)
     }
 }
 
@@ -147,6 +164,30 @@ mod tests {
         assert!(matches!(err, StoreError::InvalidKey { .. }));
         let err = store.put("", "key", b"data").unwrap_err();
         assert!(matches!(err, StoreError::InvalidKey { .. }));
+    }
+
+    #[test]
+    fn windows_escape_keys_and_run_ids_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_store(&dir);
+        let marker = dir.path().join("outside-marker.txt");
+        std::fs::write(&marker, b"keep").unwrap();
+
+        for (run_id, key) in [
+            ("run-a", r"C:\Users\Public\owned.txt"),
+            ("run-a", "C:/Users/Public/owned.txt"),
+            (r"\Windows\Temp", "x.txt"),
+            (r"C:\evil", "x.txt"),
+        ] {
+            let err = store.put(run_id, key, b"pwn").unwrap_err();
+            assert!(
+                matches!(err, StoreError::InvalidKey { .. }),
+                "expected rejection for ({run_id:?}, {key:?}), got {err}"
+            );
+        }
+
+        // Rejected puts must not mutate unrelated files outside the store root.
+        assert_eq!(std::fs::read(&marker).unwrap(), b"keep");
     }
 
     #[test]

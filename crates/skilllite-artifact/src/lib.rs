@@ -31,7 +31,7 @@ mod client;
 #[cfg(all(feature = "server", feature = "local"))]
 mod serve;
 
-/// Validate `run_id` for paths and HTTP (non-empty, no `..`, no `/`).
+/// Validate `run_id` for paths and HTTP (non-empty, no `..`, no `/` or `\`, no drive prefix).
 pub fn validate_run_id(run_id: &str) -> Result<()> {
     validation::validate_run_id(run_id).map_err(Error::from)
 }
