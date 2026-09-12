@@ -300,10 +300,11 @@ pub fn reindex_memory_markdown_files(
 
     let mut indexed = Vec::new();
     for rel in rel_paths {
-        if rel.is_empty() || rel.contains("..") || rel.starts_with('/') {
+        let Ok(full) =
+            skilllite_core::path_validation::memory_file_under_dir(&memory_dir, rel.as_str())
+        else {
             continue;
-        }
-        let full = memory_dir.join(rel);
+        };
         if !full.is_file() {
             continue;
         }

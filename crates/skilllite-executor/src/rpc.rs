@@ -1,6 +1,6 @@
 //! JSON-RPC handlers for executor feature (session, transcript, memory, plan).
 
-use crate::error::{bail, Result};
+use crate::error::Result;
 use anyhow::Context;
 use serde_json::{json, Value};
 use std::fs;
@@ -315,11 +315,11 @@ pub fn handle_memory_write(params: &Value) -> Result<Value> {
         .unwrap_or("default");
 
     let root = chat_root_for_rpc(workspace_path)?;
-    let full_path = root.join("memory").join(rel_path);
-
-    if rel_path.is_empty() || rel_path.contains("..") || rel_path.starts_with('/') {
-        bail!("Invalid rel_path: must be relative, without ..");
-    }
+    // Validate before any filesystem mutation so Windows drive/backslash forms
+    // cannot replace the memory root via Path::join.
+    let memory_dir = root.join("memory");
+    let full_path = skilllite_core::path_validation::memory_file_under_dir(&memory_dir, rel_path)
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
 
     if let Some(parent) = full_path.parent() {
         fs::create_dir_all(parent)?;
@@ -405,4 +405,57 @@ pub fn handle_plan_textify(params: &Value) -> Result<Value> {
     let tasks = plan.as_array().context("plan must be array")?;
     let text = plan_textify_inner(tasks)?;
     Ok(json!({"text": text}))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn memory_write_rejects_windows_and_absolute_rel_paths() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path().to_string_lossy().to_string();
+        for rel_path in [
+            "C:/Temp/pwn.md",
+            r"C:\Temp\pwn.md",
+            r"\Windows\Temp\pwn.md",
+            "/tmp/pwn.md",
+            "../escape.md",
+        ] {
+            let err = handle_memory_write(&json!({
+                "rel_path": rel_path,
+                "content": "owned",
+                "workspace_path": workspace,
+            }))
+            .unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Invalid memory rel_path") || msg.contains("memory rel_path"),
+                "expected validation error for {rel_path:?}, got {msg}"
+            );
+            assert!(
+                !tmp.path().join("chat/memory").exists()
+                    || std::fs::read_dir(tmp.path().join("chat/memory"))
+                        .map(|entries| entries.count() == 0)
+                        .unwrap_or(true),
+                "escaped write must not create memory files for {rel_path:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn memory_write_keeps_nested_relative_under_memory_dir() {
+        let tmp = tempdir().unwrap();
+        let workspace = tmp.path().to_string_lossy().to_string();
+        let result = handle_memory_write(&json!({
+            "rel_path": "notes/day.md",
+            "content": "hello memory",
+            "workspace_path": workspace,
+        }))
+        .unwrap();
+        assert_eq!(result["ok"], true);
+        let written = tmp.path().join("chat/memory/notes/day.md");
+        assert_eq!(std::fs::read_to_string(&written).unwrap(), "hello memory");
+    }
 }

@@ -68,4 +68,8 @@ pub enum PathValidationError {
     /// Path escapes the allowed root (potential path traversal).
     #[error("{path_type} escapes allowed root: {path}")]
     PathEscape { path_type: String, path: String },
+
+    /// Memory relative path is empty, absolute, or otherwise unsafe to join under `memory/`.
+    #[error("Invalid memory rel_path (must stay relative under memory/): {path}")]
+    InvalidMemoryRelPath { path: String },
 }
