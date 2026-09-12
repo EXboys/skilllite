@@ -124,28 +124,28 @@ jobs:
 
       - name: Upload skilllite artifact (Unix)
         if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}.tar.gz
 
       - name: Upload skilllite-sandbox artifact (Unix)
         if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}-sandbox
           path: ${{ matrix.asset_name }}-sandbox.tar.gz
 
       - name: Upload skilllite artifact (Windows)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}
           path: ${{ matrix.asset_name }}.zip
 
       - name: Upload skilllite-sandbox artifact (Windows)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.asset_name }}-sandbox
           path: ${{ matrix.asset_name }}-sandbox.zip
@@ -272,7 +272,7 @@ jobs:
           python ../scripts/retag_wheel.py dist ${{ matrix.plat_tag }}
 
       - name: Upload wheel artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pypi-wheel-${{ matrix.asset_name }}
           path: python-sdk/dist/*.whl
