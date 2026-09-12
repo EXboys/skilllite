@@ -6,8 +6,9 @@
 //!
 //! ## Security Layers
 //!
-//! 1. **Chain operator detection** — blocks `;`, `&&`, `||`, `|`, backticks,
-//!    `$(...)`, `${...}`, newlines, and other injection vectors.
+//! 1. **Chain operator detection** — blocks `;`, `&&`, `||`, `|`, `&`,
+//!    redirects (`>`, `<`, `>(`), backticks, `$(...)`, `${...}`, newlines,
+//!    and other injection vectors.
 //! 2. **Allowed prefix matching** — command must start with one of the
 //!    `allowed-tools: Bash(prefix:*)` patterns declared in SKILL.md.
 //! 3. **Blocked prefix check** — dangerous commands (rm, sudo, sh, curl, etc.)
@@ -46,11 +47,15 @@ pub enum BashValidationError {
     EmptyCommand,
 }
 
-/// Operators that could chain multiple commands together.
+/// Operators that could chain multiple commands together or redirect I/O.
 /// We treat their presence anywhere in the command string as an injection attempt.
+///
+/// Note: bare `&` / `>` / `<` must be blocked even though `&&` / `||` / `>(`
+/// are listed separately — an unsandboxed `sh -c` will otherwise run a
+/// backgrounded second command or write arbitrary host files.
 const CHAIN_OPERATORS: &[&str] = &[
-    ";", "&&", "||", "|", "`", "$(", "${", "\n", "\r", // Redirect-based attacks
-    ">(",
+    ";", "&&", "||", "|", "&", "`", "$(", "${", "\n", "\r", // Redirect-based attacks
+    ">(", ">", "<",
 ];
 
 /// Command prefixes that are always blocked, regardless of `allowed-tools`.
@@ -245,6 +250,47 @@ mod tests {
     fn test_reject_newline() {
         let patterns = agent_browser_patterns();
         let result = validate_bash_command("agent-browser open x.com\nrm -rf /", &patterns);
+        assert!(matches!(result, Err(BashValidationError::ChainOperator(_))));
+    }
+
+    #[test]
+    fn test_reject_background_ampersand() {
+        let patterns = agent_browser_patterns();
+        let result =
+            validate_bash_command("agent-browser open x.com & touch /tmp/pwned", &patterns);
+        assert!(matches!(result, Err(BashValidationError::ChainOperator(_))));
+        let err = result.unwrap_err().to_string();
+        assert!(
+            err.contains("chain operator"),
+            "error should mention chain operator: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reject_tight_background_ampersand() {
+        let patterns = agent_browser_patterns();
+        let result = validate_bash_command("agent-browser open x&touch /tmp/pwned", &patterns);
+        assert!(matches!(result, Err(BashValidationError::ChainOperator(_))));
+    }
+
+    #[test]
+    fn test_reject_stdout_redirect() {
+        let patterns = agent_browser_patterns();
+        let result = validate_bash_command("agent-browser open x.com > /tmp/pwned", &patterns);
+        assert!(matches!(result, Err(BashValidationError::ChainOperator(_))));
+    }
+
+    #[test]
+    fn test_reject_stdin_redirect() {
+        let patterns = agent_browser_patterns();
+        let result = validate_bash_command("agent-browser open x.com < /etc/passwd", &patterns);
+        assert!(matches!(result, Err(BashValidationError::ChainOperator(_))));
+    }
+
+    #[test]
+    fn test_reject_append_redirect() {
+        let patterns = agent_browser_patterns();
+        let result = validate_bash_command("agent-browser open x.com >> /tmp/pwned", &patterns);
         assert!(matches!(result, Err(BashValidationError::ChainOperator(_))));
     }
 
