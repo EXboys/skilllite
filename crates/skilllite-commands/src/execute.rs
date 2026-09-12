@@ -10,7 +10,7 @@ use skilllite_core::skill;
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::trust::TrustDecision;
 use skilllite_sandbox::runner::SandboxConfig;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use crate::error::bail;
@@ -259,9 +259,51 @@ pub fn bash_command(
     Ok(output)
 }
 
+/// Resolve bash `--cwd` only when it stays under an allowed root (skill dir,
+/// process cwd, configured workspace, or output dir). Prevents relative
+/// allowlisted commands from being retargeted at arbitrary host directories.
+fn resolve_contained_bash_cwd(cwd: &str, skill_dir: &Path) -> Result<Option<PathBuf>> {
+    let p = Path::new(cwd);
+    if !p.is_dir() {
+        return Ok(None);
+    }
+    let canon = p
+        .canonicalize()
+        .map_err(|e| crate::Error::validation(format!("Invalid bash cwd '{}': {}", cwd, e)))?;
+
+    let mut allowed: Vec<PathBuf> = Vec::new();
+    if let Ok(skill) = skill_dir.canonicalize() {
+        allowed.push(skill);
+    }
+    if let Ok(root) = skilllite_core::path_validation::get_allowed_root() {
+        allowed.push(root);
+    }
+    if let Ok(proc_cwd) = std::env::current_dir().and_then(|c| c.canonicalize()) {
+        allowed.push(proc_cwd);
+    }
+    let paths = skilllite_core::config::PathsConfig::from_env();
+    if let Ok(ws) = PathBuf::from(&paths.workspace).canonicalize() {
+        allowed.push(ws);
+    }
+    if let Some(ref output_dir) = paths.output_dir {
+        if let Ok(od) = PathBuf::from(output_dir).canonicalize() {
+            allowed.push(od);
+        }
+    }
+
+    if allowed.iter().any(|root| canon.starts_with(root)) {
+        return Ok(Some(canon));
+    }
+
+    Err(crate::Error::validation(format!(
+        "bash cwd escapes allowed roots: {} (must be under skill dir, workspace, output dir, or process cwd)",
+        cwd
+    )))
+}
+
 fn execute_bash_with_env(
     command: &str,
-    _skill_dir: &Path,
+    skill_dir: &Path,
     env_path: &Path,
     timeout_secs: u64,
     cwd: Option<&String>,
@@ -272,9 +314,8 @@ fn execute_bash_with_env(
     cmd.arg("-c").arg(command);
 
     if let Some(dir) = cwd {
-        let p = Path::new(dir);
-        if p.is_dir() {
-            cmd.current_dir(p);
+        if let Some(contained) = resolve_contained_bash_cwd(dir, skill_dir)? {
+            cmd.current_dir(contained);
         }
     }
 
@@ -477,4 +518,44 @@ Set {}=1 to run, or use --confirm in MCP.",
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod bash_cwd_tests {
+    use super::resolve_contained_bash_cwd;
+
+    #[test]
+    fn allows_cwd_under_skill_dir() {
+        let skill = tempfile::tempdir().unwrap();
+        let nested = skill.path().join("workdir");
+        std::fs::create_dir_all(&nested).unwrap();
+        let resolved = resolve_contained_bash_cwd(nested.to_str().unwrap(), skill.path())
+            .unwrap()
+            .expect("cwd accepted");
+        assert_eq!(resolved, nested.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn rejects_cwd_outside_allowed_roots() {
+        let skill = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        // Ensure process cwd / workspace env cannot accidentally cover `outside`.
+        let outside_canon = outside.path().canonicalize().unwrap();
+        let proc_cwd = std::env::current_dir()
+            .ok()
+            .and_then(|c| c.canonicalize().ok());
+        if proc_cwd
+            .as_ref()
+            .is_some_and(|cwd| outside_canon.starts_with(cwd))
+        {
+            // Rare: temp dir under process cwd — skip rather than false-fail.
+            return;
+        }
+        let err = resolve_contained_bash_cwd(outside.path().to_str().unwrap(), skill.path())
+            .expect_err("cwd outside roots must fail");
+        assert!(
+            err.to_string().contains("escapes allowed roots"),
+            "err={err}"
+        );
+    }
 }

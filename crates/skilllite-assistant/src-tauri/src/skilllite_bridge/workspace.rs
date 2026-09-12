@@ -515,6 +515,7 @@ fn workspace_root_canon(workspace: &str) -> Result<std::path::PathBuf, String> {
 }
 
 /// Resolve `relative_path` under `workspace_canon` (must stay inside root).
+/// Rejects lexical escapes and symlink targets that resolve outside the workspace.
 fn resolve_under_workspace(
     workspace_canon: &std::path::Path,
     relative_path: &str,
@@ -533,6 +534,30 @@ fn resolve_under_workspace(
     if !normalized.starts_with(workspace_canon) {
         return Err("路径超出工作区范围".to_string());
     }
+
+    // Symlink follow bypass: lexical path can sit under the workspace while the
+    // real target (or nearest existing ancestor) points outside.
+    let existing = if normalized.exists() {
+        Some(normalized.clone())
+    } else {
+        let mut ancestor = normalized.parent().map(|p| p.to_path_buf());
+        while let Some(ref a) = ancestor {
+            if a.exists() {
+                break;
+            }
+            ancestor = a.parent().map(|p| p.to_path_buf());
+        }
+        ancestor.filter(|a| a.exists())
+    };
+    if let Some(existing) = existing {
+        let canon = existing
+            .canonicalize()
+            .map_err(|e| format!("无法解析路径: {}", e))?;
+        if !canon.starts_with(workspace_canon) {
+            return Err("路径超出工作区范围（符号链接）".to_string());
+        }
+    }
+
     Ok(normalized)
 }
 
@@ -836,10 +861,8 @@ mod workspace_path_tests {
 
     #[test]
     fn explicit_workspace_does_not_float_to_parent_skill_root() {
-        let base = std::env::temp_dir().join(format!(
-            "skilllite_ws_explicit_root_{}",
-            std::process::id()
-        ));
+        let base =
+            std::env::temp_dir().join(format!("skilllite_ws_explicit_root_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let parent = base.join("parent");
         let child = parent.join("test");
