@@ -470,14 +470,18 @@ fn extract_yaml_front_matter_impl(
     let front_matter: FrontMatter =
         serde_yaml::from_str(&yaml_content).with_context(|| "Failed to parse YAML front matter")?;
 
-    // 兼容：front matter 的 entry_point（若有且文件存在）→ 否则目录探测（main.* / index.* / 单脚本）。
+    // 兼容：front matter 的 entry_point（若有且文件存在且不逃逸 skill 目录）→ 否则目录探测。
     // 无入口时可由调用方用大模型根据 SKILL.md 推理后通过 entry_point_override 传入 run_skill。
     let mut entry_point = String::new();
     if let Some(dir) = skill_dir {
         if let Some(ref ep) = front_matter.entry_point {
             let ep = ep.trim();
-            if !ep.is_empty() && dir.join(ep).is_file() {
-                entry_point = ep.to_string();
+            if !ep.is_empty() {
+                if let Ok(resolved) = crate::path_validation::script_path_under_skill_dir(dir, ep) {
+                    if resolved.is_file() {
+                        entry_point = ep.to_string();
+                    }
+                }
             }
         }
         if entry_point.is_empty() {
@@ -926,6 +930,38 @@ entry_point: scripts/entry.py
         std::fs::write(skill_dir.join("SKILL.md"), content).expect("write SKILL.md");
         let meta = parse_skill_metadata(skill_dir).expect("parse skill metadata");
         assert_eq!(meta.entry_point, "scripts/entry.py");
+    }
+
+    #[test]
+    fn test_entry_point_rejects_path_escaping_front_matter() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let skill_dir = dir.path().join("skill");
+        std::fs::create_dir_all(skill_dir.join("scripts")).expect("create scripts");
+        std::fs::write(skill_dir.join("scripts/main.py"), "").expect("write main.py");
+        let outside = dir.path().join("outside.py");
+        std::fs::write(&outside, "").expect("write outside");
+
+        let abs = outside.display().to_string();
+        let content = format!(
+            r#"---
+name: my-skill
+entry_point: {abs}
+---
+"#
+        );
+        std::fs::write(skill_dir.join("SKILL.md"), content).expect("write SKILL.md");
+        let meta = parse_skill_metadata(&skill_dir).expect("parse skill metadata");
+        // Escaping absolute entry_point must not be accepted; fall back to convention.
+        assert_eq!(meta.entry_point, "scripts/main.py");
+
+        let content = r#"---
+name: my-skill
+entry_point: ../outside.py
+---
+"#;
+        std::fs::write(skill_dir.join("SKILL.md"), content).expect("write SKILL.md");
+        let meta = parse_skill_metadata(&skill_dir).expect("parse skill metadata");
+        assert_eq!(meta.entry_point, "scripts/main.py");
     }
 
     #[test]

@@ -5,7 +5,9 @@
 use anyhow::Context;
 use serde_json::json;
 use skilllite_core::config::supply_chain_block_enabled;
-use skilllite_core::path_validation::validate_skill_path;
+use skilllite_core::path_validation::{
+    ensure_entry_point_within_skill, script_path_under_skill_dir, validate_skill_path,
+};
 use skilllite_core::skill;
 use skilllite_core::skill::manifest::{self, SkillIntegrityStatus};
 use skilllite_core::skill::trust::TrustDecision;
@@ -38,8 +40,16 @@ pub fn run_skill(
     enforce_skill_denylist(&metadata.name)?;
     enforce_skill_integrity_before_execution(&skill_path)?;
     if let Some(ep) = entry_point_override {
-        if !ep.is_empty() && skill_path.join(ep).is_file() {
-            metadata.entry_point = ep.to_string();
+        if !ep.is_empty() {
+            match script_path_under_skill_dir(&skill_path, ep) {
+                Ok(resolved) if resolved.is_file() => {
+                    metadata.entry_point = ep.to_string();
+                }
+                Ok(_) => {}
+                Err(_) => {
+                    bail!("Entry point escapes skill directory: {}", ep);
+                }
+            }
         }
     }
 
@@ -54,6 +64,9 @@ Use `skilllite exec <skill-dir> <scripts/...>` or set `entry_point` in SKILL.md.
             "This skill has no entry point and no executable scripts. It is a prompt-only skill."
         );
     }
+
+    // Final containment gate (parity with exec_script): reject absolute/traversal/symlink escapes.
+    ensure_entry_point_within_skill(&skill_path, &metadata.entry_point)?;
 
     let _input: serde_json::Value = serde_json::from_str(input_json)?;
 

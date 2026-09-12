@@ -83,8 +83,16 @@ fn execute_skill_inner(
     }
     if metadata.entry_point.is_empty() {
         if let Some(ep) = entry_point_override {
-            if !ep.is_empty() && skill_dir.join(ep).is_file() {
-                metadata.entry_point = ep.to_string();
+            if !ep.is_empty() {
+                match skilllite_core::path_validation::script_path_under_skill_dir(skill_dir, ep) {
+                    Ok(resolved) if resolved.is_file() => {
+                        metadata.entry_point = ep.to_string();
+                    }
+                    Ok(_) => {}
+                    Err(_) => {
+                        bail!("Entry point escapes skill directory: {}", ep);
+                    }
+                }
             }
         }
     }
@@ -102,6 +110,9 @@ fn execute_skill_inner(
     // Same entry the sandbox runner will use (multi-script tool → overridden entry_point).
     let mut metadata_for_run = metadata.clone();
     if let Some(ep) = multi_script_entry {
+        skilllite_core::path_validation::script_path_under_skill_dir(skill_dir, ep).map_err(
+            |_| crate::Error::validation(format!("Entry point escapes skill directory: {}", ep)),
+        )?;
         metadata_for_run.entry_point = ep.clone();
     }
 
@@ -243,6 +254,12 @@ fn execute_skill_inner(
         // Validate input JSON
         let _: Value = serde_json::from_str(&input_json)
             .map_err(|e| crate::Error::validation(format!("Invalid input JSON: {}", e)))?;
+
+        skilllite_core::path_validation::ensure_entry_point_within_skill(
+            skill_dir,
+            &metadata_for_run.entry_point,
+        )
+        .map_err(|e| crate::Error::validation(e.to_string()))?;
 
         let runtime = skilllite_sandbox::env::builder::build_runtime_paths(&env_path);
         let config = build_sandbox_config(skill_dir, &metadata_for_run);
