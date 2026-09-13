@@ -19,6 +19,45 @@ fn claude_send_err(url: &str, e: reqwest::Error) -> anyhow::Error {
     anyhow!("Claude API request failed (POST {}): {}", url, e)
 }
 
+/// Anthropic Messages API rejects consecutive same-role turns. The agent loop
+/// often appends a user nudge (planning continue, depth limit, closing summary)
+/// immediately after `role=tool` rows; those rows already flush as a `user`
+/// message with `tool_result` blocks, so the nudge must share that message.
+fn claude_content_as_blocks(content: Option<&Value>) -> Vec<Value> {
+    match content {
+        Some(Value::String(s)) if !s.is_empty() => {
+            vec![json!({ "type": "text", "text": s })]
+        }
+        Some(Value::Array(arr)) => arr.clone(),
+        _ => Vec::new(),
+    }
+}
+
+fn coalesce_consecutive_claude_messages(messages: Vec<Value>) -> Vec<Value> {
+    let mut out: Vec<Value> = Vec::with_capacity(messages.len());
+    for msg in messages {
+        let role = msg
+            .get("role")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let can_merge = role == "user" || role == "assistant";
+        if can_merge {
+            if let Some(last) = out.last_mut() {
+                let last_role = last.get("role").and_then(Value::as_str).unwrap_or("");
+                if last_role == role {
+                    let mut blocks = claude_content_as_blocks(last.get("content"));
+                    blocks.extend(claude_content_as_blocks(msg.get("content")));
+                    last["content"] = Value::Array(blocks);
+                    continue;
+                }
+            }
+        }
+        out.push(msg);
+    }
+    out
+}
+
 impl LlmClient {
     pub(super) fn convert_messages_for_claude(
         messages: &[ChatMessage],
@@ -141,7 +180,10 @@ impl LlmClient {
             }));
         }
 
-        Ok((system_prompt, claude_messages))
+        Ok((
+            system_prompt,
+            coalesce_consecutive_claude_messages(claude_messages),
+        ))
     }
 
     pub(super) async fn claude_chat_completion(

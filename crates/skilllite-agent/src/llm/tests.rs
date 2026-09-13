@@ -140,6 +140,61 @@ fn test_convert_messages_for_claude_multiple_tool_results() {
 }
 
 #[test]
+fn convert_messages_for_claude_merges_user_nudge_after_tool_results() {
+    let tool_call = ToolCall {
+        id: "tc_done".to_string(),
+        call_type: "function".to_string(),
+        function: FunctionCall {
+            name: "complete_task".to_string(),
+            arguments: r#"{"task_id":"1"}"#.to_string(),
+        },
+    };
+
+    let messages = vec![
+        ChatMessage::user("总结天气"),
+        ChatMessage::assistant_with_tool_calls(None, vec![tool_call]),
+        ChatMessage::tool_result("tc_done", r#"{"success":true,"task_id":"1"}"#),
+        ChatMessage::user("All planned tasks are structurally complete. 用中文写最终回复。"),
+    ];
+
+    let (_, claude_msgs) =
+        LlmClient::convert_messages_for_claude(&messages).expect("claude convert");
+
+    assert_eq!(claude_msgs.len(), 3, "{claude_msgs:?}");
+    assert_eq!(claude_msgs[0]["role"], "user");
+    assert_eq!(claude_msgs[1]["role"], "assistant");
+    assert_eq!(claude_msgs[2]["role"], "user");
+
+    let blocks = claude_msgs[2]["content"].as_array().expect("merged blocks");
+    assert_eq!(blocks[0]["type"], "tool_result");
+    assert_eq!(blocks[0]["tool_use_id"], "tc_done");
+    assert_eq!(blocks[1]["type"], "text");
+    assert!(blocks[1]["text"]
+        .as_str()
+        .expect("text")
+        .contains("用中文写最终回复"));
+}
+
+#[test]
+fn convert_messages_for_claude_merges_adjacent_user_turns() {
+    let messages = vec![
+        ChatMessage::user("first"),
+        ChatMessage::user("second 😊"),
+        ChatMessage::assistant("ok"),
+    ];
+
+    let (_, claude_msgs) =
+        LlmClient::convert_messages_for_claude(&messages).expect("claude convert");
+
+    assert_eq!(claude_msgs.len(), 2);
+    assert_eq!(claude_msgs[0]["role"], "user");
+    let blocks = claude_msgs[0]["content"].as_array().expect("merged user");
+    assert_eq!(blocks[0]["text"], "first");
+    assert_eq!(blocks[1]["text"], "second 😊");
+    assert_eq!(claude_msgs[1]["role"], "assistant");
+}
+
+#[test]
 fn test_convert_claude_response() {
     let response = json!({
         "id": "msg_123",
