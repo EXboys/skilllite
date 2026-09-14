@@ -144,51 +144,7 @@ impl ChatSession {
     /// Read transcript entries and convert to ChatMessages.
     fn read_history(&mut self) -> Result<Vec<ChatMessage>> {
         let entries = self.read_history_entries_incremental()?;
-        let mut messages = Vec::new();
-        let mut use_from_compaction = false;
-        let mut compaction_summary: Option<String> = None;
-
-        // Check for compaction — if present, use summary + entries after it
-        for entry in entries.iter().rev() {
-            if let transcript::TranscriptEntry::Compaction { summary, .. } = entry {
-                use_from_compaction = true;
-                compaction_summary = summary.clone();
-                break;
-            }
-        }
-
-        if use_from_compaction {
-            // Add compaction summary as system context
-            if let Some(summary) = compaction_summary {
-                messages.push(ChatMessage::system(&format!(
-                    "[Previous conversation summary]\n{}",
-                    summary
-                )));
-            }
-
-            // Find the compaction entry and take entries after it
-            let mut past_compaction = false;
-            for entry in &entries {
-                if let transcript::TranscriptEntry::Compaction { .. } = entry {
-                    past_compaction = true;
-                    continue;
-                }
-                if past_compaction {
-                    if let Some(msg) = transcript_entry_to_message(entry) {
-                        messages.push(msg);
-                    }
-                }
-            }
-        } else {
-            // No compaction, use all message entries
-            for entry in &entries {
-                if let Some(msg) = transcript_entry_to_message(entry) {
-                    messages.push(msg);
-                }
-            }
-        }
-
-        Ok(messages)
+        Ok(history_messages_from_entries(entries))
     }
 
     fn read_history_entries_incremental(&mut self) -> Result<Vec<&transcript::TranscriptEntry>> {
@@ -800,17 +756,18 @@ impl ChatSession {
             }
         };
 
-        // Write compaction entry to transcript
+        // Write compaction marker, then rewrite the kept recent window after it.
+        // `read_history` only loads the last summary plus post-marker rows; without this
+        // rewrite the KEEP_RECENT messages disappear on the next turn (and immediately
+        // after `/compact`, which discards the in-memory return value).
         let transcripts_dir = self.data_root.join("transcripts");
         let t_path = transcript::transcript_path_today(&transcripts_dir, &self.session_key);
-        let compaction_entry = transcript::TranscriptEntry::Compaction {
-            id: uuid::Uuid::new_v4().to_string(),
-            parent_id: None,
-            first_kept_entry_id: String::new(),
-            tokens_before: (old_messages.len() * 100) as u64, // rough estimate
-            summary: Some(summary.clone()),
-        };
-        transcript::append_entry(&t_path, &compaction_entry)?;
+        append_compaction_preserving_recent(
+            &t_path,
+            summary.clone(),
+            (old_messages.len() * 100) as u64,
+            recent_messages,
+        )?;
 
         // Update session compaction count
         let sessions_path = self.data_root.join("sessions.json");
@@ -834,7 +791,8 @@ impl ChatSession {
     }
 
     /// Force compaction: summarize history via LLM regardless of threshold.
-    /// Returns true if compaction was performed, false if history was too short.
+    /// Persists the compaction marker and the kept recent window so the next turn
+    /// can reload them. Returns true if compaction was performed, false if history was too short.
     pub async fn force_compact(&mut self) -> Result<bool> {
         let _ = self.ensure_session()?;
         let history = self.read_history()?;
@@ -1328,6 +1286,98 @@ pub fn shutdown_evolution(data_root: &std::path::Path) {
     skilllite_evolution::on_shutdown(data_root);
 }
 
+/// Rebuild LLM history from transcript entries.
+///
+/// When a compaction marker exists, only the last summary plus entries *after*
+/// that marker are used. Kept recent turns must therefore be rewritten after the
+/// marker or they are dropped on the next `read_history`.
+fn history_messages_from_entries<'a>(
+    entries: impl IntoIterator<Item = &'a transcript::TranscriptEntry>,
+) -> Vec<ChatMessage> {
+    let entries: Vec<&transcript::TranscriptEntry> = entries.into_iter().collect();
+    let mut messages = Vec::new();
+    let mut compaction_summary: Option<String> = None;
+
+    for entry in entries.iter().rev() {
+        if let transcript::TranscriptEntry::Compaction { summary, .. } = entry {
+            compaction_summary = summary.clone();
+            break;
+        }
+    }
+
+    if let Some(summary) = compaction_summary {
+        messages.push(ChatMessage::system(&format!(
+            "[Previous conversation summary]\n{}",
+            summary
+        )));
+
+        let mut past_compaction = false;
+        for entry in &entries {
+            if let transcript::TranscriptEntry::Compaction { .. } = entry {
+                past_compaction = true;
+                continue;
+            }
+            if past_compaction {
+                if let Some(msg) = transcript_entry_to_message(entry) {
+                    messages.push(msg);
+                }
+            }
+        }
+    } else {
+        for entry in &entries {
+            if let Some(msg) = transcript_entry_to_message(entry) {
+                messages.push(msg);
+            }
+        }
+    }
+
+    messages
+}
+
+/// Append a compaction marker and rewrite kept user/assistant messages after it.
+///
+/// Session-clear compaction must not call this helper — it writes a marker only.
+fn append_compaction_preserving_recent(
+    t_path: &Path,
+    summary: String,
+    tokens_before: u64,
+    recent_messages: &[ChatMessage],
+) -> Result<()> {
+    let mut kept_entries = Vec::new();
+    let mut first_kept_entry_id = String::new();
+    for msg in recent_messages {
+        if msg.role != "user" && msg.role != "assistant" {
+            continue;
+        }
+        let id = uuid::Uuid::new_v4().to_string();
+        if first_kept_entry_id.is_empty() {
+            first_kept_entry_id = id.clone();
+        }
+        kept_entries.push(transcript::TranscriptEntry::Message {
+            id,
+            parent_id: None,
+            role: msg.role.clone(),
+            content: msg.content.clone(),
+            tool_calls: None,
+            images: msg.images.clone(),
+            llm_usage: None,
+        });
+    }
+
+    let compaction_entry = transcript::TranscriptEntry::Compaction {
+        id: uuid::Uuid::new_v4().to_string(),
+        parent_id: None,
+        first_kept_entry_id,
+        tokens_before,
+        summary: Some(summary),
+    };
+    transcript::append_entry(t_path, &compaction_entry)?;
+    for entry in &kept_entries {
+        transcript::append_entry(t_path, entry)?;
+    }
+    Ok(())
+}
+
 /// Convert a transcript entry to a ChatMessage.
 fn transcript_entry_to_message(entry: &transcript::TranscriptEntry) -> Option<ChatMessage> {
     match entry {
@@ -1487,5 +1537,112 @@ mod history_window_tests {
             entries.first(),
             Some(transcript::TranscriptEntry::Compaction { .. })
         ));
+    }
+
+    fn assistant_msg(content: &str) -> transcript::TranscriptEntry {
+        transcript::TranscriptEntry::Message {
+            id: uuid::Uuid::new_v4().to_string(),
+            parent_id: None,
+            role: "assistant".to_string(),
+            content: Some(content.to_string()),
+            tool_calls: None,
+            images: None,
+            llm_usage: None,
+        }
+    }
+
+    #[test]
+    fn history_after_compaction_without_rewrite_drops_pre_marker_turns() {
+        let entries = [
+            msg("old-user"),
+            assistant_msg("old-assistant"),
+            msg("recent-user"),
+            assistant_msg("recent-assistant"),
+            compaction(),
+        ];
+        let history = history_messages_from_entries(entries.iter());
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].role, "system");
+        assert!(history[0]
+            .content
+            .as_deref()
+            .unwrap_or("")
+            .contains("summary"));
+    }
+
+    #[test]
+    fn append_compaction_preserves_recent_window_for_next_read() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let t_path = dir.path().join("session-2026-09-14.jsonl");
+        transcript::append_entry(&t_path, &msg("old-user")).expect("old user");
+        transcript::append_entry(&t_path, &assistant_msg("old-assistant")).expect("old assistant");
+
+        let recent = vec![
+            ChatMessage::user("保留近期 中文✅"),
+            ChatMessage::assistant("已记下路径 /tmp/报告.md"),
+        ];
+        append_compaction_preserving_recent(
+            &t_path,
+            "older turns summarized".to_string(),
+            200,
+            &recent,
+        )
+        .expect("persist kept window");
+
+        let entries = transcript::read_entries(&t_path).expect("read entries");
+        let last_compaction = entries
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                transcript::TranscriptEntry::Compaction {
+                    first_kept_entry_id,
+                    summary,
+                    ..
+                } => Some((first_kept_entry_id.as_str(), summary.as_deref())),
+                _ => None,
+            })
+            .expect("compaction marker");
+        assert!(
+            !last_compaction.0.is_empty(),
+            "first_kept_entry_id must be set"
+        );
+        assert_eq!(last_compaction.1, Some("older turns summarized"));
+
+        let history = history_messages_from_entries(entries.iter());
+        assert_eq!(history.len(), 3, "{history:?}");
+        assert_eq!(history[0].role, "system");
+        assert!(history[0]
+            .content
+            .as_deref()
+            .unwrap_or("")
+            .contains("older turns summarized"));
+        assert_eq!(history[1].role, "user");
+        assert_eq!(history[1].content.as_deref(), Some("保留近期 中文✅"));
+        assert_eq!(history[2].role, "assistant");
+        assert_eq!(
+            history[2].content.as_deref(),
+            Some("已记下路径 /tmp/报告.md")
+        );
+    }
+
+    #[test]
+    fn append_compaction_skips_system_and_tool_rows() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let t_path = dir.path().join("session-2026-09-14.jsonl");
+        let recent = vec![
+            ChatMessage::system("[Previous conversation summary]\nold"),
+            ChatMessage::user("keep-me"),
+            ChatMessage::tool_result("call-1", "ignored"),
+            ChatMessage::assistant("keep-too"),
+        ];
+        append_compaction_preserving_recent(&t_path, "summary".to_string(), 0, &recent)
+            .expect("persist");
+
+        let entries = transcript::read_entries(&t_path).expect("read");
+        let history = history_messages_from_entries(entries.iter());
+        assert_eq!(history.len(), 3);
+        assert_eq!(history[1].content.as_deref(), Some("keep-me"));
+        assert_eq!(history[2].content.as_deref(), Some("keep-too"));
+        assert!(history.iter().all(|m| m.role != "tool"));
     }
 }
