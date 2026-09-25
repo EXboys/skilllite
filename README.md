@@ -33,7 +33,9 @@ One repository ships several entry points. Each row links to the **English** hub
 |------|------------|
 | **Sandbox & MCP** (recommended) — secure skills in an existing IDE or agent | [Path 2 — Sandbox & MCP](./docs/en/START_PATHS.md#path-2-sandbox-mcp) |
 | **Full stack** — `skilllite` CLI, Python SDK, evolution, optional Swarm | [Path 3 — Full stack](./docs/en/START_PATHS.md#path-3-fullstack) |
-| **Desktop GUI** (optional) — SkillLite Assistant: local chat, evolution UI, IDE layout | [Path 1 — Desktop](./docs/en/START_PATHS.md#path-1-desktop) |
+| **Desktop GUI** (optional, **moved**) — SkillLite Assistant is a standalone project, not an engine crate | [Path 1 — Desktop](./docs/en/START_PATHS.md#path-1-desktop) · [`skilllite-assistant/`](./skilllite-assistant/) |
+
+> **Desktop moved out of `crates/`.** This repository is the **engine** (CLI, sandbox, MCP, Python SDK). The Tauri GUI now lives at **[`skilllite-assistant/`](./skilllite-assistant/)** (own `package.json` / `src-tauri`). `crates/skilllite-assistant/` is a one-cycle stub. Old `cd crates/skilllite-assistant` bookmarks will not work. [中文说明](./docs/zh/README.md#桌面已迁出-crates)。
 
 ---
 
@@ -589,7 +591,9 @@ The `init-opencode` command automatically detects the best way to start the MCP 
 </details>
 
 <details>
-<summary>Desktop Assistant (skilllite-assistant) — optional</summary>
+<summary>Desktop Assistant (skilllite-assistant) — optional, moved out of crates/</summary>
+
+**Moved:** the GUI is a standalone project at [`skilllite-assistant/`](./skilllite-assistant/), not a workspace crate. `crates/skilllite-assistant/` is a stub.
 
 **Optional** official GUI — not required if you only need sandbox/MCP in another IDE or agent.
 

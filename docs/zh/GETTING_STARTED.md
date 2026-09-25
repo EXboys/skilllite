@@ -1,6 +1,6 @@
 # 快速入门
 
-> **不知道从哪开始？** **多数对接方从 [路径 2 — 沙箱与 MCP](./START_PATHS.md#path-2-sandbox-mcp) 开始**（`pip install skilllite` → `skilllite init` → `skilllite mcp`）。本文是 **全栈** 路径（CLI + Python + 进化）。**桌面应用**为可选项：[路径 1 — 桌面](./START_PATHS.md#path-1-desktop)。
+> **不知道从哪开始？** **多数对接方从 [路径 2 — 沙箱与 MCP](./START_PATHS.md#path-2-sandbox-mcp) 开始**（`pip install skilllite` → `skilllite init` → `skilllite mcp`）。本文是 **全栈** 路径（CLI + Python + 进化）。**桌面应用**为可选项，现位于 [`skilllite-assistant/`](../../skilllite-assistant/)（已迁出 `crates/`）：[路径 1 — 桌面](./START_PATHS.md#path-1-desktop)。
 
 ## 安装
 

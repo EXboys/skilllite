@@ -46,6 +46,8 @@ SkillLite is **one repository** with **multiple entry points**. Pick **one** pat
 
 **Goal.** A **GUI** on your machine: chat, skills, optional IDE layout, governed evolution, local-first workflows. **Optional** — use Path 2 if you only need sandbox/MCP inside another IDE or agent.
 
+**Layout.** Desktop is **no longer** under `crates/`. Sources live in the standalone project [`skilllite-assistant/`](../../skilllite-assistant/). `crates/skilllite-assistant/` is a stub. This repo remains the engine.
+
 **Start here.**
 
 - From source: [skilllite-assistant/README.md](../../skilllite-assistant/README.md) — all `npm` / `tauri` commands run **only** in that project directory.

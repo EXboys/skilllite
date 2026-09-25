@@ -46,6 +46,8 @@ SkillLite 是 **同一个仓库**、**多种入口**。建议先选 **一条** �
 
 **目标。** 在本机用 **图形界面**：对话、技能、可选 IDE 三栏、受治理的自进化、本地优先工作流。**可选** —— 若只需在其它 IDE/Agent 里用沙箱/MCP，请走路径 2。
 
+**布局。** 桌面端**已不再**位于 `crates/`。源码在独立项目 [`skilllite-assistant/`](../../skilllite-assistant/)。`crates/skilllite-assistant/` 为 stub。本仓仍是引擎。
+
 **从这里开始。**
 
 - 源码运行与打包：[skilllite-assistant/README.md](../../skilllite-assistant/README.md) — 所有 `npm` / `tauri` 命令 **只** 在该项目目录下执行。

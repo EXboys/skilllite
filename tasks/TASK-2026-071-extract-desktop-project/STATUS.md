@@ -10,6 +10,10 @@
   - Progress: Relocated desktop tree to `skilllite-assistant/`. Stub at old path. Prebuild/debug discovery updated. Docs/CI synced. PR #158 opened. Validation commands executed.
   - Blockers: `cargo deny` not installed in this environment (CI still runs it). External GitHub repo not created.
   - Next step: Reviewer merge; optional subtree push to a new remote.
+- 2026-09-25:
+  - Progress: Root GitHub README (EN) and `docs/zh/README.md` now lead with an explicit “desktop moved out of crates/” notice; START_PATHS Path 1 and CHANGELOG Unreleased updated.
+  - Blockers: None new.
+  - Next step: Reviewer merge.
 
 ## Checkpoints
 
