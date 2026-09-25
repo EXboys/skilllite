@@ -48,7 +48,7 @@ SkillLite 是 **同一个仓库**、**多种入口**。建议先选 **一条** �
 
 **从这里开始。**
 
-- 源码运行与打包：[crates/skilllite-assistant/README.md](../../crates/skilllite-assistant/README.md) — 所有 `npm` / `tauri` 命令 **只** 在该 crate 目录下执行。
+- 源码运行与打包：[skilllite-assistant/README.md](../../skilllite-assistant/README.md) — 所有 `npm` / `tauri` 命令 **只** 在该项目目录下执行。
 - 安装包（**dmg** / **msi** / **AppImage**）：见 [GitHub Releases](https://github.com/EXboys/skilllite/releases)，需对应 tag 的 [release-desktop](https://github.com/EXboys/skilllite/actions/workflows/release-desktop.yml) 工作流已跑完。
 
 **另见。** 英文主 [README](../../README.md) 中的折叠区块 **Desktop Assistant**（页内搜索该英文标题）。

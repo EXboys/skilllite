@@ -100,11 +100,34 @@ pub(crate) fn validate_transcript_log_filename(name: &str) -> Result<(), String>
     Ok(())
 }
 
+/// Walk from `start` for a SkillLite engine checkout (`skilllite/Cargo.toml`).
+#[cfg(debug_assertions)]
+pub(crate) fn find_engine_checkout_from(start: &Path) -> Option<PathBuf> {
+    if let Ok(raw) = std::env::var("SKILLLITE_ENGINE_ROOT") {
+        let p = PathBuf::from(raw);
+        if p.join("skilllite").join("Cargo.toml").is_file() {
+            return Some(p);
+        }
+    }
+    let mut dir = start.to_path_buf();
+    for _ in 0..8 {
+        if dir.join("skilllite").join("Cargo.toml").is_file() {
+            return Some(dir);
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    None
+}
+
 /// Resolve skilllite binary for subprocess (used from `lib` / life_pulse).
 #[cfg(debug_assertions)]
 fn workspace_debug_skilllite_candidate(exe_name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../target/debug")
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    find_engine_checkout_from(&manifest)
+        .unwrap_or(manifest)
+        .join("target/debug")
         .join(exe_name)
 }
 
@@ -276,5 +299,49 @@ mod tests {
             "unexpected debug candidate path: {}",
             normalized
         );
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn find_engine_checkout_from_detects_skilllite_manifest() {
+        let prev = std::env::var_os("SKILLLITE_ENGINE_ROOT");
+        std::env::remove_var("SKILLLITE_ENGINE_ROOT");
+
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("duration")
+            .as_nanos();
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite_assistant_engine_root_{}_{}",
+            std::process::id(),
+            unique
+        ));
+        let nested = tmp.join("desktop").join("src-tauri");
+        std::fs::create_dir_all(tmp.join("skilllite")).expect("engine crate dir");
+        std::fs::write(
+            tmp.join("skilllite").join("Cargo.toml"),
+            "[package]\nname=\"skilllite\"\n",
+        )
+        .expect("engine manifest");
+        std::fs::create_dir_all(&nested).expect("nested start");
+
+        let found = find_engine_checkout_from(&nested).expect("engine root");
+        assert_eq!(
+            found.canonicalize().expect("found canonical"),
+            tmp.canonicalize().expect("tmp canonical")
+        );
+
+        let isolated = tmp.join("orphan");
+        std::fs::create_dir_all(&isolated).expect("orphan");
+        assert!(
+            find_engine_checkout_from(&isolated).is_some(),
+            "orphan under tmp still walks up to the synthetic engine root"
+        );
+
+        match prev {
+            Some(v) => std::env::set_var("SKILLLITE_ENGINE_ROOT", v),
+            None => std::env::remove_var("SKILLLITE_ENGINE_ROOT"),
+        }
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

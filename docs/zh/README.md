@@ -546,10 +546,10 @@ opencode
 
 ![SkillLite Assistant — 设置「模型与 API」](../images/assistant-settings-model-api.png)
 
-Tauri 2 + React 桌面应用，位于 `crates/skilllite-assistant/`：
+Tauri 2 + React 桌面应用，位于独立项目 `skilllite-assistant/`：
 
 ```bash
-cd crates/skilllite-assistant
+cd skilllite-assistant
 npm install
 npm run tauri dev    # 开发模式（HMR）
 npm run tauri build
@@ -567,7 +567,7 @@ npm run tauri build
 
 **Windows**：后台子进程（内置引擎自检、Life Pulse、运行时探测、以及代理里通过 `run_command` 拉起的 shell）使用无控制台窗口方式创建，正常使用时不应再反复闪现空的「命令提示符」黑框。
 
-详见 [crates/skilllite-assistant/README.md](../../crates/skilllite-assistant/README.md)。
+详见 [skilllite-assistant/README.md](../../skilllite-assistant/README.md)。
 
 </details>
 

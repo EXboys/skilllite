@@ -159,7 +159,7 @@ docs/en|zh/                           src/（React）
 tutorials/                            release-desktop CI
 ```
 
-**引擎仓** 在切换后移除 `crates/skilllite-assistant/`（或保留一期 README 指向新仓）。
+**引擎仓（本次）**：桌面源码位于仓库根目录独立项目 `skilllite-assistant/`；`crates/skilllite-assistant/` 为 stub。后续可用 `git subtree split`（见 `scripts/export-assistant-repo.sh`）发布 `github.com/EXboys/skilllite-assistant`。
 
 **Assistant 仓** 钉扎引擎版本，prebuild **不再** `cargo install --path skilllite` 从 monorepo 根目录构建。
 
@@ -231,6 +231,7 @@ tutorials/                            release-desktop CI
 - [x] `src-tauri/Cargo.toml` 无 `skilllite-{agent,sandbox,evolution}` path 依赖
 - [x] 第 4 节能力均由 L1/L2/L3 覆盖（followup / authorize-capability 已接 CLI）
 - [x] Assistant 启动时校验 `min_skilllite_version`
-- [ ] 中英文文档仍标 Desktop 为可选（已有；拆仓时同步 README）
-- [ ] 引擎侧 `--json` 契约测试（建议拆仓 PR 前补 golden fixtures）
+- [x] 中英文文档标 Desktop 为可选；源码位于 `skilllite-assistant/`
+- [ ] 引擎侧 `--json` 契约测试（建议独立远程前补 golden fixtures）
 - [x] `deny.toml` 与 ARCHITECTURE 中 Desktop 执行链 = 仅子进程
+- [x] 仓内 P4：独立项目目录（外部 GitHub 远程仍可选）
