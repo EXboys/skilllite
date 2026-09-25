@@ -24,4 +24,5 @@
 
 ## Open Questions
 
-- [x] Can this agent create `EXboys/skilllite-assistant`? No (`createRepository` 403).
+- [x] Can this agent create `EXboys/skilllite-assistant`? No (`createRepository` 403). Owner created the repo locally and pushed `main`.
+- [x] Continue desktop product work now? No. Owner deferred the GUI; later import agent-related capabilities into `EXboys/agent-doctor` (out of scope here). Preserve L1 `agent-rpc` / L2 CLI `--json` / L3 files as the reuse surface.

@@ -39,4 +39,5 @@
 
 - Merge readiness: ready
 - Follow-up actions:
-  - Merge engine pointer PR #173
+  - Merge engine pointer PR #173 (docs/stubs only; desktop feature work paused)
+  - Later (separate task): incrementally import Assistant agent capabilities into `EXboys/agent-doctor`

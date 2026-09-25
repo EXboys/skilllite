@@ -10,6 +10,10 @@
   - Progress: Owner created `https://github.com/EXboys/skilllite-assistant` and pushed `cursor/skilllite-assistant-export-3c6e` to `main`. `gh repo view` shows `isEmpty: false`; root contains `src-tauri`, `src`, `README.md`, `.github`.
   - Blockers: none
   - Next step: Merge engine pointer PR #173.
+- 2026-09-25:
+  - Progress: Owner paused further desktop-app work. Agent-facing capabilities will later move into `EXboys/agent-doctor` incrementally. No import started in this task.
+  - Blockers: none
+  - Next step: Keep #173 as engine-pointer cleanup only; do not expand Assistant features.
 
 ## Checkpoints
 

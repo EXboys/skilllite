@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-09-25 (TASK-2026-072 assistant GitHub repo live)
+Last updated: 2026-09-25 (TASK-2026-072 done; desktop feature work paused → agent-doctor later)
 
 ## In Progress
 
