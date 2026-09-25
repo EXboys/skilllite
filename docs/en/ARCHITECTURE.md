@@ -161,9 +161,7 @@ skillLite/
 │   │
 │   └── skilllite-channel/         # Outbound messaging (WeChat Work, DingTalk, Feishu/Lark, Telegram, Discord, WhatsApp). Inbound webhook MVP stays thin (`skilllite channel serve`), while `skilllite gateway serve` is the preferred unified host. No separate `skilllite-gateway` crate in this phase.
 │
-├── skilllite-assistant/           # Standalone Tauri 2 + React desktop project (not a workspace crate). Thin client over a released skilllite binary (L1 agent-rpc + L2 CLI --json).
-│   ├── vite.config.ts             # sole Vite config (do not duplicate vite.config.js; see project README)
-│   └── src-tauri/                 # cargo build --manifest-path skilllite-assistant/src-tauri/Cargo.toml
+├── skilllite-assistant/           # Stub only. Desktop sources: https://github.com/EXboys/skilllite-assistant
 │
 ├── python-sdk/                    # Python SDK (thin bridge layer)
 │   ├── pyproject.toml             # Package config (v0.1.29, zero runtime deps)
@@ -236,7 +234,7 @@ skilllite (main binary)
   ├── skilllite-channel            # standalone (no `skilllite-*` path deps); outbound adapters; inbound webhook MVP via `skilllite channel serve`; unified host lives in main binary via `skilllite gateway serve`
   └── skilllite-core (root)
 
-skilllite-assistant (Tauri desktop — standalone project at repo-root skilllite-assistant/)
+skilllite-assistant (Tauri desktop — https://github.com/EXboys/skilllite-assistant)
   └── subprocess-only → released or locally built skilllite binary (agent-rpc + CLI --json)
 
 Execution chain (CLI):  CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
@@ -248,14 +246,11 @@ Optional accelerator: `skilllite-services` in the engine repo (CLI + daemon surf
 Core doesn't depend on upper layers; Agent is Core's customer.
 ```
 
-**CI / local guard**: Root `deny.toml` configures [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) `bans` so only allowed workspace crates may *directly* depend on each upper-layer `skilllite-*` crate (see `spec/architecture-boundaries.md`). CI runs `cargo deny check bans` on every PR for **both** the root workspace and the Desktop manifest:
+**CI / local guard**: Root `deny.toml` configures [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) `bans` so only allowed workspace crates may *directly* depend on each upper-layer `skilllite-*` crate (see `spec/architecture-boundaries.md`). Engine CI runs `cargo deny check bans` on the root workspace. Desktop deny/CI lives in [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant).
 
 ```bash
 cargo deny check bans
-cargo deny --manifest-path skilllite-assistant/src-tauri/Cargo.toml check bans
 ```
-
-The Desktop project is excluded from the root workspace because Tauri requires platform GUI toolchains. Deny still checks it has no `skilllite-*` path dependencies.
 
 **Feature Flags**:
 

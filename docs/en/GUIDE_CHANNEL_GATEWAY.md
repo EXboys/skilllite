@@ -183,7 +183,7 @@ SKILLLITE_GATEWAY_SERVE_ALLOW=1 skilllite gateway serve --bind 127.0.0.1:8787 --
 
 ## 6. SkillLite Assistant UI
 
-In **Settings → Gateway / inbound HTTP**, you can persist bind, optional token, optional artifact dir, and DingTalk / Feishu / Telegram fields (stored in the app WebView **localStorage**). **Start here** injects the same `SKILLLITE_CHANNEL_*` and `SKILLLITE_GATEWAY_SERVE_ALLOW=1` into the managed child as you would export in a shell. The page can also detect an **externally** running gateway on the same bind.
+The desktop app is [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant). In **Settings → Gateway / inbound HTTP**, you can persist bind, optional token, optional artifact dir, and DingTalk / Feishu / Telegram fields (stored in the app WebView **localStorage**). **Start here** injects the same `SKILLLITE_CHANNEL_*` and `SKILLLITE_GATEWAY_SERVE_ALLOW=1` into the managed child as you would export in a shell. The page can also detect an **externally** running gateway on the same bind.
 
 ---
 

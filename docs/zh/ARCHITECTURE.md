@@ -159,9 +159,7 @@ skillLite/
 │   │
 │   └── skilllite-channel/         # 出站消息（企微、钉钉、飞书、Telegram、Discord、WhatsApp）。入站 webhook MVP 仍保持轻量（`skilllite channel serve`）；统一宿主优先走 `skilllite gateway serve`。本阶段仍无独立 `skilllite-gateway` crate。
 │
-├── skilllite-assistant/           # 独立 Tauri 2 + React 桌面项目（非 workspace crate）。薄客户端，通过已发布 skilllite 二进制通信（L1 agent-rpc + L2 CLI --json）。
-│   ├── vite.config.ts             # 唯一 Vite 配置（勿再并列 vite.config.js；见该项目 README）
-│   └── src-tauri/                 # cargo build --manifest-path skilllite-assistant/src-tauri/Cargo.toml
+├── skilllite-assistant/           # 仅 stub。桌面源码：https://github.com/EXboys/skilllite-assistant
 │
 ├── python-sdk/                    # Python SDK (薄桥接层)
 │   ├── pyproject.toml             # 包配置 (v0.1.29, 零运行时依赖)
@@ -234,7 +232,7 @@ skilllite (主二进制)
   ├── skilllite-channel            # 独立 crate（无 `skilllite-*` path 依赖）；出站适配；入站 webhook MVP 为 `skilllite channel serve`；统一宿主在主二进制中通过 `skilllite gateway serve` 提供
   └── skilllite-core (根)
 
-skilllite-assistant（Tauri 桌面 — 仓库根目录独立项目 `skilllite-assistant/`）
+skilllite-assistant（Tauri 桌面 — https://github.com/EXboys/skilllite-assistant）
   └── 仅子进程 → 已发布或本地构建的 skilllite 二进制（agent-rpc + CLI --json）
 
 执行链（CLI）：CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
@@ -246,14 +244,11 @@ skilllite-assistant（Tauri 桌面 — 仓库根目录独立项目 `skilllite-as
 Core 不依赖上层；Agent 是 Core 的客户。
 ```
 
-**CI / 本地检查**：仓库根目录 `deny.toml` 使用 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) 的 `bans` 规则，限制各 `skilllite-*` 工作区 crate 之间**直接依赖**的方向（规则与 `spec/architecture-boundaries.md` 一致）。CI 在每个 PR 上对 **root workspace 与 Desktop manifest 各跑一次**：
+**CI / 本地检查**：仓库根目录 `deny.toml` 使用 [cargo-deny](https://github.com/EmbarkStudios/cargo-deny) 的 `bans` 规则，限制各 `skilllite-*` 工作区 crate 之间**直接依赖**的方向（规则与 `spec/architecture-boundaries.md` 一致）。引擎仓 CI 对 root workspace 跑 `cargo deny check bans`。桌面端 deny/CI 在 [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant)。
 
 ```bash
 cargo deny check bans
-cargo deny --manifest-path skilllite-assistant/src-tauri/Cargo.toml check bans
 ```
-
-Desktop 项目因 Tauri 平台 GUI 工具链原因被 root workspace 排除。deny 仍校验其没有 `skilllite-*` path 依赖。
 
 **Feature Flags**：
 

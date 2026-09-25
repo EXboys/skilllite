@@ -47,8 +47,8 @@
 
 ## 4. Desktop（skilllite-assistant）
 
-- **产品角色**：引擎的**可选 GUI 分发**，不是默认对接路径（默认见 [路径 2 — 沙箱与 MCP](./START_PATHS.md#path-2-sandbox-mcp)）。契约就绪后可迁入**独立仓库**（[Assistant 可拆仓架构](./ASSISTANT-SPLIT-ARCHITECTURE.md)）。
-- **入口**：独立项目 `skilllite-assistant/`。单独 Cargo manifest（因 GUI 工具链未纳入 root workspace）。在该目录执行 `npm run tauri build`。`crates/skilllite-assistant/` 仅保留一期 stub。
+- **产品角色**：引擎的**可选 GUI 分发**，不是默认对接路径（默认见 [路径 2 — 沙箱与 MCP](./START_PATHS.md#path-2-sandbox-mcp)）。已迁入**独立仓库**（[Assistant 可拆仓架构](./ASSISTANT-SPLIT-ARCHITECTURE.md)）。
+- **入口**：[EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant)。在该仓执行 `npm run tauri build`。引擎仓 `skilllite-assistant/` 与 `crates/skilllite-assistant/` 仅为 stub。
 - **集成模型** — 仅三层：
   - **L1** `skilllite agent-rpc` — 流式聊天、确认/澄清。
   - **L2** `skilllite … --json` — 进化面板、运行时安装、技能列表。
@@ -56,7 +56,7 @@
 - **依赖（D1′）**：**不再** path 依赖引擎 crate；仅 semver 钉扎的 **`skilllite` 二进制**。预构建通过 `SKILLLITE_ENGINE_ROOT` / 向上查找引擎仓，或复制已安装二进制。
 - **能力**：图形聊天、会话、进化审核/触发、运行时安装、IDE 三栏、多模态 `agent_chat`。
 - **适用**：不想在 IDE 里配 MCP、需要本机 App/托盘的用户。
-- **布局**：P4 已在本仓抽出独立项目目录；后续可用 `git subtree split` 推到独立远程（[检查清单](./ASSISTANT-SPLIT-ARCHITECTURE.md#12-拆仓前检查清单)）。
+- **布局**：P4 已发布为 [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant)。引擎仓保留 stub 与文档指针。
 
 ---
 

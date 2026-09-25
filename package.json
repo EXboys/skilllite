@@ -1,9 +1,9 @@
 {
   "name": "skilllite-monorepo",
   "private": true,
-  "description": "Root package for npm scripts; desktop app lives in skilllite-assistant/",
+  "description": "Root package for npm scripts. Desktop GUI: https://github.com/EXboys/skilllite-assistant",
   "scripts": {
-    "assistant:dev": "npm run tauri dev --prefix skilllite-assistant",
-    "assistant:build": "npm run tauri:build --prefix skilllite-assistant"
+    "assistant:dev": "echo 'Desktop moved to https://github.com/EXboys/skilllite-assistant' && exit 1",
+    "assistant:build": "echo 'Desktop moved to https://github.com/EXboys/skilllite-assistant' && exit 1"
   }
 }

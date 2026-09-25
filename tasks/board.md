@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-09-25 (TASK-2026-071 extract desktop project in review)
+Last updated: 2026-09-25 (TASK-2026-072 done; desktop feature work paused → agent-doctor later)
 
 ## In Progress
 
@@ -8,7 +8,7 @@ Last updated: 2026-09-25 (TASK-2026-071 extract desktop project in review)
 
 ## Ready
 
-- `TASK-2026-071-extract-desktop-project` - Status: `in_review` - Owner: `agent`
+- `TASK-2026-071-extract-desktop-project` - Status: `done` - Owner: `agent`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
@@ -18,6 +18,7 @@ Last updated: 2026-09-25 (TASK-2026-071 extract desktop project in review)
 
 ## Done
 
+- `TASK-2026-072-split-desktop-github` - Status: `done` - Owner: `agent`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
 - `TASK-2026-069-evolution-workspace-run-scope` - Status: `done` - Owner: `agent`
 - `TASK-2026-068-evolution-workspace-db-scope` - Status: `done` - Owner: `agent`

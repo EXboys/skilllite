@@ -157,7 +157,7 @@ docs/en|zh/                           src/         (React)
 tutorials/                            .github/workflows/release-desktop.yml
 ```
 
-**Engine repo (this PR)**: desktop sources live at top-level `skilllite-assistant/` as a standalone project; `crates/skilllite-assistant/` is a stub. A later `git subtree split` (see `scripts/export-assistant-repo.sh`) can publish `github.com/EXboys/skilllite-assistant`.
+**Engine repo (this PR)**: desktop **sources are removed**. Pointers go to `https://github.com/EXboys/skilllite-assistant` (live; `main` was pushed from `cursor/skilllite-assistant-export-3c6e`). Local `skilllite-assistant/` and `crates/skilllite-assistant/` are stubs.
 
 **Assistant repo** pins engine version:
 
@@ -238,7 +238,7 @@ Engine contributors optimize for **MCP + CLI**; Assistant contributors optimize 
 - [x] `src-tauri/Cargo.toml` has zero `skilllite-{agent,sandbox,evolution}` path dependencies
 - [x] All bridge features covered by L1/L2/L3 table (section 4)
 - [x] `min_skilllite_version` enforced at Assistant startup
-- [x] EN/ZH docs and START_PATHS mark Desktop as optional; sources live at `skilllite-assistant/`
+- [x] EN/ZH docs and START_PATHS mark Desktop as optional; product lives at `https://github.com/EXboys/skilllite-assistant`
 - [ ] Engine contract tests for `--json` outputs (golden fixtures recommended)
 - [x] `deny.toml` updated; ARCHITECTURE.md execution chain for Desktop = subprocess only
-- [x] In-tree P4: standalone project directory (external GitHub remote still optional)
+- [x] P4: engine repo is engine-only; assistant tree exported (`cursor/skilllite-assistant-export-3c6e`)

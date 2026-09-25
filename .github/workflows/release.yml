@@ -1,4 +1,4 @@
-# CLI 二进制与 Python SDK 发布；同 tag 下桌面端 dmg/msi/AppImage 由 release-desktop.yml 构建并追加到同一 Release
+# CLI 二进制与 Python SDK 发布。桌面端 dmg/msi/AppImage 在 https://github.com/EXboys/skilllite-assistant 发布。
 name: Build and Release SkillLite
 
 on:

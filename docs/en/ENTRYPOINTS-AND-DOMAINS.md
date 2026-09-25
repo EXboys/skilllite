@@ -47,8 +47,8 @@
 
 ## 4. Desktop (skilllite-assistant)
 
-- **Product role**: **Optional** GUI distribution of the engine — not the default integrator path ([Path 2 — Sandbox & MCP](./START_PATHS.md#path-2-sandbox-mcp) is). Can move to a **separate repository** once the split-ready contract is implemented ([Assistant split architecture](./ASSISTANT-SPLIT-ARCHITECTURE.md)).
-- **Entry**: Standalone project at `skilllite-assistant/`. Separate Cargo manifest (excluded from the root workspace for Tauri/GUI toolchains). Build: `npm run tauri build` in that directory. `crates/skilllite-assistant/` is a one-cycle stub.
+- **Product role**: **Optional** GUI distribution of the engine — not the default integrator path ([Path 2 — Sandbox & MCP](./START_PATHS.md#path-2-sandbox-mcp) is). Lives in a **separate repository** ([Assistant split architecture](./ASSISTANT-SPLIT-ARCHITECTURE.md)).
+- **Entry**: [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant). Build there with `npm run tauri build`. Engine paths `skilllite-assistant/` and `crates/skilllite-assistant/` are stubs.
 - **Integration model** — three layers only:
   - **L1** `skilllite agent-rpc` — streaming chat, confirm/clarify.
   - **L2** `skilllite … --json` — evolution panel, runtime install, skill list.
@@ -56,7 +56,7 @@
 - **Dependencies (D1′)**: **No** path deps on engine crates; semver-pinned **`skilllite` binary** only. Prebuild locates an engine checkout via `SKILLLITE_ENGINE_ROOT` / parent walk, or copies an installed binary.
 - **Capabilities**: GUI chat, session management, evolution review/triggering, runtime probing/provisioning, IDE layout, multimodal `agent_chat`.
 - **Use case**: Users who want a local app without wiring MCP in an IDE.
-- **Layout**: P4 extract is in-tree (`skilllite-assistant/`); a later `git subtree split` can publish a separate remote ([checklist](./ASSISTANT-SPLIT-ARCHITECTURE.md#12-checklist-before-extracting-repo)).
+- **Layout**: P4 published as [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant). Engine retains stubs + pointer docs.
 
 ---
 
