@@ -28,9 +28,11 @@
 - Commands run:
   - `python3 scripts/validate_tasks.py`
   - `git ls-tree --name-only origin/cursor/skilllite-assistant-export-3c6e`
+  - `cargo test --workspace --offline`
 - Key outputs:
   - `Task validation passed (72 task directories checked).`
   - Export root includes `README.md`, `LICENSE`, `package.json`, `src-tauri`, `src`, `.github`
+  - `cargo test --workspace --offline` exit 0 (all listed `test result: ok`; no FAILED)
   - Local `cargo deny` not installed in this VM; engine CI still runs `cargo deny check bans` on the workspace
 
 ## Decision
