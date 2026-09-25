@@ -9,26 +9,27 @@ ASSISTANT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/engine-root.sh"
 
 BIN_NAME="$(skilllite_bin_name)"
-mkdir -p "${HOME}/.skilllite/bin"
-rm -f "${HOME}/.skilllite/bin/skilllite" "${HOME}/.skilllite/bin/skilllite.exe"
+BIN_DIR="${HOME}/.skilllite/bin"
+mkdir -p "${BIN_DIR}"
 
+# Resolve the engine (or an already-installed binary) before deleting anything.
+# ~/.skilllite/bin is both the install destination and a discovery location.
 ENGINE_ROOT="$(skilllite_find_engine_root || true)"
 if [[ -n "${ENGINE_ROOT}" ]]; then
   echo "prebuild: cargo install from engine checkout ${ENGINE_ROOT}"
+  rm -f "${BIN_DIR}/skilllite" "${BIN_DIR}/skilllite.exe"
   (
     cd "${ENGINE_ROOT}"
     cargo install --path skilllite --features memory_vector --root "${HOME}/.skilllite" --force
   )
 else
-  INSTALLED="$(skilllite_find_installed_bin || true)"
-  if [[ -z "${INSTALLED}" ]]; then
+  if ! skilllite_publish_resolved_install; then
     echo "ERROR: no SkillLite engine checkout and no skilllite on PATH." >&2
     echo "Install the engine (pip install skilllite / cargo install skilllite)" >&2
     echo "or set SKILLLITE_ENGINE_ROOT to a skilllite repo checkout." >&2
     exit 1
   fi
-  echo "prebuild: copying installed binary ${INSTALLED}"
-  cp -f "${INSTALLED}" "${HOME}/.skilllite/bin/${BIN_NAME}"
+  echo "prebuild: using installed binary ${BIN_DIR}/${BIN_NAME}"
 fi
 
 echo "skilllite installed: ${HOME}/.skilllite/bin/${BIN_NAME}"

@@ -16,8 +16,8 @@ if [[ -x "${SKILLLITE_BIN}" && "${SKILLLITE_FORCE_PREBUILD:-}" != "1" ]]; then
   exit 0
 fi
 
-ENGINE_ROOT="$(skilllite_find_engine_root || true)"
 mkdir -p "${BIN_DIR}"
+ENGINE_ROOT="$(skilllite_find_engine_root || true)"
 if [[ -n "${ENGINE_ROOT}" ]]; then
   echo "dev prebuild: cargo install from ${ENGINE_ROOT}"
   rm -f "${BIN_DIR}/skilllite" "${BIN_DIR}/skilllite.exe"
@@ -26,12 +26,10 @@ if [[ -n "${ENGINE_ROOT}" ]]; then
     cargo install --path skilllite --features memory_vector --root "${HOME}/.skilllite" --force
   )
 else
-  INSTALLED="$(skilllite_find_installed_bin || true)"
-  if [[ -z "${INSTALLED}" ]]; then
+  if ! skilllite_publish_resolved_install; then
     echo "ERROR: no engine checkout and no skilllite binary. Set SKILLLITE_ENGINE_ROOT or install skilllite." >&2
     exit 1
   fi
-  echo "dev prebuild: reusing ${INSTALLED}"
-  cp -f "${INSTALLED}" "${SKILLLITE_BIN}"
+  echo "dev prebuild: reusing ${SKILLLITE_BIN}"
 fi
 echo "dev prebuild: installed ${SKILLLITE_BIN}"
