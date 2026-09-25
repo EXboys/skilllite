@@ -52,3 +52,42 @@ skilllite_find_installed_bin() {
   fi
   return 1
 }
+
+# Install `installed` into ~/.skilllite/bin without deleting the source first.
+# No-op when source and destination are the same file. On copy failure the
+# previous destination is left in place.
+skilllite_publish_installed_bin() {
+  local installed="$1"
+  local bin_dir dest stage name other
+  name="$(skilllite_bin_name)"
+  bin_dir="${HOME}/.skilllite/bin"
+  mkdir -p "${bin_dir}"
+  dest="${bin_dir}/${name}"
+  if [[ -e "${dest}" && "${installed}" -ef "${dest}" ]]; then
+    return 0
+  fi
+  stage="$(mktemp "${bin_dir}/.skilllite-prebuild.XXXXXX")"
+  if ! cp -f "${installed}" "${stage}"; then
+    rm -f "${stage}"
+    return 1
+  fi
+  chmod +x "${stage}"
+  mv -f "${stage}" "${dest}"
+  if [[ "${name}" == "skilllite" ]]; then
+    other="${bin_dir}/skilllite.exe"
+  else
+    other="${bin_dir}/skilllite"
+  fi
+  rm -f "${other}"
+}
+
+# Fallback used when no engine checkout is available.
+# Looks up an installed binary BEFORE touching ~/.skilllite/bin.
+skilllite_publish_resolved_install() {
+  local installed
+  installed="$(skilllite_find_installed_bin || true)"
+  if [[ -z "${installed}" ]]; then
+    return 1
+  fi
+  skilllite_publish_installed_bin "${installed}"
+}
