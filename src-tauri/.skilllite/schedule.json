@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "enabled": true,
+  "limits": {
+    "max_runs_per_day": 8,
+    "min_interval_seconds_between_runs": 0
+  },
+  "jobs": []
+}

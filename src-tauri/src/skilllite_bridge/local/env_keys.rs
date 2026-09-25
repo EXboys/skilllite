@@ -1,0 +1,68 @@
+//! Env key constants used by the desktop bridge (subset of `skilllite-core::config::env_keys`).
+
+pub mod llm {
+    pub const API_BASE: &str = "SKILLLITE_API_BASE";
+    pub const API_BASE_ALIASES: &[&str] = &["OPENAI_API_BASE", "OPENAI_BASE_URL", "BASE_URL"];
+    pub const API_KEY: &str = "SKILLLITE_API_KEY";
+    pub const API_KEY_ALIASES: &[&str] = &["OPENAI_API_KEY", "API_KEY"];
+    pub const MODEL: &str = "SKILLLITE_MODEL";
+    pub const MODEL_ALIASES: &[&str] = &["OPENAI_MODEL", "MODEL"];
+}
+
+pub mod paths {
+    pub const SKILLLITE_WORKSPACE: &str = "SKILLLITE_WORKSPACE";
+}
+
+pub mod agent {
+    pub const SKILLLITE_UI_LOCALE: &str = "SKILLLITE_UI_LOCALE";
+}
+
+pub mod agent_loop {
+    pub const SKILLLITE_MAX_ITERATIONS: &str = "SKILLLITE_MAX_ITERATIONS";
+    pub const SKILLLITE_MAX_TOOL_CALLS_PER_TASK: &str = "SKILLLITE_MAX_TOOL_CALLS_PER_TASK";
+}
+
+pub mod mcp {
+    pub const SKILLLITE_MCP_SERVERS_JSON: &str = "SKILLLITE_MCP_SERVERS_JSON";
+}
+
+pub mod sandbox {
+    pub const SKILLLITE_SANDBOX_LEVEL: &str = "SKILLLITE_SANDBOX_LEVEL";
+}
+
+pub mod swarm {
+    pub const SKILLLITE_SWARM_URL: &str = "SKILLLITE_SWARM_URL";
+}
+
+pub mod summarization {
+    pub const SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS: &str = "SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS";
+}
+
+pub mod observability {
+    pub const SKILLLITE_QUIET: &str = "SKILLLITE_QUIET";
+    pub const SKILLLITE_LOG_JSON: &str = "SKILLLITE_LOG_JSON";
+}
+
+pub mod evolution {
+    pub const SKILLLITE_EVOLUTION: &str = "SKILLLITE_EVOLUTION";
+    pub const SKILLLITE_EVOLUTION_INTERVAL_SECS: &str = "SKILLLITE_EVOLUTION_INTERVAL_SECS";
+    pub const SKILLLITE_EVOLUTION_DECISION_THRESHOLD: &str =
+        "SKILLLITE_EVOLUTION_DECISION_THRESHOLD";
+    pub const SKILLLITE_EVO_PROFILE: &str = "SKILLLITE_EVO_PROFILE";
+    pub const SKILLLITE_EVO_COOLDOWN_HOURS: &str = "SKILLLITE_EVO_COOLDOWN_HOURS";
+    pub const SKILLLITE_EVO_FORCE_PROPOSAL_ID: &str = "SKILLLITE_EVO_FORCE_PROPOSAL_ID";
+}
+
+pub mod desktop {
+    pub const SKILLLITE_HEARTBEAT_INTERVAL_SECS: &str = "SKILLLITE_HEARTBEAT_INTERVAL_SECS";
+    pub const SKILLLITE_GATEWAY_SERVE_ALLOW: &str = "SKILLLITE_GATEWAY_SERVE_ALLOW";
+}
+
+pub mod channel {
+    pub const SKILLLITE_CHANNEL_DINGTALK_WEBHOOK: &str = "SKILLLITE_CHANNEL_DINGTALK_WEBHOOK";
+    pub const SKILLLITE_CHANNEL_DINGTALK_SECRET: &str = "SKILLLITE_CHANNEL_DINGTALK_SECRET";
+    pub const SKILLLITE_CHANNEL_FEISHU_WEBHOOK: &str = "SKILLLITE_CHANNEL_FEISHU_WEBHOOK";
+    pub const SKILLLITE_CHANNEL_FEISHU_SECRET: &str = "SKILLLITE_CHANNEL_FEISHU_SECRET";
+    pub const SKILLLITE_CHANNEL_TELEGRAM_BOT_TOKEN: &str = "SKILLLITE_CHANNEL_TELEGRAM_BOT_TOKEN";
+    pub const SKILLLITE_CHANNEL_TELEGRAM_CHAT_ID: &str = "SKILLLITE_CHANNEL_TELEGRAM_CHAT_ID";
+}

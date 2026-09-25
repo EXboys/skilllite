@@ -1,0 +1,214 @@
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+/** 界面语言：中文默认，可切换英文 */
+export type UiLocale = "zh" | "en";
+
+export type Provider = "api" | "ollama";
+
+/** Scenario keys for local LLM routing; keep in sync with `LlmRouteScenario` in `utils/llmScenarioRouting.ts`. */
+export type LlmScenarioRouteKey = "agent" | "followup" | "lifePulse" | "evolution";
+
+/** 沙箱安全等级：1=无沙箱, 2=基础隔离, 3=完全沙箱(默认) */
+export type SandboxLevel = 1 | 2 | 3;
+
+/** 已保存的一套 LLM 连接信息（本地持久化，用于多模型切换与复用 Key）。 */
+export interface LlmSavedProfile {
+  id: string;
+  provider: Provider;
+  model: string;
+  apiBase: string;
+  apiKey: string;
+}
+
+/** Outbound MCP stdio servers (same shape as agent `McpServerEntry`). */
+export interface McpServerConfig {
+  id: string;
+  enabled: boolean;
+  command: string;
+  args: string[];
+  cwd?: string;
+}
+
+export interface Settings {
+  provider: Provider;
+  apiKey: string;
+  model: string;
+  workspace: string;
+  apiBase: string;
+  /** 是否已完成首次启动引导；仅当明确为 false 时显示 Onboarding（新安装为 false，旧数据无此字段视为已完成） */
+  onboardingCompleted?: boolean;
+  /** 首次引导完成后，在聊天页展示入门操作卡片。 */
+  showStarterPrompts?: boolean;
+  /** 沙箱安全等级 1/2/3，默认 3（完全沙箱） */
+  sandboxLevel: SandboxLevel;
+  /** 是否启用 Swarm P2P 网络 */
+  swarmEnabled: boolean;
+  /** Swarm 节点 URL，启用时生效 */
+  swarmUrl: string;
+  /**
+   * 覆盖 SKILLLITE_MAX_ITERATIONS（Agent 外层循环上限）。未设置时沿用环境变量 / 默认 50。
+   */
+  maxIterations?: number;
+  /**
+   * 覆盖 SKILLLITE_MAX_TOOL_CALLS_PER_TASK（单任务内工具调用深度等）。未设置时沿用环境变量 / 默认 15。
+   */
+  maxToolCallsPerTask?: number;
+  /**
+   * 覆盖 SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS（主 agent 调 LLM 前估算上下文软上限，字符数；`0` 关闭预请求收缩）。
+   * 未设置时沿用环境变量 / 内置默认。
+   */
+  contextSoftLimitChars?: number;
+  /** 会话侧边栏是否折叠 */
+  sessionPanelCollapsed?: boolean;
+  /**
+   * 主界面 IDE 三栏：工作区文件树 | 编辑器 | 对话（关闭时恢复「会话 | 对话 | 状态」布局）。
+   */
+  ideLayout?: boolean;
+  /** IDE 左侧栏宽度（px），拖拽分隔条时写入 */
+  ideSidebarWidthPx?: number;
+  /** IDE 右侧对话栏宽度（px），拖拽分隔条时写入 */
+  ideChatWidthPx?: number;
+  /** 界面语言 */
+  locale?: UiLocale;
+  /**
+   * 自动允许「执行确认」（工具执行前弹窗）；默认关闭以降低误操作风险。
+   * 持久化在 localStorage，与 `SETTINGS_STORE_PERSIST_KEY` 一致。
+   */
+  autoApproveToolConfirmations?: boolean;
+  /**
+   * 覆盖 `SKILLLITE_EVOLUTION_INTERVAL_SECS`（Life Pulse 周期与状态展示）。不设则沿用工作区已合并配置 / 默认 600。
+   */
+  evolutionIntervalSecs?: number;
+  /**
+   * 覆盖 `SKILLLITE_EVOLUTION_DECISION_THRESHOLD`。不设则沿用工作区已合并配置 / 默认 10。
+   */
+  evolutionDecisionThreshold?: number;
+  /**
+   * 覆盖 `SKILLLITE_EVO_PROFILE`：`demo` | `conservative`。不设则跟随工作区已合并配置。
+   */
+  evoProfile?: "demo" | "conservative";
+  /**
+   * 覆盖 `SKILLLITE_EVO_COOLDOWN_HOURS`（被动提案冷却，小时）。不设则沿用工作区已合并配置 / 内置默认。
+   */
+  evoCooldownHours?: number;
+  /** 多模型/API 端点已保存配置（在设置保存或完成引导时自动合并）。 */
+  llmProfiles?: LlmSavedProfile[];
+  /**
+   * 本地轻量场景路由：启用后，不同调用场景可选用 `llmProfiles` 中已保存的一条配置；
+   * 某场景未选择映射时仍使用当前主界面模型（provider/model/apiBase/apiKey）。
+   */
+  llmScenarioRoutingEnabled?: boolean;
+  /** 场景 → 已保存配置 id（`LlmSavedProfile.id`）。 */
+  llmScenarioRoutes?: Partial<Record<LlmScenarioRouteKey, string>>;
+  /**
+   * 场景 → 备用 `LlmSavedProfile.id` 列表（按顺序尝试）。
+   * 仅在 `llmScenarioRoutingEnabled` 为 true 时生效；非流式调用失败时由 runtime 顺序切换。
+   */
+  llmScenarioFallbacks?: Partial<Record<LlmScenarioRouteKey, string[]>>;
+  /** 可选：Agent 出站 MCP（stdio）；每项可单独启用/禁用。 */
+  mcpServers?: McpServerConfig[];
+  /** `skilllite gateway serve --bind` 地址，默认 `127.0.0.1:8787`（IPv4 `host:port`）。 */
+  gatewayServeBind?: string;
+  /** 可选 Bearer，与 CLI `--token` 一致；仅存本地（与 API Key 同级风险，勿提交仓库）。 */
+  gatewayServeToken?: string;
+  /** 可选 artifact 目录；设置后 `gateway serve` 会挂载 artifact HTTP 路由。 */
+  gatewayArtifactDir?: string;
+  /** 入站 webhook 摘要：钉钉 Webhook URL（`SKILLLITE_CHANNEL_DINGTALK_WEBHOOK`）。仅存本地。 */
+  gatewayChannelDingtalkWebhook?: string;
+  /** 钉钉加签密钥（`SKILLLITE_CHANNEL_DINGTALK_SECRET`）。 */
+  gatewayChannelDingtalkSecret?: string;
+  /** 飞书自定义机器人 Webhook（`SKILLLITE_CHANNEL_FEISHU_WEBHOOK`）。 */
+  gatewayChannelFeishuWebhook?: string;
+  /** 飞书签名校验密钥（`SKILLLITE_CHANNEL_FEISHU_SECRET`）。 */
+  gatewayChannelFeishuSecret?: string;
+  /** Telegram Bot token（`SKILLLITE_CHANNEL_TELEGRAM_BOT_TOKEN`）。 */
+  gatewayChannelTelegramBotToken?: string;
+  /** Telegram chat id（`SKILLLITE_CHANNEL_TELEGRAM_CHAT_ID`）。 */
+  gatewayChannelTelegramChatId?: string;
+}
+
+/** localStorage 键名；详情窗口与主窗口同步设置时需与此一致 */
+export const SETTINGS_STORE_PERSIST_KEY = "skilllite-assistant-settings";
+const SETTINGS_STORE_VERSION = 1;
+const DEFAULT_GATEWAY_SERVE_BIND = "127.0.0.1:8787";
+const DEFAULT_GATEWAY_SERVE_TOKEN = "";
+const DEFAULT_GATEWAY_ARTIFACT_DIR = "";
+
+type LegacyGatewaySettings = Settings & {
+  channelServeBind?: string;
+  channelServeToken?: string;
+};
+
+type PersistedSettingsStore = {
+  settings?: LegacyGatewaySettings;
+};
+
+function migrateSettingsStore(persistedState: unknown, version: number): PersistedSettingsStore {
+  if (!persistedState || typeof persistedState !== "object") {
+    return {};
+  }
+
+  const store = persistedState as PersistedSettingsStore;
+  const settings = store.settings;
+  if (!settings || typeof settings !== "object") {
+    return store;
+  }
+
+  if (version >= SETTINGS_STORE_VERSION) {
+    return store;
+  }
+
+  const { channelServeBind, channelServeToken, ...rest } = settings;
+  const migratedSettings: Settings = {
+    ...rest,
+    gatewayServeBind: settings.gatewayServeBind ?? channelServeBind ?? DEFAULT_GATEWAY_SERVE_BIND,
+    gatewayServeToken: settings.gatewayServeToken ?? channelServeToken ?? DEFAULT_GATEWAY_SERVE_TOKEN,
+    gatewayArtifactDir: settings.gatewayArtifactDir ?? DEFAULT_GATEWAY_ARTIFACT_DIR,
+  };
+
+  return {
+    ...store,
+    settings: migratedSettings,
+  };
+}
+
+const defaultSettings: Settings = {
+  provider: "api",
+  apiKey: "",
+  model: "gpt-4o",
+  /** 空串表示尚未解析；桌面端启动后会落为 `Documents/SkillLite` 等绝对路径 */
+  workspace: "",
+  apiBase: "",
+  locale: "zh",
+  onboardingCompleted: false,
+  showStarterPrompts: false,
+  sandboxLevel: 3,
+  swarmEnabled: false,
+  swarmUrl: "",
+  gatewayServeBind: DEFAULT_GATEWAY_SERVE_BIND,
+  gatewayServeToken: DEFAULT_GATEWAY_SERVE_TOKEN,
+  gatewayArtifactDir: DEFAULT_GATEWAY_ARTIFACT_DIR,
+};
+
+export const useSettingsStore = create<{
+  settings: Settings;
+  setSettings: (s: Partial<Settings>) => void;
+  reset: () => void;
+}>()(
+  persist(
+    (set) => ({
+      settings: defaultSettings,
+      setSettings: (partial) =>
+        set((s) => ({
+          settings: { ...s.settings, ...partial },
+        })),
+      reset: () => set({ settings: defaultSettings }),
+    }),
+    {
+      name: SETTINGS_STORE_PERSIST_KEY,
+      version: SETTINGS_STORE_VERSION,
+      migrate: migrateSettingsStore,
+    }
+  )
+);
