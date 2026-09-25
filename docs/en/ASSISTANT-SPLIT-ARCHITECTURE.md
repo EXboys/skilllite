@@ -157,7 +157,7 @@ docs/en|zh/                           src/         (React)
 tutorials/                            .github/workflows/release-desktop.yml
 ```
 
-**Engine repo (this PR)**: desktop **sources are removed**. Pointers go to `https://github.com/EXboys/skilllite-assistant`. Local `skilllite-assistant/` and `crates/skilllite-assistant/` are stubs. Standalone history is `cursor/skilllite-assistant-export-3c6e`; after the owner creates the empty public repo, run `bash scripts/push-assistant-repo.sh`.
+**Engine repo (this PR)**: desktop **sources are removed**. Pointers go to `https://github.com/EXboys/skilllite-assistant` (live; `main` was pushed from `cursor/skilllite-assistant-export-3c6e`). Local `skilllite-assistant/` and `crates/skilllite-assistant/` are stubs.
 
 **Assistant repo** pins engine version:
 

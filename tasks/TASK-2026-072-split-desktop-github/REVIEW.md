@@ -12,7 +12,7 @@
 
 ## Findings
 
-- Critical: New GitHub repository does not exist yet; clone URL 404 until owner creates it.
+- Critical: none (assistant remote is live at https://github.com/EXboys/skilllite-assistant)
 - Major: none in engine CLI/MCP path
 - Minor: `release-desktop.yml` in the engine repo is a fail-closed notice job
 
@@ -37,6 +37,6 @@
 
 ## Decision
 
-- Merge readiness: ready for engine pointer PR (assistant remote creation remains owner-blocked)
+- Merge readiness: ready
 - Follow-up actions:
-  - Owner creates `EXboys/skilllite-assistant` and runs `bash scripts/push-assistant-repo.sh`
+  - Merge engine pointer PR #173

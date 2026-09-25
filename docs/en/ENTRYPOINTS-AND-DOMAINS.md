@@ -56,7 +56,7 @@
 - **Dependencies (D1′)**: **No** path deps on engine crates; semver-pinned **`skilllite` binary** only. Prebuild locates an engine checkout via `SKILLLITE_ENGINE_ROOT` / parent walk, or copies an installed binary.
 - **Capabilities**: GUI chat, session management, evolution review/triggering, runtime probing/provisioning, IDE layout, multimodal `agent_chat`.
 - **Use case**: Users who want a local app without wiring MCP in an IDE.
-- **Layout**: P4 published as [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant). Engine retain stubs + pointer docs. Export history: `cursor/skilllite-assistant-export-3c6e` / `bash scripts/push-assistant-repo.sh`.
+- **Layout**: P4 published as [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant). Engine retains stubs + pointer docs.
 
 ---
 

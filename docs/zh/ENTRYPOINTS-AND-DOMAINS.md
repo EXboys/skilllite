@@ -56,7 +56,7 @@
 - **依赖（D1′）**：**不再** path 依赖引擎 crate；仅 semver 钉扎的 **`skilllite` 二进制**。预构建通过 `SKILLLITE_ENGINE_ROOT` / 向上查找引擎仓，或复制已安装二进制。
 - **能力**：图形聊天、会话、进化审核/触发、运行时安装、IDE 三栏、多模态 `agent_chat`。
 - **适用**：不想在 IDE 里配 MCP、需要本机 App/托盘的用户。
-- **布局**：P4 已发布为 [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant)。引擎仓保留 stub 与文档指针。导出历史：`cursor/skilllite-assistant-export-3c6e` / `bash scripts/push-assistant-repo.sh`。
+- **布局**：P4 已发布为 [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant)。引擎仓保留 stub 与文档指针。
 
 ---
 

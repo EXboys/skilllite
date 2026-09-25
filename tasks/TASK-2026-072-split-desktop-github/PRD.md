@@ -6,7 +6,7 @@ P4 in-tree extract landed on `main` (#158). The user wants a **separate GitHub p
 
 ## Objective
 
-- Desktop lives at `https://github.com/EXboys/skilllite-assistant` (once the empty repo is created and pushed).
+- Desktop lives at `https://github.com/EXboys/skilllite-assistant`.
 - `EXboys/skilllite` is engine-only and links to that project.
 
 ## Functional Requirements

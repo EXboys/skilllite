@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-072`
 - Title: Publish desktop Assistant as a separate GitHub repository
-- Status: `in_progress`
+- Status: `done`
 - Priority: `P1`
 - Owner: `agent`
 - Contributors:
@@ -35,7 +35,7 @@ This environment cannot create repositories under `EXboys` (GitHub App token: `c
 - [x] Engine docs/CI no longer treat desktop as in-tree product source
 - [x] Engine root README links the new GitHub project
 - [x] `python3 scripts/validate_tasks.py` passes
-- [ ] Empty `EXboys/skilllite-assistant` created by owner and `bash scripts/push-assistant-repo.sh` succeeds (blocked on org permission)
+- [x] Owner created `EXboys/skilllite-assistant` and pushed export `HEAD:main` (verified live, not empty)
 
 ## Risks
 

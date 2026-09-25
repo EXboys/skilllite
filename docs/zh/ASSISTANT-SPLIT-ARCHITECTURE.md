@@ -159,7 +159,7 @@ docs/en|zh/                           src/（React）
 tutorials/                            release-desktop CI
 ```
 
-**引擎仓（本次）**：桌面**源码已移除**。文档指向 `https://github.com/EXboys/skilllite-assistant`。本地 `skilllite-assistant/` 与 `crates/skilllite-assistant/` 仅为 stub。独立历史在 `cursor/skilllite-assistant-export-3c6e`；仓库所有者创建空的公开仓后执行 `bash scripts/push-assistant-repo.sh`。
+**引擎仓（本次）**：桌面**源码已移除**。文档指向已上线的 `https://github.com/EXboys/skilllite-assistant`（`main` 由 `cursor/skilllite-assistant-export-3c6e` 推入）。本地 `skilllite-assistant/` 与 `crates/skilllite-assistant/` 仅为 stub。
 
 **Assistant 仓** 钉扎引擎版本，prebuild **不再** `cargo install --path skilllite` 从 monorepo 根目录构建。
 
