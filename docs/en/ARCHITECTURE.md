@@ -159,11 +159,11 @@ skillLite/
 │   │
 │   ├── skilllite-artifact/        # ArtifactStore impls: local dir (default for agent), optional HTTP server/client
 │   │
-│   ├── skilllite-channel/         # Outbound messaging (WeChat Work, DingTalk, Feishu/Lark, Telegram, Discord, WhatsApp). Inbound webhook MVP stays thin (`skilllite channel serve`), while `skilllite gateway serve` is the preferred unified host. No separate `skilllite-gateway` crate in this phase.
-│   │
-│   └── skilllite-assistant/       # Tauri 2 + React desktop — first-class entry (Phase 0 D1); excluded from root workspace because Tauri needs platform GUI toolchains. Build via separate manifest. Direct path deps: core, fs, sandbox, agent, evolution.
-│       ├── vite.config.ts         # sole Vite config (do not duplicate vite.config.js; see crate README)
-│       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
+│   └── skilllite-channel/         # Outbound messaging (WeChat Work, DingTalk, Feishu/Lark, Telegram, Discord, WhatsApp). Inbound webhook MVP stays thin (`skilllite channel serve`), while `skilllite gateway serve` is the preferred unified host. No separate `skilllite-gateway` crate in this phase.
+│
+├── skilllite-assistant/           # Standalone Tauri 2 + React desktop project (not a workspace crate). Thin client over a released skilllite binary (L1 agent-rpc + L2 CLI --json).
+│   ├── vite.config.ts             # sole Vite config (do not duplicate vite.config.js; see project README)
+│   └── src-tauri/                 # cargo build --manifest-path skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (thin bridge layer)
 │   ├── pyproject.toml             # Package config (v0.1.29, zero runtime deps)
@@ -236,13 +236,11 @@ skilllite (main binary)
   ├── skilllite-channel            # standalone (no `skilllite-*` path deps); outbound adapters; inbound webhook MVP via `skilllite channel serve`; unified host lives in main binary via `skilllite gateway serve`
   └── skilllite-core (root)
 
-skilllite-assistant (Tauri desktop — optional distribution; split target)
-  ├── Today: path deps → skilllite-core, fs, sandbox, agent, evolution (D1 allow-list)
-  └── Target: subprocess-only → released skilllite binary (agent-rpc + CLI --json)
+skilllite-assistant (Tauri desktop — standalone project at repo-root skilllite-assistant/)
+  └── subprocess-only → released or locally built skilllite binary (agent-rpc + CLI --json)
 
 Execution chain (CLI):  CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
-Execution chain (Desktop, today): Tauri → skilllite_bridge → {agent-rpc child | in-process agent/sandbox/evolution | CLI child}.
-Execution chain (Desktop, target): Tauri → bridge → {L1 agent-rpc | L2 skilllite --json | L3 workspace files} only.
+Execution chain (Desktop): Tauri → bridge → {L1 agent-rpc | L2 skilllite --json | L3 workspace files} only.
 
 See [Assistant split architecture](./ASSISTANT-SPLIT-ARCHITECTURE.md) for L1/L2/L3, migration phases P0–P5, and repo extraction checklist.
 Optional accelerator: `skilllite-services` in the engine repo (CLI + daemon surfaces); Assistant must not path-dep it at split time.
@@ -254,10 +252,10 @@ Core doesn't depend on upper layers; Agent is Core's customer.
 
 ```bash
 cargo deny check bans
-cargo deny --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml check bans
+cargo deny --manifest-path skilllite-assistant/src-tauri/Cargo.toml check bans
 ```
 
-The Desktop manifest is excluded from the root workspace because Tauri requires platform GUI toolchains, but its dependency layering is enforced separately to keep first-class-entry parity.
+The Desktop project is excluded from the root workspace because Tauri requires platform GUI toolchains. Deny still checks it has no `skilllite-*` path dependencies.
 
 **Feature Flags**:
 

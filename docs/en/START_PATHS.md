@@ -46,9 +46,11 @@ SkillLite is **one repository** with **multiple entry points**. Pick **one** pat
 
 **Goal.** A **GUI** on your machine: chat, skills, optional IDE layout, governed evolution, local-first workflows. **Optional** — use Path 2 if you only need sandbox/MCP inside another IDE or agent.
 
+**Layout.** Desktop is **no longer** under `crates/`. Sources live in the standalone project [`skilllite-assistant/`](../../skilllite-assistant/). `crates/skilllite-assistant/` is a stub. This repo remains the engine.
+
 **Start here.**
 
-- From source: [crates/skilllite-assistant/README.md](../../crates/skilllite-assistant/README.md) — all `npm` / `tauri` commands run **only** in that crate directory.
+- From source: [skilllite-assistant/README.md](../../skilllite-assistant/README.md) — all `npm` / `tauri` commands run **only** in that project directory.
 - Installers (**dmg** / **msi** / **AppImage**): [GitHub Releases](https://github.com/EXboys/skilllite/releases), once the [release-desktop](https://github.com/EXboys/skilllite/actions/workflows/release-desktop.yml) workflow has finished for the tag.
 
 **See also.** The main [README](../../README.md) — collapsible **Desktop Assistant** section (search the page for that phrase).

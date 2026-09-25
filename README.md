@@ -33,7 +33,9 @@ One repository ships several entry points. Each row links to the **English** hub
 |------|------------|
 | **Sandbox & MCP** (recommended) — secure skills in an existing IDE or agent | [Path 2 — Sandbox & MCP](./docs/en/START_PATHS.md#path-2-sandbox-mcp) |
 | **Full stack** — `skilllite` CLI, Python SDK, evolution, optional Swarm | [Path 3 — Full stack](./docs/en/START_PATHS.md#path-3-fullstack) |
-| **Desktop GUI** (optional) — SkillLite Assistant: local chat, evolution UI, IDE layout | [Path 1 — Desktop](./docs/en/START_PATHS.md#path-1-desktop) |
+| **Desktop GUI** (optional, **moved**) — SkillLite Assistant is a standalone project, not an engine crate | [Path 1 — Desktop](./docs/en/START_PATHS.md#path-1-desktop) · [`skilllite-assistant/`](./skilllite-assistant/) |
+
+> **Desktop moved out of `crates/`.** This repository is the **engine** (CLI, sandbox, MCP, Python SDK). The Tauri GUI now lives at **[`skilllite-assistant/`](./skilllite-assistant/)** (own `package.json` / `src-tauri`). `crates/skilllite-assistant/` is a one-cycle stub. Old `cd crates/skilllite-assistant` bookmarks will not work. [中文说明](./docs/zh/README.md#桌面已迁出-crates)。
 
 ---
 
@@ -471,8 +473,8 @@ skilllite/                         Dependency Flow
     ├── skilllite-agent/             │     ├── skilllite-sandbox     │
     ├── skilllite-commands/          │     └── skilllite-executor    │
     ├── skilllite-swarm/             ├── skilllite-swarm             │
-    ├── skilllite-artifact/          ├── skilllite-artifact          │
-    └── skilllite-assistant/         └───────────┬──────────────────┘
+    └── skilllite-artifact/          ├── skilllite-artifact          │
+skilllite-assistant/  (standalone GUI) └───────────┬──────────────────┘
                                           skilllite-core (foundation)
 ```
 
@@ -487,7 +489,7 @@ skilllite/                         Dependency Flow
 | **skilllite-commands**  | CLI command implementations — wires crates into `skilllite` binary                                                                                                                 | CLI          |
 | **skilllite-swarm**     | P2P mesh — mDNS discovery, peer routing, distributed task dispatch                                                                                                                 | Network      |
 | **skilllite-artifact**  | Run-scoped artifact storage — local dir (agent default), optional HTTP server/client (`skilllite artifact-serve` when `artifact_http` is enabled)                                   | Storage / HTTP |
-| **skilllite-assistant** | Desktop app — Tauri 2 + React, standalone GUI                                                                                                                                      | App          |
+| **skilllite-assistant** | Desktop app — Tauri 2 + React standalone project at repo-root `skilllite-assistant/` (not a workspace crate)                                                                        | App          |
 
 
 > **Two independently deliverable binaries**: `skilllite` (full: evolution + agent + sandbox) and `skilllite-sandbox` (lightweight: sandbox + MCP only, ~3.6 MB). The sandbox has zero dependency on the agent or evolution crates — other frameworks (LangChain, AutoGen, CrewAI, etc.) can embed it directly via CLI, MCP, or as a Rust crate.
@@ -589,7 +591,9 @@ The `init-opencode` command automatically detects the best way to start the MCP 
 </details>
 
 <details>
-<summary>Desktop Assistant (skilllite-assistant) — optional</summary>
+<summary>Desktop Assistant (skilllite-assistant) — optional, moved out of crates/</summary>
+
+**Moved:** the GUI is a standalone project at [`skilllite-assistant/`](./skilllite-assistant/), not a workspace crate. `crates/skilllite-assistant/` is a stub.
 
 **Optional** official GUI — not required if you only need sandbox/MCP in another IDE or agent.
 
@@ -598,10 +602,10 @@ The `init-opencode` command automatically detects the best way to start the MCP 
 
 ![SkillLite Assistant — Settings, Model & API tab](./docs/images/assistant-settings-model-api.png)
 
-Tauri 2 + React Desktop, located at `crates/skilllite-assistant/`:
+Tauri 2 + React Desktop, located at `skilllite-assistant/` (standalone project):
 
 ```bash
-cd crates/skilllite-assistant
+cd skilllite-assistant
 npm install
 npm run tauri dev    # dev mode (HMR)
 npm run tauri build
@@ -619,7 +623,7 @@ Default agent prompts bias toward **implementing** missing capabilities (scripts
 
 **Windows**: background subprocesses (bundled engine checks, Life Pulse, runtime probes, and agent `run_command` shells) are started with `CREATE_NO_WINDOW`, so you should not see empty Command Prompt windows flashing during normal use.
 
-See [crates/skilllite-assistant/README.md](./crates/skilllite-assistant/README.md).
+See [skilllite-assistant/README.md](./skilllite-assistant/README.md).
 
 </details>
 

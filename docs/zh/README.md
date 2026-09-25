@@ -8,7 +8,11 @@
 |------|------------|
 | **沙箱与 MCP**（推荐）— 在已有 IDE/Agent 里安全执行 Skill | [路径 2 — 沙箱与 MCP](./START_PATHS.md#path-2-sandbox-mcp) |
 | **全栈** — CLI、Python SDK、进化、可选 Swarm | [路径 3 — 全栈](./START_PATHS.md#path-3-fullstack) |
-| **桌面 GUI**（可选）— SkillLite Assistant | [路径 1 — 桌面](./START_PATHS.md#path-1-desktop) |
+| **桌面 GUI**（可选，**已迁走**）— 独立项目，不再是引擎 crate | [路径 1 — 桌面](./START_PATHS.md#path-1-desktop) · [`skilllite-assistant/`](../../skilllite-assistant/) |
+
+<a id="桌面已迁出-crates"></a>
+
+> **桌面已迁出 `crates/`。** 本仓库是**引擎**（CLI、沙箱、MCP、Python SDK）。Tauri 图形客户端现在在独立项目 **[`skilllite-assistant/`](../../skilllite-assistant/)**（自有 `package.json` / `src-tauri`）。`crates/skilllite-assistant/` 只保留一期 stub。旧命令 `cd crates/skilllite-assistant` 会失效。English: [root README](../../README.md)。
 
 **越用越强的 AI Agent 引擎——在安全沙箱约束下自进化。**
 
@@ -425,8 +429,8 @@ skilllite/                         依赖流向
     ├── skilllite-agent/             │     ├── skilllite-sandbox     │
     ├── skilllite-commands/          │     └── skilllite-executor    │
     ├── skilllite-swarm/             ├── skilllite-swarm             │
-    ├── skilllite-artifact/          ├── skilllite-artifact          │
-    └── skilllite-assistant/         └───────────┬──────────────────┘
+    └── skilllite-artifact/          ├── skilllite-artifact          │
+skilllite-assistant/  （独立 GUI 项目） └───────────┬──────────────────┘
                                           skilllite-core (基础层)
 ```
 
@@ -440,7 +444,7 @@ skilllite/                         依赖流向
 | **skilllite-commands** | CLI 命令实现 — 将各 crate 组装进 `skilllite` 二进制 | CLI |
 | **skilllite-swarm** | P2P 集群 — mDNS 发现、节点网格、分布式任务路由 | 网络 |
 | **skilllite-artifact** | 按 run 的 artifact 存储 — 本地目录（agent 默认）、可选 HTTP（主二进制启用 `artifact_http` 时含 `artifact-serve`） | 存储 / HTTP |
-| **skilllite-assistant** | 桌面应用 — Tauri 2 + React，独立 GUI | 应用 |
+| **skilllite-assistant** | 桌面应用 — Tauri 2 + React，仓库根目录独立项目（已迁出 `crates/`） | 应用 |
 
 > **两个可独立交付的二进制**：`skilllite`（完整版：进化 + Agent + 沙箱）和 `skilllite-sandbox`（轻量版：仅沙箱 + MCP，~3.6 MB）。沙箱对 agent 和 evolution crate 零依赖——其他框架（LangChain、AutoGen、CrewAI 等）可通过 CLI、MCP 或 Rust crate 直接嵌入。
 
@@ -536,7 +540,9 @@ opencode
 </details>
 
 <details>
-<summary>桌面助手（skilllite-assistant）— 可选</summary>
+<summary>桌面助手（skilllite-assistant）— 可选，已迁出 crates/</summary>
+
+**已迁走：** 图形客户端是独立项目 [`skilllite-assistant/`](../../skilllite-assistant/)，不再是 workspace crate。`crates/skilllite-assistant/` 仅为 stub。
 
 **可选**官方图形客户端 — 若你只需在其它 IDE/Agent 里用沙箱与 MCP，不必安装。
 
@@ -546,10 +552,10 @@ opencode
 
 ![SkillLite Assistant — 设置「模型与 API」](../images/assistant-settings-model-api.png)
 
-Tauri 2 + React 桌面应用，位于 `crates/skilllite-assistant/`：
+Tauri 2 + React 桌面应用，位于独立项目 `skilllite-assistant/`：
 
 ```bash
-cd crates/skilllite-assistant
+cd skilllite-assistant
 npm install
 npm run tauri dev    # 开发模式（HMR）
 npm run tauri build
@@ -567,7 +573,7 @@ npm run tauri build
 
 **Windows**：后台子进程（内置引擎自检、Life Pulse、运行时探测、以及代理里通过 `run_command` 拉起的 shell）使用无控制台窗口方式创建，正常使用时不应再反复闪现空的「命令提示符」黑框。
 
-详见 [crates/skilllite-assistant/README.md](../../crates/skilllite-assistant/README.md)。
+详见 [skilllite-assistant/README.md](../../skilllite-assistant/README.md)。
 
 </details>
 

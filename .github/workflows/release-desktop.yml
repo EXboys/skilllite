@@ -9,7 +9,7 @@ on:
     branches:
       - main
     paths:
-      - 'crates/skilllite-assistant/**'
+      - 'skilllite-assistant/**'
       - 'crates/skilllite-agent/**'
       - 'crates/skilllite-core/**'
       - 'skilllite/**'
@@ -43,7 +43,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: crates/skilllite-assistant/package-lock.json
+          cache-dependency-path: skilllite-assistant/package-lock.json
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -52,7 +52,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-desktop-cargo-${{ hashFiles('Cargo.lock', 'crates/skilllite-assistant/src-tauri/Cargo.toml') }}
+          key: ${{ runner.os }}-desktop-cargo-${{ hashFiles('Cargo.lock', 'skilllite-assistant/src-tauri/Cargo.toml') }}
 
       - name: Install Linux dependencies (Tauri 2)
         if: matrix.os == 'ubuntu-22.04'
@@ -75,7 +75,7 @@ jobs:
         run: brew install create-dmg
 
       - name: Install npm dependencies
-        working-directory: crates/skilllite-assistant
+        working-directory: skilllite-assistant
         run: npm ci
 
       # macOS：导入 Developer ID 证书以便 Tauri 构建时签名（配置 Secrets 后生效，未配置则跳过即不签名）
@@ -103,7 +103,7 @@ jobs:
       # macOS 公证：不在 tauri build 内跑（失败会整步失败）。签名+打包见下一步；公证见「Notarize macOS app」。
 
       - name: Build Tauri app (skilllite binary bundled via beforeBuildCommand)
-        working-directory: crates/skilllite-assistant
+        working-directory: skilllite-assistant
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
@@ -119,13 +119,13 @@ jobs:
 
       # beforeBuildCommand runs `npm run build`; catch accidental reintroduction of remark-gfm autolink regex
       - name: Verify frontend bundle (WKWebView-safe)
-        working-directory: crates/skilllite-assistant
+        working-directory: skilllite-assistant
         run: node scripts/verify-no-lookbehind-in-dist.mjs
 
       - name: Verify .app bundle exists (macOS)
         if: runner.os == 'macOS'
         run: |
-          APP_DIR="crates/skilllite-assistant/src-tauri/target/release/bundle/macos"
+          APP_DIR="skilllite-assistant/src-tauri/target/release/bundle/macos"
           echo "--- Contents of bundle/macos/ ---"
           ls -la "$APP_DIR" || echo "WARNING: $APP_DIR does not exist"
           echo "--- Checking .app structure ---"
@@ -145,8 +145,8 @@ jobs:
         run: |
           set -euo pipefail
           REPO="${{ github.workspace }}"
-          KEY_PATH="$REPO/crates/skilllite-assistant/authkey.p8"
-          APP_PATH="$REPO/crates/skilllite-assistant/src-tauri/target/release/bundle/macos/SkillLite Assistant.app"
+          KEY_PATH="$REPO/skilllite-assistant/authkey.p8"
+          APP_PATH="$REPO/skilllite-assistant/src-tauri/target/release/bundle/macos/SkillLite Assistant.app"
           ZIP_PATH=""
           cleanup() {
             rm -f "$KEY_PATH"
@@ -198,9 +198,9 @@ jobs:
       - name: Create DMG with create-dmg (macOS)
         if: runner.os == 'macOS'
         run: |
-          APP_VERSION=$(python3 -c "import json; print(json.load(open('crates/skilllite-assistant/src-tauri/tauri.conf.json'))['version'])")
-          APP_PATH="crates/skilllite-assistant/src-tauri/target/release/bundle/macos/SkillLite Assistant.app"
-          DMG_DIR="crates/skilllite-assistant/src-tauri/target/release/bundle/dmg"
+          APP_VERSION=$(python3 -c "import json; print(json.load(open('skilllite-assistant/src-tauri/tauri.conf.json'))['version'])")
+          APP_PATH="skilllite-assistant/src-tauri/target/release/bundle/macos/SkillLite Assistant.app"
+          DMG_DIR="skilllite-assistant/src-tauri/target/release/bundle/dmg"
           mkdir -p "$DMG_DIR"
           set +e
           create-dmg \
@@ -224,11 +224,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: skilllite-assistant-darwin-arm64
-          path: crates/skilllite-assistant/src-tauri/target/release/bundle/dmg/*.dmg
+          path: skilllite-assistant/src-tauri/target/release/bundle/dmg/*.dmg
 
       - name: Remove Apple API key file (macOS, reduce exposure)
         if: runner.os == 'macOS'
-        working-directory: crates/skilllite-assistant
+        working-directory: skilllite-assistant
         run: rm -f authkey.p8
 
       - name: Upload Windows artifact (msi)
@@ -236,14 +236,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: skilllite-assistant-windows-x64
-          path: crates/skilllite-assistant/src-tauri/target/release/bundle/msi/*.msi
+          path: skilllite-assistant/src-tauri/target/release/bundle/msi/*.msi
 
       - name: Upload Linux artifact (AppImage)
         if: matrix.os == 'ubuntu-22.04'
         uses: actions/upload-artifact@v4
         with:
           name: skilllite-assistant-linux-x64
-          path: crates/skilllite-assistant/src-tauri/target/release/bundle/appimage/*.AppImage
+          path: skilllite-assistant/src-tauri/target/release/bundle/appimage/*.AppImage
 
   upload-to-release:
     name: Upload desktop assets to Release

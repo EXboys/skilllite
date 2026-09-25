@@ -2,15 +2,15 @@
 # Run for the workspace:
 #   cargo deny check bans
 # Run for the Desktop manifest (excluded from the root workspace):
-#   cargo deny --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml check bans
+#   cargo deny --manifest-path skilllite-assistant/src-tauri/Cargo.toml check bans
 #
 # Layering rules track `spec/architecture-boundaries.md`:
-# entry (skilllite, skilllite-assistant) -> commands/agent -> executor -> sandbox -> core.
+# entry (skilllite CLI/MCP) -> commands/agent -> executor -> sandbox -> core.
 #
-# Desktop (D1′, 2026-05): `skilllite-assistant` is a thin client over the released
-# `skilllite` binary (L1 agent-rpc + L2 CLI --json). It must NOT path-depend on
-# `skilllite-{agent,sandbox,evolution}` — see docs/en/ASSISTANT-SPLIT-ARCHITECTURE.md.
-# CI still runs: cargo deny --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml check bans
+# Desktop (D1′, 2026-05): `skilllite-assistant/` is a standalone GUI project over the
+# released `skilllite` binary (L1 agent-rpc + L2 CLI --json). It must NOT path-depend
+# on `skilllite-{agent,sandbox,evolution}` — see docs/en/ASSISTANT-SPLIT-ARCHITECTURE.md.
+# CI still runs: cargo deny --manifest-path skilllite-assistant/src-tauri/Cargo.toml check bans
 
 [graph]
 # Resolve the same feature set CI builds with (full agent / artifact / swarm graph).

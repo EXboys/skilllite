@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
+Last updated: 2026-09-25 (TASK-2026-071 extract desktop project in review)
 
 ## In Progress
 
@@ -8,6 +8,7 @@ Last updated: 2026-07-06 (TASK-2026-070 critical bug sweep done)
 
 ## Ready
 
+- `TASK-2026-071-extract-desktop-project` - Status: `in_review` - Owner: `agent`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 

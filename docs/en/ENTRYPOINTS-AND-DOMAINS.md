@@ -11,7 +11,7 @@
 | **CLI** | Main binary `skilllite` | core, sandbox, commands, (optional) executor, agent, swarm, artifact HTTP, unified gateway host | Terminal users, scripts, CI: run skills, scan, chat, init, and full feature set. |
 | **Python** | python-sdk + IPC/subprocess (+ stdlib HTTP for artifacts) | Calls local `skilllite` binary (`serve` / subcommands); `artifact_put`/`artifact_get` hit artifact HTTP | Python apps: scan_code, execute_code, chat, run_skill; optional cross-process blobs via artifact API. |
 | **MCP** | Subcommand `skilllite mcp` | Same as CLI main binary (mcp module lives in skilllite package) | Cursor/VSCode etc.: MCP protocol exposes list_skills, run_skill, scan_code, execute_code. |
-| **Desktop** | skilllite-assistant (Tauri) — first-class entry | core, fs, sandbox, agent, evolution (direct path deps); optional runtime fallback to installed `skilllite` for some commands | Desktop users: GUI chat (optional **image attachments** → multimodal `agent_chat`), session management, evolution UI, runtime provisioning, transcript/memory views. |
+| **Desktop** | skilllite-assistant (Tauri) — optional GUI project | Released `skilllite` binary only (`agent-rpc` + CLI `--json`); no engine crate path deps | Desktop users: GUI chat (optional **image attachments** → multimodal `agent_chat`), session management, evolution UI, runtime provisioning, transcript/memory views. |
 | **Swarm** | Subcommand `skilllite swarm` | skilllite-swarm (+ main binary; with agent, includes swarm_executor) | Multi-machine / multi-agent: mDNS discovery, P2P task routing, NewSkill sync. |
 
 ---
@@ -48,17 +48,15 @@
 ## 4. Desktop (skilllite-assistant)
 
 - **Product role**: **Optional** GUI distribution of the engine — not the default integrator path ([Path 2 — Sandbox & MCP](./START_PATHS.md#path-2-sandbox-mcp) is). Can move to a **separate repository** once the split-ready contract is implemented ([Assistant split architecture](./ASSISTANT-SPLIT-ARCHITECTURE.md)).
-- **Entry (today)**: Tauri app under `crates/skilllite-assistant/`. Separate Cargo manifest (excluded from root workspace for Tauri/GUI toolchains). Build: `npm run tauri build` in that crate directory.
-- **Integration model (target)** — three layers only:
-  - **L1** `skilllite agent-rpc` — streaming chat, confirm/clarify (already used).
-  - **L2** `skilllite … --json` — evolution panel, runtime install, skill list (to complete; see split doc §5.2).
+- **Entry**: Standalone project at `skilllite-assistant/`. Separate Cargo manifest (excluded from the root workspace for Tauri/GUI toolchains). Build: `npm run tauri build` in that directory. `crates/skilllite-assistant/` is a one-cycle stub.
+- **Integration model** — three layers only:
+  - **L1** `skilllite agent-rpc` — streaming chat, confirm/clarify.
+  - **L2** `skilllite … --json` — evolution panel, runtime install, skill list.
   - **L3** Workspace files — prompts/transcript paths where UI reads disk directly.
-- **Dependencies (today vs target)**:
-  - **Today**: Direct path deps on `skilllite-core`, `skilllite-fs`, `skilllite-sandbox`, `skilllite-agent`, `skilllite-evolution` (allow-listed in `deny.toml`; historical D1, 2026-04-20).
-  - **Target (D1′)**: **No** path deps on engine crates; semver-pinned **`skilllite` binary** only (+ optional `skilllite-client` types crate).
+- **Dependencies (D1′)**: **No** path deps on engine crates; semver-pinned **`skilllite` binary** only. Prebuild locates an engine checkout via `SKILLLITE_ENGINE_ROOT` / parent walk, or copies an installed binary.
 - **Capabilities**: GUI chat, session management, evolution review/triggering, runtime probing/provisioning, IDE layout, multimodal `agent_chat`.
 - **Use case**: Users who want a local app without wiring MCP in an IDE.
-- **Migration**: P0 docs → P1 engine `--json` → P2 thin bridge in monorepo → P4 extract repo ([checklist](./ASSISTANT-SPLIT-ARCHITECTURE.md#12-checklist-before-extracting-repo)).
+- **Layout**: P4 extract is in-tree (`skilllite-assistant/`); a later `git subtree split` can publish a separate remote ([checklist](./ASSISTANT-SPLIT-ARCHITECTURE.md#12-checklist-before-extracting-repo)).
 
 ---
 
@@ -74,7 +72,6 @@
 ## Dependency direction (brief)
 
 - **Core** does not depend on upper layers; **sandbox / fs / executor / agent / evolution / commands** depend on core or each other by layer.
-- **Main binary** skilllite aggregates commands and optional features; **skilllite-assistant** is a first-class entry that directly consumes `core`, `fs`, `sandbox`, `agent`, and `evolution` (allow-listed in `deny.toml`); **skilllite-swarm** depends only on core and is wired in by the main binary via feature for the `swarm` subcommand.
-- The future **`skilllite-services`** crate (Phase 1+) will sit between entry crates (`skilllite`, `skilllite-assistant`, future MCP entry) and domain crates; both CLI and Desktop will progressively migrate shared flows there.
+- **Main binary** skilllite aggregates commands and optional features; **skilllite-assistant** is an optional GUI that talks to the `skilllite` binary only; **skilllite-swarm** depends only on core and is wired in by the main binary via feature for the `swarm` subcommand.
 
 For detailed crate list and directory layout, see [ARCHITECTURE.md](./ARCHITECTURE.md). 中文版：[入口与能力域一览](../zh/ENTRYPOINTS-AND-DOMAINS.md).

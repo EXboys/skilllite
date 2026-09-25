@@ -11,7 +11,7 @@
 | **CLI** | 主二进制 `skilllite` | core, sandbox, commands, (可选) executor, agent, swarm, artifact HTTP, 统一 gateway 宿主 | 终端用户、脚本、CI：执行技能、扫描、聊天、初始化等全功能。 |
 | **Python** | python-sdk + IPC/子进程（artifact 走标准库 HTTP） | 调用本机 `skilllite` 二进制；`artifact_put`/`artifact_get` 对接 artifact HTTP | Python 应用：scan_code、execute_code、chat、run_skill；可选跨进程大对象走 artifact API。 |
 | **MCP** | 子命令 `skilllite mcp` | 同 CLI 主二进制（mcp 模块在 skilllite 包内） | Cursor/VSCode 等 IDE：通过 MCP 协议暴露 list_skills、run_skill、scan_code、execute_code。 |
-| **Desktop** | skilllite-assistant（Tauri，**一等入口**） | core、fs、sandbox、agent、evolution（直接 path 依赖）；部分命令运行时仍 fallback 到已安装的 `skilllite` | 桌面用户：图形化聊天（含可选 **图片附件** → `agent_chat` 多模态）、会话管理、自进化 UI、运行时供给、transcript/memory 视图。 |
+| **Desktop** | skilllite-assistant（Tauri，可选 GUI 项目） | 仅已发布的 `skilllite` 二进制（`agent-rpc` + CLI `--json`）；无引擎 crate path 依赖 | 桌面用户：图形化聊天（含可选 **图片附件** → `agent_chat` 多模态）、会话管理、自进化 UI、运行时供给、transcript/memory 视图。 |
 | **Swarm** | 子命令 `skilllite swarm` | skilllite-swarm（+ 主 binary，agent 时含 swarm_executor） | 多机/多 Agent 组网：mDNS 发现、P2P 任务路由、NewSkill 同步。 |
 
 ---
@@ -48,17 +48,15 @@
 ## 4. Desktop（skilllite-assistant）
 
 - **产品角色**：引擎的**可选 GUI 分发**，不是默认对接路径（默认见 [路径 2 — 沙箱与 MCP](./START_PATHS.md#path-2-sandbox-mcp)）。契约就绪后可迁入**独立仓库**（[Assistant 可拆仓架构](./ASSISTANT-SPLIT-ARCHITECTURE.md)）。
-- **入口（现状）**：`crates/skilllite-assistant/` 下的 Tauri 应用；单独 Cargo manifest（因 GUI 工具链未纳入 root workspace）。在该目录执行 `npm run tauri build`。
-- **集成模型（目标）** — 仅三层：
-  - **L1** `skilllite agent-rpc` — 流式聊天、确认/澄清（已用）。
-  - **L2** `skilllite … --json` — 进化面板、运行时安装、技能列表（待补，见拆仓文档 §5.2）。
+- **入口**：独立项目 `skilllite-assistant/`。单独 Cargo manifest（因 GUI 工具链未纳入 root workspace）。在该目录执行 `npm run tauri build`。`crates/skilllite-assistant/` 仅保留一期 stub。
+- **集成模型** — 仅三层：
+  - **L1** `skilllite agent-rpc` — 流式聊天、确认/澄清。
+  - **L2** `skilllite … --json` — 进化面板、运行时安装、技能列表。
   - **L3** 工作区文件 — prompts/transcript 等允许路径的读写。
-- **依赖（现状 vs 目标）**：
-  - **现状**：path 依赖 `skilllite-core`、`skilllite-fs`、`skilllite-sandbox`、`skilllite-agent`、`skilllite-evolution`（`deny.toml` 白名单；历史 D1，2026-04-20）。
-  - **目标（D1′）**：**不再** path 依赖引擎 crate；仅 semver 钉扎的 **`skilllite` 二进制**（+ 可选 `skilllite-client` 类型 crate）。
+- **依赖（D1′）**：**不再** path 依赖引擎 crate；仅 semver 钉扎的 **`skilllite` 二进制**。预构建通过 `SKILLLITE_ENGINE_ROOT` / 向上查找引擎仓，或复制已安装二进制。
 - **能力**：图形聊天、会话、进化审核/触发、运行时安装、IDE 三栏、多模态 `agent_chat`。
 - **适用**：不想在 IDE 里配 MCP、需要本机 App/托盘的用户。
-- **迁移**：P0 文档 → P1 引擎 `--json` → P2 monorepo 内 bridge 变薄 → P4 拆仓（[检查清单](./ASSISTANT-SPLIT-ARCHITECTURE.md#12-拆仓前检查清单)）。
+- **布局**：P4 已在本仓抽出独立项目目录；后续可用 `git subtree split` 推到独立远程（[检查清单](./ASSISTANT-SPLIT-ARCHITECTURE.md#12-拆仓前检查清单)）。
 
 ---
 
@@ -74,7 +72,6 @@
 ## 依赖方向（简要）
 
 - **Core** 不依赖上层；**sandbox / fs / executor / agent / evolution / commands** 依赖 core 或彼此按层级依赖。
-- **主二进制** skilllite 聚合 commands + 各可选 feature；**skilllite-assistant** 是一等入口，直接消费 `core`、`fs`、`sandbox`、`agent`、`evolution`（在 `deny.toml` 中显式 allow-list）；**skilllite-swarm** 仅依赖 core，由主 binary 通过 feature 引入并派发 `swarm` 子命令。
-- 未来的 **`skilllite-services`** crate（Phase 1+）将位于入口 crate（`skilllite`、`skilllite-assistant`、未来的 MCP 入口）与领域 crate 之间；CLI 与 Desktop 会逐步把共享流程迁入。
+- **主二进制** skilllite 聚合 commands + 各可选 feature；**skilllite-assistant** 是可选 GUI，只通过 `skilllite` 二进制通信；**skilllite-swarm** 仅依赖 core，由主 binary 通过 feature 引入并派发 `swarm` 子命令。
 
 更细的 crate 列表与目录结构见 [ARCHITECTURE.md](./ARCHITECTURE.md)。英文版：[Entry Points and Capability Domains](../en/ENTRYPOINTS-AND-DOMAINS.md)。

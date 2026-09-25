@@ -157,11 +157,11 @@ skillLite/
 │   │
 │   ├── skilllite-artifact/        # ArtifactStore 实现：本地目录（agent 默认）、可选 HTTP 服务端/客户端
 │   │
-│   ├── skilllite-channel/         # 出站消息（企微、钉钉、飞书、Telegram、Discord、WhatsApp）。入站 webhook MVP 仍保持轻量（`skilllite channel serve`）；统一宿主优先走 `skilllite gateway serve`。本阶段仍无独立 `skilllite-gateway` crate。
-│   │
-│   └── skilllite-assistant/       # Tauri 2 + React 桌面端 — 一等入口（Phase 0 D1）；因 Tauri 需平台 GUI 工具链而被 root workspace 排除，使用单独 manifest 构建。直接 path 依赖：core、fs、sandbox、agent、evolution。
-│       ├── vite.config.ts         # 唯一 Vite 配置（勿再并列 vite.config.js；见该 crate README）
-│       └── src-tauri/             # cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
+│   └── skilllite-channel/         # 出站消息（企微、钉钉、飞书、Telegram、Discord、WhatsApp）。入站 webhook MVP 仍保持轻量（`skilllite channel serve`）；统一宿主优先走 `skilllite gateway serve`。本阶段仍无独立 `skilllite-gateway` crate。
+│
+├── skilllite-assistant/           # 独立 Tauri 2 + React 桌面项目（非 workspace crate）。薄客户端，通过已发布 skilllite 二进制通信（L1 agent-rpc + L2 CLI --json）。
+│   ├── vite.config.ts             # 唯一 Vite 配置（勿再并列 vite.config.js；见该项目 README）
+│   └── src-tauri/                 # cargo build --manifest-path skilllite-assistant/src-tauri/Cargo.toml
 │
 ├── python-sdk/                    # Python SDK (薄桥接层)
 │   ├── pyproject.toml             # 包配置 (v0.1.29, 零运行时依赖)
@@ -234,13 +234,11 @@ skilllite (主二进制)
   ├── skilllite-channel            # 独立 crate（无 `skilllite-*` path 依赖）；出站适配；入站 webhook MVP 为 `skilllite channel serve`；统一宿主在主二进制中通过 `skilllite gateway serve` 提供
   └── skilllite-core (根)
 
-skilllite-assistant（Tauri 桌面 — 可选分发；拆仓目标）
-  ├── 现状：path 依赖 core、fs、sandbox、agent、evolution（D1 白名单）
-  └── 目标：仅子进程 → 已发布 skilllite 二进制（agent-rpc + CLI --json）
+skilllite-assistant（Tauri 桌面 — 仓库根目录独立项目 `skilllite-assistant/`）
+  └── 仅子进程 → 已发布或本地构建的 skilllite 二进制（agent-rpc + CLI --json）
 
 执行链（CLI）：CLI/MCP/stdio_rpc → skilllite-commands → skilllite-agent → skilllite-executor → skilllite-sandbox → skilllite-core
-执行链（Desktop，现状）：Tauri → skilllite_bridge → {agent-rpc 子进程 | 进程内 agent/sandbox/evolution | CLI 子进程}。
-执行链（Desktop，目标）：Tauri → bridge → 仅 {L1 agent-rpc | L2 skilllite --json | L3 工作区文件}。
+执行链（Desktop）：Tauri → bridge → 仅 {L1 agent-rpc | L2 skilllite --json | L3 工作区文件}。
 
 详见 [Assistant 可拆仓架构](./ASSISTANT-SPLIT-ARCHITECTURE.md)（L1/L2/L3、阶段 P0–P5、拆仓检查清单）。
 可选加速：引擎仓 `skilllite-services`（供 CLI/守护进程）；拆仓时 Assistant 不得 path 依赖该 crate。
@@ -252,10 +250,10 @@ Core 不依赖上层；Agent 是 Core 的客户。
 
 ```bash
 cargo deny check bans
-cargo deny --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml check bans
+cargo deny --manifest-path skilllite-assistant/src-tauri/Cargo.toml check bans
 ```
 
-Desktop manifest 因 Tauri 平台 GUI 工具链原因被 root workspace 排除，但其依赖分层规则单独校验，以保持「一等入口」对等地位。
+Desktop 项目因 Tauri 平台 GUI 工具链原因被 root workspace 排除。deny 仍校验其没有 `skilllite-*` path 依赖。
 
 **Feature Flags**：
 

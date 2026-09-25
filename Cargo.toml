@@ -1,8 +1,8 @@
 [workspace]
-# Tauri app (src-tauri) not in members: requires glib/GTK on Linux; build with:
-#   cargo build --manifest-path crates/skilllite-assistant/src-tauri/Cargo.toml
+# Tauri desktop project is not a workspace member (needs glib/GTK on Linux). Build with:
+#   cargo build --manifest-path skilllite-assistant/src-tauri/Cargo.toml
 members = ["skilllite", "crates/*"]
-exclude = ["crates/skilllite-assistant", "crates/crates"]
+exclude = ["skilllite-assistant", "crates/skilllite-assistant", "crates/crates"]
 resolver = "2"
 
 [workspace.package]
