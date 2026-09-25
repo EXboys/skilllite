@@ -4,7 +4,7 @@
 
 - Task ID: `TASK-2026-071`
 - Title: Extract desktop Assistant into a standalone project
-- Status: `in_progress`
+- Status: `in_review`
 - Priority: `P1`
 - Owner: `agent`
 - Contributors:
@@ -31,13 +31,14 @@ English interpretation: move SkillLite Assistant (`crates/skilllite-assistant`) 
 
 ## Acceptance Criteria
 
-- [ ] Desktop sources live at `skilllite-assistant/` (own README, npm, Tauri manifest)
-- [ ] `crates/skilllite-assistant/README.md` is a stub pointing at the new project
-- [ ] Prebuild can use `SKILLLITE_ENGINE_ROOT`, a detected engine checkout, or an already-installed `skilllite` binary
-- [ ] Debug binary lookup no longer assumes `crates/skilllite-assistant/src-tauri`
-- [ ] EN/ZH docs, CI, deny comments, and root `package.json` use the new path
-- [ ] Assistant Rust tests and frontend unit tests pass; engine `cargo test` still passes
-- [ ] `python3 scripts/validate_tasks.py` passes
+- [x] Desktop sources live at `skilllite-assistant/` (own README, npm, Tauri manifest)
+- [x] `crates/skilllite-assistant/README.md` is a stub pointing at the new project
+- [x] Prebuild can use `SKILLLITE_ENGINE_ROOT`, a detected engine checkout, or an already-installed `skilllite` binary
+- [x] Debug binary lookup no longer assumes `crates/skilllite-assistant/src-tauri`
+- [x] EN/ZH docs, CI, deny comments, and root `package.json` use the new path
+- [x] Assistant Rust tests and frontend unit tests pass; engine `cargo test` still passes
+- [x] `python3 scripts/validate_tasks.py` passes
+- [ ] Creating `github.com/EXboys/skilllite-assistant` deferred (this environment cannot create remotes; use `scripts/export-assistant-repo.sh`)
 
 ## Risks
 

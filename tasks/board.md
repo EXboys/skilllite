@@ -1,14 +1,14 @@
 # Task Board
 
-Last updated: 2026-09-25 (TASK-2026-071 extract desktop project in progress)
+Last updated: 2026-09-25 (TASK-2026-071 extract desktop project in review)
 
 ## In Progress
 
-- `TASK-2026-071-extract-desktop-project` - Status: `in_progress` - Owner: `agent`
+- None.
 
 ## Ready
 
-- None.
+- `TASK-2026-071-extract-desktop-project` - Status: `in_review` - Owner: `agent`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 
