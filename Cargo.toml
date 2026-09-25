@@ -1,6 +1,5 @@
 [workspace]
-# Tauri desktop project is not a workspace member (needs glib/GTK on Linux). Build with:
-#   cargo build --manifest-path skilllite-assistant/src-tauri/Cargo.toml
+# Desktop GUI lives in https://github.com/EXboys/skilllite-assistant (not a workspace member).
 members = ["skilllite", "crates/*"]
 exclude = ["skilllite-assistant", "crates/skilllite-assistant", "crates/crates"]
 resolver = "2"

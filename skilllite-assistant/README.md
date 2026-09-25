@@ -1,99 +1,16 @@
-# SkillLite Assistant
+# SkillLite Assistant (moved)
 
-Standalone desktop repository (Tauri 2 + React 18 + TypeScript + Vite).
+Desktop sources are **no longer in this repository**.
 
-**This is the GUI project.** The engine (CLI, sandbox, MCP, Python SDK) lives at **[EXboys/skilllite](https://github.com/EXboys/skilllite)**. Assistant talks to a released `skilllite` binary (`agent-rpc` + CLI `--json`).
-
-**可选官方 GUI** — 默认推荐仍是 `pip install skilllite` + MCP。架构说明：[Assistant split](https://github.com/EXboys/skilllite/blob/main/docs/en/ASSISTANT-SPLIT-ARCHITECTURE.md)（[中文](https://github.com/EXboys/skilllite/blob/main/docs/zh/ASSISTANT-SPLIT-ARCHITECTURE.md)）。
-
-**所有 npm / tauri 命令在本仓库根目录执行**（克隆后不要再 `cd skilllite-assistant`）。
+**GitHub project:** https://github.com/EXboys/skilllite-assistant
 
 ```bash
 git clone https://github.com/EXboys/skilllite-assistant.git
 cd skilllite-assistant
 npm install
-pip install skilllite   # 或 cargo install --path <engine-checkout>/skilllite
 npm run tauri dev
 ```
 
-## Vite 配置
+Until the empty remote exists, standalone history is on `cursor/skilllite-assistant-export-3c6e` in `EXboys/skilllite`. After creating the public repo, run `bash scripts/push-assistant-repo.sh`.
 
-- **唯一配置源**：根目录仅维护 `vite.config.ts`。`tsconfig.node.json` 的 `include` 已指向该文件，供 `tsc -b` 类型检查 Vite 配置。
-- **请勿**在本 crate 根目录再添加与 `vite.config.ts` 并行的 `vite.config.js`（或其它同名不同扩展的重复配置），否则易出现「改了一处忘另一处」或与 **Vite 配置文件解析顺序** 冲突。若工具链曾生成过 `vite.config.js`，本目录 `.gitignore` 已忽略该文件名，避免误提交。
-- **解析顺序（官方行为）**：Vite 在工程根（此处即本 crate 根）按内置顺序查找 `vite.config.*`（含 `.ts`、`.mts`、`.js`、`.mjs` 等）；同目录存在多份候选时，以先匹配到的为准。约定以 **`vite.config.ts` 为准**，其余扩展名不作为第二份真源。
-- *English:* Keep a single Vite config file: `vite.config.ts` only; see [Vite config](https://vite.dev/config/) for how `vite.config.*` is resolved.
-
-## 开发
-
-```bash
-npm install
-npm run prebuild:tauri          # 首次或改引擎后：安装 ~/.skilllite/bin/skilllite（可选但推荐）
-npm run tauri dev
-```
-
-`tauri dev` 的 `beforeDevCommand` **只启动 Vite**（`scripts/dev-tauri.sh`），不会在每次开发前跑完整的 `prebuild-skilllite.sh`（其中 `cargo install --release` 常需数分钟）。若仍把完整预构建串在 `beforeDevCommand` 里，Tauri 会在约 **180 秒** 内等不到 `http://localhost:5173` 并报错，而 `cargo install` 可能仍在后台继续。
-
-- 需要打包资源或强制重装引擎：`npm run prebuild:tauri`
-- 开发时后台刷新引擎：`SKILLLITE_BACKGROUND_PREBUILD=1 npm run tauri dev`（日志 `/tmp/skilllite-prebuild-dev.log`）
-- 已有 `~/.skilllite/bin/skilllite` 且不想碰引擎：直接 `npm run tauri dev`
-
-### 无法连接 localhost:5173（等待 180s 超时）
-
-1. 确认在**本仓库根目录**执行，且已 `npm install`。
-2. 另开终端试：`npm run dev`，浏览器打开 http://localhost:5173 是否正常。
-3. 若 Vite 能起、仅 `tauri dev` 失败：检查 `tauri.conf.json` 的 `devUrl` 与 `vite.config.ts` 的 `port` 是否同为 **5173**（勿只改一端）。
-4. 若刚改过 Rust 引擎：先 `npm run prebuild:tauri` 或等后台安装完成，并保证 `export PATH="$HOME/.skilllite/bin:$PATH"`。
-
-### 端口 5173 已被占用
-
-开发服务器固定使用 **5173**（与 `src-tauri/tauri.conf.json` 里的 `devUrl` 一致），且 `vite.config.ts` 里为 **`strictPort: true`**，被占用时会直接报错：`Port 5173 is already in use`。
-
-1. 查看占用进程：`lsof -nP -iTCP:5173 -sTCP:LISTEN`
-2. 若确认可结束（例如上次未关干净的 Vite / 另一个前端项目）：`kill $(lsof -t -iTCP:5173 -sTCP:LISTEN)`  
-   本机常见为 `node` 监听 `[::1]:5173`。
-3. 若该进程**就是本项目的 Vite** 且页面能打开，可直接再跑 `npm run tauri dev`：`dev-tauri.sh` 会**复用**已在跑的 dev server（无需再起第二个 Vite）。
-
-若你**需要同时**跑两个 Vite 项目，不要只改 `vite.config.ts` 端口而不改 Tauri 的 `devUrl`，否则桌面壳仍连旧地址；应成对修改 `vite.config.ts` 的 `server.port` 与 `tauri.conf.json` 的 `build.devUrl`。
-
-## 构建
-
-```bash
-npm run tauri:build
-# 或：npm run tauri build（DMG 可能需更长时间）
-```
-
-构建时会自动执行 `scripts/prebuild-skilllite.sh`，把 `skilllite` 装到 `~/.skilllite/bin/` 并打进 `src-tauri/resources`：
-
-- 若设置了 `SKILLLITE_ENGINE_ROOT`，或本目录的父级/兄弟目录是引擎仓（含 `skilllite/Cargo.toml`）：`cargo install --path skilllite --features memory_vector`
-- 否则复用 PATH / `~/.skilllite/bin` 上已安装的 `skilllite`（`pip install skilllite` 或从 Releases 下载）
-
-桌面应用通过 `skilllite agent-rpc` 子进程调用，需确保 `~/.skilllite/bin` 在 PATH 中（如 `export PATH="$HOME/.skilllite/bin:$PATH"`）。
-
-**Windows**：上述子进程及运行时探测等后台命令在创建时带有「无控制台窗口」标志，避免在图形界面下反复弹出空的命令提示符窗口；若仍看到窗口，多为用户主动打开的外壳或第三方工具。
-
-如需单独预装 skilllite：`npm run prebuild:tauri`
-
-## 卸载与数据
-
-在 **设置 → 卸载与数据** 中可：**在安装位置显示** 程序；**仅卸载应用并退出**（保留界面设置与 SkillLite `chat/`）；或 **卸载并删除数据**（同时删除 Tauri 应用数据目录与当前 `chat/` 树，不可恢复）。macOS **正式安装包**会在退出后约 2 秒尝试删除 `.app`；**Windows** 会打开「应用和功能」，请在系统中完成卸载；**Linux** 需自行删除安装文件。**开发构建**（`tauri dev` / `target/debug`）不会自动删除构建产物。`~/.skilllite/bin` 中的命令行 skilllite **不会**被自动删除。
-
-## 环境与 Skills
-
-- **设置 UI**：主窗口中进入 **设置** 为全屏分区视图（左侧导航）；**环境与依赖** 可检测 Git、一键下载 Python/Node 运行时；**工作区与环境** 分组下另有 **「Gateway / 入站 HTTP」** 独立页，用于填写 `skilllite gateway serve` 的 `--bind` / `--token` / 可选 `--artifact-dir`、**入站摘要通知**（钉钉 / 飞书 / Telegram 的 Webhook 与密钥，存 `localStorage`，「在这里启动」时注入子进程）、展示 URL、执行桌面托管的**一键启动 / 停止**、复制外部启动命令与本机 **`/health`** 探测（仍可改为终端 / systemd 自行托管）。若同一监听地址上已存在一个**外部** `skilllite gateway serve`，页面会识别并显示为**外部运行中**，而不是仅报端口占用错误。
-- **API Key**：在项目根目录或 workspace 的 `.env` 中设置 `OPENAI_API_KEY`
-- **Skills**：会自动从 workspace 向上查找 `skills`、`.skills`、`.agents/skills`、`.claude/skills`；默认技能根目录解析与 `skilllite-core::skill::discovery` 保持一致（含 `skills -> .skills` 兼容回退）
-- **skilllite**：需已安装（`pip install skilllite` 或 `cargo install --path skilllite`）
-- **Level 3 确认**：Skill 执行前会弹出安全扫描确认弹窗，点击「允许」继续执行
-- **IDE 三栏**：顶栏 **IDE** 或 **设置 → 工作区与沙箱 → IDE 三栏主界面** 可切换为「工作区文件树 | 编辑器 | 对话」；**左右两条竖向分隔线可拖拽**调宽（宽度会记住）。左侧 **会话** 标签仍打开原会话列表。大目录会跳过 `node_modules`、`target` 等；**工作区文件树**不列出 macOS 的 `.DS_Store`、Windows 的 `Thumbs.db`；首次列出时有骨架屏与「正在索引」提示，刷新可在加载中再次点击（以最新一次结果为准，避免陈旧列表覆盖）；命中列举条数/深度上限时界面会提示**已截断**并显示已列出项数；敏感路径与写入规则一致（如 `.env` 不可读/写）。非 UTF‑8 / 二进制文件在中间栏按文本打开时会提示**无法在 IDE 中按文本编辑**，而不会出现底层 `stream did not contain valid UTF-8` 一类英文报错。关闭 IDE 布局后恢复右侧状态栏。**中间栏**：Markdown（`.md` / `.mdx` / `.mdc` 等）默认 **预览**，可切 **编辑** 并保存；常见 **图片**（如 png / jpg / webp / svg）与 **视频**（如 mp4 / webm / mov）为 **仅预览**（内嵌播放，不在此写回二进制）。图片/视频依赖 Tauri **`assetProtocol`**（见 `src-tauri/tauri.conf.json`）；修改该配置后需 **重启** `tauri dev` 或重新打包应用。若仍无法显示，请确认文件路径落在 `assetProtocol.scope.allow` 所允许的前缀下（默认可访问用户主目录、文档、桌面、下载、临时目录等）。聊天里 **`read_file` 工具结果**默认以约 **5 行可滚动**预览展示；**点击预览**与 **「在 IDE 中打开」** 相同（有路径时开启 IDE 并在中间栏打开该文件；无路径时打开「全屏查看 / 编辑」）。**`list_directory`** 结果为同样高度的可滚动树预览。
-- **聊天**：任务计划、工具调用、**工具回复**与「执行确认 / 需要你的确认」均收在可折叠的 **内部步骤** 时间线中（**待操作**、本轮加载中会默认展开；**仅当前会话里「最后一段」内部步骤**在含 **`read_file` / `list_directory` 成功结果**时默认展开，更早的步骤仍折叠，避免长会话刷屏；收起时显示 **待操作** 标签）；可在 **设置 → Agent**（循环预算、**上下文软上限** `SKILLLITE_CONTEXT_SOFT_LIMIT_CHARS`）或输入框下方开启 **自动允许执行确认**（仅自动点「允许」，不代替澄清选项）。**多模型**：在 **设置 → 模型与 API** 点「保存」时会把当前「模型 + API Base + Key」合并进 `settings.llmProfiles`，与 Zustand 持久化字段一起写入本应用 WebView 的 **`localStorage`**（键名 **`skilllite-assistant-settings`**，JSON 内为 `state.settings`）；若升级后已有界面 Key 但尚无列表，启动时会自动补一条。切换模型下拉时会自动填入已保存的同模型配置；输入框底栏左侧为与「附图」同风格的 **模型** 按钮，上拉菜单切换已保存配置；**【新增】** 打开设置并定位 **「模型与 API」** 标签。**场景路由（本地）**：同一页可勾选「按场景自动选用已保存模型」，为主对话、「猜你想问」、Life Pulse、自进化相关调用分别指定已保存配置（未选的场景仍用当前主模型；纯本地规则，无云端）。每个场景可在主配置下方再加一组「备用配置」（按顺序）：当 **非流式** 调用（`followup` / `lifePulse` / 自进化状态与触发）出现 429 / 5xx / 超时 / 网络类可重试错误时，前端会自动切到下一条已保存配置；坏线路在本进程内进入 60 秒短冷却，避免反复重试同一条。**路由判断优先读取 Tauri bridge 返回的结构化 `kind/retryable` 错误分类**，旧字符串匹配仅作为兼容 fallback。删除已保存 profile 时，会同步清理引用它的场景主配置与备用列表，并弹出一条轻提示说明清理了多少条失效引用。**前台切换**会出现一条 info toast（如「X 不可用，已切到 Y」）让用户知情；**Life Pulse 这类后台同步保持静默**。**主对话流式（`agent`）暂不在流中途切换**，仅尊重映射；文章「Auto 路由」规划见 `todo/assistant-auto-llm-routing-plan.md`。
-  - *English:* Saved profiles persist in **`localStorage`** (`skilllite-assistant-settings`). Optional **local scenario routing** in **Settings → Models & API** maps main chat, end-of-turn follow-up chips, Life Pulse LLM sync, and evolution bridge calls to different saved profiles; unmapped scenarios keep the main model. Each scenario also accepts an ordered **fallback profile list**: for **non-streaming** invokes (`followup` / `lifePulse` / evolution status & manual trigger) the frontend auto-switches to the next saved profile on retryable errors (429 / 5xx / timeout / network), with a process-local 60 s cooldown for the failed profile. Routing decisions now prefer the Tauri bridge's structured `kind/retryable` error envelope; raw string matching is only a compatibility fallback. Deleting a saved profile also prunes any primary/fallback scenario references pointing at it and shows a small info toast when stale references were removed. Foreground switches surface as a single **info toast** ("X unavailable, switched to Y"); background `lifePulse` sync stays silent. The streaming `agent` chat is not switched mid-stream in this build.
-- **图片（视觉模型）**：输入框旁 **图片** 使用 **系统原生文件选择框**（Tauri 桌面端；避免 WebView 拦截隐藏的 `<input type="file">`），可选 PNG / JPEG / WebP / GIF（单张 ≤5MB，每轮最多 6 张），选后会在输入区上方显示缩略图预览。随消息发给已配置的 **支持视觉** 的模型（如 GPT‑4o、Claude 3.5 等）。历史会写入 transcript 并可在重开会话后预览；**MiniMax Coding Plan** 路径不支持附图。
-- **自进化 · 变更对比**：右侧 **自进化 → 详情与审核 → 变更对比** 中，对已写入 changelog 的 prompts 文件（如 `rules.json`）可用 **左/右版本下拉** 任选两版：`当前（prompts 文件）` 与各 **`prompts/_versions/<txn_id>/` 快照**（按快照 mtime 新→旧）。展示为 **左右两栏全文对照**（未改行不折叠，与差异行同一滚动条同步浏览）；版本 **下拉框** 为圆角与焦点环样式。旧快照可能因 `SKILLLITE_EVOLUTION_SNAPSHOT_KEEP` 被清理。**最近进化事件**里类型为 **进化运行** 且带有 **txn** 的行可 **点击**，会切到「变更对比」并把左侧默认设为该 txn；备注里含 memory knowledge 时另有 **打开记忆详情** 链到记忆窗口（具体分片内容仍须在列表中打开）。**尚无 changelog 对比时**，同页可展开 **手动编辑 prompts**：应用内读写 `chat/prompts` 白名单文件，或 **打开 prompts 目录** 用外部编辑器（路径在数据目录而非工程根，见界面说明）。
-
-## 图标
-
-项目已包含默认占位图标（`src-tauri/icons/`）。更换应用图标：
-
-1. 准备 512×512 或 1024×1024 的方形 PNG
-2. 替换 `app-icon.png` 或指定路径
-3. 运行 `npm run icon` 重新生成
+This engine repository remains CLI / sandbox / MCP / Python SDK.

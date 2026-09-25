@@ -199,6 +199,8 @@ SKILLLITE_GATEWAY_SERVE_ALLOW=1 skilllite gateway serve --bind 127.0.0.1:8787 --
 
 ## 6. SkillLite Assistant 图形化配置
 
+桌面应用在独立仓库 [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant)。
+
 1. 打开 **SkillLite Assistant**，进入 **设置**。
 2. 打开 **「Gateway / 入站 HTTP」**（设置项持久化在应用 WebView 的 **localStorage**，勿在公共设备保存生产密钥）。
 3. 填写 **bind**、可选 **token**、可选 **artifact 目录**，以及钉钉 / 飞书 / Telegram 相关字段（与上文环境变量一一对应）。

@@ -28,11 +28,6 @@ jobs:
       - name: Check workspace crate layering (cargo-deny)
         run: cargo deny check bans
 
-      - name: Check Desktop manifest crate layering (cargo-deny)
-        # Desktop is a standalone project (excluded from the root workspace).
-        # Deny still checks it has no skilllite-* path wrappers.
-        run: cargo deny --manifest-path skilllite-assistant/src-tauri/Cargo.toml check bans
-
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:

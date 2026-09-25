@@ -46,11 +46,11 @@ SkillLite 是 **同一个仓库**、**多种入口**。建议先选 **一条** �
 
 **目标。** 在本机用 **图形界面**：对话、技能、可选 IDE 三栏、受治理的自进化、本地优先工作流。**可选** —— 若只需在其它 IDE/Agent 里用沙箱/MCP，请走路径 2。
 
-**布局。** 桌面端**已不再**位于 `crates/`。源码在独立项目 [`skilllite-assistant/`](../../skilllite-assistant/)。`crates/skilllite-assistant/` 为 stub。本仓仍是引擎。
+**布局。** 桌面端是**独立 GitHub 项目**：[EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant)。本仓是引擎。本地 `skilllite-assistant/` 与 `crates/skilllite-assistant/` 仅为 stub。
 
 **从这里开始。**
 
-- 源码运行与打包：[skilllite-assistant/README.md](../../skilllite-assistant/README.md) — 所有 `npm` / `tauri` 命令 **只** 在该项目目录下执行。
-- 安装包（**dmg** / **msi** / **AppImage**）：见 [GitHub Releases](https://github.com/EXboys/skilllite/releases)，需对应 tag 的 [release-desktop](https://github.com/EXboys/skilllite/actions/workflows/release-desktop.yml) 工作流已跑完。
+- 源码运行与打包：克隆 [EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant) — 所有 `npm` / `tauri` 命令 **只** 在该仓库中执行。
+- 安装包（**dmg** / **msi** / **AppImage**）：见 [助手仓 Releases](https://github.com/EXboys/skilllite-assistant/releases)。
 
 **另见。** 英文主 [README](../../README.md) 中的折叠区块 **Desktop Assistant**（页内搜索该英文标题）。

@@ -6,18 +6,6 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 5
 
-  - package-ecosystem: "cargo"
-    directory: "/skilllite-assistant/src-tauri"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: "npm"
-    directory: "/skilllite-assistant"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-
   - package-ecosystem: "pip"
     directory: "/python-sdk"
     schedule:

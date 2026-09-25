@@ -1,15 +1,5 @@
 # SkillLite Assistant (moved)
 
-Desktop sources no longer live under `crates/`.
+Desktop is a **separate GitHub project**: https://github.com/EXboys/skilllite-assistant
 
-**New project root:** [`../../skilllite-assistant/`](../../skilllite-assistant/)
-
-This stub is kept for one release cycle so old bookmarks and scripts fail loudly instead of building a missing crate.
-
-```bash
-cd skilllite-assistant
-npm install
-npm run tauri dev
-```
-
-Architecture: [Assistant split (EN)](../../docs/en/ASSISTANT-SPLIT-ARCHITECTURE.md) · [中文](../../docs/zh/ASSISTANT-SPLIT-ARCHITECTURE.md)
+This path is a stub. Do not build from here.

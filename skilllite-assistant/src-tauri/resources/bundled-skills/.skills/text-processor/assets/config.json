@@ -1,9 +1,0 @@
-{
-  "name": "text-processor",
-  "version": "1.0.0",
-  "defaults": {
-    "operation": "uppercase",
-    "max_length": 100000
-  },
-  "supported_operations": ["uppercase", "lowercase", "reverse", "trim", "count"]
-}

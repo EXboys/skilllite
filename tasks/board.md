@@ -1,14 +1,14 @@
 # Task Board
 
-Last updated: 2026-09-25 (TASK-2026-071 extract desktop project in review)
+Last updated: 2026-09-25 (TASK-2026-072 engine pointers + export branch)
 
 ## In Progress
 
-- None.
+- `TASK-2026-072-split-desktop-github` - Status: `in_progress` - Owner: `agent`
 
 ## Ready
 
-- `TASK-2026-071-extract-desktop-project` - Status: `in_review` - Owner: `agent`
+- `TASK-2026-071-extract-desktop-project` - Status: `done` - Owner: `agent`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
 

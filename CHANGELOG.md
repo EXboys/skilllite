@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
-- **Desktop layout**: SkillLite Assistant moved from `crates/skilllite-assistant/` to the standalone project `skilllite-assistant/`. This repo remains the engine. Root README (EN/ZH) and START_PATHS now state the move; `crates/skilllite-assistant/README.md` is a stub.
+- **Desktop layout**: SkillLite Assistant is a **separate GitHub project** ([EXboys/skilllite-assistant](https://github.com/EXboys/skilllite-assistant)). This repo is the engine only; local `skilllite-assistant/` paths are stubs. Desktop installers ship from the assistant repository Releases.
 
 ---
 
