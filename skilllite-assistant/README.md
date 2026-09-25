@@ -1,12 +1,20 @@
 # SkillLite Assistant
 
-Standalone desktop project (Tauri 2 + React 18 + TypeScript + Vite).
+Standalone desktop repository (Tauri 2 + React 18 + TypeScript + Vite).
 
-**可选官方 GUI** — 默认推荐路径是 `pip install skilllite` + MCP（见引擎仓库根 README）。本应用是引擎的图形分发渠道，**不是** `crates/` 下的 workspace crate。
+**This is the GUI project.** The engine (CLI, sandbox, MCP, Python SDK) lives at **[EXboys/skilllite](https://github.com/EXboys/skilllite)**. Assistant talks to a released `skilllite` binary (`agent-rpc` + CLI `--json`).
 
-**独立项目：** 本目录是桌面端工程根（自有 `package.json` / `src-tauri`）。引擎仓库根的 `npm run assistant:dev` 只是转发到这里。聊天走 `skilllite agent-rpc`（L1）；进化/运行时走 `skilllite … --json`（L2）。详见 [Assistant split architecture](../docs/en/ASSISTANT-SPLIT-ARCHITECTURE.md)（[中文](../docs/zh/ASSISTANT-SPLIT-ARCHITECTURE.md)）。
+**可选官方 GUI** — 默认推荐仍是 `pip install skilllite` + MCP。架构说明：[Assistant split](https://github.com/EXboys/skilllite/blob/main/docs/en/ASSISTANT-SPLIT-ARCHITECTURE.md)（[中文](https://github.com/EXboys/skilllite/blob/main/docs/zh/ASSISTANT-SPLIT-ARCHITECTURE.md)）。
 
-**所有 npm / tauri 命令必须在当前目录（`skilllite-assistant/`）下执行。**
+**所有 npm / tauri 命令在本仓库根目录执行**（克隆后不要再 `cd skilllite-assistant`）。
+
+```bash
+git clone https://github.com/EXboys/skilllite-assistant.git
+cd skilllite-assistant
+npm install
+pip install skilllite   # 或 cargo install --path <engine-checkout>/skilllite
+npm run tauri dev
+```
 
 ## Vite 配置
 
@@ -18,7 +26,6 @@ Standalone desktop project (Tauri 2 + React 18 + TypeScript + Vite).
 ## 开发
 
 ```bash
-cd skilllite-assistant   # 若在引擎仓库根目录，先执行这句
 npm install
 npm run prebuild:tauri          # 首次或改引擎后：安装 ~/.skilllite/bin/skilllite（可选但推荐）
 npm run tauri dev
@@ -32,7 +39,7 @@ npm run tauri dev
 
 ### 无法连接 localhost:5173（等待 180s 超时）
 
-1. 确认在 **`skilllite-assistant`** 下执行，且已 `npm install`。
+1. 确认在**本仓库根目录**执行，且已 `npm install`。
 2. 另开终端试：`npm run dev`，浏览器打开 http://localhost:5173 是否正常。
 3. 若 Vite 能起、仅 `tauri dev` 失败：检查 `tauri.conf.json` 的 `devUrl` 与 `vite.config.ts` 的 `port` 是否同为 **5173**（勿只改一端）。
 4. 若刚改过 Rust 引擎：先 `npm run prebuild:tauri` 或等后台安装完成，并保证 `export PATH="$HOME/.skilllite/bin:$PATH"`。
@@ -51,7 +58,6 @@ npm run tauri dev
 ## 构建
 
 ```bash
-cd skilllite-assistant   # 若在引擎仓库根目录，先执行这句
 npm run tauri:build
 # 或：npm run tauri build（DMG 可能需更长时间）
 ```

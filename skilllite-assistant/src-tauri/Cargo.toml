@@ -4,7 +4,7 @@ version = "0.1.29"
 description = "SkillLite Desktop Assistant — local-first AI agent with secure sandbox and self-evolving skills"
 authors = ["SkillLite Contributors"]
 license = "MIT"
-repository = "https://github.com/EXboys/skilllite"
+repository = "https://github.com/EXboys/skilllite-assistant"
 edition = "2021"
 
 [build-dependencies]
