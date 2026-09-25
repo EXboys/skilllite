@@ -1,3 +1,8 @@
 # Vite: canonical config is vite.config.ts only. Do not add vite.config.js here —
 # duplicate extensions confuse Vite’s config resolution (see README § Vite 配置).
 /vite.config.js
+
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/linux-schema.json
