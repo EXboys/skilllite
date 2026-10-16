@@ -13,7 +13,7 @@ pub mod linux;
 #[cfg(target_os = "linux")]
 pub mod seccomp;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", test))]
 pub mod macos;
 
 #[cfg(target_os = "windows")]
