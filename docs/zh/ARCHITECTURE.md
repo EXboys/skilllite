@@ -348,7 +348,7 @@ pub struct ResourceLimits {
 **执行流程**：
 1. 检查是否禁用沙箱 (`SKILLLITE_NO_SANDBOX`)
 2. 启动网络代理（如果启用网络且有域名白名单）
-3. 生成 Seatbelt 配置文件（限制文件系统、网络访问）
+3. 生成 Seatbelt 配置文件（限制文件系统、网络访问）。Seatbelt 按最后一条匹配规则生效：配置先写 `(allow default)`，再写网络、文件写入、进程执行和 IPC 的拒绝规则。若把 `(allow default)` 放在拒绝规则之后，这些限制会被重新打开。域名过滤时先拒绝全部网络，再只放行本机代理端口。
 4. 使用 `sandbox-exec` 启动子进程
 5. 监控内存使用和执行时间
 6. 超限时终止进程

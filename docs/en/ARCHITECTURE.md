@@ -350,7 +350,7 @@ pub struct ResourceLimits {
 **Execution Flow:**
 1. Check if sandbox is disabled (`SKILLLITE_NO_SANDBOX`)
 2. Start network proxy (if networking enabled with domain whitelist)
-3. Generate Seatbelt profile (restrict filesystem, network access)
+3. Generate Seatbelt profile (restrict filesystem, network access). Seatbelt is last-match-wins: the profile emits `(allow default)` first, then the network, file-write, process-exec, and IPC denies. A trailing `(allow default)` would reopen those operations. Domain-filtered networking denies all network and then allows only the local proxy ports.
 4. Launch child process via `sandbox-exec`
 5. Monitor memory usage and execution time
 6. Terminate process on limit exceeded

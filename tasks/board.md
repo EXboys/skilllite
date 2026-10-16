@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-09-25 (TASK-2026-071 extract desktop project in review)
+Last updated: 2026-10-16 (TASK-2026-072 macOS Seatbelt allow-default override in review)
 
 ## In Progress
 
@@ -8,6 +8,7 @@ Last updated: 2026-09-25 (TASK-2026-071 extract desktop project in review)
 
 ## Ready
 
+- `TASK-2026-072-macos-seatbelt-last-match` - Status: `in_review` - Owner: `cursor-agent`
 - `TASK-2026-071-extract-desktop-project` - Status: `in_review` - Owner: `agent`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.

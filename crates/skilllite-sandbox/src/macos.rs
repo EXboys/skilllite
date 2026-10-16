@@ -188,42 +188,11 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str(&format!("; LogTag: {}\n", log_tag));
     profile.push_str(&format!("; SessionSuffix: {}\n\n", get_session_suffix()));
 
-    // ============================================================
-    // SECURITY: Mandatory deny paths - ALWAYS blocked, even in allowed dirs
-    // These protect against sandbox escapes and configuration tampering
-    // ============================================================
-    profile.push_str("; SECURITY: Mandatory deny paths (auto-protected files)\n");
-    profile.push_str("; These are ALWAYS blocked from writes, even within allowed paths\n");
-    profile
-        .push_str("; Includes: shell configs, git hooks, IDE settings, package manager configs,\n");
-    profile.push_str(";           security files (.ssh, .aws, etc.), and AI agent configs\n");
-    for pattern in generate_seatbelt_mandatory_deny_patterns() {
-        // Add log tag to each deny pattern for tracking
-        let pattern_with_tag = if pattern.ends_with(')') {
-            // Insert (with message "log_tag") before the closing paren
-            let without_close = &pattern[..pattern.len() - 1];
-            format!("{}\n  (with message \"{}\"))", without_close, log_tag)
-        } else {
-            pattern
-        };
-        profile.push_str(&pattern_with_tag);
-        profile.push('\n');
-    }
-    profile.push('\n');
-
-    // ============================================================
-    // SECURITY: Move blocking rules - Prevent bypass via mv/rename (P0)
-    // Paths from canonical security_policy::get_move_protection_paths()
-    // ============================================================
-    profile.push_str("; SECURITY: Move blocking rules (prevents bypass via mv/rename)\n");
-    profile.push_str("; Blocks moving/renaming protected paths and their ancestor directories\n");
-    for rule in
-        generate_move_blocking_rules(&security_policy::get_move_protection_paths(), &log_tag)
-    {
-        profile.push_str(&rule);
-        profile.push('\n');
-    }
-    profile.push('\n');
+    // Seatbelt is last-match-wins. `(allow default)` only grants operations that
+    // no later rule decides. It must come before network, file, process, and IPC
+    // denies; a trailing `(allow default)` re-opens those operations.
+    profile.push_str("; Allow default first (mach-lookup, sysctl, signal). Later denies win.\n");
+    profile.push_str("(allow default)\n\n");
 
     // ============================================================
     // SECURITY: Block sensitive file reads (from security_policy)
@@ -254,6 +223,10 @@ fn generate_sandbox_profile_with_proxy(
             "; HTTP proxy port: {:?}, SOCKS5 proxy port: {:?}\n",
             http_proxy_port, socks5_proxy_port
         ));
+
+        // Deny every other destination first. Last-match-wins then re-opens
+        // only the local proxy ports below.
+        profile.push_str("(deny network*)\n");
 
         // Allow connections to specific proxy ports on localhost
         if let Some(http_port) = http_proxy_port {
@@ -291,9 +264,12 @@ fn generate_sandbox_profile_with_proxy(
     }
 
     // --- Process execution whitelist (replaces blacklist approach) ---
+    // Deny first. Later literal/subpath allows are the last match for the
+    // interpreter; every other executable only matches the deny.
     profile.push_str(
         "; SECURITY: Process execution whitelist — only the resolved interpreter is allowed\n",
     );
+    profile.push_str("(deny process-exec)\n");
 
     // Resolve bare interpreter names ("python3", "node") to absolute paths.
     // Bare names won't match in Seatbelt (literal) because the kernel uses full paths.
@@ -348,8 +324,6 @@ fn generate_sandbox_profile_with_proxy(
         }
     }
 
-    // Deny all other process execution (whitelist-only)
-    profile.push_str("(deny process-exec)\n");
     profile.push('\n');
 
     // ============================================================
@@ -390,6 +364,36 @@ fn generate_sandbox_profile_with_proxy(
     }
     profile.push('\n');
 
+    // Mandatory write denies and move blocks come AFTER the broad write allows.
+    // Otherwise `(allow file-write* (subpath project_root))` is the last match
+    // for `.git/hooks` and shell configs inside the workspace.
+    profile.push_str("; SECURITY: Mandatory deny paths (auto-protected files)\n");
+    profile.push_str("; These are ALWAYS blocked from writes, even within allowed paths\n");
+    profile
+        .push_str("; Includes: shell configs, git hooks, IDE settings, package manager configs,\n");
+    profile.push_str(";           security files (.ssh, .aws, etc.), and AI agent configs\n");
+    for pattern in generate_seatbelt_mandatory_deny_patterns() {
+        let pattern_with_tag = if pattern.ends_with(')') {
+            let without_close = &pattern[..pattern.len() - 1];
+            format!("{}\n  (with message \"{}\"))", without_close, log_tag)
+        } else {
+            pattern
+        };
+        profile.push_str(&pattern_with_tag);
+        profile.push('\n');
+    }
+    profile.push('\n');
+
+    profile.push_str("; SECURITY: Move blocking rules (prevents bypass via mv/rename)\n");
+    profile.push_str("; Blocks moving/renaming protected paths and their ancestor directories\n");
+    for rule in
+        generate_move_blocking_rules(&security_policy::get_move_protection_paths(), &log_tag)
+    {
+        profile.push_str(&rule);
+        profile.push('\n');
+    }
+    profile.push('\n');
+
     // ============================================================
     // SECURITY: Block high-risk IPC and kernel operations
     // These are never needed by skill scripts and can be used for sandbox escape
@@ -399,15 +403,6 @@ fn generate_sandbox_profile_with_proxy(
     profile.push_str("(deny mach-priv-task-port)\n"); // prevent debugging/injecting other processes
     profile.push_str("(deny iokit-open)\n"); // prevent direct kernel driver access
     profile.push('\n');
-
-    // ============================================================
-    // ALLOW DEFAULT - For remaining operations (mach-lookup, sysctl, signal, etc.)
-    // Explicitly denied operations above are NOT overridden by allow-default.
-    // ============================================================
-    profile.push_str(
-        "; Allow default for runtime compatibility (mach-lookup, sysctl, signal, etc.)\n",
-    );
-    profile.push_str("(allow default)\n\n");
 
     // ============================================================
     // ALLOW: Skill and runtime environment directories
@@ -484,24 +479,12 @@ fn generate_sandbox_profile(
 
     // Version declaration
     profile.push_str("(version 1)\n\n");
+    // Last-match-wins: baseline allow must precede the denies below.
+    profile.push_str("; Allow default first (mach-lookup, sysctl, signal). Later denies win.\n");
+    profile.push_str("(allow default)\n\n");
 
     // ============================================================
-    // SECURITY: Mandatory deny paths - ALWAYS blocked, even in allowed dirs
-    // These protect against sandbox escapes and configuration tampering
-    // ============================================================
-    profile.push_str("; SECURITY: Mandatory deny paths (auto-protected files)\n");
-    profile.push_str("; These are ALWAYS blocked from writes, even within allowed paths\n");
-    profile
-        .push_str("; Includes: shell configs, git hooks, IDE settings, package manager configs,\n");
-    profile.push_str(";           security files (.ssh, .aws, etc.), and AI agent configs\n");
-    for pattern in generate_seatbelt_mandatory_deny_patterns() {
-        profile.push_str(&pattern);
-        profile.push('\n');
-    }
-    profile.push('\n');
-
-    // ============================================================
-    // SECURITY: Block sensitive file reads BEFORE allow default
+    // SECURITY: Block sensitive file reads (after allow default so they stick)
     // ============================================================
     profile.push_str("; SECURITY: Block reading sensitive files\n");
     profile.push_str("(deny file-read* (subpath \"/etc\"))\n");
@@ -543,6 +526,7 @@ fn generate_sandbox_profile(
     profile.push_str(
         "; SECURITY: Process execution whitelist — only the resolved interpreter is allowed\n",
     );
+    profile.push_str("(deny process-exec)\n");
     let interpreter_abs = if interpreter_path.is_absolute() {
         interpreter_path.to_path_buf()
     } else {
@@ -569,7 +553,6 @@ fn generate_sandbox_profile(
             ));
         }
     }
-    profile.push_str("(deny process-exec)\n");
     profile.push('\n');
 
     // ============================================================
@@ -610,6 +593,15 @@ fn generate_sandbox_profile(
     }
     profile.push('\n');
 
+    // After the workspace write allow, so `.git/hooks` inside the project stays denied.
+    profile.push_str("; SECURITY: Mandatory deny paths (auto-protected files)\n");
+    profile.push_str("; These are ALWAYS blocked from writes, even within allowed paths\n");
+    for pattern in generate_seatbelt_mandatory_deny_patterns() {
+        profile.push_str(&pattern);
+        profile.push('\n');
+    }
+    profile.push('\n');
+
     // ============================================================
     // SECURITY: Block high-risk IPC and kernel operations
     // ============================================================
@@ -618,14 +610,6 @@ fn generate_sandbox_profile(
     profile.push_str("(deny mach-priv-task-port)\n");
     profile.push_str("(deny iokit-open)\n");
     profile.push('\n');
-
-    // ============================================================
-    // ALLOW DEFAULT - For remaining operations (mach-lookup, sysctl, signal, etc.)
-    // ============================================================
-    profile.push_str(
-        "; Allow default for runtime compatibility (mach-lookup, sysctl, signal, etc.)\n",
-    );
-    profile.push_str("(allow default)\n\n");
 
     // ============================================================
     // ALLOW: Skill and environment directories
@@ -761,6 +745,101 @@ mod tests {
         assert!(profile.contains("(deny process-exec)"));
         // Step 2: process-fork denied by default
         assert!(profile.contains("(deny process-fork)"));
+        assert_seatbelt_denies_follow_allow_default(&profile);
+    }
+
+    #[test]
+    fn production_seatbelt_profile_does_not_let_allow_default_reopen_denies() {
+        let profile = production_profile(ResolvedNetworkPolicy::BlockAll, None, None);
+        assert_eq!(profile.matches("(allow default)").count(), 1);
+        assert_seatbelt_denies_follow_allow_default(&profile);
+        assert_before(
+            &profile,
+            "(allow file-write* (subpath \"/tmp/work\"))",
+            "(deny file-write* (regex",
+        );
+        assert_before(
+            &profile,
+            "(deny file-read*",
+            "(allow file-read* (literal \"/private/etc/localtime\"))",
+        );
+    }
+
+    #[test]
+    fn production_seatbelt_proxy_denies_network_before_localhost_allow() {
+        let profile = production_profile(
+            ResolvedNetworkPolicy::ProxyFiltered {
+                domains: vec!["example.com".to_string()],
+            },
+            Some(18080),
+            Some(11080),
+        );
+        assert_eq!(profile.matches("(allow default)").count(), 1);
+        assert_before(&profile, "(allow default)", "(deny network*)");
+        assert_before(
+            &profile,
+            "(deny network*)",
+            "(allow network-outbound (remote tcp \"localhost:18080\"))",
+        );
+        assert_before(
+            &profile,
+            "(deny network*)",
+            "(allow network-outbound (remote tcp \"localhost:11080\"))",
+        );
+    }
+
+    fn production_profile(
+        network_policy: ResolvedNetworkPolicy,
+        http_port: Option<u16>,
+        socks_port: Option<u16>,
+    ) -> String {
+        let config = SandboxConfig {
+            name: "test".to_string(),
+            entry_point: "main.py".to_string(),
+            language: "python".to_string(),
+            network_enabled: !matches!(network_policy, ResolvedNetworkPolicy::BlockAll),
+            network_outbound: Vec::new(),
+            uses_playwright: false,
+        };
+        generate_sandbox_profile_with_proxy(
+            Path::new("/tmp/test_skill"),
+            Path::new(""),
+            &config,
+            Path::new("/tmp/work"),
+            http_port,
+            socks_port,
+            &network_policy,
+            Path::new("/usr/bin/python3"),
+        )
+        .expect("sandbox profile")
+    }
+
+    fn assert_seatbelt_denies_follow_allow_default(profile: &str) {
+        assert_eq!(profile.matches("(allow default)").count(), 1);
+        assert_before(profile, "(allow default)", "(deny network*)");
+        assert_before(profile, "(allow default)", "(deny file-write*)");
+        assert_before(profile, "(allow default)", "(deny process-exec)");
+        assert_before(profile, "(allow default)", "(deny process-fork)");
+        assert_before(profile, "(allow default)", "(deny mach-register)");
+        assert_before(profile, "(allow default)", "(deny iokit-open)");
+        assert_before(
+            profile,
+            "(deny process-exec)",
+            "(allow process-exec (literal \"/usr/bin/python3\"))",
+        );
+    }
+
+    fn assert_before(profile: &str, earlier: &str, later: &str) {
+        let earlier_at = profile
+            .find(earlier)
+            .unwrap_or_else(|| panic!("missing rule {earlier}"));
+        let later_at = profile
+            .find(later)
+            .unwrap_or_else(|| panic!("missing rule {later}"));
+        assert!(
+            earlier_at < later_at,
+            "{earlier} at {earlier_at} must precede {later} at {later_at}"
+        );
     }
 
     #[test]

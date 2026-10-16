@@ -226,9 +226,9 @@ pub fn get_sensitive_read_project_regex_patterns(relaxed: bool) -> Vec<&'static 
 //
 // Strategy: WHITELIST (as of hardening step 2)
 //
-// macOS Seatbelt profile now uses a whitelist approach:
-//   (allow process-exec (literal "/resolved/interpreter"))
+// macOS Seatbelt is last-match-wins, so the whitelist is deny-then-allow:
 //   (deny process-exec)
+//   (allow process-exec (literal "/resolved/interpreter"))
 //
 // The resolved interpreter path comes from RuntimePaths at execution time.
 // The legacy denylist constants below are retained for Linux (firejail) and
