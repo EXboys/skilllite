@@ -87,7 +87,7 @@ Agent Doctor 的团队版按现有的编译期安装包保留，不改目录结�
 
 ## 沙箱
 
-每次运行调用 `skilllite_sandbox::run`（命令行是 `skilllite agent-sandbox`）。订阅目录、工作目录、提示词和 `https_proxy` 都来自调用方，不从连接服务下发代理，也不把目录放进对外状态。`https_proxy` 可以不传。`--require-proxy` 或环境变量 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1` 打开后，没有代理就不会启动。传了代理时，macOS 上必须是本机地址，Seatbelt 把它写成 `localhost:<端口>`；Linux 上若无法把允许项装到本次进程自己的 cgroup，运行不会启动。
+每次运行调用 `skilllite_sandbox::run`（命令行是 `skilllite agent-sandbox`）。订阅目录、工作目录、提示词和 `https_proxy` 都来自调用方，不从连接服务下发代理，也不把目录放进对外状态。`https_proxy` 可以不传。`--require-proxy` 或环境变量 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1` 打开后，没有代理就不会启动。传了代理时，macOS 上必须是本机地址，Seatbelt 把它写成 `localhost:<端口>`。Linux 上 nftables 用该 cgroup 在 `/sys/fs/cgroup` 下的完整路径做匹配，而不是只写叶子目录名。允许项装不上时，运行不会启动。
 
 1. 建临时家目录。订阅目录复制进去。原目录不挂进沙箱，结束时不写回。
 2. 工作目录原位挂到 `/work`（macOS 上则作为工作目录）。结果留在这个目录里。同一工作目录同时只有一个 `run`。用完即删的只有临时家目录和里面的订阅副本。

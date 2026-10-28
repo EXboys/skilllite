@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-10-28 (TASK-2026-072 cargo audit fix done)
+Last updated: 2026-10-28 (TASK-2026-073 nft cgroup path done)
 
 ## In Progress
 
@@ -18,6 +18,7 @@ Last updated: 2026-10-28 (TASK-2026-072 cargo audit fix done)
 
 ## Done
 
+- `TASK-2026-073-agent-sandbox-nft-cgroup-path` - Status: `done` - Owner: `agent`
 - `TASK-2026-072-cargo-audit-2026-10` - Status: `done` - Owner: `agent`
 - `TASK-2026-071-agent-sandbox-run` - Status: `done` - Owner: `agent`
 - `TASK-2026-070-critical-bug-sweep-2026-07-06` - Status: `done` - Owner: `agent`
