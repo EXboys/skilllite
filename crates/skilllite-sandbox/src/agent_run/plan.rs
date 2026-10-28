@@ -152,6 +152,7 @@ fn mounted_prefix(prefix: &str) -> bool {
 /// cannot be pinned and is rejected. Reads stay broad because a narrow
 /// `subpath` list prevents dyld from starting the process. Writes are limited
 /// to the canonical home and work directories.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn seatbelt_profile(home: &Path, work: &Path, proxy: Option<&ResolvedProxy>) -> Result<String> {
     let mut network = String::new();
     if let Some(proxy) = proxy {

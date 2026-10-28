@@ -255,7 +255,7 @@ fn spawn_sandboxed(
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[cfg(target_os = "macos")]
 fn apply_env(cmd: &mut Command, home: &Path, proxy: Option<&proxy::ResolvedProxy>) {
     cmd.env_clear();
     cmd.env("HOME", home);
