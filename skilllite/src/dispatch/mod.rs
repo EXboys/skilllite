@@ -1,5 +1,6 @@
 //! 命令分发：各领域命令的 register 逻辑，新增命令在此模块注册即可。
 
+mod agent_sandbox;
 #[cfg(feature = "artifact_http")]
 mod artifact;
 #[cfg(feature = "channel_serve")]
@@ -18,6 +19,7 @@ use crate::command_registry::CommandRegistry;
 pub fn register_all(reg: &mut CommandRegistry) {
     protocol::register(reg);
     execute::register(reg);
+    agent_sandbox::register(reg);
     skill::register(reg);
     migrate::register(reg);
     #[cfg(feature = "artifact_http")]

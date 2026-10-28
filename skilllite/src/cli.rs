@@ -847,6 +847,41 @@ pub enum Commands {
         #[command(subcommand)]
         action: ChannelAction,
     },
+
+    /// Run one command inside a subscription sandbox.
+    ///
+    /// Copies `account_dir/.claude` into an ephemeral home and locks that directory.
+    /// When `https_proxy` is set, network is limited to that proxy. Stdout lines are redacted.
+    /// This does not execute a skill and does not use `execute()`.
+    #[command(name = "agent-sandbox")]
+    AgentSandbox {
+        /// Directory that contains `.claude` from `claude auth login`.
+        #[arg(long)]
+        account_dir: String,
+        /// Working directory mounted for the process. It is not deleted.
+        #[arg(long)]
+        work_dir: String,
+        /// Prompt passed to `claude -p`.
+        #[arg(long)]
+        prompt: String,
+        /// HTTP(S) proxy. When set, the sandbox may connect only to that proxy.
+        #[arg(long, default_value = "")]
+        https_proxy: String,
+        /// Refuse to start when `https_proxy` is missing.
+        ///
+        /// Also read from `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY` (`true`/`false` or `1`/`0`).
+        #[arg(
+            long,
+            env = "SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY",
+            default_value_t = false,
+            action = clap::ArgAction::Set,
+            value_parser = clap::builder::BoolishValueParser::new()
+        )]
+        require_proxy: bool,
+        /// Optional id used as the sandbox hostname. Generated when omitted.
+        #[arg(long)]
+        run_id: Option<String>,
+    },
 }
 
 /// `skilllite claw` subcommands.

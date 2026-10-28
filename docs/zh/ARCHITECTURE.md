@@ -414,6 +414,14 @@ pub enum SecuritySeverity {
 | `move_protection.rs` | 文件移动保护 |
 | `seatbelt.rs` | macOS 强制拒绝路径和 Seatbelt profile |
 
+#### 2.11 订阅目录运行 (`skilllite-sandbox/agent_run`)
+
+`skilllite_sandbox::run` 是技能 `execute()` 之外的另一条路径，二者互不调用。它把 `account_dir/.claude` 复制进临时家目录，锁住订阅目录。传了 `https_proxy` 时，出网限制到该代理；没传时可以启动，出网不按代理收口。`require_proxy`（命令行 `--require-proxy`，或 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`）打开后，没有代理就不启动。工作目录原位可写，运行结束后只删除临时家目录。stdout 里 `sk-ant-` 开头的内容会变成 `[redacted]`。
+
+Linux 使用单独的 `bwrap` 参数：用户、PID、UTS、IPC 命名空间，不含 `--unshare-all` 和 `--unshare-net`。代理允许项按该 cgroup 在 `/sys/fs/cgroup` 下的层级写给 nftables；装不上就拒绝启动。macOS 使用单独的 Seatbelt profile。当前 `sandbox-exec` 只能把本机代理写成 `localhost:<端口>`，非本机地址会拒绝启动。macOS 上读范围保持放开，否则动态链接器起不来；写只允许临时家目录和工作目录。技能路径的断网、短超时和 seccomp 保持不变。
+
+命令行入口是 `skilllite agent-sandbox`（`skilllite-sandbox` 二进制同样提供）。号池、用户绑定和 SSE 不在本仓库。
+
 ---
 
 ### 3. 执行器模块 (skilllite-executor)
@@ -687,6 +695,7 @@ Rust Sandbox.execute()
 skilllite run <skill_dir> '<input_json>'       # 运行 Skill
 skilllite exec <skill_dir> <script> '<json>'   # 直接执行脚本
 skilllite bash <skill_dir> '<command>'         # 执行 Bash 命令
+skilllite agent-sandbox --account-dir <dir> --work-dir <dir> --prompt <text> [--https-proxy <url>] [--require-proxy true]
 
 # 扫描类
 skilllite scan <skill_dir>                     # 扫描 Skill
