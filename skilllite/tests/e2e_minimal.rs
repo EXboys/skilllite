@@ -53,7 +53,7 @@ fn run_skilllite_in_dir(args: &[&str], dir: &Path) -> std::process::Output {
 fn write_skill_zip(zip_path: &Path, skill_root_name: &str) {
     let file = std::fs::File::create(zip_path).unwrap();
     let mut zip = zip::ZipWriter::new(file);
-    let options = zip::write::FileOptions::default();
+    let options = zip::write::SimpleFileOptions::default();
 
     zip.start_file(format!("{skill_root_name}/SKILL.md"), options)
         .unwrap();

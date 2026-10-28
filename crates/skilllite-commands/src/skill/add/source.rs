@@ -189,7 +189,10 @@ fn extract_zip_archive<R: Read + Seek>(reader: R, source_label: &str) -> Result<
 
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).context("Failed to read zip entry")?;
-        let name = file.name().to_string();
+        let name = file
+            .name()
+            .context("Failed to read zip entry name")?
+            .into_owned();
         let enclosed = file.enclosed_name().ok_or_else(|| {
             crate::Error::validation(format!(
                 "ZIP entry escapes extraction root: {} ({})",
@@ -304,7 +307,7 @@ mod tests {
         let file = tempfile::NamedTempFile::new().expect("temp zip");
         let writer = file.reopen().expect("reopen zip writer");
         let mut zip = zip::ZipWriter::new(writer);
-        let options = zip::write::FileOptions::default();
+        let options = zip::write::SimpleFileOptions::default();
         for (name, bytes) in entries {
             zip.start_file(*name, options).expect("start file");
             zip.write_all(bytes).expect("write zip file");

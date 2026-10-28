@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use skilllite_core::paths::{self, project_skilllite_dir};
-use zip::write::FileOptions;
+use zip::write::SimpleFileOptions;
 use zip::ZipWriter;
 
 use crate::skill::{
@@ -561,7 +561,7 @@ fn create_backup_zip(
     }
     let file = File::create(zip_path).map_err(crate::Error::from)?;
     let mut zip = ZipWriter::new(file);
-    let options = FileOptions::default();
+    let options = SimpleFileOptions::default();
 
     let mut roots: Vec<(&Path, &str)> = vec![(skills_path, "skills"), (memory_root, "chat-memory")];
     let project_skilllite = project_skilllite_dir(project_root);
@@ -604,7 +604,7 @@ fn add_file_to_zip(
     zip: &mut ZipWriter<File>,
     path: &Path,
     name: &str,
-    options: FileOptions,
+    options: SimpleFileOptions,
 ) -> Result<()> {
     zip.start_file(name, options)
         .map_err(|e| std::io::Error::other(e.to_string()))

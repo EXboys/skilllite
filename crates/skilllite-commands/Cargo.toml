@@ -40,7 +40,7 @@ tracing = "0.1"
 regex = "1.10"
 dirs = "5.0"
 tempfile = "3.10"
-zip = "0.6"
+zip = { version = "9.1", default-features = false, features = ["deflate", "bzip2", "zstd"] }
 ureq = { version = "2", optional = true, features = ["json"] }
 tokio = { version = "1", optional = true, features = ["rt-multi-thread", "macros", "time", "io-util", "net"] }
 axum = { version = "0.7", optional = true, features = ["json"] }
