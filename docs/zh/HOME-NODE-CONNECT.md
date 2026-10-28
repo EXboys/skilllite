@@ -30,13 +30,13 @@ Agent Doctor 的团队版按现有的编译期安装包保留，不改目录结�
 | 字段 | 对外可见 | 含义 |
 |---|---|---|
 | `account_id` | 是 | 稳定 id，如 `work`、`personal` |
-| `runtime` | 是 | 如 `claude-code` |
+| `runtime` | 是 | `claude` 或 `codex` |
 | `ready` | 是 | 二进制存在，且订阅目录里有登录文件 |
 | `busy` | 是 | 这个订阅号已经有一个沙箱 |
-| 订阅目录 | 否 | 官方 `claude auth login` 留下的目录 |
+| 订阅目录 | 否 | `claude auth login` 留下的 `.claude`，或 `codex login` 留下的 `.codex` |
 | `https_proxy` | 否 | 这个订阅号的出口代理 |
 
-登录不在 `run` 里。人在宿主机上对那个目录执行一次官方登录。程序不读取、不保存、不转发 token，不打开 macOS 钥匙串。
+登录不在 `run` 里。人在宿主机上对那个目录执行一次官方登录。程序不读取、不保存、不转发 token，不打开 macOS 钥匙串。Codex 刷新会话后，宿主只把临时家目录里的普通文件 `auth.json` 写回订阅目录。
 
 同一订阅号同时只有一个沙箱。不同订阅号可以并行。安装和诊断仍用已有的 `install`、`doctor`，用来把 `ready` 变成真。
 
@@ -68,7 +68,7 @@ Agent Doctor 的团队版按现有的编译期安装包保留，不改目录结�
 1. 手机把一句话交给连接服务，带上 `user_id` 和这次的 `run_id`。
 2. 连接服务沿这台电脑已经建立的 WebSocket 送下去。
 3. 电脑用该用户绑定的订阅号调用 `run`。stdout 为 `claude -p … --output-format stream-json --verbose`。
-4. 每一行 JSON 送回连接服务。`sk-ant-` 开头的内容先写成 `[redacted]`。
+4. 每一行 JSON 送回连接服务。`sk-` 开头的密钥先写成 `[redacted]`。
 5. 连接服务按 `run_id` 保存，并用 SSE 按顺序推给手机：正文、`tool_use`、`tool_result`。结束时发 `done`，带上退出状态。SSE 不承担登录和号池。
 
 拟定中的一行：
@@ -89,25 +89,28 @@ Agent Doctor 的团队版按现有的编译期安装包保留，不改目录结�
 
 每次运行调用 `skilllite_sandbox::run`（命令行是 `skilllite agent-sandbox`）。订阅目录、工作目录、提示词和 `https_proxy` 都来自调用方，不从连接服务下发代理，也不把目录放进对外状态。`https_proxy` 可以不传。`--require-proxy` 或环境变量 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1` 打开后，没有代理就不会启动。传了代理时，macOS 上必须是本机地址，Seatbelt 把它写成 `localhost:<端口>`。Linux 上 nftables 用该 cgroup 在 `/sys/fs/cgroup` 下的完整路径做匹配，而不是只写叶子目录名。允许项装不上时，运行不会启动。
 
-1. 建临时家目录。订阅目录复制进去。原目录不挂进沙箱，结束时不写回。
+1. 建临时家目录。`--runtime claude`（默认）复制 `.claude`，`--runtime codex` 复制 `.codex`。原目录不挂进沙箱。Claude 结束时不写回。Codex 只把刷新后的 `auth.json` 写回。
 2. 工作目录原位挂到 `/work`（macOS 上则作为工作目录）。结果留在这个目录里。同一工作目录同时只有一个 `run`。用完即删的只有临时家目录和里面的订阅副本。
 3. 订阅目录加文件锁，与号池的 `busy` 一致。
 4. 传了 `https_proxy` 时，在宿主机解析代理。沙箱内只允许连接这个 IP 和端口。其他 TCP、UDP 拒绝，包括局域网、公网，以及本机上除代理端口以外的地址。沙箱内不做 DNS。本地套接字允许。解析失败则这次运行不启动。没传代理时可以启动，出网不按代理收口。开关 `--require-proxy`（或 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`）打开后，没传代理则不启动。
-5. 沙箱内执行：
+5. 命令名先在宿主机解析成绝对路径，再传进沙箱。这个二进制所在目录会加进沙箱的 `PATH`。未指定其他命令时执行：
 
 ```text
 claude -p "<提示词>" --output-format stream-json --verbose --permission-mode dontAsk
+codex exec --json --dangerously-bypass-approvals-and-sandbox "<提示词>"
 ```
 
-6. 进程退出、连接服务取消或出错：杀掉进程组，删除临时家目录，释放锁，`busy` 改回假。
+Codex 这条命令关掉它自己的沙箱。外层 bwrap 或 Seatbelt 仍然限制可写目录；传了代理时，出网仍然只到该代理。
+
+6. 进程退出、连接服务取消或出错：杀掉进程组，Codex 写回 `auth.json`，删除临时家目录，释放锁，`busy` 改回假。
 
 Linux 使用单独组装的 `bwrap`：用户、挂载、PID、UTS、IPC 命名空间；主机名用这次运行的 id；不使用网络命名空间，也不做独立网卡；只读挂 `/usr`、`/lib`、`/bin`、`/lib64`（存在才挂）；临时家目录挂到 `/home/agent`；`/tmp` 用 tmpfs；不挂宿主家目录、Skilllite 配置目录和容器套接字；进程非 root。代理限制按这次进程的用户或 cgroup 写允许项。
 
-macOS 使用单独的 Seatbelt profile 和 `sandbox-exec`。`HOME` 指向临时家目录。只读放行 `claude` 所在前缀以及 `/usr`、`/bin`、`/System`。代理限制写在该 profile 的网络允许项里。没有 PID 命名空间，活动监视器里仍可能看见另一个订阅号的进程。订阅目录和出口 IP 按订阅号分开。
+macOS 使用单独的 Seatbelt profile 和 `sandbox-exec`。`HOME` 指向临时家目录。读范围保持放开，否则动态链接器起不来；写只允许临时家目录和工作目录。代理限制写在该 profile 的网络允许项里。没有 PID 命名空间，活动监视器里仍可能看见另一个订阅号的进程。订阅目录和出口 IP 按订阅号分开。
 
 ## 这次不做
 
-Evotown 派活与事件表、独立网卡、按代理 IP 改时区、语言环境镜像、Codex 订阅号、把订阅包装成 OpenAI 兼容接口、Windows、在桌面里管理号池、让桌面或 CLI 对外监听 SSE。以后换命令行和家目录即可跑别的 agent，`bwrap` 和 Seatbelt 的组装不用改。
+Evotown 派活与事件表、独立网卡、按代理 IP 改时区、语言环境镜像、把订阅包装成 OpenAI 兼容接口、Windows、在桌面里管理号池、让桌面或 CLI 对外监听 SSE。Claude 和 Codex 共用同一套 `bwrap` 和 Seatbelt。
 
 ## 验收（实现之后）
 

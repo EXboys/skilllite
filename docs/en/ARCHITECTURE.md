@@ -418,11 +418,11 @@ pub enum SecuritySeverity {
 
 #### 2.11 Subscription-directory run (`skilllite-sandbox/agent_run`)
 
-`skilllite_sandbox::run` is a separate path from skill `execute()`. The two do not call each other. `run` copies `account_dir/.claude` into an ephemeral home and locks the subscription directory. When `https_proxy` is set, outbound network is limited to that proxy. When it is omitted, the run may start and egress is not pinned. `require_proxy` (CLI `--require-proxy`, or `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`) refuses to start when the proxy is missing. The work directory stays writable in place. Only the ephemeral home is deleted when the run ends. Stdout text that starts with `sk-ant-` is replaced with `[redacted]`.
+`skilllite_sandbox::run` is a separate path from skill `execute()`. The two do not call each other. `runtime` `claude` (the default) copies `account_dir/.claude`. `runtime` `codex` copies `account_dir/.codex`. The run locks the subscription directory. When `https_proxy` is set, outbound network is limited to that proxy. When it is omitted, the run may start and egress is not pinned. `require_proxy` (CLI `--require-proxy`, or `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`) refuses to start when the proxy is missing. The work directory stays writable in place. Only the ephemeral home is deleted when the run ends. A Codex run writes the refreshed `auth.json` back, and only that regular file. Stdout tokens that start with `sk-` are replaced with `[redacted]`, including `sk-ant-` and `sk-proj-`.
 
 Linux uses its own `bwrap` arguments: user, PID, UTS, and IPC namespaces, without `--unshare-all` or `--unshare-net`. The proxy allowlist is an nftables `socket cgroupv2` rule. Its match path is that cgroup relative to `/sys/fs/cgroup`, and its level is the number of components in that path. A leaf name alone is not installed. If the filter cannot be installed, the run does not start. macOS uses its own Seatbelt profile. Current `sandbox-exec` can express a loopback proxy only as `localhost:<port>`, and a non-loopback address is rejected. On macOS, reads stay broad because a narrow path list prevents dyld from starting the process; writes are limited to the ephemeral home and the work directory. The skill path keeps its offline policy, short timeout, and seccomp filter.
 
-The CLI entry is `skilllite agent-sandbox` (also on the `skilllite-sandbox` binary). The subscription pool, user binding, and SSE are not part of this repository.
+The command name is resolved to an absolute path on the host before it runs, and that directory is added to the sandbox `PATH`. The Claude default is `claude -p … --output-format stream-json --verbose --permission-mode dontAsk`. The Codex default is `codex exec --json --dangerously-bypass-approvals-and-sandbox …`. Codex's own sandbox does not start inside bwrap or Seatbelt, so it is disabled and the outer sandbox keeps the write roots and the proxy limit. The CLI entry is `skilllite agent-sandbox` (also on the `skilllite-sandbox` binary). The subscription pool, user binding, and SSE are not part of this repository.
 
 ---
 
@@ -700,7 +700,7 @@ Return execution result
 skilllite run <skill_dir> '<input_json>'       # Run Skill
 skilllite exec <skill_dir> <script> '<json>'   # Execute script directly
 skilllite bash <skill_dir> '<command>'         # Execute Bash command
-skilllite agent-sandbox --account-dir <dir> --work-dir <dir> --prompt <text> [--https-proxy <url>] [--require-proxy true]
+skilllite agent-sandbox --account-dir <dir> --work-dir <dir> --prompt <text> [--runtime claude|codex] [--https-proxy <url>] [--require-proxy true]
 
 # Scanning
 skilllite scan <skill_dir>                     # Scan Skill

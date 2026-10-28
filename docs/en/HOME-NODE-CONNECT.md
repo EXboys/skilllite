@@ -30,13 +30,13 @@ The pool is on this computer. One subscription:
 | Field | Visible outside | Meaning |
 |---|---|---|
 | `account_id` | yes | Stable id, such as `work` or `personal` |
-| `runtime` | yes | For example `claude-code` |
+| `runtime` | yes | `claude` or `codex` |
 | `ready` | yes | The binary exists and the subscription directory contains a login file |
 | `busy` | yes | This subscription already has a sandbox |
-| Subscription directory | no | The directory left by official `claude auth login` |
+| Subscription directory | no | `.claude` from `claude auth login`, or `.codex` from `codex login` |
 | `https_proxy` | no | Egress proxy for this subscription |
 
-Login is not part of `run`. A person runs the official login once against that directory on the host. The program does not read, store, or forward tokens, and it does not open the macOS keychain.
+Login is not part of `run`. A person runs the official login once against that directory on the host. The program does not read, store, or forward tokens, and it does not open the macOS keychain. After Codex refreshes its session, the host writes back only the regular file `auth.json`.
 
 One subscription has one sandbox at a time. Different subscriptions run in parallel. Install and diagnosis stay on the existing `install` and `doctor` commands, which are what make `ready` true.
 
@@ -68,7 +68,7 @@ Sandbox
 1. The phone gives the connect service one message, with `user_id` and this turn's `run_id`.
 2. The connect service sends it down the WebSocket this computer already opened.
 3. The computer calls `run` with the subscription bound to that user. stdout comes from `claude -p … --output-format stream-json --verbose`.
-4. Each JSON line goes back to the connect service. Content that starts with `sk-ant-` is replaced with `[redacted]` first.
+4. Each JSON line goes back to the connect service. Tokens that start with `sk-` are replaced with `[redacted]` first.
 5. The connect service stores the line by `run_id` and pushes SSE to the phone in order: text, `tool_use`, `tool_result`. At the end it sends `done` with the exit status. SSE does not carry login or the pool.
 
 Proposed line:
@@ -89,25 +89,28 @@ After a reconnect, a sandbox that is still running keeps sending lines for the s
 
 Each run calls `skilllite_sandbox::run` (CLI: `skilllite agent-sandbox`). The subscription directory, working directory, prompt, and `https_proxy` come from the caller. The connect service does not send the proxy, and the directory is not part of the published status. `https_proxy` may be omitted. With `--require-proxy`, or `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`, a missing proxy refuses to start. When a proxy is set, macOS requires a loopback address and Seatbelt records it as `localhost:<port>`. On Linux the nftables match names that cgroup by its path under `/sys/fs/cgroup`, not by the leaf name alone. The run does not start when that allowlist cannot be attached.
 
-1. Create an ephemeral home and copy the subscription directory into it. The original directory is not mounted and is not written back.
+1. Create an ephemeral home. `--runtime claude` (the default) copies `.claude`. `--runtime codex` copies `.codex`. The original directory is not mounted. A Claude run does not write it back. A Codex run writes back only the refreshed `auth.json`.
 2. Mount the working directory in place at `/work` (on macOS, use it as the working directory). Results stay in that directory. One working directory has one `run` at a time. The only tree deleted at the end is the ephemeral home and the subscription copy inside it.
 3. Take a file lock on the subscription directory, matching `busy` on the pool.
 4. When `https_proxy` is set, resolve it on the host. Inside the sandbox, allow only that IP and port. Refuse every other TCP and UDP destination, including the LAN, the public internet, and every local port except the proxy port. Do not resolve DNS inside the sandbox. Local sockets stay allowed. If that proxy does not resolve, do not start the run. A run may start with no proxy, and egress is not pinned. `--require-proxy` (or `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`) refuses to start when the proxy is missing.
-5. Inside the sandbox, run:
+5. Resolve the command to an absolute path on the host, then pass that path into the sandbox. The binary's directory is added to the sandbox `PATH`. When no other command is supplied, run:
 
 ```text
 claude -p "<prompt>" --output-format stream-json --verbose --permission-mode dontAsk
+codex exec --json --dangerously-bypass-approvals-and-sandbox "<prompt>"
 ```
 
-6. On exit, cancel, or error: kill the process group, delete the ephemeral home, release the lock, and set `busy` back to false.
+The Codex command turns off Codex's own sandbox. The outer bwrap or Seatbelt profile still limits writes. When a proxy is set, egress still goes only to that proxy.
+
+6. On exit, cancel, or error: kill the process group, write Codex `auth.json` back, delete the ephemeral home, release the lock, and set `busy` back to false.
 
 Linux uses a `bwrap` profile built for `run`: user, mount, PID, UTS, and IPC namespaces; hostname set to this run id; no network namespace and no dedicated NIC; read-only `/usr`, `/lib`, `/bin`, and `/lib64` when those paths exist; ephemeral home at `/home/agent`; `/tmp` on tmpfs; no host home, Skilllite config directory, or container sockets; non-root. The proxy allow rule is attached to this process's user or cgroup.
 
-macOS uses a Seatbelt profile specific to `run`, via `sandbox-exec`. `HOME` is the ephemeral home. The profile allows read of the `claude` binary prefix plus `/usr`, `/bin`, and `/System`. The proxy allow rule is in that profile. There is no PID namespace, so Activity Monitor can still show another subscription's process. Subscription directories and egress IPs stay per subscription.
+macOS uses a Seatbelt profile specific to `run`, via `sandbox-exec`. `HOME` is the ephemeral home. Reads stay broad because a narrow path list prevents dyld from starting the process. Writes are limited to the ephemeral home and the work directory. The proxy allow rule is in that profile. There is no PID namespace, so Activity Monitor can still show another subscription's process. Subscription directories and egress IPs stay per subscription.
 
 ## Out of scope
 
-Evotown dispatch and its event log, a dedicated NIC, timezone changes from the proxy IP, locale mirroring, Codex subscriptions, an OpenAI-compatible wrapper around a subscription, Windows, managing the pool inside the desktop app, and an SSE listener on the desktop or the CLI. A later agent can swap the command line and the home directory. The `bwrap` and Seatbelt assembly stays.
+Evotown dispatch and its event log, a dedicated NIC, timezone changes from the proxy IP, locale mirroring, an OpenAI-compatible wrapper around a subscription, Windows, managing the pool inside the desktop app, and an SSE listener on the desktop or the CLI. Claude and Codex share the same `bwrap` and Seatbelt assembly.
 
 ## Acceptance (after implementation)
 

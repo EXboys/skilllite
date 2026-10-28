@@ -1,11 +1,13 @@
 //! Redact subscription tokens before a line leaves the sandbox.
 
-/// Replace each `sk-ant-` token with `[redacted]`.
+/// Replace each `sk-` token with `[redacted]`.
+///
+/// This covers Anthropic keys (`sk-ant-…`) and OpenAI keys (`sk-proj-…` and `sk-…`).
 ///
 /// The marker and the token body are ASCII. Surrounding text, including
 /// non-ASCII characters, is copied through on character boundaries.
 pub fn redact_line(line: &str) -> String {
-    const MARKER: &str = "sk-ant-";
+    const MARKER: &str = "sk-";
     let mut out = String::with_capacity(line.len());
     let mut rest = line;
     while let Some(index) = rest.find(MARKER) {
@@ -36,6 +38,14 @@ mod tests {
     #[test]
     fn leaves_unrelated_text_unchanged() {
         assert_eq!(redact_line("no token here"), "no token here");
+    }
+
+    #[test]
+    fn redacts_openai_project_key_and_keeps_non_ascii() {
+        assert_eq!(
+            redact_line("密钥 sk-proj-abc_1 中文"),
+            "密钥 [redacted] 中文"
+        );
     }
 
     #[test]

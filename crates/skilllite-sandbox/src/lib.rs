@@ -3,7 +3,7 @@ pub mod bash_validator;
 pub mod common;
 pub mod error;
 
-pub use agent_run::{run, RunOutcome, RunRequest};
+pub use agent_run::{run, AgentRuntime, RunOutcome, RunRequest};
 pub use error::{Error, Result};
 pub mod env;
 pub mod log;

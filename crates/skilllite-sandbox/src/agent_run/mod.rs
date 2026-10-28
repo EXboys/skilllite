@@ -25,10 +25,40 @@ use crate::Result;
 
 pub use redact::redact_line;
 
+/// Which agent login directory and default command a run uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AgentRuntime {
+    /// Copy `account_dir/.claude`. Default command is Claude Code.
+    #[default]
+    Claude,
+    /// Copy `account_dir/.codex`. Default command is Codex CLI.
+    /// After the process exits, write `auth.json` back when it is a regular file.
+    Codex,
+}
+
+impl AgentRuntime {
+    /// Parse the CLI value `claude` or `codex`.
+    pub fn from_name(name: &str) -> Result<Self> {
+        match name {
+            "claude" => Ok(Self::Claude),
+            "codex" => Ok(Self::Codex),
+            _ => bail!("runtime must be claude or codex"),
+        }
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn config_dir(self) -> &'static str {
+        match self {
+            Self::Claude => ".claude",
+            Self::Codex => ".codex",
+        }
+    }
+}
+
 /// Inputs for one subscription sandbox.
 ///
-/// `argv`, when empty, becomes
-/// `claude -p <prompt> --output-format stream-json --verbose --permission-mode dontAsk`.
+/// An empty `argv` uses the runtime default command. A non-empty `argv`
+/// replaces that command and still copies the runtime's login directory.
 #[derive(Debug, Clone)]
 pub struct RunRequest {
     pub run_id: String,
@@ -39,6 +69,7 @@ pub struct RunRequest {
     /// When true, an empty `https_proxy` refuses to start. A provided proxy is
     /// still resolved and enforced when this is false.
     pub require_proxy: bool,
+    pub runtime: AgentRuntime,
     pub argv: Vec<String>,
     pub cancel: Option<Arc<AtomicBool>>,
 }
@@ -57,6 +88,7 @@ impl RunRequest {
             prompt: prompt.into(),
             https_proxy: https_proxy.into(),
             require_proxy: false,
+            runtime: AgentRuntime::Claude,
             argv: Vec::new(),
             cancel: None,
         }
@@ -94,14 +126,23 @@ fn run_unix(request: RunRequest, on_line: &mut dyn FnMut(&str)) -> Result<RunOut
     if !request.work_dir.is_dir() {
         bail!("work_dir is not a directory");
     }
-    let claude_home = request.account_dir.join(".claude");
-    if !claude_home.is_dir() {
-        bail!("account_dir has no .claude directory");
+    let config_name = request.runtime.config_dir();
+    let config_dir = request.account_dir.join(config_name);
+    if !config_dir.is_dir() {
+        bail!("account_dir has no {config_name} directory");
     }
     let resolved = optional_proxy(&request)?;
+    let mut argv = if request.argv.is_empty() {
+        default_argv(request.runtime, &request.prompt)
+    } else {
+        request.argv.clone()
+    };
+    let resolved_binary = resolve_host_binary(Path::new(&argv[0]))?;
+    argv[0] = path_to_string(&resolved_binary)?;
+    let layout = plan::detect_layout(Some(resolved_binary.as_path()));
     let _lock = try_lock_directory(&request.account_dir)?;
     let home = tempfile::TempDir::new()?;
-    copy_tree(&claude_home, &home.path().join(".claude"))?;
+    copy_tree(&config_dir, &home.path().join(config_name))?;
     let home_path = fs::canonicalize(home.path())?;
     let work_path = fs::canonicalize(&request.work_dir)?;
     let run_id = if request.run_id.is_empty() {
@@ -109,24 +150,6 @@ fn run_unix(request: RunRequest, on_line: &mut dyn FnMut(&str)) -> Result<RunOut
     } else {
         request.run_id.clone()
     };
-    let argv = if request.argv.is_empty() {
-        vec![
-            "claude".to_string(),
-            "-p".to_string(),
-            request.prompt.clone(),
-            "--output-format".to_string(),
-            "stream-json".to_string(),
-            "--verbose".to_string(),
-            "--permission-mode".to_string(),
-            "dontAsk".to_string(),
-        ]
-    } else {
-        request.argv.clone()
-    };
-    let binary = Path::new(&argv[0]);
-    let resolved_binary = which_first(binary);
-    let layout = plan::detect_layout(resolved_binary.as_deref());
-
     #[cfg(target_os = "linux")]
     let filter = match &resolved {
         Some(proxy) => Some(install_linux_filter(&run_id, proxy)?),
@@ -187,14 +210,17 @@ fn run_unix(request: RunRequest, on_line: &mut dyn FnMut(&str)) -> Result<RunOut
                     signal_group(pid);
                     let _ = child.wait();
                     group.disarm();
+                    persist_runtime_auth(request.runtime, &home_path, &request.account_dir)?;
                     return Err(err.into());
                 }
             }
         }
     }
-    let status = child.wait()?;
+    let status = child.wait();
     group.disarm();
     stop.store(true, Ordering::Relaxed);
+    persist_runtime_auth(request.runtime, &home_path, &request.account_dir)?;
+    let status = status?;
     let stderr_excerpt = stderr_handle
         .and_then(|handle| handle.join().ok())
         .unwrap_or_default();
@@ -229,7 +255,7 @@ fn spawn_sandboxed(
         cmd.arg(&argv[0]);
         cmd.args(&argv[1..]);
         cmd.current_dir(work);
-        apply_env(&mut cmd, home, proxy);
+        apply_env(&mut cmd, home, proxy, &argv[0]);
         cmd.stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -256,12 +282,12 @@ fn spawn_sandboxed(
 }
 
 #[cfg(target_os = "macos")]
-fn apply_env(cmd: &mut Command, home: &Path, proxy: Option<&proxy::ResolvedProxy>) {
+fn apply_env(cmd: &mut Command, home: &Path, proxy: Option<&proxy::ResolvedProxy>, argv0: &str) {
     cmd.env_clear();
     cmd.env("HOME", home);
     cmd.env("TMPDIR", home.join("tmp"));
     let _ = fs::create_dir_all(home.join("tmp"));
-    cmd.env("PATH", "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin");
+    cmd.env("PATH", plan::sandbox_path(argv0, true));
     if let Some(proxy) = proxy {
         for key in [
             "HTTPS_PROXY",
@@ -383,6 +409,34 @@ fn generated_run_id() -> String {
     format!("run{nanos:x}")
 }
 
+fn resolve_host_binary(binary: &Path) -> Result<PathBuf> {
+    let found = if binary.components().count() > 1 {
+        if binary.is_absolute() {
+            binary.to_path_buf()
+        } else {
+            std::env::current_dir()?.join(binary)
+        }
+    } else {
+        which::which(binary).map_err(|_| {
+            crate::Error::validation(format!("command not found: {}", binary.display()))
+        })?
+    };
+    if !found.is_file() {
+        bail!("command not found: {}", found.display());
+    }
+    if found.is_absolute() {
+        return Ok(found);
+    }
+    Ok(std::env::current_dir()?.join(found))
+}
+
+fn path_to_string(path: &Path) -> Result<String> {
+    path.to_str()
+        .map(str::to_string)
+        .ok_or_else(|| crate::Error::validation("command path is not valid Unicode"))
+}
+
+#[cfg(target_os = "linux")]
 fn which_first(binary: &Path) -> Option<PathBuf> {
     if binary.components().count() > 1 {
         return Some(binary.to_path_buf());
@@ -475,6 +529,67 @@ fn arm_linux_child(cmd: &mut Command, procs: PathBuf) {
     }
 }
 
+/// Default command for `runtime`.
+///
+/// Codex uses `--dangerously-bypass-approvals-and-sandbox` because this
+/// process is already inside bwrap or Seatbelt. Codex's own sandbox does not
+/// start there. Writes stay limited to the ephemeral home and the work
+/// directory. Network stays limited to `https_proxy` when one is set.
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))]
+fn default_argv(runtime: AgentRuntime, prompt: &str) -> Vec<String> {
+    match runtime {
+        AgentRuntime::Claude => vec![
+            "claude".to_string(),
+            "-p".to_string(),
+            prompt.to_string(),
+            "--output-format".to_string(),
+            "stream-json".to_string(),
+            "--verbose".to_string(),
+            "--permission-mode".to_string(),
+            "dontAsk".to_string(),
+        ],
+        AgentRuntime::Codex => vec![
+            "codex".to_string(),
+            "exec".to_string(),
+            "--json".to_string(),
+            "--dangerously-bypass-approvals-and-sandbox".to_string(),
+            prompt.to_string(),
+        ],
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn persist_runtime_auth(runtime: AgentRuntime, home: &Path, account_dir: &Path) -> Result<()> {
+    if runtime == AgentRuntime::Codex {
+        persist_codex_auth(home, account_dir)?;
+    }
+    Ok(())
+}
+
+/// Copy a refreshed Codex `auth.json` back to the subscription directory.
+///
+/// Codex rotates the ChatGPT session in this file. The sandbox does not mount
+/// the original directory, so the host copies this one regular file after the
+/// process exits. Symlinks are refused.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn persist_codex_auth(home: &Path, account_dir: &Path) -> Result<()> {
+    let src = home.join(".codex").join("auth.json");
+    let meta = match fs::symlink_metadata(&src) {
+        Ok(meta) => meta,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err.into()),
+    };
+    if !meta.file_type().is_file() {
+        bail!("codex auth.json is not a regular file");
+    }
+    let dest_dir = account_dir.join(".codex");
+    fs::create_dir_all(&dest_dir)?;
+    let tmp = dest_dir.join(".auth.json.tmp");
+    fs::copy(&src, &tmp)?;
+    fs::rename(&tmp, dest_dir.join("auth.json"))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -563,6 +678,54 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn missing_command_does_not_start() {
+        let account = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        fs::create_dir_all(account.path().join(".claude")).unwrap();
+        let mut request = RunRequest::new(account.path(), work.path(), "prompt", "");
+        request.argv = vec!["skilllite-missing-command-xyz".into()];
+        let err = run(request, |_| {}).unwrap_err();
+        assert!(err.to_string().contains("command not found"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_host_binary_keeps_the_symlink_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let link = dir.path().join("echo-link");
+        std::os::unix::fs::symlink("/bin/echo", &link).unwrap();
+        let resolved = resolve_host_binary(&link).unwrap();
+        assert_eq!(resolved, link);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn absolute_command_outside_the_default_path_runs() {
+        let account = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        let bin = tempfile::tempdir().unwrap();
+        fs::create_dir_all(account.path().join(".claude")).unwrap();
+        let script = bin.path().join("agent-cmd");
+        fs::write(&script, "#!/bin/sh\nprintf '%s\\n' ok\n").unwrap();
+        let mut permissions = fs::metadata(&script).unwrap().permissions();
+        use std::os::unix::fs::PermissionsExt;
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script, permissions).unwrap();
+        let mut lines = Vec::new();
+        let outcome = run(
+            RunRequest {
+                argv: vec![script.to_string_lossy().into_owned()],
+                ..RunRequest::new(account.path(), work.path(), "prompt", "")
+            },
+            |line| lines.push(line.to_string()),
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(outcome.exit_code, 0, "stderr={}", outcome.stderr_excerpt);
+        assert!(lines.iter().any(|line| line == "ok"), "lines={lines:?}");
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn require_proxy_refuses_to_start_without_a_proxy() {
         let account = tempfile::tempdir().unwrap();
         let work = tempfile::tempdir().unwrap();
@@ -609,5 +772,138 @@ mod tests {
         .unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(outcome.exit_code, 0, "stderr={}", outcome.stderr_excerpt);
         assert!(lines.iter().any(|line| line == "ok"), "lines={lines:?}");
+    }
+
+    #[test]
+    fn runtime_name_accepts_claude_and_codex_only() {
+        assert_eq!(
+            AgentRuntime::from_name("claude").unwrap(),
+            AgentRuntime::Claude
+        );
+        assert_eq!(
+            AgentRuntime::from_name("codex").unwrap(),
+            AgentRuntime::Codex
+        );
+        let err = AgentRuntime::from_name("gpt").unwrap_err();
+        assert!(err.to_string().contains("claude or codex"));
+    }
+
+    #[test]
+    fn default_commands_keep_each_runtime_prompt() {
+        let claude = default_argv(AgentRuntime::Claude, "修测试");
+        assert_eq!(claude.first().map(String::as_str), Some("claude"));
+        assert!(claude.windows(2).any(|pair| pair == ["-p", "修测试"]));
+        assert!(claude.iter().any(|arg| arg == "dontAsk"));
+        let codex = default_argv(AgentRuntime::Codex, "修测试");
+        assert_eq!(
+            codex,
+            vec![
+                "codex",
+                "exec",
+                "--json",
+                "--dangerously-bypass-approvals-and-sandbox",
+                "修测试",
+            ]
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn codex_auth_writeback_replaces_only_a_regular_file() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let account = root.path().join("account");
+        fs::create_dir_all(home.join(".codex")).unwrap();
+        fs::create_dir_all(account.join(".codex")).unwrap();
+        fs::write(home.join(".codex").join("auth.json"), "refreshed 中文").unwrap();
+        fs::write(account.join(".codex").join("config.toml"), "stay").unwrap();
+        persist_codex_auth(&home, &account).unwrap();
+        assert_eq!(
+            fs::read_to_string(account.join(".codex").join("auth.json")).unwrap(),
+            "refreshed 中文"
+        );
+        assert_eq!(
+            fs::read_to_string(account.join(".codex").join("config.toml")).unwrap(),
+            "stay"
+        );
+        fs::remove_file(account.join(".codex").join("auth.json")).unwrap();
+        fs::remove_file(home.join(".codex").join("auth.json")).unwrap();
+        std::os::unix::fs::symlink("/etc/passwd", home.join(".codex").join("auth.json")).unwrap();
+        let err = persist_codex_auth(&home, &account).unwrap_err();
+        assert!(err.to_string().contains("regular file"));
+        assert!(!account.join(".codex").join("auth.json").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn missing_codex_directory_does_not_start() {
+        let account = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        fs::create_dir_all(account.path().join(".claude")).unwrap();
+        let mut request = RunRequest::new(account.path(), work.path(), "prompt", "");
+        request.runtime = AgentRuntime::Codex;
+        request.argv = vec!["/bin/echo".into(), "should-not-run".into()];
+        let err = run(request, |_| {}).unwrap_err();
+        assert!(err.to_string().contains(".codex"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn codex_run_writes_auth_json_back_and_leaves_other_files() {
+        let _guard = lock_tests().lock().unwrap();
+        let account = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        fs::create_dir_all(account.path().join(".codex")).unwrap();
+        fs::write(account.path().join(".codex").join("auth.json"), "old").unwrap();
+        fs::write(account.path().join(".codex").join("config.toml"), "stay").unwrap();
+        let outcome = run(
+            RunRequest {
+                runtime: AgentRuntime::Codex,
+                argv: vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    "printf '%s' 'refreshed 中文' > \"$HOME/.codex/auth.json\"; printf '%s' changed > \"$HOME/.codex/config.toml\"".into(),
+                ],
+                ..RunRequest::new(account.path(), work.path(), "prompt", "")
+            },
+            |_| {},
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(outcome.exit_code, 0, "stderr={}", outcome.stderr_excerpt);
+        assert_eq!(
+            fs::read_to_string(account.path().join(".codex").join("auth.json")).unwrap(),
+            "refreshed 中文"
+        );
+        assert_eq!(
+            fs::read_to_string(account.path().join(".codex").join("config.toml")).unwrap(),
+            "stay"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn claude_run_does_not_write_the_login_directory_back() {
+        let _guard = lock_tests().lock().unwrap();
+        let account = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        fs::create_dir_all(account.path().join(".claude")).unwrap();
+        fs::write(account.path().join(".claude").join("marker"), "keep").unwrap();
+        let outcome = run(
+            RunRequest {
+                argv: vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    "printf '%s' changed > \"$HOME/.claude/marker\"".into(),
+                ],
+                ..RunRequest::new(account.path(), work.path(), "prompt", "")
+            },
+            |_| {},
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(outcome.exit_code, 0, "stderr={}", outcome.stderr_excerpt);
+        assert_eq!(
+            fs::read_to_string(account.path().join(".claude").join("marker")).unwrap(),
+            "keep"
+        );
     }
 }

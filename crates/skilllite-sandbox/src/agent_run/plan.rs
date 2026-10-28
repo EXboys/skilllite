@@ -80,6 +80,7 @@ pub fn bwrap_arguments(
             push_ro(&mut args, prefix, prefix);
         }
     }
+    bind_canonical_target(&mut args, argv.first().map(String::as_str).unwrap_or(""));
 
     let home = home_host.to_string_lossy().into_owned();
     let work = work_host.to_string_lossy().into_owned();
@@ -100,7 +101,11 @@ pub fn bwrap_arguments(
     args.push("--clearenv".to_string());
     push_env(&mut args, "HOME", "/home/agent");
     push_env(&mut args, "TMPDIR", "/tmp");
-    push_env(&mut args, "PATH", "/usr/local/bin:/usr/bin:/bin");
+    push_env(
+        &mut args,
+        "PATH",
+        &sandbox_path(argv.first().map(String::as_str).unwrap_or(""), false),
+    );
     if let Some(proxy) = proxy {
         for key in [
             "HTTPS_PROXY",
@@ -126,11 +131,49 @@ fn push_ro(args: &mut Vec<String>, host: &str, dest: &str) {
     args.push(dest.to_string());
 }
 
+/// `PATH` inside the sandbox. An absolute command contributes its directory so a
+/// binary installed outside `/usr` can still be executed, and a sibling interpreter
+/// such as `node` stays visible to a shebang.
+pub fn sandbox_path(argv0: &str, include_homebrew: bool) -> String {
+    let mut path = String::from("/usr/local/bin:/usr/bin:/bin");
+    if include_homebrew {
+        path.push_str(":/opt/homebrew/bin");
+    }
+    let binary = Path::new(argv0);
+    if binary.is_absolute() {
+        if let Some(parent) = binary.parent() {
+            let parent = parent.to_string_lossy();
+            if !parent.is_empty() && !path.split(':').any(|entry| entry == parent) {
+                path = format!("{parent}:{path}");
+            }
+        }
+    }
+    path
+}
+
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn push_env(args: &mut Vec<String>, key: &str, value: &str) {
     args.push("--setenv".to_string());
     args.push(key.to_string());
     args.push(value.to_string());
+}
+
+fn bind_canonical_target(args: &mut Vec<String>, argv0: &str) {
+    let path = Path::new(argv0);
+    let Ok(canonical) = std::fs::canonicalize(path) else {
+        return;
+    };
+    if path.parent() == canonical.parent() {
+        return;
+    }
+    let Some(parent) = canonical.parent() else {
+        return;
+    };
+    let text = parent.to_string_lossy();
+    if text.is_empty() || mounted_prefix(&text) {
+        return;
+    }
+    push_ro(args, &text, &text);
 }
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -468,6 +511,54 @@ mod tests {
         );
         assert!(!args.iter().any(|arg| arg == "HTTPS_PROXY"));
         assert!(args.iter().any(|arg| arg == "--unshare-user"));
+        assert!(args.windows(3).any(|item| {
+            item[0] == "--setenv" && item[1] == "PATH" && item[2] == "/usr/local/bin:/usr/bin:/bin"
+        }));
+    }
+
+    #[test]
+    fn sandbox_path_prepends_an_absolute_binary_directory() {
+        let path = sandbox_path("/opt/claude/bin/claude", false);
+        assert!(path.starts_with("/opt/claude/bin:"));
+        assert!(path.contains("/usr/bin"));
+        assert_eq!(
+            sandbox_path("claude", true),
+            "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bwrap_binds_the_symlink_target_directory() {
+        let real = tempfile::tempdir().unwrap();
+        let link_dir = tempfile::tempdir().unwrap();
+        std::fs::write(real.path().join("tool"), b"x").unwrap();
+        let link = link_dir.path().join("tool");
+        std::os::unix::fs::symlink(real.path().join("tool"), &link).unwrap();
+        let layout = HostLayout {
+            usr: false,
+            lib: false,
+            bin: false,
+            lib64: false,
+            ssl_certs: false,
+            ca_certificates: false,
+            binary_prefix: Some(link_dir.path().to_string_lossy().into_owned()),
+        };
+        let args = bwrap_arguments(
+            "run-1",
+            Path::new("/tmp/home"),
+            Path::new("/tmp/work"),
+            &layout,
+            None,
+            &[link.to_string_lossy().into_owned()],
+        );
+        let real_parent = std::fs::canonicalize(real.path()).unwrap();
+        let real_parent = real_parent.to_string_lossy();
+        assert!(args.windows(3).any(|item| {
+            item[0] == "--ro-bind"
+                && item[1] == real_parent.as_ref()
+                && item[2] == real_parent.as_ref()
+        }));
     }
 
     #[test]

@@ -3,7 +3,7 @@
 use std::io::{self, Write};
 use std::path::PathBuf;
 
-use skilllite_sandbox::{run, RunRequest};
+use skilllite_sandbox::{run, AgentRuntime, RunRequest};
 
 use crate::cli::Commands;
 use crate::command_registry::CommandRegistry;
@@ -14,6 +14,7 @@ pub fn register(reg: &mut CommandRegistry) {
             account_dir,
             work_dir,
             prompt,
+            runtime,
             https_proxy,
             require_proxy,
             run_id,
@@ -23,6 +24,7 @@ pub fn register(reg: &mut CommandRegistry) {
                 account_dir,
                 work_dir,
                 prompt,
+                runtime,
                 https_proxy,
                 *require_proxy,
                 run_id.as_deref(),
@@ -37,6 +39,7 @@ fn run_command(
     account_dir: &str,
     work_dir: &str,
     prompt: &str,
+    runtime: &str,
     https_proxy: &str,
     require_proxy: bool,
     run_id: Option<&str>,
@@ -48,6 +51,7 @@ fn run_command(
         https_proxy,
     );
     request.require_proxy = require_proxy;
+    request.runtime = AgentRuntime::from_name(runtime)?;
     if let Some(id) = run_id {
         request.run_id = id.to_string();
     }

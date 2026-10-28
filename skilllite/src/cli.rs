@@ -850,20 +850,23 @@ pub enum Commands {
 
     /// Run one command inside a subscription sandbox.
     ///
-    /// Copies `account_dir/.claude` into an ephemeral home and locks that directory.
+    /// Copies `.claude` or `.codex` into an ephemeral home and locks that directory.
     /// When `https_proxy` is set, network is limited to that proxy. Stdout lines are redacted.
     /// This does not execute a skill and does not use `execute()`.
     #[command(name = "agent-sandbox")]
     AgentSandbox {
-        /// Directory that contains `.claude` from `claude auth login`.
+        /// Directory that contains `.claude` from `claude auth login`, or `.codex` from `codex login`.
         #[arg(long)]
         account_dir: String,
         /// Working directory mounted for the process. It is not deleted.
         #[arg(long)]
         work_dir: String,
-        /// Prompt passed to `claude -p`.
+        /// Prompt passed to the runtime's default command.
         #[arg(long)]
         prompt: String,
+        /// `claude` copies `.claude`. `codex` copies `.codex` and writes `auth.json` back.
+        #[arg(long, default_value = "claude", value_parser = ["claude", "codex"])]
+        runtime: String,
         /// HTTP(S) proxy. When set, the sandbox may connect only to that proxy.
         #[arg(long, default_value = "")]
         https_proxy: String,
