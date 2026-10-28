@@ -412,10 +412,7 @@ fn install_linux_filter(run_id: &str, proxy: &proxy::ResolvedProxy) -> Result<Li
         crate::Error::validation("proxy enforcement unavailable: cannot create a private cgroup")
     })?;
     let table = format!("skilllite_{}", plan::sanitize_hostname(run_id));
-    let level = plan::cgroup_v2_level(&cgroup).ok_or_else(|| {
-        crate::Error::validation("proxy enforcement unavailable: cgroup is outside the v2 root")
-    })?;
-    let script = plan::nft_script(&table, &cgroup_name, level, proxy);
+    let script = plan::proxy_nft_script(&table, &cgroup, proxy)?;
     let mut child = Command::new("nft")
         .arg("-f")
         .arg("-")

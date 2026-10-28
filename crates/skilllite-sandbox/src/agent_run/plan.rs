@@ -186,10 +186,16 @@ pub fn seatbelt_profile(home: &Path, work: &Path, proxy: Option<&ResolvedProxy>)
 }
 
 /// nftables script that accepts only the proxy endpoints from one cgroup.
+///
+/// `cgroup_path` is the path relative to `/sys/fs/cgroup`. nftables resolves
+/// that string as a path, so a leaf name such as `skilllite-run` does not
+/// install when the cgroup is nested. `cgroup_level` must be the number of
+/// components in `cgroup_path`: a smaller level can install and then fail to
+/// match, and this chain's policy is accept.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn nft_script(
     table: &str,
-    cgroup_name: &str,
+    cgroup_path: &str,
     cgroup_level: usize,
     proxy: &ResolvedProxy,
 ) -> String {
@@ -204,25 +210,74 @@ pub fn nft_script(
             IpAddr::V6(ip) => ip.to_string(),
         };
         rules.push_str(&format!(
-            "        socket cgroupv2 level {cgroup_level} \"{cgroup_name}\" {family} daddr {addr} tcp dport {} accept\n",
+            "        socket cgroupv2 level {cgroup_level} \"{cgroup_path}\" {family} daddr {addr} tcp dport {} accept\n",
             endpoint.port()
         ));
     }
     format!(
-        "table inet {table} {{\n    chain output {{\n        type filter hook output priority 0; policy accept;\n{rules}        socket cgroupv2 level {cgroup_level} \"{cgroup_name}\" meta l4proto {{ tcp, udp }} drop\n    }}\n}}\n"
+        "table inet {table} {{\n    chain output {{\n        type filter hook output priority 0; policy accept;\n{rules}        socket cgroupv2 level {cgroup_level} \"{cgroup_path}\" meta l4proto {{ tcp, udp }} drop\n    }}\n}}\n"
     )
+}
+
+/// Build the proxy allowlist for `cgroup`, or refuse when the path cannot be named.
+///
+/// Callers must pass the cgroup directory that the sandboxed process joins.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn proxy_nft_script(table: &str, cgroup: &Path, proxy: &ResolvedProxy) -> Result<String> {
+    let path = cgroup_v2_relative(cgroup).ok_or_else(|| {
+        crate::Error::validation(
+            "proxy enforcement unavailable: cgroup path cannot be used in an nftables rule",
+        )
+    })?;
+    let level = cgroup_v2_level(cgroup).ok_or_else(|| {
+        crate::Error::validation(
+            "proxy enforcement unavailable: cgroup path cannot be used in an nftables rule",
+        )
+    })?;
+    Ok(nft_script(table, &path, level, proxy))
 }
 
 /// Depth of `cgroup` under `/sys/fs/cgroup`. nft `socket cgroupv2 level N` uses this depth.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub fn cgroup_v2_level(cgroup: &Path) -> Option<usize> {
+    cgroup_v2_relative(cgroup).map(|relative| relative.split('/').count())
+}
+
+/// `cgroup` relative to `/sys/fs/cgroup`, with `/` separators.
+///
+/// Returns `None` when `cgroup` is the hierarchy root, sits outside it, or
+/// contains a character that would break out of the nftables string.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub fn cgroup_v2_relative(cgroup: &Path) -> Option<String> {
     let relative = cgroup.strip_prefix("/sys/fs/cgroup").ok()?;
-    let level = relative.components().count();
-    if level == 0 {
+    let mut parts = Vec::new();
+    for component in relative.components() {
+        match component {
+            std::path::Component::Normal(part) => {
+                let text = part.to_string_lossy();
+                if !nft_cgroup_component(&text) {
+                    return None;
+                }
+                parts.push(text.into_owned());
+            }
+            _ => return None,
+        }
+    }
+    if parts.is_empty() {
         None
     } else {
-        Some(level)
+        Some(parts.join("/"))
     }
+}
+
+fn nft_cgroup_component(text: &str) -> bool {
+    !text.is_empty()
+        && !text.contains('"')
+        && !text.contains('\\')
+        && !text.contains('\n')
+        && !text.contains('\r')
+        && !text.contains('{')
+        && !text.contains('}')
 }
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -347,14 +402,41 @@ mod tests {
     }
 
     #[test]
-    fn nft_script_drops_other_tcp_from_the_cgroup() {
-        let script = nft_script("skilllite_run", "skilllite-run-1", 3, &proxy());
+    fn nft_script_names_the_nested_cgroup_path() {
+        let cgroup = Path::new(
+            "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/skilllite-run-1",
+        );
+        let script = proxy_nft_script("skilllite_run", cgroup, &proxy()).unwrap();
         assert!(script.contains("127.0.0.1"));
         assert!(script.contains("tcp dport 9 accept"));
-        assert!(script.contains("socket cgroupv2 level 3 \"skilllite-run-1\""));
+        assert!(script.contains(
+            "socket cgroupv2 level 4 \"user.slice/user-1000.slice/user@1000.service/skilllite-run-1\""
+        ));
+        assert!(
+            !script.contains("level 4 \"skilllite-run-1\""),
+            "leaf name is not an nftables cgroup path: {script}"
+        );
         assert!(script.contains("meta l4proto { tcp, udp } drop"));
         assert!(!script.contains("skuid"));
         assert!(!script.contains("level 1"));
+    }
+
+    #[test]
+    fn nft_script_rejects_a_cgroup_outside_the_v2_root() {
+        let err = proxy_nft_script("skilllite_run", Path::new("/tmp/skilllite-run"), &proxy())
+            .unwrap_err();
+        assert!(err.to_string().contains("nftables"));
+    }
+
+    #[test]
+    fn nft_script_rejects_a_quote_in_the_cgroup_path() {
+        let err = proxy_nft_script(
+            "skilllite_run",
+            Path::new("/sys/fs/cgroup/user.slice/bad\"name"),
+            &proxy(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("nftables"));
     }
 
     #[test]
