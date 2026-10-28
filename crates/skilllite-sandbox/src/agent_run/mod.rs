@@ -461,6 +461,23 @@ impl Drop for LinuxFilter {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn arm_linux_child(cmd: &mut Command, procs: PathBuf) {
+    use std::os::unix::process::CommandExt;
+    unsafe {
+        cmd.pre_exec(move || {
+            if libc::setpgid(0, 0) != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            let pid = libc::getpid();
+            fs::write(&procs, format!("{pid}")).map_err(|err| {
+                std::io::Error::other(format!("proxy enforcement unavailable: {err}"))
+            })?;
+            Ok(())
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -595,22 +612,5 @@ mod tests {
         .unwrap_or_else(|err| panic!("{err}"));
         assert_eq!(outcome.exit_code, 0, "stderr={}", outcome.stderr_excerpt);
         assert!(lines.iter().any(|line| line == "ok"), "lines={lines:?}");
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn arm_linux_child(cmd: &mut Command, procs: PathBuf) {
-    use std::os::unix::process::CommandExt;
-    unsafe {
-        cmd.pre_exec(move || {
-            if libc::setpgid(0, 0) != 0 {
-                return Err(std::io::Error::last_os_error());
-            }
-            let pid = libc::getpid();
-            fs::write(&procs, format!("{pid}")).map_err(|err| {
-                std::io::Error::other(format!("proxy enforcement unavailable: {err}"))
-            })?;
-            Ok(())
-        });
     }
 }
