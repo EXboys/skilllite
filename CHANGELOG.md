@@ -8,9 +8,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+---
+
+## [0.1.30] - 2026-10-29
+
+### Added
+
+- **Subscription sandbox**: `skilllite agent-sandbox` runs one Claude Code or Codex process from a subscription directory. `--runtime codex` copies `.codex`, starts `codex exec`, and writes a refreshed `auth.json` back. An optional `https_proxy` limits egress to that proxy.
+
 ### Changed
 
 - **Desktop layout**: SkillLite Assistant moved from `crates/skilllite-assistant/` to the standalone project `skilllite-assistant/`. This repo remains the engine. Root README (EN/ZH) and START_PATHS now state the move; `crates/skilllite-assistant/README.md` is a stub.
+
+### Security
+
+- Cleared the cargo-audit findings that were blocking main, including `zip`, `rustls`, `quinn`, and `zstd`.
+- Linux proxy enforcement names the cgroup by its path under `/sys/fs/cgroup`, so a nested cgroup can install the allowlist.
 
 ---
 
@@ -396,7 +409,8 @@ Versions 0.1.1–0.1.7 were not tagged; 0.1.8 is the next release after 0.1.0.
 
 ## Links
 
-[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.29...HEAD
+[Unreleased]: https://github.com/EXboys/skilllite/compare/v0.1.30...HEAD
+[0.1.30]: https://github.com/EXboys/skilllite/compare/v0.1.29...v0.1.30
 [0.1.29]: https://github.com/EXboys/skilllite/releases/tag/v0.1.29
 [0.1.28]: https://github.com/EXboys/skilllite/releases/tag/v0.1.28
 [0.1.27]: https://github.com/EXboys/skilllite/releases/tag/v0.1.27

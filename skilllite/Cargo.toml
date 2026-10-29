@@ -33,13 +33,13 @@ channel_serve = ["skilllite-commands/channel_serve"]
 gateway = ["artifact_http", "channel_serve", "dep:axum", "dep:tower-http"]
 
 [dependencies]
-skilllite-core = { path = "../crates/skilllite-core", version = "0.1.29" }
-skilllite-sandbox = { path = "../crates/skilllite-sandbox", version = "0.1.29" }
-skilllite-commands = { path = "../crates/skilllite-commands", version = "0.1.29", default-features = false }
-skilllite-executor = { path = "../crates/skilllite-executor", version = "0.1.29", optional = true }
-skilllite-agent = { path = "../crates/skilllite-agent", version = "0.1.29", optional = true }
-skilllite-swarm = { path = "../crates/skilllite-swarm", version = "0.1.29", optional = true }
-skilllite-artifact = { path = "../crates/skilllite-artifact", version = "0.1.29", optional = true, default-features = false, features = ["local", "server"] }
+skilllite-core = { path = "../crates/skilllite-core", version = "0.1.30" }
+skilllite-sandbox = { path = "../crates/skilllite-sandbox", version = "0.1.30" }
+skilllite-commands = { path = "../crates/skilllite-commands", version = "0.1.30", default-features = false }
+skilllite-executor = { path = "../crates/skilllite-executor", version = "0.1.30", optional = true }
+skilllite-agent = { path = "../crates/skilllite-agent", version = "0.1.30", optional = true }
+skilllite-swarm = { path = "../crates/skilllite-swarm", version = "0.1.30", optional = true }
+skilllite-artifact = { path = "../crates/skilllite-artifact", version = "0.1.30", optional = true, default-features = false, features = ["local", "server"] }
 
 clap = { version = "4", features = ["derive", "env"] }
 serde = { version = "1", features = ["derive"] }

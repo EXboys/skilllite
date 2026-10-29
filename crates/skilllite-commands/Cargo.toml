@@ -23,12 +23,12 @@ channel_serve = [
 ]
 
 [dependencies]
-skilllite-core = { path = "../skilllite-core", version = "0.1.29", features = ["async-resolve"] }
-skilllite-fs = { path = "../skilllite-fs", version = "0.1.29" }
-skilllite-evolution = { path = "../skilllite-evolution", version = "0.1.29" }
-skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.29" }
-skilllite-agent = { path = "../skilllite-agent", version = "0.1.29", optional = true }
-skilllite-channel = { path = "../skilllite-channel", version = "0.1.29", optional = true, default-features = true }
+skilllite-core = { path = "../skilllite-core", version = "0.1.30", features = ["async-resolve"] }
+skilllite-fs = { path = "../skilllite-fs", version = "0.1.30" }
+skilllite-evolution = { path = "../skilllite-evolution", version = "0.1.30" }
+skilllite-sandbox = { path = "../skilllite-sandbox", version = "0.1.30" }
+skilllite-agent = { path = "../skilllite-agent", version = "0.1.30", optional = true }
+skilllite-channel = { path = "../skilllite-channel", version = "0.1.30", optional = true, default-features = true }
 
 anyhow = "1.0"
 rayon = "1.10"
