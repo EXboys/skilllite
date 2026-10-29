@@ -137,9 +137,10 @@ fn run_unix(request: RunRequest, on_line: &mut dyn FnMut(&str)) -> Result<RunOut
     } else {
         request.argv.clone()
     };
-    let resolved_binary = resolve_host_binary(Path::new(&argv[0]))?;
-    argv[0] = path_to_string(&resolved_binary)?;
-    let layout = plan::detect_layout(Some(resolved_binary.as_path()));
+    let (exec_binary, launcher_dir) = canonical_command(Path::new(&argv[0]))?;
+    argv[0] = path_to_string(&exec_binary)?;
+    let mut layout = plan::detect_layout(Some(exec_binary.as_path()));
+    layout.launcher_prefix = launcher_dir;
     let _lock = try_lock_directory(&request.account_dir)?;
     let home = tempfile::TempDir::new()?;
     copy_tree(&config_dir, &home.path().join(config_name))?;
@@ -246,7 +247,7 @@ fn spawn_sandboxed(
     }
     #[cfg(target_os = "macos")]
     {
-        let _ = (run_id, layout);
+        let _ = run_id;
         let profile = plan::seatbelt_profile(home, work, proxy)?;
         let profile_path = home.join("sandbox.sb");
         fs::write(&profile_path, profile)?;
@@ -255,7 +256,13 @@ fn spawn_sandboxed(
         cmd.arg(&argv[0]);
         cmd.args(&argv[1..]);
         cmd.current_dir(work);
-        apply_env(&mut cmd, home, proxy, &argv[0]);
+        apply_env(
+            &mut cmd,
+            home,
+            proxy,
+            &argv[0],
+            layout.launcher_prefix.as_deref(),
+        );
         cmd.stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -282,12 +289,18 @@ fn spawn_sandboxed(
 }
 
 #[cfg(target_os = "macos")]
-fn apply_env(cmd: &mut Command, home: &Path, proxy: Option<&proxy::ResolvedProxy>, argv0: &str) {
+fn apply_env(
+    cmd: &mut Command,
+    home: &Path,
+    proxy: Option<&proxy::ResolvedProxy>,
+    argv0: &str,
+    launcher_dir: Option<&str>,
+) {
     cmd.env_clear();
     cmd.env("HOME", home);
     cmd.env("TMPDIR", home.join("tmp"));
     let _ = fs::create_dir_all(home.join("tmp"));
-    cmd.env("PATH", plan::sandbox_path(argv0, true));
+    cmd.env("PATH", plan::sandbox_path(argv0, launcher_dir, true));
     if let Some(proxy) = proxy {
         for key in [
             "HTTPS_PROXY",
@@ -428,6 +441,32 @@ fn resolve_host_binary(binary: &Path) -> Result<PathBuf> {
         return Ok(found);
     }
     Ok(std::env::current_dir()?.join(found))
+}
+
+/// Path to execute, and the symlink directory to keep on `PATH` when it differs.
+///
+/// A standalone Codex install is `~/.local/bin/codex` →
+/// `~/.codex/packages/standalone/current/codex`, and `current` is another symlink.
+/// Mounting only the final directory does not recreate `current`, so executing the
+/// symlink fails inside the mount namespace. The canonical file is executed instead.
+/// The symlink's directory stays on `PATH` so `#!/usr/bin/env node` can see a sibling
+/// `node`.
+fn canonical_command(argv0: &Path) -> Result<(PathBuf, Option<String>)> {
+    let launcher = resolve_host_binary(argv0)?;
+    let exec_binary = fs::canonicalize(&launcher).map_err(|_| {
+        crate::Error::validation(format!("command not found: {}", launcher.display()))
+    })?;
+    if !exec_binary.is_file() {
+        bail!("command not found: {}", exec_binary.display());
+    }
+    let exec_parent = exec_binary.parent();
+    let launcher_dir = match launcher.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() && exec_parent != Some(dir) => {
+            Some(path_to_string(dir)?)
+        }
+        _ => None,
+    };
+    Ok((exec_binary, launcher_dir))
 }
 
 fn path_to_string(path: &Path) -> Result<String> {
@@ -600,6 +639,35 @@ mod tests {
         LOCK.get_or_init(|| Mutex::new(()))
     }
 
+    #[cfg(target_os = "linux")]
+    fn fixture_root(name: &str) -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("target");
+        path.push("agent-sandbox-fixtures");
+        path.push(name);
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    #[cfg(target_os = "linux")]
+    struct RemoveDir(PathBuf);
+
+    #[cfg(target_os = "linux")]
+    impl Drop for RemoveDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn make_executable(path: &Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+
     #[test]
     fn missing_proxy_does_not_require_a_sandbox_binary() {
         let err = proxy::resolve_proxy("").unwrap_err();
@@ -696,6 +764,118 @@ mod tests {
         std::os::unix::fs::symlink("/bin/echo", &link).unwrap();
         let resolved = resolve_host_binary(&link).unwrap();
         assert_eq!(resolved, link);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_command_resolves_a_multihop_symlink_and_keeps_the_launcher_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let release = root
+            .path()
+            .join("home/.codex/packages/standalone/releases/v1");
+        let bin = release.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        let real = bin.join("codex");
+        fs::write(&real, b"bin").unwrap();
+        std::os::unix::fs::symlink("bin/codex", release.join("codex")).unwrap();
+        let standalone = root.path().join("home/.codex/packages/standalone");
+        std::os::unix::fs::symlink(&release, standalone.join("current")).unwrap();
+        let launcher = root.path().join("local/bin");
+        fs::create_dir_all(&launcher).unwrap();
+        let link = launcher.join("codex");
+        std::os::unix::fs::symlink(standalone.join("current/codex"), &link).unwrap();
+
+        let (exec, extra) = canonical_command(&link).unwrap();
+        assert_eq!(exec, fs::canonicalize(&real).unwrap());
+        assert_eq!(extra.as_deref(), launcher.to_str());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_command_omits_the_launcher_dir_for_a_regular_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = dir.path().join("tool");
+        fs::write(&tool, b"x").unwrap();
+        let (exec, extra) = canonical_command(&tool).unwrap();
+        assert_eq!(exec, fs::canonicalize(&tool).unwrap());
+        assert_eq!(extra, None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_run_executes_a_multihop_symlink() {
+        let _guard = lock_tests().lock().unwrap();
+        let root = fixture_root("multihop");
+        let _cleanup = RemoveDir(root.clone());
+        let release = root.join("home/.codex/packages/standalone/releases/v1");
+        let bin = release.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        fs::copy("/bin/echo", bin.join("codex")).unwrap();
+        std::os::unix::fs::symlink("bin/codex", release.join("codex")).unwrap();
+        let standalone = root.join("home/.codex/packages/standalone");
+        std::os::unix::fs::symlink(&release, standalone.join("current")).unwrap();
+        let launcher = root.join("local/bin");
+        fs::create_dir_all(&launcher).unwrap();
+        let link = launcher.join("codex");
+        std::os::unix::fs::symlink(standalone.join("current/codex"), &link).unwrap();
+        let account = root.join("account");
+        let work = root.join("work");
+        fs::create_dir_all(account.join(".claude")).unwrap();
+        fs::create_dir_all(&work).unwrap();
+
+        let mut lines = Vec::new();
+        let outcome = run(
+            RunRequest {
+                argv: vec![link.to_string_lossy().into_owned(), "标记".into()],
+                ..RunRequest::new(&account, &work, "prompt", "")
+            },
+            |line| lines.push(line.to_string()),
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(outcome.exit_code, 0, "stderr={}", outcome.stderr_excerpt);
+        assert!(lines.iter().any(|line| line == "标记"), "lines={lines:?}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_run_finds_node_beside_a_symlink_launcher() {
+        let _guard = lock_tests().lock().unwrap();
+        let root = fixture_root("node-launcher");
+        let _cleanup = RemoveDir(root.clone());
+        let module = root.join("nvm/lib/node_modules/@openai/codex/bin");
+        let launcher = root.join("nvm/bin");
+        fs::create_dir_all(&module).unwrap();
+        fs::create_dir_all(&launcher).unwrap();
+        let node = launcher.join("node");
+        fs::write(&node, "#!/bin/sh\nprintf '%s\\n' 'node-ok'\n").unwrap();
+        make_executable(&node);
+        let script = module.join("codex.js");
+        fs::write(&script, "#!/usr/bin/env node\n").unwrap();
+        make_executable(&script);
+        std::os::unix::fs::symlink(
+            "../lib/node_modules/@openai/codex/bin/codex.js",
+            launcher.join("codex"),
+        )
+        .unwrap();
+        let account = root.join("account");
+        let work = root.join("work");
+        fs::create_dir_all(account.join(".claude")).unwrap();
+        fs::create_dir_all(&work).unwrap();
+
+        let mut lines = Vec::new();
+        let outcome = run(
+            RunRequest {
+                argv: vec![launcher.join("codex").to_string_lossy().into_owned()],
+                ..RunRequest::new(&account, &work, "prompt", "")
+            },
+            |line| lines.push(line.to_string()),
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(outcome.exit_code, 0, "stderr={}", outcome.stderr_excerpt);
+        assert!(
+            lines.iter().any(|line| line == "node-ok"),
+            "lines={lines:?}"
+        );
     }
 
     #[cfg(target_os = "macos")]

@@ -22,6 +22,9 @@ pub struct HostLayout {
     pub ssl_certs: bool,
     pub ca_certificates: bool,
     pub binary_prefix: Option<String>,
+    /// Directory of the original symlink when it is not `binary_prefix`.
+    /// Mounted read-only and placed first on `PATH` so a sibling `node` stays visible.
+    pub launcher_prefix: Option<String>,
 }
 
 /// Arguments passed to `bwrap` after the program name, including the child argv.
@@ -80,6 +83,11 @@ pub fn bwrap_arguments(
             push_ro(&mut args, prefix, prefix);
         }
     }
+    bind_extra_dir(
+        &mut args,
+        layout.launcher_prefix.as_deref(),
+        layout.binary_prefix.as_deref(),
+    );
     bind_canonical_target(&mut args, argv.first().map(String::as_str).unwrap_or(""));
 
     let home = home_host.to_string_lossy().into_owned();
@@ -104,7 +112,11 @@ pub fn bwrap_arguments(
     push_env(
         &mut args,
         "PATH",
-        &sandbox_path(argv.first().map(String::as_str).unwrap_or(""), false),
+        &sandbox_path(
+            argv.first().map(String::as_str).unwrap_or(""),
+            layout.launcher_prefix.as_deref(),
+            false,
+        ),
     );
     if let Some(proxy) = proxy {
         for key in [
@@ -131,24 +143,40 @@ fn push_ro(args: &mut Vec<String>, host: &str, dest: &str) {
     args.push(dest.to_string());
 }
 
-/// `PATH` inside the sandbox. An absolute command contributes its directory so a
-/// binary installed outside `/usr` can still be executed, and a sibling interpreter
-/// such as `node` stays visible to a shebang.
-pub fn sandbox_path(argv0: &str, include_homebrew: bool) -> String {
+/// `PATH` inside the sandbox.
+///
+/// The canonical binary directory is prepended so a binary outside `/usr` can run.
+/// `launcher_dir` is the directory of the original symlink, prepended in front of
+/// that, so a sibling interpreter such as `node` stays visible to a shebang.
+pub fn sandbox_path(argv0: &str, launcher_dir: Option<&str>, include_homebrew: bool) -> String {
     let mut path = String::from("/usr/local/bin:/usr/bin:/bin");
     if include_homebrew {
         path.push_str(":/opt/homebrew/bin");
     }
-    let binary = Path::new(argv0);
-    if binary.is_absolute() {
-        if let Some(parent) = binary.parent() {
-            let parent = parent.to_string_lossy();
-            if !parent.is_empty() && !path.split(':').any(|entry| entry == parent) {
-                path = format!("{parent}:{path}");
-            }
-        }
-    }
+    prepend_path_dir(&mut path, parent_dir(argv0));
+    prepend_path_dir(&mut path, launcher_dir);
     path
+}
+
+fn parent_dir(argv0: &str) -> Option<&str> {
+    let binary = Path::new(argv0);
+    if !binary.is_absolute() {
+        return None;
+    }
+    binary
+        .parent()
+        .and_then(|parent| parent.to_str())
+        .filter(|parent| !parent.is_empty())
+}
+
+fn prepend_path_dir(path: &mut String, dir: Option<&str>) {
+    let Some(dir) = dir else {
+        return;
+    };
+    if dir.is_empty() || path.split(':').any(|entry| entry == dir) {
+        return;
+    }
+    *path = format!("{dir}:{path}");
 }
 
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -156,6 +184,17 @@ fn push_env(args: &mut Vec<String>, key: &str, value: &str) {
     args.push("--setenv".to_string());
     args.push(key.to_string());
     args.push(value.to_string());
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn bind_extra_dir(args: &mut Vec<String>, dir: Option<&str>, binary_prefix: Option<&str>) {
+    let Some(dir) = dir else {
+        return;
+    };
+    if dir.is_empty() || mounted_prefix(dir) || binary_prefix == Some(dir) {
+        return;
+    }
+    push_ro(args, dir, dir);
 }
 
 fn bind_canonical_target(args: &mut Vec<String>, argv0: &str) {
@@ -355,6 +394,7 @@ pub fn detect_layout(binary: Option<&Path>) -> HostLayout {
                 .filter(|parent| !parent.as_os_str().is_empty())
                 .map(|parent| parent.to_string_lossy().into_owned())
         }),
+        launcher_prefix: None,
     }
 }
 
@@ -381,6 +421,7 @@ mod tests {
             ssl_certs: true,
             ca_certificates: false,
             binary_prefix: Some("/opt/claude/bin".to_string()),
+            launcher_prefix: None,
         };
         let args = bwrap_arguments(
             "run/1",
@@ -500,6 +541,7 @@ mod tests {
             ssl_certs: false,
             ca_certificates: false,
             binary_prefix: None,
+            launcher_prefix: None,
         };
         let args = bwrap_arguments(
             "run-1",
@@ -518,13 +560,51 @@ mod tests {
 
     #[test]
     fn sandbox_path_prepends_an_absolute_binary_directory() {
-        let path = sandbox_path("/opt/claude/bin/claude", false);
+        let path = sandbox_path("/opt/claude/bin/claude", None, false);
         assert!(path.starts_with("/opt/claude/bin:"));
         assert!(path.contains("/usr/bin"));
         assert_eq!(
-            sandbox_path("claude", true),
+            sandbox_path("claude", None, true),
             "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"
         );
+        let with_launcher = sandbox_path(
+            "/opt/codex/releases/v1/bin/codex",
+            Some("/home/user/.local/bin"),
+            false,
+        );
+        assert!(with_launcher.starts_with("/home/user/.local/bin:/opt/codex/releases/v1/bin:"));
+    }
+
+    #[test]
+    fn bwrap_mounts_the_symlink_directory_and_puts_it_first_on_path() {
+        let layout = HostLayout {
+            usr: true,
+            lib: false,
+            bin: true,
+            lib64: false,
+            ssl_certs: false,
+            ca_certificates: false,
+            binary_prefix: Some("/opt/codex/releases/v1/bin".to_string()),
+            launcher_prefix: Some("/home/user/.local/bin".to_string()),
+        };
+        let args = bwrap_arguments(
+            "run-1",
+            Path::new("/tmp/home"),
+            Path::new("/tmp/work"),
+            &layout,
+            None,
+            &["/opt/codex/releases/v1/bin/codex".to_string()],
+        );
+        assert!(args.windows(3).any(|item| {
+            item[0] == "--ro-bind"
+                && item[1] == "/home/user/.local/bin"
+                && item[2] == "/home/user/.local/bin"
+        }));
+        assert!(args.windows(3).any(|item| {
+            item[0] == "--setenv"
+                && item[1] == "PATH"
+                && item[2].starts_with("/home/user/.local/bin:/opt/codex/releases/v1/bin:")
+        }));
     }
 
     #[cfg(unix)]
@@ -543,6 +623,7 @@ mod tests {
             ssl_certs: false,
             ca_certificates: false,
             binary_prefix: Some(link_dir.path().to_string_lossy().into_owned()),
+            launcher_prefix: None,
         };
         let args = bwrap_arguments(
             "run-1",

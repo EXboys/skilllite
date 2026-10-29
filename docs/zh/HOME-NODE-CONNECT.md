@@ -93,7 +93,7 @@ Agent Doctor 的团队版按现有的编译期安装包保留，不改目录结�
 2. 工作目录原位挂到 `/work`（macOS 上则作为工作目录）。结果留在这个目录里。同一工作目录同时只有一个 `run`。用完即删的只有临时家目录和里面的订阅副本。
 3. 订阅目录加文件锁，与号池的 `busy` 一致。
 4. 传了 `https_proxy` 时，在宿主机解析代理。沙箱内只允许连接这个 IP 和端口。其他 TCP、UDP 拒绝，包括局域网、公网，以及本机上除代理端口以外的地址。沙箱内不做 DNS。本地套接字允许。解析失败则这次运行不启动。没传代理时可以启动，出网不按代理收口。开关 `--require-proxy`（或 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`）打开后，没传代理则不启动。
-5. 命令名先在宿主机解析成绝对路径，再传进沙箱。这个二进制所在目录会加进沙箱的 `PATH`。未指定其他命令时执行：
+5. 命令名先在宿主机解析，沙箱里执行去掉符号链接后的真实文件。该文件所在目录会加进沙箱 `PATH`。如果命令是符号链接，链接所在目录也留在 `PATH` 里，旁边的解释器（例如 `node`）仍然找得到。像 `~/.local/bin/codex` → `~/.codex/packages/standalone/current/codex` 这种多级链接不会按链接路径执行，因为中间的 `current` 没有挂进沙箱。未指定其他命令时执行：
 
 ```text
 claude -p "<提示词>" --output-format stream-json --verbose --permission-mode dontAsk
