@@ -418,7 +418,7 @@ pub enum SecuritySeverity {
 
 `skilllite_sandbox::run` 是技能 `execute()` 之外的另一条路径，二者互不调用。`runtime` 为 `claude`（默认）时复制 `account_dir/.claude`；为 `codex` 时复制 `account_dir/.codex`。它锁住订阅目录。传了 `https_proxy` 时，出网限制到该代理；没传时可以启动，出网不按代理收口。`require_proxy`（命令行 `--require-proxy`，或 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`）打开后，没有代理就不启动。工作目录原位可写，运行结束后只删除临时家目录。Codex 会把刷新后的 `auth.json` 写回订阅目录，而且只写这个普通文件。stdout 里 `sk-` 开头的密钥会变成 `[redacted]`，包括 `sk-ant-` 和 `sk-proj-`。
 
-Linux 使用单独的 `bwrap` 参数：用户、PID、UTS、IPC 命名空间，不含 `--unshare-all` 和 `--unshare-net`。代理允许项是一条 nftables `socket cgroupv2` 规则：匹配路径是该 cgroup 相对 `/sys/fs/cgroup` 的完整路径，level 是这段路径的层数。只写叶子目录名不会被安装。装不上就拒绝启动。macOS 使用单独的 Seatbelt profile。当前 `sandbox-exec` 只能把本机代理写成 `localhost:<端口>`，非本机地址会拒绝启动。macOS 上读范围保持放开，否则动态链接器起不来；写只允许临时家目录和工作目录。技能路径的断网、短超时和 seccomp 保持不变。
+Linux 使用单独的 `bwrap` 参数：用户、PID、UTS、IPC 命名空间，不含 `--unshare-all` 和 `--unshare-net`。没传代理时，若 `/etc/resolv.conf`、`/etc/nsswitch.conf`、`/etc/hosts` 存在，则只读挂载，域名解析才能成功。传了代理的运行不挂这些文件，DNS 也不在允许项里。代理允许项是一条 nftables `socket cgroupv2` 规则：匹配路径是该 cgroup 相对 `/sys/fs/cgroup` 的完整路径，level 是这段路径的层数。只写叶子目录名不会被安装。装不上就拒绝启动。macOS 使用单独的 Seatbelt profile。当前 `sandbox-exec` 只能把本机代理写成 `localhost:<端口>`，非本机地址会拒绝启动。macOS 上读范围保持放开，否则动态链接器起不来；写只允许临时家目录和工作目录。技能路径的断网、短超时和 seccomp 保持不变。
 
 命令名先在宿主机解析成绝对路径再执行，并把该目录加进沙箱 `PATH`。默认命令：`claude` 是 `claude -p … --output-format stream-json --verbose --permission-mode dontAsk`；`codex` 是 `codex exec --json --dangerously-bypass-approvals-and-sandbox …`。Codex 自带沙箱在 bwrap 或 Seatbelt 里起不来，所以关掉，改由外层沙箱限制写路径和代理。命令行入口是 `skilllite agent-sandbox`（`skilllite-sandbox` 二进制同样提供）。号池、用户绑定和 SSE 不在本仓库。
 

@@ -21,6 +21,12 @@ pub struct HostLayout {
     pub lib64: bool,
     pub ssl_certs: bool,
     pub ca_certificates: bool,
+    /// `/etc/resolv.conf` exists and may be mounted when no proxy is set.
+    pub resolv_conf: bool,
+    /// `/etc/nsswitch.conf` exists and may be mounted when no proxy is set.
+    pub nsswitch: bool,
+    /// `/etc/hosts` exists and may be mounted when no proxy is set.
+    pub etc_hosts: bool,
     pub binary_prefix: Option<String>,
 }
 
@@ -74,6 +80,11 @@ pub fn bwrap_arguments(
             "/etc/ca-certificates.conf",
             "/etc/ca-certificates.conf",
         );
+    }
+    // Unpinned egress needs glibc name resolution. A proxy is resolved on the
+    // host, and that run must not resolve DNS inside the sandbox.
+    if proxy.is_none() {
+        push_name_service(&mut args, layout);
     }
     if let Some(prefix) = layout.binary_prefix.as_deref() {
         if !mounted_prefix(prefix) {
@@ -129,6 +140,21 @@ fn push_ro(args: &mut Vec<String>, host: &str, dest: &str) {
     args.push("--ro-bind".to_string());
     args.push(host.to_string());
     args.push(dest.to_string());
+}
+
+/// Read-only name-service files. Without these, glibc returns `EAI_AGAIN`
+/// (`-3`) for every hostname even though the network namespace is shared.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn push_name_service(args: &mut Vec<String>, layout: &HostLayout) {
+    if layout.resolv_conf {
+        push_ro(args, "/etc/resolv.conf", "/etc/resolv.conf");
+    }
+    if layout.nsswitch {
+        push_ro(args, "/etc/nsswitch.conf", "/etc/nsswitch.conf");
+    }
+    if layout.etc_hosts {
+        push_ro(args, "/etc/hosts", "/etc/hosts");
+    }
 }
 
 /// `PATH` inside the sandbox. An absolute command contributes its directory so a
@@ -350,6 +376,9 @@ pub fn detect_layout(binary: Option<&Path>) -> HostLayout {
         lib64: Path::new("/lib64").is_dir(),
         ssl_certs: Path::new("/etc/ssl/certs").is_dir(),
         ca_certificates: Path::new("/etc/ca-certificates.conf").is_file(),
+        resolv_conf: Path::new("/etc/resolv.conf").is_file(),
+        nsswitch: Path::new("/etc/nsswitch.conf").is_file(),
+        etc_hosts: Path::new("/etc/hosts").is_file(),
         binary_prefix: binary.and_then(|path| {
             path.parent()
                 .filter(|parent| !parent.as_os_str().is_empty())
@@ -380,6 +409,9 @@ mod tests {
             lib64: false,
             ssl_certs: true,
             ca_certificates: false,
+            resolv_conf: true,
+            nsswitch: true,
+            etc_hosts: true,
             binary_prefix: Some("/opt/claude/bin".to_string()),
         };
         let args = bwrap_arguments(
@@ -415,6 +447,14 @@ mod tests {
         assert!(!joined.contains("/home/ "));
         assert!(args.iter().any(|arg| arg == "修测试"));
         assert_eq!(args.last().map(String::as_str), Some("修测试"));
+        for path in ["/etc/resolv.conf", "/etc/nsswitch.conf", "/etc/hosts"] {
+            assert!(
+                !args
+                    .windows(3)
+                    .any(|item| item[0] == "--ro-bind" && item[1] == path),
+                "proxied run must not mount {path}: {args:?}"
+            );
+        }
     }
 
     #[test]
@@ -499,6 +539,9 @@ mod tests {
             lib64: false,
             ssl_certs: false,
             ca_certificates: false,
+            resolv_conf: true,
+            nsswitch: true,
+            etc_hosts: true,
             binary_prefix: None,
         };
         let args = bwrap_arguments(
@@ -510,6 +553,13 @@ mod tests {
             &["/bin/echo".to_string()],
         );
         assert!(!args.iter().any(|arg| arg == "HTTPS_PROXY"));
+        for path in ["/etc/resolv.conf", "/etc/nsswitch.conf", "/etc/hosts"] {
+            assert!(
+                args.windows(3)
+                    .any(|item| item[0] == "--ro-bind" && item[1] == path && item[2] == path),
+                "unproxied run must mount {path}: {args:?}"
+            );
+        }
         assert!(args.iter().any(|arg| arg == "--unshare-user"));
         assert!(args.windows(3).any(|item| {
             item[0] == "--setenv" && item[1] == "PATH" && item[2] == "/usr/local/bin:/usr/bin:/bin"
@@ -542,6 +592,9 @@ mod tests {
             lib64: false,
             ssl_certs: false,
             ca_certificates: false,
+            resolv_conf: false,
+            nsswitch: false,
+            etc_hosts: false,
             binary_prefix: Some(link_dir.path().to_string_lossy().into_owned()),
         };
         let args = bwrap_arguments(
@@ -559,6 +612,10 @@ mod tests {
                 && item[1] == real_parent.as_ref()
                 && item[2] == real_parent.as_ref()
         }));
+        assert!(
+            !args.iter().any(|arg| arg == "/etc/resolv.conf"),
+            "missing name-service files stay unmounted"
+        );
     }
 
     #[test]
@@ -585,5 +642,8 @@ mod tests {
     fn detect_layout_records_parent_of_binary() {
         let layout = detect_layout(Some(PathBuf::from("/usr/local/bin/claude").as_path()));
         assert_eq!(layout.binary_prefix.as_deref(), Some("/usr/local/bin"));
+        assert_eq!(layout.resolv_conf, Path::new("/etc/resolv.conf").is_file());
+        assert_eq!(layout.nsswitch, Path::new("/etc/nsswitch.conf").is_file());
+        assert_eq!(layout.etc_hosts, Path::new("/etc/hosts").is_file());
     }
 }

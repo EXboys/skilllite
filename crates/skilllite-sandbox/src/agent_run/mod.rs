@@ -676,6 +676,41 @@ mod tests {
         assert!(work.path().is_dir());
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_run_without_proxy_mounts_name_service_files() {
+        if which::which("bwrap").is_err() {
+            panic!("bwrap is required to prove name-service mounts");
+        }
+        let _guard = lock_tests().lock().unwrap();
+        let account = tempfile::tempdir().unwrap();
+        let work = tempfile::tempdir().unwrap();
+        fs::create_dir_all(account.path().join(".claude")).unwrap();
+        let mut lines = Vec::new();
+        let outcome = run(
+            RunRequest {
+                argv: vec![
+                    "/bin/sh".into(),
+                    "-c".into(),
+                    "for f in /etc/resolv.conf /etc/nsswitch.conf /etc/hosts; do if test -r \"$f\"; then printf '%s\\n' \"$f\"; fi; done".into(),
+                ],
+                ..RunRequest::new(account.path(), work.path(), "prompt", "")
+            },
+            |line| lines.push(line.to_string()),
+        )
+        .unwrap_or_else(|err| panic!("{err}"));
+        assert_eq!(outcome.exit_code, 0, "stderr={}", outcome.stderr_excerpt);
+        for path in ["/etc/resolv.conf", "/etc/nsswitch.conf", "/etc/hosts"] {
+            if Path::new(path).is_file() {
+                assert!(
+                    lines.iter().any(|line| line == path),
+                    "missing {path} in {lines:?} stderr={}",
+                    outcome.stderr_excerpt
+                );
+            }
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn missing_command_does_not_start() {

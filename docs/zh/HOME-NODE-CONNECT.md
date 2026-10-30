@@ -92,7 +92,7 @@ Agent Doctor 的团队版按现有的编译期安装包保留，不改目录结�
 1. 建临时家目录。`--runtime claude`（默认）复制 `.claude`，`--runtime codex` 复制 `.codex`。原目录不挂进沙箱。Claude 结束时不写回。Codex 只把刷新后的 `auth.json` 写回。
 2. 工作目录原位挂到 `/work`（macOS 上则作为工作目录）。结果留在这个目录里。同一工作目录同时只有一个 `run`。用完即删的只有临时家目录和里面的订阅副本。
 3. 订阅目录加文件锁，与号池的 `busy` 一致。
-4. 传了 `https_proxy` 时，在宿主机解析代理。沙箱内只允许连接这个 IP 和端口。其他 TCP、UDP 拒绝，包括局域网、公网，以及本机上除代理端口以外的地址。沙箱内不做 DNS。本地套接字允许。解析失败则这次运行不启动。没传代理时可以启动，出网不按代理收口。开关 `--require-proxy`（或 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`）打开后，没传代理则不启动。
+4. 传了 `https_proxy` 时，在宿主机解析代理。沙箱内只允许连接这个 IP 和端口。其他 TCP、UDP 拒绝，包括局域网、公网，以及本机上除代理端口以外的地址。沙箱内不做 DNS。本地套接字允许。解析失败则这次运行不启动。没传代理时可以启动，出网不按代理收口。Linux 上这种不走代理的运行会在文件存在时只读挂载 `/etc/resolv.conf`、`/etc/nsswitch.conf` 和 `/etc/hosts`，进程才能解析域名。传了代理的运行不挂这些文件。开关 `--require-proxy`（或 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`）打开后，没传代理则不启动。
 5. 命令名先在宿主机解析成绝对路径，再传进沙箱。这个二进制所在目录会加进沙箱的 `PATH`。未指定其他命令时执行：
 
 ```text
@@ -104,7 +104,7 @@ Codex 这条命令关掉它自己的沙箱。外层 bwrap 或 Seatbelt 仍然限
 
 6. 进程退出、连接服务取消或出错：杀掉进程组，Codex 写回 `auth.json`，删除临时家目录，释放锁，`busy` 改回假。
 
-Linux 使用单独组装的 `bwrap`：用户、挂载、PID、UTS、IPC 命名空间；主机名用这次运行的 id；不使用网络命名空间，也不做独立网卡；只读挂 `/usr`、`/lib`、`/bin`、`/lib64`（存在才挂）；临时家目录挂到 `/home/agent`；`/tmp` 用 tmpfs；不挂宿主家目录、Skilllite 配置目录和容器套接字；进程非 root。代理限制按这次进程的用户或 cgroup 写允许项。
+Linux 使用单独组装的 `bwrap`：用户、挂载、PID、UTS、IPC 命名空间；主机名用这次运行的 id；不使用网络命名空间，也不做独立网卡；只读挂 `/usr`、`/lib`、`/bin`、`/lib64`（存在才挂）；没传代理时，再只读挂 `/etc/resolv.conf`、`/etc/nsswitch.conf`、`/etc/hosts`（文件存在才挂）；临时家目录挂到 `/home/agent`；`/tmp` 用 tmpfs；不挂宿主家目录、Skilllite 配置目录和容器套接字；进程非 root。代理限制按这次进程的用户或 cgroup 写允许项。
 
 macOS 使用单独的 Seatbelt profile 和 `sandbox-exec`。`HOME` 指向临时家目录。读范围保持放开，否则动态链接器起不来；写只允许临时家目录和工作目录。代理限制写在该 profile 的网络允许项里。没有 PID 命名空间，活动监视器里仍可能看见另一个订阅号的进程。订阅目录和出口 IP 按订阅号分开。
 
