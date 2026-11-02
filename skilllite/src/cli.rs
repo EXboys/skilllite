@@ -864,7 +864,7 @@ pub enum Commands {
         /// Prompt passed to the runtime's default command.
         #[arg(long)]
         prompt: String,
-        /// `claude` copies `.claude`. `codex` copies `.codex` and writes `auth.json` back.
+        /// `claude` copies `.claude`. `codex` copies `.codex` and writes `auth.json` back when it changed.
         #[arg(long, default_value = "claude", value_parser = ["claude", "codex"])]
         runtime: String,
         /// HTTP(S) proxy. When set, the sandbox may connect only to that proxy.

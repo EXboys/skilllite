@@ -416,7 +416,7 @@ pub enum SecuritySeverity {
 
 #### 2.11 订阅目录运行 (`skilllite-sandbox/agent_run`)
 
-`skilllite_sandbox::run` 是技能 `execute()` 之外的另一条路径，二者互不调用。`runtime` 为 `claude`（默认）时复制 `account_dir/.claude`；为 `codex` 时复制 `account_dir/.codex`。它锁住订阅目录。传了 `https_proxy` 时，出网限制到该代理；没传时可以启动，出网不按代理收口。`require_proxy`（命令行 `--require-proxy`，或 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`）打开后，没有代理就不启动。工作目录原位可写，运行结束后只删除临时家目录。Codex 会把刷新后的 `auth.json` 写回订阅目录，而且只写这个普通文件。stdout 里 `sk-` 开头的密钥会变成 `[redacted]`，包括 `sk-ant-` 和 `sk-proj-`。
+`skilllite_sandbox::run` 是技能 `execute()` 之外的另一条路径，二者互不调用。`runtime` 为 `claude`（默认）时复制 `account_dir/.claude`；为 `codex` 时复制 `account_dir/.codex`。它锁住订阅目录。传了 `https_proxy` 时，出网限制到该代理；没传时可以启动，出网不按代理收口。`require_proxy`（命令行 `--require-proxy`，或 `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`）打开后，没有代理就不启动。工作目录原位可写，运行结束后只删除临时家目录。Codex 只在沙箱里的 `auth.json` 有变化时，才把这个普通文件写回订阅目录。内容没变就不写回，宿主机上更新的 `auth.json` 会保留。stdout 里 `sk-` 开头的密钥会变成 `[redacted]`，包括 `sk-ant-` 和 `sk-proj-`。
 
 Linux 使用单独的 `bwrap` 参数：用户、PID、UTS、IPC 命名空间，不含 `--unshare-all` 和 `--unshare-net`。代理允许项是一条 nftables `socket cgroupv2` 规则：匹配路径是该 cgroup 相对 `/sys/fs/cgroup` 的完整路径，level 是这段路径的层数。只写叶子目录名不会被安装。装不上就拒绝启动。macOS 使用单独的 Seatbelt profile。当前 `sandbox-exec` 只能把本机代理写成 `localhost:<端口>`，非本机地址会拒绝启动。macOS 上读范围保持放开，否则动态链接器起不来；写只允许临时家目录和工作目录。技能路径的断网、短超时和 seccomp 保持不变。
 

@@ -7,7 +7,7 @@ mod plan;
 mod proxy;
 mod redact;
 
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 #[cfg(target_os = "linux")]
 use std::io::Write;
 use std::io::{BufRead, BufReader};
@@ -144,6 +144,14 @@ fn run_unix(request: RunRequest, on_line: &mut dyn FnMut(&str)) -> Result<RunOut
     let home = tempfile::TempDir::new()?;
     copy_tree(&config_dir, &home.path().join(config_name))?;
     let home_path = fs::canonicalize(home.path())?;
+    // Captured after the copy and before the process starts. Codex on the host
+    // can refresh `auth.json` during the run; an unchanged sandbox copy must
+    // not be written back over that newer file.
+    let codex_auth_snapshot = if request.runtime == AgentRuntime::Codex {
+        read_codex_auth_snapshot(&home_path)?
+    } else {
+        None
+    };
     let work_path = fs::canonicalize(&request.work_dir)?;
     let run_id = if request.run_id.is_empty() {
         generated_run_id()
@@ -210,7 +218,12 @@ fn run_unix(request: RunRequest, on_line: &mut dyn FnMut(&str)) -> Result<RunOut
                     signal_group(pid);
                     let _ = child.wait();
                     group.disarm();
-                    persist_runtime_auth(request.runtime, &home_path, &request.account_dir)?;
+                    persist_runtime_auth(
+                        request.runtime,
+                        &home_path,
+                        &request.account_dir,
+                        codex_auth_snapshot.as_deref(),
+                    )?;
                     return Err(err.into());
                 }
             }
@@ -219,7 +232,12 @@ fn run_unix(request: RunRequest, on_line: &mut dyn FnMut(&str)) -> Result<RunOut
     let status = child.wait();
     group.disarm();
     stop.store(true, Ordering::Relaxed);
-    persist_runtime_auth(request.runtime, &home_path, &request.account_dir)?;
+    persist_runtime_auth(
+        request.runtime,
+        &home_path,
+        &request.account_dir,
+        codex_auth_snapshot.as_deref(),
+    )?;
     let status = status?;
     let stderr_excerpt = stderr_handle
         .and_then(|handle| handle.join().ok())
@@ -559,20 +577,42 @@ fn default_argv(runtime: AgentRuntime, prompt: &str) -> Vec<String> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn persist_runtime_auth(runtime: AgentRuntime, home: &Path, account_dir: &Path) -> Result<()> {
+fn persist_runtime_auth(
+    runtime: AgentRuntime,
+    home: &Path,
+    account_dir: &Path,
+    codex_auth_snapshot: Option<&[u8]>,
+) -> Result<()> {
     if runtime == AgentRuntime::Codex {
-        persist_codex_auth(home, account_dir)?;
+        persist_codex_auth(home, account_dir, codex_auth_snapshot)?;
     }
     Ok(())
+}
+
+/// Bytes of the copied Codex `auth.json`, or `None` when that file was absent.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn read_codex_auth_snapshot(home: &Path) -> Result<Option<Vec<u8>>> {
+    let src = home.join(".codex").join("auth.json");
+    match fs::read(&src) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err.into()),
+    }
 }
 
 /// Copy a refreshed Codex `auth.json` back to the subscription directory.
 ///
 /// Codex rotates the ChatGPT session in this file. The sandbox does not mount
 /// the original directory, so the host copies this one regular file after the
-/// process exits. Symlinks are refused.
+/// process exits. Symlinks are refused. When the sandbox copy still matches
+/// `codex_auth_snapshot`, the host file is left alone: the official Codex CLI
+/// refreshes the same `auth.json` under `auth.lock` and must not be reverted.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn persist_codex_auth(home: &Path, account_dir: &Path) -> Result<()> {
+fn persist_codex_auth(
+    home: &Path,
+    account_dir: &Path,
+    codex_auth_snapshot: Option<&[u8]>,
+) -> Result<()> {
     let src = home.join(".codex").join("auth.json");
     let meta = match fs::symlink_metadata(&src) {
         Ok(meta) => meta,
@@ -582,12 +622,41 @@ fn persist_codex_auth(home: &Path, account_dir: &Path) -> Result<()> {
     if !meta.file_type().is_file() {
         bail!("codex auth.json is not a regular file");
     }
+    let bytes = fs::read(&src)?;
+    if codex_auth_snapshot.is_some_and(|snapshot| snapshot == bytes) {
+        return Ok(());
+    }
     let dest_dir = account_dir.join(".codex");
     fs::create_dir_all(&dest_dir)?;
+    let _lock = lock_codex_auth(&dest_dir)?;
     let tmp = dest_dir.join(".auth.json.tmp");
     fs::copy(&src, &tmp)?;
     fs::rename(&tmp, dest_dir.join("auth.json"))?;
     Ok(())
+}
+
+/// Exclusive lock Codex uses around its own `auth.json` read-modify-write.
+///
+/// The guard releases the lock on drop. Codex opens this same path with a
+/// blocking exclusive `flock` in `lock_for_write`.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+struct CodexAuthLock {
+    _file: File,
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn lock_codex_auth(codex_dir: &Path) -> Result<CodexAuthLock> {
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(codex_dir.join("auth.lock"))?;
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+    if rc != 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(CodexAuthLock { _file: file })
 }
 
 #[cfg(test)]
@@ -817,7 +886,7 @@ mod tests {
         fs::create_dir_all(account.join(".codex")).unwrap();
         fs::write(home.join(".codex").join("auth.json"), "refreshed 中文").unwrap();
         fs::write(account.join(".codex").join("config.toml"), "stay").unwrap();
-        persist_codex_auth(&home, &account).unwrap();
+        persist_codex_auth(&home, &account, Some(b"old")).unwrap();
         assert_eq!(
             fs::read_to_string(account.join(".codex").join("auth.json")).unwrap(),
             "refreshed 中文"
@@ -829,9 +898,37 @@ mod tests {
         fs::remove_file(account.join(".codex").join("auth.json")).unwrap();
         fs::remove_file(home.join(".codex").join("auth.json")).unwrap();
         std::os::unix::fs::symlink("/etc/passwd", home.join(".codex").join("auth.json")).unwrap();
-        let err = persist_codex_auth(&home, &account).unwrap_err();
+        let err = persist_codex_auth(&home, &account, None).unwrap_err();
         assert!(err.to_string().contains("regular file"));
         assert!(!account.join(".codex").join("auth.json").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn unchanged_codex_auth_does_not_replace_a_newer_host_file() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let account = root.path().join("account");
+        fs::create_dir_all(home.join(".codex")).unwrap();
+        fs::create_dir_all(account.join(".codex")).unwrap();
+        let snapshot = "old-中文".as_bytes();
+        fs::write(home.join(".codex").join("auth.json"), snapshot).unwrap();
+        fs::write(account.join(".codex").join("auth.json"), "newer-中文").unwrap();
+        persist_codex_auth(&home, &account, Some(snapshot)).unwrap();
+        assert_eq!(
+            fs::read_to_string(account.join(".codex").join("auth.json")).unwrap(),
+            "newer-中文"
+        );
+        assert!(
+            !account.join(".codex").join("auth.lock").exists(),
+            "unchanged auth must not lock or rewrite the host directory"
+        );
+        fs::write(home.join(".codex").join("auth.json"), "refreshed-中文").unwrap();
+        persist_codex_auth(&home, &account, Some(snapshot)).unwrap();
+        assert_eq!(
+            fs::read_to_string(account.join(".codex").join("auth.json")).unwrap(),
+            "refreshed-中文"
+        );
     }
 
     #[cfg(unix)]
