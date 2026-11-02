@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-10-28 (TASK-2026-074 Codex sandbox runtime done)
+Last updated: 2026-11-02 (TASK-2026-077 Codex auth writeback done)
 
 ## In Progress
 
@@ -18,6 +18,7 @@ Last updated: 2026-10-28 (TASK-2026-074 Codex sandbox runtime done)
 
 ## Done
 
+- `TASK-2026-077-codex-auth-writeback` - Status: `done` - Owner: `agent`
 - `TASK-2026-074-agent-sandbox-codex` - Status: `done` - Owner: `agent`
 - `TASK-2026-073-agent-sandbox-nft-cgroup-path` - Status: `done` - Owner: `agent`
 - `TASK-2026-072-cargo-audit-2026-10` - Status: `done` - Owner: `agent`

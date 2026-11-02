@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- **Codex auth writeback**: `agent-sandbox --runtime codex` no longer copies an unchanged `auth.json` over a newer host file when the sandbox exits. A changed regular file is still written back under Codex's `auth.lock`.
+
 ---
 
 ## [0.1.30] - 2026-10-29

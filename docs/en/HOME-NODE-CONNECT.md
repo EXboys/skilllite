@@ -36,7 +36,7 @@ The pool is on this computer. One subscription:
 | Subscription directory | no | `.claude` from `claude auth login`, or `.codex` from `codex login` |
 | `https_proxy` | no | Egress proxy for this subscription |
 
-Login is not part of `run`. A person runs the official login once against that directory on the host. The program does not read, store, or forward tokens, and it does not open the macOS keychain. After Codex refreshes its session, the host writes back only the regular file `auth.json`.
+Login is not part of `run`. A person runs the official login once against that directory on the host. The program does not read, store, or forward tokens, and it does not open the macOS keychain. After Codex refreshes its session, the host writes back only the regular file `auth.json`, and only when the sandbox copy changed. An unchanged copy does not replace a newer host file.
 
 One subscription has one sandbox at a time. Different subscriptions run in parallel. Install and diagnosis stay on the existing `install` and `doctor` commands, which are what make `ready` true.
 
@@ -89,7 +89,7 @@ After a reconnect, a sandbox that is still running keeps sending lines for the s
 
 Each run calls `skilllite_sandbox::run` (CLI: `skilllite agent-sandbox`). The subscription directory, working directory, prompt, and `https_proxy` come from the caller. The connect service does not send the proxy, and the directory is not part of the published status. `https_proxy` may be omitted. With `--require-proxy`, or `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`, a missing proxy refuses to start. When a proxy is set, macOS requires a loopback address and Seatbelt records it as `localhost:<port>`. On Linux the nftables match names that cgroup by its path under `/sys/fs/cgroup`, not by the leaf name alone. The run does not start when that allowlist cannot be attached.
 
-1. Create an ephemeral home. `--runtime claude` (the default) copies `.claude`. `--runtime codex` copies `.codex`. The original directory is not mounted. A Claude run does not write it back. A Codex run writes back only the refreshed `auth.json`.
+1. Create an ephemeral home. `--runtime claude` (the default) copies `.claude`. `--runtime codex` copies `.codex`. The original directory is not mounted. A Claude run does not write it back. A Codex run writes `auth.json` back only when the sandbox copy changed.
 2. Mount the working directory in place at `/work` (on macOS, use it as the working directory). Results stay in that directory. One working directory has one `run` at a time. The only tree deleted at the end is the ephemeral home and the subscription copy inside it.
 3. Take a file lock on the subscription directory, matching `busy` on the pool.
 4. When `https_proxy` is set, resolve it on the host. Inside the sandbox, allow only that IP and port. Refuse every other TCP and UDP destination, including the LAN, the public internet, and every local port except the proxy port. Do not resolve DNS inside the sandbox. Local sockets stay allowed. If that proxy does not resolve, do not start the run. A run may start with no proxy, and egress is not pinned. `--require-proxy` (or `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`) refuses to start when the proxy is missing.
@@ -102,7 +102,7 @@ codex exec --json --dangerously-bypass-approvals-and-sandbox "<prompt>"
 
 The Codex command turns off Codex's own sandbox. The outer bwrap or Seatbelt profile still limits writes. When a proxy is set, egress still goes only to that proxy.
 
-6. On exit, cancel, or error: kill the process group, write Codex `auth.json` back, delete the ephemeral home, release the lock, and set `busy` back to false.
+6. On exit, cancel, or error: kill the process group, write Codex `auth.json` back when it changed, delete the ephemeral home, release the lock, and set `busy` back to false.
 
 Linux uses a `bwrap` profile built for `run`: user, mount, PID, UTS, and IPC namespaces; hostname set to this run id; no network namespace and no dedicated NIC; read-only `/usr`, `/lib`, `/bin`, and `/lib64` when those paths exist; ephemeral home at `/home/agent`; `/tmp` on tmpfs; no host home, Skilllite config directory, or container sockets; non-root. The proxy allow rule is attached to this process's user or cgroup.
 
