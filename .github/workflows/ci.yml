@@ -44,6 +44,14 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
+      - name: Install bubblewrap for agent-sandbox tests
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - name: Run tests
         run: cargo test
 

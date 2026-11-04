@@ -420,7 +420,7 @@ pub enum SecuritySeverity {
 
 Linux 使用单独的 `bwrap` 参数：用户、PID、UTS、IPC 命名空间，不含 `--unshare-all` 和 `--unshare-net`。代理允许项是一条 nftables `socket cgroupv2` 规则：匹配路径是该 cgroup 相对 `/sys/fs/cgroup` 的完整路径，level 是这段路径的层数。只写叶子目录名不会被安装。装不上就拒绝启动。macOS 使用单独的 Seatbelt profile。当前 `sandbox-exec` 只能把本机代理写成 `localhost:<端口>`，非本机地址会拒绝启动。macOS 上读范围保持放开，否则动态链接器起不来；写只允许临时家目录和工作目录。技能路径的断网、短超时和 seccomp 保持不变。
 
-命令名先在宿主机解析成绝对路径再执行，并把该目录加进沙箱 `PATH`。默认命令：`claude` 是 `claude -p … --output-format stream-json --verbose --permission-mode dontAsk`；`codex` 是 `codex exec --json --dangerously-bypass-approvals-and-sandbox …`。Codex 自带沙箱在 bwrap 或 Seatbelt 里起不来，所以关掉，改由外层沙箱限制写路径和代理。命令行入口是 `skilllite agent-sandbox`（`skilllite-sandbox` 二进制同样提供）。号池、用户绑定和 SSE 不在本仓库。
+命令名先在宿主机解析，再执行去掉符号链接后的真实文件。该文件所在目录会挂进沙箱并加入 `PATH`。如果命令本身是符号链接，链接所在目录也会留在 `PATH` 里，这样旁边的解释器（例如 `node`）仍然找得到。默认命令：`claude` 是 `claude -p … --output-format stream-json --verbose --permission-mode dontAsk`；`codex` 是 `codex exec --json --dangerously-bypass-approvals-and-sandbox …`。Codex 自带沙箱在 bwrap 或 Seatbelt 里起不来，所以关掉，改由外层沙箱限制写路径和代理。命令行入口是 `skilllite agent-sandbox`（`skilllite-sandbox` 二进制同样提供）。号池、用户绑定和 SSE 不在本仓库。
 
 ---
 

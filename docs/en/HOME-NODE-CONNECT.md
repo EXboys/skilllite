@@ -93,7 +93,7 @@ Each run calls `skilllite_sandbox::run` (CLI: `skilllite agent-sandbox`). The su
 2. Mount the working directory in place at `/work` (on macOS, use it as the working directory). Results stay in that directory. One working directory has one `run` at a time. The only tree deleted at the end is the ephemeral home and the subscription copy inside it.
 3. Take a file lock on the subscription directory, matching `busy` on the pool.
 4. When `https_proxy` is set, resolve it on the host. Inside the sandbox, allow only that IP and port. Refuse every other TCP and UDP destination, including the LAN, the public internet, and every local port except the proxy port. Do not resolve DNS inside the sandbox. Local sockets stay allowed. If that proxy does not resolve, do not start the run. A run may start with no proxy, and egress is not pinned. `--require-proxy` (or `SKILLLITE_AGENT_SANDBOX_REQUIRE_PROXY=1`) refuses to start when the proxy is missing.
-5. Resolve the command to an absolute path on the host, then pass that path into the sandbox. The binary's directory is added to the sandbox `PATH`. When no other command is supplied, run:
+5. Resolve the command on the host and execute the canonical file inside the sandbox. That file's directory is added to the sandbox `PATH`. When the command is a symlink, the symlink's directory stays on `PATH` too, so a sibling interpreter such as `node` remains visible. A multi-hop link such as `~/.local/bin/codex` → `~/.codex/packages/standalone/current/codex` is not executed as the link path, because the intermediate `current` link is not mounted. When no other command is supplied, run:
 
 ```text
 claude -p "<prompt>" --output-format stream-json --verbose --permission-mode dontAsk
