@@ -344,8 +344,6 @@ fn execute_with_bwrap(
 
     unsafe {
         cmd.pre_exec(move || {
-            use nix::libc::{close, dup2, fcntl, FD_CLOEXEC, F_GETFD, F_SETFD};
-
             common::apply_rlimits(
                 memory_limit_mb,
                 cpu_limit_secs,
@@ -353,15 +351,8 @@ fn execute_with_bwrap(
                 max_processes,
             );
 
-            // If we have an open seccomp BPF fd, dup2 it to FD 3 and clear
-            // CLOEXEC so bwrap can read it after execve.
             if let Some(src_fd) = seccomp_raw_fd {
-                const SECCOMP_BWRAP_FD: i32 = 3;
-                if dup2(src_fd, SECCOMP_BWRAP_FD) >= 0 {
-                    let flags = fcntl(SECCOMP_BWRAP_FD, F_GETFD, 0);
-                    fcntl(SECCOMP_BWRAP_FD, F_SETFD, flags & !FD_CLOEXEC);
-                    close(src_fd);
-                }
+                prepare_bwrap_seccomp_fd(src_fd)?;
             }
 
             Ok(())
@@ -378,6 +369,40 @@ fn execute_with_bwrap(
 
     drop(proxy_manager);
     Ok(result)
+}
+
+/// Put the seccomp BPF on descriptor 3 and clear `CLOEXEC`.
+///
+/// `bwrap --seccomp 3` reads that descriptor after `exec`. A normal CLI process
+/// has only stdin, stdout, and stderr open, so the filter file is descriptor 3.
+/// `dup2(fd, fd)` does not make a second copy, and closing the source then
+/// closes the only descriptor. bwrap exits with
+/// `Can't read seccomp data: Bad file descriptor` and the skill never starts.
+fn prepare_bwrap_seccomp_fd(src_fd: i32) -> std::io::Result<()> {
+    use std::io::Error;
+
+    const SECCOMP_BWRAP_FD: i32 = 3;
+    unsafe {
+        if nix::libc::dup2(src_fd, SECCOMP_BWRAP_FD) < 0 {
+            return Err(Error::last_os_error());
+        }
+        let flags = nix::libc::fcntl(SECCOMP_BWRAP_FD, nix::libc::F_GETFD, 0);
+        if flags < 0 {
+            return Err(Error::last_os_error());
+        }
+        if nix::libc::fcntl(
+            SECCOMP_BWRAP_FD,
+            nix::libc::F_SETFD,
+            flags & !nix::libc::FD_CLOEXEC,
+        ) < 0
+        {
+            return Err(Error::last_os_error());
+        }
+        if src_fd != SECCOMP_BWRAP_FD {
+            nix::libc::close(src_fd);
+        }
+    }
+    Ok(())
 }
 
 /// Generate a seccomp BPF filter file for bwrap's `--seccomp` option.
@@ -813,8 +838,118 @@ fn known_user_runtime_roots(home: &Path) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use std::os::unix::io::IntoRawFd;
+    use std::os::unix::process::CommandExt;
+    use std::process::Command;
+
     use super::*;
     use tempfile::TempDir;
+
+    struct OwnedFd(i32);
+
+    impl Drop for OwnedFd {
+        fn drop(&mut self) {
+            if self.0 >= 0 {
+                unsafe { nix::libc::close(self.0) };
+                self.0 = -1;
+            }
+        }
+    }
+
+    fn assert_seccomp_fd_ready(force_slot: bool) {
+        let dir = TempDir::new().expect("temp dir");
+        let path = dir.path().join("filter.bin");
+        std::fs::write(&path, "seccomp-ok-中文").expect("write filter");
+        let src_fd = std::fs::File::open(&path)
+            .expect("open filter")
+            .into_raw_fd();
+        let src_owner = OwnedFd(src_fd);
+
+        let mut pipes = [0i32; 2];
+        assert_eq!(unsafe { nix::libc::pipe(pipes.as_mut_ptr()) }, 0);
+        let read_owner = OwnedFd(pipes[0]);
+        let write_owner = OwnedFd(pipes[1]);
+        let write_fd = write_owner.0;
+
+        let mut cmd = Command::new("/bin/true");
+        unsafe {
+            cmd.pre_exec(move || {
+                let mut report_fd = write_fd;
+                if report_fd == 3 {
+                    report_fd = nix::libc::dup(report_fd);
+                    if report_fd < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    nix::libc::close(3);
+                }
+                let mut src = src_fd;
+                if force_slot {
+                    if src != 3 {
+                        if nix::libc::dup2(src, 3) < 0 {
+                            return Err(std::io::Error::last_os_error());
+                        }
+                        nix::libc::close(src);
+                        src = 3;
+                    }
+                    let flags = nix::libc::fcntl(3, nix::libc::F_GETFD, 0);
+                    if flags < 0
+                        || nix::libc::fcntl(3, nix::libc::F_SETFD, flags | nix::libc::FD_CLOEXEC)
+                            < 0
+                    {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                } else if src == 3 {
+                    let moved = nix::libc::fcntl(src, nix::libc::F_DUPFD_CLOEXEC, 4);
+                    if moved < 0 {
+                        return Err(std::io::Error::last_os_error());
+                    }
+                    nix::libc::close(src);
+                    src = moved;
+                }
+                let moved_from = src;
+                prepare_bwrap_seccomp_fd(src)?;
+                let flags = nix::libc::fcntl(3, nix::libc::F_GETFD, 0);
+                let mut buf = [0u8; 11];
+                let n = nix::libc::read(3, buf.as_mut_ptr().cast(), buf.len());
+                let source_closed =
+                    moved_from == 3 || nix::libc::fcntl(moved_from, nix::libc::F_GETFD, 0) < 0;
+                let code: u8 = if flags < 0 || n < 0 {
+                    2
+                } else if flags & nix::libc::FD_CLOEXEC != 0 {
+                    3
+                } else if n != 11 || buf != *b"seccomp-ok-" {
+                    4
+                } else if !source_closed {
+                    5
+                } else {
+                    0
+                };
+                let _ = nix::libc::write(report_fd, std::ptr::from_ref(&code).cast(), 1);
+                Ok(())
+            });
+        }
+
+        let mut child = cmd.spawn().expect("spawn checker");
+        drop(write_owner);
+        let mut code = [0xffu8; 1];
+        let n = unsafe { nix::libc::read(read_owner.0, code.as_mut_ptr().cast(), 1) };
+        let status = child.wait().expect("wait");
+        drop(read_owner);
+        drop(src_owner);
+        assert!(status.success(), "checker exit {status}");
+        assert_eq!(n, 1, "missing status byte");
+        assert_eq!(code[0], 0, "seccomp fd check failed with code {}", code[0]);
+    }
+
+    #[test]
+    fn seccomp_fd_stays_open_when_the_filter_is_already_fd_3() {
+        assert_seccomp_fd_ready(true);
+    }
+
+    #[test]
+    fn seccomp_fd_moves_from_a_higher_descriptor() {
+        assert_seccomp_fd_ready(false);
+    }
 
     #[test]
     fn test_collect_additional_runtime_roots_detects_common_prefixes() {
