@@ -221,6 +221,8 @@ Sandbox resource limits are read through **config** (`SandboxEnvConfig`); legacy
 
 **Usage**: For Skills with many dependencies (e.g. xiaohongshu-writer), consider `EXECUTION_TIMEOUT=300`.
 
+`SKILLLITE_MAX_MEMORY_MB` applies to the process being waited on. A helper or skill that already exited in the same SkillLite process does not consume the next run's limit.
+
 ---
 
 ## Long Text & Summarization <small>[Advanced]</small>
