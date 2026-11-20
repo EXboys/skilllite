@@ -221,6 +221,8 @@
 
 **使用场景**：依赖较多的 Skill（如 xiaohongshu-writer）建议 `EXECUTION_TIMEOUT=300`。
 
+`SKILLLITE_MAX_MEMORY_MB` 针对当前等待的进程。同一 SkillLite 进程里已经退出的辅助进程或 Skill，不占用下一次运行的额度。
+
 ---
 
 ## 长文本与摘要 <small>[高级]</small>

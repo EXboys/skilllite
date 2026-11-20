@@ -221,6 +221,12 @@ pub fn wait_with_timeout(
     });
 
     loop {
+        // ru_maxrss is the high-water mark of every child this process has
+        // already waited for. Sample it before reap so a later command is
+        // rejected only when this child (or a grandchild it waited for, such
+        // as a skill inside bwrap) raises that mark. The direct child's VmHWM
+        // is not used: bwrap's own peak hides the sandboxed process.
+        let peak_before_reap = get_children_peak_rss_bytes().unwrap_or(0);
         match child.try_wait() {
             Ok(Some(status)) => {
                 let stdout = stdout_handle
@@ -233,10 +239,10 @@ pub fn wait_with_timeout(
                 // Post-exit memory check via getrusage(RUSAGE_CHILDREN).
                 // On macOS RLIMIT_AS is not enforced by the kernel, so a
                 // fast-allocating script can finish before the RSS polling
-                // loop catches it. ru_maxrss gives the peak RSS the child
-                // ever reached and lets us reject the result retroactively.
+                // loop catches it. Reject only a new peak above this limit;
+                // an earlier child must not drop this command's stdout.
                 if let Some(peak) = get_children_peak_rss_bytes() {
-                    if peak > memory_limit_bytes {
+                    if peak > peak_before_reap && peak > memory_limit_bytes {
                         let peak_mb = peak / (1024 * 1024);
                         let limit_mb = memory_limit_bytes / (1024 * 1024);
                         return Ok((
@@ -686,9 +692,11 @@ pub fn apply_standard_execution_env(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::process::{Command, Stdio};
     use std::sync::Mutex;
 
     static ENV_MUTEX: Mutex<()> = Mutex::new(());
+    static RSS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_memory_check_interval() {
@@ -724,5 +732,93 @@ mod tests {
         std::env::set_var(K_OLD, "1");
         assert!(env_compat_is_set(K_NEW, K_OLD));
         std::env::remove_var(K_OLD);
+    }
+
+    #[cfg(unix)]
+    fn child_rss_peak_bytes() -> u64 {
+        get_children_peak_rss_bytes().unwrap_or(0)
+    }
+
+    #[cfg(unix)]
+    fn run_python_allocator(megabytes: u64) {
+        let script = format!("b=bytearray({megabytes} * 1024 * 1024); print(len(b))");
+        let output = Command::new("python3")
+            .args(["-c", &script])
+            .output()
+            .expect("spawn python3 allocator");
+        assert!(
+            output.status.success(),
+            "allocator failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// A previous child can set `RUSAGE_CHILDREN` `ru_maxrss` above the next
+    /// command's limit. That next command must still return its own stdout.
+    #[cfg(unix)]
+    #[test]
+    fn later_command_keeps_stdout_when_an_earlier_child_peaked_higher() {
+        let _guard = RSS_TEST_LOCK.lock().expect("rss test lock");
+        let before = child_rss_peak_bytes();
+        let alloc_mb = (before / (1024 * 1024)).saturating_add(48).max(48);
+        run_python_allocator(alloc_mb);
+        let poisoned = child_rss_peak_bytes();
+        assert!(
+            poisoned > before,
+            "allocator did not raise RUSAGE_CHILDREN peak (before={before}, after={poisoned})"
+        );
+        let limit = 4 * 1024 * 1024;
+        assert!(
+            poisoned > limit,
+            "peak {poisoned} should exceed the later limit {limit}"
+        );
+
+        let mut child = Command::new("echo")
+            .arg("结果-ok")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn echo");
+        let (stdout, stderr, code, killed, reason) =
+            wait_with_timeout(&mut child, 15, limit, false).expect("wait echo");
+
+        assert_eq!(code, 0, "stderr={stderr} reason={reason:?}");
+        assert!(!killed, "later command was rejected: {stderr}");
+        assert!(
+            stdout.contains("结果-ok"),
+            "stdout was dropped: {stdout:?} stderr={stderr}"
+        );
+    }
+
+    /// A child that itself pushes the high-water mark past its limit is still rejected.
+    #[cfg(unix)]
+    #[test]
+    fn child_that_raises_the_rss_peak_above_the_limit_is_rejected() {
+        let _guard = RSS_TEST_LOCK.lock().expect("rss test lock");
+        let before = child_rss_peak_bytes();
+        let limit = before.saturating_add(8 * 1024 * 1024);
+        let alloc_mb = (limit / (1024 * 1024)).saturating_add(64);
+        let script = format!("b=bytearray({alloc_mb} * 1024 * 1024); print('raised')");
+        let mut child = Command::new("python3")
+            .args(["-c", &script])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("spawn python3");
+        let (stdout, stderr, _code, killed, reason) =
+            wait_with_timeout(&mut child, 30, limit, false).expect("wait allocator");
+
+        assert!(
+            killed,
+            "over-limit child was kept: stdout={stdout:?} stderr={stderr} reason={reason:?}"
+        );
+        assert!(
+            stderr.contains("exceeded limit"),
+            "unexpected stderr: {stderr}"
+        );
+        assert!(
+            stdout.is_empty(),
+            "over-limit stdout should be dropped, got {stdout:?}"
+        );
     }
 }

@@ -337,7 +337,7 @@ pub struct ResourceLimits {
 **环境变量**：
 - 沙箱相关变量**统一走 config**（`SandboxEnvConfig::from_env()`）；使用 `SKILLLITE_*`（旧名 `SKILLBOX_*` 仍接受）：
 - `SKILLLITE_SANDBOX_LEVEL`: 沙箱级别 (1/2/3)
-- `SKILLLITE_MAX_MEMORY_MB`: 最大内存限制
+- `SKILLLITE_MAX_MEMORY_MB`: 当前等待进程的最大内存限制。已经退出的更早子进程不占用下一次运行的额度。
 - `SKILLLITE_TIMEOUT_SECS`: 执行超时
 - `SKILLLITE_AUTO_APPROVE`: 自动批准危险操作
 

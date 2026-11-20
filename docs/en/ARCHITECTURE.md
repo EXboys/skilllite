@@ -339,7 +339,7 @@ pub struct ResourceLimits {
 **Environment Variables:**
 - Sandbox-related vars are read via **config** (`SandboxEnvConfig::from_env()`); use `SKILLLITE_*` (legacy `SKILLBOX_*` still accepted):
 - `SKILLLITE_SANDBOX_LEVEL`: Sandbox level (1/2/3)
-- `SKILLLITE_MAX_MEMORY_MB`: Maximum memory limit
+- `SKILLLITE_MAX_MEMORY_MB`: Maximum memory limit for the process being waited on. An earlier child that already exited does not consume the next run's limit.
 - `SKILLLITE_TIMEOUT_SECS`: Execution timeout
 - `SKILLLITE_AUTO_APPROVE`: Auto-approve dangerous operations
 
