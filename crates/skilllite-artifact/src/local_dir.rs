@@ -58,25 +58,53 @@ impl ArtifactStore for LocalDirArtifactStore {
     }
 }
 
-/// Atomic write for byte data: write to temp file, then rename.
+/// Atomic write for byte data: write to a temp file in the same directory, then rename.
+///
+/// The temp name is not `path.with_extension("tmp")`. That path is a legal
+/// artifact key (`notes.json` would replace `notes.tmp`, and `archive.tar.gz`
+/// would replace `archive.tar.tmp`).
 fn atomic_write_bytes(path: &Path, data: &[u8]) -> Result<(), StoreError> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, data).map_err(|e| StoreError::Backend {
-        message: format!("failed to write temp file {}: {}", tmp.display(), e),
-        retryable: false,
-        source: Some(Box::new(e)),
-    })?;
-    std::fs::rename(&tmp, path).map_err(|e| StoreError::Backend {
-        message: format!(
-            "failed to rename {} -> {}: {}",
-            tmp.display(),
-            path.display(),
-            e
-        ),
-        retryable: false,
-        source: Some(Box::new(e)),
-    })?;
+    let tmp = partial_path(path);
+    if let Err(err) = std::fs::write(&tmp, data) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(StoreError::Backend {
+            message: format!("failed to write temp file {}: {}", tmp.display(), err),
+            retryable: false,
+            source: Some(Box::new(err)),
+        });
+    }
+    if let Err(err) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(StoreError::Backend {
+            message: format!(
+                "failed to rename {} -> {}: {}",
+                tmp.display(),
+                path.display(),
+                err
+            ),
+            retryable: false,
+            source: Some(Box::new(err)),
+        });
+    }
     Ok(())
+}
+
+fn partial_path(path: &Path) -> PathBuf {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static SEQ: AtomicU64 = AtomicU64::new(1);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or(0);
+    let name = format!(".skilllite-partial-{}-{nanos}-{seq}", std::process::id());
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    parent.join(name)
 }
 
 #[cfg(test)]
@@ -176,5 +204,68 @@ mod tests {
         store.put("run-1", "报告/结果.json", b"data").unwrap();
         let data = store.get("run-1", "报告/结果.json").unwrap();
         assert_eq!(data, Some(b"data".to_vec()));
+    }
+
+    #[test]
+    fn put_keeps_sibling_keys_that_share_the_old_temp_stem() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = make_store(&dir);
+        let notes_tmp = "保留 中文".as_bytes();
+        store.put("run-1", "notes.tmp", notes_tmp).unwrap();
+        store.put("run-1", "notes.json", b"{\"ok\":true}").unwrap();
+        store.put("run-1", "archive.tar.tmp", b"tar-tmp").unwrap();
+        store.put("run-1", "archive.tar.gz", b"tar-gz").unwrap();
+        store.put("run-1", "report.tmp", b"report-tmp").unwrap();
+        store.put("run-1", "report", b"report-final").unwrap();
+
+        assert_eq!(
+            store.get("run-1", "notes.tmp").unwrap().as_deref(),
+            Some(notes_tmp)
+        );
+        assert_eq!(
+            store.get("run-1", "notes.json").unwrap().as_deref(),
+            Some(b"{\"ok\":true}".as_slice())
+        );
+        assert_eq!(
+            store.get("run-1", "archive.tar.tmp").unwrap().as_deref(),
+            Some(b"tar-tmp".as_slice())
+        );
+        assert_eq!(
+            store.get("run-1", "archive.tar.gz").unwrap().as_deref(),
+            Some(b"tar-gz".as_slice())
+        );
+        assert_eq!(
+            store.get("run-1", "report.tmp").unwrap().as_deref(),
+            Some(b"report-tmp".as_slice())
+        );
+        assert_eq!(
+            store.get("run-1", "report").unwrap().as_deref(),
+            Some(b"report-final".as_slice())
+        );
+
+        let run_dir = dir.path().join("artifacts").join("run-1");
+        let partials: Vec<_> = std::fs::read_dir(&run_dir)
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".skilllite-partial-"))
+            .collect();
+        assert!(partials.is_empty(), "leftover temp files: {partials:?}");
+    }
+
+    #[test]
+    fn failed_rename_removes_the_partial_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("notes.json");
+        std::fs::create_dir(&dest).unwrap();
+        let err = atomic_write_bytes(&dest, "不会留下 临时文件".as_bytes()).unwrap_err();
+        assert!(matches!(err, StoreError::Backend { .. }));
+        let partials: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".skilllite-partial-"))
+            .collect();
+        assert!(partials.is_empty(), "leftover temp files: {partials:?}");
     }
 }
