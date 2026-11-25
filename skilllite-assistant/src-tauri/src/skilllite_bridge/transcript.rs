@@ -46,7 +46,39 @@ pub struct TranscriptMessage {
     pub llm_usage: Option<TranscriptLlmUsagePayload>,
 }
 
-/// List transcript file paths for session, sorted by date (legacy first, then YYYY-MM-DD).
+/// Whether `file_name` is this session's legacy file or its `{key}-YYYY-MM-DD` file.
+///
+/// A raw `{key}-` prefix treats `schedule-daily-brief-YYYY-MM-DD.jsonl` as part of
+/// `schedule-daily`, so listing or deleting the shorter session removes the longer one.
+pub(crate) fn session_artifact_name_matches(file_name: &str, session_key: &str) -> bool {
+    if session_key.is_empty() {
+        return false;
+    }
+    let Some(stem) = file_name
+        .strip_suffix(".jsonl")
+        .or_else(|| file_name.strip_suffix(".json"))
+    else {
+        return false;
+    };
+    if stem == session_key {
+        return true;
+    }
+    let Some(rest) = stem.strip_prefix(session_key) else {
+        return false;
+    };
+    let Some(date) = rest.strip_prefix('-') else {
+        return false;
+    };
+    let bytes = date.as_bytes();
+    bytes.len() == 10
+        && bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[..4].iter().all(u8::is_ascii_digit)
+        && bytes[5..7].iter().all(u8::is_ascii_digit)
+        && bytes[8..10].iter().all(u8::is_ascii_digit)
+}
+
+/// List transcript file paths for a session, sorted by date (legacy first, then YYYY-MM-DD).
 pub(crate) fn list_transcript_paths(transcripts_dir: &Path, session_key: &str) -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let legacy = transcripts_dir.join(format!("{}.jsonl", session_key));
@@ -59,13 +91,16 @@ pub(crate) fn list_transcript_paths(transcripts_dir: &Path, session_key: &str) -
     let Ok(entries) = std::fs::read_dir(transcripts_dir) else {
         return paths;
     };
-    let prefix = format!("{}-", session_key);
-    let suffix = ".jsonl";
+    let dated_prefix = format!("{session_key}-");
     for e in entries.flatten() {
         let path = e.path();
         if let Some(name) = path.file_name() {
             let name = name.to_string_lossy();
-            if name.starts_with(&prefix) && name.ends_with(suffix) {
+            let legacy_name = format!("{session_key}.jsonl");
+            if name != legacy_name
+                && name.ends_with(".jsonl")
+                && session_artifact_name_matches(&name, session_key)
+            {
                 paths.push(path);
             }
         }
@@ -79,8 +114,8 @@ pub(crate) fn list_transcript_paths(transcripts_dir: &Path, session_key: &str) -
             .file_stem()
             .map(|s| s.to_string_lossy())
             .unwrap_or_default();
-        let date_a = stem_a.strip_prefix(&prefix).unwrap_or("0000-00-00");
-        let date_b = stem_b.strip_prefix(&prefix).unwrap_or("0000-00-00");
+        let date_a = stem_a.strip_prefix(&dated_prefix).unwrap_or("0000-00-00");
+        let date_b = stem_b.strip_prefix(&dated_prefix).unwrap_or("0000-00-00");
         date_a.cmp(date_b)
     });
     paths
