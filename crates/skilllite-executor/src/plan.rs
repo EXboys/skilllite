@@ -100,10 +100,11 @@ pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBu
         .map(|(p, _)| p)
         .filter(|p| p.is_file())
         .filter(|p| {
-            p.extension().is_some_and(|e| e == "jsonl" || e == "json")
-                && p.file_stem()
-                    .and_then(|s| s.to_str())
-                    .is_some_and(|n| n.starts_with(session_key))
+            p.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    crate::transcript::session_artifact_name_matches(name, session_key)
+                })
         })
         .collect();
     files.sort_by(|a, b| {
@@ -117,4 +118,48 @@ pub fn list_plan_files(plans_dir: &Path, session_key: &str) -> Result<Vec<PathBu
             )
     });
     Ok(files)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_plan_files_does_not_include_a_longer_session_key() {
+        let dir = std::env::temp_dir().join(format!(
+            "skilllite-plan-prefix-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in [
+            "schedule-daily-2026-11-25.jsonl",
+            "schedule-daily-brief-2026-11-25.json",
+            "日程-2026-11-25.jsonl",
+            "日程表-2026-11-25.jsonl",
+        ] {
+            std::fs::write(dir.join(name), "{}\n").unwrap();
+        }
+
+        let names = |key: &str| -> Vec<String> {
+            let mut found = list_plan_files(&dir, key)
+                .unwrap()
+                .into_iter()
+                .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+                .collect::<Vec<_>>();
+            found.sort();
+            found
+        };
+
+        assert_eq!(
+            names("schedule-daily"),
+            vec!["schedule-daily-2026-11-25.jsonl"]
+        );
+        assert_eq!(
+            names("schedule-daily-brief"),
+            vec!["schedule-daily-brief-2026-11-25.json"]
+        );
+        assert_eq!(names("日程"), vec!["日程-2026-11-25.jsonl"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

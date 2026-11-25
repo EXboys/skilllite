@@ -316,6 +316,45 @@ pub fn transcript_path_today(transcripts_dir: &Path, session_key: &str) -> PathB
     transcript_path_for_session(transcripts_dir, session_key, None)
 }
 
+/// Whether `file_name` is this session's legacy file or its dated transcript/plan file.
+///
+/// Dated files are `{session_key}-YYYY-MM-DD.jsonl` (or `.json`). A raw prefix match
+/// treats `schedule-daily-brief-YYYY-MM-DD.jsonl` as belonging to `schedule-daily`,
+/// so history reads, clears, and deletes cross session boundaries.
+pub(crate) fn session_artifact_name_matches(file_name: &str, session_key: &str) -> bool {
+    if session_key.is_empty() {
+        return false;
+    }
+    let Some(stem) = file_name
+        .strip_suffix(".jsonl")
+        .or_else(|| file_name.strip_suffix(".json"))
+    else {
+        return false;
+    };
+    if stem == session_key {
+        return true;
+    }
+    let Some(rest) = stem.strip_prefix(session_key) else {
+        return false;
+    };
+    let Some(date) = rest.strip_prefix('-') else {
+        return false;
+    };
+    is_calendar_date_stamp(date)
+}
+
+fn is_calendar_date_stamp(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 10 {
+        return false;
+    }
+    bytes[4] == b'-'
+        && bytes[7] == b'-'
+        && bytes[..4].iter().all(u8::is_ascii_digit)
+        && bytes[5..7].iter().all(u8::is_ascii_digit)
+        && bytes[8..10].iter().all(u8::is_ascii_digit)
+}
+
 /// List all transcript files for a session, sorted by date (legacy first, then YYYY-MM-DD).
 pub fn list_transcript_files(transcripts_dir: &Path, session_key: &str) -> Result<Vec<PathBuf>> {
     let legacy = transcripts_dir.join(format!("{}.jsonl", session_key));
@@ -337,9 +376,10 @@ pub fn list_transcript_files(transcripts_dir: &Path, session_key: &str) -> Resul
         let path = e.path();
         if let Some(name) = path.file_name() {
             let name = name.to_string_lossy();
-            if name.starts_with(session_key)
+            let legacy_name = format!("{session_key}.jsonl");
+            if name != legacy_name
                 && name.ends_with(".jsonl")
-                && name != format!("{}.jsonl", session_key)
+                && session_artifact_name_matches(&name, session_key)
             {
                 files.push(path);
             }
@@ -413,6 +453,44 @@ mod tests {
         assert!(!should_sync_after_append(&path, policy));
         assert!(should_sync_after_append(&path, policy));
         assert!(!should_sync_after_append(&path, policy));
+    }
+
+    #[test]
+    fn list_transcript_files_does_not_include_a_longer_session_key() {
+        let dir = unique_test_path("session-prefix");
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in [
+            "schedule-daily.jsonl",
+            "schedule-daily-2026-11-25.jsonl",
+            "schedule-daily-brief-2026-11-25.jsonl",
+            "日程-2026-11-25.jsonl",
+            "日程表-2026-11-25.jsonl",
+        ] {
+            std::fs::write(dir.join(name), "{}\n").unwrap();
+        }
+
+        let names = |key: &str| -> Vec<String> {
+            list_transcript_files(&dir, key)
+                .unwrap()
+                .into_iter()
+                .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+                .collect()
+        };
+
+        assert_eq!(
+            names("schedule-daily"),
+            vec![
+                "schedule-daily.jsonl".to_string(),
+                "schedule-daily-2026-11-25.jsonl".to_string(),
+            ]
+        );
+        assert_eq!(
+            names("schedule-daily-brief"),
+            vec!["schedule-daily-brief-2026-11-25.jsonl".to_string()]
+        );
+        assert_eq!(names("日程"), vec!["日程-2026-11-25.jsonl".to_string()]);
+        assert!(names("").is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

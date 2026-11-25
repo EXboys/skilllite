@@ -252,12 +252,9 @@ pub fn delete_session(session_key: &str) -> Result<(), String> {
     let plans_dir = chat_root.join("plans");
     if plans_dir.is_dir() {
         if let Ok(entries) = std::fs::read_dir(&plans_dir) {
-            let prefix = format!("{}-", session_key);
-            let exact = format!("{}.json", session_key);
-            let exact_jsonl = format!("{}.jsonl", session_key);
             for e in entries.flatten() {
                 let name = e.file_name().to_string_lossy().to_string();
-                if name.starts_with(&prefix) || name == exact || name == exact_jsonl {
+                if super::transcript::session_artifact_name_matches(&name, session_key) {
                     let _ = std::fs::remove_file(e.path());
                 }
             }
@@ -309,6 +306,32 @@ mod tests {
         let paths = list_transcript_paths(&tmp, "default");
         assert_eq!(paths.len(), 1);
         assert!(paths[0].ends_with("default.jsonl"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn list_transcript_paths_keeps_a_longer_session_key() {
+        let tmp = std::env::temp_dir().join(format!(
+            "skilllite-transcript-prefix-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("schedule-daily-2026-11-25.jsonl"), "").unwrap();
+        std::fs::write(tmp.join("schedule-daily-brief-2026-11-25.jsonl"), "").unwrap();
+        std::fs::write(tmp.join("日程-2026-11-25.jsonl"), "").unwrap();
+        std::fs::write(tmp.join("日程表-2026-11-25.jsonl"), "").unwrap();
+
+        let daily = list_transcript_paths(&tmp, "schedule-daily");
+        let names: Vec<_> = daily
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, vec!["schedule-daily-2026-11-25.jsonl"]);
+
+        let zh = list_transcript_paths(&tmp, "日程");
+        assert_eq!(zh.len(), 1);
+        assert!(zh[0].ends_with("日程-2026-11-25.jsonl"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

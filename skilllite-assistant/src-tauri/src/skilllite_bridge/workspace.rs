@@ -315,9 +315,11 @@ fn load_plan_data(chat_root: &std::path::Path) -> Option<RecentPlan> {
                 .flatten()
                 .filter(|e| {
                     e.path()
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .is_some_and(|n| n.starts_with(session_key))
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| {
+                            super::transcript::session_artifact_name_matches(name, session_key)
+                        })
                 })
                 .collect();
             candidates.sort_by_key(|e| {
