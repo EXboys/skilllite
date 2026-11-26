@@ -257,6 +257,7 @@ pub fn cmd_import_openclaw_skills(
 
     let mut planned: Vec<(String, PathBuf, String, String)> = Vec::new();
     for (logical_name, src_path, tag) in &candidates {
+        skilllite_core::skill::validate_skill_dir_name(logical_name)?;
         let Some(dest_name) = resolve_dest_name(&skills_path, logical_name, policy) else {
             eprintln!(
                 "   ⏭ {}: destination exists (--skill-conflict skip)",
@@ -353,7 +354,7 @@ pub fn cmd_import_openclaw_skills(
             continue;
         }
         let dest = skills_path.join(dest_name);
-        copy_skill(src_path, &dest)?;
+        copy_skill(&skills_path, src_path, dest_name)?;
         let admission = risk_by_name.get(dest_name).copied();
         let source = format!("{source_prefix}:{tag}");
         let _entry = manifest::upsert_installed_skill_with_admission(

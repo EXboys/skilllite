@@ -97,6 +97,7 @@ pub(super) fn handle_get_skill_info(server: &McpServer, arguments: &Value) -> Re
         .and_then(|v| v.as_str())
         .ok_or_else(|| Error::msg("skill_name is required"))?;
 
+    skilllite_core::skill::validate_skill_dir_name(skill_name)?;
     let skill_dir = server.skills_dir.join(skill_name);
     let skill_md_path = skill_dir.join("SKILL.md");
 
@@ -258,7 +259,8 @@ pub(super) fn handle_run_skill(server: &mut McpServer, arguments: &Value) -> Res
         .unwrap_or(false);
     let scan_id = arguments.get("scan_id").and_then(|v| v.as_str());
 
-    // Find the skill
+    // Find the skill inside the configured skills directory.
+    skilllite_core::skill::validate_skill_dir_name(skill_name)?;
     let skill_dir = server.skills_dir.join(skill_name);
     if !skill_dir.exists() || !skill_dir.join("SKILL.md").exists() {
         return Err(Error::msg(format!(

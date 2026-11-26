@@ -133,6 +133,20 @@ pub(super) async fn generate_skill_inner<L: EvolutionLlm>(
         return Ok(None);
     }
 
+    if skilllite_core::skill::validate_skill_dir_name(&parsed.name).is_err() {
+        tracing::warn!(
+            "Rejected generated skill name '{}' because it is not a single directory name",
+            parsed.name
+        );
+        return Ok(None);
+    }
+    if !skilllite_core::skill::is_relative_path_inside(&parsed.entry_point) {
+        tracing::warn!(
+            "Rejected generated entry point '{}' because it leaves the skill directory",
+            parsed.entry_point
+        );
+        return Ok(None);
+    }
     let skill_dir = pending_dir.join(&parsed.name);
     // 同名去重：同轮内若已有同名 pending skill，跳过避免覆盖
     if skill_dir.exists() && skill_dir.join("SKILL.md").exists() {

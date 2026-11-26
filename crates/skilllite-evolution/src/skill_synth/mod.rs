@@ -243,6 +243,8 @@ pub fn list_pending_skills_with_review(skills_root: &Path) -> Vec<(String, bool)
 }
 
 pub fn confirm_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> {
+    skilllite_core::skill::validate_skill_dir_name(skill_name)
+        .map_err(|err| crate::Error::validation(err.to_string()))?;
     let pending_dir = skills_root.join("_evolved").join("_pending");
     let evolved_dir = skills_root.join("_evolved");
     let src = pending_dir.join(skill_name);
@@ -261,6 +263,8 @@ pub fn confirm_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()>
 }
 
 pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> {
+    skilllite_core::skill::validate_skill_dir_name(skill_name)
+        .map_err(|err| crate::Error::validation(err.to_string()))?;
     let pending_dir = skills_root.join("_evolved").join("_pending");
     let src = pending_dir.join(skill_name);
 
@@ -278,3 +282,26 @@ pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> 
 pub use repair::{repair_one_skill, repair_skills};
 pub use scan::track_skill_usage;
 pub use validate::{validate_skills, SkillValidation};
+
+#[cfg(test)]
+mod tests {
+    use super::reject_pending_skill;
+
+    #[test]
+    fn reject_traversal_name_does_not_delete_outside_pending_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let skills = root.path().join("skills");
+        let pending = skills.join("_evolved").join("_pending");
+        std::fs::create_dir_all(&pending).unwrap();
+        let victim = root.path().join(".config");
+        std::fs::create_dir_all(&victim).unwrap();
+        std::fs::write(victim.join("keep.txt"), "保留").unwrap();
+
+        let err = reject_pending_skill(&skills, "../../.config").unwrap_err();
+        assert!(err.to_string().contains("single directory name"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(victim.join("keep.txt")).unwrap(),
+            "保留"
+        );
+    }
+}

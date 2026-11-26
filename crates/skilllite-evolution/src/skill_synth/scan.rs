@@ -34,6 +34,9 @@ pub(super) fn run_l4_scan(
 
 /// Update .meta.json after a skill execution (called from agent_loop).
 pub fn track_skill_usage(evolved_dir: &Path, skill_name: &str, success: bool) {
+    if skilllite_core::skill::validate_skill_dir_name(skill_name).is_err() {
+        return;
+    }
     let meta_path = evolved_dir.join(skill_name).join(".meta.json");
     if !meta_path.exists() {
         return;
