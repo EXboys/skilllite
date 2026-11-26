@@ -4,6 +4,7 @@ use anyhow::Context;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::error::bail;
 use crate::Result;
 
 use skilllite_core::skill::discovery::SKILL_SEARCH_DIRS;
@@ -121,12 +122,22 @@ const COPY_EXCLUDE_FILES: &[&str] = &[".DS_Store", "Thumbs.db"];
 
 const COPY_EXCLUDE_EXTENSIONS: &[&str] = &["pyc", "pyo"];
 
-pub(in crate::skill) fn copy_skill(src: &Path, dest: &Path) -> Result<()> {
+pub(in crate::skill) fn copy_skill(skills_root: &Path, src: &Path, skill_name: &str) -> Result<()> {
+    skilllite_core::skill::validate_skill_dir_name(skill_name)?;
+    let dest = skills_root.join(skill_name);
+    let relative = dest.strip_prefix(skills_root).map_err(|_| {
+        crate::Error::validation(format!(
+            "skill name '{skill_name}' escapes the skills directory"
+        ))
+    })?;
+    if relative.components().count() != 1 {
+        bail!("skill name '{skill_name}' escapes the skills directory");
+    }
     if dest.exists() {
-        fs::remove_dir_all(dest)
+        fs::remove_dir_all(&dest)
             .with_context(|| format!("Failed to remove existing skill: {}", dest.display()))?;
     }
-    copy_dir_filtered(src, dest)?;
+    copy_dir_filtered(src, &dest)?;
     Ok(())
 }
 

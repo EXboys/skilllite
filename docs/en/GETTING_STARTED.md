@@ -100,6 +100,8 @@ license: MIT
 This skill does something useful.
 ```
 
+`name` is the install directory. Use one directory name (`my-skill`, `笔记`). `skilllite add` and `skilllite remove` refuse names that contain `/`, `\`, `.`, or `..`, so a skill cannot delete a folder outside the skills directory.
+
 ## Troubleshooting
 
 ### Binary not found

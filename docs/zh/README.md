@@ -407,6 +407,8 @@ metadata:
 ```
 
 > 依赖通过 `compatibility` 字段声明（而非 `requirements.txt`）。入口点自动检测（`main.py` > `main.js` > `main.ts` > `main.sh`）。
+>
+> `name` 就是安装目录名。它必须是单个目录名，例如 `my-skill` 或 `笔记`。包含 `/`、`\`、`.` 或 `..` 的名称会被拒绝，因此 `skilllite add` 和 `skilllite remove` 不能删除 skills 目录之外的文件夹。
 
 </details>
 

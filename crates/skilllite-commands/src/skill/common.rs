@@ -23,9 +23,11 @@ pub fn find_skill(skills_path: &Path, skill_name: &str) -> Result<PathBuf> {
         bail!("Skills directory not found: {}", skills_path.display());
     }
 
-    let direct = skills_path.join(skill_name);
-    if direct.is_dir() && direct.join("SKILL.md").exists() {
-        return Ok(direct);
+    if skilllite_core::skill::validate_skill_dir_name(skill_name).is_ok() {
+        let direct = skills_path.join(skill_name);
+        if direct.is_dir() && direct.join("SKILL.md").exists() {
+            return Ok(direct);
+        }
     }
 
     if let Ok(entries) = skilllite_fs::read_dir(skills_path) {

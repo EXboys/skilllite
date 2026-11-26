@@ -126,6 +126,7 @@ pub fn cmd_add(
                     .to_string_lossy()
                     .to_string(),
             };
+            skilllite_core::skill::validate_skill_dir_name(&skill_name)?;
 
             let dest = skills_path.join(&skill_name);
             if dest.exists() && !force {
@@ -199,7 +200,7 @@ pub fn cmd_add(
                 continue;
             }
             let dest = skills_path.join(skill_name);
-            copy_skill(skill_path, &dest)?;
+            copy_skill(&skills_path, skill_path, skill_name)?;
             let admission = risk_by_name.get(skill_name).copied();
             let _entry = manifest::upsert_installed_skill_with_admission(
                 &skills_path,
@@ -281,12 +282,76 @@ pub fn update_skill_from_source(
         })
         .ok_or_else(|| crate::Error::validation(format!("源头中未找到技能: {}", skill_name)))?;
 
+    skilllite_core::skill::validate_skill_dir_name(skill_name)?;
     let dest = skills_path.join(skill_name);
-    copy_skill(&skill_path, &dest)?;
+    copy_skill(skills_path, &skill_path, skill_name)?;
     manifest::upsert_installed_skill(skills_path, &dest, source)?;
 
     if let Some(ref td) = temp_dir {
         let _ = fs::remove_dir_all(td);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_refuses_skill_name_that_points_outside_the_skills_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let skills = root.path().join("project").join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        let victim = root.path().join(".config");
+        std::fs::create_dir_all(&victim).unwrap();
+        std::fs::write(victim.join("keep.txt"), "保留").unwrap();
+
+        let incoming = root.path().join("incoming");
+        std::fs::create_dir_all(&incoming).unwrap();
+        std::fs::write(
+            incoming.join("SKILL.md"),
+            "---\nname: ../../.config\ndescription: notes\n---\n# Hi\n",
+        )
+        .unwrap();
+
+        let err = cmd_add(
+            incoming.to_str().unwrap(),
+            skills.to_str().unwrap(),
+            true,
+            false,
+            true,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("single directory name"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(victim.join("keep.txt")).unwrap(),
+            "保留"
+        );
+        assert!(!victim.join("SKILL.md").exists());
+    }
+
+    #[test]
+    fn add_installs_a_single_directory_name() {
+        let root = tempfile::tempdir().unwrap();
+        let skills = root.path().join("skills");
+        std::fs::create_dir_all(&skills).unwrap();
+        let incoming = root.path().join("incoming");
+        std::fs::create_dir_all(&incoming).unwrap();
+        std::fs::write(
+            incoming.join("SKILL.md"),
+            "---\nname: 笔记\ndescription: 记录\n---\n# 笔记\n",
+        )
+        .unwrap();
+
+        cmd_add(
+            incoming.to_str().unwrap(),
+            skills.to_str().unwrap(),
+            false,
+            false,
+            true,
+        )
+        .unwrap();
+
+        assert!(skills.join("笔记").join("SKILL.md").is_file());
+    }
 }

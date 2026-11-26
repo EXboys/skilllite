@@ -100,6 +100,8 @@ license: MIT
 这个 Skill 可以做一些有用的事情。
 ```
 
+`name` 就是安装目录名。请使用单个目录名（`my-skill`、`笔记`）。`skilllite add` 和 `skilllite remove` 会拒绝包含 `/`、`\`、`.` 或 `..` 的名称，因此技能不能删除 skills 目录之外的文件夹。
+
 ## 故障排除
 
 ### 找不到二进制文件

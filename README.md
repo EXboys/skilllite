@@ -451,6 +451,8 @@ Returns JSON result.
 ```
 
 > Dependencies are declared in `compatibility` (not `requirements.txt`). Entry point is auto-detected (`main.py` > `main.js` > `main.ts` > `main.sh`).
+>
+> `name` is the install directory. It must be one directory name, such as `my-skill` or `笔记`. Names that contain `/`, `\`, `.`, or `..` are refused, so `skilllite add` and `skilllite remove` cannot delete a folder outside the skills directory.
 
 </details>
 
