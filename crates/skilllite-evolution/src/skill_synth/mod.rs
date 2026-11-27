@@ -242,7 +242,28 @@ pub fn list_pending_skills_with_review(skills_root: &Path) -> Vec<(String, bool)
         .collect()
 }
 
+/// A pending skill is one directory directly under `_evolved/_pending`.
+///
+/// `Path::join` replaces the base when `skill_name` is absolute, and `..`
+/// walks out of `_pending`. Either form would make confirm rename, or reject
+/// delete, a directory outside the pending root.
+fn require_pending_skill_dir_name(skill_name: &str) -> Result<()> {
+    let path = Path::new(skill_name);
+    if path.is_absolute() {
+        bail!("待确认 Skill 名称必须是单个目录名");
+    }
+    let mut components = path.components();
+    let Some(std::path::Component::Normal(part)) = components.next() else {
+        bail!("待确认 Skill 名称必须是单个目录名");
+    };
+    if components.next().is_some() || part != std::ffi::OsStr::new(skill_name) {
+        bail!("待确认 Skill 名称必须是单个目录名");
+    }
+    Ok(())
+}
+
 pub fn confirm_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> {
+    require_pending_skill_dir_name(skill_name)?;
     let pending_dir = skills_root.join("_evolved").join("_pending");
     let evolved_dir = skills_root.join("_evolved");
     let src = pending_dir.join(skill_name);
@@ -261,6 +282,7 @@ pub fn confirm_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()>
 }
 
 pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> {
+    require_pending_skill_dir_name(skill_name)?;
     let pending_dir = skills_root.join("_evolved").join("_pending");
     let src = pending_dir.join(skill_name);
 
@@ -278,3 +300,92 @@ pub fn reject_pending_skill(skills_root: &Path, skill_name: &str) -> Result<()> 
 pub use repair::{repair_one_skill, repair_skills};
 pub use scan::track_skill_usage;
 pub use validate::{validate_skills, SkillValidation};
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn pending_layout() -> (tempfile::TempDir, std::path::PathBuf, std::path::PathBuf) {
+        let root = tempfile::tempdir().expect("tempdir");
+        let skills = root.path().join("workspace").join("project").join("skills");
+        fs::create_dir_all(skills.join("_evolved").join("_pending")).expect("pending dir");
+        let victim = root.path().join("workspace").join("victim");
+        fs::create_dir_all(&victim).expect("victim dir");
+        fs::write(victim.join("keep.txt"), "保留 中文").expect("marker");
+        (root, skills, victim)
+    }
+
+    #[test]
+    fn reject_pending_skill_does_not_delete_outside_the_pending_directory() {
+        let (_root, skills, victim) = pending_layout();
+        let absolute = victim.to_str().expect("utf8 victim path");
+        let err = reject_pending_skill(&skills, absolute).expect_err("absolute name");
+        assert!(
+            err.to_string().contains("单个目录名"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            fs::read_to_string(victim.join("keep.txt")).expect("marker remains"),
+            "保留 中文"
+        );
+
+        let err = reject_pending_skill(&skills, "../../../../victim").expect_err("relative name");
+        assert!(
+            err.to_string().contains("单个目录名"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            fs::read_to_string(victim.join("keep.txt")).expect("marker remains"),
+            "保留 中文"
+        );
+    }
+
+    #[test]
+    fn confirm_pending_skill_does_not_move_a_directory_outside_pending() {
+        let (root, skills, victim) = pending_layout();
+        let err = confirm_pending_skill(&skills, "../../../../victim").expect_err("relative name");
+        assert!(
+            err.to_string().contains("单个目录名"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(
+            fs::read_to_string(victim.join("keep.txt")).expect("marker remains"),
+            "保留 中文"
+        );
+        assert!(!root.path().join("victim").exists());
+    }
+
+    #[test]
+    fn confirm_and_reject_keep_a_normal_pending_skill_name() {
+        let (_root, skills, _victim) = pending_layout();
+        let pending = skills.join("_evolved").join("_pending").join("日程");
+        fs::create_dir_all(&pending).expect("pending skill");
+        fs::write(pending.join("SKILL.md"), "---\nname: 日程\n---\n").expect("skill md");
+        confirm_pending_skill(&skills, "日程").expect("confirm");
+        let confirmed = skills.join("_evolved").join("日程").join("SKILL.md");
+        assert_eq!(
+            fs::read_to_string(&confirmed).expect("confirmed skill"),
+            "---\nname: 日程\n---\n"
+        );
+        assert!(!pending.exists());
+
+        let notes = skills.join("_evolved").join("_pending").join("notes");
+        let sibling = skills.join("_evolved").join("_pending").join("notes-extra");
+        fs::create_dir_all(&notes).expect("notes");
+        fs::create_dir_all(&sibling).expect("sibling");
+        fs::write(sibling.join("keep.txt"), "保留 中文").expect("sibling marker");
+        reject_pending_skill(&skills, "notes").expect("reject");
+        assert!(!notes.exists());
+        assert_eq!(
+            fs::read_to_string(sibling.join("keep.txt")).expect("sibling remains"),
+            "保留 中文"
+        );
+
+        for name in ["", ".", "..", "foo/bar", "日程/"] {
+            let err = reject_pending_skill(&skills, name).expect_err(name);
+            assert!(err.to_string().contains("单个目录名"), "{name}: {err}");
+            assert!(sibling.join("keep.txt").is_file(), "{name}");
+        }
+    }
+}

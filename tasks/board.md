@@ -1,6 +1,6 @@
 # Task Board
 
-Last updated: 2026-10-28 (TASK-2026-074 Codex sandbox runtime done)
+Last updated: 2026-11-27 (TASK-2026-083 pending skill directory name)
 
 ## In Progress
 
@@ -8,6 +8,7 @@ Last updated: 2026-10-28 (TASK-2026-074 Codex sandbox runtime done)
 
 ## Ready
 
+- `TASK-2026-083-pending-skill-dir-name` - Status: `in_review` - Owner: `agent`
 - `TASK-2026-071-extract-desktop-project` - Status: `in_review` - Owner: `agent`
 - `TASK-2026-065-openclaw-claw-migrate-mvp` - Status: `done` - Owner: `maintainer`
 - None.
