@@ -8,7 +8,9 @@ use std::sync::Mutex;
 
 use crate::types::{EventSink, FunctionDef, ToolDefinition};
 
-use super::{get_path_arg, normalize_path, resolve_within_workspace_or_output};
+use super::{
+    get_path_arg, normalize_path, reject_symlink_escape, resolve_within_workspace_or_output,
+};
 
 // ─── Tool definition ────────────────────────────────────────────────────────
 
@@ -236,21 +238,21 @@ fn run_file_server(listener: std::net::TcpListener, serve_dir: &Path) {
             continue;
         }
 
-        let file_path = serve_dir.join(rel);
-        let normalized = normalize_path(&file_path);
-
-        if !normalized.starts_with(serve_dir) {
-            let body = "403 Forbidden";
-            let resp = format!(
-                "HTTP/1.1 403 Forbidden\r\n\
-                 Content-Length: {}\r\n\
-                 Connection: close\r\n\r\n{}",
-                body.len(),
-                body
-            );
-            let _ = stream.write_all(resp.as_bytes());
-            continue;
-        }
+        let normalized = match resolve_preview_file(serve_dir, rel) {
+            Ok(path) => path,
+            Err(_) => {
+                let body = "403 Forbidden";
+                let resp = format!(
+                    "HTTP/1.1 403 Forbidden\r\n\
+                     Content-Length: {}\r\n\
+                     Connection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                let _ = stream.write_all(resp.as_bytes());
+                continue;
+            }
+        };
 
         if normalized.is_file() {
             match skilllite_fs::read_bytes(&normalized) {
@@ -373,6 +375,15 @@ fn generate_listing_html(title: &str, files: &[String]) -> String {
     )
 }
 
+fn resolve_preview_file(serve_dir: &Path, rel: &str) -> Result<std::path::PathBuf> {
+    let normalized = normalize_path(&serve_dir.join(rel));
+    if !normalized.starts_with(serve_dir) {
+        bail!("Path escapes preview directory: {rel}");
+    }
+    reject_symlink_escape(serve_dir, &normalized)?;
+    Ok(normalized)
+}
+
 fn url_decode(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut chars = s.bytes();
@@ -420,5 +431,48 @@ fn guess_mime(path: &Path) -> &'static str {
         Some("woff") => "font/woff",
         Some("ico") => "image/x-icon",
         _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_preview_file, url_decode};
+
+    #[test]
+    fn preview_request_rejects_encoded_parent_traversal() {
+        let serve = tempfile::tempdir().expect("serve dir");
+        let decoded = url_decode("/%2e%2e/%2e%2e/etc/passwd");
+        let rel = decoded.trim_start_matches('/');
+        let err = resolve_preview_file(serve.path(), rel).expect_err("traversal");
+        assert!(err.to_string().contains("escapes"), "err={err}");
+    }
+
+    #[test]
+    fn preview_request_allows_a_unicode_file_inside_the_directory() {
+        let serve = tempfile::tempdir().expect("serve dir");
+        std::fs::write(serve.path().join("报告.html"), "<p>中文</p>").expect("write");
+        let resolved = resolve_preview_file(serve.path(), "报告.html").expect("resolve");
+        assert_eq!(
+            std::fs::read_to_string(&resolved).expect("read"),
+            "<p>中文</p>"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preview_request_rejects_symlink_that_points_outside_the_directory() {
+        let serve = tempfile::tempdir().expect("serve dir");
+        let outside = tempfile::NamedTempFile::new().expect("secret");
+        std::fs::write(outside.path(), "ssh-secret").expect("seed");
+        std::os::unix::fs::symlink(outside.path(), serve.path().join("key")).expect("symlink");
+
+        let err = resolve_preview_file(serve.path(), "key").expect_err("symlink file");
+        assert!(err.to_string().contains("symlink"), "err={err}");
+
+        let linked = tempfile::tempdir().expect("linked dir");
+        std::fs::write(linked.path().join("id_rsa"), "private").expect("seed key");
+        std::os::unix::fs::symlink(linked.path(), serve.path().join("keys")).expect("symlink dir");
+        let err = resolve_preview_file(serve.path(), "keys/id_rsa").expect_err("symlink dir");
+        assert!(err.to_string().contains("symlink"), "err={err}");
     }
 }

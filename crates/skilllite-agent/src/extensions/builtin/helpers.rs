@@ -41,10 +41,7 @@ pub(super) fn is_sensitive_write_path(path: &str) -> bool {
             return true;
         }
     }
-    if lower.ends_with(".key") || lower.ends_with(".pem") {
-        return true;
-    }
-    false
+    lower.ends_with(".key") || lower.ends_with(".pem")
 }
 
 /// 敏感路径（读操作复用与写相同的模式）
@@ -258,6 +255,54 @@ pub(crate) fn normalize_path(path: &Path) -> PathBuf {
         }
     }
     components.iter().collect()
+}
+
+/// Reject a lexical path whose real target, or nearest existing ancestor, leaves `root`.
+///
+/// `root` that does not exist yet cannot be a symlink, so the check waits until it does.
+pub(super) fn reject_symlink_escape(root: &Path, candidate: &Path) -> Result<()> {
+    if !root.exists() {
+        return Ok(());
+    }
+    let root_canon = root.canonicalize().map_err(|err| {
+        crate::Error::validation(format!(
+            "Failed to resolve directory {}: {err}",
+            root.display()
+        ))
+    })?;
+    let existing = nearest_existing(candidate);
+    let Some(existing) = existing else {
+        return Ok(());
+    };
+    let canon = existing.canonicalize().map_err(|err| {
+        crate::Error::validation(format!(
+            "Failed to resolve path {}: {err}",
+            candidate.display()
+        ))
+    })?;
+    if canon.starts_with(&root_canon) {
+        return Ok(());
+    }
+    bail!(
+        "Path escapes directory via symlink: {} -> {} (root: {})",
+        candidate.display(),
+        canon.display(),
+        root_canon.display()
+    )
+}
+
+fn nearest_existing(candidate: &Path) -> Option<PathBuf> {
+    if candidate.exists() {
+        return Some(candidate.to_path_buf());
+    }
+    let mut ancestor = candidate.parent().map(Path::to_path_buf);
+    while let Some(path) = ancestor {
+        if path.exists() {
+            return Some(path);
+        }
+        ancestor = path.parent().map(Path::to_path_buf);
+    }
+    None
 }
 
 // ─── Truncated JSON recovery ─────────────────────────────────────────────────
